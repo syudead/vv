@@ -1066,16 +1066,20 @@ export const en = {
       title: "Edit videos",
       detail: (count: number) => `${videos(count)}`,
       counting: "Counting…",
-      close: "Close",
       loading: "Loading the values of the selected videos…",
+      tagsAndPeople: "Tags and people",
+      organizationsDatesVisibility: "Organizations, dates and visibility",
+      filter: (field: string) => `Filter ${field.toLowerCase()}`,
+      showAll: (count: number) => `Show all ${formatNumber(count)}`,
+      showFewer: "Show fewer",
       summaryFailed: (reason: string) => `Couldn't read the selected videos: ${reason}`,
       allExcluded: "Every video is left out. Press one on the left to edit it.",
       targets: "Videos to edit",
-      stageHint: "Press a card to leave it out of the edit.",
+      stageHint: "Press a video to leave it out of the edit.",
       includeAll: (count: number) =>
         selectPlural(count, {
-          one: "Put back 1 card",
-          other: `Put back ${formatNumber(count)} cards`,
+          one: "Put back 1 video",
+          other: `Put back ${formatNumber(count)} videos`,
         }),
       tileLabel: (label: string, included: boolean) =>
         included ? `${label}, edited` : `${label}, left out`,
@@ -1116,7 +1120,6 @@ export const en = {
       private: "Private",
       changes: "Changes",
       noChanges: "Nothing will change yet.",
-      moreChanges: (count: number) => `and ${formatNumber(count)} more`,
       changeAdd: (field: string, label: string, count: number) =>
         `${field}: add ${label} to ${videos(count)}`,
       changeRemove: (field: string, label: string, count: number) =>

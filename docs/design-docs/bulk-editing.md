@@ -20,7 +20,7 @@ flowchart LR
   editor -->|targets| summary[POST /api/video-edits/summary]
   summary --> fields[Values with counts]
   fields -->|press, pick, set| draft[Draft and change list]
-  editor -->|leave a card out| summary
+  editor -->|leave a video out| summary
   draft -->|Apply| create[Create typed credit names]
   create --> apply[POST /api/video-edits]
   apply --> tx[One transaction]
@@ -33,9 +33,9 @@ flowchart LR
 Each field lists the values the selected videos have, with how many of them
 carry each (`Travel 2/5`); pressing a value steps through adding it to every
 video, removing it from every video, and leaving it as it is. A value picked
-with the field's picker is added to every video. The footer lists the changes
-the draft makes, with the number of videos each changes, above
-`Apply to N videos`.
+with the field's picker is added to every video. The aside lists the changes
+the draft makes, with the number of videos each changes, and
+`Apply to N videos` sends them.
 
 Add is offered only while some videos lack the value and Remove only while
 some can lose it, so every step changes something. A tag that some videos
@@ -47,15 +47,21 @@ removed, as with the single tag actions.
 | A mode per field (Add, Remove, Replace) with an empty input | The owner cannot see what the videos already have, so Remove and Replace are chosen blind |
 | Replace as a mode | Removing every present value and adding the new ones expresses it, and the change list shows the result |
 
-## The stage lists the targets and leaves out the pressed ones
+## The fields fill the screen and the targets sit in a narrow column
 
-The editor is an `EditorDialog`: the stage holds the selected cards (videos,
-groups with their member count, smart folders) and the aside holds the fields
-([patterns.md, Editor dialog](../../web/registry/rules/patterns.md#editor-dialog)).
-Pressing a card leaves it out: the summary is read again for the remaining
-targets and the request no longer sends them. The list page and its selection
-stay mounted under the dialog, so closing returns to the same scroll position
-and selection.
+The editor is a `FormPageDialog`, a `FormPage` over the list
+([patterns.md, Form page](../../web/registry/rules/patterns.md#form-page)). Tags
+and people fill the first panel, organizations, dates and visibility the
+second, and the `Apply to N videos` button stays in the header band. The aside
+lists the selected cards as small rows (videos, groups with their member count,
+smart folders) above the change list; pressing a row leaves it out, the summary
+is read again for the remaining targets and the request no longer sends them.
+The list page and its selection stay mounted under the dialog, so closing
+returns to the same scroll position and selection.
+
+A field with many values draws the 24 that most videos carry, offers a filter
+and `Show all`, and always keeps a value that has a choice, so a large library
+does not push the other fields out of reach.
 
 A group stands for its member videos and a smart folder for its current members,
 which the server resolves at request time as for the other bulk actions; the
@@ -64,8 +70,9 @@ a bundle count as one video.
 
 | Rejected | Why |
 | --- | --- |
-| A page of its own (`FormPage`) | Leaving the list drops its selection and loaded pages; the editor needs both on return |
-| A `FormDialog` | At 42rem it cannot show the targets beside the fields, and nine fields scroll inside it |
+| An `EditorDialog` with the targets as large cards on the stage | The cards took most of the screen and the fields were squeezed into the aside, so tags and people pushed the other fields far down |
+| A page of its own (`FormPage` route) | Leaving the list drops its selection and loaded pages; the editor needs both on return |
+| A `FormDialog` | At 42rem nine fields with chips scroll inside it |
 
 ## One request applies every part atomically
 

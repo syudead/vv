@@ -155,6 +155,42 @@ describe("BulkEditor", () => {
     });
   });
 
+  it("draws only the most common values and reaches the rest through Show all or the filter", async () => {
+    const many = Array.from({ length: 30 }, (_, index) => ({
+      tag: {
+        id: index + 1,
+        name: `Tag ${String(index + 1)}`,
+        tentative: false,
+        kind: null,
+      },
+      count: index === 29 ? 3 : 1,
+      manualCount: index === 29 ? 3 : 1,
+    }));
+    server.summary.mockImplementation(() => json({ ...fullSummary, tags: many }));
+    const user = userEvent.setup();
+    renderEditor();
+
+    const tags = await screen.findByRole("list", { name: "Tags" });
+    const chips = () => within(tags).getAllByRole("button", { name: /^Tag \d+, on / });
+    // The 24 most common, in name order: Tag 30 is on every video, so Tag 24 is the one left out.
+    const names = () =>
+      chips().map((chip) => chip.getAttribute("aria-label")?.split(",")[0]);
+    expect(names()).toHaveLength(24);
+    expect(names()).toContain("Tag 30");
+    expect(names()).not.toContain("Tag 24");
+    expect(names()[0]).toBe("Tag 1");
+
+    await user.type(screen.getByRole("searchbox", { name: "Filter tags" }), "Tag 28");
+    expect(chips().map((chip) => chip.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/^Tag 28, /),
+    ]);
+    await user.clear(screen.getByRole("searchbox", { name: "Filter tags" }));
+    await user.click(screen.getByRole("button", { name: "Show all 30" }));
+    expect(chips()).toHaveLength(30);
+    await user.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(chips()).toHaveLength(24);
+  });
+
   it("keeps the editor and its changes after a failure, and asks before discarding them", async () => {
     server.apply.mockReturnValue(
       json({ code: "not_found", reason: "person_not_found", message: "gone" }, 404),
@@ -168,7 +204,7 @@ describe("BulkEditor", () => {
     expect(await screen.findByText(/^Couldn't apply the changes:/)).toBeTruthy();
     expect(screen.getByText("Tags: add Travel to 1 video")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
     const confirm = await screen.findByRole("alertdialog", {
       name: "Discard these changes?",
     });

@@ -291,11 +291,11 @@ bottom border holds the title, a muted detail after it and the close `×` (a
 | From `lg`  | The stage fills the rest; the aside is a column `editor-aside` wide (`editor-aside-wide` from `xl`) with a left border, scrolling on its own, and its `footer` sits at its bottom |
 | Below `lg` | The stage sits under the band, `editor-stage` high (about 45% of the viewport); the aside follows it, the body scrolls as one, and the `footer` sticks to the viewport's bottom   |
 
-| Slot     | Put in it                                                                                                                                                                        | Never                          |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `stage`  | The image being worked on, fitted to the stage; the stage centres it on `bg-muted` with `p-4`. A bulk edit puts its target cards here, filling the stage and scrolling inside it | Text fields or long text       |
-| `aside`  | The inputs, top to bottom in the order they are filled, each with at most one short hint, then the status of the work                                                            | The main actions               |
-| `footer` | The main actions, the one `default` first and as wide as the aside                                                                                                               | More than one `default` button |
+| Slot     | Put in it                                                                                                             | Never                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `stage`  | The image being worked on, fitted to the stage; the stage centres it on `bg-muted` with `p-4`                         | Text fields or long text       |
+| `aside`  | The inputs, top to bottom in the order they are filled, each with at most one short hint, then the status of the work | The main actions               |
+| `footer` | The main actions, the one `default` first and as wide as the aside                                                    | More than one `default` button |
 
 Esc and the `×` call `onClose`; the screen closes the dialog itself, or first
 asks with a `ConfirmDialog` when closing would lose work. An Esc that cancels
@@ -303,8 +303,7 @@ an IME composition does not close it. On close the focus returns to the element
 that had it before, and `initialFocus` names the element focused on open.
 
 Use it for a task on one image that needs the whole window, such as painting
-over a video frame or comparing two images, and for a bulk edit, whose stage
-shows the cards being edited beside the fields. A form stays a `FormDialog`.
+over a video frame or comparing two images. A form stays a `FormDialog`.
 
 ## Form page
 
@@ -334,6 +333,12 @@ band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
+
+`FormPageDialog` shows the same page as a modal over the current screen, for a
+form whose screen must stay as it is under it, such as the bulk editor over a
+list and its selection. Esc and `Cancel` call `onClose`, the focus returns to
+the element that had it, and the aside may hold the targets with a control to
+leave each out, since they are what the form edits.
 
 ## Profile page
 

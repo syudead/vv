@@ -31,6 +31,7 @@ export default function VisibilityField({
         type="single"
         variant="outline"
         size="sm"
+        className="w-fit"
         aria-labelledby={labelId}
         disabled={disabled}
         value={current}

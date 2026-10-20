@@ -156,7 +156,7 @@ describe("SelectionBar", () => {
     ).toEqual(["動画 1, edited", "動画 2, edited", "動画 3, edited"]);
     await waitFor(() => expect(editRequests).toEqual([{ videoIds: [1, 2, 3] }]));
 
-    await user.click(within(editor).getByRole("button", { name: "Close" }));
+    await user.click(within(editor).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(onClear).not.toHaveBeenCalled();
     expect(screen.getByText("3 videos and 1 smart folder selected")).toBeDefined();

@@ -19,7 +19,7 @@ import CreditPicker from "../../player/detailsEditor/CreditPicker";
 import { organizationRole, personRole } from "../../player/detailsEditor/CreditsPanel";
 import { type Chip, isNewChip } from "../../player/detailsEditor/draft";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
-import { EditorDialog } from "../../ui/patterns/editor-dialog";
+import { FormPageDialog, type FormPagePanel } from "../../ui/patterns/form-page";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
@@ -192,60 +192,72 @@ export default function BulkEditor({
   }
 
   const total = summary?.total ?? 0;
+  const panels =
+    summary === undefined || included.length === 0
+      ? loadingPanels(included.length === 0 && summary !== undefined)
+      : fieldPanels({ summary, present, draft, disabled: pending, onChange: setDraft });
   return (
     <>
-      <EditorDialog
+      <FormPageDialog
         open
         onClose={requestClose}
         title={b.title}
         detail={summary === undefined ? b.counting : b.detail(total)}
-        closeLabel={b.close}
-        closeDisabled={pending}
-        stage={
-          <Stage
-            targets={targets}
-            excluded={excluded}
-            disabled={pending}
-            onToggle={(key) =>
-              setExcluded((current) => {
-                const next = new Set(current);
-                if (!next.delete(key)) next.add(key);
-                return next;
-              })
-            }
-            onIncludeAll={() => setExcluded(new Set())}
-          />
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-disabled={pending || undefined}
+              onClick={requestClose}
+            >
+              {t.player.detailsEditor.cancel}
+            </Button>
+            <Button
+              size="sm"
+              aria-disabled={!ready || lines.length === 0 || pending || undefined}
+              aria-busy={pending || undefined}
+              onClick={apply}
+            >
+              {pending ? b.applying : b.apply(total)}
+            </Button>
+          </>
         }
+        notice={
+          failure !== null && (
+            <p role="alert" className="text-sm text-destructive">
+              {failure}
+            </p>
+          )
+        }
+        asideLabel={b.targets}
         aside={
+          <>
+            <TargetList
+              targets={targets}
+              excluded={excluded}
+              disabled={pending}
+              onToggle={(key) =>
+                setExcluded((current) => {
+                  const next = new Set(current);
+                  if (!next.delete(key)) next.add(key);
+                  return next;
+                })
+              }
+              onIncludeAll={() => setExcluded(new Set())}
+            />
+            <ChangeList lines={lines} />
+          </>
+        }
+        panels={panels}
+        status={
           state.kind === "failed" ? (
             <ErrorState
               title={b.summaryFailed(state.reason)}
               retryLabel={t.common.retry}
               onRetry={() => setAttempt((value) => value + 1)}
             />
-          ) : summary === undefined ? (
-            <AsideSkeleton />
-          ) : included.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{b.allExcluded}</p>
-          ) : (
-            <Fields
-              summary={summary}
-              present={present}
-              draft={draft}
-              disabled={pending}
-              onChange={setDraft}
-            />
-          )
-        }
-        footer={
-          <Footer
-            lines={lines}
-            total={total}
-            failure={failure}
-            disabled={!ready || lines.length === 0}
-            pending={pending}
-            onApply={apply}
-          />
+          ) : undefined
         }
       />
       <ConfirmDialog
@@ -261,21 +273,27 @@ export default function BulkEditor({
   );
 }
 
-function AsideSkeleton() {
-  return (
-    <div
-      role="status"
-      aria-label={t.library.bulkEdit.loading}
-      className="flex flex-col gap-4"
-    >
-      {[0, 1, 2, 3].map((index) => (
+function loadingPanels(allExcluded: boolean): FormPagePanel[] {
+  const b = t.library.bulkEdit;
+  const content = allExcluded ? (
+    <p className="text-sm text-muted-foreground">{b.allExcluded}</p>
+  ) : (
+    <div role="status" aria-label={b.loading} className="flex flex-col gap-4">
+      {[0, 1, 2].map((index) => (
         <Skeleton key={index} className="h-12 w-full" />
       ))}
     </div>
   );
+  return [
+    { key: "tags-people", legend: b.tagsAndPeople, content },
+    { key: "others", legend: b.organizationsDatesVisibility, content: null },
+  ];
 }
 
-function Stage({
+/** Rows shown before `Show all`, so a large selection does not push the change list away. */
+const targetRowsShown = 12;
+
+function TargetList({
   targets,
   excluded,
   disabled,
@@ -289,22 +307,22 @@ function Stage({
   onIncludeAll: () => void;
 }) {
   const b = t.library.bulkEdit;
+  const [all, setAll] = useState(false);
+  const shown = all ? targets : targets.slice(0, targetRowsShown);
   return (
-    <div className="flex size-full min-h-0 flex-col gap-3 self-stretch">
-      <div className="flex min-h-8 items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{b.stageHint}</p>
+    <section className="flex flex-col gap-2">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <h2 className="font-medium">{b.targets}</h2>
         {excluded.size > 0 && (
           <Button variant="ghost" size="sm" disabled={disabled} onClick={onIncludeAll}>
             {b.includeAll(excluded.size)}
           </Button>
         )}
       </div>
-      <ul
-        aria-label={b.targets}
-        className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 xl:grid-cols-4"
-      >
-        {targets.map((target) => (
-          <TargetTile
+      <p className="text-xs text-muted-foreground">{b.stageHint}</p>
+      <ul aria-label={b.targets} className="flex flex-col gap-1">
+        {shown.map((target) => (
+          <TargetRow
             key={target.key}
             target={target}
             included={!excluded.has(target.key)}
@@ -313,11 +331,21 @@ function Stage({
           />
         ))}
       </ul>
-    </div>
+      {targets.length > shown.length && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          onClick={() => setAll(true)}
+        >
+          {b.showAll(targets.length)}
+        </Button>
+      )}
+    </section>
   );
 }
 
-function TargetTile({
+function TargetRow({
   target,
   included,
   disabled,
@@ -340,54 +368,74 @@ function TargetTile({
         onClick={() => {
           if (!disabled) onToggle();
         }}
-        className="h-auto w-full flex-col items-stretch gap-1.5 p-1.5 font-normal"
+        className="h-auto w-full justify-start gap-2 p-1 font-normal"
       >
-        <VideoThumbnail selected={included} className={cn(!included && "opacity-40")}>
+        <VideoThumbnail className={cn("w-16 shrink-0", !included && "opacity-40")}>
           {target.thumbnailUrl !== undefined && (
             <VideoThumbnailImage src={target.thumbnailUrl} />
           )}
-          {target.kind !== "video" && (
-            <span className="absolute bottom-1 left-1 flex items-center gap-1 rounded-sm bg-background/80 px-1.5 text-xs">
-              <Icon className="size-3" aria-hidden="true" />
-              {target.kind === "group"
-                ? b.groupMark(target.videoIds.length)
-                : b.smartFolderMark}
-            </span>
-          )}
-          {!included && (
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="rounded-sm bg-background px-2 py-0.5 text-sm font-medium">
-                {b.excluded}
-              </span>
-            </span>
-          )}
         </VideoThumbnail>
-        <span
-          className={cn(
-            "truncate text-left text-xs",
-            !included && "text-muted-foreground line-through",
-          )}
-        >
-          {target.label}
+        <span className="flex min-w-0 flex-1 flex-col items-start">
+          <span
+            className={cn(
+              "w-full truncate text-left text-sm",
+              !included && "text-muted-foreground line-through",
+            )}
+          >
+            {target.label}
+          </span>
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            {target.kind !== "video" && <Icon className="size-3" aria-hidden="true" />}
+            {!included
+              ? b.excluded
+              : target.kind === "group"
+                ? b.groupMark(target.videoIds.length)
+                : target.kind === "smartFolder"
+                  ? b.smartFolderMark
+                  : null}
+          </span>
         </span>
       </Button>
     </li>
   );
 }
 
-function Fields({
-  summary,
-  present,
-  draft,
-  disabled,
-  onChange,
-}: {
+function ChangeList({ lines }: { lines: readonly ChangeLine[] }) {
+  const b = t.library.bulkEdit;
+  return (
+    <section className="flex flex-col gap-2 border-t border-border pt-3">
+      <h2 className="font-medium">{b.changes}</h2>
+      {lines.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{b.noChanges}</p>
+      ) : (
+        <ul aria-label={b.changes} className="flex flex-col gap-1 text-xs">
+          {lines.map((line, index) => (
+            <li key={`${line.field}-${String(index)}`} className="wrap-anywhere">
+              {changeText(line)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+interface FieldProps {
   summary: VideoEditSummary;
   present: ReadonlyMap<FieldId, readonly PresentValue[]>;
   draft: BulkDraft;
   disabled: boolean;
   onChange: (change: (draft: BulkDraft) => BulkDraft) => void;
-}) {
+}
+
+/** Tags and people fill the first panel, organizations, dates and visibility the second. */
+function fieldPanels({
+  summary,
+  present,
+  draft,
+  disabled,
+  onChange,
+}: FieldProps): FormPagePanel[] {
   const b = t.library.bulkEdit;
   const valueField = (id: FieldId, legend: UiText, picker: ReactNode) => (
     <ValueField
@@ -404,65 +452,75 @@ function Fields({
       picker={picker}
     />
   );
-  return (
-    <>
-      <p className="text-xs text-muted-foreground">{b.howTo}</p>
-      {valueField(
-        "tags",
-        b.tags,
-        <TagPicker
-          disabled={disabled}
-          onPick={(value) =>
-            onChange((current) =>
-              pickValue(current, "tags", value, present.get("tags") ?? []),
-            )
-          }
-        />,
-      )}
-      {roleEntries.map((entry) =>
-        valueField(
-          entry.id,
-          entry.label,
-          <CreditPicker
-            kind={entry.kind}
-            offerUnnamed={entry.id === "person:performer"}
-            label={entry.add}
-            chips={pickedChips(draft, entry.id)}
-            unsaved={unsavedNames(draft, entry.kind)}
-            disabled={disabled}
-            onAdd={(chip) =>
-              onChange((current) =>
-                pickValue(
-                  current,
-                  entry.id,
-                  pickedCredit(chip),
-                  present.get(entry.id) ?? [],
-                ),
-              )
-            }
-          />,
-        ),
-      )}
-      {dateKinds.map((kind) => (
-        <DateField
-          key={kind}
-          kind={kind}
-          total={summary.total}
-          current={summary.dates.find((item) => item.kind === kind)}
-          draft={draft.dates[kind]}
-          disabled={disabled}
-          onChange={(date) => onChange((current) => setDate(current, kind, date))}
-        />
-      ))}
-      <VisibilityField
-        total={summary.total}
-        publicCount={summary.public}
-        value={draft.public}
+  const creditField = (entry: RoleEntry) =>
+    valueField(
+      entry.id,
+      entry.label,
+      <CreditPicker
+        kind={entry.kind}
+        offerUnnamed={entry.id === "person:performer"}
+        label={entry.add}
+        chips={pickedChips(draft, entry.id)}
+        unsaved={unsavedNames(draft, entry.kind)}
         disabled={disabled}
-        onChange={(value) => onChange((current) => setPublic(current, value))}
-      />
-    </>
-  );
+        onAdd={(chip) =>
+          onChange((current) =>
+            pickValue(current, entry.id, pickedCredit(chip), present.get(entry.id) ?? []),
+          )
+        }
+      />,
+    );
+  return [
+    {
+      key: "tags-people",
+      legend: b.tagsAndPeople,
+      content: (
+        <>
+          <p className="text-xs text-muted-foreground">{b.howTo}</p>
+          {valueField(
+            "tags",
+            b.tags,
+            <TagPicker
+              disabled={disabled}
+              onPick={(value) =>
+                onChange((current) =>
+                  pickValue(current, "tags", value, present.get("tags") ?? []),
+                )
+              }
+            />,
+          )}
+          {roleEntries.filter((entry) => entry.kind === "person").map(creditField)}
+        </>
+      ),
+    },
+    {
+      key: "others",
+      legend: b.organizationsDatesVisibility,
+      content: (
+        <>
+          {roleEntries.filter((entry) => entry.kind === "organization").map(creditField)}
+          {dateKinds.map((kind) => (
+            <DateField
+              key={kind}
+              kind={kind}
+              total={summary.total}
+              current={summary.dates.find((item) => item.kind === kind)}
+              draft={draft.dates[kind]}
+              disabled={disabled}
+              onChange={(date) => onChange((current) => setDate(current, kind, date))}
+            />
+          ))}
+          <VisibilityField
+            total={summary.total}
+            publicCount={summary.public}
+            value={draft.public}
+            disabled={disabled}
+            onChange={(value) => onChange((current) => setPublic(current, value))}
+          />
+        </>
+      ),
+    },
+  ];
 }
 
 function pickedCredit(chip: Chip) {
@@ -571,58 +629,4 @@ function changeText(line: ChangeLine): UiText {
     case "private":
       return b.changePrivate(line.videos);
   }
-}
-
-function Footer({
-  lines,
-  total,
-  failure,
-  disabled,
-  pending,
-  onApply,
-}: {
-  lines: readonly ChangeLine[];
-  total: number;
-  failure: UiText | null;
-  disabled: boolean;
-  pending: boolean;
-  onApply: () => void;
-}) {
-  const b = t.library.bulkEdit;
-  const shown = lines.slice(0, 5);
-  return (
-    <>
-      {lines.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{b.noChanges}</p>
-      ) : (
-        <ul aria-label={b.changes} className="flex flex-col gap-0.5 text-xs">
-          {shown.map((line, index) => (
-            <li key={`${line.field}-${String(index)}`} className="truncate">
-              {changeText(line)}
-            </li>
-          ))}
-          {lines.length > shown.length && (
-            <li className="text-muted-foreground">
-              {b.moreChanges(lines.length - shown.length)}
-            </li>
-          )}
-        </ul>
-      )}
-      {failure !== null && (
-        <p role="alert" className="text-sm text-destructive">
-          {failure}
-        </p>
-      )}
-      <Button
-        className="w-full"
-        aria-disabled={disabled || pending || undefined}
-        aria-busy={pending || undefined}
-        onClick={() => {
-          if (!disabled && !pending) onApply();
-        }}
-      >
-        {pending ? b.applying : b.apply(total)}
-      </Button>
-    </>
-  );
 }
