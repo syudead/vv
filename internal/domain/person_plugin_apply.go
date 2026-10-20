@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// A person plugin's result applies per item and only fills or appends; the rules are shared by the person page and
-// the work-info lookups (docs/design-docs/person-plugins.md).
+// A person plugin's result applies per item: profile fields fill, or replace on the person page, and lists append; the
+// rules are shared by the person page and the work-info lookups (docs/design-docs/person-plugins.md).
 
 // ErrPersonExternalIDMissing reports a person without a stored external ID that the person plugin accepts.
 var ErrPersonExternalIDMissing = errors.New("the person has no external ID the plugin accepts")
@@ -84,6 +84,8 @@ type PersonItemFill struct {
 	Items   []PersonPluginItem
 	Holders map[ExternalID]string
 	Today   time.Time
+	// Replace writes a selected profile field that already holds another value; otherwise only empty fields fill.
+	Replace bool
 }
 
 // PersonItemFilled is the person's next aliases, external IDs and profile, with the values left out in item order.
@@ -94,7 +96,7 @@ type PersonItemFilled struct {
 	Skipped     []SkippedPersonValue
 }
 
-// FillPersonItems fills empty profile fields and appends missing aliases and external IDs within their limits; a
+// FillPersonItems fills empty profile fields, or replaces them under Replace, and appends missing aliases and external IDs within their limits; a
 // value that breaks a rule is skipped as invalid, and an ID another person holds as taken.
 func FillPersonItems(in PersonItemFill) PersonItemFilled {
 	out := PersonItemFilled{
@@ -102,18 +104,7 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		Profile: in.Current.Profile,
 	}
 	selected := func(item PersonPluginItem) bool { return slices.Contains(in.Items, item) }
-	for _, field := range PersonProfileFields {
-		if !selected(PersonProfileItem(field)) {
-			continue
-		}
-		next, fill := fillProfileField(out.Profile, in.Fetched.Profile, field, in.Today)
-		switch fill {
-		case profileFilled:
-			out.Profile = next
-		case profileFillInvalid:
-			out.skip(PersonProfileItem(field), profileFieldText(in.Fetched.Profile, field), SkippedWorkInfoInvalid, "")
-		}
-	}
+	out.writeProfile(in, selected)
 	if selected(PersonItemAliases) {
 		out.appendAliases(in.Current.Name, in.Fetched.Aliases)
 	}
@@ -121,6 +112,31 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		out.appendExternalIDs(in.Fetched.ExternalIDs, in.Holders)
 	}
 	return out
+}
+
+// writeProfile writes the selected profile fields; replaced fields are checked together first, then one at a time
+// against the stored values when the set is invalid, so only the fields that break a rule are skipped.
+func (f *PersonItemFilled) writeProfile(in PersonItemFill, selected func(PersonPluginItem) bool) {
+	fields := slices.DeleteFunc(slices.Clone(PersonProfileFields), func(field PersonProfileField) bool {
+		return !selected(PersonProfileItem(field))
+	})
+	write := fillProfileField
+	if in.Replace {
+		if next, ok := replaceProfileFields(f.Profile, in.Fetched.Profile, fields, in.Today); ok {
+			f.Profile = next
+			return
+		}
+		write = replaceProfileField
+	}
+	for _, field := range fields {
+		next, fill := write(f.Profile, in.Fetched.Profile, field, in.Today)
+		switch fill {
+		case profileFilled:
+			f.Profile = next
+		case profileFillInvalid:
+			f.skip(PersonProfileItem(field), profileFieldText(in.Fetched.Profile, field), SkippedWorkInfoInvalid, "")
+		}
+	}
 }
 
 func (f *PersonItemFilled) skip(item PersonPluginItem, value string, reason SkippedWorkInfoReason, holder string) {

@@ -167,6 +167,37 @@ func fillProfileField(target, source PersonProfile, field PersonProfileField, to
 	if !profileFieldEmpty(target, copyField) || profileFieldEmpty(source, copyField) {
 		return target, profileFillNone
 	}
+	return copyProfileField(target, source, copyField, today)
+}
+
+// replaceProfileField copies field from source when it is set there and differs in target, with fillProfileField's
+// results.
+func replaceProfileField(target, source PersonProfile, field PersonProfileField, today time.Time) (PersonProfile, profileFill) {
+	copyField := personProfileCopies[field]
+	if profileFieldEmpty(source, copyField) || profileFieldEqual(target, source, copyField) {
+		return target, profileFillNone
+	}
+	return copyProfileField(target, source, copyField, today)
+}
+
+// replaceProfileFields copies every field of fields that source sets, and reports false when the result together is
+// invalid, so dependent fields such as a career's start and end are checked against each other's fetched values.
+func replaceProfileFields(
+	target, source PersonProfile, fields []PersonProfileField, today time.Time,
+) (PersonProfile, bool) {
+	candidate := target
+	for _, field := range fields {
+		if copyField := personProfileCopies[field]; !profileFieldEmpty(source, copyField) {
+			copyField(&candidate, source)
+		}
+	}
+	normalized, err := NormalizePersonProfile(candidate, today)
+	return normalized, err == nil
+}
+
+func copyProfileField(
+	target, source PersonProfile, copyField func(*PersonProfile, PersonProfile), today time.Time,
+) (PersonProfile, profileFill) {
 	candidate := target
 	copyField(&candidate, source)
 	normalized, err := NormalizePersonProfile(candidate, today)

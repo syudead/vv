@@ -33,6 +33,50 @@ func TestFillPersonItemsFillsOnlyEmptyProfileFields(t *testing.T) {
 	}
 }
 
+func TestFillPersonItemsReplacesSelectedProfileFields(t *testing.T) {
+	stored, fetchedHeight, invalidBust, storedBust := 160, 170, 1000, 80
+	current := Credit{Name: "Hanako", Profile: PersonProfile{
+		BirthDate: "1990", HeightCm: &stored, BustCm: &storedBust, Birthplace: "Osaka",
+	}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Profile: PersonProfile{
+		BirthDate: "1985", HeightCm: &fetchedHeight, BustCm: &invalidBust, Birthplace: "Tokyo",
+	}}
+	items := []PersonPluginItem{
+		PersonProfileItem(ProfileHeightCm), PersonProfileItem(ProfileBustCm), PersonProfileItem(ProfileBirthplace),
+	}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: current, Fetched: fetched, Items: items, Today: personFillToday, Replace: true,
+	})
+
+	if got.Profile.BirthDate != "1990" || *got.Profile.HeightCm != 170 || *got.Profile.BustCm != 80 ||
+		got.Profile.Birthplace != "Tokyo" {
+		t.Fatalf("profile = %+v; want the selected fields replaced, the unselected and the invalid one kept",
+			got.Profile)
+	}
+	want := []SkippedPersonValue{{Item: PersonProfileItem(ProfileBustCm), Value: "1000", Reason: SkippedWorkInfoInvalid}}
+	if !slices.Equal(got.Skipped, want) {
+		t.Fatalf("skipped = %+v; want %+v", got.Skipped, want)
+	}
+}
+
+func TestFillPersonItemsReplacesDependentFieldsTogether(t *testing.T) {
+	storedStart, storedEnd, fetchedStart, fetchedEnd := 1990, 2000, 2010, 2020
+	current := Credit{Name: "Hanako", Profile: PersonProfile{CareerStartYear: &storedStart, CareerEndYear: &storedEnd}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Profile: PersonProfile{
+		CareerStartYear: &fetchedStart, CareerEndYear: &fetchedEnd,
+	}}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: current, Fetched: fetched, Today: personFillToday, Replace: true,
+		Items: []PersonPluginItem{PersonProfileItem(ProfileCareerStartYear), PersonProfileItem(ProfileCareerEndYear)},
+	})
+
+	if *got.Profile.CareerStartYear != 2010 || *got.Profile.CareerEndYear != 2020 || len(got.Skipped) != 0 {
+		t.Fatalf("profile = %+v, skipped %+v; want both career years replaced", got.Profile, got.Skipped)
+	}
+}
+
 func TestFillPersonItemsAppliesOnlySelectedItems(t *testing.T) {
 	fetched := FetchedPluginPerson{
 		Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},

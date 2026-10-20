@@ -50,11 +50,16 @@ type filledFace struct {
 	data []byte
 }
 
-// recordingFaces stores every face it is given at revision 9.
-type recordingFaces struct{ filled []filledFace }
+// recordingFaces stores every face it is given at revision 9, keeping fills and replacements apart.
+type recordingFaces struct{ filled, replaced []filledFace }
 
 func (r *recordingFaces) FillPersonImage(_ context.Context, id int64, data []byte) (int64, error) {
 	r.filled = append(r.filled, filledFace{id: id, data: data})
+	return 9, nil
+}
+
+func (r *recordingFaces) ReplacePersonImage(_ context.Context, id int64, data []byte) (int64, error) {
+	r.replaced = append(r.replaced, filledFace{id: id, data: data})
 	return 9, nil
 }
 
@@ -207,7 +212,7 @@ func TestApplyPersonPluginFetchOfADeletedPersonIsPersonNotFound(t *testing.T) {
 	}
 }
 
-func TestApplyPersonPluginFetchGivesTheImageAfterTheCommit(t *testing.T) {
+func TestApplyPersonPluginFetchReplacesTheFaceAfterTheCommit(t *testing.T) {
 	e := newPersonFetchEnv()
 	image := testPNG(t, 4, 4)
 	result := e.fetch(t, image)
@@ -227,9 +232,9 @@ func TestApplyPersonPluginFetchGivesTheImageAfterTheCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyPersonPluginFetch: %v", err)
 	}
-	if len(e.faces.filled) != 1 || e.faces.filled[0].id != fetchPerson || string(e.faces.filled[0].data) != string(image) ||
-		applied.Person.ImageRevision != 9 {
-		t.Fatalf("faces = %+v, revision %d; want the kept image filled for the person", e.faces.filled,
+	if len(e.faces.filled) != 0 || len(e.faces.replaced) != 1 || e.faces.replaced[0].id != fetchPerson ||
+		string(e.faces.replaced[0].data) != string(image) || applied.Person.ImageRevision != 9 {
+		t.Fatalf("faces = %+v, revision %d; want the kept image to replace the person's face", e.faces,
 			applied.Person.ImageRevision)
 	}
 }

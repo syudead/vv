@@ -48,7 +48,7 @@ func applyPersonLookups(
 			skip(domain.SkippedWorkInfoPersonChanged)
 			continue
 		}
-		values, _, err := fillPersonFromPlugin(ctx, tx, linked, lookup.Fetched, lookup.Items, now)
+		values, _, err := fillPersonFromPlugin(ctx, tx, linked, lookup.Fetched, lookup.Items, false, now)
 		if err != nil {
 			return nil, nil, err
 		}

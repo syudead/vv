@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { type Person, personFaceSrc } from "../../../api/credits";
@@ -49,9 +49,11 @@ function NameSearch({ flow }: { flow: PersonFetchFlow }) {
   const candidates = flow.candidates;
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {text.noAcceptedId(flow.plugin === undefined ? "" : pluginLabel(flow.plugin))}
-      </p>
+      {flow.missingId && (
+        <p className="text-sm text-muted-foreground">
+          {text.noAcceptedId(flow.plugin === undefined ? "" : pluginLabel(flow.plugin))}
+        </p>
+      )}
       <QueryField
         label={text.name}
         value={flow.query}
@@ -79,6 +81,21 @@ function NameSearch({ flow }: { flow: PersonFetchFlow }) {
   );
 }
 
+function SearchByName({ flow }: { flow: PersonFetchFlow }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="self-start"
+      disabled={flow.applying || flow.running !== null}
+      onClick={flow.searchByName}
+    >
+      <Search aria-hidden="true" />
+      {text.searchByName}
+    </Button>
+  );
+}
+
 function FindStep({
   flow,
   plugins,
@@ -94,7 +111,7 @@ function FindStep({
         disabled={flow.running !== null}
         onPlugin={flow.choosePlugin}
       />
-      {flow.byName && <NameSearch flow={flow} />}
+      {flow.byName ? <NameSearch flow={flow} /> : <SearchByName flow={flow} />}
       {flow.failure !== null && (
         <FailureAlert failure={flow.failure} settingsPath={PERSON_PLUGIN_SETTINGS} />
       )}
@@ -115,7 +132,9 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
           first?.value ?? "",
         )}
       </p>
-      {fetched.candidate !== undefined && (
+      {fetched.candidate === undefined ? (
+        <SearchByName flow={flow} />
+      ) : (
         <Button
           variant="ghost"
           size="sm"
@@ -139,6 +158,7 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
         nowFaceSrc={personFaceSrc(person)}
         fetchedFaceSrc={personPluginFetchImageUrl(person.id, fetched.result.fetchId)}
         selection={flow.selection}
+        replace
         locked={flow.applying || flow.stale}
         onToggle={flow.toggle}
       />

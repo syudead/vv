@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ApplyPersonPluginFetch rechecks the plugin's approval, digest and generation, then fills the person's empty profile
+// ApplyPersonPluginFetch rechecks the plugin's approval, digest and generation, then writes the person's selected profile
 // fields and appends missing aliases and external IDs in one transaction. A plugin changed since the fetch returns
 // ErrWorkInfoFetchStale and a missing person ErrNotFound, both without writes. The face is the caller's, after commit.
 func (s *CreditStore) ApplyPersonPluginFetch(
@@ -25,7 +25,7 @@ func (s *CreditStore) ApplyPersonPluginFetch(
 	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
-	skipped, matched, err := fillPersonFromPlugin(ctx, tx, apply.PersonID, apply.Fetched, apply.Items, time.Now())
+	skipped, matched, err := fillPersonFromPlugin(ctx, tx, apply.PersonID, apply.Fetched, apply.Items, true, time.Now())
 	if err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
@@ -44,10 +44,10 @@ func (s *CreditStore) ApplyPersonPluginFetch(
 
 // fillPersonFromPlugin writes the selected items of a fetched person to the stored person under FillPersonItems'
 // rules, returning the values left out and whether the person's matching keys changed; a missing person is
-// ErrNotFound. The person page's apply and the work-info apply's lookups share it.
+// ErrNotFound. The person page's apply replaces profile fields, and the work-info apply's lookups only fill them.
 func fillPersonFromPlugin(
 	ctx context.Context, tx *sql.Tx, personID int64, fetched domain.FetchedPluginPerson,
-	items []domain.PersonPluginItem, today time.Time,
+	items []domain.PersonPluginItem, replace bool, today time.Time,
 ) ([]domain.SkippedPersonValue, bool, error) {
 	t := creditTablesByKind[domain.CreditPerson]
 	current, err := creditByID(ctx, tx, t, personID)
@@ -59,7 +59,7 @@ func fillPersonFromPlugin(
 		return nil, false, err
 	}
 	filled := domain.FillPersonItems(domain.PersonItemFill{
-		Current: current, Fetched: fetched, Items: items, Holders: holders, Today: today,
+		Current: current, Fetched: fetched, Items: items, Holders: holders, Today: today, Replace: replace,
 	})
 	next := domain.CreditInput{
 		Name: current.Name, Aliases: filled.Aliases, ExternalIDs: filled.ExternalIDs, Profile: filled.Profile,

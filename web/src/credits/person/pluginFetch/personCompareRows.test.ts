@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { compareRows, type PersonCompareCurrent } from "./personCompareRows";
+import {
+  compareRows,
+  initialItems,
+  type PersonCompareCurrent,
+} from "./personCompareRows";
 
 const current: PersonCompareCurrent = {
   name: "Aoi",
@@ -31,5 +35,32 @@ describe("compareRows", () => {
       { item: "aliases", changes: false },
       { item: "externalIds", changes: true },
     ]);
+  });
+
+  it("offers stored values that differ for replacement, unselected, and keeps equal ones", () => {
+    const rows = compareRows(
+      current,
+      {
+        name: "Aoi",
+        aliases: [],
+        externalIds: [],
+        profile: { heightCm: 158, cup: "C" },
+        hasImage: true,
+      },
+      true,
+    );
+    const same = compareRows(
+      current,
+      { name: "Aoi", aliases: [], externalIds: [], profile: { heightCm: 160 } },
+      true,
+    );
+
+    expect(rows).toEqual([
+      { item: "image", changes: true, replaces: true },
+      { item: "profile.heightCm", changes: true, replaces: true },
+      { item: "profile.cup", changes: true },
+    ]);
+    expect(initialItems(rows)).toEqual(["profile.cup"]);
+    expect(same).toEqual([{ item: "profile.heightCm", changes: false }]);
   });
 });

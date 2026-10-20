@@ -41,6 +41,8 @@ export interface CompareRow {
   item: PersonPluginItem;
   /** The apply would write it; otherwise the person already has it and the row is kept. */
   changes: boolean;
+  /** The apply would write it over a stored value, so it starts unselected. */
+  replaces?: boolean;
 }
 
 export function profileItem(field: ProfileField): PersonPluginItem {
@@ -85,18 +87,41 @@ export function newIds(
   return fetched.externalIds.filter((id) => !idOnPerson(current, id)).length;
 }
 
-/** One row per item the result carries, in the comparison's order; the apply never replaces a stored value. */
+function sameValue(a: PersonProfile, b: PersonProfile, field: ProfileField): boolean {
+  return JSON.stringify(a[field]) === JSON.stringify(b[field]);
+}
+
+function storedRow(item: PersonPluginItem, replace: boolean, same: boolean): CompareRow {
+  return replace && !same
+    ? { item, changes: true, replaces: true }
+    : { item, changes: false };
+}
+
+/**
+ * One row per item the result carries, in the comparison's order. With `replace`, as on the
+ * person page, a stored face or a different stored profile value can be replaced.
+ */
 export function compareRows(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
+  replace = false,
 ): CompareRow[] {
   const rows: CompareRow[] = [];
   if (fetched.hasImage === true)
-    rows.push({ item: "image", changes: current.imageRevision === undefined });
+    rows.push(
+      current.imageRevision === undefined
+        ? { item: "image", changes: true }
+        : storedRow("image", replace, false),
+    );
   const profile = fetched.profile ?? {};
   for (const field of PROFILE_FIELDS) {
-    if (hasValue(profile, field))
-      rows.push({ item: profileItem(field), changes: !hasValue(current.profile, field) });
+    if (!hasValue(profile, field)) continue;
+    const item = profileItem(field);
+    rows.push(
+      hasValue(current.profile, field)
+        ? storedRow(item, replace, sameValue(current.profile, profile, field))
+        : { item, changes: true },
+    );
   }
   if (fetched.aliases.length > 0)
     rows.push({ item: "aliases", changes: newAliases(current, fetched) > 0 });
@@ -106,7 +131,9 @@ export function compareRows(
 }
 
 export function initialItems(rows: readonly CompareRow[]): PersonPluginItem[] {
-  return rows.filter((row) => row.changes).map((row) => row.item);
+  return rows
+    .filter((row) => row.changes && row.replaces !== true)
+    .map((row) => row.item);
 }
 
 const FACT_IDS: Partial<Record<ProfileField, string>> = {

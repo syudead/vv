@@ -238,10 +238,10 @@ page into its gone state; a merge opens the target's page and a delete the
 people list, each with a toast. The person's own fields are edited on
 `/people/:id/edit`.
 
-A person plugin fills the person's empty fields from the page: the fetch and
-the apply fill only, append missing aliases and external IDs, and never merge
-the person with the holder of a fetched ID
-([person-plugins.md](person-plugins.md#a-fetched-person-applies-per-item-and-only-fills)).
+A person plugin fills or replaces the person's fields from the page: the apply
+writes the profile values and face the owner selects, appends missing aliases
+and external IDs, and never merges the person with the holder of a fetched ID
+([person-plugins.md](person-plugins.md#a-fetched-person-applies-per-item-and-a-profile-value-may-replace)).
 `Fetch info…` after `Edit` opens that fetch, shown only while an approved
 person plugin exists
 ([person-plugins.md](person-plugins.md#the-person-page-compares-a-fetched-person-before-applying-it)).
