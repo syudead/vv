@@ -125,6 +125,7 @@ import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
+import { useMarqueeSelection } from "./useMarqueeSelection";
 import { useRangeSelection } from "./useRangeSelection";
 import {
   addTagId,
@@ -149,6 +150,11 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
 
 function withSmartFolderCards(content: ReactNode) {
   return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
+}
+
+/** Box selection is the owner's, over loaded grid cards. */
+function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: boolean) {
+  return owner && view === "grid" && !loading;
 }
 
 function libraryConditioned(filter: LibraryFilter): boolean {
@@ -541,6 +547,17 @@ export default function LibraryPage() {
     total,
   ]);
 
+  const results = useRef<HTMLElement | null>(null);
+  const marqueeBox = useRef<HTMLDivElement | null>(null);
+  useMarqueeSelection({
+    container: results,
+    box: marqueeBox,
+    enabled: drawsBoxes(owner, view, loading),
+    items,
+    selection,
+    setSelection,
+  });
+
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
@@ -844,9 +861,16 @@ export default function LibraryPage() {
         }
       >
         <section
+          ref={results}
           aria-label={conditioned ? t.library.resultsLabel : undefined}
           className="flex min-w-0 flex-col gap-3"
         >
+          <div
+            ref={marqueeBox}
+            hidden
+            aria-hidden="true"
+            className="pointer-events-none fixed z-40 rounded-sm border border-primary bg-primary-soft/40"
+          />
           {/* Home itself needs no heading or count; only filtered results get them. */}
           {conditioned && (
             <PageHeader

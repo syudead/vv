@@ -934,6 +934,7 @@ export const DraggableCard = memo(function DraggableCard({
       ref={drag.ref}
       {...drag.listeners}
       data-drag-card=""
+      data-card-key={id}
       className={cn(
         "relative grid min-w-0 rounded-md transition-opacity motion-reduce:transition-none",
         drag.lifted && "opacity-50",
@@ -977,7 +978,7 @@ export function RefusingDropCard({ id, children }: { id: string; children: React
     [grid, id],
   );
   return (
-    <div ref={ref} className="relative grid min-w-0 rounded-md">
+    <div ref={ref} data-card-key={id} className="relative grid min-w-0 rounded-md">
       {children}
     </div>
   );

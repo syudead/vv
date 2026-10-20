@@ -24,6 +24,7 @@ import { formatBytes, formatDuration } from "../lib/format";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { layoutCards, mouse } from "../testing/cardDrag";
 import LibraryPage from "./LibraryPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -1526,6 +1527,30 @@ describe("LibraryPage", () => {
       await user.keyboard("{/Shift}");
       expect(screen.getByText("1 video selected")).toBeDefined();
       expect(check(1).getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("カードの間から引いた四角に重なるカードを選び、Esc で引く前の選択に戻す", async () => {
+      installSelectionAwareList({});
+      layoutCards();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+      const grid = document.querySelector('[data-slot="card-grid"]');
+      if (grid === null) throw new Error("card grid not found");
+      const check = (n: number) =>
+        screen.getByRole("checkbox", { name: `Select "動画 ${String(n)}"` });
+
+      fireEvent.pointerDown(grid, { ...mouse, clientX: 195, clientY: 10 });
+      fireEvent.pointerMove(window, { ...mouse, clientX: 450, clientY: 100 });
+      expect(await screen.findByText("2 videos selected")).toBeDefined();
+      expect(check(1).getAttribute("aria-checked")).toBe("false");
+      expect(check(3).getAttribute("aria-checked")).toBe("true");
+      fireEvent.pointerUp(window, mouse);
+
+      fireEvent.pointerDown(grid, { ...mouse, clientX: 195, clientY: 10 });
+      fireEvent.pointerMove(window, { ...mouse, clientX: 100, clientY: 100 });
+      expect(await screen.findByText("1 video selected")).toBeDefined();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.getByText("2 videos selected")).toBeDefined();
     });
 
     it("Esc で選択バーのポップオーバーだけを閉じ、選択は残る（キーボード確認 手順2）", async () => {

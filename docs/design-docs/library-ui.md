@@ -475,6 +475,13 @@ A smart folder's check selects the folder as one item. With Shift held, a check
 or a selection-mode click gives every item from the previously changed one to
 this one, in display order, the same state.
 
+In the owner's grid, a mouse drag of 8px or more that starts outside cards and
+controls draws a box and selects the items it overlaps, replacing the selection
+or, with Shift, Ctrl or ⌘ held at the press, adding to it. The page scrolls
+while the pointer is near its top or bottom edge, Escape restores the selection
+from before the drag, and the release does not open the card under it. Touch
+and list view keep checks only.
+
 ### Selection bar
 
 The selection bar is fixed to the bottom of the screen from the first selected
@@ -487,7 +494,7 @@ Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
 There is no `Select all`: selection covers only the cards the viewer checks,
-directly or as a Shift range.
+directly, as a Shift range or inside a drawn box.
 The actions sit at the right end; those that do not fit move to the right end
 of the next line.
 
