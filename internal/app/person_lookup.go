@@ -82,8 +82,9 @@ func (p *WorkInfoPlugins) runLookup(ctx context.Context, lookup domain.PersonLoo
 	if err := p.checkLookupPlugin(ctx, lookup); err != nil {
 		return nil, err
 	}
+	// A lookup keeps one image under the fetch's budget, so it fetches only the first.
 	ran, result, err := p.run(ctx, lookup.PluginID, domain.WorkInfoPluginKindPerson, domain.WorkInfoRunRequest{
-		Operation: domain.WorkInfoFetch, Source: lookup.Source, ID: lookup.ID,
+		Operation: domain.WorkInfoFetch, Source: lookup.Source, ID: lookup.ID, ImageLimit: 1,
 	})
 	switch {
 	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrWorkInfoPluginNotApproved),
@@ -99,7 +100,11 @@ func (p *WorkInfoPlugins) runLookup(ctx context.Context, lookup domain.PersonLoo
 		return nil, err
 	}
 	result.Person.Profile = domain.ShownFetchedProfile(result.Person.Profile, p.now())
-	return &keptLookup{person: result.Person, image: fetchedCover(result.PersonImage)}, nil
+	kept := &keptLookup{person: result.Person}
+	if images := fetchedImages(result.PersonPluginImages); len(images) > 0 {
+		kept.image = &images[0]
+	}
+	return kept, nil
 }
 
 // checkLookupPlugin returns ErrPersonLookupPluginChanged unless the stored plugin is the approved snapshot the plan

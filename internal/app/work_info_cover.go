@@ -17,6 +17,17 @@ type WorkInfoCoverApplier interface {
 }
 
 // Accept bounded PNG, JPEG or static WebP covers by header, otherwise return nil. Full decoding happens only when applying through upload validation.
+// fetchedImages keeps the header-checked images of data in order, dropping the rest.
+func fetchedImages(data [][]byte) []domain.WorkInfoCover {
+	var out []domain.WorkInfoCover
+	for _, item := range data {
+		if image := fetchedCover(item); image != nil {
+			out = append(out, *image)
+		}
+	}
+	return out
+}
+
 func fetchedCover(data []byte) *domain.WorkInfoCover {
 	if len(data) == 0 || len(data) > domain.WorkInfoCoverMaxBytes || animatedWebP(data) {
 		return nil

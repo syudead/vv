@@ -23,6 +23,7 @@ type scriptedPersonFetches struct {
 	calls      int
 	source, id *string
 	items      []domain.PersonPluginItem
+	imageIndex int
 }
 
 func (p *scriptedPersonFetches) FetchPersonWithPlugin(
@@ -33,21 +34,22 @@ func (p *scriptedPersonFetches) FetchPersonWithPlugin(
 	return p.fetch, p.err
 }
 
-func (p *scriptedPersonFetches) PersonPluginFetchImage(_ int64, fetchID string) (domain.WorkInfoCover, error) {
+// PersonPluginFetchImage serves image as the result's second image.
+func (p *scriptedPersonFetches) PersonPluginFetchImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
 	switch {
 	case fetchID != "abc":
 		return domain.WorkInfoCover{}, domain.ErrNotFound
-	case p.image == nil:
+	case p.image == nil || index != 1:
 		return domain.WorkInfoCover{}, domain.ErrPersonImageNotFound
 	}
 	return *p.image, nil
 }
 
 func (p *scriptedPersonFetches) ApplyPersonPluginFetch(
-	_ context.Context, _ int64, _ string, items []domain.PersonPluginItem,
+	_ context.Context, _ int64, _ string, items []domain.PersonPluginItem, imageIndex int,
 ) (domain.PersonPluginApplied, error) {
 	p.calls++
-	p.items = items
+	p.items, p.imageIndex = items, imageIndex
 	return p.applied, p.err
 }
 
@@ -70,13 +72,13 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 		return rec.Code, rec.Body.Bytes()
 	}
 	plugins.fetch = domain.PersonPluginFetchResult{
-		ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), HasImage: true,
+		ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), ImageCount: 2,
 		Person: domain.FetchedPluginPerson{Name: "Hanako", ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}}},
 	}
 	status, body := post(`{"pluginId":1,"source":"wiki","id":"w-1"}`)
 	var fetch gen.PersonPluginFetch
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
-		fetch.ExpiresAt != 1_800_000_600 || fetch.Person.Name != "Hanako" || fetch.Person.HasImage == nil ||
+		fetch.ExpiresAt != 1_800_000_600 || fetch.Person.Name != "Hanako" || fetch.Person.ImageCount == nil || *fetch.Person.ImageCount != 2 ||
 		len(fetch.Person.ExternalIds) != 1 || fetch.Person.Aliases == nil || fetch.Person.Profile != nil {
 		t.Fatalf("fetch = %d %s", status, body)
 	}
@@ -113,22 +115,22 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 		e.serve(authRequest{method: http.MethodPost, target: personFetchPath, body: `{"pluginId":1}`}))
 }
 
-func TestPersonPluginFetchImageServesTheKeptImage(t *testing.T) {
+func TestPersonPluginFetchImageServesTheKeptImageByIndex(t *testing.T) {
 	e, owner, plugins := newPersonFetchRouteEnv(t)
-	get := func(fetchID string) (int, []byte, http.Header) {
+	get := func(path string) (int, []byte, http.Header) {
 		rec := e.serve(authRequest{
-			method: http.MethodGet, target: "/api/people/3/plugin-fetches/" + fetchID + "/image", cookies: []*http.Cookie{owner},
+			method: http.MethodGet, target: "/api/people/3/plugin-fetches/" + path, cookies: []*http.Cookie{owner},
 		})
 		return rec.Code, rec.Body.Bytes(), rec.Header()
 	}
-	status, body, _ := get("abc")
-	assertErrorBody(t, "no image", status, body,
+	plugins.image = &domain.WorkInfoCover{Data: []byte("jpeg bytes"), ContentType: "image/jpeg"}
+	status, body, _ := get("abc/images/0")
+	assertErrorBody(t, "index without an image", status, body,
 		wantError{status: 404, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonImageNotFound})
-	status, body, _ = get("gone")
+	status, body, _ = get("gone/images/1")
 	assertErrorBody(t, "unknown result", status, body, wantError{status: 404, code: gen.ErrorCodeNotFound})
 
-	plugins.image = &domain.WorkInfoCover{Data: []byte("jpeg bytes"), ContentType: "image/jpeg"}
-	status, body, header := get("abc")
+	status, body, header := get("abc/images/1")
 	if status != http.StatusOK || string(body) != "jpeg bytes" || header.Get("Content-Type") != "image/jpeg" ||
 		header.Get("Cache-Control") != cacheNoStore {
 		t.Fatalf("image = %d %q %v", status, body, header)
@@ -147,7 +149,7 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 			Item: domain.PersonItemExternalIDs, Value: "wiki: w-1", Reason: domain.SkippedWorkInfoTaken, HolderName: "Taro",
 		}},
 	}
-	status, body := post(`{"items":["image","profile.heightCm","externalIds"]}`)
+	status, body := post(`{"items":["image","profile.heightCm","externalIds"],"imageIndex":1}`)
 	var applied gen.PersonPluginFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || applied.Person.Id != 3 ||
 		applied.Person.ImageRevision == nil || len(applied.Skipped) != 1 {
@@ -158,8 +160,11 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 		t.Fatalf("skipped = %+v; want the taken ID with its holder", got)
 	}
 	want := []domain.PersonPluginItem{domain.PersonItemImage, domain.PersonProfileItem(domain.ProfileHeightCm), domain.PersonItemExternalIDs}
-	if !slices.Equal(plugins.items, want) {
-		t.Fatalf("items = %v; want %v", plugins.items, want)
+	if !slices.Equal(plugins.items, want) || plugins.imageIndex != 1 {
+		t.Fatalf("items = %v, image %d; want %v and image 1", plugins.items, plugins.imageIndex, want)
+	}
+	if post(`{"items":["aliases"]}`); plugins.imageIndex != -1 {
+		t.Fatalf("image index without one = %d; want -1, no image", plugins.imageIndex)
 	}
 
 	for _, tc := range []struct {

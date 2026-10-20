@@ -42,18 +42,18 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 	default:
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusCreated, gen.PersonPluginFetch{
-			FetchId: fetch.ID, ExpiresAt: fetch.ExpiresAt.Unix(), Person: toAPIPluginPerson(fetch.Person, fetch.HasImage),
+			FetchId: fetch.ID, ExpiresAt: fetch.ExpiresAt.Unix(), Person: toAPIPluginPerson(fetch.Person, fetch.ImageCount),
 		}, s.logger)
 	}
 }
 
 // The kept profile already holds only the values that pass validation, as a work-info fetch shows a fetched person's.
-func toAPIPluginPerson(fetched domain.FetchedPluginPerson, hasImage bool) gen.PersonPluginFetchedPerson {
+func toAPIPluginPerson(fetched domain.FetchedPluginPerson, imageCount int) gen.PersonPluginFetchedPerson {
 	person := gen.PersonPluginFetchedPerson{
 		Name: fetched.Name, Aliases: toAPIAliases(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 	}
-	if hasImage {
-		person.HasImage = new(true)
+	if imageCount > 0 {
+		person.ImageCount = new(imageCount)
 	}
 	if !fetched.Profile.Equal(domain.PersonProfile{}) {
 		person.Profile = new(toAPIProfile(fetched.Profile))
@@ -61,14 +61,14 @@ func toAPIPluginPerson(fetched domain.FetchedPluginPerson, hasImage bool) gen.Pe
 	return person
 }
 
-// GetPersonPluginFetchImage serves the image vv kept with a person fetch, like a work-info fetch's cover.
+// GetPersonPluginFetchImage serves one of the images vv kept with a person fetch, like a work-info fetch's cover.
 func (s *server) GetPersonPluginFetchImage(
-	w http.ResponseWriter, _ *http.Request, id gen.PersonId, fetchID gen.WorkInfoFetchId,
+	w http.ResponseWriter, _ *http.Request, id gen.PersonId, fetchID gen.WorkInfoFetchId, index int,
 ) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	image, err := s.workInfoPlugins.PersonPluginFetchImage(id, fetchID)
+	image, err := s.workInfoPlugins.PersonPluginFetchImage(id, fetchID, index)
 	switch {
 	case errors.Is(err, domain.ErrPersonImageNotFound):
 		s.notFoundReason(w, reasonPersonImageNotFound, "The fetched person has no image.")
@@ -98,10 +98,15 @@ func (s *server) ApplyPersonPluginFetch(
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	applied, err := s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, items)
+	imageIndex := -1
+	if body.ImageIndex != nil {
+		imageIndex = *body.ImageIndex
+	}
+	applied, err := s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, items, imageIndex)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "items must name at least one item, and each must have a value in the result.")
+		s.invalidRequest(w, "items must name at least one item, each must have a value in the result, "+
+			"and image needs the imageIndex of a kept image.")
 		return
 	case errors.Is(err, domain.ErrPersonNotFound):
 		s.notFoundReason(w, gen.ErrorReasonPersonNotFound, "The person was deleted or merged into another.")

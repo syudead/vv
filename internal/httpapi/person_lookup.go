@@ -27,7 +27,7 @@ func (s *server) RunPersonLookup(
 	case err != nil:
 		s.workInfoRunError(w, err, "The video, the fetched result or the lookup was not found.")
 	default:
-		out := gen.PersonPluginResult{Person: toAPIPluginPerson(result.Person, result.HasImage)}
+		out := gen.PersonPluginResult{Person: toAPIPluginPerson(result.Person, lookupImageCount(result.HasImage))}
 		if result.Current != nil {
 			out.Current = new(toAPIPerson(*result.Current))
 		}
@@ -101,4 +101,11 @@ func toAPISkippedWorkInfoValue(value domain.SkippedWorkInfoValue) gen.SkippedWor
 		out.Item = new(gen.PersonPluginItem(value.Item))
 	}
 	return out
+}
+
+func lookupImageCount(hasImage bool) int {
+	if hasImage {
+		return 1
+	}
+	return 0
 }

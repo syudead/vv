@@ -39,7 +39,7 @@ type keptPerson struct {
 	Name        string           `json:"name"`
 	Aliases     []keptAlias      `json:"aliases,omitempty"`
 	ExternalIDs []keptExternalID `json:"externalIds"`
-	Image       string           `json:"image,omitempty"`
+	Images      []string         `json:"images,omitempty"`
 	// Profile is omitted when the plugin gave no property.
 	Profile *keptProfile `json:"profile,omitempty"`
 }
@@ -54,12 +54,14 @@ func keptPersonCandidates(candidates []domain.PersonCandidate) any {
 	}{out}
 }
 
-// The image URL is kept only when VVMDM fetched the image, since an image that cannot be fetched is dropped.
+// An image URL is kept only when VVMDM fetched the image, since an image that cannot be fetched is dropped.
 func toKeptPerson(result domain.WorkInfoRunResult) keptPerson {
 	p := result.Person
 	out := keptPerson{Name: p.Name, ExternalIDs: toKeptExternalIDs(p.ExternalIDs)}
-	if result.PersonImage != nil {
-		out.Image = p.ImageURL
+	for i, image := range result.PersonPluginImages {
+		if image != nil {
+			out.Images = append(out.Images, p.ImageURLs[i])
+		}
 	}
 	for _, a := range p.Aliases {
 		out.Aliases = append(out.Aliases, keptAlias{Name: a.Name, Language: a.Language})

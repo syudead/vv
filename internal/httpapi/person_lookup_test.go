@@ -71,7 +71,7 @@ func TestPersonLookupAnswers(t *testing.T) {
 	status, body = e.post(lookupPath, "", e.owner)
 	var got gen.PersonPluginResult
 	if status != http.StatusOK || json.Unmarshal(body, &got) != nil || got.Current == nil || got.Current.Id != 5 ||
-		got.Person.Name != "Hanako" || got.Person.HasImage == nil {
+		got.Person.Name != "Hanako" || got.Person.ImageCount == nil || *got.Person.ImageCount != 1 {
 		t.Fatalf("lookup = %d %s", status, body)
 	}
 	for _, tc := range []struct {

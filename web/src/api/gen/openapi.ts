@@ -2124,7 +2124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/people/{id}/plugin-fetches/{fetchId}/image": {
+    "/api/people/{id}/plugin-fetches/{fetchId}/images/{index}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2132,8 +2132,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Return a person fetch's image
-         * @description Owner-only. Returns the image VV fetched from the plugin's URL and kept with the result. Missing, expired or another person's results return 404 not_found; a result without an image returns 404 person_image_not_found. Uses Cache-Control: no-store.
+         * Return one of a person fetch's images
+         * @description Owner-only. Returns the image at index among those VV fetched from the plugin's URLs and kept with the result. Missing, expired or another person's results return 404 not_found; an index outside the kept images returns 404 person_image_not_found. Uses Cache-Control: no-store.
          */
         get: operations["getPersonPluginFetchImage"];
         put?: never;
@@ -2155,7 +2155,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected items of a person fetch
-         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends missing aliases and external IDs, up to 50 and 20; after commit, image replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items or an item without a value in the result return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends missing aliases and external IDs, up to 50 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items, an item without a value in the result, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
          */
         post: operations["applyPersonPluginFetch"];
         delete?: never;
@@ -3657,8 +3657,8 @@ export interface components {
             externalIds: components["schemas"]["ExternalId"][];
             /** @description Plugin-provided profile values that pass validation; omitted when none. */
             profile?: components["schemas"]["PersonProfile"];
-            /** @description Present and true when VV kept an image for this result. */
-            hasImage?: boolean;
+            /** @description How many images VV kept, in the plugin's order; a person page fetch serves them by index, and a lookup keeps at most its first. */
+            imageCount?: number;
         };
         /** @description Person fetch result held in memory. */
         PersonPluginFetch: {
@@ -3679,6 +3679,8 @@ export interface components {
         ApplyPersonPluginFetchRequest: {
             /** @description Items to apply; nonempty, and every item must have a value in the result. */
             items: components["schemas"]["PersonPluginItem"][];
+            /** @description The kept image that image applies; required with image. */
+            imageIndex?: number;
         };
         /**
          * @description Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
@@ -10037,6 +10039,8 @@ export interface operations {
                 id: components["parameters"]["PersonId"];
                 /** @description Fetch result ID */
                 fetchId: components["parameters"]["WorkInfoFetchId"];
+                /** @description Zero-based index among the kept images */
+                index: number;
             };
             cookie?: never;
         };

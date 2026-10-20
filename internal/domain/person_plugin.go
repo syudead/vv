@@ -70,8 +70,9 @@ type FetchedPluginPerson struct {
 	Name        string
 	Aliases     []Alias
 	ExternalIDs []ExternalID
-	ImageURL    string
-	Profile     PersonProfile
+	// ImageURLs are the first PersonPluginImagesMaxCount distinct valid image URLs in result order.
+	ImageURLs []string
+	Profile   PersonProfile
 }
 
 type personResponseJSON struct {
@@ -86,7 +87,7 @@ type personResponseJSON struct {
 		Name        json.RawMessage `json:"name"`
 		Aliases     json.RawMessage `json:"aliases"`
 		ExternalIDs json.RawMessage `json:"externalIds"`
-		Image       json.RawMessage `json:"image"`
+		Images      json.RawMessage `json:"images"`
 		Profile     json.RawMessage `json:"profile"`
 	} `json:"person"`
 	Error *runErrorJSON `json:"error"`
@@ -115,7 +116,7 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 			Name:        name,
 			Aliases:     parseFetchedAliases(raw.Person.Aliases),
 			ExternalIDs: ids,
-			ImageURL:    fetchedImageURL(lenientString(raw.Person.Image)),
+			ImageURLs:   parseFetchedImageURLs(raw.Person.Images),
 			Profile:     parseFetchedProfile(raw.Person.Profile),
 		}}, nil
 	}
@@ -136,6 +137,20 @@ func parsePersonCandidates(raw personResponseJSON, sources []string) (WorkInfoRu
 		candidates = append(candidates, PersonCandidate{Source: c.Source, ID: id, Name: name, URL: c.URL, Detail: c.Detail})
 	}
 	return WorkInfoRunResult{PersonCandidates: candidates}, nil
+}
+
+// parseFetchedImageURLs drops invalid and repeated URLs and keeps the first PersonPluginImagesMaxCount.
+func parseFetchedImageURLs(raw json.RawMessage) []string {
+	var out []string
+	for _, item := range lenientList[string](raw) {
+		if len(out) == PersonPluginImagesMaxCount {
+			break
+		}
+		if url := fetchedImageURL(trimWorkInfoText(item)); url != "" && !slices.Contains(out, url) {
+			out = append(out, url)
+		}
+	}
+	return out
 }
 
 // parseFetchedAliases trims names, drops nameless and repeated names, and keeps the first CreditAliasesMaxCount;

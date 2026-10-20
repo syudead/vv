@@ -75,7 +75,7 @@ func (e *lookupEnv) fetchTwo(t *testing.T, image []byte) domain.WorkInfoFetchRes
 }
 
 func (e *lookupEnv) lookupReturns(person domain.FetchedPluginPerson, image []byte, err error) {
-	e.runtime.result = domain.WorkInfoRunResult{Person: person, PersonImage: image}
+	e.runtime.result = domain.WorkInfoRunResult{Person: person, PersonPluginImages: [][]byte{image}}
 	e.runtime.err = err
 }
 
@@ -190,7 +190,7 @@ func TestKeepLookupReportsItsOwnFetchEvicted(t *testing.T) {
 		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people}, lookupRuns: lookups,
 		expiresAt: now.Add(domain.WorkInfoFetchLifetime),
 	}, now)
-	fetches.addPerson(&personPluginFetch{image: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
+	fetches.addPerson(&personPluginFetch{images: []domain.WorkInfoCover{*full}, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
 	if _, ok := fetches.entries[id]; !ok {
 		t.Fatal("a fetch within the budget was dropped")
 	}

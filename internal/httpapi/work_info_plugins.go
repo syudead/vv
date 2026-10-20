@@ -55,10 +55,12 @@ type WorkInfoPlugins interface {
 	// FetchPersonWithPlugin may return ErrPersonNotFound, ErrPersonExternalIDMissing, ErrWorkInfoRunInvalid, or the
 	// errors workInfoRunError maps.
 	FetchPersonWithPlugin(ctx context.Context, personID, pluginID int64, source, id *string) (domain.PersonPluginFetchResult, error)
-	// PersonPluginFetchImage returns ErrNotFound for a missing result and ErrPersonImageNotFound without an image.
-	PersonPluginFetchImage(personID int64, fetchID string) (domain.WorkInfoCover, error)
-	// ApplyPersonPluginFetch may return ErrWorkInfoApplyInvalid, ErrPersonNotFound, or ErrWorkInfoFetchStale.
-	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, items []domain.PersonPluginItem) (domain.PersonPluginApplied, error)
+	// PersonPluginFetchImage returns ErrNotFound for a missing result and ErrPersonImageNotFound for an index outside
+	// its images.
+	PersonPluginFetchImage(personID int64, fetchID string, index int) (domain.WorkInfoCover, error)
+	// ApplyPersonPluginFetch may return ErrWorkInfoApplyInvalid, ErrPersonNotFound, or ErrWorkInfoFetchStale; a negative
+	// imageIndex names no image.
+	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, items []domain.PersonPluginItem, imageIndex int) (domain.PersonPluginApplied, error)
 }
 
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {

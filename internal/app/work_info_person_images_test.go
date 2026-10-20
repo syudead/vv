@@ -156,7 +156,7 @@ func TestFetchedImagesCountTowardTheBudgetWithTheCoverAndLookups(t *testing.T) {
 	if _, ok := fetches.entries[first]; !ok {
 		t.Fatal("a fetch within the budget was dropped")
 	}
-	fetches.addPerson(&personPluginFetch{image: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
+	fetches.addPerson(&personPluginFetch{images: []domain.WorkInfoCover{*full}, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
 	if _, ok := fetches.entries[first]; ok {
 		t.Fatal("the fetch that expires first was kept over the budget")
 	}

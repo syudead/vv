@@ -185,7 +185,8 @@ type PersonPluginFetchResult struct {
 	ID        string
 	ExpiresAt time.Time
 	Person    FetchedPluginPerson
-	HasImage  bool
+	// ImageCount is how many images VVMDM kept, served by index in the plugin's order.
+	ImageCount int
 }
 
 // PersonPluginApply carries a kept person fetch to the store, which rechecks the plugin in its transaction.

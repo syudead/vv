@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -102,11 +103,20 @@ func TestParsePersonResponsePutsTheRequestedIDFirst(t *testing.T) {
 	}
 }
 
-func TestParsePersonResponseKeepsImageAndProfileUnderTheCreditRules(t *testing.T) {
-	got, err := personFetch(t, `{"name":"N","image":"https://e.test/face.jpg","profile":{"heightCm":160,"cup":7}}`)
-	if err != nil || got.ImageURL != "https://e.test/face.jpg" || got.Profile.HeightCm == nil ||
-		*got.Profile.HeightCm != 160 || got.Profile.Cup != "" {
-		t.Fatalf("person = %+v, %v; want the image and the height, without the mistyped cup", got, err)
+func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.T) {
+	got, err := personFetch(t, `{"name":"N","images":["https://e.test/1.jpg","ftp://e.test/x",7,"https://e.test/1.jpg",`+
+		`"https://e.test/2.jpg"],"profile":{"heightCm":160,"cup":7}}`)
+	if err != nil || !slices.Equal(got.ImageURLs, []string{"https://e.test/1.jpg", "https://e.test/2.jpg"}) ||
+		got.Profile.HeightCm == nil || *got.Profile.HeightCm != 160 || got.Profile.Cup != "" {
+		t.Fatalf("person = %+v, %v; want the valid distinct images and the height, without the mistyped cup", got, err)
+	}
+	urls := make([]string, PersonPluginImagesMaxCount+1)
+	for i := range urls {
+		urls[i] = fmt.Sprintf("%q", fmt.Sprintf("https://e.test/%d.jpg", i))
+	}
+	got, err = personFetch(t, `{"name":"N","images":[`+strings.Join(urls, ",")+`]}`)
+	if err != nil || len(got.ImageURLs) != PersonPluginImagesMaxCount || got.ImageURLs[0] != "https://e.test/0.jpg" {
+		t.Fatalf("images = %v, %v; want the first %d", got.ImageURLs, err, PersonPluginImagesMaxCount)
 	}
 }
 

@@ -8,9 +8,12 @@ const (
 	// WorkInfoPersonImagesMaxCount images and PersonLookupsMaxCount lookup images at the size limit.
 	WorkInfoFetchCoverBudget = (1 + WorkInfoPersonImagesMaxCount + PersonLookupsMaxCount) * WorkInfoCoverMaxBytes
 	// WorkInfoPersonImagesMaxCount is how many people's images one fetch keeps, the first in result order.
-	WorkInfoPersonImagesMaxCount               = 7
-	WorkInfoFieldCover           WorkInfoField = "cover"
-	WorkInfoCoverURLMaxRunes                   = 2048
+	WorkInfoPersonImagesMaxCount = 7
+	// PersonPluginImagesMaxCount is how many images of a person plugin's fetch VVMDM fetches, the first in result
+	// order; at the size limit they fit the fetch budget alone.
+	PersonPluginImagesMaxCount               = 10
+	WorkInfoFieldCover         WorkInfoField = "cover"
+	WorkInfoCoverURLMaxRunes                 = 2048
 )
 
 // Data is PNG, JPEG, or static WebP; dimensions come from the image header.
