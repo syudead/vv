@@ -2957,6 +2957,19 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: clearPeople
+      summary: "Delete every person and all face data"
+      description: "Owner-only. Deletes every person, with their names, credits on videos, faces and profiles, and every face appearance and candidate, in one transaction. Videos already analysed for faces are left to be analysed again, and while face recognition is on every video is queued. Smart folders whose rule names a person then match nothing. See docs/design-docs/face-recognition.md."
+      responses:
+        "200":
+          description: "What was deleted and queued"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleCleared"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/people/{id}:
     get:
@@ -6925,6 +6938,18 @@ components:
         scope:
           type: string
           enum: [missing]
+
+    PeopleCleared:
+      type: object
+      required: [deleted, queued]
+      additionalProperties: false
+      properties:
+        deleted:
+          type: integer
+          description: "People deleted"
+        queued:
+          type: integer
+          description: "Videos queued for face analysis"
 
     FaceRecognitionQueued:
       type: object

@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Switch } from "../ui/shadcn/switch";
 import { useToast } from "../ui/Toast";
 
+import { ClearPeopleSection } from "./ClearPeopleSection";
 import { FaceRecognizerChoice, useRecognizerSave } from "./FaceRecognizerChoice";
 import { FaceRuntimeLine } from "./FaceRuntimeLine";
 import {
@@ -175,6 +176,7 @@ export function FaceRecognitionSections({ source }: { source: FaceRecognitionSou
         onStart={(scope) => void run(scope)}
       />
       <RecognitionSection source={source} settings={settings} locked={locked} />
+      <ClearPeopleSection onCleared={load} />
     </>
   );
 }

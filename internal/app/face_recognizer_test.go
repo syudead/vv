@@ -99,6 +99,10 @@ func (q *fakeFaceAnalysisQueue) RetryVideo(_ context.Context, key string, _ int6
 	return 1, nil
 }
 
+func (q *fakeFaceAnalysisQueue) ClearPeople(context.Context) (domain.PeopleCleared, error) {
+	return domain.PeopleCleared{}, nil
+}
+
 func (q *fakeFaceAnalysisQueue) Claim(context.Context) (domain.FaceJob, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

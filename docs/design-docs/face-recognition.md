@@ -657,7 +657,31 @@ a deleted face is not recreated and a removed link is not made again.
 | Rejected | Why |
 | --- | --- |
 | Deleting a deleted person's appearances too | The next analysis would find the same face and create the person again |
-| An operation that deletes all face data | The owner deletes people, and the next analysis would compute the vectors again anyway |
+
+## Deleting every person starts the people over
+
+`DELETE /api/people` deletes every person, named or provisional, and every
+face appearance in one transaction
+([`FaceStore.ClearPeople`](../../internal/store/face_clear.go)), and the face
+analysis then starts from nothing. **Delete all people…** on the Face
+recognition page asks first.
+
+| Step | Effect |
+| --- | --- |
+| `face.generation` | Increases, so an analysis or face embedding that started before writes nothing and its video is analysed again |
+| Face appearances | Deleted, not marked dropped as a single person's delete marks them; a dropped row would be carried over by the next analysis and its face never linked again |
+| People | Deleted with their names, external IDs, credits on videos, profiles, favorites, faces, face vectors and candidate pairs |
+| `face_queue` | `done` and `failed` rows go, so every video counts as not analysed; while the feature is on every video is queued, with an owner's `face_analysis` entry |
+
+Smart folders whose rule names a person then match nothing, as after any
+person's delete. Activity entries stay: a link or merge whose person is gone
+undoes nothing, as after any delete. The operation works with the feature off
+and without a runtime, so the `unsupported` lock leaves it usable.
+
+| Rejected | Why |
+| --- | --- |
+| Deleting people one by one through the ordinary delete | It marks each appearance dropped, so no later analysis would make those people again |
+| Deleting face data only and keeping the people | The people's faces and credits would no longer match any appearance, and the next analysis would make a second copy of each |
 
 ## An automatic link is undone from the activity log
 

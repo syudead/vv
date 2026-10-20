@@ -33,7 +33,11 @@ const pages: [string, string, string[]][] = [
     ["Media folders", "Auto-import", "Duplicate judging", "Setup"],
   ],
   ["/settings/auto-tagging", "Auto-tagging", ["Progress", "Classifier"]],
-  ["/settings/face-recognition", "Face recognition", ["Progress", "Recognition"]],
+  [
+    "/settings/face-recognition",
+    "Face recognition",
+    ["Progress", "Recognition", "People"],
+  ],
   ["/settings/connections", "Connections", ["Ollama", "ComfyUI"]],
   ["/settings/plugins", "Plugins", ["Work-info plugins", "Person plugins"]],
   ["/settings/conversion", "Video conversion", ["Encoder"]],

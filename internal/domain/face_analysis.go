@@ -30,6 +30,12 @@ type FaceJob struct {
 	Generation int64
 }
 
+// PeopleCleared is what deleting every person did: the people deleted and the videos queued for face analysis.
+type PeopleCleared struct {
+	People int
+	Queued int
+}
+
 // FaceAnalysis is one video's finished analysis, as the face worker hands it to the store.
 type FaceAnalysis struct {
 	ContentKey string

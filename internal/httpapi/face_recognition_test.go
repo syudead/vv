@@ -88,6 +88,7 @@ func TestFaceRecognitionIsOwnerOnly(t *testing.T) {
 		{method: http.MethodPut, target: "/api/settings/face-recognition", body: `{"enabled":true,"recognizer":"sface_int8"}`},
 		{method: http.MethodPost, target: "/api/face-recognition/download"},
 		{method: http.MethodPost, target: "/api/face-recognition/runs", body: `{"scope":"missing"}`},
+		{method: http.MethodDelete, target: "/api/people"},
 	} {
 		assertUnauthenticated(t, req.method+" "+req.target, env.serve(req))
 	}
@@ -116,5 +117,13 @@ func TestFaceRecognitionRunsAreRefusedWhileOff(t *testing.T) {
 	on := send(http.MethodPost, "/api/face-recognition/runs", `{"scope":"missing"}`)
 	if got := decode[gen.FaceRecognitionQueued](t, on); on.Code != http.StatusAccepted || got.Queued != 0 {
 		t.Fatalf("runs while on: status = %d, body = %+v", on.Code, got)
+	}
+}
+
+func TestClearPeopleAnswersWhatItDeletedAndQueued(t *testing.T) {
+	env, owner := newFaceRecognitionEnv(t, &faceRuntimeStub{})
+	res := env.serve(authRequest{method: http.MethodDelete, target: "/api/people", cookies: []*http.Cookie{owner}})
+	if got := decode[gen.PeopleCleared](t, res); res.Code != http.StatusOK || got != (gen.PeopleCleared{}) {
+		t.Fatalf("clear of an empty library: status = %d, body = %+v", res.Code, got)
 	}
 }

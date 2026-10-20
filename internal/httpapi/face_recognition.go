@@ -19,6 +19,7 @@ type FaceRecognition interface {
 // FaceAnalysis queues library videos for face analysis.
 type FaceAnalysis interface {
 	QueueLibrary(ctx context.Context, scope domain.FaceQueueScope) (int, error)
+	ClearPeople(ctx context.Context) (domain.PeopleCleared, error)
 }
 
 const faceRecognitionMissing = "Face recognition is not configured."
@@ -110,6 +111,20 @@ func (s *server) StartFaceRecognition(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusAccepted, gen.FaceRecognitionQueued{Queued: queued}, s.logger)
+}
+
+func (s *server) ClearPeople(w http.ResponseWriter, r *http.Request) {
+	if s.faceAnalysis == nil {
+		s.internalError(w, "Face analysis is not configured.", nil)
+		return
+	}
+	cleared, err := s.faceAnalysis.ClearPeople(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not delete the people.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.PeopleCleared{Deleted: cleared.People, Queued: cleared.Queued}, s.logger)
 }
 
 func (s *server) writeFaceRecognition(w http.ResponseWriter, code int, status domain.FaceRecognitionStatus) {
