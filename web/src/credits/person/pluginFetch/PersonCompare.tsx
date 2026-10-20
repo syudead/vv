@@ -1,20 +1,19 @@
-import { ArrowRight, Check, Plus } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import type { ReactNode } from "react";
 
 import type { ExternalId } from "../../../api/credits";
 import type { PersonPluginFetchedPerson } from "../../../api/personPluginFetches";
 import { t } from "../../../i18n";
 import { cn } from "../../../lib/cn";
-import { Button } from "../../../ui/shadcn/button";
-import { Checkbox } from "../../../ui/shadcn/checkbox";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../../../ui/shadcn/collapsible";
-import { Label } from "../../../ui/shadcn/label";
-import { RadioGroup, RadioGroupItem } from "../../../ui/shadcn/radio-group";
-import { Toggle } from "../../../ui/shadcn/toggle";
+  ChangeSections,
+  CompareSection,
+  ImageChoice,
+  KeptFold,
+  PairRow,
+  RowLabel,
+  ValueRow,
+  ValueToggle,
+} from "../../../player/workInfoFetch/compareParts";
 import { PersonFace } from "../../../ui/PersonFace";
 import { Bio } from "../PersonProfile";
 import { useLocalToday } from "../useLocalToday";
@@ -48,28 +47,7 @@ export interface PersonCompareProps {
   selection: PersonSelection;
   /** While the apply runs or the result is stale. */
   locked: boolean;
-  /** Offer stored values and the face for replacement, as the person page's apply writes over them. */
-  replace?: boolean;
-  /** In a lookup block, which is narrower than the dialog: rows stack their cells. */
-  inBlock?: boolean;
   onChange: (selection: PersonSelection) => void;
-}
-
-function toggled<T>(
-  values: readonly T[],
-  value: T,
-  on: boolean,
-  key: (v: T) => string,
-): T[] {
-  const rest = values.filter((item) => key(item) !== key(value));
-  return on ? [...rest, value] : rest;
-}
-
-function toggleItem(props: PersonCompareProps, item: RowItem, on: boolean) {
-  props.onChange({
-    ...props.selection,
-    items: toggled(props.selection.items, item, on, String),
-  });
 }
 
 function Muted({ children }: { children: ReactNode }) {
@@ -110,7 +88,16 @@ function Value({
   );
 }
 
-function RowLabel({
+function withItem(
+  props: PersonCompareProps,
+  item: RowItem,
+  on: boolean,
+): PersonSelection {
+  const rest = props.selection.items.filter((value) => value !== item);
+  return { ...props.selection, items: on ? [...rest, item] : rest };
+}
+
+function ItemLabel({
   row,
   props,
   selectable,
@@ -119,48 +106,18 @@ function RowLabel({
   props: PersonCompareProps;
   selectable: boolean;
 }) {
-  const id = useId();
-  const label = text.items[row.item];
-  if (!selectable) return <span className="text-muted-foreground">{label}</span>;
   return (
-    <div className="flex items-center gap-2 self-start">
-      <Checkbox
-        id={id}
-        checked={props.selection.items.includes(row.item)}
-        disabled={props.locked}
-        onCheckedChange={(checked) => toggleItem(props, row.item, checked === true)}
-      />
-      <Label htmlFor={id} className="font-normal">
-        {label}
-      </Label>
-    </div>
+    <RowLabel
+      label={text.items[row.item]}
+      checked={selectable ? props.selection.items.includes(row.item) : undefined}
+      locked={props.locked}
+      onChange={(on) => props.onChange(withItem(props, row.item, on))}
+    />
   );
 }
 
-/** Stacked under a checkbox, a value lines up with the label's text. */
-function indent(props: PersonCompareProps): string {
-  return cn("pl-6", props.inBlock !== true && "sm:pl-0");
-}
-
-/** A filled row shows only the fetched value, since the person has none to compare it with. */
-function FillRow({ row, props }: { row: CompareRow; props: PersonCompareProps }) {
-  return (
-    <div
-      className={cn(
-        "grid items-baseline gap-x-4 gap-y-1 py-2",
-        props.inBlock !== true && "sm:grid-cols-compare-fill",
-      )}
-    >
-      <RowLabel row={row} props={props} selectable />
-      <div className={cn("min-w-0", indent(props))}>
-        <Value item={row.item} props={props} tone="fetched" />
-      </div>
-    </div>
-  );
-}
-
-/** A replacing or kept row reads left to right: now, then what the apply would write. */
-function PairRow({
+/** A replacing or kept row: the stored value, struck through while it would be replaced, then the fetched one. */
+function ProfilePair({
   row,
   props,
   selectable,
@@ -171,103 +128,12 @@ function PairRow({
 }) {
   const struck = selectable && props.selection.items.includes(row.item);
   return (
-    <div
-      className={cn(
-        "grid items-baseline gap-x-3 gap-y-1 py-2",
-        props.inBlock !== true && "sm:grid-cols-compare-replace",
-      )}
-    >
-      <RowLabel row={row} props={props} selectable={selectable} />
-      {/* Below sm the pair stays on one line under the label; from sm its parts join the row's grid. */}
-      <div
-        className={cn(
-          "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1",
-          selectable && indent(props),
-          props.inBlock !== true && "sm:contents",
-        )}
-      >
-        <div className="min-w-0">
-          <Value item={row.item} props={props} tone="now" struck={struck} />
-        </div>
-        <ArrowRight
-          aria-hidden="true"
-          className="size-4 shrink-0 self-center text-muted-foreground"
-        />
-        <div className="min-w-0">
-          <Value item={row.item} props={props} tone="fetched" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** A part of the comparison with a count and, over more than one choice, Select all or Clear. */
-function Section({
-  title,
-  note,
-  count,
-  all,
-  locked,
-  onAll,
-  children,
-}: {
-  title: string;
-  note?: string;
-  count: number;
-  all: boolean;
-  locked: boolean;
-  onAll: (on: boolean) => void;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">
-          {title} <span className="font-normal text-muted-foreground">{count}</span>
-        </h3>
-        {count > 1 && (
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto px-0 py-0"
-            disabled={locked}
-            onClick={() => onAll(!all)}
-          >
-            {all ? text.clearAll : text.selectAll}
-          </Button>
-        )}
-      </div>
-      {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
-      <div className="flex flex-col divide-y divide-border border-y border-border">
-        {children}
-      </div>
-    </section>
-  );
-}
-
-function FaceTile({
-  value,
-  label,
-  src,
-  disabled,
-}: {
-  value: string;
-  label: string;
-  src: string | undefined;
-  disabled: boolean;
-}) {
-  const id = useId();
-  return (
-    <Label
-      htmlFor={id}
-      className="flex w-card-face cursor-pointer flex-col items-stretch gap-1 rounded-md p-1 font-normal has-data-[state=checked]:bg-accent"
-    >
-      <PersonFace shape="profile" name="" src={src} />
-      <span className="flex items-center gap-1 text-xs">
-        <RadioGroupItem id={id} value={value} disabled={disabled} />
-        <span className="min-w-0 truncate">{label}</span>
-      </span>
-    </Label>
+    <PairRow
+      label={<ItemLabel row={row} props={props} selectable={selectable} />}
+      now={<Value item={row.item} props={props} tone="now" struck={struck} />}
+      fetched={<Value item={row.item} props={props} tone="fetched" />}
+      indented={selectable}
+    />
   );
 }
 
@@ -275,36 +141,35 @@ function FaceTile({
 function FacePicker({ props, count }: { props: PersonCompareProps; count: number }) {
   const hasFace = props.current.imageRevision !== undefined;
   return (
-    <section className="flex flex-col gap-1">
-      <h3 className="text-sm font-medium">{text.face}</h3>
-      <RadioGroup
-        aria-label={text.face}
-        value={props.selection.image === null ? "keep" : String(props.selection.image)}
-        onValueChange={(value) =>
-          props.onChange({
-            ...props.selection,
-            image: value === "keep" ? null : Number(value),
-          })
-        }
-        className="flex flex-wrap gap-2"
-      >
-        <FaceTile
-          value="keep"
-          label={hasFace ? text.keepFace : text.noNewFace}
-          src={hasFace ? props.nowFaceSrc : undefined}
-          disabled={props.locked}
-        />
-        {Array.from({ length: count }, (_, index) => (
-          <FaceTile
-            key={index}
-            value={String(index)}
-            label={text.image(index + 1)}
-            src={props.imageSrc(index)}
-            disabled={props.locked}
-          />
-        ))}
-      </RadioGroup>
-    </section>
+    <ImageChoice
+      title={text.face}
+      value={props.selection.image === null ? "keep" : String(props.selection.image)}
+      locked={props.locked}
+      onChange={(value) =>
+        props.onChange({
+          ...props.selection,
+          image: value === "keep" ? null : Number(value),
+        })
+      }
+      options={[
+        {
+          value: "keep",
+          label: hasFace ? text.keepFace : text.noNewFace,
+          image: (
+            <PersonFace
+              shape="profile"
+              name=""
+              src={hasFace ? props.nowFaceSrc : undefined}
+            />
+          ),
+        },
+        ...Array.from({ length: count }, (_, index) => ({
+          value: String(index),
+          label: text.image(index + 1),
+          image: <PersonFace shape="profile" name="" src={props.imageSrc(index)} />,
+        })),
+      ]}
+    />
   );
 }
 
@@ -355,55 +220,20 @@ function chosenKeys(selection: PersonSelection, key: ListKey): string[] {
 }
 
 function withList(
-  props: PersonCompareProps,
+  selection: PersonSelection,
+  fetched: PersonPluginFetchedPerson,
   key: ListKey,
   keys: readonly string[],
 ): PersonSelection {
-  if (key !== "externalIds") return { ...props.selection, [key]: [...keys] };
-  const ids: ExternalId[] = props.fetched.externalIds.filter((id) =>
-    keys.includes(idKey(id)),
-  );
-  return { ...props.selection, externalIds: ids };
-}
-
-/** A fetched value the apply would add, pressed while selected; one the person has stays quiet. */
-function ValueToggle({
-  label,
-  pressed,
-  disabled,
-  onPressedChange,
-}: {
-  label: string;
-  pressed: boolean;
-  disabled: boolean;
-  onPressedChange: (pressed: boolean) => void;
-}) {
-  return (
-    <Toggle
-      variant="outline"
-      size="sm"
-      pressed={pressed}
-      disabled={disabled}
-      onPressedChange={onPressedChange}
-      title={label}
-      className="max-w-full font-normal"
-    >
-      {pressed ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
-      <span className="max-w-chip-label truncate">{label}</span>
-    </Toggle>
-  );
+  if (key !== "externalIds") return { ...selection, [key]: [...keys] };
+  const ids: ExternalId[] = fetched.externalIds.filter((id) => keys.includes(idKey(id)));
+  return { ...selection, externalIds: ids };
 }
 
 function ListRow({ spec, props }: { spec: ListSpec; props: PersonCompareProps }) {
   const chosen = chosenKeys(props.selection, spec.key);
   return (
-    <div
-      className={cn(
-        "grid items-baseline gap-x-4 gap-y-1 py-2",
-        props.inBlock !== true && "sm:grid-cols-compare-fill",
-      )}
-    >
-      <span>{spec.label}</span>
+    <ValueRow label={<span>{spec.label}</span>}>
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {spec.choices.fresh.map((value) => (
           <ValueToggle
@@ -414,7 +244,8 @@ function ListRow({ spec, props }: { spec: ListSpec; props: PersonCompareProps })
             onPressedChange={(on) =>
               props.onChange(
                 withList(
-                  props,
+                  props.selection,
+                  props.fetched,
                   spec.key,
                   on ? [...chosen, value] : chosen.filter((item) => item !== value),
                 ),
@@ -428,7 +259,7 @@ function ListRow({ spec, props }: { spec: ListSpec; props: PersonCompareProps })
           </span>
         )}
       </div>
-    </div>
+    </ValueRow>
   );
 }
 
@@ -440,59 +271,25 @@ function ListSection({ specs, props }: { specs: ListSpec[]; props: PersonCompare
     ),
   );
   return (
-    <Section
-      title={text.adds}
+    <CompareSection
+      title={t.common.addsToLists}
       count={count}
       all={all}
       locked={props.locked}
-      onAll={(on) => {
-        let next = props.selection;
-        for (const spec of specs)
-          next = withList(
-            { ...props, selection: next },
-            spec.key,
-            on ? spec.choices.fresh : [],
-          );
-        props.onChange(next);
-      }}
+      onAll={(on) =>
+        props.onChange(
+          specs.reduce(
+            (next, spec) =>
+              withList(next, props.fetched, spec.key, on ? spec.choices.fresh : []),
+            props.selection,
+          ),
+        )
+      }
     >
       {specs.map((spec) => (
         <ListRow key={spec.key} spec={spec} props={props} />
       ))}
-    </Section>
-  );
-}
-
-function KeptRows({
-  rows,
-  props,
-}: {
-  rows: readonly CompareRow[];
-  props: PersonCompareProps;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-1">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto self-start px-0 py-0 text-muted-foreground hover:text-primary"
-        >
-          {open ? text.hideKept : text.kept(rows.length)}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-1">
-        <p className="text-xs text-muted-foreground">
-          {props.replace === true ? text.sameNote : text.keptNote}
-        </p>
-        <div className="flex flex-col divide-y divide-border border-y border-border">
-          {rows.map((row) => (
-            <PairRow key={row.item} row={row} props={props} selectable={false} />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    </CompareSection>
   );
 }
 
@@ -517,49 +314,42 @@ function rowsSection(
 /**
  * A fetched person beside the person it would fill: the face as a choice among the fetched images,
  * the values that fill empty fields, those that would replace stored ones, the values the lists
- * would add one by one, and the kept ones folded.
+ * would add one by one, and the equal ones folded.
  */
 export default function PersonCompare(props: PersonCompareProps) {
-  const replace = props.replace === true;
-  const rows = compareRows(props.current, props.fetched, replace);
+  const rows = compareRows(props.current, props.fetched, true);
   const fills = rows.filter((row) => row.kind === "fill");
   const replaces = rows.filter((row) => row.kind === "replace");
   const kept = rows.filter((row) => row.kind === "kept");
-  const images = faceChoices(props.current, props.fetched, replace);
+  const images = faceChoices(props.current, props.fetched, true);
   const lists = listSpecs(props);
   const nothing =
     images === 0 && fills.length === 0 && replaces.length === 0 && lists.length === 0;
   return (
     <div className="flex flex-col gap-4 text-sm">
       {images > 0 && <FacePicker props={props} count={images} />}
-      {fills.length > 0 && (
-        <Section
-          title={text.fills}
-          count={fills.length}
-          locked={props.locked}
-          {...rowsSection(props, fills)}
-        >
-          {fills.map((row) => (
-            <FillRow key={row.item} row={row} props={props} />
-          ))}
-        </Section>
-      )}
-      {replaces.length > 0 && (
-        <Section
-          title={text.replaces}
-          note={text.replacesNote}
-          count={replaces.length}
-          locked={props.locked}
-          {...rowsSection(props, replaces)}
-        >
-          {replaces.map((row) => (
-            <PairRow key={row.item} row={row} props={props} selectable />
-          ))}
-        </Section>
-      )}
+      <ChangeSections
+        fills={fills}
+        replaces={replaces}
+        locked={props.locked}
+        keyOf={(row) => row.item}
+        section={(part) => rowsSection(props, part)}
+        fill={(row) => (
+          <ValueRow label={<ItemLabel row={row} props={props} selectable />}>
+            <Value item={row.item} props={props} tone="fetched" />
+          </ValueRow>
+        )}
+        replace={(row) => <ProfilePair row={row} props={props} selectable />}
+      />
       {lists.length > 0 && <ListSection specs={lists} props={props} />}
       {nothing && <p className="text-muted-foreground">{text.nothingNew}</p>}
-      {kept.length > 0 && <KeptRows rows={kept} props={props} />}
+      {kept.length > 0 && (
+        <KeptFold count={kept.length} note={text.sameNote}>
+          {kept.map((row) => (
+            <ProfilePair key={row.item} row={row} props={props} selectable={false} />
+          ))}
+        </KeptFold>
+      )}
     </div>
   );
 }

@@ -274,30 +274,68 @@ The apply matches again inside its transaction, as the next section shows.
 Before it writes anything, the apply refuses a selected field whose row has
 no value in the result with `invalid_request`.
 
-## VVMDM fetches the cover and applies it as an uploaded image
+## The owner picks each value the apply writes
 
-A plugin returns its cover as a URL in `workInfo.cover`, and VVMDM fetches it
-after the run (`image` in
+The apply takes a `domain.WorkInfoSelection`
+([`work_info_fetch.go`](../../internal/domain/work_info_fetch.go)): the title,
+code, description and each date kind as whole fields, the tags and the cover
+at `coverIndex` as chosen values, and the people, organizations, URLs and
+external IDs one by one. People and organizations are named by `at`, their
+position in the fetch's ordered details, because two entries may share a name;
+URLs and external IDs are named by value. `FetchedWorkInfo.Select` narrows the
+details to the chosen entries before the merge, and refuses with
+`invalid_request` a position outside the result, a position named twice or a
+value the result does not carry, so an apply writes only what the comparison
+showed.
+
+The comparison in
+[`CompareStep.tsx`](../../web/src/player/workInfoFetch/CompareStep.tsx) is
+built from the parts the person dialog uses
+([`compareParts.tsx`](../../web/src/player/workInfoFetch/compareParts.tsx)),
+in this order: the cover picker, `Fills empty fields`, `Differs from now`,
+the tags, `People and organizations`, `Adds to lists`, and `Same as now`
+folded. Every change starts selected, replacements included, so the owner
+clears what they do not want. A person or organization entry is a toggle
+marked linked, `New` or `Not linked`; an entry already on the video with no
+profile or face to fill is only counted.
+
+The apply's response lists the people it linked as `linkedPeople`. When there
+are any, the dialog ends on a result step with a link to each person's page
+with `?fetch=1`, which opens that page's `Fetch info…`
+([person-plugins.md](person-plugins.md#work-info-fetches-do-not-look-people-up)).
+
+| Rejected | Why |
+| --- | --- |
+| A whole-row checkbox for a list | The owner could not drop one wrong person or URL without dropping the rest |
+| Naming people by name | Two fetched entries in one role may share a name |
+| Starting replacements cleared | The owner fetched to change the video; a dialog that applies nothing by default asks for a click per row |
+
+## VVMDM fetches the covers and applies one as an uploaded image
+
+A plugin returns its covers as URLs in `workInfo.covers`, because a site often
+shows a jacket, a package and stills, and the owner picks the thumbnail. VVMDM
+fetches the first 5 distinct valid URLs one after another after the run
+(`images` in
 [`cover.go`](../../internal/wasmplugin/cover.go)), with the HTTP client of the
 plugin's requests. The address rule of
 [Plugins reach only public internet addresses](#plugins-reach-only-public-internet-addresses)
-therefore holds for the cover, and a refused address fails the run with
+therefore holds for the covers, and a refused address fails the run with
 `blocked_address`. Any
-other failure drops the cover and keeps the rest of the result
-([plugin contract](../how-to/work-info-plugins.md#cover-image)).
+other failure drops that cover and keeps the rest of the result
+([plugin contract](../how-to/work-info-plugins.md#cover-images)).
 
 The diagram shows a cover from the run to the thumbnail.
 
 ```mermaid
 flowchart LR
-  run[Run returns workInfo.cover] --> get[One GET through the plugin client]
+  run[Run returns workInfo.covers] --> get[One GET per cover through the plugin client]
   get -->|refused| blocked[Run fails: blocked_address]
   get -->|other failure| none[No cover]
   get -->|2xx, 4 MiB or less| check{PNG, JPEG or still WebP, 120 MP or less by its header?}
   check -->|no| none
   check -->|yes| keep[Kept with the fetch for 10 minutes]
-  keep --> serve[GET .../cover serves it to the comparison]
-  keep -->|cover selected| apply[UploadThumbnailImage, after the work information commits]
+  keep --> serve[GET .../covers/index serves it to the comparison]
+  keep -->|one cover selected| apply[UploadThumbnailImage, after the work information commits]
 ```
 
 [`work_info_cover.go`](../../internal/app/work_info_cover.go) checks the
@@ -307,18 +345,18 @@ image's header only. The full decode is the apply's: the cover goes through
 the upload gate, the 120-megapixel cap and the generation lock, and is stored
 with origin `uploaded`.
 
-The browser shows the cover from
-`GET /api/videos/{id}/work-info-fetches/{fetchId}/cover`, so it never contacts
-the plugin's site. VVMDM sets the type from the format it read and sends
+The browser shows each cover from
+`GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}`, so it never
+contacts the plugin's site. The result lists the kept covers as `covers`, each
+with its `index` and size, and the apply names the chosen one as `coverIndex`. VVMDM sets the type from the format it read and sends
 `nosniff` and a sandboxing `Content-Security-Policy`, so the response is only
 ever an image.
 
 Each cover is held in memory with its fetch. Together the held covers,
-people's images and person plugin results' images stay within 52 MiB, thirteen
+people's images and person plugin results' images stay within 48 MiB, twelve
 images at the 4 MiB limit: a result over that budget drops the results with
 images that expire first, whatever their kind, and applying one of them answers
-`work_info_fetch_stale`
-([person-plugins.md](person-plugins.md#lookup-results-stay-with-the-fetch)).
+`work_info_fetch_stale`.
 
 The apply makes the cover the thumbnail after the work-information
 transaction commits, so a plugin replaced or revoked since the fetch, which
@@ -330,7 +368,7 @@ unable to tell what was written.
 
 ### The page frames the cover as it frames an uploaded image
 
-The comparison decodes the cover in the page and draws it on the video's
+The comparison decodes the chosen cover in the page and draws it on the video's
 aspect with the uploaded image's free placement, `Whole image` by default
 ([thumbnail-editing.md](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
 `Adjust framing` opens the same preview; its `Use this framing` keeps the
@@ -368,6 +406,7 @@ so the server fits it as above.
 | The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
 | The browser loads the cover from the site | The site would see the viewer's address |
 | Fetching the cover again for each view or at the apply | The site could answer another image than the one the owner compared |
+| Keeping `cover` beside `covers` | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
 
 ## People's images are fetched like the cover and become faces after the commit
 
@@ -379,16 +418,16 @@ deadline, and the header check keeps each image with its person in the fetch.
 it to the comparison, and `hasImage` on the fetched person tells the screen
 which index has one.
 
-The comparison treats a people row as a change when a person already on the
-video would gain something: a fetched profile, or a kept image for a person
+The comparison offers an entry for a person already on the video when that
+person would gain something: a fetched profile, or a kept image for a person
 without a face. The video carries each person's face revision but not the
 stored profile, so a fetched profile counts even when the person's fields are
 already filled; applying it then changes nothing, because the apply writes
 only empty fields.
 
-The limit of 7 keeps one fetch within the budget: the cover, seven images and
-five lookup images at 4 MiB make 52 MiB, and an eighth would let a single
-result exceed the budget and be evicted by its own lookups.
+The limits of 5 covers and 7 people's images keep one fetch within the budget:
+twelve images at 4 MiB make 48 MiB, so a single result never exceeds the
+budget on its own.
 
 After the apply commits, `applyPersonImages` in
 [`work_info_person_images.go`](../../internal/app/work_info_person_images.go)

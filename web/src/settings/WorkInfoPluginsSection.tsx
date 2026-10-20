@@ -7,7 +7,6 @@ import {
   deleteWorkInfoPlugin,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
-  setWorkInfoPluginAutoLookup,
   setWorkInfoPluginSettings,
   uploadWorkInfoPlugin,
   type WorkInfoPlugin,
@@ -72,11 +71,6 @@ function addedToast(
   return replaced ? text().replaced(name) : text().added(name);
 }
 
-function withoutKey(record: Record<number, boolean>, id: number) {
-  const { [id]: _removed, ...rest } = record;
-  return rest;
-}
-
 function isChangedMeanwhile(failure: unknown): boolean {
   return (
     failure instanceof RequestFailed &&
@@ -99,7 +93,6 @@ export default function WorkInfoPluginsSection() {
     kind: WorkInfoPluginKind;
     message: UiText;
   } | null>(null);
-  const [switching, setSwitching] = useState<Record<number, boolean>>({});
   const [work, setWork] = useState<{ id: number; kind: RowWork } | null>(null);
   const [rowError, setRowError] = useState<{ id: number; message: UiText } | null>(null);
   const [approving, setApproving] = useState<Approving | null>(null);
@@ -110,7 +103,6 @@ export default function WorkInfoPluginsSection() {
     work: useRef<HTMLButtonElement>(null),
     person: useRef<HTMLButtonElement>(null),
   };
-  const switchesSent = useRef(new Set<number>());
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
   // Track started loads separately from mutations applied to rows.
@@ -202,30 +194,6 @@ export default function WorkInfoPluginsSection() {
       setAddError({ kind: section, message: text().addFailed(errorText(failure)) });
     } finally {
       setAdding(null);
-    }
-  };
-
-  const setAutoLookup = async (target: WorkInfoPlugin, enabled: boolean) => {
-    if (switchesSent.current.has(target.id)) return;
-    switchesSent.current.add(target.id);
-    clearRowError(target.id);
-    setSwitching((current) => ({ ...current, [target.id]: enabled }));
-    try {
-      const saved = await setWorkInfoPluginAutoLookup(target.id, enabled);
-      // Revoke and re-upload stay usable meanwhile, so take only autoLookup from this response.
-      changePlugins((current) =>
-        current.map((plugin) =>
-          plugin.id === saved.id ? { ...plugin, autoLookup: saved.autoLookup } : plugin,
-        ),
-      );
-    } catch (failure) {
-      setRowError({
-        id: target.id,
-        message: text().rowFailed(pluginName(target), errorText(failure)),
-      });
-    } finally {
-      switchesSent.current.delete(target.id);
-      setSwitching((current) => withoutKey(current, target.id));
     }
   };
 
@@ -337,14 +305,6 @@ export default function WorkInfoPluginsSection() {
       key={plugin.id}
       plugin={plugin}
       work={work?.id === plugin.id ? work.kind : null}
-      lookup={
-        plugin.kind === "person" && plugin.state === "approved"
-          ? {
-              saving: switching[plugin.id] ?? null,
-              onChange: (enabled) => void setAutoLookup(plugin, enabled),
-            }
-          : null
-      }
       error={rowError?.id === plugin.id ? rowError.message : null}
       rowRef={(element) => {
         if (element === null) rowRefs.current.delete(plugin.id);

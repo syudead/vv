@@ -331,7 +331,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
-| `cover` | string, an `http` or `https` URL of the work's cover image, at most 2048 characters | The image, which VVMDM fetches itself after the run; see [Cover image](#cover-image) |
+| `covers` | `["https://..."]`, `http` or `https` URLs of the work's cover images, each at most 2048 characters | The first 5 distinct valid URLs, whose images VVMDM fetches itself after the run; see [Cover images](#cover-images) |
 
 For every field except `title` and `tags`, VVMDM trims surrounding
 whitespace from each string, then drops an entry that is empty, an entry
@@ -340,7 +340,8 @@ a field or entry of another JSON type. The limits count what remains. The
 same person or organization twice in one role, with the same name and
 external IDs, is kept once.
 
-The owner sees every kept value and picks which ones to apply. A value that
+The owner sees every kept value and picks which ones to apply: each person,
+organization, URL and external ID one by one, and one of the covers. A value that
 breaks a rule of [Set work information](external-api.md#set-work-information),
 such as a `code` over 100 characters, a `date` in another form or a URL that
 is not absolute, is shown but not applied, and VVMDM tells the owner it was
@@ -354,18 +355,19 @@ performer is linked across fetches, across spellings and across plugins that
 use the same `source`. A name that matches more than one existing person is
 not linked.
 
-### Cover image
+### Cover images
 
-After a `fetch` that returns `cover`, VVMDM sends one `GET` to that URL
-through the same client and address rule as the plugin's requests, within the
-run's 30 seconds. The request does not count toward the plugin's 16. The
-owner sees the image beside the current thumbnail, can frame it the way
-they frame an uploaded image, and can apply it as the video's thumbnail, which
-VVMDM checks the way it does an uploaded image.
+After a `fetch` that returns `covers`, VVMDM sends one `GET` to each kept URL,
+one after another, through the same client and address rule as the plugin's
+requests, within the run's 30 seconds. These requests do not count toward the
+plugin's 16. The owner sees the images beside the current thumbnail, picks
+one, can frame it the way they frame an uploaded image, and can apply it as
+the video's thumbnail, which VVMDM checks the way it does an uploaded image.
+A module that returns `cover` instead gets no cover.
 
 | The image | Result |
 | --- | --- |
-| A PNG, JPEG or still WebP of at most 4 MiB and 120 megapixels | Shown, and selected for the apply |
+| A PNG, JPEG or still WebP of at most 4 MiB and 120 megapixels | Shown; the first one kept is selected for the apply |
 | Any other answer: not `2xx`, larger, another format, unreachable | Dropped; the rest of the result is kept |
 | On a refused address | The run fails with `blocked_address`, as for the plugin's own requests |
 
@@ -385,11 +387,11 @@ Organizations take neither field.
 VVMDM drops an `image` that is not such a URL and a `profile` property of
 another JSON type, and keeps the rest of the person. After the run it fetches
 the images of the first 7 people that have one, in the order the plugin
-returned them, the way it fetches the [cover](#cover-image): the same client,
+returned them, the way it fetches the [covers](#cover-images): the same client,
 limits, formats and 30 seconds, and a refused address fails the run with
 `blocked_address`. An image that cannot be fetched is dropped.
 
-When the owner applies a role, each person linked in it gets the profile
+When the owner applies a person, the person the apply links gets the profile
 values for the fields that are still empty on that person; a value already
 stored is never replaced. A value that breaks a profile rule, such as a
 `heightCm` of 1000 or a `bloodType` of `C`, is not applied, and VVMDM reports
@@ -427,7 +429,7 @@ other distinct IDs after it, up to 20 in all, so the ID a person was fetched
 by always survives the limit. Each URL in `images` and `profile` follow
 [People's images and profiles](#peoples-images-and-profiles). VVMDM drops
 invalid and repeated URLs, fetches the first 10 after the run, one after
-another, the way it fetches the [cover](#cover-image), and the owner picks one
+another, the way it fetches the [covers](#cover-images), and the owner picks one
 of them as the person's face. A module that returns `image` instead gets no
 image.
 
@@ -445,8 +447,8 @@ after VVMDM's limits, and `mdm plugin pack` prints the kind and the sources.
 In VVMDM, a person plugin is listed in the **Person plugins** section of
 **Settings**, under the **Work-info plugins** section. Either section's
 **Add plugin** accepts either kind; the manifest's `kind` decides the section.
-After approval, the plugin's row has an **Automatic lookups** switch, which
-lets a work-info fetch call the plugin for the people it names.
+A person plugin runs only from a person's page, under **Fetch info…**; a
+work-info fetch never calls it.
 
 ## Host functions
 

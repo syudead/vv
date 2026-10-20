@@ -6,14 +6,11 @@ import {
   approvedWorkPlugins,
   canChooseFindBy,
   initialQuery,
-  initialSelection,
   missingSettingLabels,
   orderSkipped,
   queryLabel,
-  rowState,
   runFor,
   selectableTags,
-  tagsRowChecked,
 } from "./fetchRules";
 
 function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
@@ -21,7 +18,6 @@ function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
     id: 1,
     kind: "work",
     sources: [],
-    autoLookup: false,
     name: "works",
     fileName: "works.wasm",
     operations: ["search", "fetch"],
@@ -54,7 +50,7 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
     organizations: [],
     urls: [],
     externalIds: [],
-    personLookups: [],
+    covers: [],
     ...overrides,
   };
 }
@@ -105,27 +101,12 @@ describe("fetchRules", () => {
     expect(initialQuery(undefined, "words", coded)).toBe("");
   });
 
-  it("値の無い項目と今と同じ項目は選べず、違う項目だけを最初に選ぶ", () => {
-    expect(rowState("title", video, result({ title: undefined }))).toBe("missing");
-    expect(rowState("title", video, result({ title: "今の題名" }))).toBe("same");
-    expect(rowState("title", video, result())).toBe("differs");
-    expect(rowState("tags", video, result({ tags: [] }))).toBe("missing");
-    expect(rowState("tags", video, result({ tags: ["仮", "既存"] }))).toBe("same");
-    expect(rowState("tags", video, result({ tags: ["既存", "新規"] }))).toBe("differs");
-    expect(initialSelection(video, result())).toEqual(["title", "tags"]);
-    expect(initialSelection(video, result({ title: undefined }))).toEqual(["tags"]);
-    expect(initialSelection(video, result({ tags: ["既存"] }))).toEqual(["title"]);
-  });
-
-  it("選べるタグは動画に無い取得したタグで、行は全部・一部・無しで状態が変わる", () => {
+  it("選べるタグは動画に無い取得したタグを一度ずつ", () => {
     const selectable = selectableTags(
       video,
       result({ tags: ["既存", "ドラマ", "喜劇", "ドラマ"] }),
     );
     expect(selectable).toEqual(["ドラマ", "喜劇"]);
-    expect(tagsRowChecked(selectable, ["ドラマ", "喜劇"])).toBe(true);
-    expect(tagsRowChecked(selectable, ["喜劇"])).toBe("indeterminate");
-    expect(tagsRowChecked(selectable, [])).toBe(false);
   });
 
   it("足りない設定のキーを宣言のラベルに引き直し、知らないキーはそのまま出す", () => {

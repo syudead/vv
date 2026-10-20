@@ -125,3 +125,25 @@ func (s *server) ApplyPersonPluginFetch(
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.PersonPluginFetchApplied{Person: toAPIPerson(applied.Person), Skipped: skipped}, s.logger)
 }
+
+// toPersonPluginSelection reports false for an unknown item; whether the values are in the result is the apply's.
+func toPersonPluginSelection(
+	items []gen.PersonPluginItem, aliases *[]string, ids *[]gen.ExternalId, links *[]string,
+) (domain.PersonPluginSelection, bool) {
+	out := domain.PersonPluginSelection{
+		Items: make([]domain.PersonPluginItem, 0, len(items)), ExternalIDs: fromAPIExternalIDs(ids),
+	}
+	for _, item := range items {
+		if !item.Valid() {
+			return domain.PersonPluginSelection{}, false
+		}
+		out.Items = append(out.Items, domain.PersonPluginItem(item))
+	}
+	if aliases != nil {
+		out.Aliases = *aliases
+	}
+	if links != nil {
+		out.Links = *links
+	}
+	return out, true
+}

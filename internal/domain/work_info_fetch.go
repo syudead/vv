@@ -142,9 +142,70 @@ type WorkInfoFetchResult struct {
 	// Match arrays align with Details entries and reflect fetch-time matching.
 	PersonMatches       []CreditMatch
 	OrganizationMatches []CreditMatch
-	Cover               *WorkInfoCover
-	// Lookups is the person plugin lookups planned for Details.People.
-	Lookups PersonLookupPlan
+	// Covers are the readable fetched covers in result order.
+	Covers []WorkInfoCover
+}
+
+// WorkInfoSelection is what a work-info apply takes from a fetch: whole Fields (title, tags, code, description, dates
+// and cover), the cover at CoverIndex, and the people, organizations, URLs and external IDs one by one.
+type WorkInfoSelection struct {
+	Fields []WorkInfoField
+	// Tags names the chosen fetched tags; nil chooses all of them.
+	Tags       []string
+	CoverIndex int
+	// People and Organizations are positions in the fetched details.
+	People        []int
+	Organizations []int
+	URLs          []string
+	ExternalIDs   []ExternalID
+}
+
+// isListField reports a field the selection chooses value by value instead of whole.
+func isListField(field WorkInfoField) bool {
+	if field == WorkInfoFieldURLs || field == WorkInfoFieldExternalIDs {
+		return true
+	}
+	return slices.ContainsFunc(PersonRoles, func(r PersonRole) bool { return field == PersonField(r) }) ||
+		slices.ContainsFunc(OrganizationRoles, func(r OrganizationRole) bool { return field == OrganizationField(r) })
+}
+
+// Select narrows f to the chosen people, organizations, URLs and external IDs, in f's order, and returns the detail
+// fields to merge: the code, description and dates among sel.Fields, then each role with a chosen entry, then URLs and
+// external IDs when chosen. It reports false for a list field among sel.Fields, a position outside f or named twice,
+// or a value f does not carry; the whole fields' values are the caller's to check.
+func (f FetchedWorkInfo) Select(sel WorkInfoSelection) (FetchedWorkInfo, []WorkInfoField, bool) {
+	if slices.ContainsFunc(sel.Fields, isListField) {
+		return FetchedWorkInfo{}, nil, false
+	}
+	people, okPeople := pickAt(f.People, sel.People)
+	organizations, okOrganizations := pickAt(f.Organizations, sel.Organizations)
+	urls, okURLs := pick(f.URLs, sel.URLs, func(url string) string { return url })
+	ids, okIDs := pick(f.ExternalIDs, sel.ExternalIDs, func(id ExternalID) ExternalID { return id })
+	if !okPeople || !okOrganizations || !okURLs || !okIDs {
+		return FetchedWorkInfo{}, nil, false
+	}
+	out := f
+	out.People, out.Organizations, out.URLs, out.ExternalIDs = people, organizations, urls, ids
+	var fields []WorkInfoField
+	for _, field := range WorkInfoFields {
+		if slices.Contains(sel.Fields, field) && field != WorkInfoFieldTitle && field != WorkInfoFieldTags &&
+			field != WorkInfoFieldCover || isListField(field) && out.HasDetail(field) {
+			fields = append(fields, field)
+		}
+	}
+	return out, fields, true
+}
+
+// pickAt keeps the values of all at the selected positions, in all's order, and reports false for a position outside
+// all or named twice.
+func pickAt[T any](all []T, selected []int) ([]T, bool) {
+	var out []T
+	for i, value := range all {
+		if slices.Contains(selected, i) {
+			out = append(out, value)
+		}
+	}
+	return out, len(out) == len(selected)
 }
 
 // OrderFetchedWorkDetails returns a copy ordered by date kind and credit role, preserving within-kind/role order and excluding title/tags.
@@ -225,8 +286,6 @@ type FetchedWorkInfoApply struct {
 	Details FetchedWorkInfo
 	// Empty DetailFields preserves work info.
 	DetailFields []WorkInfoField
-	// PersonLookups are the run lookups with selected items; each needs one of its entries' roles in DetailFields.
-	PersonLookups []FetchedPersonLookupApply
 }
 
 // RejectedTags is deduplicated in Tags order; Skipped reports omitted detail values.
@@ -236,12 +295,12 @@ type FetchedWorkInfoApplied struct {
 	Skipped      []SkippedWorkInfoValue
 	// PersonIDs aligns with Details.People: the person each entry was linked to, or 0.
 	PersonIDs []int64
-	// LookupPersonIDs aligns with PersonLookups: the person the lookup filled, or 0 when it was skipped.
-	LookupPersonIDs []int64
 }
 
 type WorkInfoApplied struct {
 	Video       Video
 	SkippedTags []SkippedTag
 	Skipped     []SkippedWorkInfoValue
+	// LinkedPeople are the distinct people the chosen entries were linked to, in fetched order.
+	LinkedPeople []int64
 }

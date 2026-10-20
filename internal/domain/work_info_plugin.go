@@ -426,9 +426,6 @@ type WorkInfoRunRequest struct {
 	Source string
 	// Sources is a person plugin's declared sources, which its search candidates must use; it is never sent.
 	Sources []string
-	// ImageLimit caps how many of a person plugin fetch's images are fetched, below PersonPluginImagesMaxCount; zero
-	// means that maximum. It is never sent.
-	ImageLimit int
 }
 
 // RunRequest starts a request for op that carries the manifest's kind and sources.
@@ -480,20 +477,22 @@ type FetchedWorkInfo struct {
 	Organizations []FetchedOrganization
 	URLs          []string
 	ExternalIDs   []ExternalID
-	CoverURL      string
+	// CoverURLs are the first WorkInfoCoversMaxCount distinct valid cover URLs in result order.
+	CoverURLs []string
 }
 
 type WorkInfoRunResult struct {
 	Candidates []WorkInfoCandidate
 	WorkInfo   FetchedWorkInfo
-	// CoverImage is unvalidated response data, nil when absent or fetching fails.
-	CoverImage []byte
+	// CoverImages aligns with WorkInfo.CoverURLs and holds unvalidated response data, nil for a cover that cannot be
+	// fetched.
+	CoverImages [][]byte
 	// PersonImages aligns with WorkInfo.People and holds unvalidated response data, nil for a person without one.
 	PersonImages [][]byte
 	// PersonCandidates and Person hold a person plugin's search and fetch results.
 	PersonCandidates []PersonCandidate
 	Person           FetchedPluginPerson
-	// PersonPluginImages aligns with the fetched Person.ImageURLs, up to the request's ImageLimit, and holds
+	// PersonPluginImages aligns with the fetched Person.ImageURLs, and holds
 	// unvalidated response data, nil for an image that cannot be fetched.
 	PersonPluginImages [][]byte
 }

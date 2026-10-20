@@ -44,7 +44,6 @@ export const people: WorkInfoPlugin = {
   id: 5,
   kind: "person",
   sources: ["fanza"],
-  autoLookup: true,
   name: "people",
   fileName: "people.wasm",
   operations: ["search", "fetch"],
@@ -232,11 +231,11 @@ function VideoScreen() {
   );
 }
 
-export function renderPage() {
+export function renderPage(path = "/people/7") {
   return render(
     <TooltipProvider>
       <ToastProvider>
-        <MemoryRouter initialEntries={["/people/7"]}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/people/:id" element={<PersonPage />} />
             <Route path="/people/:id/edit" element={<PersonEditPage />} />

@@ -34,6 +34,8 @@ export interface DetailChip {
   /** Original fetched spelling when it differs from the matched entity's current name. */
   fetchedAs?: string;
   full?: string;
+  /** Position in the result's people or organizations; values of other rows have none. */
+  at?: number;
   /** Position in the result's people of a face kept with the fetch. */
   faceIndex?: number;
   /** Fetched profile values; applying writes them only into the person's empty fields. */
@@ -143,7 +145,7 @@ function singleRow(now: string | undefined, fetched: string | undefined): Single
   return { kind: "single", state, now, fetched };
 }
 
-function adds(chip: DetailChip): boolean {
+export function adds(chip: DetailChip): boolean {
   return chip.mark === undefined || chip.mark === "new";
 }
 
@@ -190,8 +192,8 @@ type FetchedCredit = {
   match: WorkInfoMatch;
   hasImage?: boolean;
   profile?: FetchedProfile;
-  /** Position in the result's people; organizations have none. */
-  at?: number;
+  /** Position in the result's people or organizations. */
+  at: number;
 };
 
 /** Applying the role writes a linked person's fetched face and profile only where the person has none. */
@@ -201,7 +203,7 @@ function creditChip(
   faced: ReadonlySet<number>,
   key: string,
 ): DetailChip {
-  const chip = matchChip(entry, linked, key);
+  const chip = { ...matchChip(entry, linked, key), at: entry.at };
   if (chip.mark === "notLinked") return chip;
   const faceIndex = entry.hasImage === true ? entry.at : undefined;
   const profile =
@@ -269,8 +271,8 @@ function creditRow(
   const faced = new Set(
     stored.filter((credit) => credit.faced === true).map((credit) => credit.id),
   );
-  const chips = fetched.map((entry, index) =>
-    creditChip(entry, linked, faced, String(index)),
+  const chips = fetched.map((entry) =>
+    creditChip(entry, linked, faced, String(entry.at)),
   );
   return listRow(
     stored.map((credit) => ({ key: String(credit.id), name: creditDisplayName(credit) })),
@@ -346,7 +348,9 @@ function creditDetailRow(
     info.organizations
       .filter((entry) => entry.role === role)
       .map((entry) => entry.organization),
-    result.organizations.filter((entry) => entry.role === role),
+    result.organizations
+      .map((entry, at) => ({ ...entry, at }))
+      .filter((entry) => entry.role === role),
   );
 }
 

@@ -16,7 +16,7 @@ import (
 
 // Metadata reads omit module bytes and include the optional latest-run completion time.
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, auto_lookup,
+	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources,
 	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
 
 // ListWorkInfoPlugins sorts by name then filename, placing unreadable names last.
@@ -76,7 +76,7 @@ func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64
 }
 
 // SaveWorkInfoPlugin replaces same-name uploads and always revokes approval, retaining only declared settings unless the
-// new manifest is unreadable; a replacement takes the new kind and sources and keeps auto_lookup.
+// new manifest is unreadable; a replacement takes the new kind and sources.
 func (s *WorkInfoPluginStore) SaveWorkInfoPlugin(
 	ctx context.Context, upload domain.WorkInfoPluginUpload, now time.Time,
 ) (domain.WorkInfoPlugin, bool, error) {
@@ -319,19 +319,6 @@ func (s *WorkInfoPluginStore) changeWorkInfoPlugin(
 	return changed, nil
 }
 
-// SetWorkInfoPluginAutoLookup changes only auto_lookup, refusing a work-info plugin with ErrWorkInfoPluginKindMismatch.
-func (s *WorkInfoPluginStore) SetWorkInfoPluginAutoLookup(
-	ctx context.Context, id int64, enabled bool,
-) (domain.WorkInfoPlugin, error) {
-	return s.changeWorkInfoPlugin(ctx, id, func(tx *sql.Tx, plugin domain.WorkInfoPlugin) error {
-		if plugin.Kind() != domain.WorkInfoPluginKindPerson {
-			return domain.ErrWorkInfoPluginKindMismatch
-		}
-		_, err := tx.ExecContext(ctx, `update work_info_plugins set auto_lookup = ? where id = ?`, enabled, id)
-		return err
-	})
-}
-
 // DeleteWorkInfoPlugin cascades settings and rejects a missing plugin.
 func (s *WorkInfoPluginStore) DeleteWorkInfoPlugin(ctx context.Context, id int64) error {
 	result, err := s.sql.ExecContext(ctx, `delete from work_info_plugins where id = ?`, id)
@@ -414,7 +401,7 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
 		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation,
-		&kind, &sources, &plugin.AutoLookup, &lastRunAt)
+		&kind, &sources, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}

@@ -52,7 +52,6 @@ export const works: WorkInfoPlugin = {
   id: 3,
   kind: "work",
   sources: [],
-  autoLookup: false,
   name: "works",
   fileName: "works.wasm",
   operations: ["search", "fetch"],
@@ -86,7 +85,7 @@ export function fetchResult(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFet
     organizations: [],
     urls: [],
     externalIds: [],
-    personLookups: [],
+    covers: [],
     ...overrides,
   };
 }
@@ -95,7 +94,7 @@ export function appliedResult(
   applied: Video,
   overrides: Partial<WorkInfoFetchApplied> = {},
 ): WorkInfoFetchApplied {
-  return { video: applied, skippedTags: [], skipped: [], ...overrides };
+  return { video: applied, skippedTags: [], skipped: [], linkedPeople: [], ...overrides };
 }
 
 export const workId = "W-1";
@@ -110,8 +109,6 @@ export const server = {
   fetch: vi.fn<(body: unknown) => Response>(),
   /** A promise holds the apply's answer back. */
   apply: vi.fn<(body: unknown) => Response | Promise<Response>>(),
-  /** Answer planned lookup index; a promise holds the answer back. */
-  lookup: vi.fn<(index: number) => Response | Promise<Response>>(),
   upload: vi.fn<(body: unknown) => Response>(),
   related: { items: [] } as unknown,
   requests: [] as string[],
@@ -157,7 +154,8 @@ export async function fetchById() {
   await opened.user.clear(query);
   await opened.user.type(query, workId);
   await opened.user.click(within(opened.dialog).getByRole("button", { name: "Fetch" }));
-  await within(opened.dialog).findByRole("checkbox", { name: "Title" });
+  // Every comparison has Back, whatever fields the result carries.
+  await within(opened.dialog).findByRole("button", { name: "Back" });
   return opened;
 }
 
@@ -166,11 +164,7 @@ export function heading() {
   return screen.getByRole("heading", { level: 1, hidden: true });
 }
 
-const LOOKUP = /^\/api\/videos\/7\/work-info-fetches\/F1\/person-lookups\/(\d+)$/;
-
 function respond(url: string, body: unknown): Response | Promise<Response> {
-  const lookup = LOOKUP.exec(url);
-  if (lookup !== null) return server.lookup(Number(lookup[1]));
   if (url === "/api/auth/session") return json({ state: "owner" });
   if (url === "/api/work-info-plugins") return json({ plugins: server.plugins });
   if (url === "/api/work-info-plugins/3/search") return server.search(body);
@@ -195,7 +189,6 @@ export function useFetchServer() {
     server.search.mockReset();
     server.fetch.mockReset();
     server.apply.mockReset();
-    server.lookup.mockReset();
     server.upload.mockReset();
     server.fetch.mockImplementation(() =>
       json(fetchResult({ title: "取得した題名", tags: ["既存", "新しい"] }), 201),

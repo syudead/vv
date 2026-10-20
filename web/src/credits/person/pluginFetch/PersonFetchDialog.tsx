@@ -192,7 +192,6 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
           personPluginFetchImageUrl(person.id, fetched.result.fetchId, index)
         }
         selection={flow.selection}
-        replace
         locked={flow.applying || flow.stale}
         onChange={flow.changeSelection}
       />

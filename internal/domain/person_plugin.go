@@ -116,7 +116,7 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 			Name:        name,
 			Aliases:     parseFetchedAliases(raw.Person.Aliases),
 			ExternalIDs: ids,
-			ImageURLs:   parseFetchedImageURLs(raw.Person.Images),
+			ImageURLs:   parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
 			Profile:     parseFetchedProfile(raw.Person.Profile),
 		}}, nil
 	}
@@ -139,11 +139,11 @@ func parsePersonCandidates(raw personResponseJSON, sources []string) (WorkInfoRu
 	return WorkInfoRunResult{PersonCandidates: candidates}, nil
 }
 
-// parseFetchedImageURLs drops invalid and repeated URLs and keeps the first PersonPluginImagesMaxCount.
-func parseFetchedImageURLs(raw json.RawMessage) []string {
+// parseFetchedImageURLs drops invalid and repeated URLs and keeps the first limit.
+func parseFetchedImageURLs(raw json.RawMessage, limit int) []string {
 	var out []string
 	for _, item := range lenientList[string](raw) {
-		if len(out) == PersonPluginImagesMaxCount {
+		if len(out) == limit {
 			break
 		}
 		if url := fetchedImageURL(trimWorkInfoText(item)); url != "" && !slices.Contains(out, url) {

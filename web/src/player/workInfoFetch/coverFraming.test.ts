@@ -20,7 +20,13 @@ vi.mock("../thumbnailUpload/composeImage", () => compose);
 const video = { id: 7, width: 1920, height: 1080 } as Video;
 
 function result(fetchId: string) {
-  return { fetchId, cover: { width: 800, height: 450 } } as WorkInfoFetch;
+  return {
+    fetchId,
+    covers: [
+      { width: 640, height: 360 },
+      { width: 800, height: 450 },
+    ],
+  } as WorkInfoFetch;
 }
 
 function image() {
@@ -38,10 +44,16 @@ describe("useCoverFraming", () => {
     const original = image();
     compose.loadUploadImage.mockResolvedValueOnce({ image: original });
     const { result: hook, rerender } = renderHook(
-      ({ fetched }: { fetched: WorkInfoFetch }) => useCoverFraming(video, fetched),
+      ({ fetched }: { fetched: WorkInfoFetch }) => useCoverFraming(video, fetched, 1),
       { initialProps: { fetched: result("F1") } },
     );
     await waitFor(() => expect(hook.current.image).toBe(original));
+    expect(plugins.getWorkInfoFetchCover).toHaveBeenCalledWith(
+      7,
+      "F1",
+      1,
+      expect.anything(),
+    );
 
     const touched = image();
     const fit = { ...WHOLE_IMAGE, backdrop: "black" as const };

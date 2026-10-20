@@ -53,7 +53,6 @@ describe("VideoPage work-info fetch tag selection", () => {
     expect(tagBox(dialog, "喜劇")).toHaveProperty("ariaChecked", "true");
     expect(within(dialog).queryByRole("checkbox", { name: /^既存/ })).toBeNull();
     expect(within(dialog).getByText("2 of 2 selected")).toBeDefined();
-    expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "true");
   });
 
   it("タグを 1 つ外すと、残りの名前だけを送る", async () => {
@@ -63,7 +62,6 @@ describe("VideoPage work-info fetch tag selection", () => {
     server.apply.mockImplementation(() => json(appliedResult(video)));
     const { user, dialog } = await fetchById();
     await user.click(tagBox(dialog, "喜劇"));
-    expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "mixed");
     expect(within(dialog).getByText("2 of 3 selected")).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     await waitFor(() =>
@@ -78,7 +76,6 @@ describe("VideoPage work-info fetch tag selection", () => {
     server.apply.mockImplementation(() => json(appliedResult(video)));
     const { user, dialog } = await fetchById();
     await user.click(tagBox(dialog, "新しい"));
-    expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "false");
     expect(within(dialog).getByText("0 of 1 selected")).toBeDefined();
     const apply = within(dialog).getByRole("button", { name: "Apply selected" });
     expect(apply).toHaveProperty("disabled", false);
@@ -96,22 +93,19 @@ describe("VideoPage work-info fetch tag selection", () => {
     );
   });
 
-  it("行のチェックボックスは全部を外し、全部を選ぶ", async () => {
+  it("Clear はタグを全部外し、Select all は全部を選ぶ", async () => {
     server.fetch.mockImplementation(() =>
       json(fetchResult({ tags: ["ドラマ", "喜劇", "既存"] }), 201),
     );
     const { user, dialog } = await fetchById();
-    const row = checkbox(dialog, "Tags");
-    await user.click(row);
+    await user.click(within(dialog).getByRole("button", { name: "Clear" }));
     expect(tagBox(dialog, "ドラマ")).toHaveProperty("ariaChecked", "false");
     expect(tagBox(dialog, "喜劇")).toHaveProperty("ariaChecked", "false");
-    expect(row).toHaveProperty("ariaChecked", "false");
     await user.click(tagBox(dialog, "喜劇"));
-    expect(row).toHaveProperty("ariaChecked", "mixed");
-    await user.click(row);
+    await user.click(within(dialog).getByRole("button", { name: "Select all" }));
     expect(tagBox(dialog, "ドラマ")).toHaveProperty("ariaChecked", "true");
     expect(tagBox(dialog, "喜劇")).toHaveProperty("ariaChecked", "true");
-    expect(row).toHaveProperty("ariaChecked", "true");
+    expect(within(dialog).getByRole("button", { name: "Clear" })).toBeDefined();
   });
 
   it("30 個のタグは畳まずに全部を出す", async () => {

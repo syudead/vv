@@ -33,7 +33,6 @@ const plugin: WorkInfoPlugin = {
   id: 4,
   kind: "work",
   sources: [],
-  autoLookup: false,
   name: "example.works",
   fileName: "example.wasm",
   operations: ["search", "fetch"],
@@ -163,6 +162,7 @@ describe("work-info plugins API", () => {
       organizations: [],
       urls: [],
       externalIds: [],
+      covers: [],
     };
     const applied = {
       video: { id: 7 },
@@ -178,9 +178,14 @@ describe("work-info plugins API", () => {
 
     expect(await searchWorkInfo(4, "one")).toEqual(candidates);
     expect(await fetchWorkInfo(7, 4, "ABC-123")).toEqual(fetched);
-    expect(await applyWorkInfoFetch(7, "f/1", ["title", "tags"], ["drama"])).toEqual(
-      applied,
-    );
+    expect(
+      await applyWorkInfoFetch(7, "f/1", {
+        fields: ["title", "tags"],
+        tags: ["drama"],
+        people: [0],
+        coverIndex: 1,
+      }),
+    ).toEqual(applied);
 
     const sent = fetchMock.mock.calls.map(([input, init]) => ({
       url: String(input),
@@ -198,7 +203,7 @@ describe("work-info plugins API", () => {
       {
         url: "/api/videos/7/work-info-fetches/f%2F1/apply",
         method: "POST",
-        body: { fields: ["title", "tags"], tags: ["drama"] },
+        body: { fields: ["title", "tags"], tags: ["drama"], people: [0], coverIndex: 1 },
       },
     ]);
   });
@@ -266,16 +271,16 @@ describe("work-info plugins API", () => {
       fetchMock.mock.calls.filter(([input]) => String(input) === "/api/tags").length;
 
     hold();
-    await expect(applyWorkInfoFetch(7, "f1", ["title"])).rejects.toThrow();
+    await expect(applyWorkInfoFetch(7, "f1", { fields: ["title"] })).rejects.toThrow();
     expect(takeListSnapshot(key)).toBeDefined();
 
     hold();
-    await applyWorkInfoFetch(7, "f1", ["title"]);
+    await applyWorkInfoFetch(7, "f1", { fields: ["title"] });
     expect(takeListSnapshot(key)).toBeUndefined();
     expect(tagReads()).toBe(0);
 
     hold();
-    await applyWorkInfoFetch(7, "f2", ["tags"]);
+    await applyWorkInfoFetch(7, "f2", { fields: ["tags"] });
     expect(takeListSnapshot(key)).toBeUndefined();
     expect(tagReads()).toBe(1);
     await vi.waitFor(() => expect(listener).toHaveBeenCalled());

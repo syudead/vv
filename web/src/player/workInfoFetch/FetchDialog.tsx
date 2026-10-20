@@ -1,5 +1,6 @@
-import { CircleCheck } from "lucide-react";
+import { CircleCheck, UserRoundSearch } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import {
   isAborted,
@@ -14,12 +15,13 @@ import {
   searchWorkInfo,
   type WorkInfoCandidate,
   type WorkInfoFetchApplied,
-  type WorkInfoField,
   type WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { t } from "../../i18n";
 import { FormDialog } from "../../ui/patterns/form-dialog";
+import { creditDisplayName } from "../../credits/displayName";
 import { Alert, AlertTitle } from "../../ui/shadcn/alert";
+import { Button } from "../../ui/shadcn/button";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { useToast } from "../../ui/Toast";
 import { encodeComposition } from "../thumbnailUpload/composeImage";
@@ -27,45 +29,102 @@ import CompareStep, { type Fetched } from "./CompareStep";
 import { type CoverFraming, useCoverFraming } from "./coverFraming";
 import {
   canFetch,
-  comparedRowState,
   type FindBy,
   initialQuery,
-  initialSelection,
   type RunOperation,
-  rowState,
   runFor,
-  selectableTags,
   type SkippedLine,
   skippedLines,
-  withField,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
-import { cutShort, lookupChangeFields, lookupSelections } from "./lookupRules";
-import { usePersonLookups } from "./usePersonLookups";
+import {
+  initialWorkSelection,
+  workChoice,
+  type WorkSelection,
+  workSelectionEmpty,
+} from "./workSelection";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 type Step = "find" | "compare" | "result";
 
-export function ResultStep({ lines }: { lines: readonly SkippedLine[] }) {
+const EMPTY_SELECTION: WorkSelection = {
+  fields: [],
+  tags: [],
+  cover: null,
+  people: [],
+  organizations: [],
+  urls: [],
+  externalIds: [],
+};
+
+export function ResultStep({
+  lines,
+  people = [],
+}: {
+  lines: readonly SkippedLine[];
+  people?: readonly LinkedPerson[];
+}) {
   const text = t.player.workInfoFetch;
   return (
     <>
       <Alert variant="success" role="status">
         <CircleCheck aria-hidden="true" />
-        <AlertTitle>{text.resultTitle}</AlertTitle>
+        <AlertTitle>{lines.length > 0 ? text.resultTitle : text.applied}</AlertTitle>
       </Alert>
-      <ul className="flex flex-col gap-1 text-sm">
-        {lines.map((line) => (
-          <li key={line.key} className="break-words">
-            {text.skippedLabel(line.label)}
-            <span className="font-medium">{line.value}</span>
-            {` — ${line.reason}`}
+      {lines.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm">
+          {lines.map((line) => (
+            <li key={line.key} className="break-words">
+              {text.skippedLabel(line.label)}
+              <span className="font-medium">{line.value}</span>
+              {` — ${line.reason}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {people.length > 0 && <LinkedPeople people={people} />}
+    </>
+  );
+}
+
+export interface LinkedPerson {
+  id: number;
+  name: string;
+}
+
+/** The people the apply linked, each a step from its page's Fetch info, which fills a person from a person plugin. */
+function LinkedPeople({ people }: { people: readonly LinkedPerson[] }) {
+  const text = t.player.workInfoFetch;
+  return (
+    <section className="flex flex-col gap-1 text-sm">
+      <h3 className="font-medium">{text.linkedTitle}</h3>
+      <p className="text-xs text-muted-foreground">{text.linkedNote}</p>
+      <ul className="flex flex-wrap gap-1">
+        {people.map((person) => (
+          <li key={person.id}>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/people/${String(person.id)}?fetch=1`}>
+                <UserRoundSearch aria-hidden="true" />
+                <span className="max-w-chip-label truncate">
+                  {text.fetchPersonInfo(person.name)}
+                </span>
+              </Link>
+            </Button>
           </li>
         ))}
       </ul>
-    </>
+    </section>
   );
+}
+
+/** The linked people as the applied video names them, in the apply's order. */
+function linkedPeople(applied: WorkInfoFetchApplied): LinkedPerson[] {
+  const people = applied.video.workInfo?.people ?? [];
+  return applied.linkedPeople.flatMap((id) => {
+    const entry = people.find((item) => item.person.id === id);
+    return entry === undefined ? [] : [{ id, name: creditDisplayName(entry.person) }];
+  });
 }
 
 export function busyLabel(label: string): ReactNode {
@@ -131,8 +190,8 @@ function useFetchFlow({
   const [failure, setFailure] = useState<RunFailure | null>(null);
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<Fetched | null>(null);
-  const [selection, setSelection] = useState<WorkInfoField[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
+  const [selection, setSelection] = useState<WorkSelection>(EMPTY_SELECTION);
+  const [linked, setLinked] = useState<LinkedPerson[]>([]);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
@@ -140,27 +199,11 @@ function useFetchFlow({
   const cover = useCoverFraming(
     video,
     step === "compare" ? (fetched?.result ?? null) : null,
+    selection.cover,
   );
   const controller = useRef<AbortController | null>(null);
   const latestVideo = useRef(video);
   latestVideo.current = video;
-  // The apply holds the fetch while it runs, so a lookup answering stale then waits for its outcome.
-  const applyRunning = useRef(false);
-  const lookups = usePersonLookups(video.id, {
-    // A role row that was already a change keeps the owner's choice.
-    onNewChanges: (fields, result) =>
-      setSelection((current) => [
-        ...current,
-        ...fields.filter(
-          (field) =>
-            !current.includes(field) &&
-            rowState(field, latestVideo.current, result) !== "differs",
-        ),
-      ]),
-    onStale: () => {
-      if (!applyRunning.current) setStale(true);
-    },
-  });
 
   useEffect(() => () => controller.current?.abort(), []);
 
@@ -172,12 +215,10 @@ function useFetchFlow({
 
   const showCompare = (next: Fetched, result: Fetched["result"]) => {
     setFetched({ ...next, result });
-    setSelection(initialSelection(latestVideo.current, result));
-    setTags(selectableTags(latestVideo.current, result));
+    setSelection(initialWorkSelection(latestVideo.current, result));
     setStale(false);
     setApplyFailure(null);
     setStep("compare");
-    lookups.start(result);
   };
 
   const run = async (
@@ -217,59 +258,41 @@ function useFetchFlow({
     setApplyFailure(null);
     const mark = detailMark();
     // A cover the page decoded is checked and consumed by the apply, then uploaded with the owner's framing.
-    const framed = selection.includes("cover") ? cover.image : null;
-    // A lookup still running is left out; the apply consumes the fetch, so it can no longer finish.
-    const changedByLookup = lookupChangeFields(fetched.result, lookups.states);
-    const left = cutShort(
-      fetched.result,
-      lookups.states,
-      selection,
-      (field) =>
-        comparedRowState(field, latestVideo.current, fetched.result, changedByLookup) ===
-        "differs",
-    );
-    applyRunning.current = true;
+    const chosen =
+      selection.cover === null ? undefined : fetched.result.covers[selection.cover];
+    const framed = chosen === undefined ? null : cover.image;
     try {
       let applied = await applyWorkInfoFetch(
         video.id,
         fetched.result.fetchId,
-        selection,
-        selection.includes("tags") ? tags : undefined,
+        workChoice(selection),
         signal,
         framed !== null,
-        lookupSelections(fetched.result, lookups.states, selection),
       );
-      lookups.stop();
-      if (framed !== null && fetched.result.cover !== undefined)
+      if (framed !== null && chosen !== undefined)
         applied = await uploadFramedCover(
           applied,
           { ...cover, image: framed },
-          t.player.workInfoFetch.coverSize(
-            fetched.result.cover.width,
-            fetched.result.cover.height,
-          ),
+          t.player.workInfoFetch.coverSize(chosen.width, chosen.height),
           signal,
         );
       onApplied(applied.video, mark);
-      const lines = skippedLines(applied.skippedTags, applied.skipped, fetched.result);
-      if (left > 0) toast(t.player.workInfoFetch.appliedCutShort(left));
-      if (lines.length === 0) {
-        if (left === 0) toast(t.player.workInfoFetch.applied);
+      const lines = skippedLines(applied.skippedTags, applied.skipped);
+      const people = linkedPeople(applied);
+      if (lines.length === 0 && people.length === 0) {
+        toast(t.player.workInfoFetch.applied);
         onClose();
         return;
       }
       setSkipped(lines);
+      setLinked(people);
       setStep("result");
     } catch (error) {
       if (isAborted(error) || signal.aborted) return;
       if (error instanceof RequestFailed && error.code === "work_info_fetch_stale")
         setStale(true);
-      else {
-        setApplyFailure(error);
-        lookups.retryStale();
-      }
+      else setApplyFailure(error);
     } finally {
-      applyRunning.current = false;
       if (!signal.aborted) setApplying(false);
     }
   };
@@ -277,7 +300,8 @@ function useFetchFlow({
   const submit = () => {
     if (step === "result") return onClose();
     if (step === "compare") {
-      if (!applying && !stale && running === null && selection.length > 0) void apply();
+      if (!applying && !stale && running === null && !workSelectionEmpty(selection))
+        void apply();
       return;
     }
     if (plugin === undefined || running !== null || query.trim() === "") return;
@@ -294,7 +318,7 @@ function useFetchFlow({
     step,
     fetched,
     selection,
-    tags,
+    linked,
     stale,
     applyFailure,
     applying,
@@ -320,31 +344,13 @@ function useFetchFlow({
       if (plugin !== undefined && canFetch(plugin) && running === null)
         void run(plugin, "fetch", id, true);
     },
-    toggle: (field: WorkInfoField, on: boolean) => {
-      if (field === "tags" && fetched !== null)
-        setTags(on ? selectableTags(latestVideo.current, fetched.result) : []);
-      setSelection((current) => withField(current, field, on));
-    },
-    toggleTag: (name: string, on: boolean) => {
-      const next = on
-        ? [...new Set([...tags, name])]
-        : tags.filter((item) => item !== name);
-      setTags(next);
-      setSelection((current) => withField(current, "tags", next.length > 0));
-    },
-    lookups,
-    back: () => {
-      lookups.stop();
-      setStep("find");
-    },
+    changeSelection: setSelection,
+    back: () => setStep("find"),
     fetchAgain: () => {
       if (fetched === null || running !== null) return;
       void run(fetched.plugin, "fetch", fetched.source, fetched.fromSearch);
     },
-    cancel: () => {
-      controller.current?.abort();
-      lookups.stop();
-    },
+    cancel: () => controller.current?.abort(),
   };
 }
 
@@ -366,7 +372,7 @@ function submitLabel(flow: Flow): ReactNode {
 function submitDisabled(flow: Flow): boolean {
   if (flow.step === "result") return false;
   if (flow.step === "compare")
-    return flow.selection.length === 0 || flow.stale || flow.running !== null;
+    return workSelectionEmpty(flow.selection) || flow.stale || flow.running !== null;
   return flow.plugin === undefined || flow.running !== null || flow.query.trim() === "";
 }
 
@@ -423,20 +429,17 @@ export default function FetchDialog(props: {
           video={video}
           fetched={flow.fetched}
           selection={flow.selection}
-          tags={flow.tags}
           locked={flow.applying}
           stale={flow.stale}
           refetching={flow.running !== null}
           failure={flow.applyFailure}
           cover={flow.cover}
-          lookups={flow.lookups}
-          onToggle={flow.toggle}
-          onToggleTag={flow.toggleTag}
+          onChange={flow.changeSelection}
           onBack={flow.back}
           onFetchAgain={flow.fetchAgain}
         />
       )}
-      {flow.step === "result" && <ResultStep lines={flow.skipped} />}
+      {flow.step === "result" && <ResultStep lines={flow.skipped} people={flow.linked} />}
     </FormDialog>
   );
 }

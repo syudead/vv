@@ -49,10 +49,16 @@ const cover = { bitmap: { close: vi.fn() }, width: 800, height: 450 };
 const composed = new Blob(["png"], { type: "image/png" });
 const titled = { ...video, title: "取得した題名", contentVersion: "v1" };
 
-function withCover() {
+function withCover(
+  covers = [{ width: 800, height: 450 }] as { width: number; height: number }[],
+) {
   server.fetch.mockImplementation(() =>
-    json(fetchResult({ title: "取得した題名", cover: { width: 800, height: 450 } }), 201),
+    json(fetchResult({ title: "取得した題名", covers }), 201),
   );
+}
+
+function body(fields: string[], extra: Record<string, unknown> = {}) {
+  return { fields, ...extra };
 }
 
 describe("VideoPage work-info fetch cover", () => {
@@ -71,17 +77,21 @@ describe("VideoPage work-info fetch cover", () => {
       ),
     );
     const { user, dialog } = await fetchById();
-    const check = within(dialog).getByRole("checkbox", { name: "Cover" });
-    expect(check).toHaveProperty("ariaChecked", "true");
+    const choice = within(dialog).getByRole("radio", { name: "Cover 1" });
+    expect(choice).toHaveProperty("ariaChecked", "true");
     const fetched = within(dialog).getByRole("img", { name: /Fetched cover, 800 × 450/ });
-    expect(fetched.getAttribute("src")).toBe("/api/videos/7/work-info-fetches/F1/cover");
+    expect(fetched.getAttribute("src")).toBe(
+      "/api/videos/7/work-info-fetches/F1/covers/0",
+    );
     expect(
       within(dialog).getByRole("img", { name: "Current thumbnail" }).getAttribute("src"),
     ).toBe("/api/videos/7/thumbnail");
     await waitFor(() => expect(compose.loadUploadImage).toHaveBeenCalled());
     expect(within(dialog).queryByRole("button", { name: "Adjust framing" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
-    expect(server.apply).toHaveBeenCalledWith({ fields: ["title", "cover"] });
+    expect(server.apply).toHaveBeenCalledWith(
+      body(["title", "cover"], { coverIndex: 0 }),
+    );
     await within(dialog).findByText("Applied, but some values were left out");
     expect(
       within(dialog)
@@ -91,13 +101,38 @@ describe("VideoPage work-info fetch cover", () => {
     expect(server.upload).not.toHaveBeenCalled();
   });
 
-  it("サムネイルの無い動画では、カバー画像の行に取得した画像だけを出す", async () => {
+  it("サムネイルの無い動画では、今のままの選択肢に画像を出さない", async () => {
     withCover();
     compose.loadUploadImage.mockResolvedValue({ refusal: "thumbnail_upload_invalid" });
     server.video = { ...video, thumbnailUrl: undefined, thumbnailState: "pending" };
     const { dialog } = await fetchById();
     expect(within(dialog).getByRole("img", { name: /Fetched cover/ })).toBeDefined();
     expect(within(dialog).queryByRole("img", { name: "Current thumbnail" })).toBeNull();
+  });
+
+  it("複数のカバーから選んだ1枚を反映し、今のままを選ぶとカバーを送らない", async () => {
+    withCover([
+      { width: 800, height: 450 },
+      { width: 640, height: 360 },
+    ]);
+    compose.loadUploadImage.mockResolvedValue({ refusal: "thumbnail_upload_invalid" });
+    server.apply.mockImplementation(() => json(appliedResult(titled)));
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("radio", { name: "Cover 2" }));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith(
+      body(["title", "cover"], { coverIndex: 1 }),
+    );
+  });
+
+  it("今のサムネイルを選べばカバーを送らない", async () => {
+    withCover();
+    compose.loadUploadImage.mockResolvedValue({ refusal: "thumbnail_upload_invalid" });
+    server.apply.mockImplementation(() => json(appliedResult(titled)));
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("radio", { name: "Keep current" }));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith(body(["title"]));
   });
 
   it("位置を合わせたカバーは、他の項目を反映した後にその構図でアップロードする", async () => {
@@ -122,10 +157,9 @@ describe("VideoPage work-info fetch cover", () => {
     expect(server.upload).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(server.apply).toHaveBeenCalledWith({
-      fields: ["title", "cover"],
-      coverByPage: true,
-    });
+    expect(server.apply).toHaveBeenCalledWith(
+      body(["title", "cover"], { coverIndex: 0, coverByPage: true }),
+    );
     expect(compose.encodeComposition).toHaveBeenCalledWith(cover, 1920 / 1080, {
       ...WHOLE_IMAGE,
       rotation: 90,
@@ -159,7 +193,9 @@ describe("VideoPage work-info fetch cover", () => {
     await user.click(within(dialog).getByRole("checkbox", { name: "Title" }));
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     await within(dialog).findByText("Applied, but some values were left out");
-    expect(server.apply).toHaveBeenCalledWith({ fields: ["cover"], coverByPage: true });
+    expect(server.apply).toHaveBeenCalledWith(
+      body(["cover"], { coverIndex: 0, coverByPage: true }),
+    );
     expect((server.upload.mock.calls[0]![0] as FormData).get("contentVersion")).toBe(
       "v0",
     );

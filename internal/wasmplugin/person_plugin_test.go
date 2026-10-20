@@ -29,18 +29,3 @@ func TestPersonFetchReturnsThePersonAndItsImages(t *testing.T) {
 		t.Fatalf("external IDs = %v, want the requested s:person", ids)
 	}
 }
-
-func TestPersonFetchFetchesImagesUpToTheLimit(t *testing.T) {
-	site := newTestSite(t)
-	rt := newNetTestRuntime(t, site)
-	req := domain.WorkInfoRunRequest{
-		Operation: domain.WorkInfoFetch, Kind: domain.WorkInfoPluginKindPerson, Source: "s", ID: "person",
-		Sources: []string{"s"}, ImageLimit: 1,
-		Settings: map[string]string{"person": `{"name":"Someone","images":["http://site.test/face/1","http://site.test/face/2"]}`},
-	}
-
-	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, domain.WorkInfoRunNetwork{}, nil)
-	if err != nil || len(got.PersonPluginImages) != 1 || len(site.hosts) != 1 {
-		t.Fatalf("Run(person) = %d images after %d requests, %v; want one", len(got.PersonPluginImages), len(site.hosts), err)
-	}
-}

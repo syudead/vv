@@ -87,3 +87,58 @@ func TestKeptWorkInfoTitleDropsATitleThatBreaksTheDisplayNameRule(t *testing.T) 
 		t.Fatalf("KeptWorkInfoTitle(blank) = %q, want none", got)
 	}
 }
+
+func selectableWorkInfo() FetchedWorkInfo {
+	return FetchedWorkInfo{
+		Code: "ABC-1", Description: "d",
+		People: []FetchedPerson{
+			{Role: PersonPerformer, Name: "A"}, {Role: PersonDirector, Name: "B"}, {Role: PersonPerformer, Name: "C"},
+		},
+		Organizations: []FetchedOrganization{{Role: OrganizationMaker, Name: "M"}, {Role: OrganizationLabel, Name: "L"}},
+		URLs:          []string{"https://e.test/1", "https://e.test/2"},
+		ExternalIDs:   []ExternalID{{Source: "s", Value: "1"}, {Source: "s", Value: "2"}},
+	}
+}
+
+func TestFetchedWorkInfoSelectNarrowsToTheChosenEntriesAndValues(t *testing.T) {
+	got, fields, ok := selectableWorkInfo().Select(WorkInfoSelection{
+		Fields: []WorkInfoField{WorkInfoFieldCover, WorkInfoFieldCode, WorkInfoFieldTitle},
+		People: []int{2, 0}, Organizations: []int{1},
+		URLs: []string{"https://e.test/2"}, ExternalIDs: []ExternalID{{Source: "s", Value: "1"}},
+	})
+
+	// Whole fields other than the detail ones are the caller's; list fields follow the chosen entries' roles.
+	wantFields := []WorkInfoField{
+		WorkInfoFieldCode, PersonField(PersonPerformer), OrganizationField(OrganizationLabel),
+		WorkInfoFieldURLs, WorkInfoFieldExternalIDs,
+	}
+	if !ok || !slices.Equal(fields, wantFields) {
+		t.Fatalf("fields = %v, %v; want %v", fields, ok, wantFields)
+	}
+	want := selectableWorkInfo()
+	want.People = []FetchedPerson{want.People[0], want.People[2]}
+	want.Organizations = want.Organizations[1:]
+	want.URLs, want.ExternalIDs = want.URLs[1:], want.ExternalIDs[:1]
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("narrowed = %+v\nwant       %+v", got, want)
+	}
+}
+
+func TestFetchedWorkInfoSelectRefusesASelectionTheResultCannotGive(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		selection WorkInfoSelection
+	}{
+		{"a role as a whole field", WorkInfoSelection{Fields: []WorkInfoField{PersonField(PersonPerformer)}}},
+		{"urls as a whole field", WorkInfoSelection{Fields: []WorkInfoField{WorkInfoFieldURLs}}},
+		{"a position past the end", WorkInfoSelection{People: []int{3}}},
+		{"a negative position", WorkInfoSelection{Organizations: []int{-1}}},
+		{"a position twice", WorkInfoSelection{People: []int{0, 0}}},
+		{"a URL not fetched", WorkInfoSelection{URLs: []string{"https://e.test/3"}}},
+		{"an ID not fetched", WorkInfoSelection{ExternalIDs: []ExternalID{{Source: "s", Value: "3"}}}},
+	} {
+		if _, _, ok := selectableWorkInfo().Select(tc.selection); ok {
+			t.Errorf("%s: Select accepted %+v", tc.name, tc.selection)
+		}
+	}
+}

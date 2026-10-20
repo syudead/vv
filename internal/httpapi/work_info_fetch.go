@@ -128,13 +128,12 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	if urls == nil {
 		urls = []string{}
 	}
-	var cover *gen.WorkInfoFetchedCover
-	if fetch.Cover != nil {
-		cover = &gen.WorkInfoFetchedCover{Width: fetch.Cover.Width, Height: fetch.Cover.Height}
+	covers := make([]gen.WorkInfoFetchedCover, 0, len(fetch.Covers))
+	for _, cover := range fetch.Covers {
+		covers = append(covers, gen.WorkInfoFetchedCover{Width: cover.Width, Height: cover.Height})
 	}
 	return gen.WorkInfoFetch{
-		PersonLookups: toAPIPersonLookups(fetch.Lookups, people),
-		Cover:         cover,
+		Covers:        covers,
 		FetchId:       fetch.ID,
 		ExpiresAt:     fetch.ExpiresAt.Unix(),
 		Title:         optionalString(fetch.Title),
@@ -162,13 +161,15 @@ func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
 }
 
 // Serve only cover bytes fetched and validated by vv, with the content type determined by vv.
-func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
+func (s *server) GetWorkInfoFetchCover(
+	w http.ResponseWriter, _ *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId, index int,
+) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	cover, err := s.workInfoPlugins.WorkInfoFetchCover(id, fetchID)
+	cover, err := s.workInfoPlugins.WorkInfoFetchCover(id, fetchID, index)
 	if err != nil {
-		s.notFound(w, "The fetched result has no cover, or it belongs to another video.")
+		s.notFound(w, "The fetched result has no cover at that index, or it belongs to another video.")
 		return
 	}
 	writeFetchedImage(w, cover)
@@ -202,7 +203,8 @@ func writeFetchedImage(w http.ResponseWriter, image domain.WorkInfoCover) {
 	_, _ = w.Write(image.Data)
 }
 
-// ApplyWorkInfoFetch applies selected fields; tags restrict imported tags to the selected names.
+// ApplyWorkInfoFetch applies a selection; tags restrict imported tags to the selected names, and the lists choose
+// entries and values one by one.
 func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	var body gen.ApplyWorkInfoFetchRequest
 	present, ok := s.readJSONBodyFields(w, r, &body)
@@ -217,32 +219,29 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		}
 		fields = append(fields, domain.WorkInfoField(field))
 	}
-	if len(fields) == 0 {
-		s.invalidRequest(w, "fields must name at least one field.")
-		return
-	}
 	tags, ok := applyTagSelection(body.Tags, present("tags"), fields)
 	if !ok {
 		s.invalidRequest(w, "tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	}
-	lookups, ok := personLookupSelections(body.PersonLookups, present("personLookups"))
-	if !ok {
-		s.invalidRequest(w, "personLookups must be an array when present, "+
-			"and each lookup item must be image, aliases, externalIds or profile.<property>.")
-		return
-	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
+	selection := domain.WorkInfoSelection{
+		Fields: fields, Tags: tags, CoverIndex: -1, People: listOf(body.People), Organizations: listOf(body.Organizations),
+		URLs: listOf(body.Urls), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
+	}
+	if body.CoverIndex != nil {
+		selection.CoverIndex = *body.CoverIndex
+	}
 	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(
-		r.Context(), id, fetchID, fields, tags, body.CoverByPage != nil && *body.CoverByPage, lookups,
+		r.Context(), id, fetchID, selection, body.CoverByPage != nil && *body.CoverByPage,
 	)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "fields must name at least one field, and each must have a value in the result. "+
-			"tags must name at least one of the fetched tags, and only when fields includes tags. "+
-			"Each lookup must have run, appear once, name items with values and have one of its people's roles in fields.")
+		s.invalidRequest(w, "Select at least one value the result carries. Whole fields need a value; people, "+
+			"organizations, urls and externalIds go in their own lists; cover needs the coverIndex of a cover; "+
+			"tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "The video was not found, or the result belongs to another video.")
@@ -266,10 +265,18 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	}
 	skipped := make([]gen.SkippedWorkInfoValue, 0, len(applied.Skipped))
 	for _, value := range applied.Skipped {
-		skipped = append(skipped, toAPISkippedWorkInfoValue(value))
+		skipped = append(skipped, gen.SkippedWorkInfoValue{
+			Field: gen.WorkInfoField(value.Field), Value: value.Value, Reason: gen.SkippedWorkInfoReason(value.Reason),
+		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skippedTags, Skipped: skipped}, s.logger)
+	linked := applied.LinkedPeople
+	if linked == nil {
+		linked = []int64{}
+	}
+	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{
+		Video: video, SkippedTags: skippedTags, Skipped: skipped, LinkedPeople: linked,
+	}, s.logger)
 }
 
 // Omitted tags means all tags (nil). Reject null, empty selections, or tags without the tags field selected; the registry validates names against the fetch result.
@@ -281,6 +288,13 @@ func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoFie
 		return nil, false
 	}
 	return *tags, true
+}
+
+func listOf[T any](values *[]T) []T {
+	if values == nil {
+		return nil
+	}
+	return *values
 }
 
 // notFound supplies the message for domain.ErrNotFound.
