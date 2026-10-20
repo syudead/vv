@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FolderPreview } from "../api/client";
 import FolderArt from "./FolderArt";
+import { createPreviewCoordinator } from "./usePreviewCoordination";
 
 const previews: FolderPreview[] = [
   {
@@ -64,29 +65,23 @@ describe("FolderArt の一覧のプレビューの調整", () => {
   });
 
   it("流し始めた1枚を知らせ、ほかのカードが流し始めるか止める指示で戻す", () => {
-    const onPreviewStart = vi.fn();
-    const { art, rerender, front, videos } = renderArt({
-      activePreviewId: null,
-      previewResetEpoch: 0,
-      onPreviewStart,
-    });
+    const previewCoordinator = createPreviewCoordinator();
+    const { art, front, videos } = renderArt({ previewCoordinator });
 
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 150 });
     act(() => vi.advanceTimersByTime(500));
-    expect(onPreviewStart).toHaveBeenCalledWith(2);
-    rerender({ activePreviewId: 2, previewResetEpoch: 0 });
+    expect(previewCoordinator.state().activeId).toBe(2);
     expect(videos()).toBe(1);
 
-    rerender({ activePreviewId: 9, previewResetEpoch: 0 });
+    act(() => previewCoordinator.start(9));
     expect(front()).toBeNull();
     expect(videos()).toBe(0);
 
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
     act(() => vi.advanceTimersByTime(500));
-    expect(onPreviewStart).toHaveBeenLastCalledWith(1);
-    rerender({ activePreviewId: 1, previewResetEpoch: 0 });
+    expect(previewCoordinator.state().activeId).toBe(1);
     expect(videos()).toBe(1);
-    rerender({ activePreviewId: 1, previewResetEpoch: 1 });
+    act(() => previewCoordinator.reset());
     expect(front()).toBeNull();
     expect(videos()).toBe(0);
   });

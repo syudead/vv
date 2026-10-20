@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Profiler } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +11,7 @@ import {
   type Video,
 } from "../api/client";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import { createPreviewCoordinator } from "./usePreviewCoordination";
 import VideoCard, { VideoRow } from "./VideoCard";
 
 vi.mock("../api/client", async (importOriginal) => ({
@@ -60,6 +62,16 @@ function renderCard(
   );
 }
 
+/** A shared coordinator with spies on its actions. */
+function coordinator() {
+  const previewCoordinator = createPreviewCoordinator();
+  return {
+    previewCoordinator,
+    start: vi.spyOn(previewCoordinator, "start"),
+    reset: vi.spyOn(previewCoordinator, "reset"),
+  };
+}
+
 describe("VideoCard hover preview", () => {
   const play = vi.fn(() => Promise.resolve());
   const pause = vi.fn();
@@ -104,8 +116,8 @@ describe("VideoCard hover preview", () => {
   });
 
   it("cancels short, touch, pen, focus, checkbox, and ineligible hovers", () => {
-    const onStart = vi.fn();
-    const { rerender } = renderCard(video(), { onPreviewStart: onStart });
+    const { previewCoordinator, start: onStart } = coordinator();
+    const { rerender } = renderCard(video(), { previewCoordinator });
     const card = screen.getByRole("article");
 
     fireEvent.pointerEnter(card, { pointerType: "mouse" });
@@ -137,7 +149,7 @@ describe("VideoCard hover preview", () => {
           selected={false}
           selectionMode={false}
           onSelect={vi.fn()}
-          onPreviewStart={onStart}
+          previewCoordinator={previewCoordinator}
         />
       </MemoryRouter>,
     );
@@ -152,8 +164,8 @@ describe("VideoCard hover preview", () => {
       { previewState: "failed" as const },
       { previewState: "done" as const, previewUrl: undefined },
     ]) {
-      const onStart = vi.fn();
-      renderCard(video(extra), { onPreviewStart: onStart });
+      const { previewCoordinator, start: onStart } = coordinator();
+      renderCard(video(extra), { previewCoordinator });
       fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
       act(() => vi.advanceTimersByTime(500));
       expect(onStart).not.toHaveBeenCalled();
@@ -204,8 +216,8 @@ describe("VideoCard hover preview", () => {
   });
 
   it("returns to the thumbnail on leave, media error, or play rejection and retries", async () => {
-    const onStart = vi.fn();
-    renderCard(video(), { onPreviewStart: onStart });
+    const { previewCoordinator, start: onStart } = coordinator();
+    renderCard(video(), { previewCoordinator });
     const card = screen.getByRole("article");
 
     fireEvent.pointerEnter(card, { pointerType: "mouse" });
@@ -253,7 +265,8 @@ describe("VideoCard hover preview", () => {
   });
 
   it("keeps the current frame while buffering and releases on coordinator reset", () => {
-    const { rerender } = renderCard(video(), { activePreviewId: 1 });
+    const { previewCoordinator } = coordinator();
+    renderCard(video(), { previewCoordinator });
     const card = screen.getByRole("article");
     fireEvent.pointerEnter(card, { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
@@ -267,19 +280,7 @@ describe("VideoCard hover preview", () => {
     expect(document.querySelector("img")?.classList.contains("opacity-0")).toBe(true);
     expect(document.querySelector("video")).not.toBeNull();
 
-    rerender(
-      <MemoryRouter>
-        <VideoCard
-          video={video()}
-          backTo="/"
-          selected={false}
-          selectionMode={false}
-          onSelect={vi.fn()}
-          activePreviewId={1}
-          previewResetEpoch={1}
-        />
-      </MemoryRouter>,
-    );
+    act(() => previewCoordinator.reset());
     expect(document.querySelector("video")).toBeNull();
     expect(pause).toHaveBeenCalled();
     expect(load).toHaveBeenCalled();
@@ -287,11 +288,8 @@ describe("VideoCard hover preview", () => {
 
   it("removes an inactive coordinated preview in the active-card render", async () => {
     const item = video();
-    const onStart = vi.fn();
-    const rendered = renderCard(item, {
-      activePreviewId: item.id,
-      onPreviewStart: onStart,
-    });
+    const { previewCoordinator } = coordinator();
+    renderCard(item, { previewCoordinator });
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
     const preview = document.querySelector("video");
@@ -300,19 +298,7 @@ describe("VideoCard hover preview", () => {
     fireEvent.playing(preview);
     expect(document.querySelector("img")?.classList.contains("opacity-0")).toBe(true);
 
-    rendered.rerender(
-      <MemoryRouter>
-        <VideoCard
-          video={item}
-          backTo="/"
-          selected={false}
-          selectionMode={false}
-          onSelect={vi.fn()}
-          activePreviewId={2}
-          onPreviewStart={onStart}
-        />
-      </MemoryRouter>,
-    );
+    act(() => previewCoordinator.start(2));
     expect(document.querySelector("video")).toBeNull();
     expect(document.querySelector("img")?.classList.contains("opacity-0")).toBe(false);
     await act(async () => Promise.resolve());
@@ -321,11 +307,8 @@ describe("VideoCard hover preview", () => {
   });
 
   it("does not suppress an existing warning when a preview URL is present", () => {
-    const onStart = vi.fn();
-    renderCard(video({ durationMs: undefined }), {
-      activePreviewId: 1,
-      onPreviewStart: onStart,
-    });
+    const { previewCoordinator, start: onStart } = coordinator();
+    renderCard(video({ durationMs: undefined }), { previewCoordinator });
     expect(screen.getByText("Missing information needed for playback")).toBeDefined();
 
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
@@ -335,8 +318,37 @@ describe("VideoCard hover preview", () => {
     expect(document.querySelector("video")).toBeNull();
   });
 
+  it("re-renders only the cards whose preview becomes active or inactive", () => {
+    const { previewCoordinator } = coordinator();
+    const commits = new Map<string, number>();
+    const count = (id: string) => commits.set(id, (commits.get(id) ?? 0) + 1);
+    render(
+      <MemoryRouter>
+        {[1, 2, 3].map((id) => (
+          <Profiler key={id} id={String(id)} onRender={count}>
+            <VideoCard
+              video={video({ id })}
+              backTo="/"
+              selected={false}
+              selectionMode={false}
+              previewCoordinator={previewCoordinator}
+            />
+          </Profiler>
+        ))}
+      </MemoryRouter>,
+    );
+    commits.clear();
+
+    act(() => previewCoordinator.start(1));
+    act(() => previewCoordinator.start(2));
+    act(() => previewCoordinator.reset());
+    expect(commits.get("1")).toBeGreaterThan(0);
+    expect(commits.get("2")).toBeGreaterThan(0);
+    expect(commits.has("3")).toBe(false);
+  });
+
   it("releases the media element before unmount detaches its ref", () => {
-    const rendered = renderCard(video(), { activePreviewId: 1 });
+    const rendered = renderCard(video(), coordinator());
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
     expect(document.querySelector("video")).not.toBeNull();
@@ -348,13 +360,9 @@ describe("VideoCard hover preview", () => {
 
   it("stops preview when selection mode starts and keeps card selection priority", () => {
     const onSelect = vi.fn();
-    const onReset = vi.fn();
+    const { previewCoordinator, reset: onReset } = coordinator();
     const item = video();
-    const rendered = renderCard(item, {
-      activePreviewId: item.id,
-      onSelect,
-      onPreviewReset: onReset,
-    });
+    const rendered = renderCard(item, { onSelect, previewCoordinator });
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
     expect(document.querySelector("video")).not.toBeNull();
@@ -367,8 +375,7 @@ describe("VideoCard hover preview", () => {
           selected={false}
           selectionMode
           onSelect={onSelect}
-          activePreviewId={item.id}
-          onPreviewReset={onReset}
+          previewCoordinator={previewCoordinator}
         />
       </MemoryRouter>,
     );
@@ -851,32 +858,17 @@ describe("VideoCard のスクラブの帯", () => {
   });
 
   it("並び替えなどの reset と別のカードのプレビューの開始で、帯から出たのと同じに戻る", () => {
-    const item = scrubVideo();
-    const card = (props: Partial<React.ComponentProps<typeof VideoCard>>) => (
-      <MemoryRouter>
-        <VideoCard
-          video={item}
-          backTo="/"
-          selected={false}
-          selectionMode={false}
-          onSelect={vi.fn()}
-          activePreviewId={null}
-          previewResetEpoch={0}
-          onPreviewStart={vi.fn()}
-          {...props}
-        />
-      </MemoryRouter>
-    );
-    const { rerender } = render(card({}));
+    const { previewCoordinator } = coordinator();
+    renderCard(scrubVideo(), { previewCoordinator });
     enterBand(300);
     expect(timeBox().textContent).toBe("0:30 / 1:00");
-    rerender(card({ previewResetEpoch: 1 }));
+    act(() => previewCoordinator.reset());
     expect(timeBox().textContent).toBe("1:00");
     expect(scrubBar()).toBeNull();
 
     enterBand(300);
     expect(scrubBar()).not.toBeNull();
-    rerender(card({ previewResetEpoch: 1, activePreviewId: 2 }));
+    act(() => previewCoordinator.start(2));
     expect(scrubBar()).toBeNull();
   });
 

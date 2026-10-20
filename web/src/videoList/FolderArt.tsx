@@ -11,6 +11,7 @@ import {
 import type { FolderPreview } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { type PreviewCoordinator, usePreviewChanges } from "./usePreviewCoordination";
 
 /**
  * Use video IDs as stable keys, adding occurrence counts only for duplicate playlist covers. A
@@ -139,17 +140,13 @@ export default function FolderArt({
   totalCount = previews.length,
   onFrontChange,
   selectionMode = false,
-  activePreviewId,
-  previewResetEpoch,
-  onPreviewStart,
+  previewCoordinator,
 }: {
   previews: readonly FolderPreview[];
   totalCount?: number;
   onFrontChange?: (preview: FolderPreview | null) => void;
   selectionMode?: boolean;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
+  previewCoordinator?: PreviewCoordinator;
 }) {
   const shown = previews.slice(0, 4);
   const remaining = Math.max(0, totalCount - shown.length);
@@ -158,38 +155,27 @@ export default function FolderArt({
   const layout = sheetLayout[sheets.length] ?? [];
   // A refreshed shorter cover list can leave the old position out of range.
   const [front, setFront] = useState<number | null>(null);
-  const [playingId, setPlayingId] = useState<number | null>(null);
-  const observedResetEpoch = useRef(previewResetEpoch);
-  const observedActiveId = useRef(activePreviewId);
+  const playingId = useRef<number | null>(null);
 
   const putBack = useCallback(() => {
     setFront(null);
-    setPlayingId(null);
+    playingId.current = null;
     onFrontChange?.(null);
   }, [onFrontChange]);
 
   useEffect(() => putBack(), [previews, putBack]);
 
   useEffect(() => {
-    const resetChanged = observedResetEpoch.current !== previewResetEpoch;
-    observedResetEpoch.current = previewResetEpoch;
-    // Reset only for a different preview started elsewhere, not an old value before this card's own announcement arrives.
-    const activeChanged = observedActiveId.current !== activePreviewId;
-    observedActiveId.current = activePreviewId;
+    if (selectionMode) putBack();
+  }, [putBack, selectionMode]);
+
+  usePreviewChanges(previewCoordinator, (current, previous) => {
     const replaced =
-      onPreviewStart !== undefined &&
-      activeChanged &&
-      playingId !== null &&
-      activePreviewId !== playingId;
-    if (resetChanged || selectionMode || replaced) putBack();
-  }, [
-    activePreviewId,
-    onPreviewStart,
-    playingId,
-    previewResetEpoch,
-    putBack,
-    selectionMode,
-  ]);
+      current.activeId !== previous.activeId &&
+      playingId.current !== null &&
+      current.activeId !== playingId.current;
+    if (current.epoch !== previous.epoch || replaced) putBack();
+  });
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (selectionMode || sheets.length === 0 || event.pointerType !== "mouse") {
@@ -205,7 +191,7 @@ export default function FolderArt({
     onFrontChange?.(sheets[next] ?? null);
     if (next === front) return;
     setFront(next);
-    setPlayingId(null);
+    playingId.current = null;
   };
 
   return (
@@ -266,8 +252,9 @@ export default function FolderArt({
                   key={preview.videoId}
                   src={preview.previewUrl}
                   onStart={() => {
-                    setPlayingId(preview.videoId);
-                    onPreviewStart?.(preview.videoId);
+                    // Record the sheet first so this card's own announcement does not put it back.
+                    playingId.current = preview.videoId;
+                    previewCoordinator?.start(preview.videoId);
                   }}
                 />
               )}

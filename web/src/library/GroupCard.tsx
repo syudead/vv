@@ -23,6 +23,7 @@ import {
 import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
+import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 
 export interface GroupCardProps<G extends LibraryGroup = LibraryGroup> {
@@ -34,10 +35,7 @@ export interface GroupCardProps<G extends LibraryGroup = LibraryGroup> {
   selected: boolean;
   selectionMode: boolean;
   onSelect?: (group: G, selected: boolean) => void;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
-  onPreviewReset?: () => void;
+  previewCoordinator?: PreviewCoordinator;
   tagsRow?: (group: G) => ReactNode;
   nameField?: ReactNode;
   drag?: CardDragBinding;
@@ -148,9 +146,7 @@ export function CollectionThumbnail({
   onFrontChange,
   selected = false,
   selectionMode = false,
-  activePreviewId,
-  previewResetEpoch,
-  onPreviewStart,
+  previewCoordinator,
   ratio,
   face,
 }: {
@@ -159,9 +155,7 @@ export function CollectionThumbnail({
   onFrontChange?: (preview: LibraryGroup["previews"][number] | null) => void;
   selected?: boolean;
   selectionMode?: boolean;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
+  previewCoordinator?: PreviewCoordinator;
   ratio: number | null;
   face: ReactNode;
 }) {
@@ -172,9 +166,7 @@ export function CollectionThumbnail({
         totalCount={totalCount}
         onFrontChange={onFrontChange}
         selectionMode={selectionMode}
-        activePreviewId={activePreviewId}
-        previewResetEpoch={previewResetEpoch}
-        onPreviewStart={onPreviewStart}
+        previewCoordinator={previewCoordinator}
       />
       <VideoThumbnailDuration className="pointer-events-none z-20">
         {face}
@@ -276,10 +268,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
     selected,
     selectionMode,
     onSelect,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart,
-    onPreviewReset,
+    previewCoordinator,
     tagsRow,
     nameField,
     autoplay,
@@ -321,7 +310,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       <Link
         {...linkProps}
         onClick={(event) => {
-          onPreviewReset?.();
+          previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(group, !selected);
@@ -335,9 +324,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
           onFrontChange={onFrontChange}
           selected={selected}
           selectionMode={selectionMode}
-          activePreviewId={activePreviewId}
-          previewResetEpoch={previewResetEpoch}
-          onPreviewStart={onPreviewStart}
+          previewCoordinator={previewCoordinator}
           ratio={ratio}
           face={
             <>

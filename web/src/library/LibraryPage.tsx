@@ -206,8 +206,7 @@ export default function LibraryPage() {
   );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
-  const { activePreviewId, previewResetEpoch, startPreview, resetPreview } =
-    usePreviewCoordination();
+  const { resetPreview, cardProps: preview } = usePreviewCoordination();
 
   const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
@@ -615,10 +614,7 @@ export default function LibraryPage() {
     selected: isGroupSelected(selection, group.id),
     selectionMode,
     onSelect: owner ? changeGroupSelection : undefined,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart: startPreview,
-    onPreviewReset: resetPreview,
+    ...preview,
     tagsRow: renderGroupTagsRow,
     nameField: drops.nameFieldFor(group.id),
   });
@@ -629,10 +625,7 @@ export default function LibraryPage() {
     selected: selectedIds.has(video.id),
     selectionMode,
     onSelect: owner ? changeSelection : undefined,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart: startPreview,
-    onPreviewReset: resetPreview,
+    ...preview,
     tagsRow: renderTagsRow,
   });
 
@@ -642,10 +635,7 @@ export default function LibraryPage() {
     selectionMode,
     onSelect: owner ? changeSmartFolderSelection : undefined,
     backTo: listUrl,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart: startPreview,
-    onPreviewReset: resetPreview,
+    ...preview,
     tagsRow: view === "grid" ? renderFolderTagsRow : undefined,
   });
 
