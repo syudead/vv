@@ -216,7 +216,6 @@ function createGrid(initial: LayerValue) {
     setNode: (node: HTMLElement | null) => void;
   } | null = null;
   let pressed: string | null = null;
-  let dragging = false;
   return {
     cards: createGridCards(),
     marks: createKeyedStore(initial, gridMarks, sameMarks),
@@ -231,17 +230,17 @@ function createGrid(initial: LayerValue) {
       eventName: "onPointerDown" | "onTouchStart",
       event: GridPress,
     ) => {
-      if (dragging || source === null) return;
-      pressed = key;
-      source.setNode(event.currentTarget);
+      if (source === null) return;
       const listener = source.listeners?.[eventName] as
         ((event: GridPress) => void) | undefined;
       listener?.(event);
+      // dnd-kit marks only presses it accepts, so a press during a pending or active drag keeps
+      // the first card; its sensor reads the node no earlier than activation.
+      if (!("dndKit" in event.nativeEvent)) return;
+      pressed = key;
+      source.setNode(event.currentTarget);
     },
     pressedKey: () => pressed,
-    setDragging: (next: boolean) => {
-      dragging = next;
-    },
   };
 }
 
@@ -617,15 +616,11 @@ export function CardDragLayer(props: CardDragLayerProps) {
 
   const [grid] = useState(() => createGrid({ drag: null, held, attached }));
 
-  const show = useCallback(
-    (next: DragState | null) => {
-      current.current = next;
-      grid.setDragging(next !== null);
-      if (next !== null) announced.current = next;
-      setDrag(next);
-    },
-    [grid],
-  );
+  const show = useCallback((next: DragState | null) => {
+    current.current = next;
+    if (next !== null) announced.current = next;
+    setDrag(next);
+  }, []);
 
   const detect = useCallback<CollisionDetection>(
     (args) => {

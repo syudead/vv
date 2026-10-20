@@ -1,7 +1,8 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { t } from "../i18n";
+import { layoutCards, mouse, moveTo, release } from "../testing/cardDrag";
 import { CardDragLayer, DraggableCard } from "./cardDrag";
 
 /** Not memoized, so it renders whenever its DraggableCard renders with a new element. */
@@ -36,5 +37,43 @@ describe("DraggableCard", () => {
 
     rerender(list(["a", "b", "c"]));
     expect(renders).toEqual(new Set(["c"]));
+  });
+
+  it("lifts the first pressed card when another card is pressed before the drag starts", () => {
+    layoutCards();
+    const onDrop = vi.fn();
+    const keys = ["a", "b", "c"];
+    render(
+      <CardDragLayer
+        order={keys}
+        liftedFor={(key) => [key]}
+        reorder
+        nameOf={(key) => key}
+        preview={(key) => key}
+        onDrop={onDrop}
+        instructions={t.organize.instructions}
+      >
+        {keys.map((key) => (
+          <DraggableCard key={key} id={key}>
+            <span>{key}</span>
+          </DraggableCard>
+        ))}
+      </CardDragLayer>,
+    );
+
+    fireEvent.pointerDown(screen.getByText("a"), { ...mouse, clientX: 95, clientY: 75 });
+    fireEvent.pointerDown(screen.getByText("b"), {
+      ...mouse,
+      pointerId: 2,
+      clientX: 295,
+      clientY: 75,
+    });
+    moveTo(0, 0.4);
+    moveTo(2, 0.2);
+    release(2, 0.2);
+    expect(onDrop).toHaveBeenCalledWith({
+      lifted: ["a"],
+      sign: { kind: "between", key: "c", side: "before" },
+    });
   });
 });
