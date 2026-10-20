@@ -25,6 +25,7 @@ type FolderLocation struct {
 	ThumbnailPositionMs    *int64
 	ThumbnailRevision      int64
 	ThumbnailImageRevision int64
+	Builds                 ArtifactBuilds
 }
 
 type FolderPreview struct {
@@ -34,6 +35,7 @@ type FolderPreview struct {
 	ThumbnailPositionMs    *int64
 	ThumbnailRevision      int64
 	ThumbnailImageRevision int64
+	Builds                 ArtifactBuilds
 }
 
 type FolderSummary struct {
@@ -269,7 +271,7 @@ func (f *folderAccumulator) addVideo(location FolderLocation) {
 		f.previews = append(f.previews, FolderPreview{
 			VideoID: location.VideoID, ContentKey: location.ContentKey, PreviewState: location.PreviewState,
 			ThumbnailPositionMs: location.ThumbnailPositionMs, ThumbnailRevision: location.ThumbnailRevision,
-			ThumbnailImageRevision: location.ThumbnailImageRevision,
+			ThumbnailImageRevision: location.ThumbnailImageRevision, Builds: location.Builds,
 		})
 	}
 }

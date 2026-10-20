@@ -14,9 +14,11 @@ import {
   isAborted,
   listMediaFolders,
   RequestFailed,
+  startRescan,
   startScan,
   type Scan,
   type ScanActivity,
+  type StartRescanRequest,
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
@@ -35,6 +37,15 @@ export interface ScanContextValue {
   /** False while the folder count remains unknown. */
   noMediaFolders: boolean;
   start: () => void;
+  /**
+   * Start a force rescan. Resolves to the failure for the caller to show beside its control, or
+   * null once started; it leaves startError alone. When the failure may hide a start whose response
+   * was lost, onRecovered runs once a later read or event shows the new scan.
+   */
+  rescan: (
+    request: StartRescanRequest,
+    onRecovered?: () => void,
+  ) => Promise<UiText | null>;
   refresh: () => void;
   setFolderCount: (count: number) => void;
   /** Exclude scans already finished on initial load so lists do not refresh unexpectedly. */
@@ -51,7 +62,9 @@ export type ScanControlsValue = Pick<
   ScanContextValue,
   | "running"
   | "canStart"
+  | "noMediaFolders"
   | "start"
+  | "rescan"
   | "refresh"
   | "setFolderCount"
   | "finished"
@@ -73,11 +86,21 @@ export function useScan(): ScanContextValue {
 }
 
 export function useScanControls(): ScanControlsValue {
-  const value = useContext(ScanControlsContext);
+  const value = useScanControlsIfProvided();
   if (value === null) {
     throw new Error("useScanControls must be used inside ScanProvider");
   }
   return value;
+}
+
+/** For an optional control on a screen that can also render without ScanProvider. */
+export function useScanControlsIfProvided(): ScanControlsValue | null {
+  return useContext(ScanControlsContext);
+}
+
+/** A 4xx answer is the server's refusal; anything else may follow a start whose response was lost. */
+function mayHaveStarted(failure: unknown): boolean {
+  return !(failure instanceof RequestFailed && failure.status < 500);
 }
 
 /** Running watcher scans neither display progress nor block manual-start availability. */
@@ -125,6 +148,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
+  const onRescanRecovered = useRef<(() => void) | null>(null);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
   // Events can be newer than pending reads; discard a read if an event arrived after it started.
   const scanRevision = useRef(0);
@@ -173,6 +197,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (recovered) {
       recoveryBaselineScanId.current = undefined;
       setStartError(null);
+      const notify = onRescanRecovered.current;
+      onRescanRecovered.current = null;
+      notify?.();
     }
 
     if (current.state === "running") {
@@ -280,17 +307,28 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (owner) loadUnlessLoading();
   }, [loadUnlessLoading, owner]);
 
-  const start = useCallback(() => {
-    if (!owner || folderCount === null || folderCount === 0) return;
-    const baselineScanId = scan?.id ?? null;
-    setStarting(true);
-    setStartError(null);
-    recoveryBaselineScanId.current = undefined;
-    // Fast scans may emit events before start returns; never replace newer event state with the response.
-    const requestedAt = scanRevision.current;
-    void (async () => {
+  /**
+   * A null request starts a manual scan, whose failure stays in startError for Settings. A force
+   * rescan skips the folder-count guard so the server's reason reaches the caller instead of a
+   * silent no-op.
+   */
+  const begin = useCallback(
+    async (
+      request: StartRescanRequest | null,
+      onRecovered?: () => void,
+    ): Promise<UiText | null> => {
+      if (!owner) return null;
+      if (request === null && (folderCount === null || folderCount === 0)) return null;
+      const baselineScanId = scan?.id ?? null;
+      setStarting(true);
+      setStartError(null);
+      recoveryBaselineScanId.current = undefined;
+      onRescanRecovered.current = null;
+      // Fast scans may emit events before start returns; never replace newer event state with the response.
+      const requestedAt = scanRevision.current;
+      let failed: UiText | null = null;
       try {
-        const started = await startScan();
+        const started = await (request === null ? startScan() : startRescan(request));
         if (requestedAt === scanRevision.current) {
           scanRevision.current += 1;
           requestedScanId.current = started.id;
@@ -306,16 +344,31 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         ) {
           updateFolderCount(0);
         }
-        setStartError(t.shell.scan.startFailed(errorText(failure)));
+        failed = errorText(failure);
         // A lost response may hide a successful start; clear the error when events or reads discover the scan.
-        recoveryBaselineScanId.current = baselineScanId;
+        if (request === null) {
+          setStartError(t.shell.scan.startFailed(failed));
+          recoveryBaselineScanId.current = baselineScanId;
+        } else if (mayHaveStarted(failure)) {
+          recoveryBaselineScanId.current = baselineScanId;
+          onRescanRecovered.current = onRecovered ?? null;
+        }
       } finally {
         setStarting(false);
       }
       // Refresh once immediately because a small scan may already have finished.
       loadScan();
-    })();
-  }, [apply, folderCount, loadScan, owner, scan?.id, updateFolderCount]);
+      return failed;
+    },
+    [apply, folderCount, loadScan, owner, scan?.id, updateFolderCount],
+  );
+
+  const start = useCallback(() => void begin(null), [begin]);
+  const rescan = useCallback(
+    (request: StartRescanRequest, onRecovered?: () => void) =>
+      begin(request, onRecovered),
+    [begin],
+  );
 
   const error = startError ?? loadError;
 
@@ -331,6 +384,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       canStart: folderCount !== null && folderCount > 0,
       noMediaFolders: folderCount === 0,
       start,
+      rescan,
       refresh,
       setFolderCount: updateFolderCount,
       finished,
@@ -344,6 +398,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       folderCount,
       loaded,
       refresh,
+      rescan,
       scan,
       start,
       startError,
@@ -354,17 +409,30 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
   const running = starting || (scan?.state === "running" && !isWatchScan(scan));
   const canStart = folderCount !== null && folderCount > 0;
+  const noMediaFolders = folderCount === 0;
   const controls = useMemo<ScanControlsValue>(
     () => ({
       running,
       canStart,
+      noMediaFolders,
       start,
+      rescan,
       refresh,
       setFolderCount: updateFolderCount,
       finished,
       watchFinished,
     }),
-    [canStart, finished, refresh, running, start, updateFolderCount, watchFinished],
+    [
+      canStart,
+      finished,
+      noMediaFolders,
+      refresh,
+      rescan,
+      running,
+      start,
+      updateFolderCount,
+      watchFinished,
+    ],
   );
 
   return (

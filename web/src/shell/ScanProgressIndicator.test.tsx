@@ -129,6 +129,25 @@ describe("ScanProgressIndicator", () => {
     );
   });
 
+  it("names the scope of a running force rescan in the summary", async () => {
+    const current = scan({
+      rescan: { scope: "folder", folder: { id: 2, path: "/media/two" } },
+    });
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(current),
+      ),
+    );
+    renderIndicator();
+    const user = userEvent.setup();
+
+    await user.hover(await screen.findByRole("button", { name: /^Scanning / }));
+
+    expect((await screen.findByRole("dialog")).textContent).toContain(
+      "Force rescan of /media/two",
+    );
+  });
+
   it("keeps the summary closed after a focusless click navigates to settings", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),

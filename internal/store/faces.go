@@ -29,7 +29,7 @@ func faceQueueStates(scope domain.FaceQueueScope) (string, error) {
 	case domain.FaceQueueMissing:
 		return `'', 'failed'`, nil
 	case domain.FaceQueueAll:
-		return `'', 'done', 'failed'`, nil
+		return queueAgainStates, nil
 	default:
 		return "", fmt.Errorf("unknown face analysis scope %q", scope)
 	}
@@ -50,7 +50,7 @@ func (s *FaceStore) QueueLibrary(ctx context.Context, scope domain.FaceQueueScop
 func (s *FaceStore) RetryVideo(ctx context.Context, contentKey string, entryID int64) (int, error) {
 	return s.db.queueContent(ctx, faceQueue, `select v.content_key from videos v
 		where v.content_key = ? and v.content_key <> '' and `+registeredVideoCondition("v"), []any{contentKey},
-		`'', 'done', 'failed'`, domain.ActivityByOwner, []int64{entryID})
+		queueAgainStates, domain.ActivityByOwner, []int64{entryID})
 }
 
 // Claim takes the next queued video or returns domain.ErrNoJob, creating a processing activity if necessary. The

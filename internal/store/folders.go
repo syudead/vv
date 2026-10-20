@@ -72,7 +72,8 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 			(select ov.thumbnail_revision from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> ''),
 			(select ti.revision from thumbnail_images ti
-				where ti.content_key = videos.content_key and videos.content_key <> '')
+				where ti.content_key = videos.content_key and videos.content_key <> ''),
+			`+buildColumns+`
 		from video_locations l join videos on videos.id = l.video_id
 		where `+inFolder+` and `+visibleLocationCondition("l", audience)+
 		` and `+shownVideoCondition("videos", audience),
@@ -88,7 +89,7 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 		var thumbnail, preview string
 		var position, revision, imageRevision sql.NullInt64
 		if err := rows.Scan(&item.Path, &item.VideoID, &item.ContentKey, &thumbnail, &preview, &position, &revision,
-			&imageRevision); err != nil {
+			&imageRevision, &item.Builds.Thumbnail, &item.Builds.SeekThumbnail, &item.Builds.Preview); err != nil {
 			return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 		}
 		item.ThumbnailState = domain.ThumbnailState(thumbnail)

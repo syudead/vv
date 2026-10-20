@@ -617,10 +617,12 @@ func (s *server) apiVideo(ctx context.Context, video domain.Video) gen.Video {
 }
 
 func previewURL(video domain.Video) string {
-	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" + video.ContentKey
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" +
+		withBuild(video.ContentKey, video.Builds.Preview)
 }
 
-// Version thumbnail URLs by content-key prefix plus image generation (-g) or position revision (-r). Never include the position itself because guests receive these URLs.
+// Version thumbnail URLs by content-key prefix plus image generation (-g) or position revision (-r), and the forced
+// rebuild count (-b). Never include the position itself because guests receive these URLs.
 func thumbnailURL(video domain.Video) string {
 	version := thumbnailVersion(video.ContentKey)
 	switch {
@@ -629,18 +631,30 @@ func thumbnailURL(video domain.Video) string {
 	case video.ThumbnailPositionMs != nil:
 		version += "-r" + strconv.FormatInt(video.ThumbnailRevision, 10)
 	}
-	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/thumbnail?v=" + version
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/thumbnail?v=" +
+		withBuild(version, video.Builds.Thumbnail)
 }
 
 func seekThumbnailURL(video domain.Video) string {
-	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail?v=" +
-		thumbnailVersion(video.ContentKey)
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail?v=" + seekThumbnailVersion(video)
 }
 
-// Sprite sheets use the same content-derived version as the seek-thumbnail manifest.
+// Sprite sheets use the same version as the seek-thumbnail manifest.
 func seekThumbnailSheetURL(video domain.Video, sheet int) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail/" + strconv.Itoa(sheet) +
-		"?v=" + thumbnailVersion(video.ContentKey)
+		"?v=" + seekThumbnailVersion(video)
+}
+
+func seekThumbnailVersion(video domain.Video) string {
+	return withBuild(thumbnailVersion(video.ContentKey), video.Builds.SeekThumbnail)
+}
+
+// withBuild appends a forced rebuild count, so a screen loads the rebuilt file; a never-rebuilt artifact keeps its URL.
+func withBuild(version string, build int64) string {
+	if build <= 0 {
+		return version
+	}
+	return version + "-b" + strconv.FormatInt(build, 10)
 }
 
 func thumbnailVersion(contentKey string) string {

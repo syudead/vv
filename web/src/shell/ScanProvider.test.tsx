@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
@@ -47,6 +47,28 @@ function Harness() {
       <p>自動の完了: {value.watchFinished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
       <p>今の処理: {value.activity?.fileName ?? "なし"}</p>
+    </>
+  );
+}
+
+function RescanHarness() {
+  const { rescan } = useScanControls();
+  const [result, setResult] = useState("なし");
+  const [recovered, setRecovered] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          void rescan({ scope: "library" }, () => setRecovered(true)).then((failure) =>
+            setResult(failure ?? "開始"),
+          )
+        }
+      >
+        強制再スキャン
+      </button>
+      <p>結果: {result}</p>
+      <p>回復: {recovered ? "はい" : "いいえ"}</p>
     </>
   );
 }
@@ -578,6 +600,87 @@ describe("ScanProvider", () => {
     await act(async () => resolveCurrent?.(json(scan(6, "running"))));
 
     expect(screen.getByText("状態: 7")).toBeDefined();
+  });
+
+  describe("強制再スキャン", () => {
+    function serveRescan(
+      post: () => Response,
+      current: (posted: boolean) => Scan,
+      folders: unknown[] = [{}],
+    ) {
+      let posted = false;
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) === "/api/media-folders") return Promise.resolve(json(folders));
+        if (init?.method === "POST") {
+          posted = true;
+          return Promise.resolve(post());
+        }
+        return Promise.resolve(json(current(posted)));
+      });
+    }
+
+    function renderRescan() {
+      render(
+        <OwnerAudience>
+          <ScanProvider>
+            <RescanHarness />
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>,
+      );
+    }
+
+    const posts = () =>
+      fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+
+    it("フォルダ0件でも開始要求を送り、断られた理由を返す", async () => {
+      serveRescan(
+        () => json({ code: "media_folders_not_configured", message: "none" }, 409),
+        () => scan(1, "done"),
+        [],
+      );
+      renderRescan();
+      const user = userEvent.setup();
+      expect(await screen.findByText("開始可否: 不可")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "強制再スキャン" }));
+
+      expect(await screen.findByText("結果: Add a media folder first.")).toBeDefined();
+      expect(posts().map(([input]) => String(input))).toEqual(["/api/scans/rescan"]);
+    });
+
+    it("応答を失った開始は、後で見つかった新しい取り込みで呼び出し元へ回復を知らせる", async () => {
+      serveRescan(
+        () => json({ code: "internal", message: "lost" }, 500),
+        (posted) => (posted ? scan(2, "running") : scan(1, "done")),
+      );
+      renderRescan();
+      const user = userEvent.setup();
+      expect(await screen.findByText("状態: 1")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "強制再スキャン" }));
+
+      expect(
+        await screen.findByText("結果: Something went wrong on the server."),
+      ).toBeDefined();
+      expect(await screen.findByText("回復: はい")).toBeDefined();
+    });
+
+    it("409 で断られたときは、実行中の取り込みが見えても回復にしない", async () => {
+      serveRescan(
+        () => json({ code: "scan_in_progress", message: "busy" }, 409),
+        (posted) => (posted ? scan(2, "running") : scan(1, "done")),
+      );
+      renderRescan();
+      const user = userEvent.setup();
+      expect(await screen.findByText("状態: 1")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "強制再スキャン" }));
+
+      expect(await screen.findByText("状態: 2")).toBeDefined();
+      expect(screen.getByText(/^結果: A scan is in progress/)).toBeDefined();
+      expect(screen.getByText("回復: いいえ")).toBeDefined();
+    });
   });
 
   describe("自動の取り込み（origin watch）", () => {

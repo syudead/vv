@@ -247,6 +247,10 @@ func (finishedScanner) ScanScoped(context.Context, []domain.DirtyDirectory) (dom
 	return domain.ScanResult{}, nil
 }
 
+func (finishedScanner) Rescan(context.Context, int64, domain.RescanScope, domain.ActivityDecider) (domain.ScanResult, error) {
+	return domain.ScanResult{}, nil
+}
+
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{

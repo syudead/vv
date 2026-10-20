@@ -210,7 +210,7 @@ func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	case domain.AutoTagQueueUnlessDone:
 		return `'', 'failed'`, nil
 	case domain.AutoTagQueueAgain:
-		return `'', 'done', 'failed'`, nil
+		return queueAgainStates, nil
 	default:
 		return "", fmt.Errorf("unknown auto-tagging queue mode %d", mode)
 	}

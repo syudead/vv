@@ -140,6 +140,7 @@ stateDiagram-v2
 | Trigger | Queues |
 | --- | --- |
 | Seek preview stage finishes for good (done, or failed with no retry left), "Tag new videos automatically" on | That video, if it has no row |
+| Seek preview stage of a forced job (a [force rescan](force-rescan.md#tagging-and-face-analysis-run-again)) finishes for good | That video, unless `running`, as "Tag all videos again" does; "Tag new videos automatically" is not needed |
 | Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
@@ -148,7 +149,8 @@ stateDiagram-v2
 The import trigger is queued in the same transaction that records the seek
 preview stage's final result, and its `auto_tag` entry joins the pipeline of
 that job's `import` entry
-([activity.md](activity.md#a-pipeline-groups-one-import-run)). The import
+([activity.md](activity.md#a-pipeline-groups-one-import-run)); a forced job's
+trigger does the same. The import
 pipeline therefore stays `running` until tagging finishes, and does not wait
 when the trigger queues nothing. The `VideoIngestChanged` subscriber only wakes
 the worker. A retry from the activity log and a claim that reopens an
@@ -193,6 +195,7 @@ the entry in the transaction that changes the row.
 | Run started by | Decider until it finishes | Decider after the answer |
 | --- | --- | --- |
 | Import, "Tag new videos automatically" | `rule` | `ai` |
+| Force rescan | `owner` | `ai` |
 | Settings or the video page | `owner` | `ai` |
 
 A run with no candidate tag never asks the classifier and keeps the decider

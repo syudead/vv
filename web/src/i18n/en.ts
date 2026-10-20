@@ -1973,6 +1973,10 @@ export const en = {
       pathCopied: "Copied the path",
       copyFailed: "Couldn't copy the path",
       openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
+      forceRescan: "Force rescan this video",
+      forceRescanBlocked: (reason: string) => `Force rescan this video. ${reason}`,
+      rescanNeedsMediaFolder: "Add a media folder in Settings first.",
+      rescanStarted: "Started a force rescan of this video",
       thumbnailAt: (time: string) => `Thumbnail at ${time}`,
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",
@@ -3310,6 +3314,13 @@ export const en = {
     },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
+      rescanFailed: (reason: string) => `Couldn't start the force rescan: ${reason}`,
+      rescanScope: {
+        library: "Force rescan of the whole library",
+        folder: "Force rescan of a media folder",
+        namedFolder: (path: string) => `Force rescan of ${path}`,
+        video: "Force rescan of one video",
+      },
       notRun: "No scan has run yet",
       status: {
         starting: "Starting",
@@ -3400,6 +3411,14 @@ export const en = {
       starting: "Scanning…",
       runningReason: "A scan is running. You can start another when it finishes.",
       needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
+      forceRescan: "Force rescan",
+      rescanDialog: {
+        title: "Force rescan the whole library?",
+        description:
+          "Every video is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. Auto-tagging and face analysis run again when they're on. This can take a long time.",
+        submit: "Force rescan",
+        starting: "Starting…",
+      },
       issues: {
         heading: "Videos with problems",
         failed: "Failed",
@@ -3884,6 +3903,8 @@ export const en = {
       description:
         "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” on the Scan page. Auto-import doesn't start one.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
+      rowsLockedWhileScanning:
+        "You can't change or force rescan media folders while a scan is running",
       list: "Added media folders",
       loading: "Loading the media folders",
       loadFailed: (reason: string) => `Couldn't load the media folders: ${reason}`,
@@ -3903,6 +3924,14 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+      forceRescan: "Force rescan folder",
+      forceRescanShort: "Force rescan",
+      rescanDialog: {
+        title: "Force rescan this folder?",
+        description:
+          "Every video in this folder is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. Auto-tagging and face analysis run again when they're on. This can take a long time.",
+        target: "Folder",
+      },
     },
     transcoding: {
       heading: "Encoder",

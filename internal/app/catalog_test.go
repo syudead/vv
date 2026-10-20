@@ -197,6 +197,8 @@ func TestSeekThumbnailState(t *testing.T) {
 		{name: "置き場があれば列が pending でも done", dir: true, stored: domain.SeekThumbnailPending, want: domain.SeekThumbnailDone},
 		{name: "生成待ち", stored: domain.SeekThumbnailPending, want: domain.SeekThumbnailPending},
 		{name: "失敗", stored: domain.SeekThumbnailFailed, want: domain.SeekThumbnailFailed},
+		// A forced rebuild that gave up keeps the published sprite; the failure must not read as done.
+		{name: "置き場があっても失敗は失敗", dir: true, stored: domain.SeekThumbnailFailed, want: domain.SeekThumbnailFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

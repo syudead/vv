@@ -359,6 +359,98 @@ describe("ScanStatusSection", () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
+  describe("force rescan", () => {
+    function rescanCalls() {
+      return fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === "/api/scans/rescan" && init?.method === "POST",
+      );
+    }
+
+    it("sends the library scope only after the confirmation and names it while running", async () => {
+      const started = scan({ id: 9, state: "running", rescan: { scope: "library" } });
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url === "/api/scans/rescan" && init?.method === "POST") {
+          return Promise.resolve(json(started, 202));
+        }
+        if (url.startsWith("/api/scans/current/issues")) {
+          return Promise.resolve(json({ scanId: 9, items: [] }));
+        }
+        return Promise.resolve(
+          json(rescanCalls().length > 0 ? started : scan({ state: "done" })),
+        );
+      });
+      renderSection();
+      const user = userEvent.setup();
+      const control = await screen.findByRole("button", { name: "Force rescan" });
+      await waitFor(() => expect(control.hasAttribute("disabled")).toBe(false));
+
+      await user.click(control);
+      const dialog = await screen.findByRole("alertdialog", {
+        name: "Force rescan the whole library?",
+      });
+      expect(within(dialog).getByText(/This can take a long time\./)).toBeDefined();
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(rescanCalls()).toHaveLength(0);
+
+      await user.click(control);
+      await user.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", {
+          name: "Force rescan",
+        }),
+      );
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(rescanCalls().map(([, init]) => init?.body)).toEqual([
+        JSON.stringify({ scope: "library" }),
+      ]);
+      expect(await screen.findByText("Force rescan of the whole library")).toBeDefined();
+      const blocked = screen.getByRole("button", { name: "Force rescan" });
+      expect(blocked.hasAttribute("disabled")).toBe(true);
+      expect(blocked.getAttribute("aria-describedby")).toBe("scan-start-blocked");
+      expect(document.getElementById("scan-start-blocked")?.textContent).toBe(
+        "A scan is running. You can start another when it finishes.",
+      );
+    });
+
+    it("closes the dialog once a start whose response was lost shows up", async () => {
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url === "/api/scans/rescan" && init?.method === "POST") {
+          return Promise.resolve(json({ code: "internal", message: "lost" }, 500));
+        }
+        if (url.startsWith("/api/scans/current/issues")) {
+          return Promise.resolve(json({ scanId: 1, items: [] }));
+        }
+        return Promise.resolve(
+          json(
+            rescanCalls().length > 0
+              ? scan({ id: 9, state: "running", rescan: { scope: "library" } })
+              : scan({ state: "done" }),
+          ),
+        );
+      });
+      renderSection();
+      const user = userEvent.setup();
+      const control = await screen.findByRole("button", { name: "Force rescan" });
+      await waitFor(() => expect(control.hasAttribute("disabled")).toBe(false));
+
+      await user.click(control);
+      await user.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", {
+          name: "Force rescan",
+        }),
+      );
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(await screen.findByText("Force rescan of the whole library")).toBeDefined();
+    });
+  });
+
   describe("origin watch", () => {
     function serve(current: Scan) {
       fetchMock.mockImplementation((input) =>
@@ -394,6 +486,10 @@ describe("ScanStatusSection", () => {
       expect(screen.queryByText(/clip\.mp4/)).toBeNull();
       expect(screen.queryByText(/A scan is running/)).toBeNull();
       expect(screen.queryByText("1 failed")).toBeNull();
+      // Starting a force rescan supersedes a watch scan, so it is not blocked.
+      expect(
+        screen.getByRole("button", { name: "Force rescan" }).hasAttribute("disabled"),
+      ).toBe(false);
     });
 
     it("shows the auto-import status word once it ends, and no progress", async () => {

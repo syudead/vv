@@ -45,6 +45,7 @@ import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEnt
 import FetchEntry from "./workInfoFetch/FetchEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 import MediaInfoGroups from "./MediaInfoGroups";
+import RescanVideoButton from "./RescanVideoButton";
 import WorkInfo from "./WorkInfo";
 
 export function useOpenFile(videoId: number): {
@@ -344,7 +345,8 @@ export default function VideoFacts({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <ul
           aria-label={f.label}
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground tabular-nums sm:gap-x-5"
+          // The minimum keeps a date whole; narrower rows wrap the actions below instead of overlapping.
+          className="flex min-w-list-date flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground tabular-nums sm:gap-x-5"
         >
           {duration !== "" && <Fact icon={Clock} label={f.duration} value={duration} />}
           <Fact icon={HardDrive} label={f.size} value={formatBytes(video.sizeBytes)} />
@@ -440,6 +442,7 @@ export default function VideoFacts({
                 <Copy aria-hidden="true" />
               </ActionButton>
             )}
+            {owner && <RescanVideoButton videoId={video.id} report={setFailure} />}
           </div>
         )}
       </div>

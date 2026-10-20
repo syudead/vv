@@ -728,6 +728,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scans/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a force rescan
+         * @description Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background.
+         */
+        post: operations["startRescan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media-folders": {
         parameters: {
             query?: never;
@@ -5626,6 +5646,42 @@ export interface components {
             errorCode?: components["schemas"]["ScanErrorCode"];
             /** @description Absolute media-folder or unreadable-descendant path associated with errorCode, as untranslated user data; otherwise omitted. */
             errorPath?: string;
+            rescan?: components["schemas"]["ScanRescan"];
+        };
+        /** @description Scope of a force rescan; omitted for any other scan. A force rescan keeps origin manual. */
+        ScanRescan: {
+            scope: components["schemas"]["RescanScope"];
+            folder?: components["schemas"]["ScanRescanFolder"];
+            /**
+             * Format: int64
+             * @description The video of a video scope.
+             */
+            videoId?: number;
+        };
+        /** @description The media folder of a folder scope, with its path when the rescan started. */
+        ScanRescanFolder: {
+            /** Format: int64 */
+            id: number;
+            /** @description Absolute media-folder path as untranslated user data. */
+            path: string;
+        };
+        /**
+         * @description What a force rescan reads again: every media folder, one media folder or one video.
+         * @enum {string}
+         */
+        RescanScope: "library" | "folder" | "video";
+        StartRescanRequest: {
+            scope: components["schemas"]["RescanScope"];
+            /**
+             * Format: int64
+             * @description Required with scope folder and refused otherwise: a media folder's id.
+             */
+            folderId?: number;
+            /**
+             * Format: int64
+             * @description Required with scope video and refused otherwise: a video's id.
+             */
+            videoId?: number;
         };
         /**
          * @description User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
@@ -7473,6 +7529,42 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             /** @description No media folders configured */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startRescan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRescanRequest"];
+            };
+        };
+        responses: {
+            /** @description The started force rescan */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scan"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description A manual scan or force rescan is running (scan_in_progress), or no media folder is configured (media_folders_not_configured) */
             409: {
                 headers: {
                     [name: string]: unknown;

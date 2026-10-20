@@ -224,7 +224,7 @@ var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
-	` + publicColumn + ` as public, ` + favoriteColumn + ` as favorite, ` + overrideColumns + `, ` + editedAtColumn
+	` + publicColumn + ` as public, ` + favoriteColumn + ` as favorite, ` + overrideColumns + `, ` + editedAtColumn + `, ` + buildColumns
 
 // Bind arguments in SQL order: CTE and optional shuffle seed, then this clause, then cursor arguments.
 func filteredFrom(spec listSpec, withLocation bool) (string, []any) {

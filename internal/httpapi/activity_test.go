@@ -41,6 +41,10 @@ func (finishingScanner) ScanScoped(context.Context, []domain.DirtyDirectory) (do
 	return domain.ScanResult{}, nil
 }
 
+func (finishingScanner) Rescan(context.Context, int64, domain.RescanScope, domain.ActivityDecider) (domain.ScanResult, error) {
+	return domain.ScanResult{}, nil
+}
+
 func newActivityEnv(t *testing.T) *activityEnv {
 	t.Helper()
 	db, err := store.OpenMigratedForTest(t.TempDir())
