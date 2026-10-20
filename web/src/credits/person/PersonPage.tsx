@@ -21,13 +21,7 @@ import { personFacesPath, personPath } from "./personPath";
 import PersonGone from "./PersonGone";
 import PersonFetchEntry from "./pluginFetch/PersonFetchEntry";
 import { personFactsCard, PersonIdentity } from "./PersonProfile";
-import {
-  PersonShelves,
-  PersonVideosBody,
-  PersonVideosHeader,
-  RoleFilter,
-  usePersonVideos,
-} from "./PersonVideos";
+import { PersonShelves } from "./PersonVideos";
 import { useLocalToday } from "./useLocalToday";
 import { parsePersonId, useRoutedPerson } from "./usePerson";
 
@@ -146,7 +140,6 @@ function PersonShown({
 }) {
   const toast = useToast();
   const navigate = useNavigate();
-  const { role, setRole, videos } = usePersonVideos(person.id);
   const today = useLocalToday();
   const [merging, setMerging] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -197,17 +190,7 @@ function PersonShown({
       }
       facts={personFactsCard(person, today)}
     >
-      {role === null ? (
-        <PersonShelves personId={person.id} all={videos} onSeeAll={setRole} />
-      ) : (
-        <section aria-label={text.videos} className="flex min-w-0 flex-col gap-3">
-          <PersonVideosHeader videos={videos} />
-          <div className="flex overflow-x-auto">
-            <RoleFilter role={role} onChange={setRole} />
-          </div>
-          <PersonVideosBody videos={videos} role={role} />
-        </section>
-      )}
+      <PersonShelves personId={person.id} />
       {merging && (
         <MergeCreditDialog
           kind="person"

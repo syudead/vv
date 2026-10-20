@@ -235,19 +235,20 @@ and deleting in the `More` menu. The person is seen before their videos, as in
 other media libraries' person pages.
 
 The videos follow as one `Shelf` per role the person has videos in, in the
-roles' order, each a row of cards that scrolls sideways with its count and
-`See all`. `See all` replaces the shelves with that role's full grid and the
-role filter, whose `All` returns to the shelves. The page reads the person with
-`GET /api/people/{id}` and the videos with `GET /api/videos?person={id}`, in
-the library's default order; each shelf and the grid add `personRole`, so
-totals and paging stay the server's ([library-ui.md](library-ui.md)). A role
-without videos draws no shelf, and a person without videos shows one empty
-state. The page is owner-only, as the rest of `/people`.
+roles' order: the role and its count over a grid of every video in that role,
+which wraps like the library and reads the next page as its end comes into
+view. The page reads the person with `GET /api/people/{id}` and the videos with
+`GET /api/videos?person={id}`, in the library's default order; each shelf adds
+`personRole`, so totals and paging stay the server's
+([library-ui.md](library-ui.md)). A role without videos draws no shelf, and a
+person without videos shows one empty state. The page is owner-only, as the
+rest of `/people`.
 
 | Rejected                                   | Why                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |
 | A sticky profile column beside the videos  | The facts were squeezed under a large face and scrolled out of view inside their column |
 | One grid with a role filter as the default | It hides that a person both performs and directs until each role is pressed             |
+| A sideways row per role with `See all`     | Most of a row was off the screen, and reaching the rest took another press              |
 
 The face, its upload and removal, the favorite heart, merging and deleting
 happen on the page. Each request that answers `404 person_not_found` turns the
