@@ -165,3 +165,73 @@ func TestPersonPluginItemValid(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectNarrowsTheFetchedPersonToTheChosenValues(t *testing.T) {
+	fetched := FetchedPluginPerson{
+		Name: "Hanako Yamada", Aliases: []Alias{{Name: "Hana"}, {Name: "Hanachan"}},
+		ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}, {Source: "site", Value: "2"}},
+		Profile:     PersonProfile{Birthplace: "Tokyo", Links: []string{"https://a.test", "https://b.test"}},
+	}
+	got, items, ok := fetched.Select(PersonPluginSelection{
+		Items:   []PersonPluginItem{PersonProfileItem(ProfileBirthplace)},
+		Aliases: []string{"Hanachan", "Hanako Yamada"}, ExternalIDs: []ExternalID{{Source: "site", Value: "2"}},
+		Links: []string{"https://b.test"},
+	}, false)
+
+	wantItems := []PersonPluginItem{
+		PersonProfileItem(ProfileBirthplace), PersonProfileItem(ProfileLinks), PersonItemAliases, PersonItemExternalIDs,
+	}
+	if !ok || !slices.Equal(items, wantItems) {
+		t.Fatalf("items = %v, %v; want %v", items, ok, wantItems)
+	}
+	// The fetched name is an alias choice, and chosen values keep the fetched order.
+	if !slices.Equal(got.Aliases, []Alias{{Name: "Hanako Yamada"}, {Name: "Hanachan"}}) ||
+		!slices.Equal(got.ExternalIDs, []ExternalID{{Source: "site", Value: "2"}}) ||
+		!slices.Equal(got.Profile.Links, []string{"https://b.test"}) || got.Profile.Birthplace != "Tokyo" {
+		t.Fatalf("narrowed = %+v", got)
+	}
+}
+
+func TestSelectRefusesASelectionTheResultCannotGive(t *testing.T) {
+	fetched := FetchedPluginPerson{Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}}
+	for _, tc := range []struct {
+		name      string
+		selection PersonPluginSelection
+		hasImage  bool
+	}{
+		{"nothing", PersonPluginSelection{}, true},
+		{"a list as an item", PersonPluginSelection{Items: []PersonPluginItem{PersonItemAliases}}, true},
+		{"a value not fetched", PersonPluginSelection{Aliases: []string{"Hana", "Other"}}, true},
+		{"a field without a value", PersonPluginSelection{Items: []PersonPluginItem{PersonProfileItem(ProfileCup)}}, true},
+		{"the image without one", PersonPluginSelection{Items: []PersonPluginItem{PersonItemImage}}, false},
+	} {
+		if _, _, ok := fetched.Select(tc.selection, tc.hasImage); ok {
+			t.Errorf("%s: Select accepted %+v", tc.name, tc.selection)
+		}
+	}
+}
+
+func TestFillPersonItemsAppendsLinksEvenWhenReplacing(t *testing.T) {
+	stored := make([]string, PersonLinksMaxCount-1)
+	for i := range stored {
+		stored[i] = fmt.Sprintf("https://s.test/%d", i)
+	}
+	fetched := FetchedPluginPerson{Name: "Hanako", Profile: PersonProfile{
+		Links: []string{stored[0], "https://new.test/1", "https://new.test/2"},
+	}}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: Credit{Name: "Hanako", Profile: PersonProfile{Links: stored}}, Fetched: fetched,
+		Items: []PersonPluginItem{PersonProfileItem(ProfileLinks)}, Today: personFillToday, Replace: true,
+	})
+
+	if want := append(slices.Clone(stored), "https://new.test/1"); !slices.Equal(got.Profile.Links, want) {
+		t.Fatalf("links = %v; want the stored ones and the first new one", got.Profile.Links)
+	}
+	want := []SkippedPersonValue{{
+		Item: PersonProfileItem(ProfileLinks), Value: "https://new.test/2", Reason: SkippedWorkInfoTooMany,
+	}}
+	if !slices.Equal(got.Skipped, want) {
+		t.Fatalf("skipped = %+v; want %+v", got.Skipped, want)
+	}
+}

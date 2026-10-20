@@ -19,7 +19,7 @@ export interface PersonCompareCurrent {
 
 export type ProfileField = keyof PersonProfile;
 
-/** The comparison's order: one row per field, so one row is one apply item. */
+/** The comparison's order: one row per field, so one row is one apply item; links are a list. */
 const PROFILE_FIELDS: readonly ProfileField[] = [
   "birthDate",
   "deathDate",
@@ -34,19 +34,36 @@ const PROFILE_FIELDS: readonly ProfileField[] = [
   "careerStartYear",
   "careerEndYear",
   "bio",
-  "links",
 ];
 
+/** How the apply treats a row: fills an empty value, replaces a stored one, or keeps the person's. */
+export type RowKind = "fill" | "replace" | "kept";
+
+export type RowItem = Exclude<
+  PersonPluginItem,
+  "image" | "aliases" | "externalIds" | "profile.links"
+>;
+
+/** One row per profile field the result carries; the face and the lists are chosen apart. */
 export interface CompareRow {
-  item: PersonPluginItem;
-  /** The apply would write it; otherwise the person already has it and the row is kept. */
-  changes: boolean;
-  /** The apply would write it over a stored value, so it starts unselected. */
-  replaces?: boolean;
+  item: RowItem;
+  kind: RowKind;
 }
 
-export function profileItem(field: ProfileField): PersonPluginItem {
-  return `profile.${field}`;
+/**
+ * What an apply takes: profile fields, the image chosen as the face, and the aliases, external
+ * IDs and links it appends one by one.
+ */
+export interface PersonSelection {
+  items: RowItem[];
+  image: number | null;
+  aliases: string[];
+  externalIds: ExternalId[];
+  links: string[];
+}
+
+export function profileItem(field: Exclude<ProfileField, "links">): RowItem {
+  return `profile.${field}` as RowItem;
 }
 
 export function profileFieldOf(item: PersonPluginItem): ProfileField | undefined {
@@ -60,80 +77,147 @@ function hasValue(profile: PersonProfile, field: ProfileField): boolean {
   return Array.isArray(value) ? value.length > 0 : value !== undefined;
 }
 
-export function aliasOnPerson(current: PersonCompareCurrent, alias: Alias): boolean {
-  return (
-    alias.name === current.name ||
-    current.aliases.some((item) => item.name === alias.name)
+export function idKey(id: ExternalId): string {
+  return `${id.source}\u0000${id.value}`;
+}
+
+/** The names an apply may add as aliases, as the server allows them: the fetched name, then the aliases. */
+export function aliasChoices(
+  fetched: PersonPluginFetchedPerson,
+  withName = true,
+): string[] {
+  const aliases = fetched.aliases.map((alias) => alias.name);
+  return [...new Set(withName ? [fetched.name, ...aliases] : aliases)];
+}
+
+/** A list's fetched values, split into those the apply would add and those the person has. */
+export interface ListChoices<T> {
+  fresh: T[];
+  onPerson: T[];
+}
+
+function split<T>(values: readonly T[], has: (value: T) => boolean): ListChoices<T> {
+  return {
+    fresh: values.filter((value) => !has(value)),
+    onPerson: values.filter(has),
+  };
+}
+
+/** A person the apply creates takes its name from the work, so the fetched name is no alias for it. */
+export function aliasList(
+  current: PersonCompareCurrent,
+  fetched: PersonPluginFetchedPerson,
+): ListChoices<string> {
+  return split(
+    aliasChoices(fetched, current.name !== undefined),
+    (name) =>
+      name === current.name || current.aliases.some((alias) => alias.name === name),
   );
 }
 
-export function idOnPerson(current: PersonCompareCurrent, id: ExternalId): boolean {
-  return current.externalIds.some(
-    (item) => item.source === id.source && item.value === id.value,
-  );
-}
-
-export function newAliases(
+export function idList(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
-): number {
-  return fetched.aliases.filter((alias) => !aliasOnPerson(current, alias)).length;
+): ListChoices<ExternalId> {
+  const stored = new Set(current.externalIds.map(idKey));
+  return split(fetched.externalIds, (id) => stored.has(idKey(id)));
 }
 
-export function newIds(
+export function linkList(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
-): number {
-  return fetched.externalIds.filter((id) => !idOnPerson(current, id)).length;
+): ListChoices<string> {
+  const stored = new Set(current.profile.links ?? []);
+  return split(fetched.profile?.links ?? [], (link) => stored.has(link));
 }
 
-function sameValue(a: PersonProfile, b: PersonProfile, field: ProfileField): boolean {
-  return JSON.stringify(a[field]) === JSON.stringify(b[field]);
-}
-
-function storedRow(item: PersonPluginItem, replace: boolean, same: boolean): CompareRow {
-  return replace && !same
-    ? { item, changes: true, replaces: true }
-    : { item, changes: false };
+function profileKind(
+  current: PersonProfile,
+  fetched: PersonProfile,
+  field: ProfileField,
+  replace: boolean,
+): RowKind {
+  if (!hasValue(current, field)) return "fill";
+  const same = JSON.stringify(current[field]) === JSON.stringify(fetched[field]);
+  return replace && !same ? "replace" : "kept";
 }
 
 /**
- * One row per item the result carries, in the comparison's order. With `replace`, as on the
- * person page, a stored face or a different stored profile value can be replaced.
+ * One row per profile field the result carries, in the comparison's order. With `replace`, as on
+ * the person page, a different stored value can be replaced.
  */
 export function compareRows(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
   replace = false,
 ): CompareRow[] {
-  const rows: CompareRow[] = [];
-  if (fetched.hasImage === true)
-    rows.push(
-      current.imageRevision === undefined
-        ? { item: "image", changes: true }
-        : storedRow("image", replace, false),
-    );
   const profile = fetched.profile ?? {};
-  for (const field of PROFILE_FIELDS) {
-    if (!hasValue(profile, field)) continue;
-    const item = profileItem(field);
-    rows.push(
-      hasValue(current.profile, field)
-        ? storedRow(item, replace, sameValue(current.profile, profile, field))
-        : { item, changes: true },
-    );
-  }
-  if (fetched.aliases.length > 0)
-    rows.push({ item: "aliases", changes: newAliases(current, fetched) > 0 });
-  if (fetched.externalIds.length > 0)
-    rows.push({ item: "externalIds", changes: newIds(current, fetched) > 0 });
-  return rows;
+  return PROFILE_FIELDS.filter((field) => hasValue(profile, field)).map((field) => ({
+    item: profileItem(field as Exclude<ProfileField, "links">),
+    kind: profileKind(current.profile, profile, field, replace),
+  }));
 }
 
-export function initialItems(rows: readonly CompareRow[]): PersonPluginItem[] {
-  return rows
-    .filter((row) => row.changes && row.replaces !== true)
-    .map((row) => row.item);
+/**
+ * The images the face can come from: all of them where the face may be replaced, and none where
+ * the apply keeps a stored face.
+ */
+export function faceChoices(
+  current: PersonCompareCurrent,
+  fetched: PersonPluginFetchedPerson,
+  replace = false,
+): number {
+  const count = fetched.imageCount ?? 0;
+  return replace || current.imageRevision === undefined ? count : 0;
+}
+
+/**
+ * Filling rows, every value the lists would add, and the first image for a person without a face
+ * start selected; replacing a stored value is the owner's choice.
+ */
+export function initialSelection(
+  current: PersonCompareCurrent,
+  fetched: PersonPluginFetchedPerson,
+  replace = false,
+): PersonSelection {
+  return {
+    items: compareRows(current, fetched, replace)
+      .filter((row) => row.kind === "fill")
+      .map((row) => row.item),
+    image:
+      current.imageRevision === undefined && faceChoices(current, fetched, replace) > 0
+        ? 0
+        : null,
+    aliases: aliasList(current, fetched).fresh,
+    externalIds: idList(current, fetched).fresh,
+    links: linkList(current, fetched).fresh,
+  };
+}
+
+export function selectionEmpty(selection: PersonSelection): boolean {
+  return (
+    selection.items.length === 0 &&
+    selection.image === null &&
+    selection.aliases.length === 0 &&
+    selection.externalIds.length === 0 &&
+    selection.links.length === 0
+  );
+}
+
+/** The apply body's selection: the image joins the items when one is chosen. */
+export function selectionBody(selection: PersonSelection): {
+  items: PersonPluginItem[];
+  aliases: string[];
+  externalIds: ExternalId[];
+  links: string[];
+} {
+  return {
+    items:
+      selection.image === null ? [...selection.items] : [...selection.items, "image"],
+    aliases: [...selection.aliases],
+    externalIds: [...selection.externalIds],
+    links: [...selection.links],
+  };
 }
 
 const FACT_IDS: Partial<Record<ProfileField, string>> = {

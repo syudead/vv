@@ -29,15 +29,16 @@ type personPluginFetch struct {
 	digest     string
 	generation int64
 	person     domain.FetchedPluginPerson
-	image      *domain.WorkInfoCover
+	images     []domain.WorkInfoCover
 	expiresAt  time.Time
 }
 
 func (f *personPluginFetch) imageBytes() int {
-	if f.image == nil {
-		return 0
+	total := 0
+	for _, image := range f.images {
+		total += len(image.Data)
 	}
-	return len(f.image.Data)
+	return total
 }
 
 func (f *personPluginFetch) expiry() time.Time { return f.expiresAt }
@@ -81,11 +82,12 @@ func (p *WorkInfoPlugins) FetchPersonWithPlugin(
 	result.Person.Profile = domain.ShownFetchedProfile(result.Person.Profile, p.now())
 	fetch := &personPluginFetch{
 		personID: personID, pluginID: ran.ID, digest: ran.Digest, generation: ran.Generation,
-		person: result.Person, image: fetchedCover(result.PersonImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
+		person: result.Person, images: fetchedImages(result.PersonPluginImages),
+		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
 	return domain.PersonPluginFetchResult{
 		ID: p.fetches.addPerson(fetch, p.now()), ExpiresAt: fetch.expiresAt, Person: fetch.person,
-		HasImage: fetch.image != nil,
+		ImageCount: len(fetch.images),
 	}, nil
 }
 
@@ -114,8 +116,8 @@ func personFetchRequest(
 }
 
 // PersonPluginFetchImage returns ErrNotFound for an unknown, expired or other person's result and
-// ErrPersonImageNotFound for a result without an image.
-func (p *WorkInfoPlugins) PersonPluginFetchImage(personID int64, fetchID string) (domain.WorkInfoCover, error) {
+// ErrPersonImageNotFound for an index outside the result's images.
+func (p *WorkInfoPlugins) PersonPluginFetchImage(personID int64, fetchID string, index int) (domain.WorkInfoCover, error) {
 	f := p.fetches
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -124,29 +126,29 @@ func (p *WorkInfoPlugins) PersonPluginFetchImage(personID int64, fetchID string)
 	switch {
 	case !ok || fetch.personID != personID:
 		return domain.WorkInfoCover{}, domain.ErrNotFound
-	case fetch.image == nil:
+	case index < 0 || index >= len(fetch.images):
 		return domain.WorkInfoCover{}, domain.ErrPersonImageNotFound
 	}
-	return *fetch.image, nil
+	return fetch.images[index], nil
 }
 
-// ApplyPersonPluginFetch applies the selected items of a kept result once and makes the image the person's face after
+// ApplyPersonPluginFetch applies a selection of a kept result once and makes image imageIndex the person's face after
 // the commit, replacing any. An unknown, expired or other person's result, or a plugin changed since the fetch,
-// returns ErrWorkInfoFetchStale; no items or an item without a value ErrWorkInfoApplyInvalid; a person deleted or
-// merged away ErrPersonNotFound.
+// returns ErrWorkInfoFetchStale; an empty selection, an item or value the result lacks or an image index outside it
+// ErrWorkInfoApplyInvalid; a person deleted or merged away ErrPersonNotFound.
 func (p *WorkInfoPlugins) ApplyPersonPluginFetch(
-	ctx context.Context, personID int64, fetchID string, items []domain.PersonPluginItem,
+	ctx context.Context, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int,
 ) (domain.PersonPluginApplied, error) {
 	if p.people == nil {
 		return domain.PersonPluginApplied{}, errors.New("person plugin fetches are not configured")
 	}
-	fetch, err := p.fetches.claimPerson(fetchID, personID, items, p.now())
+	fetch, fetched, items, err := p.fetches.claimPerson(fetchID, personID, selection, imageIndex, p.now())
 	if err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
 	applied, err := p.people.ApplyPersonPluginFetch(ctx, domain.PersonPluginApply{
 		PersonID: personID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Fetched: fetch.person, Items: items,
+		Fetched: fetched, Items: items,
 	})
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
@@ -160,7 +162,7 @@ func (p *WorkInfoPlugins) ApplyPersonPluginFetch(
 	}
 	if slices.Contains(items, domain.PersonItemImage) && p.personImages != nil {
 		// Like the work-info faces, the image follows the commit; a failure drops it without failing the apply.
-		if revision, err := p.personImages.ReplacePersonImage(ctx, personID, fetch.image.Data); err == nil && revision != 0 {
+		if revision, err := p.personImages.ReplacePersonImage(ctx, personID, fetch.images[imageIndex].Data); err == nil && revision != 0 {
 			applied.Person.ImageRevision = revision
 		}
 	}
@@ -177,28 +179,25 @@ func (f *workInfoFetches) addPerson(fetch *personPluginFetch, now time.Time) str
 	return id
 }
 
-// claimPerson consumes a result only when it belongs to the person and every item has a value; otherwise the result
-// stays.
+// claimPerson consumes a result only when it belongs to the person and the selection is valid, the image the one at
+// imageIndex; it returns the result, the fetched person narrowed to the selection and the items to apply. Otherwise
+// the result stays.
 func (f *workInfoFetches) claimPerson(
-	id string, personID int64, items []domain.PersonPluginItem, now time.Time,
-) (*personPluginFetch, error) {
+	id string, personID int64, selection domain.PersonPluginSelection, imageIndex int, now time.Time,
+) (*personPluginFetch, domain.FetchedPluginPerson, []domain.PersonPluginItem, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
 	fetch, ok := f.people[id]
 	if !ok || fetch.personID != personID {
-		return nil, domain.ErrWorkInfoFetchStale
+		return nil, domain.FetchedPluginPerson{}, nil, domain.ErrWorkInfoFetchStale
 	}
-	if len(items) == 0 {
-		return nil, domain.ErrWorkInfoApplyInvalid
-	}
-	for _, item := range items {
-		if item == domain.PersonItemImage && fetch.image == nil || item != domain.PersonItemImage && !fetch.person.HasItem(item) {
-			return nil, domain.ErrWorkInfoApplyInvalid
-		}
+	fetched, items, ok := fetch.person.Select(selection, imageIndex >= 0 && imageIndex < len(fetch.images))
+	if !ok {
+		return nil, domain.FetchedPluginPerson{}, nil, domain.ErrWorkInfoApplyInvalid
 	}
 	delete(f.people, id)
-	return fetch, nil
+	return fetch, fetched, items, nil
 }
 
 func (f *workInfoFetches) restorePerson(id string, fetch *personPluginFetch) {

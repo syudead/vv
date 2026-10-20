@@ -3034,8 +3034,20 @@ type Alias struct {
 
 // ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
 type ApplyPersonPluginFetchRequest struct {
-	// Items Items to apply; nonempty, and every item must have a value in the result.
+	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
+	Aliases *[]string `json:"aliases,omitempty"`
+
+	// ExternalIds Fetched external IDs to append.
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
+	// ImageIndex The kept image that image applies; required with image.
+	ImageIndex *int `json:"imageIndex,omitempty"`
+
+	// Items Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
+
+	// Links Fetched profile links to append.
+	Links *[]string `json:"links,omitempty"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -4253,11 +4265,20 @@ type PersonLookup struct {
 
 // PersonLookupSelection defines model for PersonLookupSelection.
 type PersonLookupSelection struct {
+	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
+	Aliases *[]string `json:"aliases,omitempty"`
+
+	// ExternalIds Fetched external IDs to append.
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
 	// Index Position in the fetch result's personLookups.
 	Index int `json:"index"`
 
-	// Items Nonempty; every item must have a value in the lookup's result.
+	// Items Profile fields other than links, and image, each with a value in the lookup's result; aliases, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
+
+	// Links Fetched profile links to append.
+	Links *[]string `json:"links,omitempty"`
 }
 
 // PersonMergeResponse defines model for PersonMergeResponse.
@@ -4324,9 +4345,9 @@ type PersonPluginFetchedPerson struct {
 	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20.
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// HasImage Present and true when VV kept an image for this result.
-	HasImage *bool  `json:"hasImage,omitempty"`
-	Name     string `json:"name"`
+	// ImageCount How many images VV kept, in the plugin's order; a person page fetch serves them by index, and a lookup keeps at most its first.
+	ImageCount *int   `json:"imageCount,omitempty"`
+	Name       string `json:"name"`
 
 	// Profile Plugin-provided profile values that pass validation; omitted when none.
 	Profile *PersonProfile `json:"profile,omitempty"`
@@ -7405,9 +7426,9 @@ type ServerInterface interface {
 	// ApplyPersonPluginFetch Apply selected items of a person fetch
 	// (POST /api/people/{id}/plugin-fetches/{fetchId}/apply)
 	ApplyPersonPluginFetch(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId)
-	// GetPersonPluginFetchImage Return a person fetch's image
-	// (GET /api/people/{id}/plugin-fetches/{fetchId}/image)
-	GetPersonPluginFetchImage(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId)
+	// GetPersonPluginFetchImage Return one of a person fetch's images
+	// (GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index})
+	GetPersonPluginFetchImage(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId, index int)
 	// ListPlaylists List playlists by most recently updated
 	// (GET /api/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
@@ -10267,8 +10288,17 @@ func (siw *ServerInterfaceWrapper) GetPersonPluginFetchImage(w http.ResponseWrit
 		return
 	}
 
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPersonPluginFetchImage(w, r, id, fetchId)
+		siw.Handler.GetPersonPluginFetchImage(w, r, id, fetchId, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14310,7 +14340,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches", wrapper.FetchPersonWithPlugin)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/image", wrapper.GetPersonPluginFetchImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/images/{index}", wrapper.GetPersonPluginFetchImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/apply", wrapper.ApplyPersonPluginFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)

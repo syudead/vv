@@ -7,7 +7,6 @@ import {
   fetchPersonWithPlugin,
   type PersonPluginCandidate,
   type PersonPluginFetch,
-  type PersonPluginItem,
   searchPersonWithPlugin,
 } from "../../../api/personPluginFetches";
 import type { WorkInfoPlugin } from "../../../api/workInfoPlugins";
@@ -15,11 +14,25 @@ import { t } from "../../../i18n";
 import type { SkippedLine } from "../../../player/workInfoFetch/fetchRules";
 import type { RunFailure } from "../../../player/workInfoFetch/FindStep";
 import { useToast } from "../../../ui/Toast";
-import { compareRows, initialItems, skippedPersonLines } from "./personCompareRows";
+import {
+  initialSelection,
+  type PersonSelection,
+  selectionBody,
+  selectionEmpty,
+  skippedPersonLines,
+} from "./personCompareRows";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 export type Step = "find" | "compare" | "result";
+
+const EMPTY_SELECTION: PersonSelection = {
+  items: [],
+  image: null,
+  aliases: [],
+  externalIds: [],
+  links: [],
+};
 
 export interface CandidateId {
   source: string;
@@ -81,7 +94,7 @@ export function usePersonFetchFlow({
   const [failure, setFailure] = useState<RunFailure | null>(null);
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<PersonFetched | null>(null);
-  const [selection, setSelection] = useState<PersonPluginItem[]>([]);
+  const [selection, setSelection] = useState<PersonSelection>(EMPTY_SELECTION);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
@@ -111,12 +124,12 @@ export function usePersonFetchFlow({
     if (error instanceof RequestFailed && PLUGIN_GONE.has(error.code)) void onReload();
   };
 
-  const search = async (target: WorkInfoPlugin) => {
+  const search = async (target: WorkInfoPlugin, words = query) => {
     const signal = begin();
     setRunning({ operation: "search" });
     setFailure(null);
     try {
-      setCandidates(await searchPersonWithPlugin(target.id, query.trim(), signal));
+      setCandidates(await searchPersonWithPlugin(target.id, words.trim(), signal));
     } catch (error) {
       if (isAborted(error) || signal.aborted) return;
       failed(error, "search");
@@ -136,7 +149,7 @@ export function usePersonFetchFlow({
       const result = await fetchPersonWithPlugin(person.id, target.id, candidate, signal);
       if (signal.aborted) return;
       setFetched({ result, plugin: target, candidate });
-      setSelection(initialItems(compareRows(latestPerson.current, result.person, true)));
+      setSelection(initialSelection(latestPerson.current, result.person, true));
       setStale(false);
       setApplyFailure(null);
       setStep("compare");
@@ -162,7 +175,8 @@ export function usePersonFetchFlow({
       const applied = await applyPersonPluginFetch(
         person.id,
         current.result.fetchId,
-        selection,
+        selectionBody(selection),
+        selection.image,
         signal,
       );
       onApplied(applied.person);
@@ -193,7 +207,7 @@ export function usePersonFetchFlow({
         !applying &&
         !stale &&
         running === null &&
-        selection.length > 0
+        !selectionEmpty(selection)
       )
         void apply(fetched);
       return;
@@ -214,6 +228,7 @@ export function usePersonFetchFlow({
     step,
     fetched,
     selection,
+    changeSelection: setSelection,
     stale,
     applyFailure,
     applying,
@@ -233,13 +248,15 @@ export function usePersonFetchFlow({
       setStep("find");
     },
     changeQuery: setQuery,
+    /** Searches for one of the person's names at once. */
+    searchFor: (name: string) => {
+      if (plugin === undefined || running !== null) return;
+      setQuery(name);
+      void search(plugin, name);
+    },
     choose: (candidate: CandidateId) => {
       if (plugin !== undefined && running === null) void fetchPerson(plugin, candidate);
     },
-    toggle: (item: PersonPluginItem, on: boolean) =>
-      setSelection((current) =>
-        on ? [...new Set([...current, item])] : current.filter((entry) => entry !== item),
-      ),
     back: () => setStep("find"),
     fetchAgain: () => {
       if (fetched === null || running !== null) return;

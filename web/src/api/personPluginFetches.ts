@@ -13,6 +13,12 @@ export type PersonPluginFetchApplied = components["schemas"]["PersonPluginFetchA
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+/** The apply's choice; aliases, external IDs and links are chosen one by one. */
+export type PersonPluginApplyChoice = Omit<
+  components["schemas"]["ApplyPersonPluginFetchRequest"],
+  "imageIndex"
+>;
+
 export async function searchPersonWithPlugin(
   pluginId: number,
   query: string,
@@ -49,21 +55,28 @@ function fetchPath(personId: number, fetchId: string): string {
   return `/api/people/${String(personId)}/plugin-fetches/${encodeURIComponent(fetchId)}`;
 }
 
-/** The image kept with the result; the browser never contacts the external site. */
-export function personPluginFetchImageUrl(personId: number, fetchId: string): string {
-  return `${fetchPath(personId, fetchId)}/image`;
+/** One of the images kept with the result; the browser never contacts the external site. */
+export function personPluginFetchImageUrl(
+  personId: number,
+  fetchId: string,
+  index: number,
+): string {
+  return `${fetchPath(personId, fetchId)}/images/${String(index)}`;
 }
 
 export function applyPersonPluginFetch(
   personId: number,
   fetchId: string,
-  items: readonly PersonPluginItem[],
+  choice: PersonPluginApplyChoice,
+  imageIndex: number | null,
   signal?: AbortSignal,
 ): Promise<PersonPluginFetchApplied> {
+  const body: components["schemas"]["ApplyPersonPluginFetchRequest"] =
+    imageIndex === null ? choice : { ...choice, imageIndex };
   return request<PersonPluginFetchApplied>(`${fetchPath(personId, fetchId)}/apply`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ items: [...items] }),
+    body: JSON.stringify(body),
     signal,
   });
 }

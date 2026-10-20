@@ -52,7 +52,13 @@ describe("lookupSelections", () => {
   it("チェックした役割の行が結ぶ、結果の出た lookup のチェックした項目だけを送る", () => {
     const shown = shownLookup(answer);
     expect(lookupSelections(fetched, [shown, shown], ["people.performer"])).toEqual([
-      { index: 0, items: ["profile.heightCm"] },
+      {
+        index: 0,
+        items: ["profile.heightCm"],
+        aliases: [],
+        externalIds: [],
+        links: [],
+      },
     ]);
   });
 
@@ -64,7 +70,10 @@ describe("lookupSelections", () => {
     expect(
       lookupSelections(fetched, states, ["people.performer", "people.director"]),
     ).toEqual([]);
-    const cleared = { ...shownLookup(answer), items: [] } as LookupState;
+    const cleared = {
+      ...shownLookup(answer),
+      selection: { items: [], image: null, aliases: [], externalIds: [], links: [] },
+    } as LookupState;
     expect(lookupSelections(fetched, [cleared], ["people.performer"])).toEqual([]);
   });
 });

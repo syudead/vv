@@ -418,16 +418,18 @@ work-info plugin.
 | Response | Body |
 | --- | --- |
 | `search` result | `{"candidates": [{"source": "...", "id": "...", "name": "...", "url": "...", "detail": "..."}]}`: `source` (one of `sources`), `id`, `name` and `url` required, `detail` optional; VVMDM keeps the first 50, and a kept candidate with another `source` fails the run with `plugin_failed` |
-| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}}`: `name` required, the rest optional |
+| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "profile": {...}}}`: `name` required, the rest optional |
 | Failure | As for a work-info plugin |
 
 VVMDM keeps the first 50 aliases with a name, each name once. It puts the
 request's `source` and `id` first in `externalIds` and keeps the plugin's
 other distinct IDs after it, up to 20 in all, so the ID a person was fetched
-by always survives the limit. `image` and `profile` follow
-[People's images and profiles](#peoples-images-and-profiles), and VVMDM
-fetches the one `image` after the run the way it fetches the
-[cover](#cover-image).
+by always survives the limit. Each URL in `images` and `profile` follow
+[People's images and profiles](#peoples-images-and-profiles). VVMDM drops
+invalid and repeated URLs, fetches the first 10 after the run, one after
+another, the way it fetches the [cover](#cover-image), and the owner picks one
+of them as the person's face. A module that returns `image` instead gets no
+image.
 
 Run a person plugin's fetch with its source:
 

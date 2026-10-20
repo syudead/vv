@@ -249,7 +249,7 @@ function RoleLookups({
             state={state}
             enabled={lookupEnabled(result, block.index, context.selection)}
             locked={context.locked}
-            onToggleItem={lookups.toggleItem}
+            onChangeSelection={lookups.changeSelection}
             onRetry={lookups.retry}
           />
         );

@@ -1,5 +1,5 @@
 import { personFaceSrc } from "../../api/credits";
-import type { PersonPluginItem } from "../../api/personPluginFetches";
+import type { PersonSelection } from "../../credits/person/pluginFetch/personCompareRows";
 import { personLookupImageUrl, type PersonLookup } from "../../api/workInfoPlugins";
 import PersonCompare from "../../credits/person/pluginFetch/PersonCompare";
 import { errorText, t } from "../../i18n";
@@ -19,7 +19,7 @@ export interface LookupBlockProps {
   enabled: boolean;
   /** While the apply runs or the result is stale. */
   locked: boolean;
-  onToggleItem: (index: number, item: PersonPluginItem, on: boolean) => void;
+  onChangeSelection: (index: number, selection: PersonSelection) => void;
   onRetry: (index: number) => void;
 }
 
@@ -58,15 +58,11 @@ function Body({ props, name }: { props: LookupBlockProps; name: string }) {
       current={lookupCurrent(result)}
       fetched={result.person}
       nowFaceSrc={result.current === null ? undefined : personFaceSrc(result.current)}
-      fetchedFaceSrc={
-        result.person.hasImage === true
-          ? personLookupImageUrl(props.videoId, props.fetchId, index)
-          : undefined
-      }
-      selection={state.items}
+      imageSrc={() => personLookupImageUrl(props.videoId, props.fetchId, index)}
+      selection={state.selection}
       locked={props.locked || !props.enabled}
       inBlock
-      onToggle={(item, on) => props.onToggleItem(index, item, on)}
+      onChange={(next) => props.onChangeSelection(index, next)}
     />
   );
 }
@@ -76,7 +72,7 @@ export default function LookupBlock(props: LookupBlockProps) {
   const name = props.names.join(" · ");
   const { state } = props;
   const face =
-    state.status === "shown" && state.result.person.hasImage === true
+    state.status === "shown" && (state.result.person.imageCount ?? 0) > 0
       ? personLookupImageUrl(props.videoId, props.fetchId, props.index)
       : undefined;
   return (

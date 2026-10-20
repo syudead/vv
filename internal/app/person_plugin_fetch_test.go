@@ -86,11 +86,11 @@ func newPersonFetchEnv() *personFetchEnv {
 	return e
 }
 
-func (e *personFetchEnv) fetch(t *testing.T, image []byte) domain.PersonPluginFetchResult {
+func (e *personFetchEnv) fetch(t *testing.T, images ...[]byte) domain.PersonPluginFetchResult {
 	t.Helper()
 	e.runtime.result = domain.WorkInfoRunResult{
-		Person:      domain.FetchedPluginPerson{Name: "Hanako", Profile: domain.PersonProfile{Birthplace: "Tokyo"}},
-		PersonImage: image,
+		Person:             domain.FetchedPluginPerson{Name: "Hanako", Profile: domain.PersonProfile{Birthplace: "Tokyo"}},
+		PersonPluginImages: images,
 	}
 	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
 	if err != nil {
@@ -101,7 +101,7 @@ func (e *personFetchEnv) fetch(t *testing.T, image []byte) domain.PersonPluginFe
 
 func TestFetchPersonWithPluginSendsTheFirstAcceptedStoredID(t *testing.T) {
 	e := newPersonFetchEnv()
-	e.fetch(t, nil)
+	e.fetch(t)
 	req := e.runtime.requests[0]
 	if req.Operation != domain.WorkInfoFetch || req.Kind != domain.WorkInfoPluginKindPerson || req.Source != "wiki" ||
 		req.ID != "w-1" {
@@ -173,7 +173,7 @@ func TestApplyPersonPluginFetchRefusesAProfileValueTheResultHid(t *testing.T) {
 	}
 
 	_, err = e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID,
-		[]domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileDeathDate)})
+		domain.PersonPluginSelection{Items: []domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileDeathDate)}}, -1)
 	if !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 		t.Fatalf("err = %v; want ErrWorkInfoApplyInvalid for a value the result did not show", err)
 	}
@@ -184,11 +184,11 @@ func TestApplyPersonPluginFetchRefusesAProfileValueTheResultHid(t *testing.T) {
 
 func TestApplyPersonPluginFetchIsStaleAfterThePluginIsReplaced(t *testing.T) {
 	e := newPersonFetchEnv()
-	result := e.fetch(t, nil)
+	result := e.fetch(t)
 	e.store.plugins[1].Digest, e.store.plugins[1].ApprovedDigest = "d1b", "d1b"
 
 	_, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID,
-		[]domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileBirthplace)})
+		domain.PersonPluginSelection{Items: []domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileBirthplace)}}, -1)
 	if !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("err = %v; want ErrWorkInfoFetchStale", err)
 	}
@@ -199,52 +199,64 @@ func TestApplyPersonPluginFetchIsStaleAfterThePluginIsReplaced(t *testing.T) {
 
 func TestApplyPersonPluginFetchOfADeletedPersonIsPersonNotFound(t *testing.T) {
 	e := newPersonFetchEnv()
-	result := e.fetch(t, nil)
+	result := e.fetch(t)
 	delete(e.people.people, fetchPerson)
-	items := []domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileBirthplace)}
+	items := domain.PersonPluginSelection{Items: []domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileBirthplace)}}
 
-	_, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, items)
+	_, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, items, -1)
 	if !errors.Is(err, domain.ErrPersonNotFound) {
 		t.Fatalf("err = %v; want ErrPersonNotFound", err)
 	}
-	if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, items); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+	if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, items, -1); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("second apply err = %v; want the result consumed", err)
 	}
 }
 
-func TestApplyPersonPluginFetchReplacesTheFaceAfterTheCommit(t *testing.T) {
+func TestApplyPersonPluginFetchReplacesTheFaceWithTheChosenImage(t *testing.T) {
 	e := newPersonFetchEnv()
-	image := testPNG(t, 4, 4)
-	result := e.fetch(t, image)
-	if !result.HasImage {
-		t.Fatal("the fetched image was not kept")
+	chosen := testPNG(t, 2, 2)
+	// An image that cannot be read is dropped, so the chosen one is the second kept image.
+	result := e.fetch(t, testPNG(t, 4, 4), []byte("not an image"), nil, chosen)
+	if result.ImageCount != 2 {
+		t.Fatalf("image count = %d; want the two readable images", result.ImageCount)
 	}
-	if _, err := e.plugins.PersonPluginFetchImage(otherPerson, result.ID); !errors.Is(err, domain.ErrNotFound) {
+	if got, err := e.plugins.PersonPluginFetchImage(fetchPerson, result.ID, 1); err != nil || string(got.Data) != string(chosen) {
+		t.Fatalf("image 1 = %d bytes, %v; want the chosen image", len(got.Data), err)
+	}
+	if _, err := e.plugins.PersonPluginFetchImage(otherPerson, result.ID, 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("image for another person err = %v; want ErrNotFound", err)
 	}
 	if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), otherPerson, result.ID,
-		[]domain.PersonPluginItem{domain.PersonItemImage}); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+		domain.PersonPluginSelection{Items: []domain.PersonPluginItem{domain.PersonItemImage}}, 1); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("apply for another person err = %v; want ErrWorkInfoFetchStale", err)
 	}
 
 	applied, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID,
-		[]domain.PersonPluginItem{domain.PersonItemImage})
+		domain.PersonPluginSelection{Items: []domain.PersonPluginItem{domain.PersonItemImage}}, 1)
 	if err != nil {
 		t.Fatalf("ApplyPersonPluginFetch: %v", err)
 	}
 	if len(e.faces.filled) != 0 || len(e.faces.replaced) != 1 || e.faces.replaced[0].id != fetchPerson ||
-		string(e.faces.replaced[0].data) != string(image) || applied.Person.ImageRevision != 9 {
-		t.Fatalf("faces = %+v, revision %d; want the kept image to replace the person's face", e.faces,
+		string(e.faces.replaced[0].data) != string(chosen) || applied.Person.ImageRevision != 9 {
+		t.Fatalf("faces = %+v, revision %d; want the chosen image to replace the person's face", e.faces,
 			applied.Person.ImageRevision)
 	}
 }
 
 func TestApplyPersonPluginFetchRefusesAnItemWithoutAValue(t *testing.T) {
 	e := newPersonFetchEnv()
-	result := e.fetch(t, nil)
-	for _, items := range [][]domain.PersonPluginItem{nil, {domain.PersonItemImage}, {domain.PersonItemAliases}} {
-		if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, items); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
-			t.Fatalf("items %v err = %v; want ErrWorkInfoApplyInvalid", items, err)
+	result := e.fetch(t, testPNG(t, 2, 2))
+	image := []domain.PersonPluginItem{domain.PersonItemImage}
+	for _, tc := range []struct {
+		selection domain.PersonPluginSelection
+		image     int
+	}{
+		{domain.PersonPluginSelection{}, -1},
+		{domain.PersonPluginSelection{Aliases: []string{"Not fetched"}}, -1},
+		{domain.PersonPluginSelection{Items: image}, -1}, {domain.PersonPluginSelection{Items: image}, 1},
+	} {
+		if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID, tc.selection, tc.image); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
+			t.Fatalf("selection %+v, image %d err = %v; want ErrWorkInfoApplyInvalid", tc.selection, tc.image, err)
 		}
 	}
 	if len(e.people.applies) != 0 {

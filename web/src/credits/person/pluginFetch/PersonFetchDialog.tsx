@@ -21,6 +21,7 @@ import {
 import { FormDialog } from "../../../ui/patterns/form-dialog";
 import { Button } from "../../../ui/shadcn/button";
 import PersonCompare from "./PersonCompare";
+import { selectionEmpty } from "./personCompareRows";
 import {
   candidateKey,
   type PersonFetchFlow,
@@ -44,7 +45,32 @@ function candidateView(candidate: PersonPluginCandidate): CandidateView {
   };
 }
 
-function NameSearch({ flow }: { flow: PersonFetchFlow }) {
+/** The person's other names, one press from a search, since a site may list the person under any. */
+function OtherNames({ flow, person }: { flow: PersonFetchFlow; person: Person }) {
+  const names = [person.name, ...person.aliases.map((alias) => alias.name)].filter(
+    (name, index, all) => name !== flow.query.trim() && all.indexOf(name) === index,
+  );
+  if (names.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-xs text-muted-foreground">{text.otherNames}</span>
+      {names.map((name) => (
+        <Button
+          key={name}
+          variant="secondary"
+          size="sm"
+          className="max-w-full"
+          disabled={flow.running !== null}
+          onClick={() => flow.searchFor(name)}
+        >
+          <span className="max-w-chip-label truncate">{name}</span>
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function NameSearch({ flow, person }: { flow: PersonFetchFlow; person: Person }) {
   const busy = flow.running !== null;
   const candidates = flow.candidates;
   return (
@@ -61,6 +87,7 @@ function NameSearch({ flow }: { flow: PersonFetchFlow }) {
         autoFocus
         onChange={flow.changeQuery}
       />
+      <OtherNames flow={flow} person={person} />
       {candidates !== null &&
         (candidates.length === 0 ? (
           <p className="text-sm text-muted-foreground">{text.noMatches}</p>
@@ -99,9 +126,11 @@ function SearchByName({ flow }: { flow: PersonFetchFlow }) {
 function FindStep({
   flow,
   plugins,
+  person,
 }: {
   flow: PersonFetchFlow;
   plugins: readonly WorkInfoPlugin[];
+  person: Person;
 }) {
   return (
     <>
@@ -111,7 +140,11 @@ function FindStep({
         disabled={flow.running !== null}
         onPlugin={flow.choosePlugin}
       />
-      {flow.byName ? <NameSearch flow={flow} /> : <SearchByName flow={flow} />}
+      {flow.byName ? (
+        <NameSearch flow={flow} person={person} />
+      ) : (
+        <SearchByName flow={flow} />
+      )}
       {flow.failure !== null && (
         <FailureAlert failure={flow.failure} settingsPath={PERSON_PLUGIN_SETTINGS} />
       )}
@@ -132,20 +165,19 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
           first?.value ?? "",
         )}
       </p>
-      {fetched.candidate === undefined ? (
-        <SearchByName flow={flow} />
-      ) : (
+      {/* Back reaches the plugin and the candidates, so another plugin or person is a step away. */}
+      <div className="flex flex-wrap gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="self-start"
           disabled={flow.applying || flow.running !== null}
           onClick={flow.back}
         >
           <ArrowLeft aria-hidden="true" />
-          {t.player.workInfoFetch.back}
+          {flow.byName ? t.player.workInfoFetch.back : text.back}
         </Button>
-      )}
+        {!flow.byName && <SearchByName flow={flow} />}
+      </div>
       <CompareNotices
         stale={flow.stale}
         refetching={flow.running !== null}
@@ -156,11 +188,13 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
         current={person}
         fetched={fetched.result.person}
         nowFaceSrc={personFaceSrc(person)}
-        fetchedFaceSrc={personPluginFetchImageUrl(person.id, fetched.result.fetchId)}
+        imageSrc={(index) =>
+          personPluginFetchImageUrl(person.id, fetched.result.fetchId, index)
+        }
         selection={flow.selection}
         replace
         locked={flow.applying || flow.stale}
-        onToggle={flow.toggle}
+        onChange={flow.changeSelection}
       />
     </div>
   );
@@ -181,7 +215,7 @@ function submitLabel(flow: PersonFetchFlow): ReactNode {
 function submitDisabled(flow: PersonFetchFlow): boolean {
   if (flow.step === "result") return false;
   if (flow.step === "compare")
-    return flow.selection.length === 0 || flow.stale || flow.running !== null;
+    return selectionEmpty(flow.selection) || flow.stale || flow.running !== null;
   if (flow.plugin === undefined || flow.running !== null) return true;
   return flow.byName && flow.query.trim() === "";
 }
@@ -217,7 +251,7 @@ export default function PersonFetchDialog(props: {
         flow.submit();
       }}
     >
-      {flow.step === "find" && <FindStep flow={flow} plugins={plugins} />}
+      {flow.step === "find" && <FindStep flow={flow} plugins={plugins} person={person} />}
       {flow.step === "compare" && <CompareStep flow={flow} person={person} />}
       {flow.step === "result" && <ResultStep lines={flow.skipped} />}
     </FormDialog>

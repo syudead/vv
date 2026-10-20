@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -58,34 +59,22 @@ func TestPluginRunRefusesASourceTheRunCannotTake(t *testing.T) {
 	}
 }
 
-func TestPluginRunPrintsAPersonImageOnlyWhenFetched(t *testing.T) {
+func TestPluginRunPrintsOnlyThePersonImagesFetched(t *testing.T) {
 	req := domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, Kind: domain.WorkInfoPluginKindPerson}
-	const url = "https://site.test/p.jpg"
-	cases := []struct {
-		name  string
-		image []byte
-		want  string
-	}{
-		{"fetched", []byte{0xff}, url},
-		{"not fetched", nil, ""},
+	result := domain.WorkInfoRunResult{
+		Person:             domain.FetchedPluginPerson{Name: "n", ImageURLs: []string{"https://site.test/1.jpg", "https://site.test/2.jpg"}},
+		PersonPluginImages: [][]byte{nil, {0xff}},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := domain.WorkInfoRunResult{
-				Person: domain.FetchedPluginPerson{Name: "n", ImageURL: url}, PersonImage: tc.image,
-			}
-			var out bytes.Buffer
-			if failure := writeKeptResult(&out, req, result); failure != nil {
-				t.Fatalf("writeKeptResult: %v", failure)
-			}
-			var body struct {
-				Person struct {
-					Image string `json:"image"`
-				} `json:"person"`
-			}
-			if err := json.Unmarshal(out.Bytes(), &body); err != nil || body.Person.Image != tc.want {
-				t.Fatalf("stdout = %s, %v; want image %q", out.String(), err, tc.want)
-			}
-		})
+	var out bytes.Buffer
+	if failure := writeKeptResult(&out, req, result); failure != nil {
+		t.Fatalf("writeKeptResult: %v", failure)
+	}
+	var body struct {
+		Person struct {
+			Images []string `json:"images"`
+		} `json:"person"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &body); err != nil || !slices.Equal(body.Person.Images, []string{"https://site.test/2.jpg"}) {
+		t.Fatalf("stdout = %s, %v; want only the second image", out.String(), err)
 	}
 }

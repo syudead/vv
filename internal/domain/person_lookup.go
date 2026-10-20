@@ -123,7 +123,7 @@ type PersonLookupResult struct {
 // PersonLookupSelection names the items the owner selected from planned lookup Index.
 type PersonLookupSelection struct {
 	Index int
-	Items []PersonPluginItem
+	PersonPluginSelection
 }
 
 // FetchedPersonLookupApply carries a run lookup's selected items to the apply, which fills the person its entries

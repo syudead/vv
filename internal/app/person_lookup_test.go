@@ -75,7 +75,7 @@ func (e *lookupEnv) fetchTwo(t *testing.T, image []byte) domain.WorkInfoFetchRes
 }
 
 func (e *lookupEnv) lookupReturns(person domain.FetchedPluginPerson, image []byte, err error) {
-	e.runtime.result = domain.WorkInfoRunResult{Person: person, PersonImage: image}
+	e.runtime.result = domain.WorkInfoRunResult{Person: person, PersonPluginImages: [][]byte{image}}
 	e.runtime.err = err
 }
 
@@ -190,7 +190,7 @@ func TestKeepLookupReportsItsOwnFetchEvicted(t *testing.T) {
 		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people}, lookupRuns: lookups,
 		expiresAt: now.Add(domain.WorkInfoFetchLifetime),
 	}, now)
-	fetches.addPerson(&personPluginFetch{image: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
+	fetches.addPerson(&personPluginFetch{images: []domain.WorkInfoCover{*full}, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
 	if _, ok := fetches.entries[id]; !ok {
 		t.Fatal("a fetch within the budget was dropped")
 	}
@@ -211,15 +211,21 @@ func TestApplyWorkInfoFetchCarriesLookupItemsAndPutsTheLookupFaceFirst(t *testin
 	}
 	performers := []domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}
 	birthplace := domain.PersonProfileItem(domain.ProfileBirthplace)
-	selected := []domain.PersonLookupSelection{{Index: 0, Items: []domain.PersonPluginItem{domain.PersonItemImage, birthplace}}}
+	selected := []domain.PersonLookupSelection{{Index: 0, PersonPluginSelection: domain.PersonPluginSelection{
+		Items: []domain.PersonPluginItem{domain.PersonItemImage, birthplace},
+	}}}
 	for _, tc := range []struct {
 		name    string
 		fields  []domain.WorkInfoField
 		lookups []domain.PersonLookupSelection
 	}{
 		{"without the role", []domain.WorkInfoField{domain.PersonField(domain.PersonDirector)}, selected},
-		{"a lookup that did not run", performers, []domain.PersonLookupSelection{{Index: 1, Items: []domain.PersonPluginItem{birthplace}}}},
-		{"an item without a value", performers, []domain.PersonLookupSelection{{Index: 0, Items: []domain.PersonPluginItem{domain.PersonItemAliases}}}},
+		{"a lookup that did not run", performers, []domain.PersonLookupSelection{{Index: 1, PersonPluginSelection: domain.PersonPluginSelection{
+			Items: []domain.PersonPluginItem{birthplace},
+		}}}},
+		{"a value the lookup lacks", performers, []domain.PersonLookupSelection{{Index: 0, PersonPluginSelection: domain.PersonPluginSelection{
+			Aliases: []string{"Not fetched"},
+		}}}},
 	} {
 		if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, tc.fields, nil, false, tc.lookups); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", tc.name, err)
