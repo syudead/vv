@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -251,5 +252,87 @@ func TestConfirmedRejudgeKeepsTheBundlesOtherRejudgeOpen(t *testing.T) {
 	}
 	if status == string(domain.ActivityDone) {
 		t.Errorf("the other pair's activity = %s, want it open until its own verdict", status)
+	}
+}
+
+// Splitting a re-judged bundle pair rebuilds the leaving key's candidates; another pair of that key listed for
+// judging again must keep its listing, or its automatic decision is never judged again.
+func TestSplitRejudgeKeepsTheLeavingKeysOtherListing(t *testing.T) {
+	ctx := context.Background()
+	db, ids := judgementFixture(t)
+	enableJudging(t, db, true)
+	judgedPrior(t, db, domain.ActivitySame)
+	applyFingerprint(t, db, ids["c"], fingerprintA)
+	for range 2 {
+		job, err := db.Versions().ClaimJudgement(ctx)
+		if err != nil {
+			t.Fatalf("ClaimJudgement: %v", err)
+		}
+		applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionDifferent, Decider: domain.ActivityByAI})
+	}
+	forceFingerprint(t, db, ids["a"])
+	if rows := candidateRows(t, db); rows != 2 {
+		t.Fatalf("candidate rows = %d, want a/b and a/c listed again", rows)
+	}
+
+	// a joined b's bundle, so the different verdict on a/b moves key-a out and rebuilds its candidates.
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionDifferent, Decider: domain.ActivityByAI})
+
+	var rejudgeOf int64
+	if err := db.sql.QueryRow(`select coalesce(max(rejudge_of), 0) from video_version_candidates
+		where key_a = 'key-a' and key_b = 'key-c'`).Scan(&rejudgeOf); err != nil {
+		t.Fatal(err)
+	}
+	if rejudgeOf == 0 {
+		t.Fatal("a/c is no longer listed for judging again after the a/b split")
+	}
+	next, err := db.Versions().ClaimJudgement(ctx)
+	if err != nil || next.Keys != [2]string{"key-a", "key-c"} {
+		t.Errorf("ClaimJudgement = %v, %v, want the listed a/c pair", next.Keys, err)
+	}
+}
+
+// A verdict that keeps the prior decision replaces it: only the new entry offers the undo, so undoing the prior entry
+// cannot revert the decision the force rescan confirmed.
+func TestConfirmedRejudgeMovesTheUndoToTheNewEntry(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		prior domain.ActivityOutcome
+		want  pairState
+	}{
+		{"same on a bundle", domain.ActivitySame, pairState{bundled: true}},
+		{"different on a dismissal", domain.ActivityDifferent, pairState{dismissed: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, ids := judgementFixture(t)
+			enableJudging(t, db, true)
+			prior := judgedPrior(t, db, tc.prior)
+			forceFingerprint(t, db, ids["a"])
+			job := claimJudgement(t, db)
+			verdict := domain.VersionSame
+			if tc.prior == domain.ActivityDifferent {
+				verdict = domain.VersionDifferent
+			}
+			applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: verdict, Decider: domain.ActivityByAI})
+
+			replaced, err := db.Activity().ActivityEntry(ctx, prior.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if replaced.UndoOffered() {
+				t.Error("the replaced prior entry still offers the undo")
+			}
+			if _, err := db.Activity().UndoVersionJudgement(ctx, prior.ID); !errors.Is(err, domain.ErrActivityNotUndoable) {
+				t.Errorf("UndoVersionJudgement(prior) = %v, want ErrActivityNotUndoable", err)
+			}
+			if got := abState(t, db); got != tc.want {
+				t.Errorf("pair = %+v, want %+v", got, tc.want)
+			}
+			if latest := pairEntries(t, db)[0]; latest.ID == prior.ID || !latest.UndoOffered() {
+				t.Errorf("new entry %d undo offered = %v, want the new entry to offer it", latest.ID, latest.UndoOffered())
+			}
+		})
 	}
 }

@@ -430,7 +430,7 @@ func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, c *changes, key string
 	if err != nil || !found {
 		return err
 	}
-	return rebuildVersionCandidates(ctx, tx, c, key, fingerprint, pairFinder{})
+	return rebuildVersionCandidates(ctx, tx, c, key, fingerprint, pairFinder{}, true)
 }
 
 const versionJudgingEnabledKey = "version_judging.enabled"
