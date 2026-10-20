@@ -81,6 +81,12 @@ describe("EditCreditsDialog", () => {
   it("sends only the touched roles in one request, then reports the applied count and closes", async () => {
     const user = userEvent.setup();
     const onClose = renderDialog();
+    // Smart-folder members are unknown here, so the description names the folders.
+    expect(
+      screen.getByText(
+        /^Changes apply to 3 videos and every video now in the 1 smart folder\./,
+      ),
+    ).toBeTruthy();
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Apply" }).disabled,
     ).toBe(true);
@@ -126,8 +132,8 @@ describe("EditCreditsDialog", () => {
     });
   });
 
-  it("keeps the dialog and the choices open with the reason when the request fails", async () => {
-    server.edit.mockReturnValue(
+  it("keeps the choices after a failure, and a retry reuses the credit created before it", async () => {
+    server.edit.mockReturnValueOnce(
       json(
         {
           code: "invalid_request",
@@ -140,15 +146,19 @@ describe("EditCreditsDialog", () => {
     const user = userEvent.setup();
     const onClose = renderDialog();
 
-    await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Ali");
-    await user.click(await screen.findByRole("option", { name: /^Alice/ }));
+    await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Eve");
+    await user.click(await screen.findByRole("option", { name: 'Create "Eve"' }));
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
     expect(await screen.findByText(/^Couldn't edit the credits:/)).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByText("Alice")).toBeTruthy();
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Apply" }).disabled,
-    ).toBe(false);
+    expect(screen.getByText("Eve")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(server.createPerson).toHaveBeenCalledTimes(1);
+    expect(server.edit.mock.calls[1]?.[0]).toMatchObject({
+      edits: [{ kind: "person", role: "performer", action: "add", ids: [50] }],
+    });
   });
 });

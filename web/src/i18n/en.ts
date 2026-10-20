@@ -1094,6 +1094,10 @@ export const en = {
         title: "Edit credits",
         description: (count: number) =>
           `Changes apply to ${videos(count)}. Roles without people or organizations stay as they are.`,
+        descriptionWithSmartFolders: (videoCount: number, folderCount: number) =>
+          videoCount === 0
+            ? `Changes apply to every video now in the ${smartFolders(folderCount)}. Roles without people or organizations stay as they are.`
+            : `Changes apply to ${videos(videoCount)} and every video now in the ${smartFolders(folderCount)}. Roles without people or organizations stay as they are.`,
         modeLabel: (role: string) => `How to change ${role}`,
         add: "Add",
         remove: "Remove",

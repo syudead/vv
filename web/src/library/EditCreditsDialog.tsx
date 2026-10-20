@@ -1,4 +1,4 @@
-import { type FormEvent, Fragment, type ReactNode, useId, useState } from "react";
+import { type FormEvent, Fragment, type ReactNode, useId, useRef, useState } from "react";
 
 import { type CreditKind, createCredit } from "../api/credits";
 import {
@@ -62,12 +62,15 @@ function isSent(draft: RoleDraft): boolean {
   return draft.chips.length > 0 || draft.action === "replace";
 }
 
-/** Create the typed names once per kind, then send every role's IDs in one request. */
+/**
+ * Create the typed names once per kind, then send every role's IDs in one request. `created`
+ * outlives a failed attempt, so a retry reuses the credits already created instead of duplicating them.
+ */
 async function sendEdits(
   drafts: ReadonlyMap<string, RoleDraft>,
+  created: Map<string, number>,
   send: (edits: VideoCreditEdit[]) => Promise<number>,
 ): Promise<number> {
-  const created = new Map<string, number>();
   const edits: VideoCreditEdit[] = [];
   for (const entry of [...personEntries, ...organizationEntries]) {
     const draft = drafts.get(entryKey(entry));
@@ -112,6 +115,7 @@ export default function EditCreditsDialog({
   const [drafts, setDrafts] = useState<ReadonlyMap<string, RoleDraft>>(new Map());
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
+  const created = useRef(new Map<string, number>());
   const ready = [...drafts.values()].some(isSent);
 
   function update(entry: RoleEntry, change: (draft: RoleDraft) => RoleDraft) {
@@ -127,7 +131,7 @@ export default function EditCreditsDialog({
     if (pending || !ready) return;
     setPending(true);
     setFailure(null);
-    sendEdits(drafts, (edits) =>
+    sendEdits(drafts, created.current, (edits) =>
       editVideoCredits(selectedIds, edits, { smartFolderIds }).then(
         (result) => result.applied,
       ),
@@ -162,7 +166,11 @@ export default function EditCreditsDialog({
         if (!open && !pending) onClose();
       }}
       title={words.title}
-      description={words.description(count)}
+      description={
+        smartFolderIds.length === 0
+          ? words.description(count)
+          : words.descriptionWithSmartFolders(count, smartFolderIds.length)
+      }
       onSubmit={submit}
       submitLabel={words.submit}
       cancelLabel={t.player.detailsEditor.cancel}

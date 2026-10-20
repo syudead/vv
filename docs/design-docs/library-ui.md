@@ -519,7 +519,9 @@ same action for their child groups and child smart folders.
 directors, photographers, streamers) and organization role (makers, labels).
 Each row has a mode, `Add`, `Remove` or `Replace`, and the credit picker of the
 details editor; a name that matches nobody is created on `Apply`, once per kind
-even when two roles use it. The dialog sends only the rows that name credits,
+even when two roles use it or `Apply` is retried after a failure. With smart
+folders selected, the description says that every video now in them changes
+too, since the client does not know their members. The dialog sends only the rows that name credits,
 and a `Replace` row without credits, which clears that role. One request
 (`POST /api/video-credits`) applies every row to each selected video's work
 information in one transaction, leaving the other roles and fields as they
