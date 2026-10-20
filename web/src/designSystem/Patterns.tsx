@@ -201,7 +201,7 @@ export default function Patterns() {
       <Pattern
         id="profile-page"
         name={p.names.profilePage}
-        items={["profile-page", "profile-page-example", "shelf", "person-face"]}
+        items={["profile-page", "profile-page-example", "card-grid", "person-face"]}
       >
         <ProfilePageExample />
       </Pattern>

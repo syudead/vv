@@ -311,7 +311,7 @@ to pick, what goes in each slot and what must not is in
 | Layer          | What it is                                                                                                                                                                                                                                                                             | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `Shelf`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                            | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                                     | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                                          | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
@@ -403,13 +403,18 @@ records apart and the parts of one together; parts drawn as cards of their
 own would each read as a record.
 
 `ProfilePage` is a shell page for one subject above the items it is on, such
-as a person and their videos ([people.md](people.md#the-person-page)): a
-profile spread across the page (the face `profile-face` wide, the identity
-with its key figures, and from `lg` a facts card `profile-facts` wide at the
-row's end), then the items, usually as `Shelf`s. Below `sm` the face stands
-above the identity and the facts card follows it. No skeleton had that shape:
-`ListPage`'s `aside` is a right-hand column for tools read after the body, and
-`DetailPage` is outside the shell with media edge to edge.
+as a person and their videos ([people.md](people.md#the-person-page)): the face
+`profile-face` wide at the left, and beside it the name, the actions and the
+details, then the items in one section per kind. Everything about the subject
+stays in the column beside the face, so a long value wraps there instead of
+widening the page; below `sm` the face stands above the rest. No skeleton had
+that shape: `ListPage`'s `aside` is a right-hand column for tools read after
+the body, and `DetailPage` is outside the shell with media edge to edge.
+
+| Rejected                                 | Why                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| A facts card at the right of the profile | A long list of links or IDs made it taller than the face and pushed the items down |
+| Rows of items that scroll sideways       | Most of a row was off the screen; a grid shows the items the way the library does  |
 
 `StepsPage` is a page outside the shell for steps taken in a fixed order, one
 at a time, such as the first setup: a header band with the logo and a strip of

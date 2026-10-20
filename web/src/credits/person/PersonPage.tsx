@@ -19,9 +19,9 @@ import PersonFaceControl from "./PersonFaceControl";
 import { personFacesPath, personPath } from "./personPath";
 import PersonGone from "./PersonGone";
 import PersonFetchEntry from "./pluginFetch/PersonFetchEntry";
-import { personFactsCard, PersonIdentity } from "./PersonProfile";
+import { PersonActions, PersonDetails, PersonIdentity } from "./PersonProfile";
 import {
-  PersonShelves,
+  PersonRoleSections,
   PersonVideosBody,
   PersonVideosHeader,
   RoleFilter,
@@ -32,7 +32,7 @@ import { parsePersonId, useRoutedPerson } from "./usePerson";
 
 const text = t.credits.personPage;
 
-/** `/people/:id`: the person's face and profile above their videos, one shelf per role. */
+/** `/people/:id`: the person's face and profile above their videos, one section per role. */
 export default function PersonPage() {
   const { id } = useParams();
   const personId = parsePersonId(id);
@@ -97,16 +97,14 @@ function IdentitySkeleton() {
 /** The way to the person's face recognition, with the pairs waiting for a decision. */
 function FacesEntry({ personId, toReview }: { personId: number; toReview: number }) {
   return (
-    <Button asChild variant="ghost" size="sm">
+    <Button asChild variant="secondary" size="sm">
       <Link
         to={personFacesPath(personId)}
         aria-label={text.facesPage.entryLabel(toReview)}
       >
         <ScanFace aria-hidden="true" />
         {text.facesPage.entry}
-        {toReview > 0 && (
-          <Badge variant="secondary">{text.facesPage.toReview(toReview)}</Badge>
-        )}
+        {toReview > 0 && <Badge>{text.facesPage.toReview(toReview)}</Badge>}
       </Link>
     </Button>
   );
@@ -158,10 +156,10 @@ function PersonShown({
     <ProfilePage
       profileLabel={text.profile}
       face={<PersonFaceControl person={person} onChanged={replace} onGone={markGone} />}
-      identity={
-        <PersonIdentity
+      identity={<PersonIdentity person={person} />}
+      actions={
+        <PersonActions
           person={person}
-          today={today}
           fetchEntry={
             <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
           }
@@ -175,10 +173,10 @@ function PersonShown({
           }}
         />
       }
-      facts={personFactsCard(person, today)}
+      details={<PersonDetails person={person} today={today} />}
     >
       {role === null ? (
-        <PersonShelves personId={person.id} all={videos} onSeeAll={setRole} />
+        <PersonRoleSections personId={person.id} all={videos} onSeeAll={setRole} />
       ) : (
         <section aria-label={text.videos} className="flex min-w-0 flex-col gap-3">
           <PersonVideosHeader videos={videos} />

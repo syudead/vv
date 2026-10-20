@@ -142,9 +142,8 @@
   /* Narrow-screen editor stage occupies roughly 45% of viewport height. */
   --spacing-editor-stage: 45dvh;
   --spacing-form-page-aside: 16.25rem;
-  /* ProfilePage's face from sm, and its facts card at the row's end from lg. */
+  /* ProfilePage's face from sm. */
   --spacing-profile-face: 15rem;
-  --spacing-profile-facts: 18rem;
   /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);

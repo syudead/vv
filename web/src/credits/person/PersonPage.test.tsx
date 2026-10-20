@@ -80,10 +80,11 @@ describe("PersonPage", () => {
     expect(screen.getByText("2000-05-02 (age 26)")).toBeTruthy();
   });
 
-  it("shows a shelf only for the roles with videos, and See all opens that role's grid", async () => {
+  it("shows a section only for the roles with videos, and See all opens that role's grid", async () => {
     const user = userEvent.setup();
+    server.videoCount = 11;
     renderPage();
-    await screen.findByRole("link", { name: /Video 1/ });
+    await screen.findByRole("heading", { name: "Performer", level: 2 });
     const roles = sent("GET", "/api/videos").map((request) =>
       request.url.searchParams.get("personRole"),
     );
@@ -92,6 +93,8 @@ describe("PersonPage", () => {
     );
     expect(screen.getByRole("heading", { name: "Performer", level: 2 })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Director", level: 2 })).toBeNull();
+    // A section shows its first ten videos; See all shows the rest.
+    expect(screen.queryByRole("link", { name: /Video 11/ })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "See all videos as Performer" }));
     expect(

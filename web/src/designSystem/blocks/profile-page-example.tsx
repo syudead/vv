@@ -1,7 +1,9 @@
+import { Pencil } from "lucide-react";
+
 import { t } from "@/i18n";
-import { FactList } from "@/ui/patterns/fact-list";
+import { CardGrid } from "@/ui/patterns/card-grid";
+import { PageHeader } from "@/ui/patterns/page-header";
 import { ProfilePage } from "@/ui/patterns/profile-page";
-import { Shelf, ShelfItem } from "@/ui/patterns/shelf";
 import { PersonFace } from "@/ui/PersonFace";
 import { Button } from "@/ui/shadcn/button";
 
@@ -21,10 +23,18 @@ export function ProfilePageExample() {
       face={<PersonFace name={p.profilePageName} shape="profile" />}
       identity={
         <>
-          <div className="flex flex-col gap-1">
-            <h1 className="line-clamp-3 text-xl font-semibold">{p.profilePageName}</h1>
-            <p className="text-sm text-muted-foreground">{p.profilePageAliases}</p>
-          </div>
+          <h1 className="line-clamp-3 text-xl font-semibold">{p.profilePageName}</h1>
+          <p className="text-sm text-muted-foreground">{p.profilePageAliases}</p>
+        </>
+      }
+      actions={
+        <Button variant="secondary" size="sm">
+          <Pencil aria-hidden="true" />
+          {p.profilePageEdit}
+        </Button>
+      }
+      details={
+        <>
           <dl className="flex flex-wrap gap-x-8 gap-y-3">
             {[
               { term: p.profilePageAge, value: p.profilePageAgeValue },
@@ -36,37 +46,38 @@ export function ProfilePageExample() {
               </div>
             ))}
           </dl>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm">
-              {p.profilePageEdit}
-            </Button>
-          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3 xl:grid-cols-4">
+            <div className="flex min-w-0 flex-col-reverse gap-0.5">
+              <dt className="text-xs text-muted-foreground">{p.profilePageBorn}</dt>
+              <dd className="wrap-anywhere">{p.profilePageBornValue}</dd>
+            </div>
+          </dl>
         </>
       }
-      facts={
-        <FactList
-          facts={[{ id: "born", term: p.profilePageBorn, value: p.profilePageBornValue }]}
-        />
-      }
     >
-      <Shelf
-        title={p.profilePagePerformer}
-        count={p.profilePageCount}
-        action={
-          <Button variant="ghost" size="sm">
-            {p.profilePageSeeAll}
-          </Button>
-        }
+      <section
+        aria-label={p.profilePagePerformer}
+        className="flex min-w-0 flex-col gap-3"
       >
-        {titles.map((title) => (
-          <ShelfItem key={title}>
-            <div className="flex flex-col gap-2">
+        <PageHeader
+          title={p.profilePagePerformer}
+          headingLevel={2}
+          count={p.profilePageCount}
+          actions={
+            <Button variant="ghost" size="sm">
+              {p.profilePageSeeAll}
+            </Button>
+          }
+        />
+        <CardGrid size={0}>
+          {titles.map((title) => (
+            <div key={title} className="flex flex-col gap-2">
               <span className="aspect-video w-full rounded-md bg-card" />
               <span className="truncate text-sm font-medium">{title}</span>
             </div>
-          </ShelfItem>
-        ))}
-      </Shelf>
+          ))}
+        </CardGrid>
+      </section>
     </ProfilePage>
   );
 }

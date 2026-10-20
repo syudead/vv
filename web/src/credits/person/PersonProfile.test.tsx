@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Person } from "../../api/credits";
-import { PersonIdentity } from "./PersonProfile";
+import { PersonDetails } from "./PersonProfile";
 
 const bioPerson: Person = {
   id: 7,
@@ -22,7 +22,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PersonIdentity", () => {
+describe("PersonDetails", () => {
   it("offers Show more once a narrower column makes the bio overflow", () => {
     // The callbacks of observers that watch an element, as a column resize would call them.
     const watching = new Set<() => void>();
@@ -46,12 +46,7 @@ describe("PersonIdentity", () => {
       .mockReturnValue(0);
     render(
       <MemoryRouter>
-        <PersonIdentity
-          person={bioPerson}
-          today={new Date(2026, 0, 1)}
-          onMerge={vi.fn()}
-          onDelete={vi.fn()}
-        />
+        <PersonDetails person={bioPerson} today={new Date(2026, 0, 1)} />
       </MemoryRouter>,
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();

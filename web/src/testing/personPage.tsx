@@ -78,6 +78,8 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** How many videos the person performs in. */
+  videoCount: 1,
 };
 
 export function sentBody(request: Sent | undefined): unknown {
@@ -160,10 +162,11 @@ function faceRoute(method: string, url: URL): Response | null {
 
 function respond(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/videos") {
-    // The person performs in Video 1 and has no other role.
+    // The person performs in every served video and has no other role.
     const role = url.searchParams.get("personRole");
+    const ids = Array.from({ length: server.videoCount }, (_, index) => index + 1);
     return role === null || role === "performer"
-      ? jsonResponse({ items: [video(1)], total: 1 })
+      ? jsonResponse({ items: ids.map((id) => video(id)), total: ids.length })
       : jsonResponse({ items: [], total: 0 });
   }
   const plugin = pluginRoute(method, url, body);
@@ -205,6 +208,7 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.videoCount = 1;
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>((input, init) => {
