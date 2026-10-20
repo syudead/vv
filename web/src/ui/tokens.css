@@ -152,6 +152,8 @@
   --spacing-settings-nav: 10rem;
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
   --spacing-related-thumb: 10rem;
+  /* Label column of a fetched person's comparison; fits "Career start" beside its checkbox. */
+  --spacing-compare-label: 9rem;
   --spacing-neighbor-arrow: 1.75rem;
   --spacing-neighbor-arrow-min: 4.5rem;
   --spacing-neighbor-arrow-min-sm: 6rem;
@@ -300,6 +302,15 @@
 /* Named grid utility for the fixed-width aside and 5:6 form panels. */
 @utility grid-cols-form-page {
   grid-template-columns: var(--spacing-form-page-aside) minmax(0, 5fr) minmax(0, 6fr);
+}
+
+/* Named grid utilities for a fetched person's comparison: label and value, or label, now, arrow and fetched. */
+@utility grid-cols-compare-fill {
+  grid-template-columns: var(--spacing-compare-label) minmax(0, 1fr);
+}
+
+@utility grid-cols-compare-replace {
+  grid-template-columns: var(--spacing-compare-label) minmax(0, 1fr) auto minmax(0, 1fr);
 }
 
 /* Crop a face centred horizontally and a third from the top, where a portrait usually holds it. */

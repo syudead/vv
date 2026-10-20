@@ -9,6 +9,7 @@ import type {
 } from "../../api/workInfoPlugins";
 import {
   compareRows,
+  initialImage,
   initialItems,
   type PersonCompareCurrent,
 } from "../../credits/person/pluginFetch/personCompareRows";
@@ -62,7 +63,10 @@ export function lookupCurrent(result: PersonPluginResult): PersonCompareCurrent 
 }
 
 export function shownLookup(result: PersonPluginResult): LookupState {
-  const items = initialItems(compareRows(lookupCurrent(result), result.person));
+  const current = lookupCurrent(result);
+  // A lookup keeps one image, and it fills only a person without a face.
+  const items = initialItems(compareRows(current, result.person));
+  if (initialImage(current, result.person) !== null) items.push("image");
   return { status: "shown", result, changes: items.length > 0, items };
 }
 

@@ -16,7 +16,7 @@ flowchart LR
   kind -->|work| work[work-info request and response]
   kind -->|person| person[search by name or fetch by source and id]
   person --> limits[VVMDM limits: 50 candidates, 50 aliases, 20 IDs]
-  limits --> image[one image fetched like the cover]
+  limits --> image[up to 10 images fetched like the cover]
 ```
 
 ## Person plugins extend contract 1
@@ -52,13 +52,25 @@ IDs, then keeps the plugin's other distinct IDs up to 20 in all. A person found
 by name keeps the ID it was fetched by, so the next lookup can go by ID, even
 when the plugin leaves that ID out or returns 20 others.
 
-## The person's image is fetched like the cover
+## The person's images are fetched like the cover
 
-After a successful fetch, VVMDM fetches the one `image` URL with the run's
-HTTP client, outside the request count, the way it fetches a work's cover
+A fetch result carries `images`, a list of URLs, because a site often shows
+several photos of one person and the owner picks the face. After a successful
+fetch, VVMDM fetches the first 10 distinct valid URLs one after another with
+the run's HTTP client, outside the request count, the way it fetches a work's
+cover
 ([work-info-plugins.md](work-info-plugins.md#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image)).
 A refused address fails the run with `blocked_address`, and an image that
-cannot be fetched is dropped while the rest of the person is kept.
+cannot be fetched is dropped while the rest of the person is kept. Ten images
+at the 4 MiB limit fit the fetch budget below on their own.
+
+A lookup from a work-info fetch fetches only the first image, since it fills
+the face of a person who has none and its images share one fetch's budget.
+
+| Rejected | Why |
+| --- | --- |
+| Keeping `image` beside `images` | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
+| Fetching every image of a lookup | Five lookups of 10 images would not fit one fetch's budget |
 
 ## Person plugins share the work-info plugin registry
 
@@ -107,8 +119,9 @@ person.
 
 The result is kept for 10 minutes, bound to the person and to the plugin's
 digest and generation, in the store and under the image budget of work-info
-fetches ([work-info-plugins.md](work-info-plugins.md)). Its image is served
-from `GET /api/people/{id}/plugin-fetches/{fetchId}/image`. The result keeps
+fetches ([work-info-plugins.md](work-info-plugins.md)). Its images are
+served by index from `GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}`,
+and the result tells their number as `imageCount`. The result keeps
 only the profile values valid with each other, the ones the comparison shows,
 so an apply can select only a value the owner saw. The run rechecks the
 source against the plugin it executes and answers `400 invalid_request` when a
@@ -130,7 +143,7 @@ fetch.
 | Item | Rule |
 | --- | --- |
 | A profile field | Writes the fetched value, replacing a stored one |
-| `image` | Becomes the face after the commit, replacing a stored one |
+| `image` | The image at the request's `imageIndex` becomes the face after the commit, replacing a stored one |
 | `aliases` | Appends the aliases the person does not have; those over 50 are skipped as `too_many` |
 | `externalIds` | Appends the IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
 
@@ -180,18 +193,29 @@ candidate's `source` and `id` are then sent with the fetch. The response of the 
 in memory, so the page shows the filled fields without reading it again.
 
 The comparison, [`PersonCompare`](../../web/src/credits/person/pluginFetch/PersonCompare.tsx),
-draws a selectable row only for an item the apply would write: an empty
-profile field the result fills, a face, and aliases or external IDs the person
-does not have. On the person page a stored profile value that differs from the
-fetched one, and a stored face, are also rows, marked `Replaces current` and
-unchecked. A fetched value equal to the stored one sits behind one
-`Kept as now (N)` fold, without a checkbox. The rows are computed by
-[`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts),
-and the work-info comparison reuses the piece for its person lookups without
-the replacement rows, folding every stored value.
+is in the order the owner decides:
+
+| Part | Content | Starts |
+| --- | --- | --- |
+| `Face` | The person's face, or `No change` without one, then each fetched image, as one radio group | On the stored face; on the first image for a person without one |
+| `Fills empty fields` | The fetched value of each empty profile field, and aliases or external IDs the person does not have | Checked |
+| `Differs from now` | A stored profile value, struck through when checked, an arrow and the fetched one | Unchecked |
+| `Kept as now (N)` | Values equal to the stored ones, folded, without checkboxes | Folded |
+
+`Fills empty fields` and `Differs from now` each have `Select all` or `Clear`
+when they hold more than one row. Each row is one apply item, with its label in
+a fixed column so values line up down the dialog; below `sm` a row stacks its
+label over its values, which keep the now, arrow and fetched order on one line.
+The rows are computed by
+[`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts).
+The work-info comparison reuses the piece for its person lookups without
+replacement: the face is offered only to a person without one, and every
+stored value is kept.
 
 | Rejected | Why |
 | --- | --- |
+| One table of every field with `Now` and `Fetched` columns | Empty `Now` cells filled half the table, and a `Replaces current` mark squeezed into the label column overlapped the values |
+| The face as a checkbox row | Several images compete for one face, and a checkbox cannot say which |
 | One row per profile field with `Same as now` | Equal values would fill the dialog, and their checkboxes would select nothing the apply writes |
 | Replacement rows checked like filling rows | One `Apply selected` would overwrite the owner's edits with every differing site value |
 | A `Measurements` or `Career` row | One checkbox would select several apply items |

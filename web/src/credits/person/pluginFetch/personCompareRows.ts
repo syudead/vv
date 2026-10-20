@@ -37,15 +37,18 @@ const PROFILE_FIELDS: readonly ProfileField[] = [
   "links",
 ];
 
+/** How the apply treats a row: fills an empty value, replaces a stored one, or keeps the person's. */
+export type RowKind = "fill" | "replace" | "kept";
+
+export type RowItem = Exclude<PersonPluginItem, "image">;
+
+/** One row per item the result carries; the face is chosen apart, since several images compete for it. */
 export interface CompareRow {
-  item: PersonPluginItem;
-  /** The apply would write it; otherwise the person already has it and the row is kept. */
-  changes: boolean;
-  /** The apply would write it over a stored value, so it starts unselected. */
-  replaces?: boolean;
+  item: RowItem;
+  kind: RowKind;
 }
 
-export function profileItem(field: ProfileField): PersonPluginItem {
+export function profileItem(field: ProfileField): RowItem {
   return `profile.${field}`;
 }
 
@@ -76,30 +79,31 @@ export function idOnPerson(current: PersonCompareCurrent, id: ExternalId): boole
 export function newAliases(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
-): number {
-  return fetched.aliases.filter((alias) => !aliasOnPerson(current, alias)).length;
+): Alias[] {
+  return fetched.aliases.filter((alias) => !aliasOnPerson(current, alias));
 }
 
 export function newIds(
   current: PersonCompareCurrent,
   fetched: PersonPluginFetchedPerson,
-): number {
-  return fetched.externalIds.filter((id) => !idOnPerson(current, id)).length;
+): ExternalId[] {
+  return fetched.externalIds.filter((id) => !idOnPerson(current, id));
 }
 
-function sameValue(a: PersonProfile, b: PersonProfile, field: ProfileField): boolean {
-  return JSON.stringify(a[field]) === JSON.stringify(b[field]);
-}
-
-function storedRow(item: PersonPluginItem, replace: boolean, same: boolean): CompareRow {
-  return replace && !same
-    ? { item, changes: true, replaces: true }
-    : { item, changes: false };
+function profileKind(
+  current: PersonProfile,
+  fetched: PersonProfile,
+  field: ProfileField,
+  replace: boolean,
+): RowKind {
+  if (!hasValue(current, field)) return "fill";
+  const same = JSON.stringify(current[field]) === JSON.stringify(fetched[field]);
+  return replace && !same ? "replace" : "kept";
 }
 
 /**
  * One row per item the result carries, in the comparison's order. With `replace`, as on the
- * person page, a stored face or a different stored profile value can be replaced.
+ * person page, a different stored profile value can be replaced; lists only ever append.
  */
 export function compareRows(
   current: PersonCompareCurrent,
@@ -107,33 +111,54 @@ export function compareRows(
   replace = false,
 ): CompareRow[] {
   const rows: CompareRow[] = [];
-  if (fetched.hasImage === true)
-    rows.push(
-      current.imageRevision === undefined
-        ? { item: "image", changes: true }
-        : storedRow("image", replace, false),
-    );
   const profile = fetched.profile ?? {};
   for (const field of PROFILE_FIELDS) {
-    if (!hasValue(profile, field)) continue;
-    const item = profileItem(field);
-    rows.push(
-      hasValue(current.profile, field)
-        ? storedRow(item, replace, sameValue(current.profile, profile, field))
-        : { item, changes: true },
-    );
+    if (hasValue(profile, field))
+      rows.push({
+        item: profileItem(field),
+        kind: profileKind(current.profile, profile, field, replace),
+      });
   }
   if (fetched.aliases.length > 0)
-    rows.push({ item: "aliases", changes: newAliases(current, fetched) > 0 });
+    rows.push({
+      item: "aliases",
+      kind: newAliases(current, fetched).length > 0 ? "fill" : "kept",
+    });
   if (fetched.externalIds.length > 0)
-    rows.push({ item: "externalIds", changes: newIds(current, fetched) > 0 });
+    rows.push({
+      item: "externalIds",
+      kind: newIds(current, fetched).length > 0 ? "fill" : "kept",
+    });
   return rows;
 }
 
+/** Filling rows start selected; replacing a stored value is the owner's choice per row. */
 export function initialItems(rows: readonly CompareRow[]): PersonPluginItem[] {
-  return rows
-    .filter((row) => row.changes && row.replaces !== true)
-    .map((row) => row.item);
+  return rows.filter((row) => row.kind === "fill").map((row) => row.item);
+}
+
+/**
+ * The images the face can come from: all of them where the face may be replaced, and none where
+ * the apply keeps a stored face.
+ */
+export function faceChoices(
+  current: PersonCompareCurrent,
+  fetched: PersonPluginFetchedPerson,
+  replace = false,
+): number {
+  const count = fetched.imageCount ?? 0;
+  return replace || current.imageRevision === undefined ? count : 0;
+}
+
+/** A person without a face starts with the first image; a stored face stays until the owner picks one. */
+export function initialImage(
+  current: PersonCompareCurrent,
+  fetched: PersonPluginFetchedPerson,
+  replace = false,
+): number | null {
+  return current.imageRevision === undefined && faceChoices(current, fetched, replace) > 0
+    ? 0
+    : null;
 }
 
 const FACT_IDS: Partial<Record<ProfileField, string>> = {

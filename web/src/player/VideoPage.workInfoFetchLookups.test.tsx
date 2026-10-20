@@ -71,7 +71,7 @@ function found(): PersonPluginResult {
       aliases: [],
       externalIds: [],
       profile: { heightCm: 160, bloodType: "A" },
-      hasImage: true,
+      imageCount: 1,
     },
     current: stored(),
   };
@@ -139,7 +139,10 @@ describe("VideoPage work-info fetch person lookups", () => {
         "新しい人 — Fills what the lookup leaves empty: Height 150 cm",
       ),
     ).toBeDefined();
-    expect(within(block).getByRole("checkbox", { name: "Face" })).toBeDefined();
+    expect(within(block).getByRole("radio", { name: "Image 1" })).toHaveProperty(
+      "ariaChecked",
+      "true",
+    );
     expect(within(block).getByRole("checkbox", { name: "Height" })).toBeDefined();
     expect(within(block).queryByRole("checkbox", { name: "Blood type" })).toBeNull();
     expect(within(block).getByRole("button", { name: "Kept as now (1)" })).toBeDefined();
@@ -215,7 +218,7 @@ describe("VideoPage work-info fetch person lookups", () => {
 
     first.release(json(found()));
     const block = within(dialog).getByRole("region", { name: "既存の人" });
-    const face = await within(block).findByRole("checkbox", { name: "Face" });
+    const face = await within(block).findByRole("radio", { name: "Image 1" });
     await waitFor(() => expect(performers).toHaveProperty("ariaChecked", "true"));
     await user.click(performers);
     expect(face).toHaveProperty("disabled", true);
@@ -225,7 +228,7 @@ describe("VideoPage work-info fetch person lookups", () => {
     );
     await user.click(performers);
     expect(face).toHaveProperty("disabled", false);
-    await user.click(face);
+    await user.click(within(block).getByRole("radio", { name: "No change" }));
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     expect(server.apply).toHaveBeenCalledWith({
       fields: ["people.performer"],

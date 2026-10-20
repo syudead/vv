@@ -156,11 +156,15 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
         current={person}
         fetched={fetched.result.person}
         nowFaceSrc={personFaceSrc(person)}
-        fetchedFaceSrc={personPluginFetchImageUrl(person.id, fetched.result.fetchId)}
+        imageSrc={(index) =>
+          personPluginFetchImageUrl(person.id, fetched.result.fetchId, index)
+        }
         selection={flow.selection}
+        image={flow.image}
         replace
         locked={flow.applying || flow.stale}
         onToggle={flow.toggle}
+        onImage={flow.chooseImage}
       />
     </div>
   );
@@ -181,7 +185,11 @@ function submitLabel(flow: PersonFetchFlow): ReactNode {
 function submitDisabled(flow: PersonFetchFlow): boolean {
   if (flow.step === "result") return false;
   if (flow.step === "compare")
-    return flow.selection.length === 0 || flow.stale || flow.running !== null;
+    return (
+      (flow.selection.length === 0 && flow.image === null) ||
+      flow.stale ||
+      flow.running !== null
+    );
   if (flow.plugin === undefined || flow.running !== null) return true;
   return flow.byName && flow.query.trim() === "";
 }

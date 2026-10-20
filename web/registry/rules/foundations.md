@@ -65,7 +65,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `c
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
 `profile-aside`, `profile-aside-max`,
-`settings-nav`, `settings-nav-max`, `related-thumb`, `neighbor-arrow`,
+`settings-nav`, `settings-nav-max`, `related-thumb`, `compare-label`, `neighbor-arrow`,
 `neighbor-arrow-min`, `neighbor-arrow-min-sm`, `control-bar-clearance`,
 `versions-popover`, `playlist-panel`, `visibility-x`, `technical-x`,
 `issue-list`, `folder-list`, `run-output`, and the activity screen's
@@ -77,7 +77,7 @@ video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value. A value no step can name becomes a named utility in
 `tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `grid-cols-settings-page`,
-`grid-cols-profile-page`, `object-face`, `w-folder-preview`, `top-data-table-head`).
+`grid-cols-profile-page`, `grid-cols-compare-fill`, `grid-cols-compare-replace`, `object-face`, `w-folder-preview`, `top-data-table-head`).
 Ratios are `aspect-video`, `aspect-square` and `aspect-portrait` (2:3, the
 person page's face).
 `style` carries only values known at run time (a position, a ratio, a measured

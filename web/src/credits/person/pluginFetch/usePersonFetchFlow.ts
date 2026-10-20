@@ -15,7 +15,12 @@ import { t } from "../../../i18n";
 import type { SkippedLine } from "../../../player/workInfoFetch/fetchRules";
 import type { RunFailure } from "../../../player/workInfoFetch/FindStep";
 import { useToast } from "../../../ui/Toast";
-import { compareRows, initialItems, skippedPersonLines } from "./personCompareRows";
+import {
+  compareRows,
+  initialImage,
+  initialItems,
+  skippedPersonLines,
+} from "./personCompareRows";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
@@ -82,6 +87,7 @@ export function usePersonFetchFlow({
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<PersonFetched | null>(null);
   const [selection, setSelection] = useState<PersonPluginItem[]>([]);
+  const [image, setImage] = useState<number | null>(null);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
@@ -137,6 +143,7 @@ export function usePersonFetchFlow({
       if (signal.aborted) return;
       setFetched({ result, plugin: target, candidate });
       setSelection(initialItems(compareRows(latestPerson.current, result.person, true)));
+      setImage(initialImage(latestPerson.current, result.person, true));
       setStale(false);
       setApplyFailure(null);
       setStep("compare");
@@ -163,6 +170,7 @@ export function usePersonFetchFlow({
         person.id,
         current.result.fetchId,
         selection,
+        image,
         signal,
       );
       onApplied(applied.person);
@@ -193,7 +201,7 @@ export function usePersonFetchFlow({
         !applying &&
         !stale &&
         running === null &&
-        selection.length > 0
+        (selection.length > 0 || image !== null)
       )
         void apply(fetched);
       return;
@@ -214,6 +222,8 @@ export function usePersonFetchFlow({
     step,
     fetched,
     selection,
+    image,
+    chooseImage: setImage,
     stale,
     applyFailure,
     applying,

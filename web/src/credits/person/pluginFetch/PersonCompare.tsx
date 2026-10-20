@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 
 import type {
@@ -6,7 +7,6 @@ import type {
 } from "../../../api/personPluginFetches";
 import { t } from "../../../i18n";
 import { cn } from "../../../lib/cn";
-import { Cell, CompareHeadings } from "../../../player/workInfoFetch/CompareStep";
 import TagChips, { type ChipItem } from "../../../player/workInfoFetch/TagChips";
 import { Button } from "../../../ui/shadcn/button";
 import { Checkbox } from "../../../ui/shadcn/checkbox";
@@ -16,6 +16,7 @@ import {
   CollapsibleTrigger,
 } from "../../../ui/shadcn/collapsible";
 import { Label } from "../../../ui/shadcn/label";
+import { RadioGroup, RadioGroupItem } from "../../../ui/shadcn/radio-group";
 import { PersonFace } from "../../../ui/PersonFace";
 import { Bio, LinkList } from "../PersonProfile";
 import { useLocalToday } from "../useLocalToday";
@@ -23,12 +24,14 @@ import {
   aliasOnPerson,
   compareRows,
   type CompareRow,
+  faceChoices,
   idOnPerson,
   newAliases,
   newIds,
   type PersonCompareCurrent,
   profileFieldOf,
   profileValueText,
+  type RowItem,
 } from "./personCompareRows";
 
 const text = t.credits.personPage.pluginFetch;
@@ -38,81 +41,86 @@ type Tone = "now" | "fetched";
 export interface PersonCompareProps {
   current: PersonCompareCurrent;
   fetched: PersonPluginFetchedPerson;
-  /** The person's face, for a kept face row. */
+  /** The person's face, shown as the choice that keeps it. */
   nowFaceSrc?: string;
-  fetchedFaceSrc?: string;
+  /** The URL of the fetched image at an index below the result's image count. */
+  imageSrc: (index: number) => string;
   selection: readonly PersonPluginItem[];
+  /** The image chosen as the face, or null to keep the person's. */
+  image: number | null;
   /** While the apply runs or the result is stale. */
   locked: boolean;
-  /** Offer stored values for replacement, as the person page's apply writes over them. */
+  /** Offer stored values and the face for replacement, as the person page's apply writes over them. */
   replace?: boolean;
-  /** In a lookup block: no column headings, since the comparison around it has them, and each row's label above its two cells. */
+  /** In a lookup block, which is narrower than the dialog: rows stack their cells. */
   inBlock?: boolean;
   onToggle: (item: PersonPluginItem, on: boolean) => void;
+  onImage: (index: number | null) => void;
 }
 
 function Muted({ children }: { children: ReactNode }) {
   return <span className="text-muted-foreground">{children}</span>;
 }
 
-function FaceValue({ src, tone }: { src: string | undefined; tone: Tone }) {
-  return (
-    <>
-      <div className="w-16">
-        <PersonFace shape="profile" name="" src={src} />
-      </div>
-      {tone === "now" && src === undefined && <Muted>{text.noFace}</Muted>}
-    </>
-  );
-}
-
-function aliasChips(
-  props: PersonCompareProps,
-  tone: Tone,
-): { items: ChipItem[]; fresh: number } {
+function aliasChips(props: PersonCompareProps, tone: Tone): ChipItem[] {
   const { current, fetched } = props;
   if (tone === "now")
-    return {
-      items: current.aliases.map((alias) => ({ name: alias.name, muted: true })),
-      fresh: 0,
-    };
-  return {
-    items: fetched.aliases.map((alias) => ({
-      name: alias.name,
-      mark: aliasOnPerson(current, alias) ? "onPerson" : undefined,
-    })),
-    fresh: newAliases(current, fetched),
-  };
+    return current.aliases.map((alias) => ({ name: alias.name, muted: true }));
+  return fetched.aliases.map((alias) => ({
+    name: alias.name,
+    mark: aliasOnPerson(current, alias) ? "onPerson" : undefined,
+  }));
 }
 
-function idChips(
-  props: PersonCompareProps,
-  tone: Tone,
-): { items: ChipItem[]; fresh: number } {
+function idChips(props: PersonCompareProps, tone: Tone): ChipItem[] {
   const { current, fetched } = props;
   const ids = tone === "now" ? current.externalIds : fetched.externalIds;
-  return {
-    items: ids.map((id) => ({
-      key: `${id.source}\u0000${id.value}`,
-      name: t.credits.personPage.externalId(id.source, id.value),
-      numeric: true,
-      muted: tone === "now",
-      mark: tone === "fetched" && idOnPerson(current, id) ? "onPerson" : undefined,
-    })),
-    fresh: tone === "now" ? 0 : newIds(current, fetched),
-  };
+  return ids.map((id) => ({
+    key: `${id.source}\u0000${id.value}`,
+    name: t.credits.personPage.externalId(id.source, id.value),
+    numeric: true,
+    muted: tone === "now",
+    mark: tone === "fetched" && idOnPerson(current, id) ? "onPerson" : undefined,
+  }));
 }
 
-function ProfileValue({
+function ListValue({
   item,
   props,
   tone,
 }: {
-  item: PersonPluginItem;
+  item: "aliases" | "externalIds";
   props: PersonCompareProps;
   tone: Tone;
 }) {
+  const items = item === "aliases" ? aliasChips(props, tone) : idChips(props, tone);
+  if (items.length === 0) return <Muted>{text.empty}</Muted>;
+  const fresh =
+    tone === "now"
+      ? 0
+      : (item === "aliases" ? newAliases : newIds)(props.current, props.fetched).length;
+  return (
+    <TagChips
+      items={items}
+      trailing={fresh > 0 ? t.player.workInfoFetch.newCount(fresh) : undefined}
+    />
+  );
+}
+
+function Value({
+  item,
+  props,
+  tone,
+  struck = false,
+}: {
+  item: RowItem;
+  props: PersonCompareProps;
+  tone: Tone;
+  struck?: boolean;
+}) {
   const today = useLocalToday();
+  if (item === "aliases" || item === "externalIds")
+    return <ListValue item={item} props={props} tone={tone} />;
   const field = profileFieldOf(item);
   if (field === undefined) return null;
   const fetchedProfile = props.fetched.profile ?? {};
@@ -121,51 +129,27 @@ function ProfileValue({
       ? [props.current.profile, fetchedProfile]
       : [fetchedProfile, props.current.profile];
   if (profile[field] === undefined) return <Muted>{text.empty}</Muted>;
-  if (field === "bio") return <Bio bio={profile.bio ?? ""} />;
-  if (field === "links") return <LinkList links={profile.links ?? []} />;
+  const quiet = cn(tone === "now" && "text-muted-foreground", struck && "line-through");
+  if (field === "bio")
+    return (
+      <div className={quiet}>
+        <Bio bio={profile.bio ?? ""} />
+      </div>
+    );
+  if (field === "links")
+    return (
+      <div className={quiet}>
+        <LinkList links={profile.links ?? []} />
+      </div>
+    );
   return (
-    <span
-      className={cn(
-        "min-w-0 tabular-nums wrap-anywhere",
-        tone === "now" ? "text-muted-foreground" : "text-foreground",
-      )}
-    >
+    <span className={cn("min-w-0 tabular-nums wrap-anywhere", quiet)}>
       {profileValueText(field, profile, context, today)}
     </span>
   );
 }
 
-function Value({
-  item,
-  props,
-  tone,
-}: {
-  item: PersonPluginItem;
-  props: PersonCompareProps;
-  tone: Tone;
-}) {
-  if (item === "image")
-    return (
-      <FaceValue
-        src={tone === "now" ? props.nowFaceSrc : props.fetchedFaceSrc}
-        tone={tone}
-      />
-    );
-  if (item === "aliases" || item === "externalIds") {
-    const { items, fresh } =
-      item === "aliases" ? aliasChips(props, tone) : idChips(props, tone);
-    if (items.length === 0) return <Muted>{text.empty}</Muted>;
-    return (
-      <TagChips
-        items={items}
-        trailing={fresh > 0 ? t.player.workInfoFetch.newCount(fresh) : undefined}
-      />
-    );
-  }
-  return <ProfileValue item={item} props={props} tone={tone} />;
-}
-
-function Row({
+function RowLabel({
   row,
   props,
   selectable,
@@ -176,42 +160,181 @@ function Row({
 }) {
   const id = useId();
   const label = text.items[row.item];
-  const heading = t.player.workInfoFetch;
-  const narrow = props.inBlock === true;
+  if (!selectable) return <span className="text-muted-foreground">{label}</span>;
+  return (
+    <div className="flex items-center gap-2 self-start">
+      <Checkbox
+        id={id}
+        checked={props.selection.includes(row.item)}
+        disabled={props.locked}
+        onCheckedChange={(checked) => props.onToggle(row.item, checked === true)}
+      />
+      <Label htmlFor={id} className="font-normal">
+        {label}
+      </Label>
+    </div>
+  );
+}
+
+/** Stacked under a checkbox, a value lines up with the label's text. */
+function indent(props: PersonCompareProps): string {
+  return cn("pl-6", props.inBlock !== true && "sm:pl-0");
+}
+
+/** A filled row shows only the fetched value, since the person has none to compare it with. */
+function FillRow({ row, props }: { row: CompareRow; props: PersonCompareProps }) {
   return (
     <div
       className={cn(
-        "grid gap-x-4 gap-y-1 py-2",
-        narrow ? "sm:grid-cols-2" : "sm:grid-cols-5",
+        "grid items-baseline gap-x-4 gap-y-1 py-2",
+        props.inBlock !== true && "sm:grid-cols-compare-fill",
       )}
     >
+      <RowLabel row={row} props={props} selectable />
+      <div className={cn("min-w-0", indent(props))}>
+        <Value item={row.item} props={props} tone="fetched" />
+      </div>
+    </div>
+  );
+}
+
+/** A replacing or kept row reads left to right: now, then what the apply would write. */
+function PairRow({
+  row,
+  props,
+  selectable,
+}: {
+  row: CompareRow;
+  props: PersonCompareProps;
+  selectable: boolean;
+}) {
+  const struck = selectable && props.selection.includes(row.item);
+  return (
+    <div
+      className={cn(
+        "grid items-baseline gap-x-3 gap-y-1 py-2",
+        props.inBlock !== true && "sm:grid-cols-compare-replace",
+      )}
+    >
+      <RowLabel row={row} props={props} selectable={selectable} />
+      {/* Below sm the pair stays on one line under the label; from sm its parts join the row's grid. */}
       <div
-        className={cn("flex items-center gap-2 self-start", narrow && "sm:col-span-2")}
+        className={cn(
+          "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1",
+          selectable && indent(props),
+          props.inBlock !== true && "sm:contents",
+        )}
       >
-        {selectable ? (
-          <>
-            <Checkbox
-              id={id}
-              checked={props.selection.includes(row.item)}
-              disabled={props.locked}
-              onCheckedChange={(checked) => props.onToggle(row.item, checked === true)}
-            />
-            <Label htmlFor={id} className="font-normal text-muted-foreground">
-              {label}
-              {row.replaces === true && <span className="text-xs">{text.replaces}</span>}
-            </Label>
-          </>
-        ) : (
-          <span className="text-muted-foreground">{label}</span>
+        <div className="min-w-0">
+          <Value item={row.item} props={props} tone="now" struck={struck} />
+        </div>
+        <ArrowRight
+          aria-hidden="true"
+          className="size-4 shrink-0 self-center text-muted-foreground"
+        />
+        <div className="min-w-0">
+          <Value item={row.item} props={props} tone="fetched" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  note,
+  rows,
+  props,
+  children,
+}: {
+  title: string;
+  note?: string;
+  rows: readonly CompareRow[];
+  props: PersonCompareProps;
+  children: ReactNode;
+}) {
+  const all = rows.every((row) => props.selection.includes(row.item));
+  return (
+    <section className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">
+          {title} <span className="font-normal text-muted-foreground">{rows.length}</span>
+        </h3>
+        {rows.length > 1 && (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0 py-0"
+            disabled={props.locked}
+            onClick={() => rows.forEach((row) => props.onToggle(row.item, !all))}
+          >
+            {all ? text.clearAll : text.selectAll}
+          </Button>
         )}
       </div>
-      <Cell heading={heading.now} narrow={narrow}>
-        <Value item={row.item} props={props} tone="now" />
-      </Cell>
-      <Cell heading={heading.fetched} narrow={narrow}>
-        <Value item={row.item} props={props} tone="fetched" />
-      </Cell>
-    </div>
+      {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
+      <div className="flex flex-col divide-y divide-border border-y border-border">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function FaceTile({
+  value,
+  label,
+  src,
+  disabled,
+}: {
+  value: string;
+  label: string;
+  src: string | undefined;
+  disabled: boolean;
+}) {
+  const id = useId();
+  return (
+    <Label
+      htmlFor={id}
+      className="flex w-card-face cursor-pointer flex-col items-stretch gap-1 rounded-md p-1 font-normal has-data-[state=checked]:bg-accent"
+    >
+      <PersonFace shape="profile" name="" src={src} />
+      <span className="flex items-center gap-1 text-xs">
+        <RadioGroupItem id={id} value={value} disabled={disabled} />
+        <span className="min-w-0 truncate">{label}</span>
+      </span>
+    </Label>
+  );
+}
+
+/** The face is one of the fetched images or the person's own, so it is a choice rather than a checkbox. */
+function FacePicker({ props, count }: { props: PersonCompareProps; count: number }) {
+  const hasFace = props.current.imageRevision !== undefined;
+  return (
+    <section className="flex flex-col gap-1">
+      <h3 className="text-sm font-medium">{text.face}</h3>
+      <RadioGroup
+        aria-label={text.face}
+        value={props.image === null ? "keep" : String(props.image)}
+        onValueChange={(value) => props.onImage(value === "keep" ? null : Number(value))}
+        className="flex flex-wrap gap-2"
+      >
+        <FaceTile
+          value="keep"
+          label={hasFace ? text.keepFace : text.noNewFace}
+          src={hasFace ? props.nowFaceSrc : undefined}
+          disabled={props.locked}
+        />
+        {Array.from({ length: count }, (_, index) => (
+          <FaceTile
+            key={index}
+            value={String(index)}
+            label={text.image(index + 1)}
+            src={props.imageSrc(index)}
+            disabled={props.locked}
+          />
+        ))}
+      </RadioGroup>
+    </section>
   );
 }
 
@@ -240,7 +363,7 @@ function KeptRows({
         </p>
         <div className="flex flex-col divide-y divide-border border-y border-border">
           {rows.map((row) => (
-            <Row key={row.item} row={row} props={props} selectable={false} />
+            <PairRow key={row.item} row={row} props={props} selectable={false} />
           ))}
         </div>
       </CollapsibleContent>
@@ -249,26 +372,40 @@ function KeptRows({
 }
 
 /**
- * A fetched person beside the person it would fill: one selectable row per item the apply would
- * write, and the values the apply would keep folded.
+ * A fetched person beside the person it would fill: the face as a choice among the fetched images,
+ * the values that fill empty fields, those that would replace stored ones, and the kept ones folded.
  */
 export default function PersonCompare(props: PersonCompareProps) {
-  const rows = compareRows(props.current, props.fetched, props.replace === true);
-  const changes = rows.filter((row) => row.changes);
-  const kept = rows.filter((row) => !row.changes);
+  const replace = props.replace === true;
+  const rows = compareRows(props.current, props.fetched, replace);
+  const fills = rows.filter((row) => row.kind === "fill");
+  const replaces = rows.filter((row) => row.kind === "replace");
+  const kept = rows.filter((row) => row.kind === "kept");
+  const images = faceChoices(props.current, props.fetched, replace);
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      {changes.length === 0 ? (
+    <div className="flex flex-col gap-4 text-sm">
+      {images > 0 && <FacePicker props={props} count={images} />}
+      {fills.length > 0 && (
+        <Section title={text.fills} rows={fills} props={props}>
+          {fills.map((row) => (
+            <FillRow key={row.item} row={row} props={props} />
+          ))}
+        </Section>
+      )}
+      {replaces.length > 0 && (
+        <Section
+          title={text.replaces}
+          note={text.replacesNote}
+          rows={replaces}
+          props={props}
+        >
+          {replaces.map((row) => (
+            <PairRow key={row.item} row={row} props={props} selectable />
+          ))}
+        </Section>
+      )}
+      {images === 0 && fills.length === 0 && replaces.length === 0 && (
         <p className="text-muted-foreground">{text.nothingNew}</p>
-      ) : (
-        <div className="flex flex-col">
-          {props.inBlock !== true && <CompareHeadings />}
-          <div className="flex flex-col divide-y divide-border border-y border-border">
-            {changes.map((row) => (
-              <Row key={row.item} row={row} props={props} selectable />
-            ))}
-          </div>
-        </div>
       )}
       {kept.length > 0 && <KeptRows rows={kept} props={props} />}
     </div>

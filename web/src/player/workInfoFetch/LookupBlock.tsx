@@ -58,15 +58,13 @@ function Body({ props, name }: { props: LookupBlockProps; name: string }) {
       current={lookupCurrent(result)}
       fetched={result.person}
       nowFaceSrc={result.current === null ? undefined : personFaceSrc(result.current)}
-      fetchedFaceSrc={
-        result.person.hasImage === true
-          ? personLookupImageUrl(props.videoId, props.fetchId, index)
-          : undefined
-      }
+      imageSrc={() => personLookupImageUrl(props.videoId, props.fetchId, index)}
       selection={state.items}
+      image={state.items.includes("image") ? 0 : null}
       locked={props.locked || !props.enabled}
       inBlock
       onToggle={(item, on) => props.onToggleItem(index, item, on)}
+      onImage={(image) => props.onToggleItem(index, "image", image !== null)}
     />
   );
 }
@@ -76,7 +74,7 @@ export default function LookupBlock(props: LookupBlockProps) {
   const name = props.names.join(" · ");
   const { state } = props;
   const face =
-    state.status === "shown" && state.result.person.hasImage === true
+    state.status === "shown" && (state.result.person.imageCount ?? 0) > 0
       ? personLookupImageUrl(props.videoId, props.fetchId, props.index)
       : undefined;
   return (

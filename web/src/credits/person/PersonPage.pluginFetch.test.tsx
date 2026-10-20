@@ -143,6 +143,28 @@ describe("PersonPage fetch info", () => {
     });
   });
 
+  it("keeps the stored face until the owner picks one of the fetched images", async () => {
+    server.person = person({ ...stored, imageRevision: 2 });
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], imageCount: 2 };
+    server.applied = person({ ...stored, imageRevision: 3 });
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    const keep = await within(dialog).findByRole("radio", { name: "Keep current" });
+    expect(keep.getAttribute("aria-checked")).toBe("true");
+    const apply = within(dialog).getByRole("button", { name: "Apply selected" });
+    expect(apply).toHaveProperty("disabled", true);
+    await user.click(within(dialog).getByRole("radio", { name: "Image 2" }));
+    await user.click(apply);
+
+    expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
+      items: ["image"],
+      imageIndex: 1,
+    });
+  });
+
   it("searches by name for a person with a stored ID, without fetching first", async () => {
     server.person = person(stored);
     const user = userEvent.setup();
