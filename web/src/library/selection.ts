@@ -1,4 +1,5 @@
 import type { LibraryGroup, LibraryItem } from "../api/client";
+import { itemKey } from "../api/libraryItems";
 
 /** Group identities used by favorite and playlist requests. */
 export interface SelectedGroup {
@@ -148,6 +149,33 @@ export function keepSmartFolders(
   const kept = [...selection.smartFolders].filter((id) => listed.has(id));
   if (kept.length === selection.smartFolders.size) return selection;
   return { ...selection, smartFolders: new Set(kept) };
+}
+
+/** Items from one key to another in display order, both included; null when either is not listed. */
+export function itemsBetween(
+  items: readonly LibraryItem[],
+  from: string,
+  to: string,
+): readonly LibraryItem[] | null {
+  const keys = items.map(itemKey);
+  const start = keys.indexOf(from);
+  const end = keys.indexOf(to);
+  if (start < 0 || end < 0) return null;
+  return items.slice(Math.min(start, end), Math.max(start, end) + 1);
+}
+
+export function setItems(
+  selection: LibrarySelection,
+  items: readonly LibraryItem[],
+  selected: boolean,
+): LibrarySelection {
+  return items.reduce((current, item) => {
+    if (item.kind === "video") return setVideo(current, item.video.id, selected);
+    if (item.kind === "group") {
+      return setGroup(current, selectedGroupOf(item.group), selected);
+    }
+    return setSmartFolder(current, item.smartFolder.id, selected);
+  }, selection);
 }
 
 /** Reconcile loaded groups without pruning video IDs or unloaded selections. Drop identities with standalone members or unselected new members; preserve the reference when unchanged. */

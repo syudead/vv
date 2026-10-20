@@ -404,6 +404,24 @@ describe("LibraryPage drag into a group", () => {
     await waitFor(() => expect(moves(server)).toHaveLength(2));
   });
 
+  it("答えを待っている移動で隠れたカードは、Shift の範囲に入らない", async () => {
+    const server = library();
+    await openLibrary();
+    const open = held(server);
+    lift("Clip 2", 2);
+    moveTo(1);
+    release(1);
+    expect(cardTitles()).toEqual(["Clip 1", "Trip", "Clip 3"]);
+    await afterDrop();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: 'Select "Clip 1"' }));
+    const last = screen.getByRole("checkbox", { name: 'Select "Clip 3"' });
+    fireEvent.pointerDown(last, { ...mouse, shiftKey: true });
+    fireEvent.click(last, { shiftKey: true });
+    expect(screen.getByText("4 videos selected")).toBeDefined();
+    await open();
+  });
+
   it("ライブラリを離れた後に失敗した move は、行った先で知らせない", async () => {
     const server = library();
     server.moveAnswer = () => json({ code: "internal", message: "x" }, 500);

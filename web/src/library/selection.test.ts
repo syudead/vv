@@ -5,11 +5,13 @@ import {
   emptySelection,
   favoriteTargets,
   isGroupSelected,
+  itemsBetween,
   keepMembers,
   keepSmartFolders,
   reconcileGroups,
   selectedCount,
   setGroup,
+  setItems,
   setSmartFolder,
   setVideo,
   toggleGroup,
@@ -204,5 +206,28 @@ describe("keepMembers", () => {
   it("どれも並んでいれば同じ選択を返す", () => {
     const selection = setGroup(emptySelection, { id: 7, videoIds: [1, 2] }, true);
     expect(keepMembers(selection, new Set([1, 2, 3]))).toBe(selection);
+  });
+});
+
+describe("範囲の選択", () => {
+  const folder = { kind: "smartFolder", smartFolder: { id: 9 } } as LibraryItem;
+  const items = [videoItem(1), groupItem([101, 102, 103]), folder, videoItem(2)];
+
+  it("前後どちら向きでも両端を含む表示順の範囲を返し、並んでいない端なら null", () => {
+    expect(itemsBetween(items, "video\u00002", "group\u00005")).toEqual(items.slice(1));
+    expect(itemsBetween(items, "video\u00001", "video\u00001")).toEqual([items[0]]);
+    expect(itemsBetween(items, "video\u00007", "video\u00001")).toBeNull();
+  });
+
+  it("動画・グループ・スマートフォルダーをまとめて同じ状態にする", () => {
+    const selected = setItems(emptySelection, items, true);
+    expect([...selected.ids]).toEqual([1, 101, 102, 103, 2]);
+    expect(isGroupSelected(selected, 5)).toBe(true);
+    expect([...selected.smartFolders]).toEqual([9]);
+
+    const cleared = setItems(selected, items.slice(1, 3), false);
+    expect([...cleared.ids]).toEqual([1, 2]);
+    expect(isGroupSelected(cleared, 5)).toBe(false);
+    expect(cleared.smartFolders.size).toBe(0);
   });
 });

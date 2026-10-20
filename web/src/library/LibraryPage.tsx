@@ -23,7 +23,13 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { itemKey, itemVideo } from "../api/libraryItems";
+import {
+  groupKey,
+  itemKey,
+  itemVideo,
+  smartFolderKey,
+  videoKey,
+} from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -108,9 +114,6 @@ import {
   setGroup,
   setSmartFolder,
   setVideo,
-  toggleGroup,
-  toggleSmartFolder,
-  toggleVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
 import TagKindSelect from "./TagKindSelect";
@@ -119,6 +122,8 @@ import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
+import { useMarqueeSelection } from "./useMarqueeSelection";
+import { useRangeSelection } from "./useRangeSelection";
 import {
   addTagId,
   clearConditions as clearTagConditions,
@@ -142,6 +147,11 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
 
 function withSmartFolderCards(content: ReactNode) {
   return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
+}
+
+/** Box selection is the owner's, over loaded grid cards. */
+function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: boolean) {
+  return owner && view === "grid" && !loading;
 }
 
 function libraryConditioned(filter: LibraryFilter): boolean {
@@ -346,26 +356,51 @@ export default function LibraryPage() {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
   // Removing any member also removes the group's selected identity.
-  const changeSelection = useCallback((id: number, selected: boolean) => {
-    setSelection((current) => setVideo(current, id, selected));
-  }, []);
-  // Functional updates preserve stable chip callbacks without capturing the current selection.
-  const toggleSelection = useCallback((id: number) => {
-    setSelection((current) => toggleVideo(current, id));
-  }, []);
-  const changeGroupSelection = useCallback((group: LibraryGroup, selected: boolean) => {
-    setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
-  }, []);
-  const toggleGroupSelection = useCallback((group: LibraryGroup) => {
-    setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
-  }, []);
-  const changeSmartFolderSelection = useCallback((id: number, selected: boolean) => {
-    setSelection((current) => setSmartFolder(current, id, selected));
-  }, []);
-  const toggleSmartFolderSelection = useCallback((id: number) => {
-    setSelection((current) => toggleSmartFolder(current, id));
-  }, []);
-  const clearSelection = useCallback(() => setSelection(emptySelection), []);
+  const displayed = useRef<readonly LibraryItem[]>(items);
+  const { select: selectRange, point: pointRange } = useRangeSelection(
+    displayed,
+    setSelection,
+  );
+  // Toggles read the rendered selection, so a Shift toggle can extend a range like a check.
+  const selectionNow = useRef(selection);
+  selectionNow.current = selection;
+  const changeSelection = useCallback(
+    (id: number, selected: boolean) =>
+      selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
+    [selectRange],
+  );
+  const toggleSelection = useCallback(
+    (id: number) => changeSelection(id, !selectionNow.current.ids.has(id)),
+    [changeSelection],
+  );
+  const changeGroupSelection = useCallback(
+    (group: LibraryGroup, selected: boolean) =>
+      selectRange(groupKey(group.id), selected, (current) =>
+        setGroup(current, selectedGroupOf(group), selected),
+      ),
+    [selectRange],
+  );
+  const toggleGroupSelection = useCallback(
+    (group: LibraryGroup) =>
+      changeGroupSelection(group, !isGroupSelected(selectionNow.current, group.id)),
+    [changeGroupSelection],
+  );
+  const changeSmartFolderSelection = useCallback(
+    (id: number, selected: boolean) =>
+      selectRange(smartFolderKey(id), selected, (current) =>
+        setSmartFolder(current, id, selected),
+      ),
+    [selectRange],
+  );
+  const toggleSmartFolderSelection = useCallback(
+    (id: number) =>
+      changeSmartFolderSelection(id, !selectionNow.current.smartFolders.has(id)),
+    [changeSmartFolderSelection],
+  );
+  const clearSelection = useCallback(() => {
+    pointRange(null);
+    setSelection(emptySelection);
+  }, [pointRange]);
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);
@@ -381,6 +416,9 @@ export default function LibraryPage() {
     undo,
   });
   const shown = drops.shown;
+  useLayoutEffect(() => {
+    displayed.current = shown;
+  });
 
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
@@ -504,6 +542,17 @@ export default function LibraryPage() {
     tagIds,
     total,
   ]);
+
+  const results = useRef<HTMLElement | null>(null);
+  const marqueeBox = useRef<HTMLDivElement | null>(null);
+  useMarqueeSelection({
+    container: results,
+    box: marqueeBox,
+    enabled: drawsBoxes(owner, view, loading),
+    items: shown,
+    selection,
+    setSelection,
+  });
 
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -808,9 +857,16 @@ export default function LibraryPage() {
         }
       >
         <section
+          ref={results}
           aria-label={conditioned ? t.library.resultsLabel : undefined}
           className="flex min-w-0 flex-col gap-3"
         >
+          <div
+            ref={marqueeBox}
+            hidden
+            aria-hidden="true"
+            className="pointer-events-none fixed z-40 rounded-sm border border-primary bg-primary-soft/40"
+          />
           {/* Home itself needs no heading or count; only filtered results get them. */}
           {conditioned && (
             <PageHeader
