@@ -8,7 +8,7 @@ import { cn } from "../../lib/cn";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
-import { creditDisplayName } from "../displayName";
+import { creditDisplayName, creditInitials } from "../displayName";
 import { personCardMeta } from "./peopleCriteria";
 
 const text = t.credits.personPage;
@@ -22,11 +22,14 @@ export const PersonCard = memo(function PersonCard({
   today,
   onToggleFavorite,
   onName,
+  compact = false,
 }: {
   person: Person;
   today: Date;
   onToggleFavorite: (person: Person) => Promise<unknown>;
   onName: (person: Person) => void;
+  /** The smallest size shows the name alone, as the age and count would be cut off. */
+  compact?: boolean;
 }) {
   const src = personFaceSrc(person);
   const name = creditDisplayName(person);
@@ -36,7 +39,12 @@ export const PersonCard = memo(function PersonCard({
         to={`/people/${String(person.id)}`}
         className="flex min-w-0 flex-col items-center gap-2 rounded-md p-1 transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
       >
-        <PersonFace src={src} name={name} shape="card" />
+        <PersonFace
+          src={src}
+          name={name}
+          initials={creditInitials(person)}
+          shape="card"
+        />
         <span className="flex w-full min-w-0 flex-col items-center text-center">
           {/* An unnamed card differs from a named one by this quieter line alone. */}
           <span
@@ -48,9 +56,11 @@ export const PersonCard = memo(function PersonCard({
           >
             {name}
           </span>
-          <span className="w-full truncate text-xs text-muted-foreground">
-            {personCardMeta(person, today)}
-          </span>
+          {!compact && (
+            <span className="w-full truncate text-xs text-muted-foreground">
+              {personCardMeta(person, today)}
+            </span>
+          )}
         </span>
       </Link>
       {person.provisional && (

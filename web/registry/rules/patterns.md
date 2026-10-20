@@ -88,6 +88,9 @@ shows loading, empty or an error.
 
 A list of people is a `CardGrid size="face"`: cards at least `card-face` wide,
 so a 360px screen holds three and 1280px with the full sidebar eight or nine.
+The people grid's `Card size` slider picks `face-sm`, `face`, `face-lg` or
+`face-xl` (`card-face-sm` to `card-face-xl`), and at `face-sm` a card shows
+the name without the meta line, which would be cut off.
 A card is one link (`rounded-md`, `p-1`, `hover:shadow-card-hover`) holding a
 `PersonFace` `card`, then the name (`text-sm font-medium`, one line, centred,
 truncated, the full name in `title`) and a meta line (`text-xs`, muted,

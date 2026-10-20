@@ -435,8 +435,12 @@ in the same frame, so a row that mixes both keeps one height:
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the
 face. The placeholder is lucide `UserRound` in `muted-foreground` on
-`bg-muted`, not a letter, since the first character of a Japanese name tells
-the viewer little; it also stands in when the image fails to load. Pass
+`bg-muted`; it also stands in when the image fails to load. Pass `initials`
+to draw letters in its place, scaled to the frame: the people grid passes
+`creditInitials`, the first character of each of the first two words, as
+most people there have no face and identical icons made every card look the
+same. The first character alone was rejected, since a Japanese family name
+is shared by many neighbours in the name order. Pass
 `onAdd` and `addLabel` to make the placeholder a button that adds a face.
 Put marks over the frame, such as the favorite heart, as children in a
 `PersonFaceMark` (`top-end` or `bottom-end`).

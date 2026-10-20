@@ -19,9 +19,11 @@ import { ListPage } from "../../ui/patterns/list-page";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageHeader } from "../../ui/patterns/page-header";
 import { Button } from "../../ui/shadcn/button";
+import type { Zoom } from "../../preferences/viewPreferences";
 import type { HistoryMode } from "../../videoList/listCriteria";
 import { useLoadMoreSentinel } from "../../videoList/pageHooks";
 import type { SortOption } from "../../videoList/SortControls";
+import ZoomSlider from "../../videoList/ZoomSlider";
 import { CreditListTail } from "../CreditListStates";
 import { sortStorageKey } from "../creditRows";
 import { useLocalToday } from "../person/useLocalToday";
@@ -43,6 +45,7 @@ import {
   savePeopleSnapshot,
   usePeopleSnapshot,
 } from "./peopleSnapshot";
+import { faceSizes, readPeopleZoom, writePeopleZoom } from "./peopleZoom";
 import { PersonCard } from "./PersonCard";
 
 const texts = t.credits.person;
@@ -108,6 +111,7 @@ export default function PeoplePage() {
   );
   const [creating, setCreating] = useState(false);
   const [naming, setNaming] = useState<Person | null>(null);
+  const [zoom, setZoom] = useState(readPeopleZoom);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -176,6 +180,11 @@ export default function PeoplePage() {
     writeListSortPreferences(sortStorageKey("person"), { sort: next });
   }
 
+  function changeZoom(next: Zoom) {
+    setZoom(next);
+    writePeopleZoom(next);
+  }
+
   function clearSearch() {
     change({ query: "" });
     searchInputRef.current?.focus();
@@ -204,6 +213,24 @@ export default function PeoplePage() {
             extraSorts={ageSorts}
             sortDisabled={noPeople}
             compactSortName="person-compact-sort"
+            extraViews={[
+              {
+                id: "size",
+                label: t.list.cardSize,
+                inlineFrom: "md",
+                control: (
+                  <ZoomSlider
+                    zoom={zoom}
+                    onZoomChange={changeZoom}
+                    className="w-zoom"
+                    tooltip
+                  />
+                ),
+                compact: (
+                  <ZoomSlider zoom={zoom} onZoomChange={changeZoom} className="w-full" />
+                ),
+              },
+            ]}
           />
         </TopBarPortal>
       }
@@ -278,7 +305,7 @@ export default function PeoplePage() {
       {body === "cards" && page !== undefined && (
         <>
           <div onClick={saveSnapshot}>
-            <CardGrid size="face">
+            <CardGrid size={faceSizes[zoom]}>
               {page.rows.map((person) => (
                 <PersonCard
                   key={person.id}
@@ -286,6 +313,7 @@ export default function PeoplePage() {
                   today={today}
                   onToggleFavorite={toggleFavorite}
                   onName={setNaming}
+                  compact={zoom === 0}
                 />
               ))}
             </CardGrid>

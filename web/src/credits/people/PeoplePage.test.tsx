@@ -179,6 +179,8 @@ describe("PeoplePage", () => {
     const link = await screen.findByRole("link", { name: /Aoi/ });
     expect(link.getAttribute("href")).toBe("/people/7");
     expect(within(link).getByText("34 · 12 videos")).toBeTruthy();
+    // Without a face image the placeholder shows the name's initial.
+    expect(within(link).getByText("A")).toBeTruthy();
     expect(screen.getByText("33–34 · 1 video")).toBeTruthy();
     const card = link.closest("article")!;
     expect(
@@ -288,6 +290,21 @@ describe("PeoplePage", () => {
     expect(patch?.url.pathname).toBe("/api/people/3");
     expect(patch?.body).toEqual({ name: "Mio" });
     expect(listRequests()).toHaveLength(1);
+  });
+
+  it("keeps the chosen card size for the next visit", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("vv.people.zoom", "0");
+    renderPage();
+    const link = await screen.findByRole("link", { name: /Person 1/ });
+    const grid = link.closest<HTMLElement>('[data-slot="card-grid"]')!;
+    expect(grid.style.gridTemplateColumns).toContain("--spacing-card-face-sm");
+
+    screen.getByRole("slider", { name: "Card size" }).focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(grid.style.gridTemplateColumns).toContain("--spacing-card-face)");
+    expect(window.localStorage.getItem("vv.people.zoom")).toBe("1");
   });
 
   it("returns from a person page to the loaded pages without asking again", async () => {

@@ -210,6 +210,13 @@ recognition leaves many unnamed people and opening each page to name it cost
 three screens a person. Renaming a named person, merging and deleting stay on
 the person page.
 
+A face card without an image shows the name's initials (`中楓` for `中村 楓`)
+in place of the person icon, because most people a plugin creates have no
+image and a grid of identical icons gave the eye nothing to scan. A `Card
+size` slider in the toolbar, as in the library, picks one of four face sizes
+and is remembered per browser; the smallest fits four cards across a phone and
+drops the meta line.
+
 The `Name` filter (`All`, `Named`, `Unnamed`) and a `Favorites` toggle sit in
 the page's band above the grid rather than in a filter menu, so the applied
 filters read at a glance and switching between named and unnamed people is
@@ -234,6 +241,7 @@ dialog and opens the new person's page. Organizations keep the table.
 | A virtualized grid                   | Library card grids are not virtualized, and the list pages 100 at a time                                                                                 |
 | Row actions on a card                | A card is one link; the person page holds the actions with room to confirm. `Name…` on an unnamed card is the one exception, as it needs no confirmation |
 | The filters in a filter menu         | The applied filters were hidden, and unnamed people took two clicks to reach                                                                             |
+| One initial on a faceless card       | A family name is shared by many neighbours in the name order                                                                                             |
 | Reloading the grid on `Back`         | A person far down the grid sent the viewer back to the top                                                                                               |
 | Portrait, square or horizontal cards | A round face shows more people per row and reads as a person, not a video                                                                                |
 

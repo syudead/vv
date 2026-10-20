@@ -10,7 +10,7 @@ import type { ReactNode, Ref, RefObject } from "react";
 
 import type { TagKind } from "../api/tagKinds";
 import { t, type UiText } from "../i18n";
-import { Toolbar } from "../ui/patterns/toolbar";
+import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
@@ -149,6 +149,8 @@ export interface AdminListToolbarProps<E extends string = never> {
   sortDisabled: boolean;
   /** Unique radio-group name per screen. */
   compactSortName: string;
+  /** View controls after the sort, such as a card size. */
+  extraViews?: readonly ToolbarViewControl[];
   children?: ReactNode;
 }
 
@@ -164,6 +166,7 @@ export function AdminListToolbar<E extends string = never>({
   extraSorts = [],
   sortDisabled,
   compactSortName,
+  extraViews = [],
   children,
 }: AdminListToolbarProps<E>) {
   const extra = extraSorts.find((option) => option.value === current);
@@ -275,6 +278,7 @@ export function AdminListToolbar<E extends string = never>({
             />
           ),
         },
+        ...extraViews,
       ]}
       viewLabel={t.tags.sort.compact}
     >

@@ -111,6 +111,10 @@
   --spacing-card-3: 30rem;
   /* Face card minimum: three columns at 360px, eight or nine at 1280px with the full sidebar. */
   --spacing-card-face: 6.5rem;
+  /* The people grid's smaller and larger card sizes. */
+  --spacing-card-face-sm: 4.5rem;
+  --spacing-card-face-lg: 9rem;
+  --spacing-card-face-xl: 12rem;
   --spacing-list-thumb-cell: 8rem;
   --spacing-list-thumb: 7rem;
   --spacing-list-number: 5rem;

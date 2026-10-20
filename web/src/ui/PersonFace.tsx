@@ -30,6 +30,8 @@ export interface PersonFaceProps {
   src?: string;
   /** The person's name, for the image's alternative text. */
   name: string;
+  /** Letters the placeholder shows in place of the icon, scaled to the frame. */
+  initials?: string;
   shape: PersonFaceShape;
   /** Makes the placeholder a button with this name, such as "Add a face". */
   addLabel?: string;
@@ -41,6 +43,7 @@ export interface PersonFaceProps {
 export function PersonFace({
   src,
   name,
+  initials = "",
   shape,
   addLabel,
   onAdd,
@@ -49,9 +52,31 @@ export function PersonFace({
   // Remember which URL failed so that a new revision is tried again.
   const [failed, setFailed] = useState<string | null>(null);
   const shown = src !== undefined && failed !== src ? src : undefined;
-  const icon = (
-    <UserRound aria-hidden="true" className={cn("text-muted-foreground", icons[shape])} />
-  );
+  const icon =
+    initials === "" ? (
+      <UserRound
+        aria-hidden="true"
+        className={cn("text-muted-foreground", icons[shape])}
+      />
+    ) : (
+      // An SVG viewBox scales the letters with the frame at every card size.
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 100"
+        className="size-full text-muted-foreground"
+      >
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={initials.length > 1 ? 30 : 40}
+          fill="currentColor"
+        >
+          {initials}
+        </text>
+      </svg>
+    );
   return (
     <div
       data-slot="person-face"
