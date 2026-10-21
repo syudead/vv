@@ -813,7 +813,8 @@ reopen does without a dismissed one.
 dropped, with the admin lists' `limit` and `cursor` and the `total` of them all,
 each with its `similarity`: the cosine similarity of its centroid to the
 normalized mean of the person's centroids of the same recognizer, which stands
-for the person without needing a face image. `sort=leastSimilar` orders by that
+for the person without needing a face image; a person with a single
+comparable face gets no similarity, which would compare the face with itself. `sort=leastSimilar` orders by that
 similarity, lowest first, so faces linked by mistake come first; appearances
 that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).

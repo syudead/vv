@@ -16,7 +16,6 @@ import {
 import { errorText, t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/shadcn/button";
-import { Progress } from "../../ui/shadcn/progress";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { PersonFace } from "../../ui/PersonFace";
 import { creditDisplayName } from "../displayName";
@@ -26,6 +25,9 @@ const text = t.credits.personPage.candidates;
 
 const sampleSize = 4;
 
+/** Faces read for the sample, so faces without a crop do not leave it short. */
+const sampleReach = 12;
+
 /**
  * The person's open candidate pairs. A failed read draws nothing, since the group is only there
  * when there is something to decide; a missing person calls onGone.
@@ -33,6 +35,9 @@ const sampleSize = 4;
 export function useFaceCandidates(personId: number, onGone: () => void) {
   const [items, setItems] = useState<FaceCandidate[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState<UiText | null>(null);
+  // The other people of the pairs decided on the page, which no longer wait.
+  const [decided, setDecided] = useState<ReadonlySet<number>>(new Set());
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -41,12 +46,17 @@ export function useFaceCandidates(personId: number, onGone: () => void) {
       (next) => {
         if (controller.signal.aborted) return;
         setItems(next);
+        setDecided(new Set());
+        setFailed(null);
         setLoaded(true);
       },
       (failure: unknown) => {
         if (controller.signal.aborted || isAborted(failure)) return;
         if (isCreditGone(failure)) onGone();
-        else setLoaded(true);
+        else {
+          setFailed(text.loadFailed(errorText(failure)));
+          setLoaded(true);
+        }
       },
     );
     return () => controller.abort();
@@ -56,7 +66,15 @@ export function useFaceCandidates(personId: number, onGone: () => void) {
   const remove = useCallback((otherId: number) => {
     setItems((current) => current.filter((item) => item.person.id !== otherId));
   }, []);
-  return { items, loaded, reload, remove };
+  const decide = useCallback((otherId: number, done: boolean) => {
+    setDecided((current) => {
+      const next = new Set(current);
+      if (done) next.add(otherId);
+      else next.delete(otherId);
+      return next;
+    });
+  }, []);
+  return { items, loaded, failed, decided, reload, remove, decide };
 }
 
 export interface FaceSample {
@@ -70,12 +88,13 @@ export function useFaceSample(personId: number, attempt = 0): FaceSample {
   const [sample, setSample] = useState<FaceSample>({ crops: [] });
   useEffect(() => {
     const controller = new AbortController();
-    listPersonAppearances(personId, { limit: sampleSize }, controller.signal).then(
+    listPersonAppearances(personId, { limit: sampleReach }, controller.signal).then(
       (page) => {
         if (controller.signal.aborted) return;
         setSample({
           crops: page.items
             .filter((item) => item.hasCrop)
+            .slice(0, sampleSize)
             .map((item) => item.appearanceId),
           total: page.total,
         });
@@ -93,6 +112,8 @@ export interface CandidateActions {
   /** Undoes a confirmed merge by its face_merge entry and reopens the pair. */
   undoConfirm: (other: FaceCandidatePerson, activityId: number) => Promise<void>;
   remove: (otherId: number) => void;
+  /** Counts the pair as decided, or as waiting again after Undo. */
+  decide: (otherId: number, done: boolean) => void;
   onGone: () => void;
 }
 
@@ -105,12 +126,25 @@ export function PersonCandidates({
   sample,
   items,
   actions,
+  failed,
 }: {
   person: Person;
   sample: FaceSample;
   items: readonly FaceCandidate[];
   actions: CandidateActions;
+  /** Why the pairs could not be read, with a retry; null once they were. */
+  failed?: { reason: UiText; retry: () => void } | null;
 }) {
+  if (failed != null) {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
+        {failed.reason}
+        <Button variant="link" size="sm" onClick={failed.retry}>
+          {t.common.retry}
+        </Button>
+      </p>
+    );
+  }
   if (items.length === 0) return <p className="text-muted-foreground">{text.none}</p>;
   return items.map((item) => (
     <CandidateRow
@@ -154,6 +188,7 @@ function useCandidateDecision(
       setDecision(
         kind === "confirm" ? "merged" : kind === "dismiss" ? "dismissed" : null,
       );
+      actions.decide(other.id, kind !== "undo");
     } catch (failure) {
       if (isCandidateGone(failure)) actions.remove(other.id);
       else if (isCreditGone(failure)) actions.onGone();
@@ -214,12 +249,6 @@ function CandidateRow({
             {text.percent(candidate.similarity)}
           </span>
           <span className="text-xs text-muted-foreground">{text.similarLabel}</span>
-          <Progress
-            aria-hidden="true"
-            value={candidate.similarity}
-            max={1}
-            className="w-16"
-          />
         </div>
         <PairSide
           person={other}
