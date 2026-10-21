@@ -62,8 +62,9 @@ func requirePerson(ctx context.Context, q rowQueryer, personID int64) error {
 	return nil
 }
 
-// ConfirmFaceCandidate merges the provisional person of the open pair of the two people into the other through the
-// ordinary merge and returns the target; without an open pair it returns domain.ErrFaceCandidateNotFound.
+// ConfirmFaceCandidate merges the other person of the open pair into personID through the ordinary merge, or personID
+// into the other when only the other has a name, and returns the target; without an open pair it returns
+// domain.ErrFaceCandidateNotFound.
 func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error) {
 	t, err := creditTablesFor(domain.CreditPerson)
 	if err != nil {
@@ -89,26 +90,25 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 	return outcome.Credit, nil
 }
 
-// openFacePairDirection returns the open pair's people as (source, target): the source is the one still without a
-// canonical name, or the stored provisional side when both or neither are, since a name given later may change it.
+// openFacePairDirection returns the open pair's people as (source, target): the person the owner confirms from stays,
+// unless only the other one has a canonical name, so a named person is never merged into one without a name.
 func openFacePairDirection(ctx context.Context, tx *sql.Tx, personID, otherID int64) (int64, int64, error) {
-	var provisionalID, otherSide int64
-	var provisionalNamed, otherNamed bool
-	err := tx.QueryRowContext(ctx, `select provisional_id, person_id,
-		exists (select 1 from people_names n where n.person_id = provisional_id and n.canonical = 1),
-		exists (select 1 from people_names n where n.person_id = face_candidates.person_id and n.canonical = 1)
+	var personNamed, otherNamed bool
+	err := tx.QueryRowContext(ctx, `select
+		exists (select 1 from people_names n where n.person_id = ?1 and n.canonical = 1),
+		exists (select 1 from people_names n where n.person_id = ?2 and n.canonical = 1)
 		  from face_candidates where `+openFacePairCondition+`
-		 order by similarity desc limit 1`, personID, otherID).
-		Scan(&provisionalID, &otherSide, &provisionalNamed, &otherNamed)
+		 limit 1`, personID, otherID).
+		Scan(&personNamed, &otherNamed)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return 0, 0, domain.ErrFaceCandidateNotFound
 	case err != nil:
 		return 0, 0, fmt.Errorf("cannot read the face candidate of people %d and %d: %w", personID, otherID, err)
-	case provisionalNamed && !otherNamed:
-		return otherSide, provisionalID, nil
+	case otherNamed && !personNamed:
+		return personID, otherID, nil
 	default:
-		return provisionalID, otherSide, nil
+		return otherID, personID, nil
 	}
 }
 

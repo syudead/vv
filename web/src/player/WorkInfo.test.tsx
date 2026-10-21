@@ -88,7 +88,7 @@ describe("WorkInfo", () => {
     expect(screen.queryByRole("link", { name: /Show videos with 顔/ })).toBeNull();
   });
 
-  it("仮の人物は空の名前ではなく Unnamed person の顔と名前で人物ページを開く", () => {
+  it("仮の人物は空の名前ではなく番号の顔と名前で人物ページを開く", () => {
     render(
       <MemoryRouter>
         <WorkInfo
@@ -106,9 +106,9 @@ describe("WorkInfo", () => {
         />
       </MemoryRouter>,
     );
-    const link = screen.getByRole("link", { name: "Open Unnamed person" });
+    const link = screen.getByRole("link", { name: "Open #8" });
     expect(link.getAttribute("href")).toBe("/people/8");
-    expect(within(link).getByRole("img").getAttribute("alt")).toBe("Unnamed person");
-    expect(link.textContent).toBe("Unnamed person");
+    expect(within(link).getByRole("img").getAttribute("alt")).toBe("#8");
+    expect(link.textContent).toBe("#8");
   });
 });

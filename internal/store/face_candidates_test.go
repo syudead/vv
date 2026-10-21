@@ -93,6 +93,55 @@ func TestConfirmFaceCandidateMergesTheProvisionalPersonWhicheverIDComesFirst(t *
 	}
 }
 
+// createFacedProvisionalPerson creates a person without names whose face is the given crop, as an analysis does.
+func createFacedProvisionalPerson(t *testing.T, db *DB, crop string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	id, err := createFacePerson(ctx, tx, domain.PersonImage{JPEG: []byte(crop), Width: 1, Height: 1}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// Between two people without names, the person whose faces page confirms stays with their own face, whichever of
+// them the pair stores as its provisional side.
+func TestConfirmFaceCandidateKeepsTheConfirmingPersonBetweenUnnamedPeople(t *testing.T) {
+	for _, fromStoredSide := range []bool{true, false} {
+		f := newFaceFixture(t)
+		ctx := context.Background()
+		stored := createFacedProvisionalPerson(t, f.db, "crop-stored")
+		other := createFacedProvisionalPerson(t, f.db, "crop-other")
+		offerFaceCandidate(t, f.db, stored, other)
+		from, merged, crop := other, stored, "crop-other"
+		if fromStoredSide {
+			from, merged, crop = stored, other, "crop-stored"
+		}
+
+		person, err := f.db.Credits().ConfirmFaceCandidate(ctx, from, merged)
+		if err != nil {
+			t.Fatalf("from the stored side %v: %v", fromStoredSide, err)
+		}
+		if person.ID != from {
+			t.Errorf("from the stored side %v: merged into %d, want %d", fromStoredSide, person.ID, from)
+		}
+		if _, err := f.db.Credits().Get(ctx, domain.CreditPerson, merged); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("from the stored side %v: the other person after confirm: err = %v, want ErrNotFound", fromStoredSide, err)
+		}
+		if image, err := f.db.Credits().PersonImage(ctx, from); err != nil || string(image.JPEG) != crop {
+			t.Errorf("from the stored side %v: face = %q, %v; want %s", fromStoredSide, image.JPEG, err, crop)
+		}
+	}
+}
+
 func TestDismissFaceCandidateHidesThePairForGood(t *testing.T) {
 	f := newLinkedFixture(t)
 	ctx := context.Background()

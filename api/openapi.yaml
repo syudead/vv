@@ -3066,7 +3066,7 @@ paths:
     post:
       operationId: confirmFaceCandidate
       summary: "Merge a face candidate pair"
-      description: "Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
+      description: "Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/FaceCandidateOtherId"

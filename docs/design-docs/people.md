@@ -320,9 +320,11 @@ nor reads the candidates.
 `Same person?` comes first on the faces page, drawn only while that request
 returns a pair, one row per pair with the other person's `PersonFace judge`,
 name and similarity, and `Same person` and `Not the same` under them. A
-confirm from a provisional person's own page opens the merged person's faces
-page, since the shown person no longer exists; one that keeps the page reads
-the candidates and the faces again. A pressed row disables only its own
+confirm keeps the shown person
+([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
+and reads the candidates and the faces again; only an unnamed person confirmed
+with a named one is merged away, and the page then opens the named person's
+faces page. A pressed row disables only its own
 buttons.
 
 `Faces in videos` follows, from `GET /api/people/{id}/appearances`: a
@@ -373,10 +375,12 @@ all when expanded, so the chips stay the primary content of the row.
 
 A provisional person
 ([A person without a canonical name is provisional](#a-person-without-a-canonical-name-is-provisional))
-is drawn as any person, with `Unnamed person` in `muted-foreground` where the
-name goes: the grid card, the person page's `h1` and document title, the video
-page's cast chip, the details editor's chips and the library's person filter
-chip. The quieter name line alone separates an unnamed card from a named one,
+is drawn as any person, with their id as `#1042` in `muted-foreground` where
+the name goes: the grid card, the person page's `h1` and document title, the
+video page's cast chip, the details editor's chips and the library's person
+filter chip. Every unnamed person read `Unnamed person` before, which a card
+truncated and which told no two of them apart; the id is short, unique and
+does not change when other people are merged or deleted. The quieter name line alone separates an unnamed card from a named one,
 so the faces stay what the eye scans; a badge on every unnamed card was
 rejected for competing with them. The screens map the flag to the words in one
 place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
@@ -385,7 +389,7 @@ place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
 The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
-shows the empty name with the placeholder `Unnamed person`, and `Save` with the
+shows the empty name with the person's number as its placeholder, and `Save` with the
 name still empty sends no `name`, so the person stays provisional.
 
 The `Performers` picker of the details editor lists provisional people under

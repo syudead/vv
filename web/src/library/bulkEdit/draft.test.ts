@@ -50,8 +50,8 @@ const summary: VideoEditSummary = {
 function presentOf(source: VideoEditSummary): Map<FieldId, PresentValue[]> {
   return new Map<FieldId, PresentValue[]>([
     ["tags", presentTags(source)],
-    ["person:performer", presentCredits(source, "person", "performer", "Unnamed")],
-    ["person:director", presentCredits(source, "person", "director", "Unnamed")],
+    ["person:performer", presentCredits(source, "person", "performer")],
+    ["person:director", presentCredits(source, "person", "director")],
   ]);
 }
 

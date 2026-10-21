@@ -622,15 +622,11 @@ describe("ActivityPage retry and undo", () => {
     await waitFor(() => expect(cards()).toHaveLength(1));
     const analysed = card("file-6.mp4");
     expect(
-      within(analysed).getByText("Linked Alice, Unnamed person (new) · 1 link undone"),
+      within(analysed).getByText("Linked Alice, #6 (new) · 1 link undone"),
     ).toBeDefined();
     await user.click(within(analysed).getByRole("button", { name: "Undo links…" }));
     const items = await screen.findAllByRole("menuitem");
-    expect(items.map((item) => item.textContent)).toEqual([
-      "Alice",
-      "Unnamed person",
-      "All links",
-    ]);
+    expect(items.map((item) => item.textContent)).toEqual(["Alice", "#6", "All links"]);
     await user.click(items[1]!);
     await waitFor(() =>
       expect(server.operations).toEqual([

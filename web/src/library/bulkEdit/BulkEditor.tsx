@@ -13,6 +13,7 @@ import {
   workOrganizationRoles,
   workPersonRoles,
 } from "../../api/workInfo";
+import { creditDisplayName } from "../../credits/displayName";
 import { errorText, t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import CreditPicker from "../../player/detailsEditor/CreditPicker";
@@ -92,10 +93,7 @@ function editTargetsOf(targets: readonly SelectionTarget[]): VideoEditTargets {
 function presentMap(summary: VideoEditSummary): Map<FieldId, PresentValue[]> {
   const map = new Map<FieldId, PresentValue[]>([["tags", presentTags(summary)]]);
   for (const entry of roleEntries) {
-    map.set(
-      entry.id,
-      presentCredits(summary, entry.kind, entry.role, t.credits.unnamedPerson),
-    );
+    map.set(entry.id, presentCredits(summary, entry.kind, entry.role));
   }
   return map;
 }
@@ -528,7 +526,7 @@ function pickedCredit(chip: Chip) {
     ? { key: `new:${chip.newKey}`, label: chip.name, newName: chip.name }
     : {
         key: creditKey(chip.id),
-        label: chip.provisional === true ? t.credits.unnamedPerson : chip.name,
+        label: creditDisplayName(chip),
         id: chip.id,
       };
 }

@@ -6,6 +6,7 @@ import type {
   VideoEditSummary,
 } from "../../api/videoEdits";
 import type { TagRef } from "../../api/tags";
+import { creditDisplayName } from "../../credits/displayName";
 
 /** What Apply does with one value; a value without a choice stays as each video has it. */
 export type Choice = "add" | "remove";
@@ -148,12 +149,11 @@ export function presentTags(summary: VideoEditSummary): PresentValue[] {
   }));
 }
 
-/** Present credits of one role; a provisional person's empty name is labelled by the caller. */
+/** Present credits of one role, a provisional person by their number. */
 export function presentCredits(
   summary: VideoEditSummary,
   kind: CreditKind,
   role: string,
-  unnamed: string,
 ): PresentValue[] {
   const items =
     kind === "person"
@@ -165,7 +165,7 @@ export function presentCredits(
           .map((item) => ({ ref: item.organization, count: item.count }));
   return items.map(({ ref, count }) => ({
     key: creditKey(ref.id),
-    label: ref.provisional ? unnamed : ref.name,
+    label: creditDisplayName(ref),
     count,
     removable: count,
   }));

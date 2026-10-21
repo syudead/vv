@@ -324,12 +324,12 @@ describe("VideoDetailsEditor", () => {
       );
     });
 
-    it("Performers の候補に Unnamed people を出し、空のまま選ぶと Unnamed person のチップで保存する", async () => {
+    it("Performers の候補に Unnamed people を出し、空のまま選ぶと番号のチップで保存する", async () => {
       await opened();
       const user = userEvent.setup();
       await user.click(screen.getByRole("combobox", { name: "Add a performer" }));
       const row = await screen.findByRole("option", {
-        name: "Unnamed person, 3 videos",
+        name: "#6, 3 videos",
       });
       expect(screen.getByRole("group", { name: "Unnamed people" })).toBeDefined();
       const url = server.people.mock.calls
@@ -338,9 +338,7 @@ describe("VideoDetailsEditor", () => {
       expect(url?.searchParams.get("limit")).toBe("9");
       await user.click(row);
 
-      expect(
-        await screen.findByRole("button", { name: "Remove Unnamed person" }),
-      ).toBeDefined();
+      expect(await screen.findByRole("button", { name: "Remove #6" })).toBeDefined();
       await user.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(server.details).toHaveBeenCalledTimes(1));
       expect(server.namePerson).not.toHaveBeenCalled();
@@ -361,7 +359,7 @@ describe("VideoDetailsEditor", () => {
       await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Mio");
       await user.click(
         await screen.findByRole("option", {
-          name: "Unnamed person, 3 videos, Add as Mio",
+          name: "#6, 3 videos, Add as Mio",
         }),
       );
 
@@ -383,7 +381,7 @@ describe("VideoDetailsEditor", () => {
       await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Mio");
       await user.click(
         await screen.findByRole("option", {
-          name: "Unnamed person, 3 videos, Add as Mio",
+          name: "#6, 3 videos, Add as Mio",
         }),
       );
       await user.click(screen.getByRole("button", { name: "Save" }));
@@ -392,7 +390,7 @@ describe("VideoDetailsEditor", () => {
       expect(server.details).not.toHaveBeenCalled();
     });
 
-    it("動画に付いた仮の人物のチップは Unnamed person と読む", async () => {
+    it("動画に付いた仮の人物のチップは番号で読む", async () => {
       server.video = () =>
         json({
           ...video,
@@ -408,7 +406,7 @@ describe("VideoDetailsEditor", () => {
           },
         });
       await opened();
-      expect(screen.getByRole("button", { name: "Remove Unnamed person" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "Remove #6" })).toBeDefined();
     });
   });
 

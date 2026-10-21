@@ -1599,6 +1599,8 @@ export const en = {
     ),
     loading: "Loading…",
     unnamedPerson: "Unnamed person",
+    /** A provisional person's label: their id, short and unique where every one would read "Unnamed person". */
+    personNumber: (id: number) => `#${String(id)}`,
     columns: {
       name: "Name",
       videos: "Videos",
