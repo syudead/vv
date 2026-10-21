@@ -80,6 +80,8 @@ export const server = {
   mergeTarget: null as Person | null,
   /** How many reopen requests fail before they succeed again. */
   reopenFailures: 0,
+  /** The reason a face upload is refused with, or null to accept it. */
+  imageRefusal: null as string | null,
   /** The people a name search of the move and merge dialogs finds among. */
   searchable: [] as Person[],
   /** When set, a move answers that a face is no longer the person's. */
@@ -270,6 +272,12 @@ function respond(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/people/7" && method === "GET")
     return jsonResponse(server.person);
   if (url.pathname === "/api/people/7/image" && method === "PUT") {
+    if (server.imageRefusal !== null) {
+      return jsonResponse(
+        { code: "invalid_request", reason: server.imageRefusal, message: "Refused" },
+        400,
+      );
+    }
     server.person = { ...server.person, imageRevision: 3 };
     return jsonResponse(server.person);
   }
@@ -306,6 +314,7 @@ export function installPersonServer() {
     server.candidateFailures = 0;
     server.similarFailures = 0;
     server.moveGone = false;
+    server.imageRefusal = null;
     server.searchable = [];
     server.faceRecognition = true;
     server.videoCount = 1;

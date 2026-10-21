@@ -175,6 +175,41 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 | Fitting through ffmpeg                 | Needs the media adapter for a still image, while `x/image/draw` scales without cgo                 |
 | Keeping the original upload            | An upload may be 64 MiB, and the screens show at most a portrait card                              |
 
+## A face can be framed from a video
+
+The camera menu on the person's face offers `Choose from videos…` beside
+`Upload an image…`, with or without a face. It opens an `EditorDialog`
+([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
+
+| Part    | Shows                                                                                                                                                                            |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Faces   | Up to 48 of the person's crops from `GET /api/people/{id}/appearances?sort=mostSimilar`, most like the person first; a face whose video is gone or that has no track is left out |
+| Stage   | The original frame from `GET /api/videos/{id}/frame?positionMs=`, at the middle of the face's longest track, with a 2:3 portrait outline that drags and takes arrow keys         |
+| Frame   | The moment, with buttons one second earlier and later                                                                                                                            |
+| Size    | A slider for the outline's width, from 5% of the frame's long side to the widest that fits                                                                                       |
+| Preview | The portrait as the profile shows it and the round crop the cards take from it                                                                                                   |
+
+The outline starts at 2.2 times the face's mean width with the face above its
+centre ([`faceFraming.ts`](../../web/src/credits/person/faceFraming.ts)), from
+the appearance's `focus`: the longest track's middle, mean centre and width as
+fractions of the frame's long side, as face recognition samples them.
+The faces are read page by page until 48 can be framed or none are left, so faces
+whose video is gone do not crowd them out. A frame read for another face or
+moment counts as still loading, so `Set as face` waits for the chosen one.
+`Set as face` cuts the outline out of the frame at the frame's own pixels and
+sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
+the same fitting and face check as an upload and the dialog shows their
+refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
+long side with `private, max-age=3600`, and reports a position outside the
+video, an unreadable file and a frame that does not decode as the thumbnail
+position endpoint does.
+
+| Rejected                           | Why                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Choosing a stored crop as the face | A crop is cut from a frame scaled to 1280 px for analysis, so it is coarse, and its framing is fixed |
+| Cutting the face on the server     | The page already holds the frame it shows, and the upload path fits and checks any image             |
+| A free-form crop shape             | Every screen shows the face as a portrait or a circle inside it, so another shape is cut again       |
+
 ## The image revision never repeats
 
 `people.image_revision` increases on every change of the face: an upload, a

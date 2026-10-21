@@ -820,7 +820,11 @@ that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
 An appearance whose similarity is below the candidate threshold of the
 recognizer that made its centroid, found by the vector's length, is marked
-`unlike`. By default they come newest video first by the video's added time, then by
+`unlike`. `sort=mostSimilar` is the reverse with the same tail, for choosing the
+person's face from the faces most like them
+([people.md](people.md#a-face-can-be-framed-from-a-video)). Each appearance also
+carries its `focus`, the middle, mean centre and width of its longest track.
+By default they come newest video first by the video's added time, then by
 descending appearance id. The store reads every appearance of the person and
 orders and pages them in memory, since the similarity needs all centroids; a
 cursor names the last appearance by what its order compares, so a split face

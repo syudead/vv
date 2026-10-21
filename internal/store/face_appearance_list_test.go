@@ -61,10 +61,13 @@ func TestPersonAppearancesPageNewestVideoFirstWithoutDroppedOnes(t *testing.T) {
 			break
 		}
 	}
+	// The focus is the middle of the longest track, the first of equal ones.
+	focus := func(time float64) *domain.FaceFocus { return &domain.FaceFocus{Time: time, X: 0.5, Y: 0.5, W: 0.1} }
 	want := []domain.PersonAppearance{
-		{ID: newest, VideoID: ids[paths[1]], Title: "New", Spans: []domain.FaceTimeSpan{{Start: 0, End: 12}, {Start: 20, End: 30}}, HasCrop: true},
-		{ID: old, VideoID: ids[paths[0]], Title: "Old", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, HasCrop: true},
-		{ID: gone, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
+		{ID: newest, VideoID: ids[paths[1]], Title: "New", Spans: []domain.FaceTimeSpan{{Start: 0, End: 12}, {Start: 20, End: 30}}, HasCrop: true,
+			Focus: focus(25)},
+		{ID: old, VideoID: ids[paths[0]], Title: "Old", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, HasCrop: true, Focus: focus(5)},
+		{ID: gone, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, Focus: focus(5)},
 	}
 	if !reflect.DeepEqual(got, want) || pages != 3 {
 		t.Errorf("appearances over %d pages = %+v, want %+v over 3", pages, got, want)
@@ -93,8 +96,8 @@ func setAppearanceCentroid(t *testing.T, db *DB, id int64, v []float32) {
 	}
 }
 
-// The face least like the person's others comes first, a face that cannot be compared last, and a cursor from one
-// order is refused by the other.
+// The face least like the person's others comes first, or last in the reverse order, a face that cannot be compared
+// last in both, and a cursor from one order is refused by the other.
 func TestPersonAppearancesLeastSimilarFirst(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -131,6 +134,17 @@ func TestPersonAppearancesLeastSimilarFirst(t *testing.T) {
 	}
 	if want := []int64{stranger, near, nearer, unscored}; !reflect.DeepEqual(got, want) {
 		t.Errorf("order = %v, want %v", got, want)
+	}
+	most, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{Sort: domain.PersonAppearancesMostSimilar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = got[:0]
+	for _, item := range most.Items {
+		got = append(got, item.ID)
+	}
+	if want := []int64{nearer, near, stranger, unscored}; !reflect.DeepEqual(got, want) {
+		t.Errorf("mostSimilar order = %v, want %v", got, want)
 	}
 }
 

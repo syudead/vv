@@ -418,3 +418,40 @@ func (f *guestFixture) succeededEdit(t *testing.T, name string) string {
 	}
 	return id
 }
+
+func TestGetVideoFrameStatuses(t *testing.T) {
+	f := newGuestFixture(t, true)
+	frame := func(name, position string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+		return f.env.get(f.videoPath(name, "/frame?positionMs="+position), cookies...)
+	}
+	check := func(label string, rec *httptest.ResponseRecorder, want wantError) {
+		t.Helper()
+		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), want)
+	}
+
+	assertUnauthenticated(t, "guest", frame("a", "1000"))
+	check("past the end", frame("a", "60000", f.owner),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonThumbnailPositionOutOfRange, limit: 60_000})
+	check("no duration", frame("d", "1000", f.owner),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonDurationUnknown})
+	f.edits.set(func(e *editFakes) { e.noFrame = true })
+	check("no frame", frame("a", "1000", f.owner),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailFrameUnavailable})
+	f.edits.set(func(e *editFakes) { e.noFrame = false })
+
+	rec := frame("a", "1500", f.owner)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" ||
+		!bytes.Equal(rec.Body.Bytes(), editPNG(4, 4)) {
+		t.Fatalf("frame = %d %v", rec.Code, rec.Header())
+	}
+	if positions := f.edits.positions; positions[len(positions)-1] != 1500 {
+		t.Errorf("positions = %v, want the frame read at 1500", positions)
+	}
+
+	video := decode[gen.Video](t, f.env.get(f.videoPath("b", ""), f.owner))
+	if err := os.Remove(video.Location.Path); err != nil {
+		t.Fatal(err)
+	}
+	check("no file", frame("b", "1000", f.owner),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable})
+}

@@ -1066,6 +1066,37 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/videos/{id}/frame:
+    get:
+      operationId: getVideoFrame
+      summary: "Return a frame of the video"
+      description: "Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: positionMs
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: "The frame"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/videos/{id}/thumbnail-edits:
     post:
       operationId: startThumbnailEdit
@@ -3120,15 +3151,15 @@ paths:
     get:
       operationId: listPersonAppearances
       summary: "List a person's face appearances"
-      description: "Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor."
+      description: "Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order; sort mostSimilar puts the most alike first, with the same tail. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - name: sort
           in: query
-          description: "newest (default) or leastSimilar"
+          description: "newest (default), leastSimilar or mostSimilar"
           schema:
             type: string
-            enum: [newest, leastSimilar]
+            enum: [newest, leastSimilar, mostSimilar]
         - name: cursor
           in: query
           description: "Opaque nextCursor from the previous response; ignored without limit"
@@ -8037,6 +8068,8 @@ components:
         unlike:
           type: boolean
           description: "True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise."
+        focus:
+          $ref: "#/components/schemas/FaceFocus"
 
     SimilarPersonList:
       type: object
@@ -8137,6 +8170,25 @@ components:
             type: integer
             format: int64
             minimum: 1
+
+    FaceFocus:
+      type: object
+      required: [time, x, y, w]
+      additionalProperties: false
+      description: "Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side."
+      properties:
+        time:
+          type: number
+          format: double
+        x:
+          type: number
+          format: double
+        "y":
+          type: number
+          format: double
+        w:
+          type: number
+          format: double
 
     FaceAppearanceSpan:
       type: object

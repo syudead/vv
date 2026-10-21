@@ -23,8 +23,9 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 	sort := domain.PersonAppearancesNewest
 	if params.Sort != nil {
 		sort = domain.PersonAppearanceSort(*params.Sort)
-		if sort != domain.PersonAppearancesNewest && sort != domain.PersonAppearancesLeastSimilar {
-			s.invalidRequest(w, "sort must be newest or leastSimilar.")
+		if sort != domain.PersonAppearancesNewest && sort != domain.PersonAppearancesLeastSimilar &&
+			sort != domain.PersonAppearancesMostSimilar {
+			s.invalidRequest(w, "sort must be newest, leastSimilar or mostSimilar.")
 			return
 		}
 	}
@@ -49,7 +50,7 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 		}
 		body.Items = append(body.Items, gen.FaceAppearance{
 			AppearanceId: a.ID, VideoId: optionalPositive(a.VideoID), Title: a.Title, Spans: spans, HasCrop: a.HasCrop,
-			Similarity: a.Similarity,
+			Similarity: a.Similarity, Focus: apiFaceFocus(a.Focus),
 		})
 		if a.Unlike {
 			body.Items[len(body.Items)-1].Unlike = &a.Unlike
@@ -203,4 +204,11 @@ func (s *server) GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, i
 	if _, err := w.Write(crop); err != nil {
 		s.logger.Debug("could not write the face crop", slog.Int64("appearance", id), slog.Any("error", err))
 	}
+}
+
+func apiFaceFocus(f *domain.FaceFocus) *gen.FaceFocus {
+	if f == nil {
+		return nil
+	}
+	return &gen.FaceFocus{Time: f.Time, X: f.X, Y: f.Y, W: f.W}
 }

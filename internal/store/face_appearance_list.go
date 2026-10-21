@@ -87,6 +87,7 @@ func (s *CreditStore) allPersonAppearances(ctx context.Context, personID int64) 
 			return nil, fmt.Errorf("cannot read the tracks of face appearance %d: %w", item.ID, err)
 		}
 		item.Spans = domain.FaceTimeSpans(spans)
+		item.Focus = domain.FaceFocusOf(spans)
 		if len(centroid) > 0 {
 			vectors[item.ID] = decodeFaceVector(centroid)
 		}
@@ -141,8 +142,11 @@ func decodePersonAppearanceCursor(cursor string, sort domain.PersonAppearanceSor
 }
 
 func personAppearanceCursorSort(sort domain.PersonAppearanceSort) string {
-	if sort == domain.PersonAppearancesLeastSimilar {
+	switch sort {
+	case domain.PersonAppearancesLeastSimilar:
 		return "personAppearanceSimilar"
+	case domain.PersonAppearancesMostSimilar:
+		return "personAppearanceMostSimilar"
 	}
 	return "personAppearance"
 }

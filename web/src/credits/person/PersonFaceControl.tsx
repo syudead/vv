@@ -1,7 +1,6 @@
-import { Camera, ImageUp, Trash2 } from "lucide-react";
+import { Camera, Film, ImageUp, Trash2 } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 
-import { RequestFailed } from "../../api/client";
 import {
   isCreditGone,
   type Person,
@@ -31,24 +30,10 @@ import {
 import { Input } from "../../ui/shadcn/input";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { creditDisplayName } from "../displayName";
+import FacePickerDialog from "./FacePickerDialog";
+import { faceUploadFailure } from "./faceUploadFailure";
 
 const text = t.credits.personPage;
-
-function uploadFailure(failure: unknown): UiText {
-  if (failure instanceof RequestFailed) {
-    if (failure.reason === "person_image_invalid") return text.face.refusedType;
-    if (
-      failure.reason === "person_image_no_face" ||
-      failure.reason === "person_image_many_faces"
-    ) {
-      return errorText(failure);
-    }
-    if (failure.reason === "person_image_too_large") {
-      return text.face.tooLarge(formatBytes(failure.limit ?? UPLOAD_MAX_BYTES));
-    }
-  }
-  return text.face.failed(errorText(failure));
-}
 
 /** Take only the face from an image response, so a heart pressed meanwhile keeps its state. */
 function withFaceOf(saved: Person) {
@@ -74,6 +59,7 @@ export default function PersonFaceControl({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
+  const [picking, setPicking] = useState(false);
 
   function pick() {
     if (!uploading) fileInput.current?.click();
@@ -98,7 +84,7 @@ export default function PersonFaceControl({
         onGone();
         return;
       }
-      setError(uploadFailure(failure));
+      setError(faceUploadFailure(failure));
     } finally {
       setUploading(false);
     }
@@ -154,25 +140,29 @@ export default function PersonFaceControl({
               variant="card"
             />
           </PersonFaceMark>
-          {src !== undefined && (
-            <PersonFaceMark corner="bottom-end">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={text.face.change}
-                    disabled={uploading}
-                    className="bg-overlay"
-                  >
-                    <Camera aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={pick}>
-                    <ImageUp aria-hidden="true" />
-                    {text.face.upload}
-                  </DropdownMenuItem>
+          <PersonFaceMark corner="bottom-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={text.face.change}
+                  disabled={uploading}
+                  className="bg-overlay"
+                >
+                  <Camera aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setPicking(true)}>
+                  <Film aria-hidden="true" />
+                  {text.face.fromVideos}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={pick}>
+                  <ImageUp aria-hidden="true" />
+                  {text.face.upload}
+                </DropdownMenuItem>
+                {src !== undefined && (
                   <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => {
@@ -183,10 +173,10 @@ export default function PersonFaceControl({
                     <Trash2 aria-hidden="true" />
                     {text.face.remove}
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PersonFaceMark>
-          )}
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </PersonFaceMark>
           {uploading && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-overlay">
               <Spinner aria-label={text.face.uploading} />
@@ -209,6 +199,18 @@ export default function PersonFaceControl({
         data-testid="person-face-input"
         onChange={choose}
       />
+      {picking && (
+        <FacePickerDialog
+          person={person}
+          onClose={() => setPicking(false)}
+          onSaved={(saved) => {
+            setPicking(false);
+            setError(null);
+            onChanged(withFaceOf(saved));
+          }}
+          onGone={onGone}
+        />
+      )}
       {confirmRemove && (
         <ConfirmDialog
           open

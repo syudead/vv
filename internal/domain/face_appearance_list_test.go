@@ -34,6 +34,7 @@ func TestComparePersonAppearancesBreaksTies(t *testing.T) {
 	}{
 		{PersonAppearancesNewest, []int64{4, 3, 2, 1, 5}},
 		{PersonAppearancesLeastSimilar, []int64{3, 2, 1, 5, 4}},
+		{PersonAppearancesMostSimilar, []int64{5, 3, 2, 1, 4}},
 	} {
 		sorted := slices.Clone(items)
 		slices.SortFunc(sorted, ComparePersonAppearances(tc.sort))
@@ -83,5 +84,20 @@ func TestRankFacePeople(t *testing.T) {
 	want := []FaceCandidate{{PersonID: 1, Similarity: 1}, {PersonID: 3, Similarity: 1}}
 	if !slices.Equal(got, want) {
 		t.Errorf("ranking = %v, want %v", got, want)
+	}
+}
+
+// The focus is the middle of the longest track, the first of equal ones, at its centre and width; none without tracks.
+func TestFaceFocusOf(t *testing.T) {
+	got := FaceFocusOf([]FaceSpan{
+		{Start: 0, End: 4, X: 0.1, Y: 0.1, W: 0.1},
+		{Start: 10, End: 20, X: 0.5, Y: 0.3, W: 0.2},
+		{Start: 30, End: 40, X: 0.9, Y: 0.9, W: 0.3},
+	})
+	if want := (FaceFocus{Time: 15, X: 0.5, Y: 0.3, W: 0.2}); got == nil || *got != want {
+		t.Errorf("focus = %+v, want %+v", got, want)
+	}
+	if got := FaceFocusOf(nil); got != nil {
+		t.Errorf("focus without tracks = %+v, want nil", got)
 	}
 }
