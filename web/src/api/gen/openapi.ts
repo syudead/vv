@@ -5410,6 +5410,7 @@ export interface components {
             broadcast?: components["schemas"]["MediaInfoBroadcast"];
             /** @description Chapters in start order, within video duration. */
             chapters?: components["schemas"]["MediaInfoChapter"][];
+            container?: components["schemas"]["MediaInfoContainer"];
         };
         /** @description Video-stream metadata; hdr is always included when a video stream exists. */
         MediaInfoVideo: {
@@ -5435,6 +5436,70 @@ export interface components {
             stereo3d?: string;
             /** @description True when the video stream carries closed captions. */
             closedCaptions?: boolean;
+            /**
+             * @example High
+             * @example Main 10
+             */
+            profile?: string;
+            /** @description Codec level as ffprobe reports it (H.264 41 is level 4.1). */
+            level?: number;
+            /**
+             * @example yuv420p
+             * @example yuv420p10le
+             */
+            pixelFormat?: string;
+            /**
+             * @example 4:2:0
+             * @example 4:2:2
+             * @example 4:4:4
+             */
+            chromaSubsampling?: string;
+            /** @enum {string} */
+            colorRange?: "limited" | "full";
+            /** @description Container fourcc, such as hvc1 or hev1. */
+            codecTag?: string;
+            /** @description RFC 6381 codecs value, such as avc1.64001f. */
+            codecString?: string;
+            /** @description A header estimate: the average frame rate differs from the base rate by more than 1%. */
+            variableFrameRate?: boolean;
+            /**
+             * Format: int64
+             * @description Frame count the header records.
+             */
+            frameCount?: number;
+            /**
+             * Format: int64
+             * @description Maximum bits per second the header records.
+             */
+            maxBitRate?: number;
+            /**
+             * Format: double
+             * @description bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode.
+             */
+            bitsPerPixel?: number;
+            /** @description The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation. */
+            mirrored?: boolean;
+            crop?: components["schemas"]["MediaInfoCrop"];
+            mastering?: components["schemas"]["MediaInfoMasteringDisplay"];
+            contentLight?: components["schemas"]["MediaInfoContentLight"];
+            /** @description The container carries HDR10+ dynamic metadata. */
+            hdr10Plus?: boolean;
+            dolbyVision?: components["schemas"]["MediaInfoDolbyVision"];
+            /** @description AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown. */
+            filmGrain?: boolean;
+            /** @description The stream has more than one layer, as MV-HEVC stereoscopic video does. */
+            multiLayer?: boolean;
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         MediaInfoAudioTrack: {
             /** @description Stream index within the file. */
@@ -5455,6 +5520,32 @@ export interface components {
             language?: string;
             title?: string;
             default?: boolean;
+            /** @description Samples per second. */
+            sampleRate?: number;
+            bitDepth?: number;
+            /**
+             * @example fltp
+             * @example s16
+             * @example s32
+             */
+            sampleFormat?: string;
+            /** Format: int64 */
+            bitRate?: number;
+            replayGain?: components["schemas"]["MediaInfoReplayGain"];
+            roles?: components["schemas"]["MediaInfoTrackRoles"];
+            /** @enum {string} */
+            serviceType?: "main" | "effects" | "visually_impaired" | "hearing_impaired" | "dialogue" | "commentary" | "emergency" | "voice_over" | "karaoke";
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         MediaInfoSubtitleTrack: {
             /** @description Stream index within the file. */
@@ -5471,6 +5562,18 @@ export interface components {
             default?: boolean;
             forced?: boolean;
             hearingImpaired?: boolean;
+            roles?: components["schemas"]["MediaInfoTrackRoles"];
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         /** @description Tags embedded in the file. */
         MediaInfoEmbedded: {
@@ -5491,6 +5594,31 @@ export interface components {
             location?: components["schemas"]["MediaInfoLocation"];
             /** @description True when the file contains an attached picture. */
             coverArt?: boolean;
+            album?: string;
+            albumArtist?: string;
+            composer?: string;
+            show?: string;
+            episode?: string;
+            season?: string;
+            /** @description Broadcaster or distributor tag. */
+            network?: string;
+            synopsis?: string;
+            copyright?: string;
+            publisher?: string;
+            encodedBy?: string;
+            /** @description Software that wrote the file. */
+            encoder?: string;
+            /** @description Where a download tool fetched the file from. */
+            sourceUrl?: string;
+            keywords?: string;
+            rating?: string;
+            /** @description The phone camera's software version. */
+            captureSoftware?: string;
+            /**
+             * Format: double
+             * @description The phone's capture rate; above the playback rate means slow motion.
+             */
+            captureFrameRate?: number;
         };
         /** @description Capture location in degrees, with altitude in meters. */
         MediaInfoLocation: {
@@ -5505,6 +5633,138 @@ export interface components {
         MediaInfoBroadcast: {
             station?: string;
             program?: string;
+        };
+        /** @description What the writing tool or device recorded on the stream. */
+        MediaInfoStreamOrigin: {
+            encoder?: string;
+            /**
+             * @example VideoHandler
+             * @example Core Media Audio
+             */
+            handler?: string;
+            /** @description Vendor fourcc, such as appl. */
+            vendor?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** @example 01:00:00:00 */
+            timecode?: string;
+        };
+        /** @description Purposes the file flags on the track; only true flags are present. */
+        MediaInfoTrackRoles: {
+            dub?: boolean;
+            original?: boolean;
+            /** @description Commentary. */
+            comment?: boolean;
+            /** @description Audio description for visually impaired viewers. */
+            visualImpaired?: boolean;
+            hearingImpaired?: boolean;
+            karaoke?: boolean;
+            lyrics?: boolean;
+            /** @description Effects only, without dialogue. */
+            cleanEffects?: boolean;
+            captions?: boolean;
+            descriptions?: boolean;
+        };
+        /** @description ReplayGain tags as the file writes them, such as -6.50 dB. */
+        MediaInfoReplayGain: {
+            trackGain?: string;
+            trackPeak?: string;
+            albumGain?: string;
+            albumPeak?: string;
+        };
+        /** @description Cropping the container records, in pixels from each edge. */
+        MediaInfoCrop: {
+            top?: number;
+            bottom?: number;
+            left?: number;
+            right?: number;
+        };
+        /** @description HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m². */
+        MediaInfoMasteringDisplay: {
+            /** Format: double */
+            redX?: number;
+            /** Format: double */
+            redY?: number;
+            /** Format: double */
+            greenX?: number;
+            /** Format: double */
+            greenY?: number;
+            /** Format: double */
+            blueX?: number;
+            /** Format: double */
+            blueY?: number;
+            /** Format: double */
+            whiteX?: number;
+            /** Format: double */
+            whiteY?: number;
+            /** Format: double */
+            minLuminance?: number;
+            /** Format: double */
+            maxLuminance?: number;
+        };
+        /** @description HDR content light levels in cd/m². */
+        MediaInfoContentLight: {
+            /** @description MaxCLL. */
+            maxContent?: number;
+            /** @description MaxFALL. */
+            maxAverage?: number;
+        };
+        MediaInfoDolbyVision: {
+            profile: number;
+            level?: number;
+            /** @description dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG). */
+            compatibility?: number;
+        };
+        /** @description What the container says about the file as a whole. */
+        MediaInfoContainer: {
+            /**
+             * Format: int64
+             * @description The container's start time.
+             */
+            startMs?: number;
+            /**
+             * @example isom
+             * @example qt
+             */
+            majorBrand?: string;
+            compatibleBrands?: string[];
+            /** @description How sure ffprobe is of the format, out of 100. */
+            probeScore?: number;
+            /** @description A stream is encrypted (DRM). */
+            encrypted?: boolean;
+            /** @description Attached files such as fonts, at most 64. */
+            attachments?: components["schemas"]["MediaInfoAttachment"][];
+            /** @description Non-media streams such as GoPro telemetry, at most 64. */
+            dataStreams?: components["schemas"]["MediaInfoDataStream"][];
+            sizes?: components["schemas"]["MediaInfoSizes"];
+        };
+        MediaInfoAttachment: {
+            name?: string;
+            mimeType?: string;
+            /** Format: int64 */
+            bytes?: number;
+        };
+        MediaInfoDataStream: {
+            index: number;
+            /**
+             * @example gpmd
+             * @example tmcd
+             */
+            codec?: string;
+            handler?: string;
+        };
+        /** @description The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are. */
+        MediaInfoSizes: {
+            /** Format: int64 */
+            totalBytes?: number;
+            /** Format: int64 */
+            videoBytes?: number;
+            /** Format: int64 */
+            audioBytes?: number;
+            /** Format: int64 */
+            subtitleBytes?: number;
+            /** Format: int64 */
+            otherBytes?: number;
         };
         MediaInfoChapter: {
             /** Format: int64 */

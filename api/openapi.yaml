@@ -9564,6 +9564,8 @@ components:
           description: "Chapters in start order, within video duration."
           items:
             $ref: "#/components/schemas/MediaInfoChapter"
+        container:
+          $ref: "#/components/schemas/MediaInfoContainer"
 
     MediaInfoVideo:
       type: object
@@ -9597,6 +9599,72 @@ components:
         closedCaptions:
           type: boolean
           description: "True when the video stream carries closed captions."
+        profile:
+          type: string
+          examples: [High, "Main 10"]
+        level:
+          type: integer
+          description: "Codec level as ffprobe reports it (H.264 41 is level 4.1)."
+        pixelFormat:
+          type: string
+          examples: [yuv420p, yuv420p10le]
+        chromaSubsampling:
+          type: string
+          examples: ["4:2:0", "4:2:2", "4:4:4"]
+        colorRange:
+          type: string
+          enum: [limited, full]
+        codecTag:
+          type: string
+          description: "Container fourcc, such as hvc1 or hev1."
+        codecString:
+          type: string
+          description: "RFC 6381 codecs value, such as avc1.64001f."
+        variableFrameRate:
+          type: boolean
+          description: "A header estimate: the average frame rate differs from the base rate by more than 1%."
+        frameCount:
+          type: integer
+          format: int64
+          description: "Frame count the header records."
+        maxBitRate:
+          type: integer
+          format: int64
+          description: "Maximum bits per second the header records."
+        bitsPerPixel:
+          type: number
+          format: double
+          description: "bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode."
+        mirrored:
+          type: boolean
+          description: "The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation."
+        crop:
+          $ref: "#/components/schemas/MediaInfoCrop"
+        mastering:
+          $ref: "#/components/schemas/MediaInfoMasteringDisplay"
+        contentLight:
+          $ref: "#/components/schemas/MediaInfoContentLight"
+        hdr10Plus:
+          type: boolean
+          description: "The container carries HDR10+ dynamic metadata."
+        dolbyVision:
+          $ref: "#/components/schemas/MediaInfoDolbyVision"
+        filmGrain:
+          type: boolean
+          description: "AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown."
+        multiLayer:
+          type: boolean
+          description: "The stream has more than one layer, as MV-HEVC stereoscopic video does."
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoAudioTrack:
       type: object
@@ -9622,6 +9690,34 @@ components:
           type: string
         default:
           type: boolean
+        sampleRate:
+          type: integer
+          description: "Samples per second."
+        bitDepth:
+          type: integer
+        sampleFormat:
+          type: string
+          examples: [fltp, s16, s32]
+        bitRate:
+          type: integer
+          format: int64
+        replayGain:
+          $ref: "#/components/schemas/MediaInfoReplayGain"
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        serviceType:
+          type: string
+          enum: [main, effects, visually_impaired, hearing_impaired, dialogue, commentary, emergency, voice_over, karaoke]
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoSubtitleTrack:
       type: object
@@ -9646,6 +9742,18 @@ components:
           type: boolean
         hearingImpaired:
           type: boolean
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoEmbedded:
       type: object
@@ -9677,6 +9785,46 @@ components:
         coverArt:
           type: boolean
           description: "True when the file contains an attached picture."
+        album:
+          type: string
+        albumArtist:
+          type: string
+        composer:
+          type: string
+        show:
+          type: string
+        episode:
+          type: string
+        season:
+          type: string
+        network:
+          type: string
+          description: "Broadcaster or distributor tag."
+        synopsis:
+          type: string
+        copyright:
+          type: string
+        publisher:
+          type: string
+        encodedBy:
+          type: string
+        encoder:
+          type: string
+          description: "Software that wrote the file."
+        sourceUrl:
+          type: string
+          description: "Where a download tool fetched the file from."
+        keywords:
+          type: string
+        rating:
+          type: string
+        captureSoftware:
+          type: string
+          description: "The phone camera's software version."
+        captureFrameRate:
+          type: number
+          format: double
+          description: "The phone's capture rate; above the playback rate means slow motion."
 
     MediaInfoLocation:
       type: object
@@ -9703,6 +9851,205 @@ components:
           type: string
         program:
           type: string
+
+    MediaInfoStreamOrigin:
+      type: object
+      description: "What the writing tool or device recorded on the stream."
+      additionalProperties: false
+      properties:
+        encoder:
+          type: string
+        handler:
+          type: string
+          examples: [VideoHandler, "Core Media Audio"]
+        vendor:
+          type: string
+          description: "Vendor fourcc, such as appl."
+        createdAt:
+          type: string
+          format: date-time
+        timecode:
+          type: string
+          examples: ["01:00:00:00"]
+
+    MediaInfoTrackRoles:
+      type: object
+      description: "Purposes the file flags on the track; only true flags are present."
+      additionalProperties: false
+      properties:
+        dub:
+          type: boolean
+        original:
+          type: boolean
+        comment:
+          type: boolean
+          description: "Commentary."
+        visualImpaired:
+          type: boolean
+          description: "Audio description for visually impaired viewers."
+        hearingImpaired:
+          type: boolean
+        karaoke:
+          type: boolean
+        lyrics:
+          type: boolean
+        cleanEffects:
+          type: boolean
+          description: "Effects only, without dialogue."
+        captions:
+          type: boolean
+        descriptions:
+          type: boolean
+
+    MediaInfoReplayGain:
+      type: object
+      description: "ReplayGain tags as the file writes them, such as -6.50 dB."
+      additionalProperties: false
+      properties:
+        trackGain:
+          type: string
+        trackPeak:
+          type: string
+        albumGain:
+          type: string
+        albumPeak:
+          type: string
+
+    MediaInfoCrop:
+      type: object
+      description: "Cropping the container records, in pixels from each edge."
+      additionalProperties: false
+      properties:
+        top:
+          type: integer
+        bottom:
+          type: integer
+        left:
+          type: integer
+        right:
+          type: integer
+
+    MediaInfoMasteringDisplay:
+      type: object
+      description: "HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m²."
+      additionalProperties: false
+      properties:
+        redX: {type: number, format: double}
+        redY: {type: number, format: double}
+        greenX: {type: number, format: double}
+        greenY: {type: number, format: double}
+        blueX: {type: number, format: double}
+        blueY: {type: number, format: double}
+        whiteX: {type: number, format: double}
+        whiteY: {type: number, format: double}
+        minLuminance: {type: number, format: double}
+        maxLuminance: {type: number, format: double}
+
+    MediaInfoContentLight:
+      type: object
+      description: "HDR content light levels in cd/m²."
+      additionalProperties: false
+      properties:
+        maxContent:
+          type: integer
+          description: "MaxCLL."
+        maxAverage:
+          type: integer
+          description: "MaxFALL."
+
+    MediaInfoDolbyVision:
+      type: object
+      required: [profile]
+      additionalProperties: false
+      properties:
+        profile:
+          type: integer
+        level:
+          type: integer
+        compatibility:
+          type: integer
+          description: "dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG)."
+
+    MediaInfoContainer:
+      type: object
+      description: "What the container says about the file as a whole."
+      additionalProperties: false
+      properties:
+        startMs:
+          type: integer
+          format: int64
+          description: "The container's start time."
+        majorBrand:
+          type: string
+          examples: [isom, qt]
+        compatibleBrands:
+          type: array
+          items:
+            type: string
+        probeScore:
+          type: integer
+          description: "How sure ffprobe is of the format, out of 100."
+        encrypted:
+          type: boolean
+          description: "A stream is encrypted (DRM)."
+        attachments:
+          type: array
+          description: "Attached files such as fonts, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoAttachment"
+        dataStreams:
+          type: array
+          description: "Non-media streams such as GoPro telemetry, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoDataStream"
+        sizes:
+          $ref: "#/components/schemas/MediaInfoSizes"
+
+    MediaInfoAttachment:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        mimeType:
+          type: string
+        bytes:
+          type: integer
+          format: int64
+
+    MediaInfoDataStream:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+        codec:
+          type: string
+          examples: [gpmd, tmcd]
+        handler:
+          type: string
+
+    MediaInfoSizes:
+      type: object
+      description: "The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are."
+      additionalProperties: false
+      properties:
+        totalBytes:
+          type: integer
+          format: int64
+        videoBytes:
+          type: integer
+          format: int64
+        audioBytes:
+          type: integer
+          format: int64
+        subtitleBytes:
+          type: integer
+          format: int64
+        otherBytes:
+          type: integer
+          format: int64
 
     MediaInfoChapter:
       type: object

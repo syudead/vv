@@ -1061,22 +1061,22 @@ func (e FolderWatchProblem) Valid() bool {
 
 // Defines values for FolderWatchState.
 const (
-	Active   FolderWatchState = "active"
-	Limited  FolderWatchState = "limited"
-	Off      FolderWatchState = "off"
-	Starting FolderWatchState = "starting"
+	FolderWatchStateActive   FolderWatchState = "active"
+	FolderWatchStateLimited  FolderWatchState = "limited"
+	FolderWatchStateOff      FolderWatchState = "off"
+	FolderWatchStateStarting FolderWatchState = "starting"
 )
 
 // Valid indicates whether the value is a known member of the FolderWatchState enum.
 func (e FolderWatchState) Valid() bool {
 	switch e {
-	case Active:
+	case FolderWatchStateActive:
 		return true
-	case Limited:
+	case FolderWatchStateLimited:
 		return true
-	case Off:
+	case FolderWatchStateOff:
 		return true
-	case Starting:
+	case FolderWatchStateStarting:
 		return true
 	default:
 		return false
@@ -1176,6 +1176,63 @@ func (e LibrarySmartFolderWatchState) Valid() bool {
 	case LibrarySmartFolderWatchStateUnwatched:
 		return true
 	case LibrarySmartFolderWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoAudioTrackServiceType.
+const (
+	Commentary       MediaInfoAudioTrackServiceType = "commentary"
+	Dialogue         MediaInfoAudioTrackServiceType = "dialogue"
+	Effects          MediaInfoAudioTrackServiceType = "effects"
+	Emergency        MediaInfoAudioTrackServiceType = "emergency"
+	HearingImpaired  MediaInfoAudioTrackServiceType = "hearing_impaired"
+	Karaoke          MediaInfoAudioTrackServiceType = "karaoke"
+	Main             MediaInfoAudioTrackServiceType = "main"
+	VisuallyImpaired MediaInfoAudioTrackServiceType = "visually_impaired"
+	VoiceOver        MediaInfoAudioTrackServiceType = "voice_over"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoAudioTrackServiceType enum.
+func (e MediaInfoAudioTrackServiceType) Valid() bool {
+	switch e {
+	case Commentary:
+		return true
+	case Dialogue:
+		return true
+	case Effects:
+		return true
+	case Emergency:
+		return true
+	case HearingImpaired:
+		return true
+	case Karaoke:
+		return true
+	case Main:
+		return true
+	case VisuallyImpaired:
+		return true
+	case VoiceOver:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoVideoColorRange.
+const (
+	MediaInfoVideoColorRangeFull    MediaInfoVideoColorRange = "full"
+	MediaInfoVideoColorRangeLimited MediaInfoVideoColorRange = "limited"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoVideoColorRange enum.
+func (e MediaInfoVideoColorRange) Valid() bool {
+	switch e {
+	case MediaInfoVideoColorRangeFull:
+		return true
+	case MediaInfoVideoColorRangeLimited:
 		return true
 	default:
 		return false
@@ -4034,6 +4091,9 @@ type MediaInfo struct {
 	// Chapters Chapters in start order, within video duration.
 	Chapters *[]MediaInfoChapter `json:"chapters,omitempty"`
 
+	// Container What the container says about the file as a whole.
+	Container *MediaInfoContainer `json:"container,omitempty"`
+
 	// Embedded Tags embedded in the file.
 	Embedded *MediaInfoEmbedded `json:"embedded,omitempty"`
 
@@ -4044,8 +4104,18 @@ type MediaInfo struct {
 	Video *MediaInfoVideo `json:"video,omitempty"`
 }
 
+// MediaInfoAttachment defines model for MediaInfoAttachment.
+type MediaInfoAttachment struct {
+	Bytes    *int64  `json:"bytes,omitempty"`
+	MimeType *string `json:"mimeType,omitempty"`
+	Name     *string `json:"name,omitempty"`
+}
+
 // MediaInfoAudioTrack defines model for MediaInfoAudioTrack.
 type MediaInfoAudioTrack struct {
+	BitDepth *int   `json:"bitDepth,omitempty"`
+	BitRate  *int64 `json:"bitRate,omitempty"`
+
 	// ChannelLayout Examples: stereo, 5.1
 	ChannelLayout *string `json:"channelLayout,omitempty"`
 	Channels      *int    `json:"channels,omitempty"`
@@ -4056,13 +4126,38 @@ type MediaInfoAudioTrack struct {
 	Codec   *string `json:"codec,omitempty"`
 	Default *bool   `json:"default,omitempty"`
 
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// ReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+	ReplayGain *MediaInfoReplayGain `json:"replayGain,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// SampleFormat Examples: fltp, s16, s32
+	SampleFormat *string `json:"sampleFormat,omitempty"`
+
+	// SampleRate Samples per second.
+	SampleRate  *int                            `json:"sampleRate,omitempty"`
+	ServiceType *MediaInfoAudioTrackServiceType `json:"serviceType,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
 }
+
+// MediaInfoAudioTrackServiceType defines model for MediaInfoAudioTrack.ServiceType.
+type MediaInfoAudioTrackServiceType string
 
 // MediaInfoBroadcast Broadcaster and program for a TS recording.
 type MediaInfoBroadcast struct {
@@ -4077,10 +4172,78 @@ type MediaInfoChapter struct {
 	Title   *string `json:"title,omitempty"`
 }
 
+// MediaInfoContainer What the container says about the file as a whole.
+type MediaInfoContainer struct {
+	// Attachments Attached files such as fonts, at most 64.
+	Attachments      *[]MediaInfoAttachment `json:"attachments,omitempty"`
+	CompatibleBrands *[]string              `json:"compatibleBrands,omitempty"`
+
+	// DataStreams Non-media streams such as GoPro telemetry, at most 64.
+	DataStreams *[]MediaInfoDataStream `json:"dataStreams,omitempty"`
+
+	// Encrypted A stream is encrypted (DRM).
+	Encrypted *bool `json:"encrypted,omitempty"`
+
+	// MajorBrand Examples: isom, qt
+	MajorBrand *string `json:"majorBrand,omitempty"`
+
+	// ProbeScore How sure ffprobe is of the format, out of 100.
+	ProbeScore *int `json:"probeScore,omitempty"`
+
+	// Sizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+	Sizes *MediaInfoSizes `json:"sizes,omitempty"`
+
+	// StartMs The container's start time.
+	StartMs *int64 `json:"startMs,omitempty"`
+}
+
+// MediaInfoContentLight HDR content light levels in cd/m².
+type MediaInfoContentLight struct {
+	// MaxAverage MaxFALL.
+	MaxAverage *int `json:"maxAverage,omitempty"`
+
+	// MaxContent MaxCLL.
+	MaxContent *int `json:"maxContent,omitempty"`
+}
+
+// MediaInfoCrop Cropping the container records, in pixels from each edge.
+type MediaInfoCrop struct {
+	Bottom *int `json:"bottom,omitempty"`
+	Left   *int `json:"left,omitempty"`
+	Right  *int `json:"right,omitempty"`
+	Top    *int `json:"top,omitempty"`
+}
+
+// MediaInfoDataStream defines model for MediaInfoDataStream.
+type MediaInfoDataStream struct {
+	// Codec Examples: gpmd, tmcd
+	Codec   *string `json:"codec,omitempty"`
+	Handler *string `json:"handler,omitempty"`
+	Index   int     `json:"index"`
+}
+
+// MediaInfoDolbyVision defines model for MediaInfoDolbyVision.
+type MediaInfoDolbyVision struct {
+	// Compatibility dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG).
+	Compatibility *int `json:"compatibility,omitempty"`
+	Level         *int `json:"level,omitempty"`
+	Profile       int  `json:"profile"`
+}
+
 // MediaInfoEmbedded Tags embedded in the file.
 type MediaInfoEmbedded struct {
-	Author  *string `json:"author,omitempty"`
-	Comment *string `json:"comment,omitempty"`
+	Album       *string `json:"album,omitempty"`
+	AlbumArtist *string `json:"albumArtist,omitempty"`
+	Author      *string `json:"author,omitempty"`
+
+	// CaptureFrameRate The phone's capture rate; above the playback rate means slow motion.
+	CaptureFrameRate *float64 `json:"captureFrameRate,omitempty"`
+
+	// CaptureSoftware The phone camera's software version.
+	CaptureSoftware *string `json:"captureSoftware,omitempty"`
+	Comment         *string `json:"comment,omitempty"`
+	Composer        *string `json:"composer,omitempty"`
+	Copyright       *string `json:"copyright,omitempty"`
 
 	// CoverArt True when the file contains an attached picture.
 	CoverArt *bool `json:"coverArt,omitempty"`
@@ -4090,15 +4253,32 @@ type MediaInfoEmbedded struct {
 	Description *string `json:"description,omitempty"`
 
 	// Device Manufacturer and model.
-	Device *string `json:"device,omitempty"`
-	Genre  *string `json:"genre,omitempty"`
+	Device    *string `json:"device,omitempty"`
+	EncodedBy *string `json:"encodedBy,omitempty"`
+
+	// Encoder Software that wrote the file.
+	Encoder  *string `json:"encoder,omitempty"`
+	Episode  *string `json:"episode,omitempty"`
+	Genre    *string `json:"genre,omitempty"`
+	Keywords *string `json:"keywords,omitempty"`
 
 	// Location Capture location in degrees, with altitude in meters.
 	Location *MediaInfoLocation `json:"location,omitempty"`
 
+	// Network Broadcaster or distributor tag.
+	Network   *string `json:"network,omitempty"`
+	Publisher *string `json:"publisher,omitempty"`
+	Rating    *string `json:"rating,omitempty"`
+
 	// RecordedAt Capture timestamp, preserving the file's timezone offset when present.
 	RecordedAt *time.Time `json:"recordedAt,omitempty"`
-	Title      *string    `json:"title,omitempty"`
+	Season     *string    `json:"season,omitempty"`
+	Show       *string    `json:"show,omitempty"`
+
+	// SourceUrl Where a download tool fetched the file from.
+	SourceUrl *string `json:"sourceUrl,omitempty"`
+	Synopsis  *string `json:"synopsis,omitempty"`
+	Title     *string `json:"title,omitempty"`
 }
 
 // MediaInfoLocation Capture location in degrees, with altitude in meters.
@@ -4108,22 +4288,100 @@ type MediaInfoLocation struct {
 	Longitude float64  `json:"longitude"`
 }
 
+// MediaInfoMasteringDisplay HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+type MediaInfoMasteringDisplay struct {
+	BlueX        *float64 `json:"blueX,omitempty"`
+	BlueY        *float64 `json:"blueY,omitempty"`
+	GreenX       *float64 `json:"greenX,omitempty"`
+	GreenY       *float64 `json:"greenY,omitempty"`
+	MaxLuminance *float64 `json:"maxLuminance,omitempty"`
+	MinLuminance *float64 `json:"minLuminance,omitempty"`
+	RedX         *float64 `json:"redX,omitempty"`
+	RedY         *float64 `json:"redY,omitempty"`
+	WhiteX       *float64 `json:"whiteX,omitempty"`
+	WhiteY       *float64 `json:"whiteY,omitempty"`
+}
+
+// MediaInfoReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+type MediaInfoReplayGain struct {
+	AlbumGain *string `json:"albumGain,omitempty"`
+	AlbumPeak *string `json:"albumPeak,omitempty"`
+	TrackGain *string `json:"trackGain,omitempty"`
+	TrackPeak *string `json:"trackPeak,omitempty"`
+}
+
+// MediaInfoSizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+type MediaInfoSizes struct {
+	AudioBytes    *int64 `json:"audioBytes,omitempty"`
+	OtherBytes    *int64 `json:"otherBytes,omitempty"`
+	SubtitleBytes *int64 `json:"subtitleBytes,omitempty"`
+	TotalBytes    *int64 `json:"totalBytes,omitempty"`
+	VideoBytes    *int64 `json:"videoBytes,omitempty"`
+}
+
+// MediaInfoStreamOrigin What the writing tool or device recorded on the stream.
+type MediaInfoStreamOrigin struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	Encoder   *string    `json:"encoder,omitempty"`
+
+	// Handler Examples: VideoHandler, Core Media Audio
+	Handler *string `json:"handler,omitempty"`
+
+	// Timecode Examples: 01:00:00:00
+	Timecode *string `json:"timecode,omitempty"`
+
+	// Vendor Vendor fourcc, such as appl.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
 // MediaInfoSubtitleTrack defines model for MediaInfoSubtitleTrack.
 type MediaInfoSubtitleTrack struct {
 	// Codec ffprobe codec_name.
 	//
 	// Examples: subrip, arib_caption
-	Codec           *string `json:"codec,omitempty"`
-	Default         *bool   `json:"default,omitempty"`
-	Forced          *bool   `json:"forced,omitempty"`
-	HearingImpaired *bool   `json:"hearingImpaired,omitempty"`
+	Codec   *string `json:"codec,omitempty"`
+	Default *bool   `json:"default,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs      *int64 `json:"durationMs,omitempty"`
+	Forced          *bool  `json:"forced,omitempty"`
+	HearingImpaired *bool  `json:"hearingImpaired,omitempty"`
 
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
+}
+
+// MediaInfoTrackRoles Purposes the file flags on the track; only true flags are present.
+type MediaInfoTrackRoles struct {
+	Captions *bool `json:"captions,omitempty"`
+
+	// CleanEffects Effects only, without dialogue.
+	CleanEffects *bool `json:"cleanEffects,omitempty"`
+
+	// Comment Commentary.
+	Comment         *bool `json:"comment,omitempty"`
+	Descriptions    *bool `json:"descriptions,omitempty"`
+	Dub             *bool `json:"dub,omitempty"`
+	HearingImpaired *bool `json:"hearingImpaired,omitempty"`
+	Karaoke         *bool `json:"karaoke,omitempty"`
+	Lyrics          *bool `json:"lyrics,omitempty"`
+	Original        *bool `json:"original,omitempty"`
+
+	// VisualImpaired Audio description for visually impaired viewers.
+	VisualImpaired *bool `json:"visualImpaired,omitempty"`
 }
 
 // MediaInfoVideo Video-stream metadata; hdr is always included when a video stream exists.
@@ -4134,22 +4392,87 @@ type MediaInfoVideo struct {
 	// BitRate Video-stream bits per second.
 	BitRate *int64 `json:"bitRate,omitempty"`
 
+	// BitsPerPixel bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode.
+	BitsPerPixel *float64 `json:"bitsPerPixel,omitempty"`
+
+	// ChromaSubsampling Examples: 4:2:0, 4:2:2, 4:4:4
+	ChromaSubsampling *string `json:"chromaSubsampling,omitempty"`
+
 	// ClosedCaptions True when the video stream carries closed captions.
 	ClosedCaptions *bool `json:"closedCaptions,omitempty"`
+
+	// CodecString RFC 6381 codecs value, such as avc1.64001f.
+	CodecString *string `json:"codecString,omitempty"`
+
+	// CodecTag Container fourcc, such as hvc1 or hev1.
+	CodecTag   *string                   `json:"codecTag,omitempty"`
+	ColorRange *MediaInfoVideoColorRange `json:"colorRange,omitempty"`
+
+	// ContentLight HDR content light levels in cd/m².
+	ContentLight *MediaInfoContentLight `json:"contentLight,omitempty"`
+
+	// Crop Cropping the container records, in pixels from each edge.
+	Crop        *MediaInfoCrop        `json:"crop,omitempty"`
+	DolbyVision *MediaInfoDolbyVision `json:"dolbyVision,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// FilmGrain AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown.
+	FilmGrain *bool `json:"filmGrain,omitempty"`
+
+	// FrameCount Frame count the header records.
+	FrameCount *int64 `json:"frameCount,omitempty"`
 
 	// FrameRate Frames per second from avg_frame_rate.
 	FrameRate *float64          `json:"frameRate,omitempty"`
 	Hdr       MediaInfoVideoHdr `json:"hdr"`
 
+	// Hdr10Plus The container carries HDR10+ dynamic metadata.
+	Hdr10Plus *bool `json:"hdr10Plus,omitempty"`
+
 	// Interlaced Included only when the file identifies progressive or interlaced scanning.
 	Interlaced *bool `json:"interlaced,omitempty"`
+
+	// Level Codec level as ffprobe reports it (H.264 41 is level 4.1).
+	Level *int `json:"level,omitempty"`
+
+	// Mastering HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+	Mastering *MediaInfoMasteringDisplay `json:"mastering,omitempty"`
+
+	// MaxBitRate Maximum bits per second the header records.
+	MaxBitRate *int64 `json:"maxBitRate,omitempty"`
+
+	// Mirrored The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation.
+	Mirrored *bool `json:"mirrored,omitempty"`
+
+	// MultiLayer The stream has more than one layer, as MV-HEVC stereoscopic video does.
+	MultiLayer *bool `json:"multiLayer,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// PixelFormat Examples: yuv420p, yuv420p10le
+	PixelFormat *string `json:"pixelFormat,omitempty"`
+
+	// Profile Examples: High, Main 10
+	Profile *string `json:"profile,omitempty"`
 
 	// Projection 360-degree projection using ffprobe names such as equirectangular or cubemap.
 	Projection *string `json:"projection,omitempty"`
 
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64 `json:"startMs,omitempty"`
+
 	// Stereo3d 3D layout using ffprobe names such as side by side or top and bottom.
 	Stereo3d *string `json:"stereo3d,omitempty"`
+
+	// VariableFrameRate A header estimate: the average frame rate differs from the base rate by more than 1%.
+	VariableFrameRate *bool `json:"variableFrameRate,omitempty"`
 }
+
+// MediaInfoVideoColorRange defines model for MediaInfoVideo.ColorRange.
+type MediaInfoVideoColorRange string
 
 // MediaInfoVideoHdr defines model for MediaInfoVideo.Hdr.
 type MediaInfoVideoHdr string

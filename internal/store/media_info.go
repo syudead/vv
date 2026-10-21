@@ -1,6 +1,6 @@
 package store
 
-// Only ingest probes write media information; LibraryStore owns reads.
+// Ingest probes and the background re-read write media information; LibraryStore owns reads.
 
 import (
 	"context"
@@ -74,8 +74,9 @@ func (s *LibraryStore) MediaInfos(ctx context.Context, videoIDs []int64) (map[in
 	return infos, nil
 }
 
+// An older version reads as what it holds, since a bump only adds fields; the background re-read replaces it.
 func decodeMediaInfo(version int, encoded string) *domain.MediaInfo {
-	if version != domain.MediaInfoVersion {
+	if version < 1 || version > domain.MediaInfoVersion {
 		return nil
 	}
 	var info domain.MediaInfo
@@ -83,4 +84,49 @@ func decodeMediaInfo(version int, encoded string) *domain.MediaInfo {
 		return nil
 	}
 	return &info
+}
+
+// NextMediaInfoProbe pages through probed videos without current media information, skipping one whose re-read
+// failed for the same file at this version.
+func (s *IngestStore) NextMediaInfoProbe(ctx context.Context, afterID int64) (domain.Job, error) {
+	return nextBackfillJob(ctx, s.db.sql, afterID, `not exists (select 1 from video_media_info m
+			where m.video_id = v.id and m.version = ?)
+		and not exists (select 1 from video_media_info_failures f where f.video_id = v.id and f.version = ?
+			and f.size_bytes = l.size_bytes and f.mtime_ns = coalesce(l.mtime_ns, l.mtime * 1000000000))`,
+		domain.MediaInfoVersion, domain.MediaInfoVersion)
+}
+
+// SaveMediaInfoProbe writes a re-read of the indexed file; a failed read keeps the stored information and marks the
+// file so it is not read again until it changes.
+func (s *IngestStore) SaveMediaInfoProbe(ctx context.Context, job domain.Job, p domain.MediaInfoProbe) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := jobIdentityCurrent(ctx, tx, job)
+	if err != nil || !current {
+		return err
+	}
+	if p.Source == (domain.FileStamp{}) {
+		if p.Source, err = indexedStamp(ctx, tx, job.LocationID); err != nil {
+			return err
+		}
+		p.Info = nil
+	}
+	if matches, err := stampMatchesLocation(ctx, tx, job.LocationID, p.Source); err != nil || !matches {
+		return err
+	}
+	if p.Info == nil {
+		_, err = tx.ExecContext(ctx, `insert into video_media_info_failures (video_id, version, size_bytes, mtime_ns)
+			values (?, ?, ?, ?) on conflict (video_id) do update set version = excluded.version,
+			size_bytes = excluded.size_bytes, mtime_ns = excluded.mtime_ns`,
+			job.VideoID, domain.MediaInfoVersion, p.Source.SizeBytes, p.Source.ModTimeNs)
+	} else {
+		err = upsertMediaInfo(ctx, tx, job.VideoID, *p.Info, time.Now())
+	}
+	if err != nil {
+		return fmt.Errorf("cannot save the re-read media information (id=%d): %w", job.VideoID, err)
+	}
+	return tx.Commit()
 }
