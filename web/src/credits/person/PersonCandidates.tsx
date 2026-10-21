@@ -135,18 +135,21 @@ function CandidateRow({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="flex items-start gap-3">
-          <PairFace person={shown} />
-          <span className="self-center text-xs whitespace-nowrap text-muted-foreground">
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-start gap-3">
+            <PairFace person={shown} />
+            <PairFace person={other} link />
+          </div>
+          <span className="text-xs text-muted-foreground">
             {text.similarity(candidate.similarity)}
           </span>
-          <PairFace person={other} link />
         </div>
         <div className="flex flex-wrap gap-2">
           {buttons.map((button) => (
             <Button
               key={button.kind}
               variant={button.variant}
+              size="sm"
               aria-label={button.name}
               aria-disabled={pending !== null || undefined}
               aria-busy={pending === button.kind || undefined}

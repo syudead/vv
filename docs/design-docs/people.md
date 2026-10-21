@@ -319,7 +319,7 @@ nor reads the candidates.
 
 `Same person?` comes first on the faces page, drawn only while that request
 returns a pair, one row per pair: the shown person's `PersonFace judge` and
-the other person's side by side, each over its name, the similarity between
+the other person's side by side, each over its name, the similarity under
 them, then `Same person` (primary) and `Not the same`. The row puts the two
 faces next to each other because the owner judges a pair by comparing them,
 and one face alone leaves the shown person's face to memory. A confirm from a
