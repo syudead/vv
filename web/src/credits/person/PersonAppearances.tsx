@@ -1,4 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { UserX } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
 import { isAborted } from "../../api/client";
@@ -11,9 +12,11 @@ import {
 } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
+import { CardGrid } from "../../ui/patterns/card-grid";
 import { Button } from "../../ui/shadcn/button";
 import { Spinner } from "../../ui/shadcn/spinner";
-import { PersonFace } from "../../ui/PersonFace";
+import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
 
 const text = t.credits.personPage.faces;
 
@@ -130,8 +133,8 @@ function spanText(span: Span): string {
 }
 
 /**
- * `Faces in videos`: a crop beside its video's title and spans, newest video first, as the rows of
- * the caller's section.
+ * `Faces in videos`: a grid of crops, each over its video's title and spans, newest video first, so
+ * a wrongly linked face stands out at a glance.
  */
 export function PersonAppearances({
   appearances,
@@ -159,14 +162,20 @@ export function PersonAppearances({
   }
   return (
     <>
-      {state.items.map((item) => (
-        <AppearanceRow
-          key={item.appearanceId}
-          appearance={item}
-          actions={actions}
-          remove={appearances.remove}
-        />
-      ))}
+      {state.items.length > 0 && (
+        <div>
+          <CardGrid size="face">
+            {state.items.map((item) => (
+              <AppearanceTile
+                key={item.appearanceId}
+                appearance={item}
+                actions={actions}
+                remove={appearances.remove}
+              />
+            ))}
+          </CardGrid>
+        </div>
+      )}
       {state.nextCursor !== undefined && (
         <div className="flex items-center gap-2">
           <Button
@@ -184,7 +193,7 @@ export function PersonAppearances({
   );
 }
 
-function AppearanceRow({
+function AppearanceTile({
   appearance,
   actions,
   remove,
@@ -214,63 +223,76 @@ function AppearanceRow({
     }
   }
 
+  const crop = (
+    <PersonFace
+      shape="scene"
+      name={title}
+      src={appearance.hasCrop ? faceCropPath(appearance.appearanceId) : undefined}
+    />
+  );
   return (
-    <div className="flex flex-wrap items-start gap-2">
-      <PersonFace
-        shape="scene"
-        name={title}
-        src={appearance.hasCrop ? faceCropPath(appearance.appearanceId) : undefined}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {videoId === undefined ? (
-          <span className="truncate text-muted-foreground">{text.notInLibrary}</span>
-        ) : (
-          <Link
-            to={
-              first === undefined
-                ? `/videos/${String(videoId)}`
-                : spanPath(videoId, first)
-            }
-            state={{ from }}
-            className="truncate hover:underline"
-          >
+    <div className="relative flex min-w-0 flex-col gap-1">
+      {videoId === undefined ? (
+        <>
+          {crop}
+          <span className="truncate text-xs text-muted-foreground">
+            {text.notInLibrary}
+          </span>
+        </>
+      ) : (
+        <Link
+          to={
+            first === undefined ? `/videos/${String(videoId)}` : spanPath(videoId, first)
+          }
+          state={{ from }}
+          title={title}
+          className="group flex flex-col gap-1 rounded-md"
+        >
+          {crop}
+          <span className="line-clamp-2 text-xs font-medium break-words group-hover:underline">
             {title}
-          </Link>
-        )}
-        {spans.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {spans.map((span, index) => (
-              <Fragment key={span.start}>
-                {index > 0 && " · "}
-                {videoId === undefined ? (
-                  spanText(span)
-                ) : (
-                  <Link
-                    to={spanPath(videoId, span)}
-                    state={{ from, autoplay: true }}
-                    aria-label={text.spanLink(title, formatDuration(span.start * 1000))}
-                    className="hover:underline"
-                  >
-                    {spanText(span)}
-                  </Link>
-                )}
-              </Fragment>
-            ))}
-          </p>
-        )}
-        {error !== null && <p className="text-xs text-destructive">{error}</p>}
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={text.notThisPersonFor(title)}
-        aria-disabled={pending || undefined}
-        aria-busy={pending || undefined}
-        onClick={() => void split()}
-      >
-        {pending && <Spinner aria-hidden="true" />}
-        {text.notThisPerson}
-      </Button>
+          </span>
+        </Link>
+      )}
+      {spans.length > 0 && (
+        <p className="flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
+          {spans.map((span) =>
+            videoId === undefined ? (
+              <span key={span.start}>{formatDuration(span.start * 1000)}</span>
+            ) : (
+              <Link
+                key={span.start}
+                to={spanPath(videoId, span)}
+                state={{ from, autoplay: true }}
+                aria-label={text.spanLink(title, formatDuration(span.start * 1000))}
+                title={spanText(span)}
+                className="hover:underline"
+              >
+                {formatDuration(span.start * 1000)}
+              </Link>
+            ),
+          )}
+        </p>
+      )}
+      {error !== null && <p className="text-xs text-destructive">{error}</p>}
+      <PersonFaceMark corner="top-end">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="bg-overlay"
+              aria-label={text.notThisPersonFor(title)}
+              aria-disabled={pending || undefined}
+              aria-busy={pending || undefined}
+              onClick={() => void split()}
+            >
+              {pending ? <Spinner aria-hidden="true" /> : <UserX aria-hidden="true" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{text.notThisPerson}</TooltipContent>
+        </Tooltip>
+      </PersonFaceMark>
     </div>
   );
 }

@@ -1796,6 +1796,8 @@ export const en = {
       },
       faces: {
         heading: "Faces in videos",
+        description: (name: string) =>
+          `A face that isn't ${name}? Press its mark to split it into a new person.`,
         loading: "Loading the faces…",
         none: "No faces found in videos yet.",
         notInLibrary: "Not in the library",

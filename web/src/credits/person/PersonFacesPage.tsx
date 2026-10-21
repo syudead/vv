@@ -134,7 +134,7 @@ function FacesShown({
           description={text.facesPage.candidatesText}
         >
           <PersonCandidates
-            personId={person.id}
+            person={person}
             items={candidates.items}
             actions={{
               confirm: confirmCandidate,
@@ -144,7 +144,10 @@ function FacesShown({
           />
         </PageSection>
       )}
-      <PageSection title={text.faces.heading}>
+      <PageSection
+        title={text.faces.heading}
+        description={text.faces.description(creditDisplayName(person))}
+      >
         <PersonAppearances
           appearances={appearances}
           actions={{ split: splitAppearance, onGone: markGone }}

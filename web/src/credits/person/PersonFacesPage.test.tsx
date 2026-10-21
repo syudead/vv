@@ -92,6 +92,23 @@ describe("PersonFacesPage", () => {
     return { person: { id, name, provisional: name === "" }, similarity: 0.72 };
   }
 
+  it("shows the shown person's face beside the candidate's for comparison", async () => {
+    server.person = person({ imageRevision: 2 });
+    server.faceCandidates = [
+      {
+        person: { id: 9, name: "Alice", provisional: false, imageRevision: 4 },
+        similarity: 0.72,
+      },
+    ];
+    renderPage("/people/7/faces");
+
+    const shown = await screen.findByRole("img", { name: "Aoi" });
+    expect(shown.getAttribute("src")).toBe("/api/people/7/image?v=2");
+    expect(screen.getByRole("img", { name: "Alice" }).getAttribute("src")).toBe(
+      "/api/people/9/image?v=4",
+    );
+  });
+
   it("moves to the merged person's faces when the shown person was merged away", async () => {
     const user = userEvent.setup();
     server.person = person({ name: "", provisional: true });

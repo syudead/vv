@@ -318,31 +318,38 @@ on; while it is off, or the settings cannot be read, the page neither shows it
 nor reads the candidates.
 
 `Same person?` comes first on the faces page, drawn only while that request
-returns a pair, one row per pair with the other person's `PersonFace judge`,
-name and similarity, and `Same person` and `Not the same` under them. A
-confirm from a provisional person's own page opens the merged person's faces
-page, since the shown person no longer exists; one that keeps the page reads
-the candidates and the faces again. A pressed row disables only its own
-buttons.
+returns a pair, one row per pair: the shown person's `PersonFace judge` and
+the other person's side by side, each over its name, the similarity between
+them, then `Same person` (primary) and `Not the same`. The row puts the two
+faces next to each other because the owner judges a pair by comparing them,
+and one face alone leaves the shown person's face to memory. A confirm from a
+provisional person's own page opens the merged person's faces page, since the
+shown person no longer exists; one that keeps the page reads the candidates
+and the faces again. A pressed row disables only its own buttons.
 
 `Faces in videos` follows, from `GET /api/people/{id}/appearances`: a
-`PersonFace scene` crop beside the video's title and its spans, each a link
-that plays the video from that time (`?t=`), and `Show more` for the next
-page; with none it says so. An appearance whose video left the library reads
-`Not in the library` without links.
+`CardGrid size="face"` of `PersonFace scene` crops, each over the video's
+title (two lines at most) and the start of each span, each a link that plays
+the video from that time (`?t=`); the crop and the title open the video at
+the first span. `Show more` reads the next page; with none it says so. An
+appearance whose video left the library reads `Not in the library` without
+links. A grid shows many faces at once, so a face that is not the person
+stands out, where a list of rows led with titles.
 
-Each row ends with a small `Not this person` button, for a face the analysis
-linked to the wrong person. It splits the face into a new unnamed person with
-no confirmation, since the split is undone by merging the two people: the row
-leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
-action to the new person's page, and the candidates are read again.
-A pressed row disables only its own button, and a failure shows under the row.
+Each crop carries a `Not this person` icon button in its `PersonFaceMark`
+`top-end`, for a face the analysis linked to the wrong person; the section
+description names it. It splits the face into a new unnamed person with no
+confirmation, since the split is undone by merging the two people: the tile
+leaves the grid, a toast reads `Split into a new unnamed person` with an
+`Open` action to the new person's page, and the candidates are read again.
+A pressed tile disables only its own button, and a failure shows under it.
 
-| Rejected                                | Why                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| Candidates and faces on the person page | They crowded out the profile and the videos, which the page is for                |
-| A strip of crops alone                  | Reaching a scene would take a second press, and a crop does not say which video   |
-| Confirming in the people list           | A pair is judged with both faces and the similarity in view, one person at a time |
+| Rejected                                 | Why                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| Candidates and faces on the person page  | They crowded out the profile and the videos, which the page is for                |
+| A strip of crops alone                   | Reaching a scene would take a second press, and a crop does not say which video   |
+| A text `Not this person` under each crop | Repeated on every tile, it outweighs the faces the owner is scanning              |
+| Confirming in the people list            | A pair is judged with both faces and the similarity in view, one person at a time |
 
 ## Faces elsewhere on the screens
 

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 
 import { isAborted } from "../../api/client";
-import { isCreditGone, personImagePath } from "../../api/credits";
+import { isCreditGone, type Person, personImagePath } from "../../api/credits";
 import {
   dismissFaceCandidate,
   type FaceCandidate,
+  type FaceCandidatePerson,
   isCandidateGone,
   listFaceCandidates,
 } from "../../api/personFaces";
@@ -55,20 +56,23 @@ export interface CandidateActions {
   onGone: () => void;
 }
 
-/** `Same person?`: one row per pair, decided in place, as the rows of the caller's section. */
+/**
+ * `Same person?`: one row per pair with both faces side by side, decided in place, as the rows of
+ * the caller's section.
+ */
 export function PersonCandidates({
-  personId,
+  person,
   items,
   actions,
 }: {
-  personId: number;
+  person: Person;
   items: readonly FaceCandidate[];
   actions: CandidateActions;
 }) {
   return items.map((item) => (
     <CandidateRow
       key={item.person.id}
-      personId={personId}
+      shown={person}
       candidate={item}
       actions={actions}
     />
@@ -78,11 +82,11 @@ export function PersonCandidates({
 type Pending = "confirm" | "dismiss" | null;
 
 function CandidateRow({
-  personId,
+  shown,
   candidate,
   actions,
 }: {
-  personId: number;
+  shown: Person;
   candidate: FaceCandidate;
   actions: CandidateActions;
 }) {
@@ -98,7 +102,7 @@ function CandidateRow({
     try {
       if (kind === "confirm") await actions.confirm(other);
       else {
-        await dismissFaceCandidate(personId, other.id);
+        await dismissFaceCandidate(shown.id, other.id);
         actions.remove(other.id);
       }
     } catch (failure) {
@@ -117,62 +121,86 @@ function CandidateRow({
   const buttons = [
     {
       kind: "confirm",
-      variant: "outline",
+      variant: "default",
       label: text.confirm,
       name: text.confirmFor(name),
     },
     {
       kind: "dismiss",
-      variant: "ghost",
+      variant: "outline",
       label: text.dismiss,
       name: text.dismissFor(name),
     },
   ] as const;
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <PersonFace
-          shape="judge"
-          name={name}
-          src={
-            other.imageRevision === undefined
-              ? undefined
-              : personImagePath(other.id, other.imageRevision)
-          }
-        />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Link
-            to={personPath(other.id)}
-            aria-label={text.open(name)}
-            className={cn(
-              "truncate hover:underline",
-              other.provisional && "text-muted-foreground",
-            )}
-          >
-            {name}
-          </Link>
-          <span className="text-xs text-muted-foreground">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex items-start gap-3">
+          <PairFace person={shown} />
+          <span className="self-center text-xs whitespace-nowrap text-muted-foreground">
             {text.similarity(candidate.similarity)}
           </span>
+          <PairFace person={other} link />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {buttons.map((button) => (
+            <Button
+              key={button.kind}
+              variant={button.variant}
+              aria-label={button.name}
+              aria-disabled={pending !== null || undefined}
+              aria-busy={pending === button.kind || undefined}
+              onClick={() => void run(button.kind)}
+            >
+              {pending === button.kind && <Spinner aria-hidden="true" />}
+              {button.label}
+            </Button>
+          ))}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {buttons.map((button) => (
-          <Button
-            key={button.kind}
-            variant={button.variant}
-            size="sm"
-            aria-label={button.name}
-            aria-disabled={pending !== null || undefined}
-            aria-busy={pending === button.kind || undefined}
-            onClick={() => void run(button.kind)}
-          >
-            {pending === button.kind && <Spinner aria-hidden="true" />}
-            {button.label}
-          </Button>
-        ))}
-      </div>
       {error !== null && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** One side of a pair: the face over the name, the other person's name opening their page. */
+function PairFace({
+  person,
+  link = false,
+}: {
+  person: Person | FaceCandidatePerson;
+  link?: boolean;
+}) {
+  const name = creditDisplayName(person);
+  const nameClass = cn(
+    "w-full truncate text-center text-xs",
+    person.provisional && "text-muted-foreground",
+  );
+  return (
+    <div className="flex w-card-face flex-col items-center gap-1">
+      <PersonFace
+        shape="judge"
+        name={name}
+        src={
+          person.imageRevision === undefined
+            ? undefined
+            : personImagePath(person.id, person.imageRevision)
+        }
+      />
+      {link ? (
+        <Link
+          to={personPath(person.id)}
+          aria-label={text.open(name)}
+          title={name}
+          className={cn(nameClass, "hover:underline")}
+        >
+          {name}
+        </Link>
+      ) : (
+        <span title={name} className={nameClass}>
+          {name}
+        </span>
+      )}
     </div>
   );
 }
