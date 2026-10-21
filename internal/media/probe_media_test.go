@@ -113,7 +113,8 @@ func TestParseMediaInfoReadsTracks(t *testing.T) {
 		t.Errorf("AudioTracks = %+v", info.AudioTracks)
 	}
 	wantSubtitle := []domain.MediaSubtitleTrack{
-		{Index: 3, Codec: "subrip", Title: "SDH", Forced: true, HearingImpaired: true},
+		{Index: 3, Codec: "subrip", Title: "SDH", Forced: true, HearingImpaired: true,
+			Roles: domain.MediaRoles{HearingImpaired: true}},
 	}
 	if !slices.Equal(info.SubtitleTracks, wantSubtitle) {
 		t.Errorf("SubtitleTracks = %+v", info.SubtitleTracks)
@@ -167,7 +168,7 @@ func TestParseMediaInfoReadsEmbeddedTagsAndCoverArt(t *testing.T) {
 	}`)
 	want := domain.MediaEmbedded{
 		Title: "夏の記録", Comment: "c", Description: "あらすじ", Genre: "Travel", Date: "2024",
-		Author: "Someone", CoverArt: true,
+		Author: "Someone", CoverArt: true, AlbumArtist: "Someone", Synopsis: "あらすじ",
 	}
 	if info.Embedded == nil || *info.Embedded != want {
 		t.Errorf("Embedded = %+v, want %+v", info.Embedded, want)

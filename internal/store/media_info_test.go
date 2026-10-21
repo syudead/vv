@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -120,5 +121,57 @@ func TestApplyProbeForJobRollsBackWhenMediaInfoFails(t *testing.T) {
 	}
 	if state == string(domain.ProbeStateDone) {
 		t.Fatal("videos の更新が残った")
+	}
+}
+
+func TestMediaInfoBackfillReplacesOlderRowsAndRemembersFailures(t *testing.T) {
+	db, id, keyframes := keyframeFixture(t)
+	ctx := context.Background()
+	source := keyframes.Source
+	if _, err := db.sql.Exec(`insert into video_media_info (video_id, version, info, updated_at)
+		values (?, 1, '{"Video":{"BitDepth":8,"HDR":"sdr"}}', 0)`, id); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Library().MediaInfo(ctx, id); err != nil || got == nil || got.Video.BitDepth != 8 {
+		t.Fatalf("古い版の行 = %+v, %v, want 読み直すまで今の値のまま", got, err)
+	}
+	job, err := db.Ingest().NextMediaInfoProbe(ctx, 0)
+	if err != nil || job.VideoID != id {
+		t.Fatalf("候補 = %+v, %v", job, err)
+	}
+
+	changed := domain.FileStamp{SizeBytes: source.SizeBytes + 1, ModTimeNs: source.ModTimeNs}
+	if err := db.Ingest().SaveMediaInfoProbe(ctx, job, domain.MediaInfoProbe{Source: changed, Info: sampleMediaInfo()}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Library().MediaInfo(ctx, id); got == nil || got.Video.BitDepth != 8 {
+		t.Fatalf("差し替わったファイルの値 = %+v, want 書かない", got)
+	}
+
+	if err := db.Ingest().SaveMediaInfoProbe(ctx, job, domain.MediaInfoProbe{Source: source}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Library().MediaInfo(ctx, id); got == nil || got.Video.BitDepth != 8 {
+		t.Fatalf("読めなかったあとの値 = %+v, want 今の値を残す", got)
+	}
+	if _, err := db.Ingest().NextMediaInfoProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("失敗した同じファイル: %v, want ErrNoJob", err)
+	}
+	if _, err := db.sql.Exec(`update video_locations set size_bytes = size_bytes + 1 where id = ?`, job.LocationID); err != nil {
+		t.Fatal(err)
+	}
+	if job, err = db.Ingest().NextMediaInfoProbe(ctx, 0); err != nil || job.VideoID != id {
+		t.Fatalf("変わったファイル: %+v, %v, want もう一度候補", job, err)
+	}
+
+	changed.SizeBytes = source.SizeBytes + 1
+	if err := db.Ingest().SaveMediaInfoProbe(ctx, job, domain.MediaInfoProbe{Source: changed, Info: sampleMediaInfo()}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Library().MediaInfo(ctx, id); got == nil || got.Video.BitDepth != 10 {
+		t.Fatalf("読み直した値 = %+v, want 新しい値", got)
+	}
+	if _, err := db.Ingest().NextMediaInfoProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("読み直したあと: %v, want ErrNoJob", err)
 	}
 }
