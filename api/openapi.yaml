@@ -9930,6 +9930,10 @@ components:
           type: integer
           minimum: 0
           description: "Compared pairs whose pictures differ."
+        offsetMs:
+          type: integer
+          format: int64
+          description: "How much later the same content plays in the right video than in the left; the frames were compared at this start offset."
         longestRun:
           type: integer
           minimum: 2

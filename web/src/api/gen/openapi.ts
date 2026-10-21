@@ -5647,6 +5647,11 @@ export interface components {
             compared: number;
             /** @description Compared pairs whose pictures differ. */
             differing: number;
+            /**
+             * Format: int64
+             * @description How much later the same content plays in the right video than in the left; the frames were compared at this start offset.
+             */
+            offsetMs?: number;
             /** @description Pairs in the longest run of consecutive differing pairs; absent without such a run. */
             longestRun?: number;
             /**

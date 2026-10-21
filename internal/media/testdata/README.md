@@ -7,28 +7,23 @@ The recipes are in [generate.go](generate.go); no downloaded media is included.
 
 | Input | Test boundary |
 | --- | --- |
-| `fingerprints/*.jpg` | `SpriteFingerprint` decodes, crops, hashes and compares stored sheets without FFmpeg |
+| `fingerprints/*.mp4` | `VideoFingerprint` runs FFmpeg on versions an owner would bundle and compares their fingerprints |
 | `videos/*` | Media adapters still run FFmpeg on these inputs and inspect newly generated output |
 
-Fingerprint tests no longer cover the combined video-to-sprite-to-fingerprint
-pipeline or the installed encoder's output variations. Sprite generation has
-its own adapter tests; those checks do not claim the removed combined boundary.
 Fixture readers share immutable files, while generated test outputs use `t.TempDir()`.
 
-## Fingerprint sheets
+## Fingerprint videos
 
-Each sheet has a 9 by 9 grid, with unused cells black.
-The source scene changes every 20 seconds and varies by the source identifier.
+The source scene changes every 20 seconds and drifts continuously, so a start
+shifted by one second no longer lines up frame for frame.
 
-| Sheet | Source | Frames | Interval (ms) | Frame size | Variation |
-| --- | --- | --- | --- | --- | --- |
-| `short.jpg` | A, 60 s | 60 | 1000 | 320 by 180 | H.264 CRF 20 |
-| `letterbox.jpg` | A, 60 s | 60 | 1000 | 320 by 240 | H.264 CRF 32 with black bands |
-| `other.jpg` | B, 60 s | 60 | 1000 | 320 by 180 | Different content at the same duration |
-| `long.jpg` | A, 410 s | 81 | 5062 | 320 by 180 | H.264 CRF 20 |
-| `long-reencoded.jpg` | A, 410.4 s | 81 | 5067 | 320 by 180 | H.264 CRF 30 and a different GOP |
-| `long-other.jpg` | B, 410 s | 81 | 5062 | 320 by 180 | Different content at the same duration |
-| `old-size.jpg` | A, 60 s | 60 | 1000 | 160 by 90 | JPEG quality 4 instead of 2 |
+| Video | Source | Variation |
+| --- | --- | --- |
+| `base.mp4` | A, 61 s | 320 by 180, H.264 CRF 20 |
+| `letterbox.mp4` | A, 61 s | 240 by 180 with black bands, CRF 32 |
+| `watermark.mp4` | A, 61 s | A semi-transparent white box over the top right |
+| `shifted.mp4` | A from 1 s | Starts one second later, CRF 30 |
+| `other.mp4` | B, 61 s | Different content at the same duration |
 
 ## Video inputs
 
@@ -47,7 +42,7 @@ The source scene changes every 20 seconds and varies by the source identifier.
 ## Regeneration
 
 Run these commands from the repository root with Go and FFmpeg on `PATH`.
-The committed files were generated with FFmpeg 7.1.5 (libx264 enabled).
+The committed files were generated with FFmpeg 7.1.5 (libx264 enabled); `fingerprints/` with FFmpeg 6.1.1.
 
 1. Run `go run ./internal/media/testdata/generate.go` to replace the fixtures and `SHA256SUMS`.
 2. Run `git diff -- internal/media/testdata` to review changes; FFmpeg versions can change the bytes.

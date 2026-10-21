@@ -13,6 +13,8 @@ import (
 type VersionJudgeReviewStore interface {
 	RejudgeCandidate(ctx context.Context, videoIDs [2]int64) error
 	JudgementEvidence(ctx context.Context, entryID int64) ([2]string, *domain.VersionJudgeEvidence, error)
+	// ContentPaths returns each key's first registered location, or ErrNotFound.
+	ContentPaths(ctx context.Context, keys [2]string) ([2]string, error)
 }
 
 type versionJudgeWaker interface {
@@ -50,8 +52,8 @@ func (r *VersionJudgeReview) Rejudge(ctx context.Context, videoIDs [2]int64) err
 	return nil
 }
 
-// JudgementFrame returns the index-th image the classifier was shown, A on the left; a missing entry, frame or seek
-// preview returns ErrNotFound.
+// JudgementFrame cuts the index-th image the classifier was shown again from the source files, A on the left; a
+// missing entry, frame or file returns ErrNotFound.
 func (r *VersionJudgeReview) JudgementFrame(ctx context.Context, entryID int64, index int) ([]byte, error) {
 	keys, evidence, err := r.store.JudgementEvidence(ctx, entryID)
 	if err != nil {
@@ -60,7 +62,11 @@ func (r *VersionJudgeReview) JudgementFrame(ctx context.Context, entryID int64, 
 	if evidence == nil || index < 0 || index >= len(evidence.Frames) {
 		return nil, fmt.Errorf("judgement frame %d of entry %d: %w", index, entryID, domain.ErrNotFound)
 	}
-	images, err := r.frames.SeekFramePairs(keys[0], keys[1], evidence.FramePairs()[index:index+1])
+	paths, err := r.store.ContentPaths(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	images, err := r.frames.FramePairImages(ctx, paths, evidence.Frames[index:index+1])
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("judgement frame %d of entry %d: %w", index, entryID, domain.ErrNotFound)
 	}

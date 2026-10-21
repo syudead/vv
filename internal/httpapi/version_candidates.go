@@ -123,6 +123,10 @@ func toAPIJudgeEvidence(evidence *domain.VersionJudgeEvidence) *gen.VersionJudge
 	out := &gen.VersionJudgeEvidence{
 		Rule: gen.VersionJudgeEvidenceRule(evidence.Rule), Compared: evidence.Compared, Differing: evidence.Differing,
 	}
+	if evidence.OffsetMs != 0 {
+		offset := evidence.OffsetMs
+		out.OffsetMs = &offset
+	}
 	if evidence.LongestRun > 0 {
 		run, start, end := evidence.LongestRun, evidence.RunStartMs, evidence.RunEndMs
 		out.LongestRun, out.RunStartMs, out.RunEndMs = &run, &start, &end

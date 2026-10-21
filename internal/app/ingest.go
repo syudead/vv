@@ -69,9 +69,6 @@ type ArtifactStore interface {
 	// ErrPreviewStale without publishing. A forced publish keeps the published preview readable until replaced.
 	PublishPreview(ctx context.Context, contentKey string, force bool, write func(output string) error,
 		current func(context.Context) (bool, error)) error
-	SeekSprite(contentKey string) (domain.SeekSprite, error)
-	// Sheet indexes start at zero.
-	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
 type Generator interface {
@@ -86,7 +83,8 @@ type Generator interface {
 	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
 	Preview(ctx context.Context, path, output string, durationMs int64) error
 	// Build fingerprints from ordered JPEG sheets without ffmpeg.
-	SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error)
+	// VideoFingerprint samples the source once a second; see docs/design-docs/duplicate-judging.md.
+	VideoFingerprint(ctx context.Context, path string) (domain.Fingerprint, error)
 	// Zero aspect means unknown; unreadable images return ErrThumbnailImageInvalid.
 	FitThumbnailImage(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 	// Use the same crop with at most 2048px longest side; unreadable images return
@@ -585,8 +583,8 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	})
 }
 
-// Fingerprint reads completed sprite sheets without source media or ffmpeg; failed jobs retry to
-// their limit and a later scan requeues them.
+// Fingerprint samples the claimed source file once a second; failed jobs retry to their limit and a later scan
+// requeues them.
 func (i *Ingest) Fingerprint(ctx context.Context, job domain.Job) error {
 	current, err := i.store.JobIdentityCurrent(ctx, job)
 	if err != nil {
@@ -595,17 +593,7 @@ func (i *Ingest) Fingerprint(ctx context.Context, job domain.Job) error {
 	if !current {
 		return nil
 	}
-	sprite, err := i.files.SeekSprite(job.ContentKey)
-	if err != nil {
-		return fmt.Errorf("cannot read the seek sprite for the fingerprint: %w", err)
-	}
-	sheets := make([][]byte, sprite.SheetCount)
-	for sheet := range sheets {
-		if sheets[sheet], err = i.files.SeekSpriteSheet(job.ContentKey, sheet); err != nil {
-			return fmt.Errorf("cannot read seek sprite sheet %d for the fingerprint: %w", sheet, err)
-		}
-	}
-	fingerprint, err := i.generator.SpriteFingerprint(sprite, sheets)
+	fingerprint, err := i.generator.VideoFingerprint(ctx, job.LocationPath)
 	if err != nil {
 		return err
 	}

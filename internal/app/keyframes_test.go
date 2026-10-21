@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -77,5 +78,45 @@ func TestBackfillKeyframesIdleCancellation(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("idle worker did not stop")
+	}
+}
+
+type fingerprintBackfillStore struct {
+	job     domain.Job
+	applied []domain.Fingerprint
+	cancel  context.CancelFunc
+}
+
+func (s *fingerprintBackfillStore) NextStaleFingerprint(_ context.Context, afterID int64) (domain.Job, error) {
+	if afterID != 0 {
+		s.cancel()
+		return domain.Job{}, domain.ErrNoJob
+	}
+	return s.job, nil
+}
+
+func (s *fingerprintBackfillStore) ApplyFingerprintForJob(_ context.Context, _ domain.Job, f domain.Fingerprint) (bool, error) {
+	s.applied = append(s.applied, f)
+	return true, nil
+}
+
+func TestBackfillFingerprintsSamplesTheStaleFileAndAppliesIt(t *testing.T) {
+	for name, sampleErr := range map[string]error{"成功": nil, "失敗": errors.New("ffmpeg failed")} {
+		ctx, cancel := context.WithCancel(context.Background())
+		store := &fingerprintBackfillStore{job: domain.Job{VideoID: 5, LocationPath: "old.mkv"}, cancel: cancel}
+		want := domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 1000}
+		var paths []string
+		BackfillFingerprints(ctx, store, func(_ context.Context, path string) (domain.Fingerprint, error) {
+			paths = append(paths, path)
+			return want, sampleErr
+		}, slog.New(slog.DiscardHandler))
+		cancel()
+		wantApplied := 1
+		if sampleErr != nil {
+			wantApplied = 0
+		}
+		if len(paths) != 1 || paths[0] != "old.mkv" || len(store.applied) != wantApplied {
+			t.Errorf("%s: 読んだファイル %q、反映 %d 回, want old.mkv と %d 回", name, paths, len(store.applied), wantApplied)
+		}
 	}
 }

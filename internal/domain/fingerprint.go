@@ -12,7 +12,7 @@ import (
 // Fingerprints compare frame pHashes by timestamp; bump FingerprintVersion when hashing rules or calibrated thresholds change, and never compare different versions.
 
 const (
-	FingerprintVersion   = 1
+	FingerprintVersion   = 2
 	FingerprintFrameSize = 32
 	// Low-variance frames are excluded because black screens and fades match unrelated videos.
 	FingerprintFlatVariance        = 16.0
@@ -130,18 +130,13 @@ func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash
 	return FrameHash{Hash: hash, Flat: variance < FingerprintFlatVariance}
 }
 
-// CompareFingerprints pairs nearest frame start times within half the shorter interval, excluding flat frames, invalid versions/intervals, and insufficient pairs; it uses the lower median for even counts.
+// CompareFingerprints is the lower median distance of ComparableFramePairs.
 func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 	pairs, ok := ComparableFramePairs(a, b)
 	if !ok {
 		return 0, false
 	}
-	distances := make([]int, len(pairs))
-	for i, pair := range pairs {
-		distances[i] = pair.Distance
-	}
-	slices.Sort(distances)
-	return distances[(len(distances)-1)/2], true
+	return medianDistance(pairs), true
 }
 
 type FramePair struct {
@@ -149,15 +144,60 @@ type FramePair struct {
 	Distance int
 }
 
-// ComparableFramePairs uses CompareFingerprints timing rules and returns non-flat pairs in a-frame order; incompatible or insufficient fingerprints return false.
+// Start offsets are searched up to the duration difference plus this slack, in steps of the coarser interval, and
+// never beyond fingerprintMaxShift steps.
+const (
+	fingerprintShiftSlack = 3
+	fingerprintMaxShift   = 60
+)
+
+// ComparableFramePairs pairs frames by time at the start offset whose median distance is lowest, preferring the
+// smallest offset on a tie, and returns non-flat pairs in a-frame order; incompatible or insufficient fingerprints
+// return false.
 func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
 	if a.Version != b.Version || a.IntervalMs <= 0 || b.IntervalMs <= 0 {
 		return nil, false
 	}
+	step := max(a.IntervalMs, b.IntervalMs)
+	lengthDifference := abs64(int64(len(a.Frames))*a.IntervalMs - int64(len(b.Frames))*b.IntervalMs)
+	maxShift := min(lengthDifference/step+fingerprintShiftSlack, fingerprintMaxShift)
+	bestMedian, bestOffset := -1, int64(0)
+	for shift := int64(0); shift <= maxShift; shift++ {
+		for _, sign := range []int64{1, -1} {
+			if shift == 0 && sign < 0 {
+				continue
+			}
+			offset := sign * shift * step
+			var histogram [65]int
+			count := 0
+			eachFramePairAt(a, b, offset, func(pair FramePair) {
+				histogram[pair.Distance]++
+				count++
+			})
+			if count < FingerprintMinComparableFrames {
+				continue
+			}
+			if median := histogramMedian(histogram, count); bestMedian < 0 || median < bestMedian {
+				bestMedian, bestOffset = median, offset
+			}
+		}
+	}
+	if bestMedian < 0 {
+		return nil, false
+	}
+	eachFramePairAt(a, b, bestOffset, func(pair FramePair) { pairs = append(pairs, pair) })
+	return pairs, true
+}
+
+// eachFramePairAt pairs each a frame with the b frame offsetMs later in b's timeline, within half the shorter
+// interval, skipping flat frames.
+func eachFramePairAt(a, b Fingerprint, offsetMs int64, yield func(FramePair)) {
 	tolerance := min(a.IntervalMs, b.IntervalMs) / 2
-	pairs = make([]FramePair, 0, len(a.Frames))
 	for i, frame := range a.Frames {
-		start := int64(i) * a.IntervalMs
+		start := int64(i)*a.IntervalMs + offsetMs
+		if start < 0 {
+			continue
+		}
 		j := (start + b.IntervalMs/2) / b.IntervalMs
 		if j >= int64(len(b.Frames)) || abs64(j*b.IntervalMs-start) > tolerance {
 			continue
@@ -166,12 +206,29 @@ func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
 		if frame.Flat || other.Flat {
 			continue
 		}
-		pairs = append(pairs, FramePair{A: i, B: int(j), Distance: bits.OnesCount64(frame.Hash ^ other.Hash)})
+		yield(FramePair{A: i, B: int(j), Distance: bits.OnesCount64(frame.Hash ^ other.Hash)})
 	}
-	if len(pairs) < FingerprintMinComparableFrames {
-		return nil, false
+}
+
+// histogramMedian is the lower median of count distances, counted by value.
+func histogramMedian(histogram [65]int, count int) int {
+	seen := 0
+	for distance, n := range histogram {
+		seen += n
+		if seen > (count-1)/2 {
+			return distance
+		}
 	}
-	return pairs, true
+	return len(histogram) - 1
+}
+
+func medianDistance(pairs []FramePair) int {
+	distances := make([]int, len(pairs))
+	for i, pair := range pairs {
+		distances[i] = pair.Distance
+	}
+	slices.Sort(distances)
+	return distances[(len(distances)-1)/2]
 }
 
 func FingerprintsMatch(a, b Fingerprint) bool {

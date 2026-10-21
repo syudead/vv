@@ -2667,6 +2667,15 @@ export const en = {
         `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ, ${formatNumber(run)} of them in a row from ${start} to ${end}. A section that differs throughout may be a replaced scene, an added intro or a different edit.`,
       scattered: (differing: number, compared: number) =>
         `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ here and there, more than the 5% allowed.`,
+      seconds: (value: number) =>
+        selectPlural(value, {
+          one: `${formatDecimal(value, 1)} second`,
+          other: `${formatDecimal(value, 1)} seconds`,
+        }),
+      offset: (seconds: string, later: boolean) =>
+        later
+          ? `The right video shows the same moment ${seconds} later than the left, so their frames were compared with that shift.`
+          : `The right video shows the same moment ${seconds} earlier than the left, so their frames were compared with that shift.`,
       versionMismatch:
         "The two fingerprints were made by different versions of vv, so the frames couldn't be compared. Rescan either video to compare them.",
       tooFew: (compared: number) =>

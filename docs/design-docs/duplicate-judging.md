@@ -25,10 +25,48 @@ flowchart LR
   ask -->|error or no answer| failed[failed, retry later]
 ```
 
+## Versions the owner would not tell apart are the goal
+
+Bundling is for files the owner sees as one video: a re-encode, black bands, a
+watermark or channel logo, burned-in subtitles, or a start shifted by a second
+or two. Names, folders and other stored facts are not compared; they tell
+whether two files are the same file, which is a different question.
+
+| Difference | Where it is absorbed |
+| --- | --- |
+| Quality, resolution, black bands | The fingerprint: 32×32 low-frequency luma hashes with black bands trimmed |
+| A small logo or watermark | The fingerprint, within the distance of 12 |
+| A large watermark, burned-in subtitles | The classifier, whose question says to ignore them |
+| A shifted start | The start offset search below, and the classifier's tolerance of a second or two |
+
+## Fingerprints sample the source once a second
+
+The fingerprint job ([`internal/media/fingerprint.go`](../../internal/media/fingerprint.go))
+decodes the source once and hashes one 96×54 gray frame per second, after
+trimming black bands. The seek sprite holds at most 81 frames, one every 18
+seconds in a 24-minute video, so a one-second shift compared different moments
+of every scene; one sample a second keeps a shifted start within half a
+sample of its match. Fingerprints of version 1 were cut from the sprite and are
+never compared with version 2.
+
+`BackfillFingerprints` ([`internal/app/keyframes.go`](../../internal/app/keyframes.go))
+rebuilds older or missing fingerprints one file at a time after startup,
+rebuilding each one's candidates as an import does, without queueing import
+work or opening activity. A file that fails is retried on the next pass.
+
+## Frames are compared at the best start offset
+
+Pairing tries each start offset in steps of the coarser interval, up to the
+difference in fingerprint length plus 3 steps and at most 60, and keeps the
+offset with the lowest median distance; a tie keeps the smaller offset
+([`domain.ComparableFramePairs`](../../internal/domain/fingerprint.go)). The
+candidate check and the frame rule share this pairing, and the evidence
+records the offset.
+
 ## The frame rule decides first
 
-Frames are paired by time and flat frames are skipped, as the candidate check
-pairs them, and a pair differs when its distance is over 12
+Frames are paired at that offset and flat frames are skipped, as the candidate
+check pairs them, and a pair differs when its distance is over 12
 (`FingerprintMatchMaxDistance`). The median the candidate check uses hides a
 replaced section; the per-frame list shows it.
 
@@ -44,17 +82,20 @@ images.
 
 ## The model sees the frames, not the names
 
-Each image is frame A on the left and the paired frame B on the right, cut
-from the two seek previews by
-[`internal/artifacts`](../../internal/artifacts/seek_frames.go), with B scaled
-to A's frame size. The request carries no facts: no file name, folder or
-duration.
-The question and the thresholds 0.8 and 0.2 are fixed in
+Each image is frame A on the left and the paired frame B on the right, cut by
+ffmpeg from each side's first registered file at the pair's own times
+([`internal/media/judgement_frames.go`](../../internal/media/judgement_frames.go)),
+with B scaled to A's frame size and each half at most 640 pixels wide. The
+request carries no facts: no file name, folder or duration. The question asks
+whether both halves show the same scene of the same video, ignoring quality,
+colour, cropping, black bands, watermarks, logos, burned-in subtitles and a
+second or two of timing. It and the thresholds 0.8 and 0.2 are fixed in
 `internal/domain`.
 
 | Rejected | Why |
 | --- | --- |
-| Frames from the media files with ffmpeg | Decoding both files costs far more than cutting the frames from the two seek previews, which already hold them at the paired times |
+| Frames cut from the seek previews | They hold at most 81 frames, so they cannot show the moments an offset pairs |
+| Asking whether the pictures are the same | A watermark or subtitle makes the pictures differ while the video is the same |
 | A reply without the question's key as probability 0 | It would dismiss a pair the model never judged |
 
 ## The owner sees why
@@ -77,12 +118,11 @@ reads it from the entry. A waiting pair that the claim skips for a
 | `frames` | The frame pairs shown to the classifier, with their times on both videos |
 
 `GET /api/activity/{id}/judgement-frames/{index}` cuts the indexed pair from
-the two current seek previews, as the request to the classifier did, instead
-of storing the images: the evidence is a few hundred bytes per pair, and a
-stored copy would outlive the seek preview it came from. A content change at
-the same path removes `frames` from the pair entries of the old key before
-re-keying them, since the frame indexes point into the old content's seek
-preview; the counts and the sentences stay.
+the two files again, as the request to the classifier did, instead of storing
+the images: the evidence is a few hundred bytes per pair, and a stored copy
+would outlive the file it came from. A content change at the same path removes
+`frames` from the pair entries of the old key before re-keying them, since the
+frame times describe the old content; the counts and the sentences stay.
 
 A pair left on Duplicates by a judgement made before evidence was stored gets
 evidence recomputed from the two stored fingerprints when it is read, on

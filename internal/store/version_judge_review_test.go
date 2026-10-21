@@ -134,3 +134,24 @@ func TestCandidatesDeriveEvidenceJudgedBeforeItWasStored(t *testing.T) {
 		t.Errorf("JudgementEvidence = %+v, %v, want %+v", got, err, evidence)
 	}
 }
+
+func TestNextStaleFingerprintFindsOlderVersions(t *testing.T) {
+	db, ids := judgementFixture(t)
+	ctx := context.Background()
+	if _, err := db.Ingest().NextStaleFingerprint(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("すべて今の版: err = %v, want ErrNoJob", err)
+	}
+	if _, err := db.sql.Exec(`update video_fingerprints set version = version - 1 where content_key = 'key-b'`); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.Ingest().NextStaleFingerprint(ctx, 0)
+	if err != nil || job.VideoID != ids["b"] || job.ContentKey != "key-b" || job.LocationPath == "" {
+		t.Fatalf("古い版の動画 = %+v, %v, want b", job, err)
+	}
+	if applied, err := db.Ingest().ApplyFingerprintForJob(ctx, job, testFingerprint(1, 0b101)); err != nil || !applied {
+		t.Fatalf("ApplyFingerprintForJob = %v, %v", applied, err)
+	}
+	if _, err := db.Ingest().NextStaleFingerprint(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+		t.Errorf("作り直したあと: err = %v, want ErrNoJob", err)
+	}
+}

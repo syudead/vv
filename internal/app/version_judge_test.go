@@ -118,14 +118,16 @@ func (s *fakeVersionJudgeSettings) OllamaConnectionSaved(context.Context) (bool,
 }
 
 type fakeVersionFrames struct {
-	keys  [2]string
-	pairs []domain.FramePair
+	paths  [2]string
+	frames []domain.VersionEvidenceFrame
 }
 
-func (f *fakeVersionFrames) SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error) {
-	f.keys, f.pairs = [2]string{keyA, keyB}, pairs
-	images := make([][]byte, len(pairs))
-	for i := range pairs {
+func (f *fakeVersionFrames) FramePairImages(
+	_ context.Context, paths [2]string, frames []domain.VersionEvidenceFrame,
+) ([][]byte, error) {
+	f.paths, f.frames = paths, frames
+	images := make([][]byte, len(frames))
+	for i := range frames {
 		images[i] = []byte{byte(i)}
 	}
 	return images, nil
@@ -145,7 +147,10 @@ func versionJudgeJob(differing ...int) domain.VersionJudgeJob {
 		}
 		b.Frames = append(b.Frames, domain.FrameHash{Hash: hash})
 	}
-	return domain.VersionJudgeJob{Keys: [2]string{"key-a", "key-b"}, Fingerprints: [2]domain.Fingerprint{a, b}}
+	return domain.VersionJudgeJob{
+		Keys: [2]string{"key-a", "key-b"}, Paths: [2]string{"/media/a.mp4", "/media/b.mp4"},
+		Fingerprints: [2]domain.Fingerprint{a, b},
+	}
 }
 
 func newTestVersionJudge(store *fakeVersionJudgeStore, classifier *fakeClassifier) (*VersionJudge, *fakeVersionJudgeSettings, *fakeVersionFrames) {
@@ -201,10 +206,12 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 				e.RunEndMs != 12000 || len(e.Frames) != 4 {
 				t.Errorf("根拠 = %+v, want 8〜12 秒の連なりと 4 コマ", e)
 			}
-			wantPairs := []domain.FramePair{{A: 8, B: 8, Distance: 33}, {A: 9, B: 9, Distance: 33},
-				{A: 10, B: 10, Distance: 33}, {A: 11, B: 11, Distance: 33}}
-			if frames.keys != [2]string{"key-a", "key-b"} || !reflect.DeepEqual(frames.pairs, wantPairs) {
-				t.Errorf("頼んだコマ = %v %v, want 連なりの 8〜11", frames.keys, frames.pairs)
+			wantFrames := []domain.VersionEvidenceFrame{
+				{A: 8, B: 8, AMs: 8000, BMs: 8000, Distance: 33}, {A: 9, B: 9, AMs: 9000, BMs: 9000, Distance: 33},
+				{A: 10, B: 10, AMs: 10000, BMs: 10000, Distance: 33}, {A: 11, B: 11, AMs: 11000, BMs: 11000, Distance: 33},
+			}
+			if frames.paths != [2]string{"/media/a.mp4", "/media/b.mp4"} || !reflect.DeepEqual(frames.frames, wantFrames) {
+				t.Errorf("頼んだコマ = %v %v, want 両方のファイルの 8〜11 秒", frames.paths, frames.frames)
 			}
 			if len(classifier.requests) != 1 {
 				t.Fatalf("分類器への問い合わせ = %d, want 1", len(classifier.requests))

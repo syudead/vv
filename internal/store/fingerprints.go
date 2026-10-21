@@ -392,3 +392,26 @@ func dismissPair(ctx context.Context, tx *sql.Tx, keyA, keyB string) error {
 	}
 	return nil
 }
+
+// NextStaleFingerprint pages through videos whose seek sprite is done but whose fingerprint is missing or from an
+// older version, on their first registered location; a video with a queued or running fingerprint job is the job's.
+func (s *IngestStore) NextStaleFingerprint(ctx context.Context, afterID int64) (domain.Job, error) {
+	job := domain.Job{Kind: domain.JobFingerprint}
+	err := s.db.sql.QueryRowContext(ctx, `select v.id, v.content_key, v.location_generation, l.id, l.version, l.path
+		from videos v join video_locations l on l.video_id = v.id
+		where v.id > ? and `+fingerprintMissingCondition("v")+`
+		and `+registeredLocationCondition("l")+`
+		and l.path = (select min(first.path) from video_locations first where first.video_id = v.id
+			and `+registeredLocationCondition("first")+`)
+		and not exists (select 1 from jobs j where j.video_id = v.id and j.kind = 'fingerprint'
+			and j.state in ('queued', 'running'))
+		order by v.id limit 1`, afterID).
+		Scan(&job.VideoID, &job.ContentKey, &job.LocationGeneration, &job.LocationID, &job.LocationVersion, &job.LocationPath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Job{}, domain.ErrNoJob
+	}
+	if err != nil {
+		return domain.Job{}, fmt.Errorf("cannot find a stale fingerprint: %w", err)
+	}
+	return job, nil
+}

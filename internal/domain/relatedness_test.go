@@ -241,3 +241,13 @@ func TestParseRelatedCursorRejectsMalformed(t *testing.T) {
 		t.Fatalf("round trip = %+v, %v", got, err)
 	}
 }
+
+func TestSceneHashesThinsLongFingerprints(t *testing.T) {
+	fingerprint := &Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
+	for i := range 7200 {
+		fingerprint.Frames = append(fingerprint.Frames, FrameHash{Hash: uint64(i)})
+	}
+	if got := len(sceneHashes(fingerprint)); got != relatedSceneMaxFrames {
+		t.Errorf("場面の数 = %d, want %d", got, relatedSceneMaxFrames)
+	}
+}

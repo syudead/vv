@@ -57,6 +57,9 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 			return domain.VersionJudgeJob{}, fmt.Errorf("the version candidate has no fingerprint (key=%s)", key)
 		}
 		job.Fingerprints[i] = fingerprint
+		if job.Paths[i], err = contentPath(ctx, tx, key); err != nil {
+			return domain.VersionJudgeJob{}, err
+		}
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
@@ -70,6 +73,32 @@ var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
 	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
+
+// contentPath is the first registered location of a key, or ErrNotFound.
+func contentPath(ctx context.Context, q rowQueryer, key string) (string, error) {
+	var path sql.NullString
+	if err := q.QueryRowContext(ctx, `select min(l.path) from video_locations l join videos v on v.id = l.video_id
+		where v.content_key = ? and v.content_key <> '' and `+registeredLocationCondition("l"), key).Scan(&path); err != nil {
+		return "", fmt.Errorf("cannot read the location of the content (key=%s): %w", key, err)
+	}
+	if !path.Valid {
+		return "", fmt.Errorf("content %s: %w", key, domain.ErrNotFound)
+	}
+	return path.String, nil
+}
+
+// ContentPaths returns each key's first registered location, or ErrNotFound.
+func (s *VersionStore) ContentPaths(ctx context.Context, keys [2]string) ([2]string, error) {
+	var paths [2]string
+	for i, key := range keys {
+		path, err := contentPath(ctx, s.db.read, key)
+		if err != nil {
+			return paths, err
+		}
+		paths[i] = path
+	}
+	return paths, nil
+}
 
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
 	var version int

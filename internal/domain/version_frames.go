@@ -4,9 +4,12 @@ package domain
 
 const (
 	VersionJudgeQuestionKey = "same_picture"
-	VersionJudgeQuestion    = "Each image puts two frames side by side, taken at the same moment from two video files. " +
-		"In every image, do the left half and the right half show the same picture " +
-		"(ignoring differences in sharpness, resolution or compression)?"
+	// The question asks about the content, so a version the owner would not tell apart counts as the same video.
+	VersionJudgeQuestion = "Each image puts two frames side by side, one from each of two video files, taken at " +
+		"matching moments of the content. In every image, do the left half and the right half show the same scene " +
+		"of the same video? Ignore differences in sharpness, resolution, compression, colour, cropping or black " +
+		"borders, watermarks, channel or site logos, burned-in subtitles or captions, and a timing difference of a " +
+		"second or two."
 	VersionSameProbability      = 0.8
 	VersionDifferentProbability = 0.2
 	VersionJudgeMaxImages       = 4
@@ -45,6 +48,8 @@ type VersionFrameRule struct {
 	LongestRun int
 	Run        [2]FramePair
 	Shown      []FramePair
+	// Pairs are every compared pair at the chosen start offset.
+	Pairs []FramePair
 }
 
 // JudgeVersionFrames tolerates at most 5% isolated differences; otherwise it samples the longest differing run (earliest tie), or all isolated differences, evenly up to the image limit.
@@ -53,7 +58,7 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 	if !ok {
 		return VersionFrameRule{Outcome: VersionFramesIncomparable}
 	}
-	rule := VersionFrameRule{Compared: len(pairs)}
+	rule := VersionFrameRule{Compared: len(pairs), Pairs: pairs}
 	var differing, longest, current []FramePair
 	for _, pair := range pairs {
 		if pair.Distance <= FingerprintMatchMaxDistance {
