@@ -10,8 +10,9 @@ import (
 	"unicode/utf8"
 )
 
-// Bump MediaInfoVersion when adding fields or changing semantics; mismatched versions read as absent.
-const MediaInfoVersion = 1
+// Bump MediaInfoVersion when adding fields or changing semantics. An older row stays readable until the background
+// probe replaces it, so a bump may add fields but must not change what an existing field means.
+const MediaInfoVersion = 2
 
 const (
 	MediaTextMaxRunes     = 2000
@@ -28,6 +29,7 @@ type MediaInfo struct {
 	Embedded       *MediaEmbedded       `json:",omitempty"`
 	Broadcast      *MediaBroadcast      `json:",omitempty"`
 	Chapters       []MediaChapter       `json:",omitempty"`
+	Container      *MediaContainer      `json:",omitempty"`
 }
 
 type HDRKind string
@@ -51,6 +53,33 @@ type MediaVideo struct {
 	Projection     string  `json:",omitempty"`
 	Stereo3D       string  `json:",omitempty"`
 	ClosedCaptions bool    `json:",omitempty"`
+
+	Profile           string `json:",omitempty"`
+	Level             int    `json:",omitempty"`
+	PixelFormat       string `json:",omitempty"`
+	ChromaSubsampling string `json:",omitempty"`
+	// ColorRange is limited or full.
+	ColorRange string `json:",omitempty"`
+	CodecTag   string `json:",omitempty"`
+	// CodecString is the RFC 6381 codecs value a browser is asked about, such as avc1.64001f.
+	CodecString string `json:",omitempty"`
+	// VariableFrameRate is a header estimate; see VariableFrameRate.
+	VariableFrameRate *bool `json:",omitempty"`
+	FrameCount        int64 `json:",omitempty"`
+	MaxBitRate        int64 `json:",omitempty"`
+	// BitsPerPixel is BitRate per pixel per frame.
+	BitsPerPixel float64                `json:",omitempty"`
+	Mirrored     bool                   `json:",omitempty"`
+	Crop         *MediaCrop             `json:",omitempty"`
+	Mastering    *MediaMasteringDisplay `json:",omitempty"`
+	ContentLight *MediaContentLight     `json:",omitempty"`
+	HDR10Plus    bool                   `json:",omitempty"`
+	DolbyVision  *MediaDolbyVision      `json:",omitempty"`
+	// FilmGrain is read only for AV1, from its first frame; nil is unknown.
+	FilmGrain  *bool `json:",omitempty"`
+	MultiLayer bool  `json:",omitempty"`
+	MediaTiming
+	MediaStreamOrigin
 }
 
 type MediaAudioTrack struct {
@@ -61,6 +90,17 @@ type MediaAudioTrack struct {
 	Language      string `json:",omitempty"`
 	Title         string `json:",omitempty"`
 	Default       bool   `json:",omitempty"`
+
+	SampleRate   int              `json:",omitempty"`
+	BitDepth     int              `json:",omitempty"`
+	SampleFormat string           `json:",omitempty"`
+	BitRate      int64            `json:",omitempty"`
+	ReplayGain   *MediaReplayGain `json:",omitempty"`
+	Roles        MediaRoles       `json:",omitzero"`
+	// ServiceType is the AVAudioServiceType name, such as commentary.
+	ServiceType string `json:",omitempty"`
+	MediaTiming
+	MediaStreamOrigin
 }
 
 type MediaSubtitleTrack struct {
@@ -71,6 +111,10 @@ type MediaSubtitleTrack struct {
 	Default         bool   `json:",omitempty"`
 	Forced          bool   `json:",omitempty"`
 	HearingImpaired bool   `json:",omitempty"`
+
+	Roles MediaRoles `json:",omitzero"`
+	MediaTiming
+	MediaStreamOrigin
 }
 
 // Date retains source text; RecordedAt is RFC 3339.
@@ -85,6 +129,26 @@ type MediaEmbedded struct {
 	Device      string       `json:",omitempty"`
 	Location    *GeoLocation `json:",omitempty"`
 	CoverArt    bool         `json:",omitempty"`
+
+	Album       string `json:",omitempty"`
+	AlbumArtist string `json:",omitempty"`
+	Composer    string `json:",omitempty"`
+	Show        string `json:",omitempty"`
+	Episode     string `json:",omitempty"`
+	Season      string `json:",omitempty"`
+	Network     string `json:",omitempty"`
+	Synopsis    string `json:",omitempty"`
+	Copyright   string `json:",omitempty"`
+	Publisher   string `json:",omitempty"`
+	EncodedBy   string `json:",omitempty"`
+	Encoder     string `json:",omitempty"`
+	// SourceURL is where a download tool fetched the file from.
+	SourceURL string `json:",omitempty"`
+	Keywords  string `json:",omitempty"`
+	Rating    string `json:",omitempty"`
+	// CaptureSoftware and CaptureFrameRate come from a phone camera; a capture rate above the playback rate is slow motion.
+	CaptureSoftware  string  `json:",omitempty"`
+	CaptureFrameRate float64 `json:",omitempty"`
 }
 
 // Coordinates use degrees and optional altitude uses meters.
@@ -352,4 +416,10 @@ func LimitMediaTracks[T any](tracks []T) []T {
 		return tracks[:MediaTracksMaxCount]
 	}
 	return tracks
+}
+
+// MediaInfoProbe is a background re-read of an imported file; a zero Source means the file could not be read.
+type MediaInfoProbe struct {
+	Source FileStamp
+	Info   *MediaInfo
 }

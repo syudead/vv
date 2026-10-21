@@ -345,6 +345,9 @@ const errorReasons = {
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
   auto_tagging_off:
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
+  version_judging_off:
+    "Duplicate judging is turned off. Turn it on under Settings, Duplicate judging.",
+  version_not_rejudgeable: "This pair is already waiting for the AI or being judged.",
   comfyui_url_invalid: "Enter an http or https URL",
   comfyui_api_key_missing: "Enter the Comfy Cloud API key",
   thumbnail_edit_not_found:
@@ -1010,6 +1013,7 @@ export const en = {
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
+    versionsFilter: "With other versions only",
     tagKindFilter: {
       label: "Tag kind",
       any: "Any kind",
@@ -2640,6 +2644,115 @@ export const en = {
         description:
           "When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself.",
       },
+      rejudge: "Judge again",
+      rejudgeFor: (first: string, second: string) =>
+        `Judge again, for ${first} and ${second}`,
+      rejudged: "Sent back to duplicate judging",
+      left: "Left in the frames",
+      right: "Right in the frames",
+      noAudio: "No audio",
+      moreAudio: (count: number) => `+${formatNumber(count)} more`,
+      recommended: "Recommended representative",
+      recommendedReason: {
+        playable: "It plays in the browser as is; the other needs converting",
+        audio: "It has audio and the other doesn't",
+        audio_sync: "Its audio runs as long as its video; the other's doesn't",
+        resolution: "It has the higher resolution",
+        bitrate: "Same resolution, with more video data per second",
+        older: "The files don't differ otherwise, so the one added first",
+      },
+      keepsData:
+        "Bundling keeps both videos' tags, favourites, playback position and work information, whichever you choose.",
+      hints: {
+        unplayable: "Needs converting to play in the browser",
+        encrypted: "Encrypted (DRM)",
+        largerNoMorePixels: (times: number) =>
+          `${formatDecimal(times, 1)}× the size without more pixels`,
+        audioShare: (share: number) =>
+          `Audio takes ${formatNumber(Math.round(share * 100))}% of the file`,
+        audioLate: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s after the video`,
+        audioEarly: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioShorter: (ms: number) =>
+          `Audio ends ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioLonger: (ms: number) =>
+          `Audio runs ${formatDecimal(ms / 1000, 1)} s past the video`,
+      },
+    },
+    judgement: {
+      heading: "Automatic judgement",
+      why: "Why?",
+      whyFor: (first: string, second: string) =>
+        `Why the automatic judgement ended this way, for ${first} and ${second}`,
+      whyTitle: "Why the automatic judgement ended this way",
+      state: {
+        waiting: "Waiting to be judged",
+        running: "Being judged now",
+        undecided: "Left to you: it couldn't tell whether these are the same video",
+        undecidedAi: (percent: string) =>
+          `Left to you: the AI was unsure, ${percent} sure both show the same picture`,
+        undecidedIncomparable: "Left to you: the two videos' frames couldn't be compared",
+        undecidedProperties:
+          "Left to you: the AI says they differ, but the video information says they're the same",
+        undecidedConflict:
+          "Left to you: they look the same, but one is marked as a different video from the other's versions",
+        failed: (detail: string) =>
+          detail === "" ? "The judgement failed" : `The judgement failed: ${detail}`,
+        no_connection: "Needs the AI connection to decide",
+        held: "Left to you, since you changed an earlier automatic decision on this pair",
+      },
+      retryAt: (time: string) => `Tries again at ${time}`,
+      judgingOff: "Duplicate judging is off, so this pair waits for you.",
+      matched: (compared: number, differing: number) =>
+        differing === 0
+          ? `All ${formatNumber(compared)} frames compared by time show the same picture, so the rule judged them the same video without asking the AI.`
+          : `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ, no two in a row and within the 5% allowed, so the rule judged them the same video without asking the AI.`,
+      run: (
+        differing: number,
+        compared: number,
+        run: number,
+        start: string,
+        end: string,
+      ) =>
+        `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ, ${formatNumber(run)} of them in a row from ${start} to ${end}. A section that differs throughout may be a replaced scene, an added intro or a different edit.`,
+      scattered: (differing: number, compared: number) =>
+        `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ here and there, more than the 5% allowed.`,
+      versionMismatch:
+        "The two fingerprints were made by different versions of vv, so the frames couldn't be compared. Rescan either video to compare them.",
+      tooFew: (compared: number) =>
+        `Only ${formatNumber(compared)} frames could be compared by time, fewer than the 3 needed, often because the picture is flat or dark.`,
+      asked: (shown: number) =>
+        selectPlural(shown, {
+          one: `The AI was shown ${formatNumber(shown)} pair of those frames, below, and asked whether both sides show the same picture.`,
+          other: `The AI was shown ${formatNumber(shown)} pairs of those frames, below, and asked whether both sides show the same picture.`,
+        }),
+      answer: (percent: string) =>
+        `It answered ${percent}. At 80% or more the videos are bundled, at 20% or less they are marked different, and anything between is left to you.`,
+      noAnswer: "The AI hasn't answered yet, so these frames are what it will be shown.",
+      conflict:
+        "The judgement found the same video, but one of these is already marked different from a video bundled with the other, so it was left to you.",
+      byProperties:
+        "The video information below settled this. Titled chapters at the same times or an equal recording time decide on their own; an equal embedded title or untitled chapters at the same times only tip an unsure AI answer; and an AI answer of different that they contradict is left to you.",
+      properties: "Video information",
+      propertyKind: {
+        chapters: "Chapters",
+        recorded_at: "Recorded at",
+        embedded_title: "Embedded title",
+        duration: "Length",
+      },
+      propertySame: "Same",
+      propertyDifferent: "Different",
+      propertyChapters: (count: string) =>
+        selectPlural(Number(count), {
+          one: `${formatNumber(Number(count))} chapter`,
+          other: `${formatNumber(Number(count))} chapters`,
+        }),
+      propertyValues: (left: string, right: string) => `Left: ${left} · Right: ${right}`,
+      frames: "Frames shown to the AI",
+      frame: (left: string, right: string) => `Left at ${left}, right at ${right}`,
+      frameAlt: (left: string, right: string) =>
+        `Frame pair: left video at ${left}, right video at ${right}`,
     },
   },
   history: {
@@ -2935,6 +3048,7 @@ export const en = {
         tags: "Tags",
         people: "People",
         partOf: "Part of",
+        evidence: "Why",
       },
       fact: {
         status: "Status",

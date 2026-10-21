@@ -152,7 +152,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List videos"
-      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
+      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
       parameters:
         - name: query
           in: query
@@ -174,6 +174,12 @@ paths:
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
+          schema:
+            type: boolean
+            default: false
+        - name: hasVersions
+          in: query
+          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -237,7 +243,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List library items (videos and groups)"
-      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
+      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
       parameters:
         - name: query
           in: query
@@ -259,6 +265,12 @@ paths:
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
+          schema:
+            type: boolean
+            default: false
+        - name: hasVersions
+          in: query
+          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -3958,6 +3970,29 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/version-candidates/rejudge:
+    post:
+      operationId: rejudgeVersionCandidate
+      summary: "Judge a possible duplicate again"
+      description: "Owner-only. Returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its activity record to running, so the duplicate judging worker sends it to the classifier again. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos return 404 video_not_found; a pair that is not a judgeable candidate returns 404 not_found. Judging turned off returns 409 version_judging_off; a waiting or running pair returns 409 version_not_rejudgeable."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionCandidateDismissRequest"
+      responses:
+        "202":
+          description: "Queued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/activity:
     get:
       operationId: listActivity
@@ -4055,6 +4090,33 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+
+  /api/activity/{id}/judgement-frames/{index}:
+    get:
+      operationId: getActivityJudgementFrame
+      summary: "Return a frame pair a duplicate judgement showed the classifier"
+      description: "Owner-only. Returns the image at index in the version_judgement record's evidence frames: the left video's frame on the left and the other's on the right, cut from the two current seek previews as the classifier received them. A missing record, a record without evidence, an index outside its frames or a missing seek preview returns 404 not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the record's evidence frames"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Image"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/activity/{id}/undo:
     post:
@@ -9521,6 +9583,8 @@ components:
           description: "Chapters in start order, within video duration."
           items:
             $ref: "#/components/schemas/MediaInfoChapter"
+        container:
+          $ref: "#/components/schemas/MediaInfoContainer"
 
     MediaInfoVideo:
       type: object
@@ -9554,6 +9618,72 @@ components:
         closedCaptions:
           type: boolean
           description: "True when the video stream carries closed captions."
+        profile:
+          type: string
+          examples: [High, "Main 10"]
+        level:
+          type: integer
+          description: "Codec level as ffprobe reports it (H.264 41 is level 4.1)."
+        pixelFormat:
+          type: string
+          examples: [yuv420p, yuv420p10le]
+        chromaSubsampling:
+          type: string
+          examples: ["4:2:0", "4:2:2", "4:4:4"]
+        colorRange:
+          type: string
+          enum: [limited, full]
+        codecTag:
+          type: string
+          description: "Container fourcc, such as hvc1 or hev1."
+        codecString:
+          type: string
+          description: "RFC 6381 codecs value, such as avc1.64001f."
+        variableFrameRate:
+          type: boolean
+          description: "A header estimate: the average frame rate differs from the base rate by more than 1%."
+        frameCount:
+          type: integer
+          format: int64
+          description: "Frame count the header records."
+        maxBitRate:
+          type: integer
+          format: int64
+          description: "Maximum bits per second the header records."
+        bitsPerPixel:
+          type: number
+          format: double
+          description: "bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode."
+        mirrored:
+          type: boolean
+          description: "The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation."
+        crop:
+          $ref: "#/components/schemas/MediaInfoCrop"
+        mastering:
+          $ref: "#/components/schemas/MediaInfoMasteringDisplay"
+        contentLight:
+          $ref: "#/components/schemas/MediaInfoContentLight"
+        hdr10Plus:
+          type: boolean
+          description: "The container carries HDR10+ dynamic metadata."
+        dolbyVision:
+          $ref: "#/components/schemas/MediaInfoDolbyVision"
+        filmGrain:
+          type: boolean
+          description: "AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown."
+        multiLayer:
+          type: boolean
+          description: "The stream has more than one layer, as MV-HEVC stereoscopic video does."
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoAudioTrack:
       type: object
@@ -9579,6 +9709,34 @@ components:
           type: string
         default:
           type: boolean
+        sampleRate:
+          type: integer
+          description: "Samples per second."
+        bitDepth:
+          type: integer
+        sampleFormat:
+          type: string
+          examples: [fltp, s16, s32]
+        bitRate:
+          type: integer
+          format: int64
+        replayGain:
+          $ref: "#/components/schemas/MediaInfoReplayGain"
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        serviceType:
+          type: string
+          enum: [main, effects, visually_impaired, hearing_impaired, dialogue, commentary, emergency, voice_over, karaoke]
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoSubtitleTrack:
       type: object
@@ -9603,6 +9761,18 @@ components:
           type: boolean
         hearingImpaired:
           type: boolean
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoEmbedded:
       type: object
@@ -9634,6 +9804,46 @@ components:
         coverArt:
           type: boolean
           description: "True when the file contains an attached picture."
+        album:
+          type: string
+        albumArtist:
+          type: string
+        composer:
+          type: string
+        show:
+          type: string
+        episode:
+          type: string
+        season:
+          type: string
+        network:
+          type: string
+          description: "Broadcaster or distributor tag."
+        synopsis:
+          type: string
+        copyright:
+          type: string
+        publisher:
+          type: string
+        encodedBy:
+          type: string
+        encoder:
+          type: string
+          description: "Software that wrote the file."
+        sourceUrl:
+          type: string
+          description: "Where a download tool fetched the file from."
+        keywords:
+          type: string
+        rating:
+          type: string
+        captureSoftware:
+          type: string
+          description: "The phone camera's software version."
+        captureFrameRate:
+          type: number
+          format: double
+          description: "The phone's capture rate; above the playback rate means slow motion."
 
     MediaInfoLocation:
       type: object
@@ -9660,6 +9870,205 @@ components:
           type: string
         program:
           type: string
+
+    MediaInfoStreamOrigin:
+      type: object
+      description: "What the writing tool or device recorded on the stream."
+      additionalProperties: false
+      properties:
+        encoder:
+          type: string
+        handler:
+          type: string
+          examples: [VideoHandler, "Core Media Audio"]
+        vendor:
+          type: string
+          description: "Vendor fourcc, such as appl."
+        createdAt:
+          type: string
+          format: date-time
+        timecode:
+          type: string
+          examples: ["01:00:00:00"]
+
+    MediaInfoTrackRoles:
+      type: object
+      description: "Purposes the file flags on the track; only true flags are present."
+      additionalProperties: false
+      properties:
+        dub:
+          type: boolean
+        original:
+          type: boolean
+        comment:
+          type: boolean
+          description: "Commentary."
+        visualImpaired:
+          type: boolean
+          description: "Audio description for visually impaired viewers."
+        hearingImpaired:
+          type: boolean
+        karaoke:
+          type: boolean
+        lyrics:
+          type: boolean
+        cleanEffects:
+          type: boolean
+          description: "Effects only, without dialogue."
+        captions:
+          type: boolean
+        descriptions:
+          type: boolean
+
+    MediaInfoReplayGain:
+      type: object
+      description: "ReplayGain tags as the file writes them, such as -6.50 dB."
+      additionalProperties: false
+      properties:
+        trackGain:
+          type: string
+        trackPeak:
+          type: string
+        albumGain:
+          type: string
+        albumPeak:
+          type: string
+
+    MediaInfoCrop:
+      type: object
+      description: "Cropping the container records, in pixels from each edge."
+      additionalProperties: false
+      properties:
+        top:
+          type: integer
+        bottom:
+          type: integer
+        left:
+          type: integer
+        right:
+          type: integer
+
+    MediaInfoMasteringDisplay:
+      type: object
+      description: "HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m²."
+      additionalProperties: false
+      properties:
+        redX: {type: number, format: double}
+        redY: {type: number, format: double}
+        greenX: {type: number, format: double}
+        greenY: {type: number, format: double}
+        blueX: {type: number, format: double}
+        blueY: {type: number, format: double}
+        whiteX: {type: number, format: double}
+        whiteY: {type: number, format: double}
+        minLuminance: {type: number, format: double}
+        maxLuminance: {type: number, format: double}
+
+    MediaInfoContentLight:
+      type: object
+      description: "HDR content light levels in cd/m²."
+      additionalProperties: false
+      properties:
+        maxContent:
+          type: integer
+          description: "MaxCLL."
+        maxAverage:
+          type: integer
+          description: "MaxFALL."
+
+    MediaInfoDolbyVision:
+      type: object
+      required: [profile]
+      additionalProperties: false
+      properties:
+        profile:
+          type: integer
+        level:
+          type: integer
+        compatibility:
+          type: integer
+          description: "dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG)."
+
+    MediaInfoContainer:
+      type: object
+      description: "What the container says about the file as a whole."
+      additionalProperties: false
+      properties:
+        startMs:
+          type: integer
+          format: int64
+          description: "The container's start time."
+        majorBrand:
+          type: string
+          examples: [isom, qt]
+        compatibleBrands:
+          type: array
+          items:
+            type: string
+        probeScore:
+          type: integer
+          description: "How sure ffprobe is of the format, out of 100."
+        encrypted:
+          type: boolean
+          description: "A stream is encrypted (DRM)."
+        attachments:
+          type: array
+          description: "Attached files such as fonts, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoAttachment"
+        dataStreams:
+          type: array
+          description: "Non-media streams such as GoPro telemetry, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoDataStream"
+        sizes:
+          $ref: "#/components/schemas/MediaInfoSizes"
+
+    MediaInfoAttachment:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        mimeType:
+          type: string
+        bytes:
+          type: integer
+          format: int64
+
+    MediaInfoDataStream:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+        codec:
+          type: string
+          examples: [gpmd, tmcd]
+        handler:
+          type: string
+
+    MediaInfoSizes:
+      type: object
+      description: "The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are."
+      additionalProperties: false
+      properties:
+        totalBytes:
+          type: integer
+          format: int64
+        videoBytes:
+          type: integer
+          format: int64
+        audioBytes:
+          type: integer
+          format: int64
+        subtitleBytes:
+          type: integer
+          format: int64
+        otherBytes:
+          type: integer
+          format: int64
 
     MediaInfoChapter:
       type: object
@@ -9819,10 +10228,14 @@ components:
 
     VersionCandidate:
       type: object
-      required: [videos, distance]
+      required: [videos, distance, judgement, recommendation]
       additionalProperties: false
       description: "Pair of potentially identical videos."
       properties:
+        recommendation:
+          $ref: "#/components/schemas/VersionRepresentativeRecommendation"
+        judgement:
+          $ref: "#/components/schemas/VersionCandidateJudgement"
         videos:
           type: array
           minItems: 2
@@ -9835,11 +10248,153 @@ components:
           minimum: 0
           description: "Median Hamming distance between video fingerprints; lower means more similar."
 
-    VersionCandidatePage:
+    VersionRepresentativeRecommendation:
       type: object
-      required: [items, total]
+      required: [videoId, reason]
+      additionalProperties: false
+      description: "The video whose file is the better representative, judged from the files alone."
+      properties:
+        videoId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          enum: [playable, audio, audio_sync, resolution, bitrate, older]
+          description: "The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen."
+
+    VersionCandidateJudgement:
+      type: object
+      required: [state, leftVideoId]
+      additionalProperties: false
+      description: "The automatic judgement of a listed pair."
+      properties:
+        state:
+          type: string
+          enum: [waiting, running, undecided, failed, no_connection, held]
+          description: "held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge."
+        activityId:
+          type: integer
+          format: int64
+          description: "The pair's version_judgement record; absent when none was opened, as while judging is off."
+        probability:
+          type: number
+          format: double
+          description: "The classifier's answer for an undecided pair; absent when the rule decided."
+        error:
+          type: string
+          description: "Why the last attempt failed."
+        retryAt:
+          type: string
+          format: date-time
+          description: "Next automatic retry of a failed pair."
+        leftVideoId:
+          type: integer
+          format: int64
+          description: "The video whose frames are on the left of the evidence images and whose times are evidence's aMs."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
+
+    VersionJudgeEvidence:
+      type: object
+      required: [rule, compared, differing]
+      additionalProperties: false
+      description: "Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md."
+      properties:
+        rule:
+          type: string
+          enum: [frames_match, frames_differ, incomparable]
+          description: "frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner."
+        compared:
+          type: integer
+          minimum: 0
+          description: "Frame pairs compared by time, flat frames skipped."
+        differing:
+          type: integer
+          minimum: 0
+          description: "Compared pairs whose pictures differ."
+        longestRun:
+          type: integer
+          minimum: 2
+          description: "Pairs in the longest run of consecutive differing pairs; absent without such a run."
+        runStartMs:
+          type: integer
+          format: int64
+          description: "Start of that run on the left video's timeline."
+        runEndMs:
+          type: integer
+          format: int64
+          description: "End of that run on the left video's timeline."
+        versionMismatch:
+          type: boolean
+          description: "The fingerprints were made by different fingerprint versions, so the frames could not be compared."
+        conflict:
+          type: boolean
+          description: "The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided."
+        properties:
+          type: array
+          description: "Properties both files have, read at import: chapters, recording time, embedded title and duration."
+          items:
+            $ref: "#/components/schemas/VersionPropertySignal"
+        byProperties:
+          type: boolean
+          description: "The properties decided the result, or held a different answer they contradict for the owner."
+        frames:
+          type: array
+          maxItems: 4
+          description: "The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image."
+          items:
+            $ref: "#/components/schemas/VersionEvidenceFrame"
+
+    VersionPropertySignal:
+      type: object
+      required: [kind, same, a, b]
       additionalProperties: false
       properties:
+        kind:
+          type: string
+          enum: [chapters, recorded_at, embedded_title, duration]
+        same:
+          type: boolean
+          description: "The two values agree: matching chapter starts, equal times or titles, or durations within a second."
+        strong:
+          type: boolean
+          description: "Decides a pair on its own: titled chapters at matching starts, or an equal recording time."
+        counts:
+          type: boolean
+          description: "Counted towards the verdict; a duration and a disagreeing value are shown only."
+        a:
+          type: string
+          description: "The left video's value: a chapter count, a time, a title or milliseconds."
+        b:
+          type: string
+          description: "The right video's value."
+
+    VersionEvidenceFrame:
+      type: object
+      required: [aMs, bMs, distance]
+      additionalProperties: false
+      properties:
+        aMs:
+          type: integer
+          format: int64
+          description: "Frame time in the left video."
+        bMs:
+          type: integer
+          format: int64
+          description: "Frame time in the right video."
+        distance:
+          type: integer
+          minimum: 0
+          description: "Hamming distance between the two frames' hashes; over 12 differs."
+
+    VersionCandidatePage:
+      type: object
+      required: [items, total, judging]
+      additionalProperties: false
+      properties:
+        judging:
+          type: boolean
+          description: "Whether duplicate judging is on, which a rejudge needs."
         items:
           type: array
           maxItems: 200
@@ -10569,6 +11124,8 @@ components:
           type: string
           format: date-time
           description: "Next retry timestamp for a failed version_judgement."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
         progress:
           $ref: "#/components/schemas/ActivityProgress"
         undoes:
@@ -10991,6 +11548,8 @@ components:
         - not_bundled
         - listen_failed
         - auto_tagging_off
+        - version_judging_off
+        - version_not_rejudgeable
         - comfyui_url_invalid
         - comfyui_api_key_missing
         - thumbnail_edit_not_found

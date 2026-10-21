@@ -163,6 +163,7 @@ export function useVideoPages({
           personRole: current.personRole,
           organization: current.organization,
           tagKind: current.tagKind,
+          hasVersions: current.hasVersions,
           addedWithin: current.addedWithin,
           minDuration: current.minDuration,
           maxDuration: current.maxDuration,

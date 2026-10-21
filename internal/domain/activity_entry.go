@@ -232,6 +232,8 @@ type ActivityEntry struct {
 	Replaced bool
 	// RetryAt is the next retry time for a failed version_judgement.
 	RetryAt time.Time
+	// Evidence is the latest frame rule result of a version_judgement entry.
+	Evidence *VersionJudgeEvidence
 	// Progress describes a running import after the waiting stage.
 	Progress *ActivityImportProgress
 	// Members are a pipeline's members in join order.
