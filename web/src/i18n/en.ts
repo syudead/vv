@@ -2630,6 +2630,33 @@ export const en = {
       right: "Right in the frames",
       noAudio: "No audio",
       moreAudio: (count: number) => `+${formatNumber(count)} more`,
+      recommended: "Recommended representative",
+      recommendedReason: {
+        playable: "It plays in the browser as is; the other needs converting",
+        audio: "It has audio and the other doesn't",
+        audio_sync: "Its audio runs as long as its video; the other's doesn't",
+        resolution: "It has the higher resolution",
+        bitrate: "Same resolution, with more video data per second",
+        older: "The files don't differ otherwise, so the one added first",
+      },
+      keepsData:
+        "Bundling keeps both videos' tags, favourites, playback position and work information, whichever you choose.",
+      hints: {
+        unplayable: "Needs converting to play in the browser",
+        encrypted: "Encrypted (DRM)",
+        largerNoMorePixels: (times: number) =>
+          `${formatDecimal(times, 1)}× the size without more pixels`,
+        audioShare: (share: number) =>
+          `Audio takes ${formatNumber(Math.round(share * 100))}% of the file`,
+        audioLate: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s after the video`,
+        audioEarly: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioShorter: (ms: number) =>
+          `Audio ends ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioLonger: (ms: number) =>
+          `Audio runs ${formatDecimal(ms / 1000, 1)} s past the video`,
+      },
     },
     judgement: {
       heading: "Automatic judgement",

@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -202,68 +201,4 @@ func VersionSidesConflict(a, b []string, differing [][2]string) bool {
 		}
 	}
 	return false
-}
-
-// OwnerData includes tags, progress, visibility, display name, applied thumbnail, or work info on the side's user-data key.
-type VersionSide struct {
-	Video     Video
-	OwnerData bool
-	Bundled   bool
-}
-
-// ChooseVersionRepresentative prefers a bundled side, then owner data, browser playback, audio, pixels, bitrate, and lower ID.
-func ChooseVersionRepresentative(sides [2]VersionSide) int {
-	if sides[0].Bundled != sides[1].Bundled {
-		return pickSide(sides[0].Bundled)
-	}
-	a, b := sides[0].Video, sides[1].Video
-	for _, order := range []int{
-		compareTrue(sides[0].OwnerData, sides[1].OwnerData),
-		compareTrue(a.Playable, b.Playable),
-		compareTrue(a.AudioCodec != "", b.AudioCodec != ""),
-		cmp.Compare(videoPixels(b), videoPixels(a)),
-		compareBitrate(a, b),
-		cmp.Compare(a.ID, b.ID),
-	} {
-		if order != 0 {
-			return pickSide(order < 0)
-		}
-	}
-	return 0
-}
-
-func pickSide(first bool) int {
-	if first {
-		return 0
-	}
-	return 1
-}
-
-func compareTrue(a, b bool) int {
-	switch {
-	case a == b:
-		return 0
-	case a:
-		return -1
-	default:
-		return 1
-	}
-}
-
-func videoPixels(v Video) int64 {
-	if v.Width == nil || v.Height == nil {
-		return 0
-	}
-	return int64(*v.Width) * int64(*v.Height)
-}
-
-// Compare bitrate by cross multiplication; unknown duration ranks lower.
-func compareBitrate(a, b Video) int {
-	aKnown := a.DurationMs != nil && *a.DurationMs > 0
-	bKnown := b.DurationMs != nil && *b.DurationMs > 0
-	if !aKnown || !bKnown {
-		return compareTrue(aKnown, bKnown)
-	}
-	// a.Size / a.Duration > b.Size / b.Duration ⇔ a.Size * b.Duration > b.Size * a.Duration。
-	return cmp.Compare(float64(b.SizeBytes)*float64(*a.DurationMs), float64(a.SizeBytes)*float64(*b.DurationMs))
 }

@@ -38,6 +38,11 @@ func TestBundledVersionsFoldToTheRepresentative(t *testing.T) {
 	x := attachNamedTag(t, db, "X", ids["a"])
 	y := attachNamedTag(t, db, "Y", ids["b"])
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
+	// Bundling merged Y into the bundle; removing it there leaves only B's own content-key row.
+	if _, err := db.sql.Exec(`delete from video_tags where content_key = ? and tag_id = ?`,
+		ownerVideo(t, db, ids["a"]).UserKey, y); err != nil {
+		t.Fatal(err)
+	}
 
 	want := []int64{ids["a"], ids["c"], ids["d"]}
 	if got := listedIDs(t, db, domain.VideoQuery{}); !slices.Equal(got, want) {

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -89,17 +88,11 @@ func versionProperties(ctx context.Context, tx *sql.Tx, key string) (domain.Vers
 		return properties, fmt.Errorf("cannot read the video properties (key=%s): %w", key, err)
 	}
 	properties.DurationMs = duration.Int64
-	var version int
-	var encoded string
-	err = tx.QueryRowContext(ctx, `select version, info from video_media_info where video_id = ?`, id).
-		Scan(&version, &encoded)
-	if errors.Is(err, sql.ErrNoRows) {
-		return properties, nil
-	}
+	info, err := readMediaInfo(ctx, tx, id)
 	if err != nil {
-		return properties, fmt.Errorf("cannot read the media information (id=%d): %w", id, err)
+		return properties, err
 	}
-	if info := decodeMediaInfo(version, encoded); info != nil {
+	if info != nil {
 		properties.Chapters = info.Chapters
 		if info.Embedded != nil {
 			properties.EmbeddedTitle, properties.RecordedAt = info.Embedded.Title, info.Embedded.RecordedAt
@@ -365,6 +358,7 @@ func bundleSamePair(ctx context.Context, tx *sql.Tx, keys [2]string) (appliedVer
 	if err != nil {
 		return appliedVerdict{}, err
 	}
+	plan.representativeByOwner = sides[chosen].side.OwnerChosen
 	outcome, err := applyBundle(ctx, tx, plan)
 	if err != nil {
 		return appliedVerdict{}, err
@@ -376,20 +370,20 @@ func bundleSamePair(ctx context.Context, tx *sql.Tx, keys [2]string) (appliedVer
 	}, nil
 }
 
-// Expand bundle membership and use the owner's effective representative; missing library videos fail.
+// Expand bundle membership and use the effective representative with its media information; missing library videos fail.
 func readJudgedSide(ctx context.Context, tx *sql.Tx, key string) (judgedSide, error) {
 	videoID, err := videoIDForContent(ctx, tx, key)
 	if err != nil {
 		return judgedSide{}, err
 	}
 	side := judgedSide{videoID: videoID, members: []string{key}, representativeKey: key}
-	representativeID, userKey := videoID, key
+	representativeID := videoID
 	bundle, bundled, err := bundleOf(ctx, tx, key)
 	if err != nil {
 		return judgedSide{}, err
 	}
 	if bundled {
-		side.side.Bundled, userKey, side.representativeKey = true, bundle.userKey, bundle.representativeKey
+		side.side.OwnerChosen, side.representativeKey = bundle.byOwner, bundle.representativeKey
 		if side.members, err = bundleMemberKeys(ctx, tx, bundle.id); err != nil {
 			return judgedSide{}, err
 		}
@@ -404,37 +398,10 @@ func readJudgedSide(ctx context.Context, tx *sql.Tx, key string) (judgedSide, er
 	if side.side.Video, err = getVideo(ctx, tx, domain.AudienceOwner, representativeID); err != nil {
 		return judgedSide{}, err
 	}
-	if side.side.OwnerData, err = hasOwnerData(ctx, tx, userKey, side.side.Video.ContentKey); err != nil {
+	if side.side.Media, err = readMediaInfo(ctx, tx, representativeID); err != nil {
 		return judgedSide{}, err
 	}
 	return side, nil
-}
-
-// Check shared user-data keys for tags/progress/visibility/work info, and content keys for display names/applied thumbnails.
-var ownerDataCondition = buildOwnerDataCondition()
-
-func buildOwnerDataCondition() string {
-	conditions := []string{
-		`exists (select 1 from video_tags where content_key = ?1 and tentative = 0)`,
-		`exists (select 1 from playback_progress where content_key = ?1)`,
-		`exists (select 1 from public_videos where content_key = ?1)`,
-		`exists (select 1 from video_overrides where content_key = ?2 and display_name is not null)`,
-		`exists (select 1 from thumbnail_images where content_key = ?2)`,
-	}
-	for _, t := range userDataTables {
-		if strings.HasPrefix(t.table, "video_work_") {
-			conditions = append(conditions, `exists (select 1 from `+t.table+` where content_key = ?1)`)
-		}
-	}
-	return strings.Join(conditions, " or ")
-}
-
-func hasOwnerData(ctx context.Context, tx *sql.Tx, userKey, contentKey string) (bool, error) {
-	var found bool
-	if err := tx.QueryRowContext(ctx, `select `+ownerDataCondition, userKey, contentKey).Scan(&found); err != nil {
-		return false, fmt.Errorf("cannot read the owner's data: %w", err)
-	}
-	return found, nil
 }
 
 func differingPairs(ctx context.Context, tx *sql.Tx, keys []string) ([][2]string, error) {

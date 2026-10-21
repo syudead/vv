@@ -6,6 +6,7 @@ import {
   getVideo,
   isAborted,
   RequestFailed,
+  type VersionRepresentativeRecommendation,
   type Video,
   type VideoVersions,
 } from "../api/client";
@@ -27,18 +28,20 @@ type Rows =
 const scrollAfterRows = 6;
 
 /**
- * Keep videoIds order and leave the representative unselected initially; supplied videos skip only
- * the initial read. Failures preserve the selection and callers own closing after onBundled.
+ * Keep videoIds order and select only a recommended representative initially; supplied videos skip
+ * only the initial read. Failures preserve the selection and callers own closing after onBundled.
  */
 export default function BundleDialog({
   videoIds,
   videos,
+  recommendation,
   onClose,
   onBundled,
 }: {
   videoIds: readonly number[];
   /** Must follow videoIds order. */
   videos?: readonly Video[];
+  recommendation?: VersionRepresentativeRecommendation;
   onClose: () => void;
   onBundled: (versions: VideoVersions) => void;
 }) {
@@ -48,7 +51,9 @@ export default function BundleDialog({
   const [rows, setRows] = useState<Rows>(() =>
     videos === undefined ? { kind: "loading" } : { kind: "ready", videos },
   );
-  const [representative, setRepresentative] = useState<number | null>(null);
+  const [representative, setRepresentative] = useState<number | null>(
+    recommendation?.videoId ?? null,
+  );
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -140,7 +145,11 @@ export default function BundleDialog({
         if (!open) handleClose();
       }}
       title={t.versions.bundle.title}
-      description={t.versions.bundle.description(count)}
+      description={
+        recommendation === undefined
+          ? t.versions.bundle.description(count)
+          : `${t.versions.bundle.description(count)} ${t.versions.duplicates.keepsData}`
+      }
       onSubmit={(event) => {
         event.preventDefault();
         submit();
@@ -192,7 +201,16 @@ export default function BundleDialog({
           )}
         >
           {rows.videos.map((video) => (
-            <RepresentativeRow key={video.id} video={video} disabled={pending} />
+            <RepresentativeRow
+              key={video.id}
+              video={video}
+              disabled={pending}
+              recommended={
+                recommendation?.videoId === video.id
+                  ? t.versions.duplicates.recommendedReason[recommendation.reason]
+                  : undefined
+              }
+            />
           ))}
         </RadioGroup>
       )}
@@ -206,7 +224,16 @@ export default function BundleDialog({
   );
 }
 
-function RepresentativeRow({ video, disabled }: { video: Video; disabled: boolean }) {
+function RepresentativeRow({
+  video,
+  disabled,
+  recommended,
+}: {
+  video: Video;
+  disabled: boolean;
+  /** The reason it is recommended as the representative. */
+  recommended?: string;
+}) {
   const details = versionDetails(video);
   // This owner-only dialog may expose the absolute path in title.
   const detailsTitle = versionDetailsText(
@@ -242,6 +269,11 @@ function RepresentativeRow({ video, disabled }: { video: Video; disabled: boolea
         {note !== "" && (
           <span className="truncate text-xs text-muted-foreground" title={note}>
             {note}
+          </span>
+        )}
+        {recommended !== undefined && (
+          <span className="text-xs text-success">
+            {t.versions.duplicates.recommended} · {recommended}
           </span>
         )}
       </span>

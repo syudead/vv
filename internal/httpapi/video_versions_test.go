@@ -150,8 +150,8 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if !ok {
 		t.Fatal("代表を替えたあとのライブラリに b が無い")
 	}
-	if names := tagNames(item.Tags); !slices.Contains(names, "X") || slices.Contains(names, "Y") {
-		t.Errorf("代表を替えたあとの b のタグ = %v, want X を含み Y を含まない", names)
+	if names := tagNames(item.Tags); !slices.Contains(names, "X") || !slices.Contains(names, "Y") {
+		t.Errorf("代表を替えたあとの b のタグ = %v, want 両側の X と Y", names)
 	}
 
 	sub.take()

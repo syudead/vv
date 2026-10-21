@@ -50,11 +50,16 @@ function pair(
   first: Video,
   second: Video,
   judgement: Partial<VersionCandidate["judgement"]> = {},
+  recommendation: VersionCandidate["recommendation"] = {
+    videoId: first.id,
+    reason: "resolution",
+  },
 ): VersionCandidate {
   return {
     videos: [first, second],
     distance: 3,
     judgement: { state: "waiting", leftVideoId: first.id, ...judgement },
+    recommendation,
   };
 }
 
@@ -290,7 +295,11 @@ describe("DuplicatesPage", () => {
       "/media/movies/anime/劇場版.mkv",
     );
 
+    expect(within(left).getByText("Recommended representative")).toBeDefined();
+    expect(within(left).getByText("It has the higher resolution")).toBeDefined();
+
     const right = within(item).getByRole("link", { name: "劇場版 720p 1:00" });
+    expect(within(right).queryByText("Recommended representative")).toBeNull();
     expect(within(right).getByText("1280×720")).toBeDefined();
     expect(within(right).getByText("1.0 GB")).toBeDefined();
     expect(within(right).getByText("backup / old")).toBeDefined();
@@ -442,6 +451,39 @@ describe("DuplicatesPage", () => {
     expect(location).toEqual({ pathname: "/videos/2", state: { from: "/duplicates" } });
   });
 
+  it("選ぶ材料として、画素が増えないのに大きいこと・音声の割合・音声のずれと長さの差を出す", async () => {
+    const bloated = video(3, {
+      title: "大きい版",
+      width: 1280,
+      height: 720,
+      sizeBytes: 3 * 1024 * 1024 * 1024,
+      mediaInfo: {
+        video: { hdr: "sdr", startMs: 0, durationMs: 600_000 },
+        audioTracks: [{ index: 1, codec: "flac", startMs: 1200, durationMs: 580_000 }],
+        container: {
+          sizes: {
+            totalBytes: 3 * 1024 * 1024 * 1024,
+            audioBytes: 1.5 * 1024 * 1024 * 1024,
+          },
+        },
+      },
+    });
+    server.candidates = [
+      pair(movieB, bloated, {}, { videoId: movieB.id, reason: "audio_sync" }),
+    ];
+    renderPage();
+    const bloatedLink = await screen.findByRole("link", { name: "大きい版 1:00" });
+    expect(
+      within(bloatedLink).getByText(
+        "3× the size without more pixels · Audio takes 50% of the file · Audio starts 1.2 s after the video · Audio ends 20 s before the video",
+      ),
+    ).toBeDefined();
+    const kept = screen.getByRole("link", { name: "劇場版 720p 1:00" });
+    expect(
+      within(kept).getByText("Its audio runs as long as its video; the other's doesn't"),
+    ).toBeDefined();
+  });
+
   it("「Same video…」で代表を選んで束ねると組が消え、件数が減り、次の組へフォーカスが移る", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -452,6 +494,12 @@ describe("DuplicatesPage", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    expect(
+      within(dialog)
+        .getByRole("radio", { name: /^劇場版,/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(within(dialog).getByText(/keeps both videos' tags/)).toBeDefined();
     const radios = within(dialog).getAllByRole("radio");
     expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([
       expect.stringContaining("劇場版"),

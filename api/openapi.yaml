@@ -10209,10 +10209,12 @@ components:
 
     VersionCandidate:
       type: object
-      required: [videos, distance, judgement]
+      required: [videos, distance, judgement, recommendation]
       additionalProperties: false
       description: "Pair of potentially identical videos."
       properties:
+        recommendation:
+          $ref: "#/components/schemas/VersionRepresentativeRecommendation"
         judgement:
           $ref: "#/components/schemas/VersionCandidateJudgement"
         videos:
@@ -10226,6 +10228,20 @@ components:
           type: integer
           minimum: 0
           description: "Median Hamming distance between video fingerprints; lower means more similar."
+
+    VersionRepresentativeRecommendation:
+      type: object
+      required: [videoId, reason]
+      additionalProperties: false
+      description: "The video whose file is the better representative, judged from the files alone."
+      properties:
+        videoId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          enum: [playable, audio, audio_sync, resolution, bitrate, older]
+          description: "The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen."
 
     VersionCandidateJudgement:
       type: object

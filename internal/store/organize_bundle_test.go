@@ -55,8 +55,8 @@ func TestOrganizeBundleMakesTargetRepresentative(t *testing.T) {
 	if a := ownerVideo(t, db, ids["a"]); a.UserKey != b.UserKey {
 		t.Fatalf("UserKey = %q / %q", a.UserKey, b.UserKey)
 	}
-	if got := manualTagNames(t, db, b.UserKey); !slices.Equal(got, []string{"Y"}) {
-		t.Errorf("集まりのタグ = %v, want [Y]", got)
+	if got := manualTagNames(t, db, b.UserKey); !slices.Equal(got, []string{"X", "Y"}) {
+		t.Errorf("集まりのタグ = %v, want 両側の [X Y]", got)
 	}
 	want := domain.VideoBundleChanged{VideoIDs: []int64{ids["a"], ids["b"]}}
 	if len(recorder.events) == 0 || !eventsEqual(recorder.events[0], want) {
