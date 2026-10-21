@@ -78,6 +78,10 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** What the merge into the person answers, when not the person with nothing missing. */
+  /** How many candidate reads fail before they succeed again. */
+  candidateFailures: 0,
+  mergeAnswer: null as { person: Person | null; notFoundIds: number[] } | null,
   /** Whether face recognition is on, as the settings report it. */
   faceRecognition: true,
   /** How many videos the person performs in. */
@@ -127,6 +131,10 @@ function pluginRoute(method: string, url: URL, body: unknown): Response | null {
 
 function faceRoute(method: string, url: URL): Response | null {
   if (url.pathname === "/api/people/7/face-candidates") {
+    if (server.candidateFailures > 0) {
+      server.candidateFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
     return jsonResponse({ items: server.faceCandidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
@@ -169,7 +177,11 @@ function faceRoute(method: string, url: URL): Response | null {
     return jsonResponse(server.mergeTarget);
   }
   if (url.pathname === "/api/people/7/merge" && method === "POST") {
-    return jsonResponse({ person: server.person, notFoundIds: [] });
+    const merged = server.mergeAnswer ?? { person: server.person, notFoundIds: [] };
+    return jsonResponse(merged);
+  }
+  if (url.pathname === "/api/people/7/image" && method === "DELETE") {
+    return jsonResponse(server.person);
   }
   const target = server.mergeTarget;
   if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {
@@ -229,6 +241,8 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.mergeAnswer = null;
+    server.candidateFailures = 0;
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(
