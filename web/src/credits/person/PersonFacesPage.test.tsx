@@ -241,6 +241,14 @@ describe("PersonFacesPage", () => {
     expect(await screen.findByText('Merged into "Alice"')).toBeTruthy();
     expect(await screen.findByRole("link", { name: "Back to Alice" })).toBeTruthy();
     expect(sent("POST", "/api/people/7/face-candidates/9/confirm")).toHaveLength(1);
+
+    // The merged-away person's Undo comes along in the toast and brings their page back; Sonner captures the pointer.
+    Element.prototype.setPointerCapture ??= () => undefined;
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByRole("link", { name: "Back to #7" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
   });
 
   it("keeps a confirmed pair in place and reads nothing again until Refresh", async () => {
@@ -274,6 +282,45 @@ describe("PersonFacesPage", () => {
     );
     expect(candidateReads()).toBeGreaterThan(before.candidates);
     expect(faceReads()).toBeGreaterThan(before.faces);
+  });
+
+  it("undoes Same person by its merge entry and offers the pair again", async () => {
+    const user = userEvent.setup();
+    server.faceCandidates = [candidate(9, "")];
+    // The merge gives the faceless shown person #9's face, which the undo takes back.
+    server.mergeTarget = person({ imageRevision: 5 });
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
+    expect(await screen.findByText("Merged into Aoi")).toBeTruthy();
+    const pair = screen.getByRole("group", { name: "Pair with #9" });
+    expect(within(pair).getByRole("img", { name: "Aoi" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Undo for #9" }));
+
+    expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
+    await waitFor(() =>
+      expect(within(pair).queryByRole("img", { name: "Aoi" })).toBeNull(),
+    );
+  });
+
+  it("only reopens the pair when Undo is pressed again after the reopen failed", async () => {
+    const user = userEvent.setup();
+    server.faceCandidates = [candidate(9, "")];
+    server.mergeTarget = person();
+    server.reopenFailures = 1;
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
+    await user.click(await screen.findByRole("button", { name: "Undo for #9" }));
+    await screen.findByText(/Couldn't undo/);
+    await user.click(screen.getByRole("button", { name: "Undo for #9" }));
+
+    expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(2);
   });
 
   it("keeps a dismissed pair with Undo, which reopens it", async () => {

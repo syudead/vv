@@ -727,6 +727,13 @@ is the target person, and it keeps what the merge moved.
 | `activity_entry_person_merges` | The source and target ids, and a JSON snapshot: the source's row, profile, favorite, face and vector, appearance ids, candidate pairs and the smart folders whose rule named it; the target's profile before and after, and the favorite and face revision the merge gave it |
 | `activity_entry_merge_credits` | Each credit the source had, by user key and role, with `target_had` when the target already had it                                                                                                                                                                           |
 
+The faces page's `Undo` of a confirmed pair uses the same entry, so
+`UndoOffered` accepts a `face_merge` decided by the owner as it does an
+automatic one; the page then reopens the pair, which undo marks dismissed. The
+snapshot keeps no external IDs, so a confirmed unnamed person who holds one is
+merged as a named person is, with no entry and no `Undo`, rather than lose the
+ID to the target on undo.
+
 Undo re-creates the source under its old id, which SQLite's `AUTOINCREMENT`
 never hands out again, so links to the person page work again. It then moves
 back only what the owner has not changed since.
@@ -749,12 +756,12 @@ and stays. A name the owner gives the target is never touched. Undo of an entry
 whose target was deleted, or whose source id exists again, records
 `already_reverted` and changes nothing.
 
-| Rejected                             | Why                                                                                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Keep merged sources as hidden rows   | Every read of people and credits would have to skip them                                                         |
-| Compare the credits at undo          | A credit the owner removed and added again looks unchanged                                                       |
-| Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry                       |
-| Leave the undone pair open           | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again |
+| Rejected                           | Why                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Keep merged sources as hidden rows | Every read of people and credits would have to skip them                                                           |
+| Compare the credits at undo        | A credit the owner removed and added again looks unchanged                                                         |
+| Make every owner merge undoable    | A merge from the people list or the person page has no faces page to undo it from, and owner merges write no entry |
+| Leave the undone pair open         | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again   |
 
 ## Face entries on the activity screen
 
@@ -783,11 +790,11 @@ and the people API names it by its two people in either order
 `GET /api/people/{id}/face-candidates` lists the open pairs a person takes part
 in as the other person of each, highest similarity first.
 
-| Action  | Effect                                                                                                                                                                          |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Confirm | The ordinary merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
-| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                |
-| Reopen  | Clears `dismissed` on a dismissed pair, for the faces page's `Undo`; the pair is offered again as before                                                                        |
+| Action  | Effect                                                                                                                                                                                                                                                                                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirm | The merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; an unnamed source is merged as `MergeProvisional` does and recorded as a `face_merge` entry decided by the owner, whose id the response carries as `undoActivityId`, and a named source by the ordinary merge with no entry |
+| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                                                                                                                                                                         |
+| Reopen  | Clears `dismissed` on a dismissed pair, for the faces page's `Undo`; the pair is offered again as before                                                                                                                                                                                                                                 |
 
 The person confirmed from stays, with their face, whichever side the pair
 stores as provisional; only when that person has no canonical name and the

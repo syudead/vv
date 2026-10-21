@@ -78,9 +78,11 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
-  /** What the merge into the person answers, when not the person with nothing missing. */
+  /** How many reopen requests fail before they succeed again. */
+  reopenFailures: 0,
   /** How many candidate reads fail before they succeed again. */
   candidateFailures: 0,
+  /** What the merge into the person answers, when not the person with nothing missing. */
   mergeAnswer: null as { person: Person | null; notFoundIds: number[] } | null,
   /** Whether face recognition is on, as the settings report it. */
   faceRecognition: true,
@@ -169,12 +171,21 @@ function faceRoute(method: string, url: URL): Response | null {
       url.pathname,
     );
   if (pair !== null && method === "POST") {
-    if (pair[2] === "reopen") return new Response(null, { status: 204 });
+    if (pair[2] === "reopen") {
+      if (server.reopenFailures > 0) {
+        server.reopenFailures -= 1;
+        return jsonResponse({ code: "internal", message: "Down" }, 500);
+      }
+      return new Response(null, { status: 204 });
+    }
     server.faceCandidates = server.faceCandidates.filter(
       (item) => item.person.id !== Number(pair[1]),
     );
     if (pair[2] === "dismiss") return new Response(null, { status: 204 });
-    return jsonResponse(server.mergeTarget);
+    return jsonResponse({ person: server.mergeTarget, undoActivityId: 31 });
+  }
+  if (url.pathname === "/api/activity/31/undo" && method === "POST") {
+    return jsonResponse({ id: 32 });
   }
   if (url.pathname === "/api/people/7/merge" && method === "POST") {
     const merged = server.mergeAnswer ?? { person: server.person, notFoundIds: [] };
@@ -241,6 +252,7 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.reopenFailures = 0;
     server.mergeAnswer = null;
     server.candidateFailures = 0;
     server.faceRecognition = true;

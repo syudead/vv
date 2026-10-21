@@ -115,6 +115,13 @@ type CreditPage struct {
 	NextCursor string
 }
 
+// FaceCandidateConfirmation is the person a confirmed face pair merged into, with the face_merge entry that undoes
+// the merge, or 0 when the merged person had a name and the merge cannot be undone.
+type FaceCandidateConfirmation struct {
+	Person         Credit
+	UndoActivityID int64
+}
+
 type CreditMergeOutcome struct {
 	Credit Credit
 	// NotFoundIDs deduplicates missing sources in input order and is empty when none are missing.

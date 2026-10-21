@@ -336,9 +336,13 @@ then `Not the same` and `Same person`. One face alone is a poor basis for the
 decision, so the crops are the first four with a crop among each person's
 first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
-and the row reads `Merged into {name}`; only an unnamed person confirmed with a
-named one is merged away, and the page then opens the named person's faces
-page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
+and the row reads `Merged into {name}`, with `Undo` when the merged person had
+no name, which takes the merge back, reads the shown person again since the
+undo can take back a face the merge gave them, and offers the pair again; a retry after
+the merge was undone but the pair not reopened only reopens it. Only an unnamed
+person confirmed with a named one is merged away, and the page then opens the
+named person's faces page with a `Merged into "{name}"` toast whose `Undo`
+takes the merge back and returns to the unnamed person's page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
 A pressed row disables only its own buttons.
 
 `Faces in videos` is a `CardGrid size="face"` of `PersonFace scene` crops,

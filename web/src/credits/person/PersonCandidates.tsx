@@ -108,7 +108,9 @@ export function useFaceSample(personId: number, attempt = 0): FaceSample {
 
 export interface CandidateActions {
   /** Confirms the pair and updates the page; a rejection is shown under the row. */
-  confirm: (other: FaceCandidatePerson) => Promise<void>;
+  confirm: (other: FaceCandidatePerson) => Promise<number | undefined>;
+  /** Undoes a confirmed merge by its face_merge entry and reopens the pair. */
+  undoConfirm: (other: FaceCandidatePerson, activityId: number) => Promise<void>;
   remove: (otherId: number) => void;
   /** Counts the pair as decided, or as waiting again after Undo. */
   decide: (otherId: number, done: boolean) => void;
@@ -164,17 +166,25 @@ function useCandidateDecision(
   actions: CandidateActions,
 ) {
   const [decision, setDecision] = useState<Decision>(null);
+  // The face_merge entry that undoes a confirm; a merge of a named person has none.
+  const [undoId, setUndoId] = useState<number | undefined>(undefined);
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<UiText | null>(null);
+
+  function act(kind: Exclude<Pending, null>): Promise<void> {
+    if (kind === "confirm") return actions.confirm(other).then(setUndoId);
+    if (kind === "dismiss") return dismissFaceCandidate(shown.id, other.id);
+    if (decision === "merged" && undoId !== undefined)
+      return actions.undoConfirm(other, undoId);
+    return reopenFaceCandidate(shown.id, other.id);
+  }
 
   async function run(kind: Exclude<Pending, null>) {
     if (pending !== null) return;
     setPending(kind);
     setError(null);
     try {
-      if (kind === "confirm") await actions.confirm(other);
-      else if (kind === "dismiss") await dismissFaceCandidate(shown.id, other.id);
-      else await reopenFaceCandidate(shown.id, other.id);
+      await act(kind);
       setDecision(
         kind === "confirm" ? "merged" : kind === "dismiss" ? "dismissed" : null,
       );
@@ -187,7 +197,13 @@ function useCandidateDecision(
       setPending(null);
     }
   }
-  return { decision, pending, error, run };
+  return {
+    decision,
+    undoable: decision === "dismissed" || undoId !== undefined,
+    pending,
+    error,
+    run,
+  };
 }
 
 function failureText(kind: Exclude<Pending, null>): (reason: string) => UiText {
@@ -209,7 +225,11 @@ function CandidateRow({
   const other = candidate.person;
   const name = creditDisplayName(other);
   const otherSample = useFaceSample(other.id);
-  const { decision, pending, error, run } = useCandidateDecision(shown, other, actions);
+  const { decision, undoable, pending, error, run } = useCandidateDecision(
+    shown,
+    other,
+    actions,
+  );
 
   return (
     <div role="group" aria-label={text.pairLabel(name)} className="flex flex-col gap-3">
@@ -261,7 +281,7 @@ function CandidateRow({
           {decision === "merged"
             ? text.mergedResult(creditDisplayName(shown))
             : text.dismissedResult}
-          {decision === "dismissed" && (
+          {undoable && (
             <ActionButton
               variant="ghost"
               label={text.undo}
