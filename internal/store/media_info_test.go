@@ -49,6 +49,10 @@ func TestApplyProbeForJobWritesMediaInfo(t *testing.T) {
 		got.Embedded == nil || got.Embedded.RecordedAt != "2024-05-01T12:34:56+09:00" || len(got.Chapters) != 1 {
 		t.Fatalf("got = %+v", got)
 	}
+	if infos, err := db.Library().MediaInfos(ctx, []int64{videoID, videoID + 1000}); err != nil || len(infos) != 1 ||
+		infos[videoID] == nil || infos[videoID].Video.HDR != domain.HDRKindHDR10 {
+		t.Fatalf("MediaInfos = %+v, %v, want 情報のある動画だけ", infos, err)
+	}
 
 	if _, err := db.sql.Exec(`update video_media_info set version = version + 1 where video_id = ?`, videoID); err != nil {
 		t.Fatal(err)

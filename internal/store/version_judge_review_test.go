@@ -99,3 +99,16 @@ func TestCandidatesReportOwnerHeldPairsAsHeld(t *testing.T) {
 	}
 	expectNoClaim(t, db, "持ち主が止めた組")
 }
+
+func TestSuccessionDropsTheJudgementFrames(t *testing.T) {
+	db, _ := judgementFixture(t)
+	entry := judgePair(t, db, domain.VersionJudgeResult{
+		Verdict: domain.VersionSame, Decider: domain.ActivityByRule, Evidence: testEvidence(),
+	})
+	succeedA(t, db)
+
+	_, evidence, err := db.Versions().JudgementEvidence(context.Background(), entry.ID)
+	if err != nil || evidence == nil || evidence.Frames != nil || evidence.Compared != 12 {
+		t.Errorf("引き継いだあとの根拠 = %+v, %v, want 数は残りコマは無い", evidence, err)
+	}
+}

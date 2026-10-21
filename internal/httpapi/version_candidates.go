@@ -35,13 +35,19 @@ func (s *server) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 	}
 	items := s.versionItems(r, videos)
 	// Owners compare the two files' bit rate, frame rate and audio, which only the detail's media information has.
-	for i := range items {
-		video, err := s.mediaInfoForDetail(r.Context(), videos[i])
+	if s.mediaInfo != nil {
+		ids := make([]int64, 0, len(videos))
+		for _, video := range videos {
+			ids = append(ids, video.ID)
+		}
+		infos, err := s.mediaInfo.MediaInfos(r.Context(), ids)
 		if err != nil {
 			s.internalError(w, "Could not load the possible duplicates.", err)
 			return
 		}
-		items[i].MediaInfo = toAPIMediaInfo(video.MediaInfo)
+		for i := range items {
+			items[i].MediaInfo = toAPIMediaInfo(infos[videos[i].ID])
+		}
 	}
 	payload := gen.VersionCandidatePage{
 		Items: make([]gen.VersionCandidate, 0, len(page.Items)), Total: page.Total, Judging: judging,

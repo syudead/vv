@@ -79,7 +79,10 @@ reads it from the entry. A waiting pair that the claim skips for a
 `GET /api/activity/{id}/judgement-frames/{index}` cuts the indexed pair from
 the two current seek previews, as the request to the classifier did, instead
 of storing the images: the evidence is a few hundred bytes per pair, and a
-stored copy would outlive the seek preview it came from.
+stored copy would outlive the seek preview it came from. A content change at
+the same path removes `frames` from the pair entries of the old key before
+re-keying them, since the frame indexes point into the old content's seek
+preview; the counts and the sentences stay.
 The screen states the thresholds next to the probability, so a 55% answer
 reads as between the 20% and 80% that would decide.
 

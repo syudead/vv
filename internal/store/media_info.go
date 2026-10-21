@@ -44,12 +44,43 @@ func (s *LibraryStore) MediaInfo(ctx context.Context, videoID int64) (*domain.Me
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the media information (id=%d): %w", videoID, err)
 	}
+	return decodeMediaInfo(version, encoded), nil
+}
+
+// MediaInfos reads MediaInfo for several videos in one query; videos without current information are absent.
+func (s *LibraryStore) MediaInfos(ctx context.Context, videoIDs []int64) (map[int64]*domain.MediaInfo, error) {
+	ids, _ := json.Marshal(videoIDs) // Marshaling integers cannot fail.
+	rows, err := s.db.sql.QueryContext(ctx, `select video_id, version, info from video_media_info
+		where video_id in (select value from json_each(?))`, string(ids))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the media information: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	infos := map[int64]*domain.MediaInfo{}
+	for rows.Next() {
+		var id int64
+		var version int
+		var encoded string
+		if err := rows.Scan(&id, &version, &encoded); err != nil {
+			return nil, fmt.Errorf("cannot read the media information: %w", err)
+		}
+		if info := decodeMediaInfo(version, encoded); info != nil {
+			infos[id] = info
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the media information: %w", err)
+	}
+	return infos, nil
+}
+
+func decodeMediaInfo(version int, encoded string) *domain.MediaInfo {
 	if version != domain.MediaInfoVersion {
-		return nil, nil
+		return nil
 	}
 	var info domain.MediaInfo
 	if json.Unmarshal([]byte(encoded), &info) != nil {
-		return nil, nil
+		return nil
 	}
-	return &info, nil
+	return &info
 }
