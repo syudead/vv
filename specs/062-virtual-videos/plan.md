@@ -36,7 +36,8 @@ playlist playback and merging gain a virtual branch
 | Guests read description and links | [R-5](research.md#r-5-guests-read-description-and-links) |
 | Screen API additions | [contracts/screen-api.md](contracts/screen-api.md) |
 | Merge rules | [R-8](research.md#r-8-merge-moves-user-data-into-the-file-videos-user-key) |
-| Out of scope: external API, MCP, version bundles | [R-4](research.md#r-4-visibility-gains-a-virtual-branch), [R-10](research.md#r-10-virtual-videos-stay-out-of-version-bundles) |
+| Fetched work information applies to a virtual video | [R-11](research.md#r-11-fetched-work-information-applies-to-a-virtual-video) |
+| Out of scope: external API, MCP, version bundles, a link plugin for any site and running a plugin by the link's domain | [R-4](research.md#r-4-visibility-gains-a-virtual-branch), [R-10](research.md#r-10-virtual-videos-stay-out-of-version-bundles), [R-11](research.md#r-11-fetched-work-information-applies-to-a-virtual-video) |
 
 The screens follow `ui-design.md`, which the `design` stage adds before
 `plan-to-issues` because the parent carries the `ui` label.
@@ -101,6 +102,7 @@ flowchart LR
   api --> lib[Library create and mark]
   api --> page[Virtual video page]
   thumb --> page
+  thumb --> fetch[Fetched work info]
   merge --> mergeui[Merge from page]
   page --> mergeui
 ```
@@ -157,6 +159,23 @@ publication through `internal/artifacts`, republication at startup, and
 16:9 and stored under the virtual key; a handler test shows the thumbnail URL
 served after upload and `409 virtual_video` on frame position; deleting the
 virtual video releases the artifact.
+
+### Apply fetched work information to virtual videos
+
+**Scope**: The work-info plugin apply for a virtual video: the title written
+to `virtual_videos`, the cover applied through the virtual thumbnail path,
+and the other fields as for a file video
+([R-11](research.md#r-11-fetched-work-information-applies-to-a-virtual-video)).
+The video page's existing fetch dialog works unchanged.
+
+**Dependencies**: Virtual video thumbnails from an uploaded image
+
+**Acceptance**: Store tests against SQLite show a fetched title, description,
+date and link applied to a virtual video, its title in `virtual_videos` and
+none in `video_overrides`, and a stale plugin approval leaving it unchanged.
+An `internal/app` test with fakes shows the chosen cover stored under the
+virtual key at 16:9. A handler test shows the apply answering `200` for a
+virtual video instead of `404`.
 
 ### Skip virtual videos in playlist continuous play
 

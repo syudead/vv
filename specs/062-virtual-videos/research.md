@@ -190,3 +190,22 @@ virtual video with `409 virtual_video`.
 **Rationale**: A bundle chooses a representative file to play, and a virtual
 video has no fingerprints, so it is never a duplicate candidate; merging
 (R-8) is the operation that joins a virtual video to a file video.
+
+## R-11: Fetched work information applies to a virtual video
+
+**Decision**: Applying a work-info plugin's fetch result to a virtual video
+writes the fetched title to `virtual_videos.title` and applies the chosen
+cover through the virtual thumbnail path of R-7; the other fields go to work
+information under the virtual key as for a file video.
+
+| Option | Verdict |
+| --- | --- |
+| **Branch the existing apply for a virtual video** | Chosen |
+| Leave fetching to file videos only | Rejected: a virtual video has no file title to start from, so filling it from its link is where fetching helps most |
+| A separate apply operation for virtual videos | Rejected: copies the plugin approval check, credit matching and field selection the existing apply already does in one transaction |
+
+**Rationale**: The existing apply finds the video through its registered
+location and writes the title to `video_overrides`, so without the branch it
+answers `404` for every virtual video. A link plugin that reads any site, and
+running a plugin chosen by the link's domain without the owner starting it,
+are a separate feature (#1551).
