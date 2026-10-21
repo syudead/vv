@@ -84,6 +84,60 @@ describe("FacePickerDialog", () => {
     expect(sent("PUT", "/api/people/7/image")).toHaveLength(0);
   });
 
+  it("keeps the dialog open with the refusal when the face is not accepted", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    server.appearances = [beach];
+    server.imageRefusal = "person_image_no_face";
+    renderPage();
+    const dialog = await openPicker(user);
+    await waitFor(() =>
+      expect(dialog.querySelector("img[src*='/frame']")).not.toBeNull(),
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Set as face" }));
+
+    expect(
+      await within(dialog).findByText(
+        "No face was found in this image. Choose a photo where the face is clear.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: /Choose a face/ })).toBeTruthy();
+  });
+
+  it("moves the frame with the arrow keys before cutting it", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    server.appearances = [beach];
+    renderPage();
+    const dialog = await openPicker(user);
+
+    // One step is a hundredth of the frame's width: 10 of its 1000 px.
+    const area = await within(dialog).findByRole("application", { name: "Face area" });
+    area.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(within(dialog).getByRole("button", { name: "Set as face" }));
+
+    await waitFor(() => expect(encodeFaceFrame).toHaveBeenCalled());
+    const [, rect] = vi.mocked(encodeFaceFrame).mock.calls[0] ?? [];
+    expect((rect?.x ?? 0) + (rect?.width ?? 0) / 2).toBeCloseTo(510);
+  });
+
+  it("says so when the person has no faces from videos", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    server.appearances = [];
+    renderPage();
+    const dialog = await openPicker(user);
+
+    expect(await within(dialog).findByText(/No faces from videos yet/)).toBeTruthy();
+    expect(
+      within(dialog)
+        .getByRole("button", { name: "Set as face" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
+
   it("reads further pages until it finds faces that can be framed", async () => {
     const user = userEvent.setup();
     server.person = person({ imageRevision: 2 });
