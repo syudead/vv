@@ -2,7 +2,8 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
-import { mergeCredits, type Person } from "../../api/credits";
+import { RequestFailed } from "../../api/client";
+import { mergeCredits, type Person, removePersonImage } from "../../api/credits";
 import {
   confirmFaceCandidate,
   type FaceAppearance,
@@ -73,16 +74,20 @@ function FacesScreen({ id }: { id: number | null }) {
   );
 }
 
-/** The tab in the address, so a reload keeps it; without one, the pairs unless none wait. */
-function useFacesTab(noCandidates: boolean): [FacesTab, (next: FacesTab) => void] {
+/**
+ * The tab in the address, so a reload keeps it; without one, the pairs unless none waited at the first read. The
+ * default is settled once, so a Refresh that changes the count never moves the owner to the other tab.
+ */
+function useFacesTab(
+  loaded: boolean,
+  noCandidates: boolean,
+): [FacesTab, (next: FacesTab) => void] {
   const [params, setParams] = useSearchParams();
+  const [initial, setInitial] = useState<FacesTab | null>(null);
+  if (initial === null && loaded) setInitial(noCandidates ? "faces" : "candidates");
   const asked = params.get("tab");
   const tab: FacesTab =
-    asked === "faces" || asked === "candidates"
-      ? asked
-      : noCandidates
-        ? "faces"
-        : "candidates";
+    asked === "faces" || asked === "candidates" ? asked : (initial ?? "candidates");
   return [
     tab,
     (next) => {
@@ -109,7 +114,7 @@ function FacesShown({
   const candidates = useFaceCandidates(person.id, markGone);
   const appearances = usePersonAppearances(person.id, markGone);
   const sample = useFaceSample(person.id, round);
-  const [tab, setTab] = useFacesTab(candidates.loaded && candidates.items.length === 0);
+  const [tab, setTab] = useFacesTab(candidates.loaded, candidates.items.length === 0);
 
   function refresh() {
     candidates.reload();
@@ -132,8 +137,21 @@ function FacesShown({
     return splitFaceAppearance(person.id, appearance.appearanceId);
   }
 
+  /** Merges the split person back; a person who had no face gets none from the merge. */
   async function undoSplit(created: Person) {
-    await mergeCredits("person", person.id, [created.id]);
+    const { credit, notFoundIds } = await mergeCredits("person", person.id, [created.id]);
+    if (notFoundIds.includes(created.id)) {
+      throw new RequestFailed(404, "not_found", "The split person is gone.", {
+        reason: "person_not_found",
+      });
+    }
+    if (
+      person.imageRevision === undefined &&
+      "imageRevision" in credit &&
+      credit.imageRevision !== undefined
+    ) {
+      replace(await removePersonImage(person.id));
+    }
   }
 
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
@@ -157,7 +175,7 @@ function FacesShown({
             <TabsTrigger value="candidates">
               {text.facesPage.candidatesTab}
               <span className="font-normal text-muted-foreground tabular-nums">
-                {formatNumber(candidates.items.length)}
+                {formatNumber(candidates.items.length - candidates.decided.size)}
               </span>
             </TabsTrigger>
             <TabsTrigger value="faces">
@@ -189,9 +207,15 @@ function FacesShown({
               person={person}
               sample={sample}
               items={candidates.items}
+              failed={
+                candidates.failed === null
+                  ? null
+                  : { reason: candidates.failed, retry: candidates.reload }
+              }
               actions={{
                 confirm: confirmCandidate,
                 remove: candidates.remove,
+                decide: candidates.decide,
                 onGone: markGone,
               }}
             />

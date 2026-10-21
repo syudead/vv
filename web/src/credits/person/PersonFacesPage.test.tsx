@@ -68,6 +68,49 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("leaves a person without a face faceless after undoing a split", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    // The merge back hands the person the split person's face.
+    server.mergeAnswer = { person: person({ imageRevision: 4 }), notFoundIds: [] };
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Undo the split in Beach day" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    ).toBeTruthy();
+    expect(sent("DELETE", "/api/people/7/image")).toHaveLength(1);
+  });
+
+  it("reports an Undo whose split person is gone, keeping the split shown", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    server.mergeAnswer = { person: person(), notFoundIds: [12] };
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Undo the split in Beach day" }),
+    );
+
+    expect(
+      await screen.findByText("Couldn't undo the split: This person no longer exists."),
+    ).toBeTruthy();
+    expect(screen.getByText("Split into #12")).toBeTruthy();
+  });
+
   function candidate(id: number, name: string): FaceCandidate {
     return { person: { id, name, provisional: name === "" }, similarity: 0.72 };
   }
@@ -130,6 +173,8 @@ describe("PersonFacesPage", () => {
 
     const row = screen.getByRole("group", { name: "Pair with Alice" });
     expect(await within(row).findByText("Not the same")).toBeTruthy();
+    // A decided pair no longer counts as waiting.
+    expect(screen.getByRole("tab", { name: /^Same person\?\s*1$/ })).toBeTruthy();
     expect(sent("POST", "/api/people/7/face-candidates/9/dismiss")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Open Alice" })).toBeTruthy();
 
@@ -142,6 +187,39 @@ describe("PersonFacesPage", () => {
       await screen.findByRole("button", { name: "Not the same as Alice" }),
     ).toBeTruthy();
     expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
+  });
+
+  it("stays on the tab in view when a Refresh changes the pair count", async () => {
+    const user = userEvent.setup();
+    renderPage("/people/7/faces");
+    // With no pairs waiting, the page opens on the faces.
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("tab", { name: /^Faces in videos/ })
+          .getAttribute("aria-selected"),
+      ).toBe("true"),
+    );
+
+    server.faceCandidates = [candidate(9, "Alice")];
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByRole("tab", { name: /^Same person\?\s*1$/ })).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: /^Faces in videos/ }).getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("says when the pairs could not be read, with a retry", async () => {
+    const user = userEvent.setup();
+    server.candidateFailures = 1;
+    server.faceCandidates = [candidate(9, "Alice")];
+    renderPage("/people/7/faces?tab=candidates");
+
+    expect(await screen.findByText(/Couldn't load the pairs/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("group", { name: "Pair with Alice" })).toBeTruthy();
   });
 
   it("shows the gone state when the person no longer exists", async () => {

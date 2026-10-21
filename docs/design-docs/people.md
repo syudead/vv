@@ -318,9 +318,12 @@ on; while it is off, or the settings cannot be read, the page neither shows it
 nor reads the candidates.
 
 The faces page puts its two lists in `line` tabs, `Same person?` and
-`Faces in videos`, each with its count, and keeps the tab in the address
+`Faces in videos`, each with its count, `Same person?` counting only the pairs
+not yet decided on the page, and keeps the tab in the address
 (`?tab=candidates` or `?tab=faces`); without one it opens `Same person?`
-unless no pair waits. A `Refresh` button after the tabs reads both lists again.
+unless no pair waits at the first read, a choice a later `Refresh` never
+changes. A `Refresh` button after the tabs reads both lists again. Pairs that
+cannot be read say so with `Retry` in place of the rows.
 Nothing else reads them again: a decided pair and a split face stay where they
 are, dimmed with the result and `Undo` where one applies, so the next row never
 moves under the owner's press. Before, every decision read the lists again,
@@ -330,8 +333,8 @@ which put the faces back to their first page and reordered the pairs.
 the other person's side by side, each over the name, the face count and up to
 four of their crops, with the similarity between them (under them below `sm`),
 then `Not the same` and `Same person`. One face alone is a poor basis for the
-decision, so the crops come from each person's first appearances
-(`GET /api/people/{id}/appearances?limit=4`). A confirm keeps the shown person
+decision, so the crops are the first four with a crop among each person's
+first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
 and the row reads `Merged into {name}`; only an unnamed person confirmed with a
 named one is merged away, and the page then opens the named person's faces
@@ -350,8 +353,10 @@ Each crop carries a `Not this person` icon button in its `PersonFaceMark`
 `top-end`, for a face the analysis linked to the wrong person. It splits the
 face into a new unnamed person with no confirmation: the tile stays, dimmed,
 with `Split into #12` and `Undo`, which merges the new person back into the
-shown one (`POST /api/people/{id}/merge`). A pressed tile disables only its own
-button, and a failure shows under it.
+shown one (`POST /api/people/{id}/merge`); a person who had no face is left
+without one, rather than keep the face the merge brings, and an `Undo` whose
+split person is gone reports it and keeps the tile split. A pressed tile
+disables only its own button, and a failure shows under it.
 
 | Rejected                                | Why                                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------------- |
