@@ -10,7 +10,7 @@ const (
 	JobThumbnail     JobKind = "thumbnail"
 	JobSeekThumbnail JobKind = "seek_thumbnail"
 	JobPreview       JobKind = "preview"
-	// JobFingerprint samples the source file once a second after the seek sprite is done.
+	// JobFingerprint reads sprite frames without ffmpeg or the source file.
 	JobFingerprint JobKind = "fingerprint"
 )
 

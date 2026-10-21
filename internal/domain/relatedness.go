@@ -53,9 +53,6 @@ const (
 	relatedDateHalfLife = 30 * 24 * time.Hour
 	// Scene similarity uses the same 63-bit distance threshold as duplicate detection.
 	relatedSceneMaxDistance = FingerprintMatchMaxDistance
-	// Scene overlap compares every scene with every other, so a fingerprint sampled each second is thinned to as
-	// many scenes as a seek sprite holds.
-	relatedSceneMaxFrames = SeekSpriteMaxFrames
 )
 
 func (ContentRelatedness) For(self RelatedCandidate) func(RelatedCandidate) RelatedScore {
@@ -89,14 +86,7 @@ func sceneHashes(fingerprint *Fingerprint) []uint64 {
 	if len(hashes) < FingerprintMinComparableFrames {
 		return nil
 	}
-	if len(hashes) <= relatedSceneMaxFrames {
-		return hashes
-	}
-	spread := make([]uint64, 0, relatedSceneMaxFrames)
-	for _, index := range SpreadFrameIndexes(len(hashes), relatedSceneMaxFrames) {
-		spread = append(spread, hashes[index])
-	}
-	return spread
+	return hashes
 }
 
 // sceneOverlap ignores timestamps so excerpts and reordered scenes can still be related.

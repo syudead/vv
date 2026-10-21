@@ -12,7 +12,7 @@ import (
 // Fingerprints compare frame pHashes by timestamp; bump FingerprintVersion when hashing rules or calibrated thresholds change, and never compare different versions.
 
 const (
-	FingerprintVersion   = 2
+	FingerprintVersion   = 1
 	FingerprintFrameSize = 32
 	// Low-variance frames are excluded because black screens and fades match unrelated videos.
 	FingerprintFlatVariance        = 16.0
@@ -136,7 +136,12 @@ func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 	if !ok {
 		return 0, false
 	}
-	return medianDistance(pairs), true
+	distances := make([]int, len(pairs))
+	for i, pair := range pairs {
+		distances[i] = pair.Distance
+	}
+	slices.Sort(distances)
+	return distances[(len(distances)-1)/2], true
 }
 
 type FramePair struct {
@@ -144,12 +149,8 @@ type FramePair struct {
 	Distance int
 }
 
-// Start offsets are searched up to the duration difference plus this slack, in steps of the coarser interval, and
-// never beyond fingerprintMaxShift steps.
-const (
-	fingerprintShiftSlack = 3
-	fingerprintMaxShift   = 60
-)
+// Start offsets are searched in steps of the coarser interval, up to the length difference plus one step.
+const fingerprintShiftSlack = 1
 
 // ComparableFramePairs pairs frames by time at the start offset whose median distance is lowest, preferring the
 // smallest offset on a tie, and returns non-flat pairs in a-frame order; incompatible or insufficient fingerprints
@@ -160,7 +161,7 @@ func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
 	}
 	step := max(a.IntervalMs, b.IntervalMs)
 	lengthDifference := abs64(int64(len(a.Frames))*a.IntervalMs - int64(len(b.Frames))*b.IntervalMs)
-	maxShift := min(lengthDifference/step+fingerprintShiftSlack, fingerprintMaxShift)
+	maxShift := lengthDifference/step + fingerprintShiftSlack
 	bestMedian, bestOffset := -1, int64(0)
 	for shift := int64(0); shift <= maxShift; shift++ {
 		for _, sign := range []int64{1, -1} {
@@ -220,15 +221,6 @@ func histogramMedian(histogram [65]int, count int) int {
 		}
 	}
 	return len(histogram) - 1
-}
-
-func medianDistance(pairs []FramePair) int {
-	distances := make([]int, len(pairs))
-	for i, pair := range pairs {
-		distances[i] = pair.Distance
-	}
-	slices.Sort(distances)
-	return distances[(len(distances)-1)/2]
 }
 
 func FingerprintsMatch(a, b Fingerprint) bool {

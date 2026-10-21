@@ -9,7 +9,7 @@ const (
 		"matching moments of the content. In every image, do the left half and the right half show the same scene " +
 		"of the same video? Ignore differences in sharpness, resolution, compression, colour, cropping or black " +
 		"borders, watermarks, channel or site logos, burned-in subtitles or captions, and a timing difference of a " +
-		"second or two."
+		"few seconds."
 	VersionSameProbability      = 0.8
 	VersionDifferentProbability = 0.2
 	VersionJudgeMaxImages       = 4

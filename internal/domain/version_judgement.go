@@ -28,10 +28,8 @@ const (
 )
 
 // Keys are ordered key_a < key_b, Fingerprints aligns with them, and Attempts counts prior failures.
-// Paths are each side's first registered location, which the classifier's frames are cut from.
 type VersionJudgeJob struct {
 	Keys         [2]string
-	Paths        [2]string
 	Fingerprints [2]Fingerprint
 	Attempts     int
 }
@@ -81,7 +79,7 @@ type VersionJudgeEvidence struct {
 	Compared   int    `json:"compared"`
 	Differing  int    `json:"differing"`
 	LongestRun int    `json:"longestRun,omitempty"`
-	// OffsetMs is how much later the same content plays in B than in A; negative when B starts later in the content.
+	// OffsetMs is how much later the same content plays in B than in A.
 	OffsetMs   int64 `json:"offsetMs,omitempty"`
 	RunStartMs int64 `json:"runStartMs,omitempty"`
 	RunEndMs   int64 `json:"runEndMs,omitempty"`
@@ -144,6 +142,15 @@ func DecodeVersionJudgeEvidence(value string) (*VersionJudgeEvidence, error) {
 func (e *VersionJudgeEvidence) InferConflict(probability *float64) {
 	e.Conflict = e.Rule == VersionFramesSame.String() ||
 		(probability != nil && VersionVerdictFor(*probability) == VersionSame)
+}
+
+// FramePairs returns the shown frames as the pairs the frame source cuts.
+func (e VersionJudgeEvidence) FramePairs() []FramePair {
+	pairs := make([]FramePair, 0, len(e.Frames))
+	for _, frame := range e.Frames {
+		pairs = append(pairs, FramePair{A: frame.A, B: frame.B, Distance: frame.Distance})
+	}
+	return pairs
 }
 
 var (

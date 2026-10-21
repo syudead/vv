@@ -430,31 +430,55 @@ func waitJob(t *testing.T, done <-chan error) error {
 	}
 }
 
-func TestIngestFingerprintSamplesTheSourceAndSavesFingerprint(t *testing.T) {
+func TestIngestFingerprintReadsSpriteAndSavesFingerprint(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
-	generator := &fakeGenerator{}
+	layout := domain.NewSeekSpriteLayout(600_000)
+	generator := &fakeGenerator{
+		sprites: map[string]domain.SeekSprite{"a": {SeekSpriteLayout: layout, FrameWidth: 160, FrameHeight: 90}},
+		sheets:  map[string][][]byte{"a": {[]byte("sheet-0")}},
+	}
 	ingest, _ := newTestIngest(store, generator)
 
 	if err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video)); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(generator.fingerprintPaths, []string{video.Path}) {
-		t.Fatalf("指紋に渡したファイル = %q, want %q", generator.fingerprintPaths, video.Path)
-	}
-	if len(store.fingerprints) != 1 || store.fingerprints[0].Frames[0].Hash != uint64(len(video.Path)) {
+	if len(store.fingerprints) != 1 {
 		t.Fatalf("記録した指紋 = %+v", store.fingerprints)
+	}
+	if got := store.fingerprints[0]; got.Version != domain.FingerprintVersion || got.IntervalMs != layout.IntervalMs ||
+		len(got.Frames) != 1 || got.Frames[0].Hash != uint64(len("sheet-0")) {
+		t.Fatalf("記録した指紋 = %+v", got)
+	}
+	if len(generator.fingerprintSheets) != 1 || string(generator.fingerprintSheets[0][0]) != "sheet-0" {
+		t.Fatalf("指紋に渡したシート = %q", generator.fingerprintSheets)
+	}
+	calls, _ := generator.snapshot()
+	if !slices.Equal(calls, []string{"fingerprint"}) {
+		t.Fatalf("呼び出し = %v（元の動画を読んではいけない）", calls)
 	}
 }
 
-func TestIngestFingerprintFailureSavesNothing(t *testing.T) {
+func TestIngestFingerprintFailsWithoutSprite(t *testing.T) {
 	video := probedVideo(1, "a")
-	store := newFakeIngestStore(video)
-	generator := &fakeGenerator{fingerprintErr: fs.ErrNotExist}
-	ingest, _ := newTestIngest(store, generator)
-	err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video))
-	if !errors.Is(err, fs.ErrNotExist) || len(store.fingerprints) != 0 {
-		t.Fatalf("err = %v、記録した指紋 = %+v", err, store.fingerprints)
+	layout := domain.NewSeekSpriteLayout(600_000)
+	for name, generator := range map[string]*fakeGenerator{
+		"スプライトが無い": {},
+		"シートが無い": {
+			sprites: map[string]domain.SeekSprite{"a": {SeekSpriteLayout: layout, FrameWidth: 160, FrameHeight: 90}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeIngestStore(video)
+			ingest, _ := newTestIngest(store, generator)
+			err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video))
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("err = %v", err)
+			}
+			if len(store.fingerprints) != 0 {
+				t.Fatalf("記録した指紋 = %+v", store.fingerprints)
+			}
+		})
 	}
 }
 

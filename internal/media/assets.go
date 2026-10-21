@@ -60,3 +60,8 @@ func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout 
 func (a *Assets) Preview(ctx context.Context, path, output string, durationMs int64) error {
 	return GeneratePreview(ctx, path, output, durationMs)
 }
+
+// SpriteFingerprint uses completed sprite sheets without invoking ffmpeg.
+func (a *Assets) SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
+	return SpriteFingerprint(sprite, sheets)
+}

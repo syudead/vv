@@ -1,94 +1,56 @@
 package media
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"image"
-	"io"
-	"time"
+	"image/color"
+	"image/jpeg"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
+// Fingerprint completed sprites without rerunning ffmpeg or reading source video.
+
 const fingerprintBlackLevel = 16
 
-const (
-	// Frames are sampled once a second so a start shifted by a second or two still lines up with the other file.
-	fingerprintSampleMs = 1000
-	// Gray frames are this size before black bands are trimmed and they are shrunk to the hash size.
-	fingerprintSampleWidth  = 96
-	fingerprintSampleHeight = 54
-	fingerprintTimeout      = 30 * time.Minute
-)
+var ErrSpriteMismatch = errors.New("the seek sprite sheets do not match its layout")
 
-// VideoFingerprint decodes the source once and hashes one gray frame per second; letterboxed and pillarboxed
-// versions compare equal because black bands are trimmed before hashing.
-func VideoFingerprint(ctx context.Context, videoPath string) (domain.Fingerprint, error) {
-	ctx, cancel := context.WithTimeout(ctx, fingerprintTimeout)
-	defer cancel()
-	cmd := command(ctx, seekThumbnailCommand, fingerprintArgs(videoPath)...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return domain.Fingerprint{}, fmt.Errorf("cannot read ffmpeg for the fingerprint: %w", err)
+// SpriteFingerprint crops each frame, removes black borders, and hashes 32x32 luma; sheets are
+// ordered from zero.
+func SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
+	perSheet := sprite.Columns * sprite.Rows
+	if sprite.IntervalMs <= 0 || sprite.FrameCount <= 0 || perSheet <= 0 ||
+		sprite.FrameWidth <= 0 || sprite.FrameHeight <= 0 {
+		return domain.Fingerprint{}, fmt.Errorf("%w: %+v", ErrSpriteMismatch, sprite)
 	}
-	if err := cmd.Start(); err != nil {
-		return domain.Fingerprint{}, fmt.Errorf("cannot run ffmpeg for the fingerprint: %w", err)
+	needed := (sprite.FrameCount + perSheet - 1) / perSheet
+	if len(sheets) < needed {
+		return domain.Fingerprint{}, fmt.Errorf("%w: %d sheets for %d frames", ErrSpriteMismatch, len(sheets), sprite.FrameCount)
 	}
-	frames, readErr := readFingerprintFrames(bufio.NewReader(stdout))
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return domain.Fingerprint{}, ctx.Err()
+	frames := make([]domain.FrameHash, 0, sprite.FrameCount)
+	for sheetIndex := range needed {
+		sheet, err := jpeg.Decode(bytes.NewReader(sheets[sheetIndex]))
+		if err != nil {
+			return domain.Fingerprint{}, fmt.Errorf("cannot decode seek sprite sheet %d: %w", sheetIndex, err)
 		}
-		return domain.Fingerprint{}, fmt.Errorf("ffmpeg failed to sample the fingerprint frames (%s): %w: %s",
-			videoPath, err, firstLine(stderr.Bytes()))
-	}
-	if readErr != nil {
-		return domain.Fingerprint{}, readErr
-	}
-	if len(frames) == 0 {
-		return domain.Fingerprint{}, fmt.Errorf("ffmpeg returned no fingerprint frames (%s)", videoPath)
-	}
-	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: fingerprintSampleMs, Frames: frames}, nil
-}
-
-func fingerprintArgs(videoPath string) []string {
-	return []string{
-		"-nostdin",
-		"-v", "error",
-		"-i", videoPath,
-		"-map", "0:V:0",
-		"-an", "-sn", "-dn",
-		"-vf", fmt.Sprintf("fps=1000/%d:round=down,scale=%d:%d:flags=area,format=gray",
-			fingerprintSampleMs, fingerprintSampleWidth, fingerprintSampleHeight),
-		"-f", "rawvideo",
-		"pipe:1",
-	}
-}
-
-func readFingerprintFrames(r io.Reader) ([]domain.FrameHash, error) {
-	size := fingerprintSampleWidth * fingerprintSampleHeight
-	buffer := make([]byte, size)
-	frame := luma{rect: image.Rect(0, 0, fingerprintSampleWidth, fingerprintSampleHeight),
-		stride: fingerprintSampleWidth, pix: buffer}
-	var frames []domain.FrameHash
-	for {
-		if _, err := io.ReadFull(r, buffer); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-				return frames, nil
+		luma := lumaPlane(sheet)
+		for slot := range perSheet {
+			frame := sheetIndex*perSheet + slot
+			if frame >= sprite.FrameCount {
+				break
 			}
-			return nil, fmt.Errorf("cannot read the fingerprint frames: %w", err)
+			origin := luma.rect.Min.Add(image.Pt(
+				(slot%sprite.Columns)*sprite.FrameWidth, (slot/sprite.Columns)*sprite.FrameHeight))
+			rect := image.Rectangle{Min: origin, Max: origin.Add(image.Pt(sprite.FrameWidth, sprite.FrameHeight))}
+			if !rect.In(luma.rect) {
+				return domain.Fingerprint{}, fmt.Errorf("%w: frame %d is outside sheet %d", ErrSpriteMismatch, frame, sheetIndex)
+			}
+			frames = append(frames, domain.HashFrame(luma.shrink(luma.trimBlackBands(rect))))
 		}
-		frames = append(frames, domain.HashFrame(frame.shrink(frame.trimBlackBands(frame.rect))))
 	}
-}
-
-func (a *Assets) VideoFingerprint(ctx context.Context, path string) (domain.Fingerprint, error) {
-	return VideoFingerprint(ctx, path)
+	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: sprite.IntervalMs, Frames: frames}, nil
 }
 
 // Luma values range from 0 to 255.
@@ -96,6 +58,25 @@ type luma struct {
 	rect   image.Rectangle
 	stride int
 	pix    []uint8
+}
+
+// Use JPEG's Y plane directly when available.
+func lumaPlane(img image.Image) luma {
+	bounds := img.Bounds()
+	switch typed := img.(type) {
+	case *image.YCbCr:
+		return luma{rect: bounds, stride: typed.YStride, pix: typed.Y[typed.YOffset(bounds.Min.X, bounds.Min.Y):]}
+	case *image.Gray:
+		return luma{rect: bounds, stride: typed.Stride, pix: typed.Pix[typed.PixOffset(bounds.Min.X, bounds.Min.Y):]}
+	}
+	out := luma{rect: bounds, stride: bounds.Dx(), pix: make([]uint8, bounds.Dx()*bounds.Dy())}
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			gray, _ := color.GrayModel.Convert(img.At(x, y)).(color.Gray)
+			out.pix[(y-bounds.Min.Y)*out.stride+(x-bounds.Min.X)] = gray.Y
+		}
+	}
+	return out
 }
 
 func (l luma) at(x, y int) uint8 {

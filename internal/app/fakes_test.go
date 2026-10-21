@@ -341,8 +341,9 @@ type fakeGenerator struct {
 	// The force flag of each seek sprite and preview publish.
 	publishForces []bool
 
-	fingerprintPaths []string
-	fingerprintErr   error
+	sprites           map[string]domain.SeekSprite
+	sheets            map[string][][]byte
+	fingerprintSheets [][][]byte
 
 	// The gate can pause generation to exercise interleavings.
 	gate func(call string)
@@ -552,19 +553,37 @@ type fakeArtifactStore struct {
 	*fakeGenerator
 }
 
-// Use the path length as the one frame's hash.
-func (f *fakeGenerator) VideoFingerprint(_ context.Context, path string) (domain.Fingerprint, error) {
+func (f fakeArtifactStore) SeekSprite(contentKey string) (domain.SeekSprite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sprite, ok := f.sprites[contentKey]
+	if !ok {
+		return domain.SeekSprite{}, fs.ErrNotExist
+	}
+	return sprite, nil
+}
+
+func (f fakeArtifactStore) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sheets := f.sheets[contentKey]
+	if sheet < 0 || sheet >= len(sheets) {
+		return nil, fs.ErrNotExist
+	}
+	return sheets[sheet], nil
+}
+
+// Use one fingerprint frame per sheet, with its byte length as the hash.
+func (f *fakeGenerator) SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
 	f.record("fingerprint")
 	f.mu.Lock()
-	f.fingerprintPaths = append(f.fingerprintPaths, path)
-	err := f.fingerprintErr
+	f.fingerprintSheets = append(f.fingerprintSheets, sheets)
 	f.mu.Unlock()
-	if err != nil {
-		return domain.Fingerprint{}, err
+	frames := make([]domain.FrameHash, 0, len(sheets))
+	for _, sheet := range sheets {
+		frames = append(frames, domain.FrameHash{Hash: uint64(len(sheet))})
 	}
-	return domain.Fingerprint{
-		Version: domain.FingerprintVersion, IntervalMs: 1000, Frames: []domain.FrameHash{{Hash: uint64(len(path))}},
-	}, nil
+	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: sprite.IntervalMs, Frames: frames}, nil
 }
 
 func (f *fakeGenerator) RemoveContent(contentKey string) error {

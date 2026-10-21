@@ -27,7 +27,7 @@ func (substitutingGenerator) Thumbnail(_ context.Context, _ string, _ int64, out
 func (substitutingGenerator) ThumbnailAt(_ context.Context, _ string, _ int64, output, _ string) error {
 	return os.WriteFile(output, []byte("jpeg"), 0o600)
 }
-func (substitutingGenerator) VideoFingerprint(context.Context, string) (domain.Fingerprint, error) {
+func (substitutingGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {
 	return domain.Fingerprint{}, nil
 }
 func (substitutingGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {

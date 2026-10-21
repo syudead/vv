@@ -29,36 +29,44 @@ func gray(size, seconds string) string {
 	return "color=c=black:s=" + size + ":r=10:d=" + seconds + ",format=yuv420p,geq=lum='16+7*T':cb=128:cr=128"
 }
 
-// scene draws a 64x36 pattern that changes every 20 seconds and drifts at speed radians per second, so a shifted
-// start no longer lines up frame for frame.
-func scene(variant int, seconds string, speed float64) string {
+func scene(variant int, seconds string) string {
 	terms := []string{"128"}
 	for i, wave := range []struct{ amplitude, fx, fy string }{
 		{"34", "0.5", "0.5"}, {"26", "1", "0.5"}, {"22", "0.5", "1"}, {"18", "1.5", "1"},
 		{"14", "1", "2"}, {"12", "2", "1.5"}, {"10", "2.5", "2"}, {"8", "3", "3"},
 	} {
 		sign := fmt.Sprintf("(2*mod(floor(T/20)*%d+%d*%d,2)-1)", i+1, variant, i+2)
-		terms = append(terms, fmt.Sprintf("%s*sin(2*PI*(X/W*%s+%s*Y/H*%s)+floor(T/20)*%d+%d*%d+T*%g)",
-			wave.amplitude, wave.fx, sign, wave.fy, i*3+1, variant, i*5+2, speed))
+		terms = append(terms, fmt.Sprintf("%s*sin(2*PI*(X/W*%s+%s*Y/H*%s)+floor(T/20)*%d+%d*%d+T*0.02)",
+			wave.amplitude, wave.fx, sign, wave.fy, i*3+1, variant, i*5+2))
 	}
-	return "color=c=gray:s=64x36:r=4:d=" + seconds + ",format=yuv420p,geq=lum='" + strings.Join(terms, "+") + "':cb=128:cr=128"
+	return "color=c=gray:s=64x36:r=2:d=" + seconds + ",format=yuv420p,geq=lum='" + strings.Join(terms, "+") + "':cb=128:cr=128"
 }
 
-func fingerprints() {
-	// Versions an owner would bundle: a re-encode with black bands, a watermark, and a start one second later.
+func fingerprints(tmp string) {
+	// Reference inputs are independent of production sprite arguments. Vary
+	// source compression, black bands, frame size and sample intervals.
 	for _, c := range []struct {
-		name, transform string
-		variant, crf    int
+		name, seconds, transform             string
+		variant, ms, crf, gop, size, quality int
 	}{
-		{"base", "scale=320:180", 0, 20},
-		{"letterbox", "scale=240:136,pad=240:180:0:22", 0, 32},
-		{"watermark", "scale=320:180,drawbox=x=200:y=10:w=110:h=40:color=white@0.6:t=fill", 0, 20},
-		{"shifted", "trim=start=1,setpts=PTS-STARTPTS,scale=320:180", 0, 30},
-		{"other", "scale=320:180", 1, 20},
+		{"short", "60", "scale=640:360", 0, 60000, 20, 10, 320, 2},
+		{"letterbox", "60", "scale=320:180,pad=320:240:0:30", 0, 60000, 32, 15, 320, 2},
+		{"other", "60", "scale=640:360", 1, 60000, 20, 10, 320, 2},
+		{"long", "410", "scale=640:360", 0, 410000, 20, 10, 320, 2},
+		{"long-reencoded", "410.4", "scale=320:180", 0, 410400, 30, 15, 320, 2},
+		{"long-other", "410", "scale=640:360", 1, 410000, 20, 10, 320, 2},
+		{"old-size", "60", "scale=640:360", 0, 60000, 20, 10, 160, 4},
 	} {
-		fmt.Println("fingerprints/" + c.name + ".mp4")
-		ffmpeg(filepath.Join(root, "fingerprints", c.name+".mp4"), "-f", "lavfi", "-i", scene(c.variant, "61", 0.8)+","+c.transform,
-			"-c:v", "libx264", "-preset", "veryfast", "-crf", strconv.Itoa(c.crf), "-pix_fmt", "yuv420p")
+		fmt.Println("fingerprints/" + c.name + ".jpg")
+		video := filepath.Join(tmp, "scene.mp4")
+		ffmpeg(video, "-f", "lavfi", "-i", scene(c.variant, c.seconds)+","+c.transform,
+			"-c:v", "libx264", "-preset", "veryfast", "-crf", strconv.Itoa(c.crf), "-g", strconv.Itoa(c.gop),
+			"-keyint_min", "1", "-pix_fmt", "yuv420p")
+		interval := max(1000, (c.ms+80)/81)
+		frames := (c.ms + interval - 1) / interval
+		filter := fmt.Sprintf("tpad=stop_mode=clone:stop=-1,fps=1000/%d:round=up:eof_action=pass,trim=end_frame=%d,scale=min(%d\\,iw):min(%d\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p", interval, frames, c.size, c.size)
+		ffmpeg(filepath.Join(root, "fingerprints", c.name+".jpg"), "-i", video, "-map", "0:V:0", "-vf", filter,
+			"-frames:v", "1", "-q:v", strconv.Itoa(c.quality))
 	}
 }
 
@@ -136,7 +144,7 @@ func main() {
 		panic(err)
 	}
 	defer os.RemoveAll(tmp)
-	fingerprints()
+	fingerprints(tmp)
 	videos(tmp)
 	checksums()
 }

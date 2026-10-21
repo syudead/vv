@@ -31,10 +31,8 @@ type VersionJudgeSettingsStore interface {
 	OllamaConnectionSaved(ctx context.Context) (bool, error)
 }
 
-// VersionFrameSource cuts frames from the two source files at each frame's times, so a shifted start shows the
-// matching moment; each image puts the first file's frame left of the second's.
 type VersionFrameSource interface {
-	FramePairImages(ctx context.Context, paths [2]string, frames []domain.VersionEvidenceFrame) ([][]byte, error)
+	SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error)
 }
 
 type VersionJudgeOptions struct {
@@ -233,12 +231,11 @@ func (j *VersionJudge) logError(ctx context.Context, message string, err error) 
 // before the next judgement.
 func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) bool {
 	rule := domain.JudgeVersionFrames(job.Fingerprints[0], job.Fingerprints[1])
-	evidence := domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
-	result, probability := j.decide(ctx, job, rule, evidence.Frames)
+	result, probability := j.decide(ctx, job, rule)
 	if ctx.Err() != nil {
 		return true
 	}
-	result.Evidence = evidence
+	result.Evidence = domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
 	attrs := []any{
 		slog.String("key_a", job.Keys[0]), slog.String("key_b", job.Keys[1]),
 		slog.String("rule", rule.Outcome.String()), slog.Int("frames_compared", rule.Compared),
@@ -283,7 +280,7 @@ func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain
 // Matching fingerprints need no classifier; incomparable pairs remain for the owner, while
 // mismatches require saved connection settings or return no_connection.
 func (j *VersionJudge) decide(
-	ctx context.Context, job domain.VersionJudgeJob, rule domain.VersionFrameRule, frames []domain.VersionEvidenceFrame,
+	ctx context.Context, job domain.VersionJudgeJob, rule domain.VersionFrameRule,
 ) (domain.VersionJudgeResult, *float64) {
 	switch rule.Outcome {
 	case domain.VersionFramesSame:
@@ -299,7 +296,7 @@ func (j *VersionJudge) decide(
 	if !saved {
 		return domain.VersionJudgeResult{Verdict: domain.VersionNoConnection}, nil
 	}
-	probability, err := j.ask(ctx, job.Paths, frames)
+	probability, err := j.ask(ctx, job.Keys, rule.Shown)
 	if err != nil {
 		return failedJudgement(err), nil
 	}
@@ -310,8 +307,8 @@ func (j *VersionJudge) decide(
 
 // Send only side-by-side frames and the fixed question, excluding filenames, folders, and duration;
 // missing answers return errNoVersionAnswer.
-func (j *VersionJudge) ask(ctx context.Context, paths [2]string, frames []domain.VersionEvidenceFrame) (float64, error) {
-	images, err := j.frames.FramePairImages(ctx, paths, frames)
+func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.FramePair) (float64, error) {
+	images, err := j.frames.SeekFramePairs(keys[0], keys[1], pairs)
 	if err != nil {
 		return 0, err
 	}

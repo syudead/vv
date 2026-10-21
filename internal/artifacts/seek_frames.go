@@ -35,6 +35,40 @@ func (s *Store) SeekFrames(contentKey string, n int) ([][]byte, error) {
 	return frames, nil
 }
 
+// SeekFramePairs places each A frame left of B, resizing B to A's dimensions, without reading media
+// or invoking ffmpeg; missing stores or layouts wrap fs.ErrNotExist.
+func (s *Store) SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error) {
+	a, err := s.seekFrameReader(keyA)
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.seekFrameReader(keyB)
+	if err != nil {
+		return nil, err
+	}
+	images := make([][]byte, 0, len(pairs))
+	for _, pair := range pairs {
+		left, err := a.frame(pair.A)
+		if err != nil {
+			return nil, err
+		}
+		right, err := b.frame(pair.B)
+		if err != nil {
+			return nil, err
+		}
+		width, height := left.Bounds().Dx(), left.Bounds().Dy()
+		canvas := image.NewRGBA(image.Rect(0, 0, 2*width, height))
+		draw.Draw(canvas, image.Rect(0, 0, width, height), left, left.Bounds().Min, draw.Src)
+		draw.ApproxBiLinear.Scale(canvas, image.Rect(width, 0, 2*width, height), right, right.Bounds(), draw.Src, nil)
+		data, err := encodeSeekFrame(canvas, pair.A)
+		if err != nil {
+			return nil, err
+		}
+		images = append(images, data)
+	}
+	return images, nil
+}
+
 // Cache decoded sheets within each content read.
 type seekFrames struct {
 	store      *Store
