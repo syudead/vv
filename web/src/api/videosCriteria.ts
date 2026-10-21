@@ -24,6 +24,8 @@ export interface VideosCriteria {
   personRole?: WorkPersonRole;
   organization?: number;
   tagKind?: number;
+  /** Owner-only, library-only. */
+  hasVersions?: boolean;
   /** Do not pass added/length filters to folder listings. */
   addedWithin?: number;
   minDuration?: number;
@@ -44,6 +46,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.personRole ?? null,
     criteria.organization ?? null,
     criteria.tagKind ?? null,
+    criteria.hasVersions === true,
     criteria.addedWithin ?? null,
     criteria.minDuration ?? null,
     criteria.maxDuration ?? null,
@@ -60,6 +63,7 @@ export function listsSmartFolders(criteria: VideosCriteria): boolean {
     criteria.person === undefined &&
     criteria.organization === undefined &&
     criteria.tagKind === undefined &&
+    criteria.hasVersions !== true &&
     criteria.addedWithin === undefined &&
     criteria.minDuration === undefined &&
     criteria.maxDuration === undefined

@@ -197,6 +197,10 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			if got.Decider != domain.ActivityByAI {
 				t.Errorf("判断したもの = %q, want ai", got.Decider)
 			}
+			if e := got.Evidence; e == nil || e.Rule != "frames_differ" || e.Differing != 4 || e.RunStartMs != 8000 ||
+				e.RunEndMs != 12000 || len(e.Frames) != 4 {
+				t.Errorf("根拠 = %+v, want 8〜12 秒の連なりと 4 コマ", e)
+			}
 			wantPairs := []domain.FramePair{{A: 8, B: 8, Distance: 33}, {A: 9, B: 9, Distance: 33},
 				{A: 10, B: 10, Distance: 33}, {A: 11, B: 11, Distance: 33}}
 			if frames.keys != [2]string{"key-a", "key-b"} || !reflect.DeepEqual(frames.pairs, wantPairs) {
@@ -432,5 +436,26 @@ func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
 	store.retryAt = now.Add(10 * time.Minute)
 	if wait := judge.step(context.Background()); wait != 10*time.Minute+time.Second {
 		t.Errorf("待ち = %v, want 10m1s", wait)
+	}
+}
+
+// Titled chapters at the same starts settle a pair whose frames differ, so the classifier is not asked.
+func TestVersionJudgeLetsMatchingChaptersSkipTheClassifier(t *testing.T) {
+	job := versionJudgeJob(8, 9, 10, 11)
+	titled := []domain.MediaChapter{{StartMs: 0, Title: "Opening"}, {StartMs: 5000, Title: "Middle"}, {StartMs: 15000, Title: "End"}}
+	job.Properties = [2]domain.VersionProperties{{Chapters: titled}, {Chapters: titled}}
+	store := newFakeVersionJudgeStore(job)
+	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.1}}
+	judge, _, _ := newTestVersionJudge(store, classifier)
+
+	judge.step(context.Background())
+
+	got := store.lastResult(t)
+	if got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule || got.Evidence == nil ||
+		!got.Evidence.ByProperties || len(got.Evidence.Properties) != 1 {
+		t.Errorf("結果 = %+v（根拠 %+v）, want チャプターで決めた same", got, got.Evidence)
+	}
+	if len(classifier.requests) != 0 {
+		t.Errorf("分類器に %d 回聞いた, want 0", len(classifier.requests))
 	}
 }

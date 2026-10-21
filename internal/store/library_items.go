@@ -30,6 +30,9 @@ func matchConditions(spec listSpec) ([]string, []any) {
 		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
 		args = append(args, spec.withinVideos)
 	}
+	if spec.hasVersions {
+		conditions = append(conditions, hasVersionsCondition)
+	}
 	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)

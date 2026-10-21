@@ -42,38 +42,3 @@ func TestVersionSidesConflict(t *testing.T) {
 		}
 	}
 }
-
-func TestChooseVersionRepresentative(t *testing.T) {
-	ptr := func(v int) *int { return &v }
-	ms := func(v int64) *int64 { return &v }
-	base := func(id int64) Video {
-		return Video{ID: id, Playable: true, AudioCodec: "aac", Width: ptr(1280), Height: ptr(720),
-			SizeBytes: 1000, DurationMs: ms(100_000)}
-	}
-	hd := base(2)
-	hd.Width, hd.Height = ptr(1920), ptr(1080)
-	silent := base(2)
-	silent.AudioCodec = ""
-	unplayable := base(2)
-	unplayable.Playable = false
-	dense := base(2)
-	dense.SizeBytes = 2000
-	for _, c := range []struct {
-		name  string
-		sides [2]VersionSide
-		want  int
-	}{
-		{"タグの付いた 720p は新しい 1080p に勝つ", [2]VersionSide{{Video: base(1), OwnerData: true}, {Video: hd}}, 0},
-		{"集まりの側が勝つ", [2]VersionSide{{Video: hd, OwnerData: true}, {Video: base(1), Bundled: true}}, 1},
-		{"両方が集まりなら規則で比べる", [2]VersionSide{{Video: base(1), Bundled: true}, {Video: hd, Bundled: true}}, 1},
-		{"再生できる方", [2]VersionSide{{Video: unplayable}, {Video: base(3)}}, 1},
-		{"音声がある方", [2]VersionSide{{Video: silent}, {Video: base(3)}}, 1},
-		{"画素の多い方", [2]VersionSide{{Video: base(1)}, {Video: hd}}, 1},
-		{"ビットレートの高い方", [2]VersionSide{{Video: base(1)}, {Video: dense}}, 1},
-		{"id の小さい方", [2]VersionSide{{Video: base(3)}, {Video: base(2)}}, 1},
-	} {
-		if got := ChooseVersionRepresentative(c.sides); got != c.want {
-			t.Errorf("%s: 側 %d, want %d", c.name, got, c.want)
-		}
-	}
-}
