@@ -130,7 +130,7 @@ export function isAppearanceGone(error: unknown): boolean {
   );
 }
 
-export type FaceAppearanceSort = "newest" | "leastSimilar";
+export type FaceAppearanceSort = "newest" | "leastSimilar" | "mostSimilar";
 
 export function listPersonAppearances(
   id: number,
@@ -146,6 +146,11 @@ export function listPersonAppearances(
       signal,
     },
   );
+}
+
+/** A frame of the video at positionMs, as a PNG at most 2048 px on its long side. */
+export function videoFramePath(videoId: number, positionMs: number): string {
+  return `/api/videos/${String(videoId)}/frame?positionMs=${String(positionMs)}`;
 }
 
 export function faceCropPath(appearanceId: number): string {

@@ -17,6 +17,28 @@ type PersonAppearance struct {
 	AddedAt int64
 	// Similarity is how close the appearance is to the person's other faces, nil when it cannot be compared.
 	Similarity *float64
+	// Focus is where the face is in its longest track, nil without tracks.
+	Focus *FaceFocus
+}
+
+// FaceFocus is a moment and place of a face in its video: the middle of a track, at the track's mean centre and
+// width as fractions of the frame side, from which the page frames the face in the original frame.
+type FaceFocus struct {
+	Time, X, Y, W float64
+}
+
+// FaceFocusOf is the focus of the longest track, the first of equal ones; nil without tracks.
+func FaceFocusOf(spans []FaceSpan) *FaceFocus {
+	var best *FaceSpan
+	for i := range spans {
+		if best == nil || spans[i].End-spans[i].Start > best.End-best.Start {
+			best = &spans[i]
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	return &FaceFocus{Time: (best.Start + best.End) / 2, X: best.X, Y: best.Y, W: best.W}
 }
 
 // PersonAppearanceQuery selects a page of a person's appearances; a nonpositive Limit returns every remaining one.
@@ -34,6 +56,8 @@ const (
 	PersonAppearancesNewest PersonAppearanceSort = "newest"
 	// PersonAppearancesLeastSimilar puts the faces least like the person first, so a wrong link is found early.
 	PersonAppearancesLeastSimilar PersonAppearanceSort = "leastSimilar"
+	// PersonAppearancesMostSimilar puts the faces most like the person first, the best to choose their face from.
+	PersonAppearancesMostSimilar PersonAppearanceSort = "mostSimilar"
 )
 
 // ComparePersonAppearances is the order of sort; ties and unscored appearances fall back to newest first, then by
@@ -45,14 +69,18 @@ func ComparePersonAppearances(sort PersonAppearanceSort) func(a, b PersonAppeara
 		}
 		return cmp.Compare(b.ID, a.ID)
 	}
-	if sort != PersonAppearancesLeastSimilar {
+	if sort != PersonAppearancesLeastSimilar && sort != PersonAppearancesMostSimilar {
 		return newest
+	}
+	direction := 1
+	if sort == PersonAppearancesMostSimilar {
+		direction = -1
 	}
 	return func(a, b PersonAppearance) int {
 		switch {
 		case a.Similarity != nil && b.Similarity != nil:
 			if c := cmp.Compare(*a.Similarity, *b.Similarity); c != 0 {
-				return c
+				return direction * c
 			}
 		case a.Similarity != nil:
 			return -1

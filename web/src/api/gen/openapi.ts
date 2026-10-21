@@ -608,6 +608,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a frame of the video
+         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
+         */
+        get: operations["getVideoFrame"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail-edits": {
         parameters: {
             query?: never;
@@ -2017,7 +2037,7 @@ export interface paths {
         };
         /**
          * List a person's face appearances
-         * @description Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor.
+         * @description Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order; sort mostSimilar puts the most alike first, with the same tail. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor.
          */
         get: operations["listPersonAppearances"];
         put?: never;
@@ -4568,6 +4588,7 @@ export interface components {
              * @description Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
              */
             similarity?: number;
+            focus?: components["schemas"]["FaceFocus"];
         };
         SimilarPersonList: {
             items: components["schemas"]["SimilarPerson"][];
@@ -4593,6 +4614,17 @@ export interface components {
         };
         FaceAppearanceSplitRequest: {
             appearanceIds: number[];
+        };
+        /** @description Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side. */
+        FaceFocus: {
+            /** Format: double */
+            time: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            w: number;
         };
         FaceAppearanceSpan: {
             /** Format: double */
@@ -7529,6 +7561,35 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getVideoFrame: {
+        parameters: {
+            query: {
+                positionMs: number;
+            };
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The frame */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     startThumbnailEdit: {
         parameters: {
             query?: never;
@@ -10030,8 +10091,8 @@ export interface operations {
     listPersonAppearances: {
         parameters: {
             query?: {
-                /** @description newest (default) or leastSimilar */
-                sort?: "newest" | "leastSimilar";
+                /** @description newest (default), leastSimilar or mostSimilar */
+                sort?: "newest" | "leastSimilar" | "mostSimilar";
                 /** @description Opaque nextCursor from the previous response; ignored without limit */
                 cursor?: string;
                 /** @description Page size; omit for all appearances without nextCursor */

@@ -814,6 +814,10 @@ for the person without needing a face image. `sort=leastSimilar` orders by that
 similarity, lowest first, so faces linked by mistake come first; appearances
 that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
+`sort=mostSimilar` is the reverse with the same tail, for choosing the
+person's face from the faces most like them
+([people.md](people.md#a-face-can-be-framed-from-a-video)). Each appearance also
+carries its `focus`, the middle, mean centre and width of its longest track.
 By default they come newest video first by the video's added time, then by
 descending appearance id. The store reads every appearance of the person and
 orders and pages them in memory, since the similarity needs all centroids; a

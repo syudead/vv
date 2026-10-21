@@ -2535,6 +2535,7 @@ func (e WorkPersonRole) Valid() bool {
 // Defines values for ListPersonAppearancesParamsSort.
 const (
 	LeastSimilar ListPersonAppearancesParamsSort = "leastSimilar"
+	MostSimilar  ListPersonAppearancesParamsSort = "mostSimilar"
 	Newest       ListPersonAppearancesParamsSort = "newest"
 )
 
@@ -2542,6 +2543,8 @@ const (
 func (e ListPersonAppearancesParamsSort) Valid() bool {
 	switch e {
 	case LeastSimilar:
+		return true
+	case MostSimilar:
 		return true
 	case Newest:
 		return true
@@ -3395,6 +3398,9 @@ type ExternalId struct {
 type FaceAppearance struct {
 	AppearanceId int64 `json:"appearanceId"`
 
+	// Focus Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side.
+	Focus *FaceFocus `json:"focus,omitempty"`
+
 	// HasCrop True when getFaceAppearanceCrop has a face to return.
 	HasCrop bool `json:"hasCrop"`
 
@@ -3472,6 +3478,14 @@ type FaceCandidatePerson struct {
 
 	// Provisional True for a person without a canonical name, whose name is then "".
 	Provisional bool `json:"provisional"`
+}
+
+// FaceFocus Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side.
+type FaceFocus struct {
+	Time float64 `json:"time"`
+	W    float64 `json:"w"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
 }
 
 // FaceRecognitionCounts Face analysis queue rows (content keys) by state.
@@ -6791,7 +6805,7 @@ type ListPeopleParams struct {
 
 // ListPersonAppearancesParams defines parameters for ListPersonAppearances.
 type ListPersonAppearancesParams struct {
-	// Sort newest (default) or leastSimilar
+	// Sort newest (default), leastSimilar or mostSimilar
 	Sort *ListPersonAppearancesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Cursor Opaque nextCursor from the previous response; ignored without limit
@@ -7009,6 +7023,11 @@ type GetVideoParams struct {
 
 	// SmartFolder Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored.
 	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
+}
+
+// GetVideoFrameParams defines parameters for GetVideoFrame.
+type GetVideoFrameParams struct {
+	PositionMs int64 `form:"positionMs" json:"positionMs"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -7849,6 +7868,9 @@ type ServerInterface interface {
 	// SetVideoDisplayName Set or clear the video display name
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetVideoFrame Return a frame of the video
+	// (GET /api/videos/{id}/frame)
+	GetVideoFrame(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoFrameParams)
 	// ListVideoGroupMembers Return a range of group members
 	// (GET /api/videos/{id}/group-members)
 	ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id VideoId, params ListVideoGroupMembersParams)
@@ -12862,6 +12884,48 @@ func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetVideoFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoFrameParams
+
+	// ------------- Required query parameter "positionMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "positionMs", r.URL.Query(), &params.PositionMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "positionMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "positionMs", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoFrame(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListVideoGroupMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -14516,6 +14580,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/frame", wrapper.GetVideoFrame)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits/image", wrapper.StartThumbnailEditFromImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
