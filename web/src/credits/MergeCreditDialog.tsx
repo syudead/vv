@@ -1,25 +1,22 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { isAborted } from "../api/client";
 import {
   type Credit,
   type CreditKind,
   isCreditGone,
-  listCredits,
   mergeCredits,
+  type Person,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
-import { foldForMatch } from "../lib/foldForMatch";
 import { DialogError } from "../tags/DialogError";
 import { MergeSummary, MergeTargetField } from "../tags/MergeParts";
 import CreditCommand, { type CreditChoice } from "../ui/CreditCommand";
-import { creditFace } from "./creditFace";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
 import { creditDisplayName } from "./displayName";
-
-const candidateLimit = 8;
+import { SimilarPeopleList, useSimilarPeople } from "./person/SimilarPeopleList";
+import { useCreditTargetSearch } from "./useCreditTargetSearch";
 
 /**
  * Exclude the source and creation option from merge candidates. Missing records call onStale;
@@ -44,62 +41,20 @@ export default function MergeCreditDialog({
   const mergeButton = useRef<HTMLButtonElement>(null);
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Credit | null>(null);
-  const [candidates, setCandidates] = useState<readonly Credit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<UiText | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
   // Move focus to Merge only immediately after selecting a candidate.
   const justSelectedRef = useRef(false);
+  const { shown, options, exactOption, searching, searchError } = useCreditTargetSearch(
+    kind,
+    source.id,
+    value,
+  );
 
-  // Fetch one extra candidate to retain eight after excluding the source; abort obsolete searches.
-  useEffect(() => {
-    const controller = new AbortController();
-    setSearching(true);
-    setSearchError(null);
-    listCredits(
-      kind,
-      { q: value.trim(), limit: candidateLimit + 1 },
-      controller.signal,
-    ).then(
-      (page) => {
-        if (controller.signal.aborted) return;
-        setCandidates(page.items);
-        setSearching(false);
-      },
-      (failure: unknown) => {
-        if (controller.signal.aborted || isAborted(failure)) return;
-        setSearchError(errorText(failure));
-        setSearching(false);
-      },
-    );
-    return () => controller.abort();
-  }, [kind, value]);
-
-  const shown = candidates
-    .filter((credit) => credit.id !== source.id)
-    .slice(0, candidateLimit);
-  const folded = foldForMatch(value.trim());
-  const options: CreditChoice[] = shown.map((credit) => {
-    const alias =
-      folded === "" || foldForMatch(credit.name).includes(folded)
-        ? undefined
-        : credit.aliases.find((item) => foldForMatch(item.name).includes(folded))?.name;
-    return {
-      id: String(credit.id),
-      label: creditDisplayName(credit),
-      leading: creditFace(kind, credit, "option"),
-      hint: alias === undefined ? undefined : t.credits.mergeDialog.aliasHint(alias),
-      meta: t.credits.mergeDialog.videoCount(credit.videoCount),
-    };
-  });
-  const trimmed = value.trim();
-  const exact = shown.find((credit) => trimmed !== "" && credit.name === trimmed);
-  const exactOption =
-    exact === undefined
-      ? null
-      : (options.find((option) => option.id === String(exact.id)) ?? null);
-
+  // Before a name is typed, people are offered by face, since a person may have no name yet; without any face
+  // data the names are listed as before.
+  const similar = useSimilarPeople(kind === "person" ? source.id : null, []);
+  const suggesting = value.trim() === "" && (similar === null || similar.length > 0);
   const canSubmit = target !== null && !pending;
 
   useEffect(() => {
@@ -188,14 +143,27 @@ export default function MergeCreditDialog({
           setTarget(null);
           setError(null);
         }}
-        choices={options}
+        choices={suggesting ? [] : options}
         exactChoice={exactOption}
         onSelect={selectTarget}
         chosenId={target === null ? undefined : String(target.id)}
-        searching={searching}
-        searchError={searchError === null ? null : texts.searchFailed(searchError)}
-        emptyText={texts.noCandidates}
+        searching={searching && !suggesting}
+        searchError={
+          suggesting || searchError === null ? null : texts.searchFailed(searchError)
+        }
+        emptyText={suggesting ? undefined : texts.noCandidates}
       />
+      {suggesting && (
+        <SimilarPeopleList
+          heading={t.credits.similarPeople.likePerson(creditDisplayName(source))}
+          items={similar}
+          selectedId={target?.id}
+          onSelect={(person: Person) => {
+            setTarget(person);
+            setError(null);
+          }}
+        />
+      )}
       {target !== null && (
         <>
           <p className="text-sm text-muted-foreground">

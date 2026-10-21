@@ -7,6 +7,7 @@ import { undoActivity } from "../../api/activity";
 import {
   confirmFaceCandidate,
   type FaceCandidatePerson,
+  moveFaceAppearances,
   reopenFaceCandidate,
   splitFaceAppearance,
   splitFaceAppearances,
@@ -150,6 +151,10 @@ function FacesShown({
     await mergeCredits("person", person.id, [created.id]);
   }
 
+  async function undoMove(target: Person, appearanceIds: readonly number[]) {
+    await moveFaceAppearances(target.id, appearanceIds, person.id);
+  }
+
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
   return (
     <RecordPage
@@ -223,8 +228,9 @@ function FacesShown({
             description={text.facesPage.refreshHint}
           >
             <PersonAppearances
+              person={person}
               appearances={appearances}
-              actions={{ split: splitAppearances, undoSplit, onGone: markGone }}
+              actions={{ split: splitAppearances, undoSplit, undoMove, onGone: markGone }}
             />
           </PageSection>
         </TabsContent>

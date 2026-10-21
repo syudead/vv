@@ -95,6 +95,42 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("moves selected faces to a person picked by face, and Undo moves them back", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+    expect(within(dialog).getByText("6 faces · first in Beach day")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(await screen.findByText("Moved to Mio")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/appearances/move")[0])).toEqual({
+      appearanceIds: [3],
+      targetId: 9,
+    });
+    expect(
+      sent("GET", "/api/people/7/similar-people")[0]?.url.searchParams.getAll(
+        "appearanceId",
+      ),
+    ).toEqual(["3"]);
+
+    await user.click(screen.getByRole("button", { name: "Undo the move in Beach day" }));
+
+    await waitFor(() => expect(screen.queryByText("Moved to Mio")).toBeNull());
+    expect(sentBody(sent("POST", "/api/people/9/appearances/move")[0])).toEqual({
+      appearanceIds: [3],
+      targetId: 7,
+    });
+  });
+
   it("orders the faces least like the person first, with each score, and can switch to newest", async () => {
     const user = userEvent.setup();
     server.appearances = [

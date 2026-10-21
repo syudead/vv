@@ -142,6 +142,23 @@ function faceRoute(method: string, url: URL): Response | null {
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
   }
+  if (url.pathname === "/api/people/7/similar-people") {
+    return jsonResponse({
+      items: [
+        {
+          person: person({ id: 9, name: "Mio" }),
+          similarity: 0.71,
+          faceCount: 6,
+          sampleAppearanceIds: [],
+          firstSeenTitle: "Beach day",
+        },
+      ],
+    });
+  }
+  const move = /^\/api\/people\/(7|9)\/appearances\/move$/.exec(url.pathname);
+  if (move !== null && method === "POST") {
+    return jsonResponse(move[1] === "7" ? person({ id: 9, name: "Mio" }) : person());
+  }
   if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }

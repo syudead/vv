@@ -42,6 +42,8 @@ const server = {
   nextId: 100,
   /** Fail the next mutation once with this response. */
   nextError: null as { status: number; body: Record<string, unknown> } | null,
+  /** People whose faces look like the person a similar-people read names; none by default. */
+  similar: [] as Credit[],
 };
 
 function listOf(kind: CreditKind): Credit[] {
@@ -83,6 +85,16 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
     });
     items.push(created);
     return jsonResponse(created, 201);
+  }
+  if (rest.endsWith("/similar-people")) {
+    return jsonResponse({
+      items: server.similar.map((person) => ({
+        person,
+        similarity: 0.71,
+        faceCount: 4,
+        sampleAppearanceIds: [],
+      })),
+    });
   }
   const match = /^\/(\d+)(\/merge)?$/.exec(rest);
   const target = items.find((item) => item.id === Number(match?.[1]));
@@ -207,6 +219,7 @@ beforeEach(() => {
   server.sent = [];
   server.nextId = 100;
   server.nextError = null;
+  server.similar = [];
   install();
 });
 
@@ -434,6 +447,29 @@ describe("CreditsPage 人物の一覧", () => {
         .getAllByRole("textbox", { name: "Language" })[0]!
         .getAttribute("aria-invalid"),
     ).toBe("true");
+  });
+
+  it("人物の統合先は、名前を打つ前は顔の似ている順に出し、選んで統合できる", async () => {
+    const user = userEvent.setup();
+    server.similar = [server.people[2] as Credit];
+    renderPage("person");
+    await screen.findByTitle("Bob");
+
+    await user.click(within(rowOf("Bob")).getByRole("button", { name: "More actions" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into another person…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Bob"' });
+    expect(within(dialog).getByText("Looks most like Bob")).toBeDefined();
+    expect(within(dialog).queryByRole("option", { name: /Alice/ })).toBeNull();
+    await user.click(await within(dialog).findByRole("radio", { name: /Carol/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    await waitFor(() =>
+      expect(
+        requests("POST", /^\/api\/people\/3\/merge$/).map((item) => item.body),
+      ).toEqual([{ sourceIds: [2] }]),
+    );
   });
 
   it("統合は合計の videoCount で確かめてから sourceIds を送る", async () => {

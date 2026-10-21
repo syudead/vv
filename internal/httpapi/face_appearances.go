@@ -60,22 +60,84 @@ func (s *server) SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id 
 
 func (s *server) SplitFaceAppearances(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
 	var body gen.FaceAppearanceSplitRequest
-	if !s.readJSONBody(w, r, &body) {
+	if !s.readJSONBody(w, r, &body) || !s.acceptAppearanceIDs(w, body.AppearanceIds) {
 		return
-	}
-	if n := len(body.AppearanceIds); n == 0 || n > 200 {
-		s.invalidRequest(w, "appearanceIds must list 1 to 200 appearances.")
-		return
-	}
-	seen := map[int64]bool{}
-	for _, appearanceID := range body.AppearanceIds {
-		if appearanceID < 1 || seen[appearanceID] {
-			s.invalidRequest(w, "appearanceIds must be distinct positive integers.")
-			return
-		}
-		seen[appearanceID] = true
 	}
 	s.splitFaceAppearances(w, r, id, body.AppearanceIds)
+}
+
+// acceptAppearanceIDs answers 400 unless the list holds 1 to 200 distinct positive ids.
+func (s *server) acceptAppearanceIDs(w http.ResponseWriter, ids []int64) bool {
+	if n := len(ids); n == 0 || n > 200 {
+		s.invalidRequest(w, "appearanceIds must list 1 to 200 appearances.")
+		return false
+	}
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id < 1 || seen[id] {
+			s.invalidRequest(w, "appearanceIds must be distinct positive integers.")
+			return false
+		}
+		seen[id] = true
+	}
+	return true
+}
+
+func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
+	var body gen.FaceAppearanceMoveRequest
+	if !s.readJSONBody(w, r, &body) || !s.acceptAppearanceIDs(w, body.AppearanceIds) || !s.creditsConfigured(w) {
+		return
+	}
+	person, err := s.credits.MoveFaceAppearances(r.Context(), id, body.AppearanceIds, body.TargetId)
+	switch {
+	case errors.Is(err, domain.ErrFaceAppearanceNotFound):
+		s.notFoundReason(w, gen.ErrorReasonFaceAppearanceNotFound, "The person has no such face appearance.")
+	case errors.Is(err, domain.ErrMergeSameCredit):
+		s.invalidRequest(w, "targetId must be another person.")
+	case err != nil:
+		s.writeCreditError(w, peopleAPI, err)
+	default:
+		s.writeCreditBody(w, http.StatusOK, toAPIPerson(person))
+	}
+}
+
+func (s *server) ListSimilarPeople(w http.ResponseWriter, r *http.Request, id gen.PersonId, params gen.ListSimilarPeopleParams) {
+	limit := 8
+	if params.Limit != nil {
+		if *params.Limit < 1 || *params.Limit > 50 {
+			s.invalidRequest(w, "limit must be from 1 to 50.")
+			return
+		}
+		limit = *params.Limit
+	}
+	var appearanceIDs []int64
+	if params.AppearanceId != nil {
+		appearanceIDs = *params.AppearanceId
+		if len(appearanceIDs) > 200 {
+			s.invalidRequest(w, "appearanceId may be repeated at most 200 times.")
+			return
+		}
+	}
+	if !s.creditsConfigured(w) {
+		return
+	}
+	people, err := s.credits.SimilarPeople(r.Context(), id, appearanceIDs, limit)
+	if err != nil {
+		s.writeCreditError(w, peopleAPI, err)
+		return
+	}
+	body := gen.SimilarPersonList{Items: make([]gen.SimilarPerson, 0, len(people))}
+	for _, p := range people {
+		item := gen.SimilarPerson{
+			Person: toAPIPerson(p.Person), Similarity: p.Similarity, FaceCount: p.FaceCount,
+			SampleAppearanceIds: p.SampleAppearanceIDs,
+		}
+		if p.FirstSeenTitle != "" {
+			item.FirstSeenTitle = &p.FirstSeenTitle
+		}
+		body.Items = append(body.Items, item)
+	}
+	s.writeCreditBody(w, http.StatusOK, body)
 }
 
 func (s *server) splitFaceAppearances(w http.ResponseWriter, r *http.Request, id int64, appearanceIDs []int64) {

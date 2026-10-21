@@ -856,6 +856,18 @@ one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
 owner's own decision, like confirming a candidate.
 
+`POST /api/people/{id}/appearances/move` hands appearances to an existing
+person the owner names instead, as the split does to its new person but
+without dismissing the pair; a target already credited in a work keeps its own
+credit and the old person's row goes. Moving them back is the undo.
+
+`GET /api/people/{id}/similar-people` ranks the other people for picking
+where faces belong ([`face_similar_people.go`](../../internal/store/face_similar_people.go)):
+the mean of the listed appearances' centroids, or of all the person's, is
+compared with each person's face image vector and with the mean of their
+centroids, whichever is closer. The person page's merge dialog uses it for the
+whole person, and the faces page's `Move to person…` for the checked faces.
+
 `POST /api/people/{id}/appearances/split` does the same for several
 appearances at once, moving them all to one new person whose face is the first
 one's crop; any appearance the person lacks splits none.
