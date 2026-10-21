@@ -82,6 +82,8 @@ export const server = {
   reopenFailures: 0,
   /** The reason a face upload is refused with, or null to accept it. */
   imageRefusal: null as string | null,
+  /** The people a name search of the move and merge dialogs finds among. */
+  searchable: [] as Person[],
   /** When set, a move answers that a face is no longer the person's. */
   moveGone: false,
   /** How many similar-people reads fail before they succeed again. */
@@ -313,6 +315,7 @@ export function installPersonServer() {
     server.similarFailures = 0;
     server.moveGone = false;
     server.imageRefusal = null;
+    server.searchable = [];
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(
