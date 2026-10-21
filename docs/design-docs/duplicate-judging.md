@@ -127,7 +127,7 @@ The classifier still sees only the frames, so a name cannot sway its answer.
 | --- | --- | --- |
 | Work code | Folded code | Strong |
 | External ID | Same source; any equal value means same, otherwise different | Strong |
-| Recording time (embedded `RecordedAt`) | Exact text | Strong |
+| Recording time (embedded `RecordedAt`) | Exact text | Strong when equal; a difference counts for nothing, since many encoders rewrite `creation_time` to the encode time |
 | File title | Folded, with bracketed parts, encode words (`1080p`, `x265`, `BD`) and separators removed; episode numbers stay | Weak, same only |
 | Embedded title, broadcast program, audio languages | Folded or exact text | Shown only |
 

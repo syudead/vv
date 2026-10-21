@@ -77,7 +77,9 @@ func CompareVersionFacts(a, b VersionFacts) []VersionFactSignal {
 	}
 	add(VersionFactWorkCode, true, a.WorkCode, b.WorkCode, a.WorkCode == b.WorkCode)
 	signals = append(signals, externalIDSignals(a.ExternalIDs, b.ExternalIDs)...)
-	add(VersionFactRecordedAt, true, a.RecordedAt, b.RecordedAt, a.RecordedAt == b.RecordedAt)
+	// Many encoders rewrite creation_time to the encode time, so only an equal recording time counts.
+	recordedEqual := a.RecordedAt == b.RecordedAt
+	add(VersionFactRecordedAt, recordedEqual, a.RecordedAt, b.RecordedAt, recordedEqual)
 	titleA, titleB := CleanVersionTitle(a.FileTitle), CleanVersionTitle(b.FileTitle)
 	if titleA != "" && titleB != "" {
 		add(VersionFactTitle, false, a.FileTitle, b.FileTitle, titleA == titleB)

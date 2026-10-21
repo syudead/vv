@@ -22,8 +22,11 @@ func TestLeanVersionFacts(t *testing.T) {
 			VersionFacts{ExternalIDs: []ExternalID{{Source: "db", Value: "1"}}},
 			VersionFacts{ExternalIDs: []ExternalID{{Source: "db", Value: "2"}}}, VersionLeansStronglyDifferent},
 		{"強い手がかりが食い違う",
-			VersionFacts{WorkCode: "abc-1", RecordedAt: "2024-01-01"},
-			VersionFacts{WorkCode: "abc-1", RecordedAt: "2025-01-01"}, VersionLeansNowhere},
+			VersionFacts{WorkCode: "abc-1", ExternalIDs: []ExternalID{{Source: "db", Value: "1"}}},
+			VersionFacts{WorkCode: "abc-1", ExternalIDs: []ExternalID{{Source: "db", Value: "2"}}}, VersionLeansNowhere},
+		// Re-encoding often rewrites creation_time, so differing times say nothing.
+		{"録画日時だけ違う", VersionFacts{RecordedAt: "2024-01-01"}, VersionFacts{RecordedAt: "2025-01-01"}, VersionLeansNowhere},
+		{"録画日時が一致", VersionFacts{RecordedAt: "2024-01-01"}, VersionFacts{RecordedAt: "2024-01-01"}, VersionLeansStronglySame},
 		{"ファイル名だけ一致", VersionFacts{FileTitle: "Movie 1080p"}, VersionFacts{FileTitle: "movie_720p"}, VersionLeansSame},
 		{"音声の言語だけ違う",
 			VersionFacts{AudioLanguages: []string{"jpn"}}, VersionFacts{AudioLanguages: []string{"eng"}}, VersionLeansNowhere},
