@@ -78,6 +78,10 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** What the merge into the person answers, when not the person with nothing missing. */
+  /** How many candidate reads fail before they succeed again. */
+  candidateFailures: 0,
+  mergeAnswer: null as { person: Person | null; notFoundIds: number[] } | null,
   /** Whether face recognition is on, as the settings report it. */
   faceRecognition: true,
   /** How many videos the person performs in. */
@@ -127,14 +131,22 @@ function pluginRoute(method: string, url: URL, body: unknown): Response | null {
 
 function faceRoute(method: string, url: URL): Response | null {
   if (url.pathname === "/api/people/7/face-candidates") {
+    if (server.candidateFailures > 0) {
+      server.candidateFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
     return jsonResponse({ items: server.faceCandidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
     if (url.searchParams.get("cursor") === "page-2") {
-      return jsonResponse({ items: server.laterAppearances });
+      return jsonResponse({
+        items: server.laterAppearances,
+        total: server.appearances.length + server.laterAppearances.length,
+      });
     }
     return jsonResponse({
       items: server.appearances,
+      total: server.appearances.length + server.laterAppearances.length,
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
   }
@@ -145,15 +157,24 @@ function faceRoute(method: string, url: URL): Response | null {
     );
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
-  const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
-    url.pathname,
-  );
+  const pair =
+    /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss|reopen)$/.exec(
+      url.pathname,
+    );
   if (pair !== null && method === "POST") {
+    if (pair[2] === "reopen") return new Response(null, { status: 204 });
     server.faceCandidates = server.faceCandidates.filter(
       (item) => item.person.id !== Number(pair[1]),
     );
     if (pair[2] === "dismiss") return new Response(null, { status: 204 });
     return jsonResponse(server.mergeTarget);
+  }
+  if (url.pathname === "/api/people/7/merge" && method === "POST") {
+    const merged = server.mergeAnswer ?? { person: server.person, notFoundIds: [] };
+    return jsonResponse(merged);
+  }
+  if (url.pathname === "/api/people/7/image" && method === "DELETE") {
+    return jsonResponse(server.person);
   }
   const target = server.mergeTarget;
   if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {
@@ -213,6 +234,8 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.mergeAnswer = null;
+    server.candidateFailures = 0;
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(

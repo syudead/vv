@@ -3573,6 +3573,9 @@ type FaceAppearanceList struct {
 
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total Every appearance of the person that is not dropped, across all pages.
+	Total int `json:"total"`
 }
 
 // FaceAppearanceSpan defines model for FaceAppearanceSpan.
@@ -8068,6 +8071,9 @@ type ServerInterface interface {
 	// DismissFaceCandidate Dismiss a face candidate pair
 	// (POST /api/people/{id}/face-candidates/{otherId}/dismiss)
 	DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
+	// ReopenFaceCandidate Take back the dismissal of a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/reopen)
+	ReopenFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
 	// DeletePersonImage Remove a person's face
 	// (DELETE /api/people/{id}/image)
 	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -10796,6 +10802,41 @@ func (siw *ServerInterfaceWrapper) DismissFaceCandidate(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DismissFaceCandidate(w, r, id, otherId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReopenFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) ReopenFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReopenFaceCandidate(w, r, id, otherId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15006,6 +15047,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/face-candidates", wrapper.ListFaceCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/reopen", wrapper.ReopenFaceCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)

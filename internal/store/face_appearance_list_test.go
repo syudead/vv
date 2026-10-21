@@ -50,6 +50,10 @@ func TestPersonAppearancesPageNewestVideoFirstWithoutDroppedOnes(t *testing.T) {
 		}
 		got = append(got, page.Items...)
 		pages++
+		// The dropped appearance and another person's are not counted, on every page.
+		if page.Total != 3 {
+			t.Errorf("page %d: total = %d, want 3", pages, page.Total)
+		}
 		if cursor = page.NextCursor; cursor == "" {
 			break
 		}

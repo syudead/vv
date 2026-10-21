@@ -19,6 +19,8 @@ type PersonAppearance struct {
 type PersonAppearancePage struct {
 	Items      []PersonAppearance
 	NextCursor string
+	// Total counts every appearance of the person that is not dropped, across all pages.
+	Total int
 }
 
 // FaceTimeSpan is a time range in seconds.

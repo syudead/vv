@@ -1,29 +1,33 @@
-import { ArrowLeft } from "lucide-react";
-import type { ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
-import type { Credit, Person } from "../../api/credits";
+import { RequestFailed } from "../../api/client";
+import { mergeCredits, type Person, removePersonImage } from "../../api/credits";
 import {
   confirmFaceCandidate,
   type FaceAppearance,
   type FaceCandidatePerson,
   splitFaceAppearance,
 } from "../../api/personFaces";
-import { t } from "../../i18n";
+import { formatNumber, t } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageSection } from "../../ui/patterns/page-section";
 import { RecordPage } from "../../ui/patterns/record-page";
 import { Button } from "../../ui/shadcn/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/shadcn/tabs";
 import { useToast } from "../../ui/Toast";
 import { creditDisplayName } from "../displayName";
 import { PersonAppearances, usePersonAppearances } from "./PersonAppearances";
-import { PersonCandidates, useFaceCandidates } from "./PersonCandidates";
+import { PersonCandidates, useFaceCandidates, useFaceSample } from "./PersonCandidates";
 import PersonGone from "./PersonGone";
 import { personFacesPath, personPath } from "./personPath";
 import { parsePersonId, useRoutedPerson } from "./usePerson";
 
 const text = t.credits.personPage;
+
+type FacesTab = "candidates" | "faces";
 
 /** `/people/:id/faces`: the person's face recognition, kept off the person page. */
 export default function PersonFacesPage() {
@@ -70,6 +74,28 @@ function FacesScreen({ id }: { id: number | null }) {
   );
 }
 
+/**
+ * The tab in the address, so a reload keeps it; without one, the pairs unless none waited at the first read. The
+ * default is settled once, so a Refresh that changes the count never moves the owner to the other tab.
+ */
+function useFacesTab(
+  loaded: boolean,
+  noCandidates: boolean,
+): [FacesTab, (next: FacesTab) => void] {
+  const [params, setParams] = useSearchParams();
+  const [initial, setInitial] = useState<FacesTab | null>(null);
+  if (initial === null && loaded) setInitial(noCandidates ? "faces" : "candidates");
+  const asked = params.get("tab");
+  const tab: FacesTab =
+    asked === "faces" || asked === "candidates" ? asked : (initial ?? "candidates");
+  return [
+    tab,
+    (next) => {
+      setParams({ tab: next }, { replace: true });
+    },
+  ];
+}
+
 function FacesShown({
   person,
   back,
@@ -83,73 +109,135 @@ function FacesShown({
 }) {
   const toast = useToast();
   const navigate = useNavigate();
+  // Each refresh remounts the lists, so decided rows and split tiles start over from the server.
+  const [round, setRound] = useState(0);
   const candidates = useFaceCandidates(person.id, markGone);
   const appearances = usePersonAppearances(person.id, markGone);
+  const sample = useFaceSample(person.id, round);
+  const [tab, setTab] = useFacesTab(candidates.loaded, candidates.items.length === 0);
 
-  function merged(target: Credit) {
-    toast(text.mergedInto(creditDisplayName(target)));
-    void navigate(personFacesPath(target.id));
+  function refresh() {
+    candidates.reload();
+    appearances.reload();
+    setRound((value) => value + 1);
   }
 
-  /** The shown person was merged away when it is not the target; otherwise it gained the other's faces. */
+  /** The shown person stays unless they have no name and the other has; then the page follows the merge. */
   async function confirmCandidate(other: FaceCandidatePerson) {
     const target = await confirmFaceCandidate(person.id, other.id);
     if (target.id !== person.id) {
-      merged(target);
+      toast(text.mergedInto(creditDisplayName(target)));
+      void navigate(personFacesPath(target.id));
       return;
     }
     replace(target);
-    candidates.remove(other.id);
-    // The target may have gained the source's pairs and appearances.
-    candidates.reload();
-    appearances.reload();
-    toast(text.candidates.merged(creditDisplayName(other)));
   }
 
-  /** The face leaves this person's list; the person's candidates may have changed. */
-  async function splitAppearance(appearance: FaceAppearance) {
-    const created = await splitFaceAppearance(person.id, appearance.appearanceId);
-    appearances.remove(appearance.appearanceId);
-    candidates.reload();
-    toast(text.faces.split, {
-      action: {
-        label: text.faces.openSplit,
-        run: () => {
-          void navigate(personPath(created.id));
-          return Promise.resolve();
-        },
-      },
-    });
+  function splitAppearance(appearance: FaceAppearance): Promise<Person> {
+    return splitFaceAppearance(person.id, appearance.appearanceId);
   }
 
+  /** Merges the split person back; a person who had no face gets none from the merge. */
+  async function undoSplit(created: Person) {
+    const { credit, notFoundIds } = await mergeCredits("person", person.id, [created.id]);
+    if (notFoundIds.includes(created.id)) {
+      throw new RequestFailed(404, "not_found", "The split person is gone.", {
+        reason: "person_not_found",
+      });
+    }
+    if (
+      person.imageRevision === undefined &&
+      "imageRevision" in credit &&
+      credit.imageRevision !== undefined
+    ) {
+      replace(await removePersonImage(person.id));
+    }
+  }
+
+  const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
   return (
     <RecordPage
       back={back}
       title={text.facesPage.title}
       description={creditDisplayName(person)}
     >
-      {candidates.items.length > 0 && (
-        <PageSection
-          title={text.candidates.heading}
-          description={text.facesPage.candidatesText}
+      <Tabs
+        value={tab}
+        onValueChange={(next) => setTab(next as FacesTab)}
+        className="flex flex-col gap-4"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <TabsList
+            variant="line"
+            aria-label={text.facesPage.tabsLabel}
+            className="flex-1"
+          >
+            <TabsTrigger value="candidates">
+              {text.facesPage.candidatesTab}
+              <span className="font-normal text-muted-foreground tabular-nums">
+                {formatNumber(candidates.items.length - candidates.decided.size)}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="faces">
+              {text.facesPage.facesTab}
+              {total !== undefined && (
+                <span className="font-normal text-muted-foreground tabular-nums">
+                  {formatNumber(total)}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <Button variant="ghost" size="sm" onClick={refresh}>
+            <RefreshCw aria-hidden="true" />
+            {text.facesPage.refresh}
+          </Button>
+        </div>
+        {/* Both tabs stay mounted, so a decided row or a split tile keeps its result across tab switches. */}
+        <TabsContent
+          value="candidates"
+          key={`candidates-${String(round)}`}
+          forceMount
+          className="data-[state=inactive]:hidden"
         >
-          <PersonCandidates
-            personId={person.id}
-            items={candidates.items}
-            actions={{
-              confirm: confirmCandidate,
-              remove: candidates.remove,
-              onGone: markGone,
-            }}
-          />
-        </PageSection>
-      )}
-      <PageSection title={text.faces.heading}>
-        <PersonAppearances
-          appearances={appearances}
-          actions={{ split: splitAppearance, onGone: markGone }}
-        />
-      </PageSection>
+          <PageSection
+            title={text.candidates.heading}
+            description={text.facesPage.refreshHint}
+          >
+            <PersonCandidates
+              person={person}
+              sample={sample}
+              items={candidates.items}
+              failed={
+                candidates.failed === null
+                  ? null
+                  : { reason: candidates.failed, retry: candidates.reload }
+              }
+              actions={{
+                confirm: confirmCandidate,
+                remove: candidates.remove,
+                decide: candidates.decide,
+                onGone: markGone,
+              }}
+            />
+          </PageSection>
+        </TabsContent>
+        <TabsContent
+          value="faces"
+          key={`faces-${String(round)}`}
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
+          <PageSection
+            title={text.faces.heading}
+            description={text.facesPage.refreshHint}
+          >
+            <PersonAppearances
+              appearances={appearances}
+              actions={{ split: splitAppearance, undoSplit, onGone: markGone }}
+            />
+          </PageSection>
+        </TabsContent>
+      </Tabs>
     </RecordPage>
   );
 }

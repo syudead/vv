@@ -1784,14 +1784,32 @@ export const en = {
         entryLabel: (count: number) =>
           count === 0 ? "Faces" : `Faces, ${formatNumber(count)} to review`,
         back: (name: string) => `Back to ${name}`,
-        candidatesText:
-          "People whose faces look like this person's. Decide each pair here.",
+        tabsLabel: "Face review",
+        candidatesTab: "Same person?",
+        facesTab: "Faces in videos",
+        refresh: "Refresh",
+        refreshHint: "Decided items stay where they are until you refresh.",
       },
       candidates: {
         heading: "Same person?",
         open: (name: string) => `Open ${name}`,
         similarity: (value: number) =>
           `${formatNumber(Math.round(value * 100))}% similar`,
+        pairLabel: (name: string) => `Pair with ${name}`,
+        percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+        similarLabel: "similar",
+        thisPerson: "This person",
+        faceCount: (count: number) =>
+          selectPlural(count, {
+            one: `${formatNumber(count)} face`,
+            other: `${formatNumber(count)} faces`,
+          }),
+        none: "No pairs to decide.",
+        mergedResult: (name: string) => `Merged into ${name}`,
+        dismissedResult: "Not the same",
+        undo: "Undo",
+        undoFor: (name: string) => `Undo for ${name}`,
+        undoFailed: (reason: string) => `Couldn't undo: ${reason}`,
         confirm: "Same person",
         confirmFor: (name: string) => `Same person as ${name}`,
         dismiss: "Not the same",
@@ -1799,6 +1817,7 @@ export const en = {
         merged: (name: string) => `Merged "${name}"`,
         confirmFailed: (reason: string) => `Couldn't merge: ${reason}`,
         dismissFailed: (reason: string) => `Couldn't dismiss: ${reason}`,
+        loadFailed: (reason: string) => `Couldn't load the pairs: ${reason}`,
       },
       faces: {
         heading: "Faces in videos",
@@ -1810,9 +1829,10 @@ export const en = {
         loadingMore: "Loading more faces…",
         notThisPerson: "Not this person",
         notThisPersonFor: (title: string) => `Not this person in ${title}`,
-        split: "Split into a new unnamed person",
-        openSplit: "Open",
+        splitResult: (name: string) => `Split into ${name}`,
+        undoSplitFor: (title: string) => `Undo the split in ${title}`,
         splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
+        undoSplitFailed: (reason: string) => `Couldn't undo the split: ${reason}`,
       },
       pluginFetch: {
         entry: "Fetch info…",

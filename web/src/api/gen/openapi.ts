@@ -1988,6 +1988,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/face-candidates/{otherId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take back the dismissal of a face candidate pair
+         * @description Owner-only; no body. For undoing "Not the same": marks the dismissed pair of id and otherId, in either order, open again, so it is offered as before. No dismissed pair of these two people returns 404 face_candidate_not_found.
+         */
+        post: operations["reopenFaceCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people/{id}/appearances": {
         parameters: {
             query?: never;
@@ -4495,6 +4515,8 @@ export interface components {
         };
         FaceAppearanceList: {
             items: components["schemas"]["FaceAppearance"][];
+            /** @description Every appearance of the person that is not dropped, across all pages. */
+            total: number;
             /** @description Next-page cursor, included only when limit is supplied and more results remain. */
             nextCursor?: string;
         };
@@ -10284,6 +10306,31 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reopenFaceCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description ID of the other person of the pair */
+                otherId: components["parameters"]["FaceCandidateOtherId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reopened */
             204: {
                 headers: {
                     [name: string]: unknown;

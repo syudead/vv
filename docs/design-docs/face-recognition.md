@@ -787,11 +787,13 @@ in as the other person of each, highest similarity first.
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Confirm | The ordinary merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
 | Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                |
+| Reopen  | Clears `dismissed` on a dismissed pair, for the faces page's `Undo`; the pair is offered again as before                                                                        |
 
 The person confirmed from stays, with their face, whichever side the pair
 stores as provisional; only when that person has no canonical name and the
 other has one does it merge into the other, so a name is never lost. Without
-an open pair, both actions answer `404 face_candidate_not_found`.
+an open pair, confirm and dismiss answer `404 face_candidate_not_found`, as
+reopen does without a dismissed one.
 
 | Rejected                                       | Why                                                                                                                                 |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -801,7 +803,7 @@ an open pair, both actions answer `404 face_candidate_not_found`.
 ## The faces page reads a person's appearances
 
 `GET /api/people/{id}/appearances` lists a person's appearances that are not
-dropped, with the admin lists' `limit` and `cursor`
+dropped, with the admin lists' `limit` and `cursor` and the `total` of them all
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
 They come newest video first by the video's added time, then by descending
 appearance id. An appearance whose content key no video has any more is still

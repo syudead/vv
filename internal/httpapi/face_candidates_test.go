@@ -19,6 +19,7 @@ type faceCandidateCredits struct {
 	merged domain.Credit
 	err    error
 	calls  [][2]int64
+	ops    []string
 }
 
 func (c *faceCandidateCredits) FaceCandidates(_ context.Context, personID int64) ([]domain.FacePair, error) {
@@ -27,13 +28,23 @@ func (c *faceCandidateCredits) FaceCandidates(_ context.Context, personID int64)
 }
 
 func (c *faceCandidateCredits) ConfirmFaceCandidate(_ context.Context, personID, otherID int64) (domain.Credit, error) {
-	c.calls = append(c.calls, [2]int64{personID, otherID})
+	c.record("confirm", personID, otherID)
 	return c.merged, c.err
 }
 
 func (c *faceCandidateCredits) DismissFaceCandidate(_ context.Context, personID, otherID int64) error {
-	c.calls = append(c.calls, [2]int64{personID, otherID})
+	c.record("dismiss", personID, otherID)
 	return c.err
+}
+
+func (c *faceCandidateCredits) ReopenFaceCandidate(_ context.Context, personID, otherID int64) error {
+	c.record("reopen", personID, otherID)
+	return c.err
+}
+
+func (c *faceCandidateCredits) record(op string, personID, otherID int64) {
+	c.ops = append(c.ops, op)
+	c.calls = append(c.calls, [2]int64{personID, otherID})
 }
 
 func newFaceCandidateFixture(t *testing.T, credits *faceCandidateCredits) *creditFixture {
@@ -74,12 +85,12 @@ func TestListFaceCandidatesAnswersTheOtherPeople(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonNotFound})
 }
 
-func TestConfirmAndDismissFaceCandidatePassThePathPeople(t *testing.T) {
+func TestFaceCandidateActionsPassThePathPeople(t *testing.T) {
 	notFound := wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonFaceCandidateNotFound}
 	for _, action := range []struct {
 		name   string
 		status int
-	}{{"confirm", http.StatusOK}, {"dismiss", http.StatusNoContent}} {
+	}{{"confirm", http.StatusOK}, {"dismiss", http.StatusNoContent}, {"reopen", http.StatusNoContent}} {
 		credits := &faceCandidateCredits{merged: domain.Credit{Kind: domain.CreditPerson, ID: 9, Name: "Hanako"}}
 		f := newFaceCandidateFixture(t, credits)
 		target := "/api/people/5/face-candidates/9/" + action.name
@@ -93,12 +104,13 @@ func TestConfirmAndDismissFaceCandidatePassThePathPeople(t *testing.T) {
 				t.Errorf("confirm: body = %+v, want the merged person 9", got)
 			}
 		}
-		if !slices.Equal(credits.calls, [][2]int64{{5, 9}}) {
-			t.Errorf("%s: store calls = %v, want people 5 and 9 in path order", action.name, credits.calls)
+		if !slices.Equal(credits.calls, [][2]int64{{5, 9}}) || !slices.Equal(credits.ops, []string{action.name}) {
+			t.Errorf("%s: store calls = %v %v, want %s of people 5 and 9 in path order", action.name, credits.ops,
+				credits.calls, action.name)
 		}
 
 		credits.err = domain.ErrFaceCandidateNotFound
 		rec = f.owned(http.MethodPost, target, "")
-		assertErrorBody(t, action.name+" without an open pair", rec.Code, rec.Body.Bytes(), notFound)
+		assertErrorBody(t, action.name+" without a matching pair", rec.Code, rec.Body.Bytes(), notFound)
 	}
 }
