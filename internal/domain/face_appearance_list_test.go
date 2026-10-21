@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"math"
 	"slices"
 	"testing"
 )
@@ -56,5 +57,31 @@ func TestFaceCandidateThreshold(t *testing.T) {
 		if got, known := FaceCandidateThreshold(tc.dimensions); got != tc.want || known != tc.known {
 			t.Errorf("threshold of %d dimensions = %v, %v; want %v, %v", tc.dimensions, got, known, tc.want, tc.known)
 		}
+	}
+}
+
+// The mean stands for the vectors of the most common length, normalized; there is none without vectors.
+func TestMeanFaceVector(t *testing.T) {
+	got := MeanFaceVector([][]float32{{1, 0}, {0, 1}, {1, 0, 0}})
+	if len(got) != 2 || math.Abs(float64(got[0])-math.Sqrt2/2) > 1e-6 || got[0] != got[1] {
+		t.Errorf("mean = %v, want the normalized mean of the two 2-vectors", got)
+	}
+	if got := MeanFaceVector(nil); got != nil {
+		t.Errorf("mean of nothing = %v, want nil", got)
+	}
+}
+
+// Each person ranks by their closest reference of the query's length, most similar first, ties by id, up to limit.
+func TestRankFacePeople(t *testing.T) {
+	query := []float32{1, 0}
+	got := RankFacePeople(query, map[int64][][]float32{
+		1: {{0, 1}, {1, 0}},
+		2: {{0.6, 0.8}},
+		3: {{1, 0}},
+		4: {{1, 0, 0}},
+	}, 2)
+	want := []FaceCandidate{{PersonID: 1, Similarity: 1}, {PersonID: 3, Similarity: 1}}
+	if !slices.Equal(got, want) {
+		t.Errorf("ranking = %v, want %v", got, want)
 	}
 }

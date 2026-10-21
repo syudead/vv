@@ -80,6 +80,8 @@ export const server = {
   mergeTarget: null as Person | null,
   /** How many reopen requests fail before they succeed again. */
   reopenFailures: 0,
+  /** When set, a move answers that a face is no longer the person's. */
+  moveGone: false,
   /** How many similar-people reads fail before they succeed again. */
   similarFailures: 0,
   /** How many candidate reads fail before they succeed again. */
@@ -177,6 +179,12 @@ function faceRoute(method: string, url: URL): Response | null {
   }
   const move = /^\/api\/people\/(7|9)\/appearances\/move$/.exec(url.pathname);
   if (move !== null && method === "POST") {
+    if (server.moveGone) {
+      return jsonResponse(
+        { code: "not_found", reason: "face_appearance_not_found", message: "Gone" },
+        404,
+      );
+    }
     return jsonResponse(
       move[1] === "7"
         ? {
@@ -286,6 +294,7 @@ export function installPersonServer() {
     server.mergeAnswer = null;
     server.candidateFailures = 0;
     server.similarFailures = 0;
+    server.moveGone = false;
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(
