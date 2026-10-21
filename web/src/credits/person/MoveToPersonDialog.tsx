@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { type Credit, isCreditGone, type Person } from "../../api/credits";
 import {
   type FaceAppearance,
+  type FaceAppearanceMove,
   faceCropPath,
   isAppearanceGone,
   moveFaceAppearances,
@@ -16,7 +17,7 @@ import { Spinner } from "../../ui/shadcn/spinner";
 import { PersonFace } from "../../ui/PersonFace";
 import { creditDisplayName } from "../displayName";
 import { useCreditTargetSearch } from "../useCreditTargetSearch";
-import { SimilarPeopleList, useSimilarPeople } from "./SimilarPeopleList";
+import { SimilarPeopleList, suggestsByFace, useSimilarPeople } from "./SimilarPeopleList";
 
 const text = t.credits.personPage.moveDialog;
 
@@ -34,7 +35,7 @@ export default function MoveToPersonDialog({
   person: Person;
   faces: readonly FaceAppearance[];
   onClose: () => void;
-  onMoved: (target: Person) => void;
+  onMoved: (moved: FaceAppearanceMove) => void;
   onGone: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
@@ -44,7 +45,7 @@ export default function MoveToPersonDialog({
   const [error, setError] = useState<UiText | null>(null);
   const ids = faces.map((face) => face.appearanceId);
   const similar = useSimilarPeople(person.id, ids);
-  const suggesting = value.trim() === "" && (similar === null || similar.length > 0);
+  const suggesting = suggestsByFace(value, similar);
   const { shown, options, exactOption, searching, searchError } = useCreditTargetSearch(
     "person",
     person.id,
@@ -132,7 +133,7 @@ export default function MoveToPersonDialog({
       {suggesting && (
         <SimilarPeopleList
           heading={t.credits.similarPeople.likeFaces}
-          items={similar}
+          similar={similar}
           selectedId={target?.id}
           onSelect={(picked) => {
             setTarget(picked);

@@ -1648,6 +1648,7 @@ export const en = {
     similarPeople: {
       loading: "Looking for people who look alike…",
       none: "No one looks alike yet.",
+      failed: "Couldn't look for people who look alike.",
       likeFaces: "Looks most like these faces",
       likePerson: (name: string) => `Looks most like ${name}`,
       meta: (faces: number, firstSeen: string | undefined) => {

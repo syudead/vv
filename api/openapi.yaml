@@ -3187,7 +3187,7 @@ paths:
     post:
       operationId: moveFaceAppearances
       summary: "Move face appearances to another person"
-      description: "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit. Returns the target. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none."
+      description: "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -3198,11 +3198,11 @@ paths:
               $ref: "#/components/schemas/FaceAppearanceMoveRequest"
       responses:
         "200":
-          description: "The person the faces moved to"
+          description: "The person the faces moved to, with the credits only the reverse move can put back"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Person"
+                $ref: "#/components/schemas/FaceAppearanceMove"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -8028,6 +8028,38 @@ components:
           type: integer
           format: int64
           minimum: 1
+        restoreCredits:
+          type: array
+          maxItems: 200
+          description: "The restoreCredits of the move this request undoes."
+          items:
+            $ref: "#/components/schemas/FaceMoveCredit"
+
+    FaceAppearanceMove:
+      type: object
+      required: [person, restoreCredits]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        restoreCredits:
+          type: array
+          description: "Works whose performer credit of the moved-from person was removed because the target already held one."
+          items:
+            $ref: "#/components/schemas/FaceMoveCredit"
+
+    FaceMoveCredit:
+      type: object
+      required: [workKey, position]
+      additionalProperties: false
+      properties:
+        workKey:
+          type: string
+          description: "An opaque key of the work."
+        position:
+          type: integer
+          minimum: 0
+          description: "The position the credit had among the work's performers."
 
     FaceAppearanceSplitRequest:
       type: object

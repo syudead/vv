@@ -91,16 +91,23 @@ export function splitFaceAppearances(
   });
 }
 
-/** Move appearances of the person to another person; returns that person. */
+export type FaceAppearanceMove = components["schemas"]["FaceAppearanceMove"];
+export type FaceMoveCredit = components["schemas"]["FaceMoveCredit"];
+
+/**
+ * Move appearances of the person to another person; returns that person with the credits only the reverse move puts
+ * back, which an undo passes as restoreCredits.
+ */
 export function moveFaceAppearances(
   id: number,
   appearanceIds: readonly number[],
   targetId: number,
-): Promise<Person> {
-  return request<Person>(`${personPath(id)}/appearances/move`, {
+  restoreCredits: readonly FaceMoveCredit[] = [],
+): Promise<FaceAppearanceMove> {
+  return request<FaceAppearanceMove>(`${personPath(id)}/appearances/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ appearanceIds, targetId }),
+    body: JSON.stringify({ appearanceIds, targetId, restoreCredits }),
   });
 }
 

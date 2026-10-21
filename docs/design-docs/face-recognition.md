@@ -865,7 +865,13 @@ owner's own decision, like confirming a candidate.
 `POST /api/people/{id}/appearances/move` hands appearances to an existing
 person the owner names instead, as the split does to its new person but
 without dismissing the pair; a target already credited in a work keeps its own
-credit and the old person's row goes. Moving them back is the undo.
+credit and the old person's row goes, and the positions close up. Moving them
+back is the undo, but a plain reverse move would hand the target's own credit
+to the old person in those works, so the move answers them as
+`restoreCredits` (an opaque work key and the old row's position) and the
+reverse move given them keeps the target's credit and puts the old person's
+back at that position. A list kept by the page avoids an activity entry for a
+decision the owner can only undo from the same page.
 
 `GET /api/people/{id}/similar-people` ranks the other people for picking
 where faces belong ([`face_similar_people.go`](../../internal/store/face_similar_people.go)):
@@ -873,6 +879,8 @@ the mean of the listed appearances' centroids, or of all the person's, is
 compared with each person's face image vector and with the mean of their
 centroids, whichever is closer. The person page's merge dialog uses it for the
 whole person, and the faces page's `Move to person…` for the checked faces.
+Each person carries up to four crops, newest video first as on the faces page,
+with faces whose video is gone last.
 
 `POST /api/people/{id}/appearances/split` does the same for several
 appearances at once, moving them all to one new person whose face is the first

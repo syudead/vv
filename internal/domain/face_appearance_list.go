@@ -142,6 +142,19 @@ func RankFacePeople(query []float32, references map[int64][][]float32, limit int
 	return out
 }
 
+// FaceMoveCredit is a work's performer credit a move took from the old person because the new person already held
+// one there; passed back with the reverse move, it puts the old person's credit back at Position.
+type FaceMoveCredit struct {
+	UserKey  string
+	Position int
+}
+
+// FaceMove is the person faces moved to, with the credits only the reverse move can put back.
+type FaceMove struct {
+	Person  Credit
+	Restore []FaceMoveCredit
+}
+
 // SimilarPerson is a person whose faces look like a set of faces, offered as where those faces belong.
 type SimilarPerson struct {
 	Person     Credit

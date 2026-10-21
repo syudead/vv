@@ -3425,10 +3425,22 @@ type FaceAppearanceList struct {
 	Total int `json:"total"`
 }
 
+// FaceAppearanceMove defines model for FaceAppearanceMove.
+type FaceAppearanceMove struct {
+	// Person One person.
+	Person Person `json:"person"`
+
+	// RestoreCredits Works whose performer credit of the moved-from person was removed because the target already held one.
+	RestoreCredits []FaceMoveCredit `json:"restoreCredits"`
+}
+
 // FaceAppearanceMoveRequest defines model for FaceAppearanceMoveRequest.
 type FaceAppearanceMoveRequest struct {
 	AppearanceIds []int64 `json:"appearanceIds"`
-	TargetId      int64   `json:"targetId"`
+
+	// RestoreCredits The restoreCredits of the move this request undoes.
+	RestoreCredits *[]FaceMoveCredit `json:"restoreCredits,omitempty"`
+	TargetId       int64             `json:"targetId"`
 }
 
 // FaceAppearanceSpan defines model for FaceAppearanceSpan.
@@ -3475,6 +3487,15 @@ type FaceCandidatePerson struct {
 
 	// Provisional True for a person without a canonical name, whose name is then "".
 	Provisional bool `json:"provisional"`
+}
+
+// FaceMoveCredit defines model for FaceMoveCredit.
+type FaceMoveCredit struct {
+	// Position The position the credit had among the work's performers.
+	Position int `json:"position"`
+
+	// WorkKey An opaque key of the work.
+	WorkKey string `json:"workKey"`
 }
 
 // FaceRecognitionCounts Face analysis queue rows (content keys) by state.

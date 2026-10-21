@@ -381,11 +381,13 @@ before a name is typed it lists, as a `RadioGroup`, the people whose faces look
 most like them (`GET /api/people/{id}/similar-people`), each with a
 `PersonFace suggestion`, up to four more crops from `sm`, the face count, the
 video they were first seen in and the similarity, so even people without a name
-are told apart; typing searches by name as the merge dialog does. `Move` hands
+are told apart; typing searches by name as the merge dialog does. A failed read
+says so with `Retry` rather than look like no one alike. `Move` hands
 the faces and their credits to that person
 (`POST /api/people/{id}/appearances/move`), and the tiles read
 `Moved to {name}` with an `Undo` that moves back the faces of that move alone,
-even when another move went to the same person. A pressed tile disables only
+even when another move went to the same person, and puts back the credits the
+move took where the target was already credited. A pressed tile disables only
 its own button, a second press while it runs sends nothing, and a failure shows
 under the grid.
 

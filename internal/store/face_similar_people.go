@@ -131,8 +131,10 @@ func similarPersonDetails(ctx context.Context, tx *sql.Tx, r domain.FaceCandidat
 		r.PersonID).Scan(&out.FaceCount); err != nil {
 		return domain.SimilarPerson{}, fmt.Errorf("cannot count the faces of person %d: %w", r.PersonID, err)
 	}
-	rows, err := tx.QueryContext(ctx, `select id from face_appearances
-		 where person_id = ? and dropped = 0 and crop is not null order by id desc limit ?`, r.PersonID, similarPeopleSamples)
+	// Newest video first, as the faces page orders them; a face whose video is gone comes last.
+	rows, err := tx.QueryContext(ctx, `select a.id from face_appearances a left join videos v on v.content_key = a.content_key
+		 where a.person_id = ? and a.dropped = 0 and a.crop is not null
+		 order by `+appearanceAddedAt+` desc, a.id desc limit ?`, r.PersonID, similarPeopleSamples)
 	if err != nil {
 		return domain.SimilarPerson{}, fmt.Errorf("cannot read the crops of person %d: %w", r.PersonID, err)
 	}

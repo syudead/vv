@@ -8,6 +8,7 @@ import { undoActivity } from "../../api/activity";
 import {
   confirmFaceCandidate,
   type FaceCandidatePerson,
+  type FaceMoveCredit,
   moveFaceAppearances,
   reopenFaceCandidate,
   splitFaceAppearance,
@@ -196,8 +197,12 @@ function FacesShown({
     }
   }
 
-  async function undoMove(target: Person, appearanceIds: readonly number[]) {
-    await moveFaceAppearances(target.id, appearanceIds, person.id);
+  async function undoMove(
+    target: Person,
+    appearanceIds: readonly number[],
+    restore: readonly FaceMoveCredit[],
+  ) {
+    await moveFaceAppearances(target.id, appearanceIds, person.id, restore);
   }
 
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;

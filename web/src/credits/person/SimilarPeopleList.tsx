@@ -8,6 +8,7 @@ import {
 } from "../../api/personFaces";
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { Button } from "../../ui/shadcn/button";
 import { Label } from "../../ui/shadcn/label";
 import { RadioGroup, RadioGroupItem } from "../../ui/shadcn/radio-group";
 import { PersonFace } from "../../ui/PersonFace";
@@ -15,34 +16,52 @@ import { creditDisplayName } from "../displayName";
 
 const text = t.credits.similarPeople;
 
+/** What the similar people read gives: the people, null while loading, and whether it failed, with a retry. */
+export interface SimilarPeople {
+  items: SimilarPerson[] | null;
+  failed: boolean;
+  retry: () => void;
+}
+
 /**
- * People whose faces look like the given faces of the person, or all of them; null while loading, empty on failure or
- * without a person.
+ * People whose faces look like the given faces of the person, or all of them; empty without a person. A failed read
+ * leaves the items empty and says so, so it is not taken for no one alike.
  */
 export function useSimilarPeople(
   personId: number | null,
   appearanceIds: readonly number[],
-): SimilarPerson[] | null {
+): SimilarPeople {
   const [items, setItems] = useState<SimilarPerson[] | null>(
     personId === null ? [] : null,
   );
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const key = appearanceIds.join(",");
   useEffect(() => {
     if (personId === null) return undefined;
     const controller = new AbortController();
     setItems(null);
+    setFailed(false);
     const ids = key === "" ? [] : key.split(",").map(Number);
     listSimilarPeople(personId, ids, controller.signal).then(
       (next) => {
         if (!controller.signal.aborted) setItems(next);
       },
       () => {
-        if (!controller.signal.aborted) setItems([]);
+        if (controller.signal.aborted) return;
+        setItems([]);
+        setFailed(true);
       },
     );
     return () => controller.abort();
-  }, [personId, key]);
-  return items;
+  }, [personId, key, attempt]);
+  return { items, failed, retry: () => setAttempt((value) => value + 1) };
+}
+
+/** Whether to show the people by face rather than the name results: before a name is typed, unless no one is alike. */
+export function suggestsByFace(query: string, similar: SimilarPeople): boolean {
+  const { items, failed } = similar;
+  return query.trim() === "" && (items === null || items.length > 0 || failed);
 }
 
 /**
@@ -51,16 +70,27 @@ export function useSimilarPeople(
  */
 export function SimilarPeopleList({
   heading,
-  items,
+  similar,
   selectedId,
   onSelect,
 }: {
   heading: string;
-  items: readonly SimilarPerson[] | null;
+  similar: SimilarPeople;
   selectedId: number | undefined;
   onSelect: (person: Person) => void;
 }) {
   const headingId = useId();
+  const { items } = similar;
+  if (similar.failed) {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        {text.failed}
+        <Button type="button" variant="link" size="sm" onClick={similar.retry}>
+          {t.common.retry}
+        </Button>
+      </p>
+    );
+  }
   if (items === null)
     return <p className="text-sm text-muted-foreground">{text.loading}</p>;
   if (items.length === 0)

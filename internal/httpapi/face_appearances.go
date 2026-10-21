@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -96,7 +97,17 @@ func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id 
 		s.invalidRequest(w, "targetId must be a positive integer.")
 		return
 	}
-	person, err := s.credits.MoveFaceAppearances(r.Context(), id, body.AppearanceIds, body.TargetId)
+	var restore []domain.FaceMoveCredit
+	if body.RestoreCredits != nil {
+		for _, credit := range *body.RestoreCredits {
+			if credit.Position < 0 {
+				s.invalidRequest(w, "restoreCredits positions must not be negative.")
+				return
+			}
+			restore = append(restore, domain.FaceMoveCredit{UserKey: credit.WorkKey, Position: credit.Position})
+		}
+	}
+	moved, err := s.credits.MoveFaceAppearances(r.Context(), id, body.AppearanceIds, body.TargetId, restore)
 	switch {
 	case errors.Is(err, domain.ErrFaceAppearanceNotFound):
 		s.notFoundReason(w, gen.ErrorReasonFaceAppearanceNotFound, "The person has no such face appearance.")
@@ -105,7 +116,11 @@ func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id 
 	case err != nil:
 		s.writeCreditError(w, peopleAPI, err)
 	default:
-		s.writeCreditBody(w, http.StatusOK, toAPIPerson(person))
+		body := gen.FaceAppearanceMove{Person: toAPIPerson(moved.Person), RestoreCredits: []gen.FaceMoveCredit{}}
+		for _, credit := range moved.Restore {
+			body.RestoreCredits = append(body.RestoreCredits, gen.FaceMoveCredit{WorkKey: credit.UserKey, Position: credit.Position})
+		}
+		s.writeCreditBody(w, http.StatusOK, body)
 	}
 }
 
@@ -123,6 +138,10 @@ func (s *server) ListSimilarPeople(w http.ResponseWriter, r *http.Request, id ge
 		appearanceIDs = *params.AppearanceId
 		if len(appearanceIDs) > 200 {
 			s.invalidRequest(w, "appearanceId may be repeated at most 200 times.")
+			return
+		}
+		if slices.ContainsFunc(appearanceIDs, func(id int64) bool { return id < 1 }) {
+			s.invalidRequest(w, "appearanceId must be a positive integer.")
 			return
 		}
 	}

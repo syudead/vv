@@ -18,6 +18,7 @@ type appearanceCall struct {
 	limit       int
 	appearances []int64
 	target      int64
+	restore     []domain.FaceMoveCredit
 }
 
 // faceAppearanceCredits fakes the appearance reads and records their arguments; store tests cover paging and drops.
@@ -27,6 +28,7 @@ type faceAppearanceCredits struct {
 	similar []domain.SimilarPerson
 	crop    []byte
 	person  domain.Credit
+	taken   []domain.FaceMoveCredit
 	err     error
 	calls   []appearanceCall
 }
@@ -46,9 +48,11 @@ func (c *faceAppearanceCredits) SplitFaceAppearances(_ context.Context, personID
 	return c.person, c.err
 }
 
-func (c *faceAppearanceCredits) MoveFaceAppearances(_ context.Context, personID int64, appearanceIDs []int64, targetID int64) (domain.Credit, error) {
-	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs, target: targetID})
-	return c.person, c.err
+func (c *faceAppearanceCredits) MoveFaceAppearances(
+	_ context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
+) (domain.FaceMove, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs, target: targetID, restore: restore})
+	return domain.FaceMove{Person: c.person, Restore: c.taken}, c.err
 }
 
 func (c *faceAppearanceCredits) SimilarPeople(_ context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error) {
@@ -205,14 +209,18 @@ func TestMoveFaceAppearancesPassesTheTarget(t *testing.T) {
 	f := newFaceAppearanceFixture(t, credits)
 	target := "/api/people/5/appearances/move"
 
-	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3],"targetId":9}`)
+	credits.taken = []domain.FaceMoveCredit{{UserKey: "work-a", Position: 1}}
+	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3],"targetId":9,"restoreCredits":[{"workKey":"work-b","position":2}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := decode[gen.Person](t, rec); got.Id != 9 {
-		t.Errorf("body = %+v, want the target 9", got)
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != 9 ||
+		!reflect.DeepEqual(got.RestoreCredits, []gen.FaceMoveCredit{{WorkKey: "work-a", Position: 1}}) {
+		t.Errorf("body = %+v, want the target 9 with the credit to restore", got)
 	}
-	if want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}, target: 9}}; !reflect.DeepEqual(credits.calls, want) {
+	want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}, target: 9,
+		restore: []domain.FaceMoveCredit{{UserKey: "work-b", Position: 2}}}}
+	if !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
 	}
 	credits.err = domain.ErrMergeSameCredit
@@ -220,9 +228,10 @@ func TestMoveFaceAppearancesPassesTheTarget(t *testing.T) {
 	assertErrorBody(t, "same person", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 
-	// A missing or zero target would read as a new person in the store.
+	// A missing or zero target would read as a new person in the store, and a negative position has no place.
 	credits.calls = nil
-	for _, body := range []string{`{"appearanceIds":[7]}`, `{"appearanceIds":[7],"targetId":0}`} {
+	for _, body := range []string{`{"appearanceIds":[7]}`, `{"appearanceIds":[7],"targetId":0}`,
+		`{"appearanceIds":[7],"targetId":9,"restoreCredits":[{"workKey":"w","position":-1}]}`} {
 		rec = f.owned(http.MethodPost, target, body)
 		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(),
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
@@ -258,5 +267,8 @@ func TestListSimilarPeopleAnswersEachPersonWithTheirCrops(t *testing.T) {
 	}
 	rec = f.owned(http.MethodGet, "/api/people/5/similar-people?limit=51", "")
 	assertErrorBody(t, "limit over 50", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	rec = f.owned(http.MethodGet, "/api/people/5/similar-people?appearanceId=0", "")
+	assertErrorBody(t, "appearance id 0", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }
