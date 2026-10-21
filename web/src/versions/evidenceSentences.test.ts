@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { VersionJudgeEvidence } from "../api/client";
-import { evidenceSentences } from "./judgementEvidence";
+import { evidenceSentences } from "./evidenceSentences";
 
 function evidence(extra: Partial<VersionJudgeEvidence>): VersionJudgeEvidence {
   return { rule: "frames_differ", compared: 40, differing: 6, ...extra };

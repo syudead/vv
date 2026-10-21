@@ -1,7 +1,7 @@
 import { judgementFrameUrl, type VersionJudgeEvidence } from "../api/client";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
-import { evidenceSentences } from "./judgementEvidence";
+import { evidenceSentences } from "./evidenceSentences";
 
 /**
  * Explain a duplicate judgement in sentences and show the frame pairs the AI saw; frames need the
