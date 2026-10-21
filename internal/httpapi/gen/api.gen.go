@@ -3450,7 +3450,7 @@ type FaceCandidateConfirmation struct {
 	// Person One person.
 	Person Person `json:"person"`
 
-	// UndoActivityId The face_merge entry that undoes the merge; absent when the merged person had a name.
+	// UndoActivityId The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID.
 	UndoActivityId *int64 `json:"undoActivityId,omitempty"`
 }
 

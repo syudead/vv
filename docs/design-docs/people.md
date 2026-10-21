@@ -337,7 +337,8 @@ decision, so the crops are the first four with a crop among each person's
 first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
 and the row reads `Merged into {name}`, with `Undo` when the merged person had
-no name, which takes the merge back and offers the pair again; a retry after
+no name, which takes the merge back, reads the shown person again since the
+undo can take back a face the merge gave them, and offers the pair again; a retry after
 the merge was undone but the pair not reopened only reopens it. Only an unnamed
 person confirmed with a named one is merged away, and the page then opens the
 named person's faces page with a `Merged into "{name}"` toast whose `Undo`
