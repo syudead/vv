@@ -129,3 +129,61 @@ func TestToAPIMediaInfoBroadcast(t *testing.T) {
 		t.Errorf("番組名 = %q, want 省く", *got.Broadcast.Program)
 	}
 }
+
+// The items the version comparison relies on reach the API under their documented names.
+func TestToAPIMediaInfoDetails(t *testing.T) {
+	start, late, bytes := int64(0), int64(1200), int64(60_000_000)
+	info := &domain.MediaInfo{
+		Video: &domain.MediaVideo{BitsPerPixel: 0.12, ColorRange: "limited",
+			MediaTiming: domain.MediaTiming{StartMs: &start}, MediaStreamOrigin: domain.MediaStreamOrigin{Encoder: "x264"}},
+		AudioTracks: []domain.MediaAudioTrack{{Index: 1, ServiceType: "commentary",
+			Roles: domain.MediaRoles{Comment: true}, MediaTiming: domain.MediaTiming{StartMs: &late}}},
+		SubtitleTracks: []domain.MediaSubtitleTrack{{Index: 2, Roles: domain.MediaRoles{HearingImpaired: true}}},
+		Container: &domain.MediaContainer{Encrypted: true,
+			Sizes: &domain.MediaSizes{TotalBytes: 70_000_000, AudioBytes: &bytes}},
+	}
+	encoded, err := json.Marshal(toAPIMediaInfo(info))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Video struct {
+			BitsPerPixel float64 `json:"bitsPerPixel"`
+			ColorRange   string  `json:"colorRange"`
+			StartMs      *int64  `json:"startMs"`
+			Origin       struct {
+				Encoder string `json:"encoder"`
+			} `json:"origin"`
+		} `json:"video"`
+		AudioTracks []struct {
+			StartMs     int64           `json:"startMs"`
+			ServiceType string          `json:"serviceType"`
+			Roles       map[string]bool `json:"roles"`
+		} `json:"audioTracks"`
+		SubtitleTracks []struct {
+			Roles map[string]bool `json:"roles"`
+		} `json:"subtitleTracks"`
+		Container struct {
+			Encrypted bool             `json:"encrypted"`
+			Sizes     map[string]int64 `json:"sizes"`
+		} `json:"container"`
+	}
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Video.BitsPerPixel != 0.12 || got.Video.ColorRange != "limited" || got.Video.StartMs == nil ||
+		*got.Video.StartMs != 0 || got.Video.Origin.Encoder != "x264" {
+		t.Errorf("video = %s", encoded)
+	}
+	if len(got.AudioTracks) != 1 || got.AudioTracks[0].StartMs != 1200 || got.AudioTracks[0].ServiceType != "commentary" ||
+		!got.AudioTracks[0].Roles["comment"] || len(got.AudioTracks[0].Roles) != 1 {
+		t.Errorf("audioTracks = %s", encoded)
+	}
+	if len(got.SubtitleTracks) != 1 || !got.SubtitleTracks[0].Roles["hearingImpaired"] {
+		t.Errorf("subtitleTracks = %s", encoded)
+	}
+	if !got.Container.Encrypted || len(got.Container.Sizes) != 2 || got.Container.Sizes["audioBytes"] != 60_000_000 ||
+		got.Container.Sizes["totalBytes"] != 70_000_000 {
+		t.Errorf("container = %s", encoded)
+	}
+}

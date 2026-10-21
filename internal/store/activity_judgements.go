@@ -362,6 +362,12 @@ func returnPairActivitiesToWaiting(
 
 // Move active and completed activity keys with inherited user data so later undo finds the replacement rows.
 func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.Time) (bool, error) {
+	// Evidence frames index the old content's seek preview, which the new content does not share.
+	if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = json_remove(evidence, '$.frames')
+		where subject_kind = 'pair' and evidence is not null and (subject_key = ?1 or subject_key_b = ?1)`,
+		from); err != nil {
+		return false, fmt.Errorf("cannot drop the judgement frames: %w", err)
+	}
 	moved, err := movePairActivityKey(ctx, tx, from, to, now)
 	if err != nil {
 		return false, err

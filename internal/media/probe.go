@@ -34,7 +34,45 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
 			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
+	probe, err := readImportProbe(ctx, probeCtx, path)
+	if err != nil {
+		return domain.Probe{}, err
+	}
+	if probe.Transcode != nil && videoCanCopy(probe.Transcode.Video) {
+		keyframes := ProbeKeyframes(ctx, path)
+		probe.Keyframes = &keyframes
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
+			fmt.Errorf("could not check the probed file (%s): %w", path, err))
+	}
+	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
+}
 
+// ProbeMediaInfo re-reads only the media information of an imported file; an unreadable or changing file gives
+// a zero Source.
+func ProbeMediaInfo(ctx context.Context, path string) domain.MediaInfoProbe {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	before, err := os.Stat(path)
+	if err != nil {
+		return domain.MediaInfoProbe{}
+	}
+	probe, err := readImportProbe(ctx, probeCtx, path)
+	after, statErr := os.Stat(path)
+	if statErr != nil || domain.FileStampOf(before) != domain.FileStampOf(after) {
+		return domain.MediaInfoProbe{}
+	}
+	if err != nil {
+		return domain.MediaInfoProbe{Source: domain.FileStampOf(before)}
+	}
+	return domain.MediaInfoProbe{Source: domain.FileStampOf(before), Info: probe.Media}
+}
+
+// readImportProbe runs the import's ffprobe and the optional reads that complete its media information; ctx bounds
+// the TS read, which has its own deadline, and probeCtx the ffprobe processes.
+func readImportProbe(ctx, probeCtx context.Context, path string) (domain.Probe, error) {
 	output, err := command(probeCtx, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -59,16 +97,10 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if probe.Media != nil && isTransportStreamPath(path) {
 		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
-	if probe.Transcode != nil && videoCanCopy(probe.Transcode.Video) {
-		keyframes := ProbeKeyframes(ctx, path)
-		probe.Keyframes = &keyframes
+	if probe.Media != nil && probe.Media.Video != nil && strings.EqualFold(probe.VideoCodec, "av1") {
+		probe.Media.Video.FilmGrain = probeFilmGrain(probeCtx, path)
 	}
-	after, err := os.Stat(path)
-	if err != nil {
-		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
-			fmt.Errorf("could not check the probed file (%s): %w", path, err))
-	}
-	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
+	return probe, nil
 }
 
 // Discard transcode and media metadata when size/mtime changes during probing to avoid caching
@@ -91,6 +123,28 @@ func probeArgs(path string) []string {
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
+		"--", path,
+	}
+}
+
+// AV1 declares film grain only in its sequence header, which ffprobe reports after decoding a frame, so only
+// AV1 files pay for a second process that decodes one; a failure leaves the item unknown.
+func probeFilmGrain(ctx context.Context, path string) *bool {
+	output, err := command(ctx, probeCommand, filmGrainProbeArgs(path)...).Output()
+	if err != nil {
+		return nil
+	}
+	return parseFilmGrain(output)
+}
+
+func filmGrainProbeArgs(path string) []string {
+	return []string{
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-analyze_frames", "-export_side_data", "film_grain",
+		"-read_intervals", "%+#1",
+		"-show_entries", "stream=film_grain",
+		"-print_format", "json",
 		"--", path,
 	}
 }
@@ -122,6 +176,7 @@ type probeSideData struct {
 	Rotation     float64   `json:"rotation"`
 	Projection   probeText `json:"projection"`
 	Type         probeText `json:"type"`
+	probeSideDataDetails
 }
 
 type probeOutput struct {
@@ -131,6 +186,9 @@ type probeOutput struct {
 		Duration   string    `json:"duration"`
 		FormatName string    `json:"format_name"`
 		Tags       probeTags `json:"tags"`
+		StartTime  probeText `json:"start_time"`
+		Size       probeText `json:"size"`
+		ProbeScore probeText `json:"probe_score"`
 	} `json:"format"`
 }
 
@@ -156,14 +214,10 @@ type probeStream struct {
 	BitRate           string `json:"bit_rate"`
 	ClosedCaptions    int    `json:"closed_captions"`
 	// Tag keys are normalized to lowercase.
-	Tags         probeTags       `json:"tags"`
-	SideDataList []probeSideData `json:"side_data_list"`
-	Disposition  struct {
-		Default         int `json:"default"`
-		Forced          int `json:"forced"`
-		HearingImpaired int `json:"hearing_impaired"`
-		AttachedPicture int `json:"attached_pic"`
-	} `json:"disposition"`
+	Tags         probeTags        `json:"tags"`
+	SideDataList []probeSideData  `json:"side_data_list"`
+	Disposition  probeDisposition `json:"disposition"`
+	probeStreamDetails
 }
 
 // Share JSON interpretation between ingestion and live transcoding; reject unknown duration because
@@ -194,7 +248,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 	for _, stream := range parsed.Streams {
 		switch stream.CodecType {
 		case "video":
-			if stream.Disposition.AttachedPicture != 0 {
+			if stream.Disposition.AttachedPicture {
 				continue
 			}
 			if !videoFound {

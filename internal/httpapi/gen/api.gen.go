@@ -710,6 +710,8 @@ const (
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
+	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
+	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
 	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
 	ErrorReasonWorkInfoDuplicate             ErrorReason = "work_info_duplicate"
@@ -894,6 +896,10 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonUsernameLength:
 		return true
+	case ErrorReasonVersionJudgingOff:
+		return true
+	case ErrorReasonVersionNotRejudgeable:
+		return true
 	case ErrorReasonVideoNotFound:
 		return true
 	case ErrorReasonWorkInfoControlCharacters:
@@ -1055,22 +1061,22 @@ func (e FolderWatchProblem) Valid() bool {
 
 // Defines values for FolderWatchState.
 const (
-	Active   FolderWatchState = "active"
-	Limited  FolderWatchState = "limited"
-	Off      FolderWatchState = "off"
-	Starting FolderWatchState = "starting"
+	FolderWatchStateActive   FolderWatchState = "active"
+	FolderWatchStateLimited  FolderWatchState = "limited"
+	FolderWatchStateOff      FolderWatchState = "off"
+	FolderWatchStateStarting FolderWatchState = "starting"
 )
 
 // Valid indicates whether the value is a known member of the FolderWatchState enum.
 func (e FolderWatchState) Valid() bool {
 	switch e {
-	case Active:
+	case FolderWatchStateActive:
 		return true
-	case Limited:
+	case FolderWatchStateLimited:
 		return true
-	case Off:
+	case FolderWatchStateOff:
 		return true
-	case Starting:
+	case FolderWatchStateStarting:
 		return true
 	default:
 		return false
@@ -1170,6 +1176,63 @@ func (e LibrarySmartFolderWatchState) Valid() bool {
 	case LibrarySmartFolderWatchStateUnwatched:
 		return true
 	case LibrarySmartFolderWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoAudioTrackServiceType.
+const (
+	Commentary       MediaInfoAudioTrackServiceType = "commentary"
+	Dialogue         MediaInfoAudioTrackServiceType = "dialogue"
+	Effects          MediaInfoAudioTrackServiceType = "effects"
+	Emergency        MediaInfoAudioTrackServiceType = "emergency"
+	HearingImpaired  MediaInfoAudioTrackServiceType = "hearing_impaired"
+	Karaoke          MediaInfoAudioTrackServiceType = "karaoke"
+	Main             MediaInfoAudioTrackServiceType = "main"
+	VisuallyImpaired MediaInfoAudioTrackServiceType = "visually_impaired"
+	VoiceOver        MediaInfoAudioTrackServiceType = "voice_over"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoAudioTrackServiceType enum.
+func (e MediaInfoAudioTrackServiceType) Valid() bool {
+	switch e {
+	case Commentary:
+		return true
+	case Dialogue:
+		return true
+	case Effects:
+		return true
+	case Emergency:
+		return true
+	case HearingImpaired:
+		return true
+	case Karaoke:
+		return true
+	case Main:
+		return true
+	case VisuallyImpaired:
+		return true
+	case VoiceOver:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoVideoColorRange.
+const (
+	MediaInfoVideoColorRangeFull    MediaInfoVideoColorRange = "full"
+	MediaInfoVideoColorRangeLimited MediaInfoVideoColorRange = "limited"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoVideoColorRange enum.
+func (e MediaInfoVideoColorRange) Valid() bool {
+	switch e {
+	case MediaInfoVideoColorRangeFull:
+		return true
+	case MediaInfoVideoColorRangeLimited:
 		return true
 	default:
 		return false
@@ -1944,6 +2007,111 @@ func (e ThumbnailEditState) Valid() bool {
 	}
 }
 
+// Defines values for VersionCandidateJudgementState.
+const (
+	VersionCandidateJudgementStateFailed       VersionCandidateJudgementState = "failed"
+	VersionCandidateJudgementStateHeld         VersionCandidateJudgementState = "held"
+	VersionCandidateJudgementStateNoConnection VersionCandidateJudgementState = "no_connection"
+	VersionCandidateJudgementStateRunning      VersionCandidateJudgementState = "running"
+	VersionCandidateJudgementStateUndecided    VersionCandidateJudgementState = "undecided"
+	VersionCandidateJudgementStateWaiting      VersionCandidateJudgementState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the VersionCandidateJudgementState enum.
+func (e VersionCandidateJudgementState) Valid() bool {
+	switch e {
+	case VersionCandidateJudgementStateFailed:
+		return true
+	case VersionCandidateJudgementStateHeld:
+		return true
+	case VersionCandidateJudgementStateNoConnection:
+		return true
+	case VersionCandidateJudgementStateRunning:
+		return true
+	case VersionCandidateJudgementStateUndecided:
+		return true
+	case VersionCandidateJudgementStateWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionJudgeEvidenceRule.
+const (
+	FramesDiffer VersionJudgeEvidenceRule = "frames_differ"
+	FramesMatch  VersionJudgeEvidenceRule = "frames_match"
+	Incomparable VersionJudgeEvidenceRule = "incomparable"
+)
+
+// Valid indicates whether the value is a known member of the VersionJudgeEvidenceRule enum.
+func (e VersionJudgeEvidenceRule) Valid() bool {
+	switch e {
+	case FramesDiffer:
+		return true
+	case FramesMatch:
+		return true
+	case Incomparable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionPropertySignalKind.
+const (
+	Chapters      VersionPropertySignalKind = "chapters"
+	Duration      VersionPropertySignalKind = "duration"
+	EmbeddedTitle VersionPropertySignalKind = "embedded_title"
+	RecordedAt    VersionPropertySignalKind = "recorded_at"
+)
+
+// Valid indicates whether the value is a known member of the VersionPropertySignalKind enum.
+func (e VersionPropertySignalKind) Valid() bool {
+	switch e {
+	case Chapters:
+		return true
+	case Duration:
+		return true
+	case EmbeddedTitle:
+		return true
+	case RecordedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionRepresentativeRecommendationReason.
+const (
+	Audio      VersionRepresentativeRecommendationReason = "audio"
+	AudioSync  VersionRepresentativeRecommendationReason = "audio_sync"
+	Bitrate    VersionRepresentativeRecommendationReason = "bitrate"
+	Older      VersionRepresentativeRecommendationReason = "older"
+	Playable   VersionRepresentativeRecommendationReason = "playable"
+	Resolution VersionRepresentativeRecommendationReason = "resolution"
+)
+
+// Valid indicates whether the value is a known member of the VersionRepresentativeRecommendationReason enum.
+func (e VersionRepresentativeRecommendationReason) Valid() bool {
+	switch e {
+	case Audio:
+		return true
+	case AudioSync:
+		return true
+	case Bitrate:
+		return true
+	case Older:
+		return true
+	case Playable:
+		return true
+	case Resolution:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -2630,6 +2798,9 @@ type ActivityDetail struct {
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
 
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
@@ -2710,6 +2881,9 @@ type ActivityEntryFields struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -2810,6 +2984,9 @@ type ActivityListItem struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -4026,6 +4203,9 @@ type MediaInfo struct {
 	// Chapters Chapters in start order, within video duration.
 	Chapters *[]MediaInfoChapter `json:"chapters,omitempty"`
 
+	// Container What the container says about the file as a whole.
+	Container *MediaInfoContainer `json:"container,omitempty"`
+
 	// Embedded Tags embedded in the file.
 	Embedded *MediaInfoEmbedded `json:"embedded,omitempty"`
 
@@ -4036,8 +4216,18 @@ type MediaInfo struct {
 	Video *MediaInfoVideo `json:"video,omitempty"`
 }
 
+// MediaInfoAttachment defines model for MediaInfoAttachment.
+type MediaInfoAttachment struct {
+	Bytes    *int64  `json:"bytes,omitempty"`
+	MimeType *string `json:"mimeType,omitempty"`
+	Name     *string `json:"name,omitempty"`
+}
+
 // MediaInfoAudioTrack defines model for MediaInfoAudioTrack.
 type MediaInfoAudioTrack struct {
+	BitDepth *int   `json:"bitDepth,omitempty"`
+	BitRate  *int64 `json:"bitRate,omitempty"`
+
 	// ChannelLayout Examples: stereo, 5.1
 	ChannelLayout *string `json:"channelLayout,omitempty"`
 	Channels      *int    `json:"channels,omitempty"`
@@ -4048,13 +4238,38 @@ type MediaInfoAudioTrack struct {
 	Codec   *string `json:"codec,omitempty"`
 	Default *bool   `json:"default,omitempty"`
 
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// ReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+	ReplayGain *MediaInfoReplayGain `json:"replayGain,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// SampleFormat Examples: fltp, s16, s32
+	SampleFormat *string `json:"sampleFormat,omitempty"`
+
+	// SampleRate Samples per second.
+	SampleRate  *int                            `json:"sampleRate,omitempty"`
+	ServiceType *MediaInfoAudioTrackServiceType `json:"serviceType,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
 }
+
+// MediaInfoAudioTrackServiceType defines model for MediaInfoAudioTrack.ServiceType.
+type MediaInfoAudioTrackServiceType string
 
 // MediaInfoBroadcast Broadcaster and program for a TS recording.
 type MediaInfoBroadcast struct {
@@ -4069,10 +4284,78 @@ type MediaInfoChapter struct {
 	Title   *string `json:"title,omitempty"`
 }
 
+// MediaInfoContainer What the container says about the file as a whole.
+type MediaInfoContainer struct {
+	// Attachments Attached files such as fonts, at most 64.
+	Attachments      *[]MediaInfoAttachment `json:"attachments,omitempty"`
+	CompatibleBrands *[]string              `json:"compatibleBrands,omitempty"`
+
+	// DataStreams Non-media streams such as GoPro telemetry, at most 64.
+	DataStreams *[]MediaInfoDataStream `json:"dataStreams,omitempty"`
+
+	// Encrypted A stream is encrypted (DRM).
+	Encrypted *bool `json:"encrypted,omitempty"`
+
+	// MajorBrand Examples: isom, qt
+	MajorBrand *string `json:"majorBrand,omitempty"`
+
+	// ProbeScore How sure ffprobe is of the format, out of 100.
+	ProbeScore *int `json:"probeScore,omitempty"`
+
+	// Sizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+	Sizes *MediaInfoSizes `json:"sizes,omitempty"`
+
+	// StartMs The container's start time.
+	StartMs *int64 `json:"startMs,omitempty"`
+}
+
+// MediaInfoContentLight HDR content light levels in cd/m².
+type MediaInfoContentLight struct {
+	// MaxAverage MaxFALL.
+	MaxAverage *int `json:"maxAverage,omitempty"`
+
+	// MaxContent MaxCLL.
+	MaxContent *int `json:"maxContent,omitempty"`
+}
+
+// MediaInfoCrop Cropping the container records, in pixels from each edge.
+type MediaInfoCrop struct {
+	Bottom *int `json:"bottom,omitempty"`
+	Left   *int `json:"left,omitempty"`
+	Right  *int `json:"right,omitempty"`
+	Top    *int `json:"top,omitempty"`
+}
+
+// MediaInfoDataStream defines model for MediaInfoDataStream.
+type MediaInfoDataStream struct {
+	// Codec Examples: gpmd, tmcd
+	Codec   *string `json:"codec,omitempty"`
+	Handler *string `json:"handler,omitempty"`
+	Index   int     `json:"index"`
+}
+
+// MediaInfoDolbyVision defines model for MediaInfoDolbyVision.
+type MediaInfoDolbyVision struct {
+	// Compatibility dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG).
+	Compatibility *int `json:"compatibility,omitempty"`
+	Level         *int `json:"level,omitempty"`
+	Profile       int  `json:"profile"`
+}
+
 // MediaInfoEmbedded Tags embedded in the file.
 type MediaInfoEmbedded struct {
-	Author  *string `json:"author,omitempty"`
-	Comment *string `json:"comment,omitempty"`
+	Album       *string `json:"album,omitempty"`
+	AlbumArtist *string `json:"albumArtist,omitempty"`
+	Author      *string `json:"author,omitempty"`
+
+	// CaptureFrameRate The phone's capture rate; above the playback rate means slow motion.
+	CaptureFrameRate *float64 `json:"captureFrameRate,omitempty"`
+
+	// CaptureSoftware The phone camera's software version.
+	CaptureSoftware *string `json:"captureSoftware,omitempty"`
+	Comment         *string `json:"comment,omitempty"`
+	Composer        *string `json:"composer,omitempty"`
+	Copyright       *string `json:"copyright,omitempty"`
 
 	// CoverArt True when the file contains an attached picture.
 	CoverArt *bool `json:"coverArt,omitempty"`
@@ -4082,15 +4365,32 @@ type MediaInfoEmbedded struct {
 	Description *string `json:"description,omitempty"`
 
 	// Device Manufacturer and model.
-	Device *string `json:"device,omitempty"`
-	Genre  *string `json:"genre,omitempty"`
+	Device    *string `json:"device,omitempty"`
+	EncodedBy *string `json:"encodedBy,omitempty"`
+
+	// Encoder Software that wrote the file.
+	Encoder  *string `json:"encoder,omitempty"`
+	Episode  *string `json:"episode,omitempty"`
+	Genre    *string `json:"genre,omitempty"`
+	Keywords *string `json:"keywords,omitempty"`
 
 	// Location Capture location in degrees, with altitude in meters.
 	Location *MediaInfoLocation `json:"location,omitempty"`
 
+	// Network Broadcaster or distributor tag.
+	Network   *string `json:"network,omitempty"`
+	Publisher *string `json:"publisher,omitempty"`
+	Rating    *string `json:"rating,omitempty"`
+
 	// RecordedAt Capture timestamp, preserving the file's timezone offset when present.
 	RecordedAt *time.Time `json:"recordedAt,omitempty"`
-	Title      *string    `json:"title,omitempty"`
+	Season     *string    `json:"season,omitempty"`
+	Show       *string    `json:"show,omitempty"`
+
+	// SourceUrl Where a download tool fetched the file from.
+	SourceUrl *string `json:"sourceUrl,omitempty"`
+	Synopsis  *string `json:"synopsis,omitempty"`
+	Title     *string `json:"title,omitempty"`
 }
 
 // MediaInfoLocation Capture location in degrees, with altitude in meters.
@@ -4100,22 +4400,100 @@ type MediaInfoLocation struct {
 	Longitude float64  `json:"longitude"`
 }
 
+// MediaInfoMasteringDisplay HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+type MediaInfoMasteringDisplay struct {
+	BlueX        *float64 `json:"blueX,omitempty"`
+	BlueY        *float64 `json:"blueY,omitempty"`
+	GreenX       *float64 `json:"greenX,omitempty"`
+	GreenY       *float64 `json:"greenY,omitempty"`
+	MaxLuminance *float64 `json:"maxLuminance,omitempty"`
+	MinLuminance *float64 `json:"minLuminance,omitempty"`
+	RedX         *float64 `json:"redX,omitempty"`
+	RedY         *float64 `json:"redY,omitempty"`
+	WhiteX       *float64 `json:"whiteX,omitempty"`
+	WhiteY       *float64 `json:"whiteY,omitempty"`
+}
+
+// MediaInfoReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+type MediaInfoReplayGain struct {
+	AlbumGain *string `json:"albumGain,omitempty"`
+	AlbumPeak *string `json:"albumPeak,omitempty"`
+	TrackGain *string `json:"trackGain,omitempty"`
+	TrackPeak *string `json:"trackPeak,omitempty"`
+}
+
+// MediaInfoSizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+type MediaInfoSizes struct {
+	AudioBytes    *int64 `json:"audioBytes,omitempty"`
+	OtherBytes    *int64 `json:"otherBytes,omitempty"`
+	SubtitleBytes *int64 `json:"subtitleBytes,omitempty"`
+	TotalBytes    *int64 `json:"totalBytes,omitempty"`
+	VideoBytes    *int64 `json:"videoBytes,omitempty"`
+}
+
+// MediaInfoStreamOrigin What the writing tool or device recorded on the stream.
+type MediaInfoStreamOrigin struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	Encoder   *string    `json:"encoder,omitempty"`
+
+	// Handler Examples: VideoHandler, Core Media Audio
+	Handler *string `json:"handler,omitempty"`
+
+	// Timecode Examples: 01:00:00:00
+	Timecode *string `json:"timecode,omitempty"`
+
+	// Vendor Vendor fourcc, such as appl.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
 // MediaInfoSubtitleTrack defines model for MediaInfoSubtitleTrack.
 type MediaInfoSubtitleTrack struct {
 	// Codec ffprobe codec_name.
 	//
 	// Examples: subrip, arib_caption
-	Codec           *string `json:"codec,omitempty"`
-	Default         *bool   `json:"default,omitempty"`
-	Forced          *bool   `json:"forced,omitempty"`
-	HearingImpaired *bool   `json:"hearingImpaired,omitempty"`
+	Codec   *string `json:"codec,omitempty"`
+	Default *bool   `json:"default,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs      *int64 `json:"durationMs,omitempty"`
+	Forced          *bool  `json:"forced,omitempty"`
+	HearingImpaired *bool  `json:"hearingImpaired,omitempty"`
 
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
+}
+
+// MediaInfoTrackRoles Purposes the file flags on the track; only true flags are present.
+type MediaInfoTrackRoles struct {
+	Captions *bool `json:"captions,omitempty"`
+
+	// CleanEffects Effects only, without dialogue.
+	CleanEffects *bool `json:"cleanEffects,omitempty"`
+
+	// Comment Commentary.
+	Comment         *bool `json:"comment,omitempty"`
+	Descriptions    *bool `json:"descriptions,omitempty"`
+	Dub             *bool `json:"dub,omitempty"`
+	HearingImpaired *bool `json:"hearingImpaired,omitempty"`
+	Karaoke         *bool `json:"karaoke,omitempty"`
+	Lyrics          *bool `json:"lyrics,omitempty"`
+	Original        *bool `json:"original,omitempty"`
+
+	// VisualImpaired Audio description for visually impaired viewers.
+	VisualImpaired *bool `json:"visualImpaired,omitempty"`
 }
 
 // MediaInfoVideo Video-stream metadata; hdr is always included when a video stream exists.
@@ -4126,22 +4504,87 @@ type MediaInfoVideo struct {
 	// BitRate Video-stream bits per second.
 	BitRate *int64 `json:"bitRate,omitempty"`
 
+	// BitsPerPixel bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode.
+	BitsPerPixel *float64 `json:"bitsPerPixel,omitempty"`
+
+	// ChromaSubsampling Examples: 4:2:0, 4:2:2, 4:4:4
+	ChromaSubsampling *string `json:"chromaSubsampling,omitempty"`
+
 	// ClosedCaptions True when the video stream carries closed captions.
 	ClosedCaptions *bool `json:"closedCaptions,omitempty"`
+
+	// CodecString RFC 6381 codecs value, such as avc1.64001f.
+	CodecString *string `json:"codecString,omitempty"`
+
+	// CodecTag Container fourcc, such as hvc1 or hev1.
+	CodecTag   *string                   `json:"codecTag,omitempty"`
+	ColorRange *MediaInfoVideoColorRange `json:"colorRange,omitempty"`
+
+	// ContentLight HDR content light levels in cd/m².
+	ContentLight *MediaInfoContentLight `json:"contentLight,omitempty"`
+
+	// Crop Cropping the container records, in pixels from each edge.
+	Crop        *MediaInfoCrop        `json:"crop,omitempty"`
+	DolbyVision *MediaInfoDolbyVision `json:"dolbyVision,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// FilmGrain AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown.
+	FilmGrain *bool `json:"filmGrain,omitempty"`
+
+	// FrameCount Frame count the header records.
+	FrameCount *int64 `json:"frameCount,omitempty"`
 
 	// FrameRate Frames per second from avg_frame_rate.
 	FrameRate *float64          `json:"frameRate,omitempty"`
 	Hdr       MediaInfoVideoHdr `json:"hdr"`
 
+	// Hdr10Plus The container carries HDR10+ dynamic metadata.
+	Hdr10Plus *bool `json:"hdr10Plus,omitempty"`
+
 	// Interlaced Included only when the file identifies progressive or interlaced scanning.
 	Interlaced *bool `json:"interlaced,omitempty"`
+
+	// Level Codec level as ffprobe reports it (H.264 41 is level 4.1).
+	Level *int `json:"level,omitempty"`
+
+	// Mastering HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+	Mastering *MediaInfoMasteringDisplay `json:"mastering,omitempty"`
+
+	// MaxBitRate Maximum bits per second the header records.
+	MaxBitRate *int64 `json:"maxBitRate,omitempty"`
+
+	// Mirrored The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation.
+	Mirrored *bool `json:"mirrored,omitempty"`
+
+	// MultiLayer The stream has more than one layer, as MV-HEVC stereoscopic video does.
+	MultiLayer *bool `json:"multiLayer,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// PixelFormat Examples: yuv420p, yuv420p10le
+	PixelFormat *string `json:"pixelFormat,omitempty"`
+
+	// Profile Examples: High, Main 10
+	Profile *string `json:"profile,omitempty"`
 
 	// Projection 360-degree projection using ffprobe names such as equirectangular or cubemap.
 	Projection *string `json:"projection,omitempty"`
 
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64 `json:"startMs,omitempty"`
+
 	// Stereo3d 3D layout using ffprobe names such as side by side or top and bottom.
 	Stereo3d *string `json:"stereo3d,omitempty"`
+
+	// VariableFrameRate A header estimate: the average frame rate differs from the base rate by more than 1%.
+	VariableFrameRate *bool `json:"variableFrameRate,omitempty"`
 }
+
+// MediaInfoVideoColorRange defines model for MediaInfoVideo.ColorRange.
+type MediaInfoVideoColorRange string
 
 // MediaInfoVideoHdr defines model for MediaInfoVideo.Hdr.
 type MediaInfoVideoHdr string
@@ -5583,6 +6026,12 @@ type VersionCandidate struct {
 	// Distance Median Hamming distance between video fingerprints; lower means more similar.
 	Distance int `json:"distance"`
 
+	// Judgement The automatic judgement of a listed pair.
+	Judgement VersionCandidateJudgement `json:"judgement"`
+
+	// Recommendation The video whose file is the better representative, judged from the files alone.
+	Recommendation VersionRepresentativeRecommendation `json:"recommendation"`
+
 	// Videos Two videos in ID ascending order, each shaped like GET /api/videos/{id}.
 	Videos []Video `json:"videos"`
 }
@@ -5593,20 +6042,133 @@ type VersionCandidateDismissRequest struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
+// VersionCandidateJudgement The automatic judgement of a listed pair.
+type VersionCandidateJudgement struct {
+	// ActivityId The pair's version_judgement record; absent when none was opened, as while judging is off.
+	ActivityId *int64 `json:"activityId,omitempty"`
+
+	// Error Why the last attempt failed.
+	Error *string `json:"error,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
+	// LeftVideoId The video whose frames are on the left of the evidence images and whose times are evidence's aMs.
+	LeftVideoId int64 `json:"leftVideoId"`
+
+	// Probability The classifier's answer for an undecided pair; absent when the rule decided.
+	Probability *float64 `json:"probability,omitempty"`
+
+	// RetryAt Next automatic retry of a failed pair.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// State held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+	State VersionCandidateJudgementState `json:"state"`
+}
+
+// VersionCandidateJudgementState held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+type VersionCandidateJudgementState string
+
 // VersionCandidatePage defines model for VersionCandidatePage.
 type VersionCandidatePage struct {
 	// Items Newest first, at most 200 pairs.
 	Items []VersionCandidate `json:"items"`
 
+	// Judging Whether duplicate judging is on, which a rejudge needs.
+	Judging bool `json:"judging"`
+
 	// Total Total candidate count.
 	Total int `json:"total"`
 }
+
+// VersionEvidenceFrame defines model for VersionEvidenceFrame.
+type VersionEvidenceFrame struct {
+	// AMs Frame time in the left video.
+	AMs int64 `json:"aMs"`
+
+	// BMs Frame time in the right video.
+	BMs int64 `json:"bMs"`
+
+	// Distance Hamming distance between the two frames' hashes; over 12 differs.
+	Distance int `json:"distance"`
+}
+
+// VersionJudgeEvidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+type VersionJudgeEvidence struct {
+	// ByProperties The properties decided the result, or held a different answer they contradict for the owner.
+	ByProperties *bool `json:"byProperties,omitempty"`
+
+	// Compared Frame pairs compared by time, flat frames skipped.
+	Compared int `json:"compared"`
+
+	// Conflict The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided.
+	Conflict *bool `json:"conflict,omitempty"`
+
+	// Differing Compared pairs whose pictures differ.
+	Differing int `json:"differing"`
+
+	// Frames The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image.
+	Frames *[]VersionEvidenceFrame `json:"frames,omitempty"`
+
+	// LongestRun Pairs in the longest run of consecutive differing pairs; absent without such a run.
+	LongestRun *int `json:"longestRun,omitempty"`
+
+	// Properties Properties both files have, read at import: chapters, recording time, embedded title and duration.
+	Properties *[]VersionPropertySignal `json:"properties,omitempty"`
+
+	// Rule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+	Rule VersionJudgeEvidenceRule `json:"rule"`
+
+	// RunEndMs End of that run on the left video's timeline.
+	RunEndMs *int64 `json:"runEndMs,omitempty"`
+
+	// RunStartMs Start of that run on the left video's timeline.
+	RunStartMs *int64 `json:"runStartMs,omitempty"`
+
+	// VersionMismatch The fingerprints were made by different fingerprint versions, so the frames could not be compared.
+	VersionMismatch *bool `json:"versionMismatch,omitempty"`
+}
+
+// VersionJudgeEvidenceRule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+type VersionJudgeEvidenceRule string
 
 // VersionJudgingSettings Automatic duplicate-judging enablement
 type VersionJudgingSettings struct {
 	// Enabled Saved choice; defaults to false
 	Enabled bool `json:"enabled"`
 }
+
+// VersionPropertySignal defines model for VersionPropertySignal.
+type VersionPropertySignal struct {
+	// A The left video's value: a chapter count, a time, a title or milliseconds.
+	A string `json:"a"`
+
+	// B The right video's value.
+	B string `json:"b"`
+
+	// Counts Counted towards the verdict; a duration and a disagreeing value are shown only.
+	Counts *bool                     `json:"counts,omitempty"`
+	Kind   VersionPropertySignalKind `json:"kind"`
+
+	// Same The two values agree: matching chapter starts, equal times or titles, or durations within a second.
+	Same bool `json:"same"`
+
+	// Strong Decides a pair on its own: titled chapters at matching starts, or an equal recording time.
+	Strong *bool `json:"strong,omitempty"`
+}
+
+// VersionPropertySignalKind defines model for VersionPropertySignal.Kind.
+type VersionPropertySignalKind string
+
+// VersionRepresentativeRecommendation The video whose file is the better representative, judged from the files alone.
+type VersionRepresentativeRecommendation struct {
+	// Reason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+	Reason  VersionRepresentativeRecommendationReason `json:"reason"`
+	VideoId int64                                     `json:"videoId"`
+}
+
+// VersionRepresentativeRecommendationReason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+type VersionRepresentativeRecommendationReason string
 
 // Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
 type Video struct {
@@ -6746,6 +7308,9 @@ type ListLibraryParams struct {
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
+	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
+	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
+
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
 
@@ -7002,6 +7567,9 @@ type ListVideosParams struct {
 
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
+	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
 
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -7359,6 +7927,9 @@ type RunThumbnailEditMultipartRequestBody = RunThumbnailEditRequest
 // DismissVersionCandidateJSONRequestBody defines body for DismissVersionCandidate for application/json ContentType.
 type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 
+// RejudgeVersionCandidateJSONRequestBody defines body for RejudgeVersionCandidate for application/json ContentType.
+type RejudgeVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
+
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
@@ -7430,6 +8001,9 @@ type ServerInterface interface {
 	// GetActivity Read one activity record with its details
 	// (GET /api/activity/{id})
 	GetActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
+	// GetActivityJudgementFrame Return a frame pair a duplicate judgement showed the classifier
+	// (GET /api/activity/{id}/judgement-frames/{index})
+	GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request, id ActivityId, index int)
 	// RetryActivity Retry an activity operation
 	// (POST /api/activity/{id}/retry)
 	RetryActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
@@ -7859,6 +8433,9 @@ type ServerInterface interface {
 	// DismissVersionCandidate Record two videos as different
 	// (POST /api/version-candidates/dismiss)
 	DismissVersionCandidate(w http.ResponseWriter, r *http.Request)
+	// RejudgeVersionCandidate Judge a possible duplicate again
+	// (POST /api/version-candidates/rejudge)
+	RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request)
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
@@ -8160,6 +8737,41 @@ func (siw *ServerInterfaceWrapper) GetActivity(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetActivityJudgementFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetActivityJudgementFrame(w, r, id, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9326,6 +9938,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hasVersions" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -12463,6 +13088,20 @@ func (siw *ServerInterfaceWrapper) DismissVersionCandidate(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// RejudgeVersionCandidate operation middleware
+func (siw *ServerInterfaceWrapper) RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejudgeVersionCandidate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BundleVideos operation middleware
 func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -12604,6 +13243,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hasVersions" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -14737,9 +15389,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/rejudge", wrapper.RejudgeVersionCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity", wrapper.ListActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}", wrapper.GetActivity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/retry", wrapper.RetryActivity)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}/judgement-frames/{index}", wrapper.GetActivityJudgementFrame)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/undo", wrapper.UndoActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)

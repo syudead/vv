@@ -79,6 +79,7 @@ type listSpec struct {
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
 	playableOnly bool
+	hasVersions  bool
 	// Callers resolve tag IDs before building the spec.
 	tagIDs       []int64
 	favoriteOnly bool
@@ -138,7 +139,7 @@ var listNow = time.Now
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
 	return listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
+		watch: q.Watch, playableOnly: q.PlayableOnly, hasVersions: q.HasVersionsOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
 		now:  listNow().Unix(),
@@ -215,6 +216,8 @@ func watchCondition(filter domain.WatchFilter) string {
 		return ""
 	}
 }
+
+const hasVersionsCondition = `exists (select 1 from video_bundle_members bm where bm.content_key = videos.content_key)`
 
 // Keep equivalent to domain.Video.PlayableInBrowser.
 const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`

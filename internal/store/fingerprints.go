@@ -244,6 +244,13 @@ func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidateP
 			item.Videos[i] = video
 		}
 		item.Distance = p.distance
+		item.Judgement = p.judgement
+		if item.Judgement.Evidence == nil {
+			if item.Judgement.Evidence, err = derivedEvidence(ctx, tx, p.keys, p.judgement.State,
+				p.judgement.Probability); err != nil {
+				return domain.VersionCandidatePage{}, err
+			}
+		}
 		page.Items = append(page.Items, item)
 	}
 	if err := tx.Commit(); err != nil {
@@ -253,12 +260,19 @@ func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidateP
 }
 
 type candidatePair struct {
-	ids      [2]int64
-	distance int
+	ids       [2]int64
+	keys      [2]string
+	distance  int
+	judgement domain.VersionCandidateJudgement
 }
 
 func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]candidatePair, error) {
-	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.distance `+candidatePairsFrom+condition+`
+	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.key_a, c.key_b, c.distance, coalesce(c.judgement, ''),
+		coalesce(c.activity_id, 0), c.probability, coalesce(c.judgement_error, ''), c.retry_at,
+		coalesce((select e.evidence from activity_entries e where e.id = c.activity_id), ''),
+		exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
+		  or exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)
+		`+candidatePairsFrom+condition+`
 		order by c.created_at desc, c.key_a, c.key_b limit ?`, domain.MaxVersionCandidates)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the version candidates: %w", err)
@@ -266,9 +280,9 @@ func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]cand
 	defer func() { _ = rows.Close() }()
 	var pairs []candidatePair
 	for rows.Next() {
-		var p candidatePair
-		if err := rows.Scan(&p.ids[0], &p.ids[1], &p.distance); err != nil {
-			return nil, fmt.Errorf("cannot read the version candidates: %w", err)
+		p, err := scanCandidatePair(rows)
+		if err != nil {
+			return nil, err
 		}
 		if p.ids[0] > p.ids[1] {
 			p.ids[0], p.ids[1] = p.ids[1], p.ids[0]
@@ -284,6 +298,38 @@ func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]cand
 	return pairs, nil
 }
 
+func scanCandidatePair(rows *sql.Rows) (candidatePair, error) {
+	var (
+		p           candidatePair
+		state       string
+		probability sql.NullFloat64
+		retryAt     sql.NullInt64
+		evidence    string
+		held        bool
+	)
+	if err := rows.Scan(&p.ids[0], &p.ids[1], &p.keys[0], &p.keys[1], &p.distance, &state, &p.judgement.ActivityID, &probability,
+		&p.judgement.Error, &retryAt, &evidence, &held); err != nil {
+		return candidatePair{}, fmt.Errorf("cannot read the version candidates: %w", err)
+	}
+	p.judgement.State = domain.VersionJudgement(state)
+	if held && state == "" {
+		p.judgement.State = domain.VersionJudgementHeld
+	}
+	p.judgement.LeftVideoID = p.ids[0]
+	if probability.Valid {
+		value := probability.Float64
+		p.judgement.Probability = &value
+	}
+	if retryAt.Valid && p.judgement.State == domain.VersionJudgementFailed {
+		p.judgement.RetryAt = time.Unix(retryAt.Int64, 0)
+	}
+	var err error
+	if p.judgement.Evidence, err = domain.DecodeVersionJudgeEvidence(evidence); err != nil {
+		return candidatePair{}, err
+	}
+	return p, nil
+}
+
 // Dismiss persists the sorted pair even outside candidates; reject missing videos or identical content without changes.
 func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -292,17 +338,11 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var keys [2]string
-	for i, id := range videoIDs {
-		keys[i], err = bundlableContentKey(ctx, tx, id)
-		if err != nil {
-			return err
-		}
+	keys, err := sortedPairKeys(ctx, tx, videoIDs)
+	if err != nil {
+		return err
 	}
-	keyA, keyB := min(keys[0], keys[1]), max(keys[0], keys[1])
-	if keyA == keyB {
-		return domain.ErrTooFewVersions
-	}
+	keyA, keyB := keys[0], keys[1]
 	if err := dismissPair(ctx, tx, keyA, keyB); err != nil {
 		return err
 	}
@@ -319,6 +359,25 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 		return fmt.Errorf("cannot dismiss the version candidate: %w", err)
 	}
 	return nil
+}
+
+// sortedPairKeys returns the two videos' content keys in key order; identical content is ErrTooFewVersions.
+func sortedPairKeys(ctx context.Context, tx *sql.Tx, videoIDs [2]int64) ([2]string, error) {
+	var keys [2]string
+	for i, id := range videoIDs {
+		key, err := bundlableContentKey(ctx, tx, id)
+		if err != nil {
+			return keys, err
+		}
+		keys[i] = key
+	}
+	if keys[0] == keys[1] {
+		return keys, domain.ErrTooFewVersions
+	}
+	if keys[0] > keys[1] {
+		keys[0], keys[1] = keys[1], keys[0]
+	}
+	return keys, nil
 }
 
 // Owner and automatic dismissals share this path; keys must be sorted.

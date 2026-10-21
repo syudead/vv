@@ -30,7 +30,8 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
+		query: params.Query, watch: params.Watch, playable: params.Playable, hasVersions: params.HasVersions,
+		sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
@@ -59,6 +60,7 @@ type videoQueryParams struct {
 	query        *string
 	watch        *gen.WatchFilter
 	playable     *bool
+	hasVersions  *bool
 	sort         *gen.VideoSort
 	seed         *int64
 	cursor       *string
@@ -88,6 +90,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	}
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
 	query.FavoriteOnly = params.favorite != nil && *params.favorite
+	query.HasVersionsOnly = params.hasVersions != nil && *params.hasVersions
 
 	// Clamp the limit at the boundary so response metadata matches the query and schema maximum.
 	query.Limit = domain.DefaultLimit

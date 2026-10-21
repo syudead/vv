@@ -27,6 +27,11 @@ func (s *ActivityStore) ActivityDetail(ctx context.Context, id int64) (domain.Ac
 	if err != nil {
 		return domain.ActivityDetail{}, err
 	}
+	if entry.Kind == domain.ActivityVersionJudgement {
+		if entry.Evidence, err = entryEvidence(ctx, tx, entry); err != nil {
+			return domain.ActivityDetail{}, err
+		}
+	}
 	entries := []domain.ActivityEntry{entry}
 	if err := attachActivityStages(ctx, tx, entries); err != nil {
 		return domain.ActivityDetail{}, err
