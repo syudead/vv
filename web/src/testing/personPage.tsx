@@ -80,6 +80,8 @@ export const server = {
   mergeTarget: null as Person | null,
   /** How many reopen requests fail before they succeed again. */
   reopenFailures: 0,
+  /** How many similar-people reads fail before they succeed again. */
+  similarFailures: 0,
   /** How many candidate reads fail before they succeed again. */
   candidateFailures: 0,
   /** What the merge into the person answers, when not the person with nothing missing. */
@@ -157,6 +159,10 @@ function faceRoute(method: string, url: URL): Response | null {
     });
   }
   if (url.pathname === "/api/people/7/similar-people") {
+    if (server.similarFailures > 0) {
+      server.similarFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
     return jsonResponse({
       items: [
         {
@@ -171,7 +177,14 @@ function faceRoute(method: string, url: URL): Response | null {
   }
   const move = /^\/api\/people\/(7|9)\/appearances\/move$/.exec(url.pathname);
   if (move !== null && method === "POST") {
-    return jsonResponse(move[1] === "7" ? person({ id: 9, name: "Mio" }) : person());
+    return jsonResponse(
+      move[1] === "7"
+        ? {
+            person: person({ id: 9, name: "Mio" }),
+            restoreCredits: [{ workKey: "work-5", position: 1 }],
+          }
+        : { person: person(), restoreCredits: [] },
+    );
   }
   if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
@@ -272,6 +285,7 @@ export function installPersonServer() {
     server.reopenFailures = 0;
     server.mergeAnswer = null;
     server.candidateFailures = 0;
+    server.similarFailures = 0;
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(

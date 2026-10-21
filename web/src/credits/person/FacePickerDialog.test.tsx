@@ -19,14 +19,20 @@ vi.mock("./faceFrameImage", () => ({
 
 installPersonServer();
 
-/** jsdom decodes no images, so every frame loads at once as 1000 by 500 px. */
+/** Frames whose load waits for release; empty lets every frame load at once. */
+const held: (() => void)[] = [];
+let holding = false;
+
+/** jsdom decodes no images, so every frame loads as 1000 by 500 px, at once unless held. */
 class LoadedImage {
   naturalWidth = 1000;
   naturalHeight = 500;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   set src(_: string) {
-    queueMicrotask(() => this.onload?.());
+    const load = () => this.onload?.();
+    if (holding) held.push(load);
+    else queueMicrotask(load);
   }
 }
 
@@ -36,9 +42,63 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  holding = false;
+  held.length = 0;
+  vi.mocked(encodeFaceFrame).mockClear();
 });
 
+const beach = {
+  appearanceId: 3,
+  videoId: 5,
+  title: "Beach day",
+  spans: [{ start: 10, end: 15 }],
+  hasCrop: true,
+  focus: { time: 12.5, x: 0.5, y: 0.2, w: 0.05 },
+};
+
+async function openPicker(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Change face" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Choose from videos…" }));
+  return screen.findByRole("dialog", { name: /Choose a face/ });
+}
+
 describe("FacePickerDialog", () => {
+  it("saves nothing while the chosen moment's frame is still loading", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    server.appearances = [beach];
+    renderPage();
+    const dialog = await openPicker(user);
+    await within(dialog).findByText("At 0:12");
+    await waitFor(() =>
+      expect(dialog.querySelector("img[src*='/frame']")).not.toBeNull(),
+    );
+
+    holding = true;
+    await user.click(within(dialog).getByRole("button", { name: "1 second later" }));
+    const save = within(dialog).getByRole("button", { name: "Set as face" });
+    expect(save.getAttribute("aria-disabled")).toBe("true");
+    await user.click(save);
+
+    expect(encodeFaceFrame).not.toHaveBeenCalled();
+    expect(sent("PUT", "/api/people/7/image")).toHaveLength(0);
+  });
+
+  it("reads further pages until it finds faces that can be framed", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    server.appearances = [
+      { appearanceId: 4, title: "Gone video", spans: [], hasCrop: true },
+    ];
+    server.laterAppearances = [beach];
+    renderPage();
+    const dialog = await openPicker(user);
+
+    expect(
+      await within(dialog).findByRole("radio", { name: "Face in Beach day" }),
+    ).toBeTruthy();
+  });
+
   it("saves a portrait cut from the chosen face's frame, a second later", async () => {
     const user = userEvent.setup();
     server.person = person({ imageRevision: 2 });

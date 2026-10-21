@@ -7,6 +7,7 @@ import { isCreditGone, type Person } from "../../api/credits";
 import {
   type FaceAppearance,
   type FaceAppearanceSort,
+  type FaceMoveCredit,
   faceCropPath,
   isAppearanceGone,
   listPersonAppearances,
@@ -157,8 +158,12 @@ export interface AppearanceActions {
   split: (appearanceIds: readonly number[]) => Promise<Person>;
   /** Merges the split person back, taking the faces and their credits back. */
   undoSplit: (created: Person) => Promise<void>;
-  /** Moves faces moved to target back to the shown person. */
-  undoMove: (target: Person, appearanceIds: readonly number[]) => Promise<void>;
+  /** Moves faces moved to target back to the shown person, putting back the credits the move took. */
+  undoMove: (
+    target: Person,
+    appearanceIds: readonly number[],
+    restore: readonly FaceMoveCredit[],
+  ) => Promise<void>;
   onGone: () => void;
 }
 
@@ -166,6 +171,8 @@ export interface AppearanceActions {
 interface Relink {
   person: Person;
   kind: "split" | "moved";
+  /** The credits a move took that only its undo can put back. */
+  restore?: readonly FaceMoveCredit[];
   /** The split or move that sent it, so Undo takes back that one alone. */
   operation: number;
 }
@@ -229,7 +236,7 @@ function useSplits(
     await track(ids, async () => {
       try {
         if (relink.kind === "split") await actions.undoSplit(relink.person);
-        else await actions.undoMove(relink.person, ids);
+        else await actions.undoMove(relink.person, ids, relink.restore ?? []);
         rescored();
         setSplits((current) => new Map([...current].filter(([id]) => !ids.includes(id))));
       } catch (failure) {
@@ -389,10 +396,14 @@ export function PersonAppearances({
           faces={selectedFaces}
           onClose={() => setMoving(false)}
           onGone={actions.onGone}
-          onMoved={(target) => {
+          onMoved={(moved) => {
             splits.record(
               selectedFaces.map((face) => face.appearanceId),
-              { person: target, kind: "moved" },
+              {
+                person: moved.person,
+                kind: "moved",
+                restore: moved.restoreCredits,
+              },
             );
             setSelected(new Set());
             setMoving(false);

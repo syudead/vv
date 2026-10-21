@@ -15,7 +15,11 @@ import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
 import { creditDisplayName } from "./displayName";
-import { SimilarPeopleList, useSimilarPeople } from "./person/SimilarPeopleList";
+import {
+  SimilarPeopleList,
+  suggestsByFace,
+  useSimilarPeople,
+} from "./person/SimilarPeopleList";
 import { useCreditTargetSearch } from "./useCreditTargetSearch";
 
 /**
@@ -54,7 +58,7 @@ export default function MergeCreditDialog({
   // Before a name is typed, people are offered by face, since a person may have no name yet; without any face
   // data the names are listed as before.
   const similar = useSimilarPeople(kind === "person" ? source.id : null, []);
-  const suggesting = value.trim() === "" && (similar === null || similar.length > 0);
+  const suggesting = suggestsByFace(value, similar);
   const canSubmit = target !== null && !pending;
 
   useEffect(() => {
@@ -156,7 +160,7 @@ export default function MergeCreditDialog({
       {suggesting && (
         <SimilarPeopleList
           heading={t.credits.similarPeople.likePerson(creditDisplayName(source))}
-          items={similar}
+          similar={similar}
           selectedId={target?.id}
           onSelect={(person: Person) => {
             setTarget(person);

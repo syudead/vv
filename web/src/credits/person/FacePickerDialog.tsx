@@ -68,12 +68,8 @@ function useFaceChoices(personId: number, onGone: () => void): Choices {
   gone.current = onGone;
   useEffect(() => {
     const controller = new AbortController();
-    listPersonAppearances(
-      personId,
-      { limit: FACE_CHOICES, sort: "mostSimilar" },
-      controller.signal,
-    ).then(
-      (list) => setChoices({ state: "ready", faces: list.items.filter(choosable) }),
+    readChoosableFaces(personId, controller.signal).then(
+      (faces) => setChoices({ state: "ready", faces }),
       (failure: unknown) => {
         if (controller.signal.aborted) return;
         if (isCreditGone(failure)) gone.current();
@@ -85,31 +81,53 @@ function useFaceChoices(personId: number, onGone: () => void): Choices {
   return choices;
 }
 
+/** Pages through the faces, most alike first, until FACE_CHOICES of them can be framed or none are left. */
+async function readChoosableFaces(
+  personId: number,
+  signal: AbortSignal,
+): Promise<Choosable[]> {
+  const faces: Choosable[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listPersonAppearances(
+      personId,
+      { limit: FACE_CHOICES, sort: "mostSimilar", cursor },
+      signal,
+    );
+    faces.push(...page.items.filter(choosable));
+    cursor = page.nextCursor;
+  } while (cursor !== undefined && faces.length < FACE_CHOICES);
+  return faces.slice(0, FACE_CHOICES);
+}
+
 type Frame =
   | { state: "loading" }
-  | { state: "failed" }
+  | { state: "failed"; src: string }
   | { state: "ready"; image: HTMLImageElement; src: string };
 
-/** The decoded frame at positionMs; the previous frame stays shown until the next one is ready. */
+/**
+ * The decoded frame at positionMs. A frame read for another face or moment counts as loading, so the stage and
+ * Set as face never use a frame other than the one chosen.
+ */
 function useVideoFrame(videoId: number | undefined, positionMs: number): Frame {
   const [frame, setFrame] = useState<Frame>({ state: "loading" });
+  const src = videoId === undefined ? undefined : videoFramePath(videoId, positionMs);
   useEffect(() => {
-    if (videoId === undefined) return;
-    const src = videoFramePath(videoId, positionMs);
+    if (src === undefined) return;
     const image = new Image();
     let current = true;
     image.onload = () => {
       if (current) setFrame({ state: "ready", image, src });
     };
     image.onerror = () => {
-      if (current) setFrame({ state: "failed" });
+      if (current) setFrame({ state: "failed", src });
     };
     image.src = src;
     return () => {
       current = false;
     };
-  }, [videoId, positionMs]);
-  return frame;
+  }, [src]);
+  return frame.state !== "loading" && frame.src === src ? frame : { state: "loading" };
 }
 
 function sizeOf(image: HTMLImageElement): Size {

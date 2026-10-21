@@ -193,6 +193,9 @@ The outline starts at 2.2 times the face's mean width with the face above its
 centre ([`faceFraming.ts`](../../web/src/credits/person/faceFraming.ts)), from
 the appearance's `focus`: the longest track's middle, mean centre and width as
 fractions of the frame's long side, as face recognition samples them.
+The faces are read page by page until 48 can be framed or none are left, so faces
+whose video is gone do not crowd them out. A frame read for another face or
+moment counts as still loading, so `Set as face` waits for the chosen one.
 `Set as face` cuts the outline out of the frame at the frame's own pixels and
 sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
 the same fitting and face check as an upload and the dialog shows their
@@ -369,7 +372,8 @@ decision, so the crops are the first four with a crop among each person's
 first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
 and the row reads `Merged into {name}`, with `Undo` when the merged person had
-no name, which takes the merge back and offers the pair again; a retry after
+no name, which takes the merge back, reads the shown person again since the
+undo can take back a face the merge gave them, and offers the pair again; a retry after
 the merge was undone but the pair not reopened only reopens it. Only an unnamed
 person confirmed with a named one is merged away, and the page then opens the
 named person's faces page with a `Merged into "{name}"` toast whose `Undo`
@@ -413,11 +417,13 @@ before a name is typed it lists, as a `RadioGroup`, the people whose faces look
 most like them (`GET /api/people/{id}/similar-people`), each with a
 `PersonFace suggestion`, up to four more crops from `sm`, the face count, the
 video they were first seen in and the similarity, so even people without a name
-are told apart; typing searches by name as the merge dialog does. `Move` hands
+are told apart; typing searches by name as the merge dialog does. A failed read
+says so with `Retry` rather than look like no one alike. `Move` hands
 the faces and their credits to that person
 (`POST /api/people/{id}/appearances/move`), and the tiles read
 `Moved to {name}` with an `Undo` that moves back the faces of that move alone,
-even when another move went to the same person. A pressed tile disables only
+even when another move went to the same person, and puts back the credits the
+move took where the target was already credited. A pressed tile disables only
 its own button, a second press while it runs sends nothing, and a failure shows
 under the grid.
 

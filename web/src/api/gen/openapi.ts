@@ -1979,7 +1979,7 @@ export interface paths {
         put?: never;
         /**
          * Merge a face candidate pair
-         * @description Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
+         * @description Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name and holds no external ID, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back; a merged person with an external ID is merged without one, since the undo cannot restore the ID. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
          */
         post: operations["confirmFaceCandidate"];
         delete?: never;
@@ -2079,7 +2079,7 @@ export interface paths {
         put?: never;
         /**
          * Move face appearances to another person
-         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit. Returns the target. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
+         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
          */
         post: operations["moveFaceAppearances"];
         delete?: never;
@@ -4557,7 +4557,7 @@ export interface components {
             person: components["schemas"]["Person"];
             /**
              * Format: int64
-             * @description The face_merge entry that undoes the merge; absent when the merged person had a name.
+             * @description The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID.
              */
             undoActivityId?: number;
         };
@@ -4613,6 +4613,19 @@ export interface components {
             appearanceIds: number[];
             /** Format: int64 */
             targetId: number;
+            /** @description The restoreCredits of the move this request undoes. */
+            restoreCredits?: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceAppearanceMove: {
+            person: components["schemas"]["Person"];
+            /** @description Works whose performer credit of the moved-from person was removed because the target already held one. */
+            restoreCredits: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceMoveCredit: {
+            /** @description An opaque key of the work. */
+            workKey: string;
+            /** @description The position the credit had among the work's performers. */
+            position: number;
         };
         FaceAppearanceSplitRequest: {
             appearanceIds: number[];
@@ -10170,13 +10183,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The person the faces moved to */
+            /** @description The person the faces moved to, with the credits only the reverse move can put back */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Person"];
+                    "application/json": components["schemas"]["FaceAppearanceMove"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

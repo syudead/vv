@@ -3,11 +3,17 @@ import { type ReactNode, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { RequestFailed } from "../../api/client";
-import { mergeCredits, type Person, removePersonImage } from "../../api/credits";
+import {
+  getCredit,
+  mergeCredits,
+  type Person,
+  removePersonImage,
+} from "../../api/credits";
 import { undoActivity } from "../../api/activity";
 import {
   confirmFaceCandidate,
   type FaceCandidatePerson,
+  type FaceMoveCredit,
   moveFaceAppearances,
   reopenFaceCandidate,
   splitFaceAppearance,
@@ -169,8 +175,10 @@ function FacesShown({
   }
 
   /** Undo brings the merged person back and dismisses the pair; reopening offers it again as before. */
+  /** The undo can take back the face the merge gave the shown person, so the person is read again. */
   async function undoConfirm(other: FaceCandidatePerson, activityId: number) {
     await undoConfirmOf(person.id, other.id, activityId);
+    replace((await getCredit("person", person.id)) as Person);
   }
 
   function splitAppearances(appearanceIds: readonly number[]): Promise<Person> {
@@ -196,8 +204,12 @@ function FacesShown({
     }
   }
 
-  async function undoMove(target: Person, appearanceIds: readonly number[]) {
-    await moveFaceAppearances(target.id, appearanceIds, person.id);
+  async function undoMove(
+    target: Person,
+    appearanceIds: readonly number[],
+    restore: readonly FaceMoveCredit[],
+  ) {
+    await moveFaceAppearances(target.id, appearanceIds, person.id, restore);
   }
 
   const total = appearances.state.kind === "ready" ? appearances.state.total : undefined;
