@@ -250,6 +250,15 @@ function respond(method: string, url: URL, body: unknown): Response {
       ? jsonResponse({ items: ids.map((id) => video(id)), total: ids.length })
       : jsonResponse({ items: [], total: 0 });
   }
+  if (url.pathname === "/api/people" && method === "GET") {
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const items = server.searchable.filter((item) => item.name.toLowerCase().includes(q));
+    return jsonResponse({
+      items,
+      total: items.length,
+      totalAll: server.searchable.length,
+    });
+  }
   if (url.pathname === "/api/settings/face-recognition") {
     return jsonResponse({ enabled: server.faceRecognition });
   }
