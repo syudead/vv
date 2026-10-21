@@ -318,9 +318,12 @@ on; while it is off, or the settings cannot be read, the page neither shows it
 nor reads the candidates.
 
 The faces page puts its two lists in `line` tabs, `Same person?` and
-`Faces in videos`, each with its count, and keeps the tab in the address
+`Faces in videos`, each with its count, `Same person?` counting only the pairs
+not yet decided on the page, and keeps the tab in the address
 (`?tab=candidates` or `?tab=faces`); without one it opens `Same person?`
-unless no pair waits. A `Refresh` button after the tabs reads both lists again.
+unless no pair waits at the first read, a choice a later `Refresh` never
+changes. A `Refresh` button after the tabs reads both lists again. Pairs that
+cannot be read say so with `Retry` in place of the rows.
 Nothing else reads them again: a decided pair and a split face stay where they
 are, dimmed with the result and `Undo` where one applies, so the next row never
 moves under the owner's press. Before, every decision read the lists again,
@@ -330,8 +333,8 @@ which put the faces back to their first page and reordered the pairs.
 the other person's side by side, each over the name, the face count and up to
 four of their crops, with the similarity between them (under them below `sm`),
 then `Not the same` and `Same person`. One face alone is a poor basis for the
-decision, so the crops come from each person's first appearances
-(`GET /api/people/{id}/appearances?limit=4`). A confirm keeps the shown person
+decision, so the crops are the first four with a crop among each person's
+first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
 and the row reads `Merged into {name}`, with `Undo` when the merged person had
 no name, which takes the merge back and offers the pair again; a retry after
@@ -353,7 +356,9 @@ first, so the owner finds them without paging through the person's own
 faces. `Show more` reads the next page; with none it says so. A split or its
 `Undo` rescores the person's other faces, so the cursor no longer marks where
 the shown faces end; the next `Show more` reads the rest whole and adds only
-the faces not yet shown. An appearance
+the faces not yet shown. Changing the order clears the selection, since the
+new order starts from its first page, and keeps the faces split on the page
+first in the grid with their `Undo` until a `Refresh`. An appearance
 whose video left the library reads `Not in the library` without links. A grid
 shows many faces at once, so a face that is not the person stands out, where a
 list of rows led with titles.
@@ -362,25 +367,27 @@ Each crop carries a `Not this person` icon button in its `PersonFaceMark`
 `top-end`, for a face the analysis linked to the wrong person. It splits the
 face into a new unnamed person with no confirmation: the tile stays, dimmed,
 with `Split into #12` and `Undo`, which merges the new person back into the
-shown one (`POST /api/people/{id}/merge`). `Select` replaces each button with a
-checkbox; with faces checked, a `SelectionBar` offers `Not this person`, which
-splits them all into one new person (`POST /api/people/{id}/appearances/split`),
-since faces wrongly linked together are usually one other person, and the
-`Undo` of any of them takes them all back. A selection holds at most 200 faces,
-what one split or move takes; past that the other checkboxes are disabled and
-the bar says so. `Move to person…` in the same bar
-opens a dialog that picks where the checked faces belong: before a name is
-typed it lists, as a `RadioGroup`, the people whose faces look most like them
-(`GET /api/people/{id}/similar-people`), each with a `PersonFace suggestion`,
-up to four more crops from `sm`, the face count, the video they were first seen
-in and the similarity, so even people without a name are told apart; typing
-searches by name as the merge dialog does. `Move` hands the faces and their
-credits to that person (`POST /api/people/{id}/appearances/move`), and the
-tiles read `Moved to {name}` with an `Undo` that moves back the faces of that
-move alone, even when another move went to the same person. Changing the order
-clears the selection, since the new order starts from its first page. A pressed tile
-disables only its own button, a second press while it runs sends nothing, and a
-failure shows under the grid.
+shown one (`POST /api/people/{id}/merge`); a person who had no face is left
+without one, rather than keep the face the merge brings, and an `Undo` whose
+split person is gone reports it and keeps the tile split. `Select` replaces
+each button with a checkbox; with faces checked, a `SelectionBar` offers
+`Not this person`, which splits them all into one new person
+(`POST /api/people/{id}/appearances/split`), since faces wrongly linked together
+are usually one other person, and the `Undo` of any of them takes them all
+back. A selection holds at most 200 faces, what one split or move takes; past
+that the other checkboxes are disabled and the bar says so. `Move to person…`
+in the same bar opens a dialog that picks where the checked faces belong:
+before a name is typed it lists, as a `RadioGroup`, the people whose faces look
+most like them (`GET /api/people/{id}/similar-people`), each with a
+`PersonFace suggestion`, up to four more crops from `sm`, the face count, the
+video they were first seen in and the similarity, so even people without a name
+are told apart; typing searches by name as the merge dialog does. `Move` hands
+the faces and their credits to that person
+(`POST /api/people/{id}/appearances/move`), and the tiles read
+`Moved to {name}` with an `Undo` that moves back the faces of that move alone,
+even when another move went to the same person. A pressed tile disables only
+its own button, a second press while it runs sends nothing, and a failure shows
+under the grid.
 
 | Rejected                                   | Why                                                                               |
 | ------------------------------------------ | --------------------------------------------------------------------------------- |

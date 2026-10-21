@@ -94,7 +94,7 @@ func MeanFaceVector(vectors [][]float32) []float32 {
 }
 
 // FaceAppearanceSimilarities scores each vector by its similarity to MeanFaceVector of them all; a vector of another
-// length than the mean gets no score.
+// length than the mean gets no score, and neither does a lone face, which would only be compared with itself.
 func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 	all := make([][]float32, 0, len(vectors))
 	for _, v := range vectors {
@@ -106,6 +106,9 @@ func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 		if mean != nil && len(v) == len(mean) {
 			out[id] = FaceSimilarity(v, mean)
 		}
+	}
+	if len(out) < 2 {
+		return map[int64]float64{}
 	}
 	return out
 }
