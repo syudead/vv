@@ -206,6 +206,29 @@ describe("PersonFacesPage", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the move dialog open, saying so, when a face is no longer the person's", async () => {
+    const user = userEvent.setup();
+    server.moveGone = true;
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(
+      await within(dialog).findByText(
+        "Some of these faces are no longer this person's. Refresh and try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Moved to Mio")).toBeNull();
+  });
+
   it("says when the people alike could not be read, with a retry", async () => {
     const user = userEvent.setup();
     server.similarFailures = 1;
