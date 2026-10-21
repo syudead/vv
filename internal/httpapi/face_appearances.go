@@ -50,6 +50,9 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 			AppearanceId: a.ID, VideoId: optionalPositive(a.VideoID), Title: a.Title, Spans: spans, HasCrop: a.HasCrop,
 			Similarity: a.Similarity,
 		})
+		if a.Unlike {
+			body.Items[len(body.Items)-1].Unlike = &a.Unlike
+		}
 	}
 	s.writeCreditBody(w, http.StatusOK, body)
 }

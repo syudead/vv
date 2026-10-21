@@ -3407,6 +3407,9 @@ type FaceAppearance struct {
 	// Title The video's title: its override, else its first registered location's title, else the content key.
 	Title string `json:"title"`
 
+	// Unlike True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise.
+	Unlike *bool `json:"unlike,omitempty"`
+
 	// VideoId The video with the appearance's content key; absent when no video has it any more.
 	VideoId *int64 `json:"videoId,omitempty"`
 }

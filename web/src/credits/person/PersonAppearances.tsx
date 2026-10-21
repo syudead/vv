@@ -34,6 +34,9 @@ const text = t.credits.personPage.faces;
 
 const pageSize = 30;
 
+/** The most faces one split takes, as `FaceAppearanceSplitRequest` allows. */
+const maxSplitFaces = 200;
+
 type Span = FaceAppearance["spans"][number];
 
 type AppearancesState =
@@ -48,6 +51,8 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
   const [attempt, setAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const more = useRef<AbortController | null>(null);
+  // A split or its undo rescores the person's other faces, so a cursor taken before it no longer marks a boundary.
+  const rescored = useRef(false);
 
   const fail = useCallback(
     (failure: unknown) => {
@@ -61,6 +66,7 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     more.current?.abort();
     more.current = null;
     setLoadingMore(false);
+    rescored.current = false;
     const controller = new AbortController();
     setState({ kind: "loading" });
     listPersonAppearances(personId, { limit: pageSize, sort }, controller.signal).then(
@@ -90,20 +96,30 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     const controller = new AbortController();
     more.current = controller;
     setLoadingMore(true);
-    listPersonAppearances(personId, { limit: pageSize, cursor, sort }, controller.signal)
+    // After a rescoring the rest is read whole and only faces not yet shown are added.
+    const whole = rescored.current;
+    rescored.current = false;
+    listPersonAppearances(
+      personId,
+      whole ? { sort } : { limit: pageSize, cursor, sort },
+      controller.signal,
+    )
       .then(
         (page) => {
           if (controller.signal.aborted) return;
-          setState((current) =>
-            current.kind === "ready"
-              ? {
-                  kind: "ready",
-                  items: [...current.items, ...page.items],
-                  total: page.total,
-                  nextCursor: page.nextCursor,
-                }
-              : current,
-          );
+          setState((current) => {
+            if (current.kind !== "ready") return current;
+            const shown = new Set(current.items.map((item) => item.appearanceId));
+            return {
+              kind: "ready",
+              items: [
+                ...current.items,
+                ...page.items.filter((item) => !shown.has(item.appearanceId)),
+              ],
+              total: page.total,
+              nextCursor: page.nextCursor,
+            };
+          });
         },
         (failure: unknown) => {
           if (!controller.signal.aborted && !isAborted(failure)) fail(failure);
@@ -127,7 +143,11 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     );
   }, []);
 
-  return { state, sort, setSort, reload, remove, loadMore, loadingMore };
+  const markRescored = useCallback(() => {
+    rescored.current = true;
+  }, []);
+
+  return { state, sort, setSort, reload, remove, loadMore, loadingMore, markRescored };
 }
 
 export interface AppearanceActions {
@@ -143,21 +163,27 @@ export function spanPath(videoId: number, span: Span): string {
   return `/videos/${String(videoId)}?t=${String(Math.floor(span.start))}`;
 }
 
-/** Below the face-candidate threshold a face is as unlike the person as a stranger usually is. */
-const unlikeSimilarity = 0.36;
-
 /** Which faces are split into whom, with the faces in flight; split faces stay in the grid with Undo. */
-function useSplits(actions: AppearanceActions, remove: (appearanceId: number) => void) {
+function useSplits(
+  actions: AppearanceActions,
+  remove: (appearanceId: number) => void,
+  rescored: () => void,
+) {
   const [splits, setSplits] = useState<ReadonlyMap<number, Person>>(new Map());
   const [pending, setPending] = useState<ReadonlySet<number>>(new Set());
   const [error, setError] = useState<UiText | null>(null);
+  // The faces in flight as of now, so a second press before the next render sends nothing.
+  const inFlight = useRef(new Set<number>());
 
   async function track(ids: readonly number[], work: () => Promise<void>) {
+    if (ids.length === 0 || ids.some((id) => inFlight.current.has(id))) return;
+    for (const id of ids) inFlight.current.add(id);
     setPending((current) => new Set([...current, ...ids]));
     setError(null);
     try {
       await work();
     } finally {
+      for (const id of ids) inFlight.current.delete(id);
       setPending((current) => new Set([...current].filter((id) => !ids.includes(id))));
     }
   }
@@ -166,6 +192,7 @@ function useSplits(actions: AppearanceActions, remove: (appearanceId: number) =>
     await track(ids, async () => {
       try {
         const created = await actions.split(ids);
+        rescored();
         setSplits(
           (current) => new Map([...current, ...ids.map((id) => [id, created] as const)]),
         );
@@ -184,6 +211,7 @@ function useSplits(actions: AppearanceActions, remove: (appearanceId: number) =>
     await track(ids, async () => {
       try {
         await actions.undoSplit(created);
+        rescored();
         setSplits((current) => new Map([...current].filter(([id]) => !ids.includes(id))));
       } catch (failure) {
         setError(text.undoSplitFailed(errorText(failure)));
@@ -206,14 +234,14 @@ export function PersonAppearances({
   actions: AppearanceActions;
 }) {
   const { state, sort, setSort, reload, loadMore, loadingMore } = appearances;
-  const splits = useSplits(actions, appearances.remove);
+  const splits = useSplits(actions, appearances.remove, appearances.markRescored);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
 
   function toggle(id: number) {
     setSelected((current) => {
       const next = new Set(current);
-      if (!next.delete(id)) next.add(id);
+      if (!next.delete(id) && next.size < maxSplitFaces) next.add(id);
       return next;
     });
   }
@@ -264,6 +292,7 @@ export function PersonAppearances({
               selecting
                 ? {
                     checked: selected.has(item.appearanceId),
+                    full: selected.size >= maxSplitFaces,
                     toggle: () => toggle(item.appearanceId),
                   }
                 : undefined
@@ -291,7 +320,11 @@ export function PersonAppearances({
       )}
       {selected.size > 0 && (
         <SelectionBar
-          count={text.selected(selected.size)}
+          count={
+            selected.size >= maxSplitFaces
+              ? text.selectedFull(selected.size)
+              : text.selected(selected.size)
+          }
           clearLabel={text.clearSelection}
           onClear={() => setSelected(new Set())}
           clearDisabled={splits.pending.size > 0}
@@ -354,7 +387,8 @@ function AppearanceTile({
   appearance: FaceAppearance;
   created: Person | undefined;
   pending: boolean;
-  selection: { checked: boolean; toggle: () => void } | undefined;
+  /** full is true once the selection holds as many faces as one split takes. */
+  selection: { checked: boolean; full: boolean; toggle: () => void } | undefined;
   split: () => void;
   undo: (created: Person) => void;
 }) {
@@ -375,7 +409,7 @@ function AppearanceTile({
             aria-label={text.similarityFor(title, similarity)}
             className={cn(
               "rounded-sm bg-overlay px-1 text-xs font-medium tabular-nums",
-              similarity < unlikeSimilarity && "text-warning",
+              appearance.unlike && "text-warning",
             )}
           >
             {text.similarity(similarity)}
@@ -440,6 +474,7 @@ function AppearanceTile({
             <Checkbox
               aria-label={text.selectFace(title)}
               checked={selection.checked}
+              disabled={selection.full && !selection.checked}
               onCheckedChange={selection.toggle}
               className="size-6 bg-overlay"
             />

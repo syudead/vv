@@ -67,6 +67,17 @@ func LookupFaceRecognizer(r FaceRecognizer) (FaceRecognizerSpec, bool) {
 	return FaceRecognizerSpec{}, false
 }
 
+// FaceCandidateThreshold is the Candidate threshold of the recognizer whose vectors have the given length, and false
+// for a length no recognizer makes.
+func FaceCandidateThreshold(dimensions int) (float64, bool) {
+	for _, spec := range faceRecognizers {
+		if spec.Dimensions == dimensions {
+			return spec.Thresholds.Candidate, true
+		}
+	}
+	return 0, false
+}
+
 func (r FaceRecognizer) Valid() bool {
 	_, ok := LookupFaceRecognizer(r)
 	return ok
