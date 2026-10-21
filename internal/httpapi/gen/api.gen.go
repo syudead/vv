@@ -5625,9 +5625,6 @@ type VersionJudgeEvidence struct {
 	// LongestRun Pairs in the longest run of consecutive differing pairs; absent without such a run.
 	LongestRun *int `json:"longestRun,omitempty"`
 
-	// OffsetMs How much later the same content plays in the right video than in the left; the frames were compared at this start offset.
-	OffsetMs *int64 `json:"offsetMs,omitempty"`
-
 	// Rule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
 	Rule VersionJudgeEvidenceRule `json:"rule"`
 

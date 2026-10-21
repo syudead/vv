@@ -8,10 +8,6 @@ export function evidenceSentences(
   probability: number | undefined,
 ): UiText[] {
   const sentences = ruleSentences(evidence, probability);
-  if (evidence.offsetMs !== undefined && evidence.offsetMs !== 0) {
-    const seconds = t.versions.judgement.seconds(Math.abs(evidence.offsetMs) / 1000);
-    sentences.unshift(t.versions.judgement.offset(seconds, evidence.offsetMs > 0));
-  }
   if (evidence.conflict === true) sentences.push(t.versions.judgement.conflict);
   return sentences;
 }

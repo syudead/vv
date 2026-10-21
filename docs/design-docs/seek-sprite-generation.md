@@ -173,9 +173,7 @@ bits, against a match limit of 12.
 Fingerprints with different intervals are compared by time. Each frame is
 paired with the other fingerprint's frame whose start is nearest to its own
 start, and only when the two starts are within half the shorter interval
-([`domain.CompareFingerprints`](../../internal/domain/fingerprint.go)), at the
-start offset that matches best
-([duplicate-judging.md](duplicate-judging.md#frames-are-compared-at-the-best-start-offset)). A frame
+([`domain.CompareFingerprints`](../../internal/domain/fingerprint.go)). A frame
 shows its interval's start, so a 1-second sprite and an older 5-second sprite
 of the same video compare the frames at 0, 5, 10 seconds and so on, rather
 than comparing the 1–4 second frames with the 0-second frame.

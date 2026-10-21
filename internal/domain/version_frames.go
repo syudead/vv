@@ -48,8 +48,6 @@ type VersionFrameRule struct {
 	LongestRun int
 	Run        [2]FramePair
 	Shown      []FramePair
-	// Pairs are every compared pair at the chosen start offset.
-	Pairs []FramePair
 }
 
 // JudgeVersionFrames tolerates at most 5% isolated differences; otherwise it samples the longest differing run (earliest tie), or all isolated differences, evenly up to the image limit.
@@ -58,7 +56,7 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 	if !ok {
 		return VersionFrameRule{Outcome: VersionFramesIncomparable}
 	}
-	rule := VersionFrameRule{Compared: len(pairs), Pairs: pairs}
+	rule := VersionFrameRule{Compared: len(pairs)}
 	var differing, longest, current []FramePair
 	for _, pair := range pairs {
 		if pair.Distance <= FingerprintMatchMaxDistance {

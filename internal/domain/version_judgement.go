@@ -79,10 +79,8 @@ type VersionJudgeEvidence struct {
 	Compared   int    `json:"compared"`
 	Differing  int    `json:"differing"`
 	LongestRun int    `json:"longestRun,omitempty"`
-	// OffsetMs is how much later the same content plays in B than in A.
-	OffsetMs   int64 `json:"offsetMs,omitempty"`
-	RunStartMs int64 `json:"runStartMs,omitempty"`
-	RunEndMs   int64 `json:"runEndMs,omitempty"`
+	RunStartMs int64  `json:"runStartMs,omitempty"`
+	RunEndMs   int64  `json:"runEndMs,omitempty"`
 	// VersionMismatch marks fingerprints made by different fingerprint versions, which cannot be compared.
 	VersionMismatch bool                   `json:"versionMismatch,omitempty"`
 	Frames          []VersionEvidenceFrame `json:"frames,omitempty"`
@@ -103,10 +101,6 @@ func NewVersionJudgeEvidence(a, b Fingerprint, rule VersionFrameRule) *VersionJu
 	evidence := &VersionJudgeEvidence{
 		Rule: rule.Outcome.String(), Compared: rule.Compared, Differing: rule.Differing, LongestRun: rule.LongestRun,
 		VersionMismatch: a.Version != b.Version,
-	}
-	if len(rule.Pairs) > 0 {
-		first := rule.Pairs[0]
-		evidence.OffsetMs = int64(first.B)*b.IntervalMs - int64(first.A)*a.IntervalMs
 	}
 	if rule.LongestRun > 0 {
 		evidence.RunStartMs = int64(rule.Run[0].A) * a.IntervalMs

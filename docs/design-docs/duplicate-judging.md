@@ -35,29 +35,12 @@ whether two files are the same file, which is a different question.
 | Difference | Where it is absorbed |
 | --- | --- |
 | Quality, resolution, black bands, a small logo | The fingerprint: 32×32 low-frequency luma hashes with black bands trimmed |
-| A large watermark, burned-in subtitles | The classifier, whose question says to ignore them |
-| A start shifted by a whole seek-sprite interval or more | The start offset search below |
-| A shift shorter than the interval | The classifier's tolerance of a few seconds |
-
-The fingerprint stays the one cut from the seek sprite, at most 81 frames. A
-fingerprint sampled from the source each second would align short shifts in
-long videos too, but it decodes every file again and rebuilds the whole
-library; that cost is not worth it while the classifier tolerates the shift.
-
-## Frames are compared at the best start offset
-
-Pairing tries each start offset in steps of the coarser interval, up to the
-difference in fingerprint length plus one step, and keeps the offset with the
-lowest median distance; a tie keeps the smaller offset
-([`domain.ComparableFramePairs`](../../internal/domain/fingerprint.go)). The
-candidate check and the frame rule share this pairing, and the evidence
-records the offset. Existing fingerprints are compared this way without being
-rebuilt.
+| A large watermark, burned-in subtitles, a shift of a few seconds | The classifier, whose question says to ignore them |
 
 ## The frame rule decides first
 
-Frames are paired at that offset and flat frames are skipped, as the candidate
-check pairs them, and a pair differs when its distance is over 12
+Frames are paired by time and flat frames are skipped, as the candidate check
+pairs them, and a pair differs when its distance is over 12
 (`FingerprintMatchMaxDistance`). The median the candidate check uses hides a
 replaced section; the per-frame list shows it.
 

@@ -215,20 +215,3 @@ func TestNewVersionJudgeEvidenceTimesEachSideOnItsOwnInterval(t *testing.T) {
 		t.Errorf("往復 = %+v, %v", decoded, err)
 	}
 }
-
-// A start shifted by two frames is found, and the evidence states the offset.
-func TestJudgeVersionFramesAlignsAShiftedStart(t *testing.T) {
-	a := Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
-	b := Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
-	for i := range 30 {
-		a.Frames = append(a.Frames, FrameHash{Hash: uint64(i) * 0x9e3779b97f4a7c15})
-	}
-	b.Frames = a.Frames[2:]
-	rule := JudgeVersionFrames(a, b)
-	if rule.Outcome != VersionFramesSame || rule.Differing != 0 {
-		t.Fatalf("rule = %+v, want ずらして全部一致", rule)
-	}
-	if evidence := NewVersionJudgeEvidence(a, b, rule); evidence.OffsetMs != -2000 {
-		t.Errorf("ずれ = %d ms, want -2000", evidence.OffsetMs)
-	}
-}

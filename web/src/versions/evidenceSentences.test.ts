@@ -51,15 +51,4 @@ describe("evidenceSentences", () => {
     expect(sentences).toHaveLength(2);
     expect(sentences[1]).toContain("already marked different");
   });
-
-  it("開始のずれを見つけた組は、ずらして比べたことを最初に書く", () => {
-    expect(
-      evidenceSentences(
-        evidence({ rule: "frames_match", differing: 0, offsetMs: -5000 }),
-        undefined,
-      )[0],
-    ).toBe(
-      "The right video shows the same moment 5 seconds earlier than the left, so their frames were compared with that shift.",
-    );
-  });
 });
