@@ -206,6 +206,35 @@ describe("PersonFacesPage", () => {
     ).toBeTruthy();
   });
 
+  it("moves faces to a person found by name instead of by face", async () => {
+    const user = userEvent.setup();
+    server.searchable = [
+      person({ id: 11, name: "Ren" }),
+      person({ id: 12, name: "Rika" }),
+    ];
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search by name" }),
+      "ren",
+    );
+    await user.click(await within(dialog).findByRole("option", { name: /Ren/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await screen.findByText("Moved to Mio");
+    expect(sentBody(sent("POST", "/api/people/7/appearances/move")[0])).toMatchObject({
+      appearanceIds: [3],
+      targetId: 11,
+    });
+  });
+
   it("keeps the move dialog open, saying so, when a face is no longer the person's", async () => {
     const user = userEvent.setup();
     server.moveGone = true;
