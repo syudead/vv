@@ -339,19 +339,29 @@ page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
 A pressed row disables only its own buttons.
 
 `Faces in videos` is a `CardGrid size="face"` of `PersonFace scene` crops,
-newest video first, each over the video's title and the start of each span,
-each a link that plays the video from that time (`?t=`); the crop and the title
-open the video at the first span. `Show more` reads the next page; with none it
-says so. An appearance whose video left the library reads
-`Not in the library` without links. A grid shows many faces at once, so a face
-that is not the person stands out, where a list of rows led with titles.
+each over the video's title and the start of each span, each a link that plays
+the video from that time (`?t=`); the crop and the title open the video at the
+first span. A select above the grid orders it `Least like this person first`
+(the default) or `Newest video first`, and each crop shows its similarity to
+the person in its `PersonFaceMark` `bottom-end`, in `warning` below 36%, the
+candidate threshold, where a face is as unlike the person as a stranger
+usually is. The default order puts the faces most likely linked by mistake
+first, so the owner finds them without paging through the person's own
+faces. `Show more` reads the next page; with none it says so. An appearance
+whose video left the library reads `Not in the library` without links. A grid
+shows many faces at once, so a face that is not the person stands out, where a
+list of rows led with titles.
 
 Each crop carries a `Not this person` icon button in its `PersonFaceMark`
 `top-end`, for a face the analysis linked to the wrong person. It splits the
 face into a new unnamed person with no confirmation: the tile stays, dimmed,
 with `Split into #12` and `Undo`, which merges the new person back into the
-shown one (`POST /api/people/{id}/merge`). A pressed tile disables only its own
-button, and a failure shows under it.
+shown one (`POST /api/people/{id}/merge`). `Select` replaces each button with a
+checkbox; with faces checked, a `SelectionBar` offers `Not this person`, which
+splits them all into one new person (`POST /api/people/{id}/appearances/split`),
+since faces wrongly linked together are usually one other person, and the
+`Undo` of any of them takes them all back. A pressed tile disables only its own
+button, and a failure shows under the grid.
 
 | Rejected                                | Why                                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------------- |

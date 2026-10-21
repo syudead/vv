@@ -1828,6 +1828,17 @@ export const en = {
         undoSplitFor: (title: string) => `Undo the split in ${title}`,
         splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
         undoSplitFailed: (reason: string) => `Couldn't undo the split: ${reason}`,
+        sortLabel: "Order",
+        sortLeastSimilar: "Least like this person first",
+        sortNewest: "Newest video first",
+        similarity: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+        similarityFor: (title: string, value: number) =>
+          `${title}, ${formatNumber(Math.round(value * 100))}% like this person`,
+        select: "Select",
+        selectFace: (title: string) => `Select ${title}`,
+        selected: (count: number) => `${formatNumber(count)} selected`,
+        clearSelection: "Clear selection",
+        splitSelected: "Not this person",
       },
       pluginFetch: {
         entry: "Fetch info…",

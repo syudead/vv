@@ -142,6 +142,9 @@ function faceRoute(method: string, url: URL): Response | null {
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
   }
+  if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
+  }
   const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
   if (split !== null && method === "POST") {
     server.appearances = server.appearances.filter(

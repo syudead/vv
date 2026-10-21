@@ -70,6 +70,18 @@ export function splitFaceAppearance(id: number, appearanceId: number): Promise<P
   });
 }
 
+/** Split several appearances into one new provisional person; returns that person. */
+export function splitFaceAppearances(
+  id: number,
+  appearanceIds: readonly number[],
+): Promise<Person> {
+  return request<Person>(`${personPath(id)}/appearances/split`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appearanceIds }),
+  });
+}
+
 /** True when the appearance is no longer linked to the person, so its row has nothing left to split. */
 export function isAppearanceGone(error: unknown): boolean {
   return (
@@ -79,12 +91,15 @@ export function isAppearanceGone(error: unknown): boolean {
   );
 }
 
+export type FaceAppearanceSort = "newest" | "leastSimilar";
+
 export function listPersonAppearances(
   id: number,
-  query: { limit: number; cursor?: string },
+  query: { limit: number; cursor?: string; sort?: FaceAppearanceSort },
   signal?: AbortSignal,
 ): Promise<FaceAppearanceList> {
   const params = new URLSearchParams({ limit: String(query.limit) });
+  if (query.sort !== undefined) params.set("sort", query.sort);
   if (query.cursor !== undefined) params.set("cursor", query.cursor);
   return request<FaceAppearanceList>(
     `${personPath(id)}/appearances?${params.toString()}`,

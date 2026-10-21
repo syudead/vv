@@ -12,9 +12,11 @@ import (
 )
 
 type appearanceCall struct {
-	personID int64
-	cursor   string
-	limit    int
+	personID    int64
+	sort        domain.PersonAppearanceSort
+	cursor      string
+	limit       int
+	appearances []int64
 }
 
 // faceAppearanceCredits fakes the appearance reads and records their arguments; store tests cover paging and drops.
@@ -27,8 +29,8 @@ type faceAppearanceCredits struct {
 	calls  []appearanceCall
 }
 
-func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error) {
-	c.calls = append(c.calls, appearanceCall{personID, cursor, limit})
+func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID int64, q domain.PersonAppearanceQuery) (domain.PersonAppearancePage, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, sort: q.Sort, cursor: q.Cursor, limit: q.Limit})
 	return c.page, c.err
 }
 
@@ -37,8 +39,8 @@ func (c *faceAppearanceCredits) FaceAppearanceCrop(_ context.Context, id int64) 
 	return c.crop, c.err
 }
 
-func (c *faceAppearanceCredits) SplitFaceAppearance(_ context.Context, personID, appearanceID int64) (domain.Credit, error) {
-	c.calls = append(c.calls, appearanceCall{personID: personID, limit: int(appearanceID)})
+func (c *faceAppearanceCredits) SplitFaceAppearances(_ context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs})
 	return c.person, c.err
 }
 
@@ -52,9 +54,11 @@ func newFaceAppearanceFixture(t *testing.T, credits *faceAppearanceCredits) *cre
 }
 
 func TestListPersonAppearancesAnswersThePage(t *testing.T) {
+	similarity := 0.25
 	credits := &faceAppearanceCredits{page: domain.PersonAppearancePage{
 		Items: []domain.PersonAppearance{
-			{ID: 7, VideoID: 3, Title: "Beach", Spans: []domain.FaceTimeSpan{{Start: 12, End: 100}}, HasCrop: true},
+			{ID: 7, VideoID: 3, Title: "Beach", Spans: []domain.FaceTimeSpan{{Start: 12, End: 100}}, HasCrop: true,
+				Similarity: &similarity},
 			{ID: 4, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
 		},
 		NextCursor: "next",
@@ -62,25 +66,35 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 	}}
 	f := newFaceAppearanceFixture(t, credits)
 
-	rec := f.owned(http.MethodGet, "/api/people/5/appearances?limit=2&cursor=prev", "")
+	rec := f.owned(http.MethodGet, "/api/people/5/appearances?sort=leastSimilar&limit=2&cursor=prev", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	videoID, next := int64(3), "next"
 	want := gen.FaceAppearanceList{Items: []gen.FaceAppearance{
-		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true},
+		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true,
+			Similarity: &similarity},
 		{AppearanceId: 4, Title: "key-gone", Spans: []gen.FaceAppearanceSpan{{Start: 0, End: 10}}},
 	}, NextCursor: &next, Total: 12}
 	if got := decode[gen.FaceAppearanceList](t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("body = %+v, want %+v", got, want)
 	}
-	if want := []appearanceCall{{5, "prev", 2}}; !reflect.DeepEqual(credits.calls, want) {
+	if want := []appearanceCall{{personID: 5, sort: domain.PersonAppearancesLeastSimilar, cursor: "prev", limit: 2}}; !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
 	}
 
 	rec = f.owned(http.MethodGet, "/api/people/5/appearances?limit=201", "")
 	assertErrorBody(t, "limit over 200", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	rec = f.owned(http.MethodGet, "/api/people/5/appearances?sort=random", "")
+	assertErrorBody(t, "unknown sort", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	credits.calls = nil
+	rec = f.owned(http.MethodGet, "/api/people/5/appearances", "")
+	if want := []appearanceCall{{personID: 5, sort: domain.PersonAppearancesNewest}}; rec.Code != http.StatusOK ||
+		!reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("without sort: status %d, calls %+v; want newest", rec.Code, credits.calls)
+	}
 	for _, tc := range []struct {
 		err  error
 		want wantError
@@ -109,7 +123,7 @@ func TestSplitFaceAppearanceAnswersTheNewPerson(t *testing.T) {
 	if got := decode[gen.Person](t, rec); got.Id != 9 || !got.Provisional {
 		t.Errorf("body = %+v, want the new provisional person 9", got)
 	}
-	if want := []appearanceCall{{personID: 5, limit: 7}}; !reflect.DeepEqual(credits.calls, want) {
+	if want := []appearanceCall{{personID: 5, appearances: []int64{7}}}; !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("store calls = %+v, want person 5 and appearance 7", credits.calls)
 	}
 
@@ -147,4 +161,29 @@ func TestGetFaceAppearanceCropAnswersTheJPEG(t *testing.T) {
 	rec = f.owned(http.MethodGet, "/api/face-appearances/7/crop", "")
 	assertErrorBody(t, "crop of a deleted person's appearance", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
+}
+
+func TestSplitFaceAppearancesSplitsTheListedOnesTogether(t *testing.T) {
+	credits := &faceAppearanceCredits{person: domain.Credit{Kind: domain.CreditPerson, ID: 9, Provisional: true}}
+	f := newFaceAppearanceFixture(t, credits)
+	target := "/api/people/5/appearances/split"
+
+	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Person](t, rec); got.Id != 9 {
+		t.Errorf("body = %+v, want the new person 9", got)
+	}
+	if want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
+	}
+	for _, body := range []string{`{"appearanceIds":[]}`, `{"appearanceIds":[7,7]}`, `{"appearanceIds":[0]}`} {
+		rec = f.owned(http.MethodPost, target, body)
+		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if len(credits.calls) != 1 {
+		t.Errorf("store calls after invalid bodies = %+v, want only the first", credits.calls)
+	}
 }

@@ -2017,11 +2017,31 @@ export interface paths {
         };
         /**
          * List a person's face appearances
-         * @description Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor.
+         * @description Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor.
          */
         get: operations["listPersonAppearances"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split several face appearances into one new person
+         * @description Owner-only. For "Not this person" on a selection: as splitFaceAppearance, with every listed appearance moving to one new provisional person whose face is the first appearance's crop, in one transaction. Returns the new person. Missing person returns 404 person_not_found; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and splits none.
+         */
+        post: operations["splitFaceAppearances"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4495,6 +4515,14 @@ export interface components {
             spans: components["schemas"]["FaceAppearanceSpan"][];
             /** @description True when getFaceAppearanceCrop has a face to return. */
             hasCrop: boolean;
+            /**
+             * Format: double
+             * @description Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
+             */
+            similarity?: number;
+        };
+        FaceAppearanceSplitRequest: {
+            appearanceIds: number[];
         };
         FaceAppearanceSpan: {
             /** Format: double */
@@ -9932,6 +9960,8 @@ export interface operations {
     listPersonAppearances: {
         parameters: {
             query?: {
+                /** @description newest (default) or leastSimilar */
+                sort?: "newest" | "leastSimilar";
                 /** @description Opaque nextCursor from the previous response; ignored without limit */
                 cursor?: string;
                 /** @description Page size; omit for all appearances without nextCursor */
@@ -9953,6 +9983,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FaceAppearanceList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    splitFaceAppearances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceAppearanceSplitRequest"];
+            };
+        };
+        responses: {
+            /** @description The new provisional person */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

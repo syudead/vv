@@ -803,10 +803,18 @@ reopen does without a dismissed one.
 ## The faces page reads a person's appearances
 
 `GET /api/people/{id}/appearances` lists a person's appearances that are not
-dropped, with the admin lists' `limit` and `cursor` and the `total` of them all
+dropped, with the admin lists' `limit` and `cursor` and the `total` of them all,
+each with its `similarity`: the cosine similarity of its centroid to the
+normalized mean of the person's centroids of the same recognizer, which stands
+for the person without needing a face image. `sort=leastSimilar` orders by that
+similarity, lowest first, so faces linked by mistake come first; appearances
+that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
-They come newest video first by the video's added time, then by descending
-appearance id. An appearance whose content key no video has any more is still
+By default they come newest video first by the video's added time, then by
+descending appearance id. The store reads every appearance of the person and
+orders and pages them in memory, since the similarity needs all centroids; a
+cursor names the last appearance by what its order compares, so a split face
+leaving the list does not shift the next page. An appearance whose content key no video has any more is still
 listed, without `videoId` and after every appearance with a video, so the
 owner sees that the person was found in a file that has left the library.
 Each item's spans are its tracks' times in order, with overlapping tracks
@@ -844,9 +852,14 @@ one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
 owner's own decision, like confirming a candidate.
 
+`POST /api/people/{id}/appearances/split` does the same for several
+appearances at once, moving them all to one new person whose face is the first
+one's crop; any appearance the person lacks splits none.
+
 | Rejected                                                       | Why                                                                                               |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Removing the old person's credit whenever the appearance moves | Another appearance in the same work may still be that person, and the credit would vanish with it |
+| One new person per face for a selection                        | Faces wrongly linked together are usually one other person, who would then be several             |
 | Copying the centroid into the new person's face-image vector   | A centroid is not the vector of the crop; the face-image job computes the right one               |
 
 ## Tests that cross the worker and the store live in `cmd/mdm`

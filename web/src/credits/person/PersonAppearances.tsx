@@ -1,19 +1,30 @@
 import { UserX } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { isAborted } from "../../api/client";
 import { isCreditGone, type Person } from "../../api/credits";
 import {
   type FaceAppearance,
+  type FaceAppearanceSort,
   faceCropPath,
   isAppearanceGone,
   listPersonAppearances,
 } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
+import { cn } from "../../lib/cn";
 import { CardGrid } from "../../ui/patterns/card-grid";
+import { SelectionBar } from "../../ui/patterns/selection-bar";
 import { Button } from "../../ui/shadcn/button";
+import { Checkbox } from "../../ui/shadcn/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
@@ -32,6 +43,7 @@ type AppearancesState =
 
 /** The person's appearances, a page at a time; a missing person calls onGone. */
 export function usePersonAppearances(personId: number, onGone: () => void) {
+  const [sort, setSort] = useState<FaceAppearanceSort>("leastSimilar");
   const [state, setState] = useState<AppearancesState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -50,7 +62,8 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     more.current = null;
     setLoadingMore(false);
     const controller = new AbortController();
-    listPersonAppearances(personId, { limit: pageSize }, controller.signal).then(
+    setState({ kind: "loading" });
+    listPersonAppearances(personId, { limit: pageSize, sort }, controller.signal).then(
       (page) => {
         if (controller.signal.aborted) return;
         setState({
@@ -65,7 +78,7 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
       },
     );
     return () => controller.abort();
-  }, [personId, attempt, fail]);
+  }, [personId, sort, attempt, fail]);
 
   useEffect(() => () => more.current?.abort(), []);
 
@@ -77,7 +90,7 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     const controller = new AbortController();
     more.current = controller;
     setLoadingMore(true);
-    listPersonAppearances(personId, { limit: pageSize, cursor }, controller.signal)
+    listPersonAppearances(personId, { limit: pageSize, cursor, sort }, controller.signal)
       .then(
         (page) => {
           if (controller.signal.aborted) return;
@@ -101,7 +114,7 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
         more.current = null;
         setLoadingMore(false);
       });
-  }, [personId, cursor, fail]);
+  }, [personId, cursor, sort, fail]);
 
   const remove = useCallback((appearanceId: number) => {
     setState((current) =>
@@ -114,13 +127,13 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     );
   }, []);
 
-  return { state, reload, remove, loadMore, loadingMore };
+  return { state, sort, setSort, reload, remove, loadMore, loadingMore };
 }
 
 export interface AppearanceActions {
-  /** Splits the face into a new person and returns that person; a rejection is shown under the tile. */
-  split: (appearance: FaceAppearance) => Promise<Person>;
-  /** Merges the split person back, taking the face and its credit back. */
+  /** Splits the faces into one new person and returns that person; a rejection is shown under the grid. */
+  split: (appearanceIds: readonly number[]) => Promise<Person>;
+  /** Merges the split person back, taking the faces and their credits back. */
   undoSplit: (created: Person) => Promise<void>;
   onGone: () => void;
 }
@@ -130,9 +143,60 @@ export function spanPath(videoId: number, span: Span): string {
   return `/videos/${String(videoId)}?t=${String(Math.floor(span.start))}`;
 }
 
+/** Below the face-candidate threshold a face is as unlike the person as a stranger usually is. */
+const unlikeSimilarity = 0.36;
+
+/** Which faces are split into whom, with the faces in flight; split faces stay in the grid with Undo. */
+function useSplits(actions: AppearanceActions, remove: (appearanceId: number) => void) {
+  const [splits, setSplits] = useState<ReadonlyMap<number, Person>>(new Map());
+  const [pending, setPending] = useState<ReadonlySet<number>>(new Set());
+  const [error, setError] = useState<UiText | null>(null);
+
+  async function track(ids: readonly number[], work: () => Promise<void>) {
+    setPending((current) => new Set([...current, ...ids]));
+    setError(null);
+    try {
+      await work();
+    } finally {
+      setPending((current) => new Set([...current].filter((id) => !ids.includes(id))));
+    }
+  }
+
+  async function split(ids: readonly number[]) {
+    await track(ids, async () => {
+      try {
+        const created = await actions.split(ids);
+        setSplits(
+          (current) => new Map([...current, ...ids.map((id) => [id, created] as const)]),
+        );
+      } catch (failure) {
+        if (ids.length === 1 && isAppearanceGone(failure)) remove(ids[0] as number);
+        else if (isCreditGone(failure)) actions.onGone();
+        else setError(text.splitFailed(errorText(failure)));
+      }
+    });
+  }
+
+  async function undo(created: Person) {
+    const ids = [...splits]
+      .filter(([, person]) => person.id === created.id)
+      .map(([id]) => id);
+    await track(ids, async () => {
+      try {
+        await actions.undoSplit(created);
+        setSplits((current) => new Map([...current].filter(([id]) => !ids.includes(id))));
+      } catch (failure) {
+        setError(text.undoSplitFailed(errorText(failure)));
+      }
+    });
+  }
+  return { splits, pending, error, split, undo };
+}
+
 /**
- * `Faces in videos`: a grid of crops, newest video first, so a face that is not the person stands
- * out. A split face stays in place, dimmed with Undo, so the grid never moves under the owner.
+ * `Faces in videos`: a grid of crops, least like the person first by default, so a face that is not
+ * the person comes up early. A split face stays in place, dimmed with Undo, so the grid never moves
+ * under the owner; several faces can be selected and split into one new person.
  */
 export function PersonAppearances({
   appearances,
@@ -141,7 +205,121 @@ export function PersonAppearances({
   appearances: ReturnType<typeof usePersonAppearances>;
   actions: AppearanceActions;
 }) {
-  const { state, reload, loadMore, loadingMore } = appearances;
+  const { state, sort, setSort, reload, loadMore, loadingMore } = appearances;
+  const splits = useSplits(actions, appearances.remove);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+
+  function toggle(id: number) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  async function splitSelected() {
+    const ids = [...selected];
+    await splits.split(ids);
+    setSelected(new Set());
+  }
+
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={sort} onValueChange={(next) => setSort(next as FaceAppearanceSort)}>
+        <SelectTrigger size="sm" aria-label={text.sortLabel}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="leastSimilar">{text.sortLeastSimilar}</SelectItem>
+          <SelectItem value="newest">{text.sortNewest}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button
+        variant="outline"
+        size="sm"
+        aria-pressed={selecting}
+        onClick={() => {
+          setSelecting((value) => !value);
+          setSelected(new Set());
+        }}
+      >
+        {text.select}
+      </Button>
+    </div>
+  );
+  return (
+    <>
+      {toolbar}
+      <AppearancesBody
+        state={state}
+        reload={reload}
+        tile={(item) => (
+          <AppearanceTile
+            key={item.appearanceId}
+            appearance={item}
+            created={splits.splits.get(item.appearanceId)}
+            pending={splits.pending.has(item.appearanceId)}
+            selection={
+              selecting
+                ? {
+                    checked: selected.has(item.appearanceId),
+                    toggle: () => toggle(item.appearanceId),
+                  }
+                : undefined
+            }
+            split={() => void splits.split([item.appearanceId])}
+            undo={(created) => void splits.undo(created)}
+          />
+        )}
+      />
+      {splits.error !== null && (
+        <p className="text-sm text-destructive">{splits.error}</p>
+      )}
+      {state.kind === "ready" && state.nextCursor !== undefined && (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="link"
+            size="sm"
+            aria-busy={loadingMore || undefined}
+            onClick={loadMore}
+          >
+            {loadingMore && <Spinner aria-hidden="true" />}
+            {t.credits.personPage.showMore}
+          </Button>
+        </div>
+      )}
+      {selected.size > 0 && (
+        <SelectionBar
+          count={text.selected(selected.size)}
+          clearLabel={text.clearSelection}
+          onClear={() => setSelected(new Set())}
+          clearDisabled={splits.pending.size > 0}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-disabled={splits.pending.size > 0 || undefined}
+            onClick={() => void splitSelected()}
+          >
+            <UserX aria-hidden="true" />
+            {text.splitSelected}
+          </Button>
+        </SelectionBar>
+      )}
+    </>
+  );
+}
+
+function AppearancesBody({
+  state,
+  reload,
+  tile,
+}: {
+  state: AppearancesState;
+  reload: () => void;
+  tile: (item: FaceAppearance) => ReactNode;
+}) {
   if (state.kind === "loading") {
     return <p className="text-muted-foreground">{text.loading}</p>;
   }
@@ -159,100 +337,56 @@ export function PersonAppearances({
     return <p className="text-muted-foreground">{text.none}</p>;
   }
   return (
-    <>
-      <div>
-        <CardGrid size="face">
-          {state.items.map((item) => (
-            <AppearanceTile
-              key={item.appearanceId}
-              appearance={item}
-              actions={actions}
-              remove={appearances.remove}
-            />
-          ))}
-        </CardGrid>
-      </div>
-      {state.nextCursor !== undefined && (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="link"
-            size="sm"
-            aria-busy={loadingMore || undefined}
-            onClick={loadMore}
-          >
-            {loadingMore && <Spinner aria-hidden="true" />}
-            {t.credits.personPage.showMore}
-          </Button>
-        </div>
-      )}
-    </>
+    <div>
+      <CardGrid size="face">{state.items.map(tile)}</CardGrid>
+    </div>
   );
-}
-
-function useSplit(
-  appearance: FaceAppearance,
-  actions: AppearanceActions,
-  remove: (appearanceId: number) => void,
-) {
-  const [created, setCreated] = useState<Person | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<UiText | null>(null);
-
-  async function run() {
-    if (pending) return;
-    setPending(true);
-    setError(null);
-    try {
-      if (created === null) setCreated(await actions.split(appearance));
-      else {
-        await actions.undoSplit(created);
-        setCreated(null);
-      }
-    } catch (failure) {
-      if (created === null && isAppearanceGone(failure)) remove(appearance.appearanceId);
-      else if (created === null && isCreditGone(failure)) actions.onGone();
-      else
-        setError(
-          (created === null ? text.splitFailed : text.undoSplitFailed)(
-            errorText(failure),
-          ),
-        );
-    } finally {
-      setPending(false);
-    }
-  }
-  return { created, pending, error, run };
 }
 
 function AppearanceTile({
   appearance,
-  actions,
-  remove,
+  created,
+  pending,
+  selection,
+  split,
+  undo,
 }: {
   appearance: FaceAppearance;
-  actions: AppearanceActions;
-  remove: (appearanceId: number) => void;
+  created: Person | undefined;
+  pending: boolean;
+  selection: { checked: boolean; toggle: () => void } | undefined;
+  split: () => void;
+  undo: (created: Person) => void;
 }) {
   const location = useLocation();
   const from = `${location.pathname}${location.search}`;
-  const { videoId, title, spans } = appearance;
+  const { videoId, title, spans, similarity } = appearance;
   const first = spans[0];
-  const { created, pending, error, run } = useSplit(appearance, actions, remove);
 
   const crop = (
     <PersonFace
       shape="scene"
       name={title}
       src={appearance.hasCrop ? faceCropPath(appearance.appearanceId) : undefined}
-    />
+    >
+      {similarity !== undefined && (
+        <PersonFaceMark corner="bottom-end">
+          <span
+            aria-label={text.similarityFor(title, similarity)}
+            className={cn(
+              "rounded-sm bg-overlay px-1 text-xs font-medium tabular-nums",
+              similarity < unlikeSimilarity && "text-warning",
+            )}
+          >
+            {text.similarity(similarity)}
+          </span>
+        </PersonFaceMark>
+      )}
+    </PersonFace>
   );
   return (
     <div className="relative flex min-w-0 flex-col gap-1">
-      <div
-        className={
-          created === null ? "flex flex-col gap-1" : "flex flex-col gap-1 opacity-40"
-        }
-      >
+      <div className={cn("flex flex-col gap-1", created !== undefined && "opacity-40")}>
         {videoId === undefined ? (
           <>
             {crop}
@@ -279,24 +413,37 @@ function AppearanceTile({
         )}
         <SpanLinks videoId={videoId} title={title} spans={spans} from={from} />
       </div>
-      {created === null ? (
+      {created === undefined ? (
         <PersonFaceMark corner="top-end">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="bg-overlay"
-                aria-label={text.notThisPersonFor(title)}
-                aria-disabled={pending || undefined}
-                aria-busy={pending || undefined}
-                onClick={() => void run()}
-              >
-                {pending ? <Spinner aria-hidden="true" /> : <UserX aria-hidden="true" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{text.notThisPerson}</TooltipContent>
-          </Tooltip>
+          {selection === undefined ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="bg-overlay"
+                  aria-label={text.notThisPersonFor(title)}
+                  aria-disabled={pending || undefined}
+                  aria-busy={pending || undefined}
+                  onClick={split}
+                >
+                  {pending ? (
+                    <Spinner aria-hidden="true" />
+                  ) : (
+                    <UserX aria-hidden="true" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{text.notThisPerson}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Checkbox
+              aria-label={text.selectFace(title)}
+              checked={selection.checked}
+              onCheckedChange={selection.toggle}
+              className="size-6 bg-overlay"
+            />
+          )}
         </PersonFaceMark>
       ) : (
         <p className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
@@ -307,13 +454,12 @@ function AppearanceTile({
             className="h-auto p-0 text-xs"
             aria-label={text.undoSplitFor(title)}
             aria-busy={pending || undefined}
-            onClick={() => void run()}
+            onClick={() => undo(created)}
           >
             {t.credits.personPage.candidates.undo}
           </Button>
         </p>
       )}
-      {error !== null && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

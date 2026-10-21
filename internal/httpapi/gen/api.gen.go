@@ -2532,6 +2532,24 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
+// Defines values for ListPersonAppearancesParamsSort.
+const (
+	LeastSimilar ListPersonAppearancesParamsSort = "leastSimilar"
+	Newest       ListPersonAppearancesParamsSort = "newest"
+)
+
+// Valid indicates whether the value is a known member of the ListPersonAppearancesParamsSort enum.
+func (e ListPersonAppearancesParamsSort) Valid() bool {
+	switch e {
+	case LeastSimilar:
+		return true
+	case Newest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetVideoThumbnailParamsSize.
 const (
 	Large GetVideoThumbnailParamsSize = "large"
@@ -3380,6 +3398,9 @@ type FaceAppearance struct {
 	// HasCrop True when getFaceAppearanceCrop has a face to return.
 	HasCrop bool `json:"hasCrop"`
 
+	// Similarity Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
+	Similarity *float64 `json:"similarity,omitempty"`
+
 	// Spans When the person is on screen, in seconds, in order and without overlaps.
 	Spans []FaceAppearanceSpan `json:"spans"`
 
@@ -3405,6 +3426,11 @@ type FaceAppearanceList struct {
 type FaceAppearanceSpan struct {
 	End   float64 `json:"end"`
 	Start float64 `json:"start"`
+}
+
+// FaceAppearanceSplitRequest defines model for FaceAppearanceSplitRequest.
+type FaceAppearanceSplitRequest struct {
+	AppearanceIds []int64 `json:"appearanceIds"`
 }
 
 // FaceCandidate One open pair, as the other person of it.
@@ -6727,12 +6753,18 @@ type ListPeopleParams struct {
 
 // ListPersonAppearancesParams defines parameters for ListPersonAppearances.
 type ListPersonAppearancesParams struct {
+	// Sort newest (default) or leastSimilar
+	Sort *ListPersonAppearancesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
 	// Cursor Opaque nextCursor from the previous response; ignored without limit
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit Page size; omit for all appearances without nextCursor
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListPersonAppearancesParamsSort defines parameters for ListPersonAppearances.
+type ListPersonAppearancesParamsSort string
 
 // GetPersonImageParams defines parameters for GetPersonImage.
 type GetPersonImageParams struct {
@@ -7138,6 +7170,9 @@ type CreatePersonJSONRequestBody = CreditInput
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = CreditPatch
 
+// SplitFaceAppearancesJSONRequestBody defines body for SplitFaceAppearances for application/json ContentType.
+type SplitFaceAppearancesJSONRequestBody = FaceAppearanceSplitRequest
+
 // UploadPersonImageMultipartRequestBody defines body for UploadPersonImage for multipart/form-data ContentType.
 type UploadPersonImageMultipartRequestBody = UploadPersonImageRequest
 
@@ -7485,6 +7520,9 @@ type ServerInterface interface {
 	// ListPersonAppearances List a person's face appearances
 	// (GET /api/people/{id}/appearances)
 	ListPersonAppearances(w http.ResponseWriter, r *http.Request, id PersonId, params ListPersonAppearancesParams)
+	// SplitFaceAppearances Split several face appearances into one new person
+	// (POST /api/people/{id}/appearances/split)
+	SplitFaceAppearances(w http.ResponseWriter, r *http.Request, id PersonId)
 	// SplitFaceAppearance Split a face appearance into a new person
 	// (POST /api/people/{id}/appearances/{appearanceId}/split)
 	SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id PersonId, appearanceId FaceAppearanceId)
@@ -10018,6 +10056,19 @@ func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListPersonAppearancesParams
 
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "cursor" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -10046,6 +10097,32 @@ func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPersonAppearances(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitFaceAppearances operation middleware
+func (siw *ServerInterfaceWrapper) SplitFaceAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitFaceAppearances(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14397,6 +14474,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/reopen", wrapper.ReopenFaceCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/split", wrapper.SplitFaceAppearances)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches", wrapper.FetchPersonWithPlugin)

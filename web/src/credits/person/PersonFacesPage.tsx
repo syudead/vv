@@ -5,9 +5,9 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { mergeCredits, type Person } from "../../api/credits";
 import {
   confirmFaceCandidate,
-  type FaceAppearance,
   type FaceCandidatePerson,
   splitFaceAppearance,
+  splitFaceAppearances,
 } from "../../api/personFaces";
 import { formatNumber, t } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
@@ -128,8 +128,10 @@ function FacesShown({
     replace(target);
   }
 
-  function splitAppearance(appearance: FaceAppearance): Promise<Person> {
-    return splitFaceAppearance(person.id, appearance.appearanceId);
+  function splitAppearances(appearanceIds: readonly number[]): Promise<Person> {
+    return appearanceIds.length === 1
+      ? splitFaceAppearance(person.id, appearanceIds[0] as number)
+      : splitFaceAppearances(person.id, appearanceIds);
   }
 
   async function undoSplit(created: Person) {
@@ -209,7 +211,7 @@ function FacesShown({
           >
             <PersonAppearances
               appearances={appearances}
-              actions={{ split: splitAppearance, undoSplit, onGone: markGone }}
+              actions={{ split: splitAppearances, undoSplit, onGone: markGone }}
             />
           </PageSection>
         </TabsContent>
