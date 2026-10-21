@@ -176,10 +176,34 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	if err != nil {
 		return false, err
 	}
+	if err := recordJudgementEvidence(ctx, tx, claimed.entryID, result); err != nil {
+		return false, err
+	}
 	if err := s.db.commitWith(ctx, tx, c, append(events, domain.VersionCandidatesChanged{})...); err != nil {
 		return false, fmt.Errorf("cannot apply the version judgement: %w", err)
 	}
 	return true, nil
+}
+
+// A same verdict that left the entry undecided met a known difference across the two sides.
+func recordJudgementEvidence(ctx context.Context, tx *sql.Tx, id int64, result domain.VersionJudgeResult) error {
+	if result.Evidence == nil {
+		return nil
+	}
+	evidence := *result.Evidence
+	if result.Verdict == domain.VersionSame {
+		var reason sql.NullString
+		if err := tx.QueryRowContext(ctx, `select reason from activity_entries where id = ?`, id).
+			Scan(&reason); err != nil {
+			return fmt.Errorf("cannot read the activity entry (id=%d): %w", id, err)
+		}
+		evidence.Conflict = reason.String == string(domain.ActivityUndecided)
+	}
+	if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = ? where id = ?`,
+		evidence.Encode(), id); err != nil {
+		return fmt.Errorf("cannot record the judgement evidence (id=%d): %w", id, err)
+	}
+	return nil
 }
 
 // claimedCandidate is a running candidate and the activity entry that reports its judgement.
@@ -468,4 +492,68 @@ func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled b
 		return fmt.Errorf("cannot save setting %s: %w", versionJudgingEnabledKey, err)
 	}
 	return nil
+}
+
+// RejudgeCandidate returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its
+// entry with it; the caller wakes the worker.
+func (s *VersionStore) RejudgeCandidate(ctx context.Context, videoIDs [2]int64) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	keys, err := sortedPairKeys(ctx, tx, videoIDs)
+	if err != nil {
+		return err
+	}
+	var judgement sql.NullString
+	var activityID sql.NullInt64
+	err = tx.QueryRowContext(ctx, `select c.judgement, c.activity_id `+judgeablePairs+` and c.key_a = ? and c.key_b = ?`,
+		keys[0], keys[1]).Scan(&judgement, &activityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrNotVersionCandidate
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read the version candidate: %w", err)
+	}
+	if !domain.VersionRejudgeable(domain.VersionJudgement(judgement.String)) {
+		return domain.ErrVersionNotRejudgeable
+	}
+	if _, err := tx.ExecContext(ctx, `update video_version_candidates
+		   set judgement = null, attempts = 0, retry_at = null, judgement_error = null, probability = null
+		 where key_a = ? and key_b = ?`, keys[0], keys[1]); err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	c := &changes{}
+	if activityID.Valid {
+		if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = null where id = ?`,
+			activityID.Int64); err != nil {
+			return fmt.Errorf("cannot clear the judgement evidence: %w", err)
+		}
+		if err := updateActivity(ctx, tx, c, activityID.Int64, waitingUpdate, time.Now()); err != nil {
+			return err
+		}
+	}
+	if err := s.db.commitWith(ctx, tx, c, domain.VersionCandidatesChanged{}); err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	return nil
+}
+
+// JudgementEvidence returns a version_judgement entry's pair keys and its evidence, nil when none was recorded.
+func (s *VersionStore) JudgementEvidence(ctx context.Context, entryID int64) ([2]string, *domain.VersionJudgeEvidence, error) {
+	var keys [2]string
+	var evidence string
+	err := s.db.read.QueryRowContext(ctx, `select subject_key, coalesce(subject_key_b, ''), coalesce(evidence, '')
+		from activity_entries where id = ? and kind = ?`, entryID, string(domain.ActivityVersionJudgement)).
+		Scan(&keys[0], &keys[1], &evidence)
+	if errors.Is(err, sql.ErrNoRows) {
+		return keys, nil, fmt.Errorf("activity entry %d: %w", entryID, domain.ErrNotFound)
+	}
+	if err != nil {
+		return keys, nil, fmt.Errorf("cannot read the activity entry (id=%d): %w", entryID, err)
+	}
+	decoded, err := domain.DecodeVersionJudgeEvidence(evidence)
+	return keys, decoded, err
 }

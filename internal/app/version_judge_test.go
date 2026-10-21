@@ -197,6 +197,10 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			if got.Decider != domain.ActivityByAI {
 				t.Errorf("判断したもの = %q, want ai", got.Decider)
 			}
+			if e := got.Evidence; e == nil || e.Rule != "frames_differ" || e.Differing != 4 || e.RunStartMs != 8000 ||
+				e.RunEndMs != 12000 || len(e.Frames) != 4 {
+				t.Errorf("根拠 = %+v, want 8〜12 秒の連なりと 4 コマ", e)
+			}
 			wantPairs := []domain.FramePair{{A: 8, B: 8, Distance: 33}, {A: 9, B: 9, Distance: 33},
 				{A: 10, B: 10, Distance: 33}, {A: 11, B: 11, Distance: 33}}
 			if frames.keys != [2]string{"key-a", "key-b"} || !reflect.DeepEqual(frames.pairs, wantPairs) {

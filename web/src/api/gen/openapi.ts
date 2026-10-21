@@ -113,7 +113,7 @@ export interface paths {
         };
         /**
          * List videos
-         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * List library items (videos and groups)
-         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
@@ -2576,6 +2576,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-candidates/rejudge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Judge a possible duplicate again
+         * @description Owner-only. Returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its activity record to running, so the duplicate judging worker sends it to the classifier again. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos return 404 video_not_found; a pair that is not a judgeable candidate returns 404 not_found. Judging turned off returns 409 version_judging_off; a waiting or running pair returns 409 version_not_rejudgeable.
+         */
+        post: operations["rejudgeVersionCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/activity": {
         parameters: {
             query?: never;
@@ -2630,6 +2650,26 @@ export interface paths {
          * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off.
          */
         post: operations["retryActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{id}/judgement-frames/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a frame pair a duplicate judgement showed the classifier
+         * @description Owner-only. Returns the image at index in the version_judgement record's evidence frames: the left video's frame on the left and the other's on the right, cut from the two current seek previews as the classifier received them. A missing record, a record without evidence, an index outside its frames or a missing seek preview returns 404 not_found. Uses Cache-Control: no-store.
+         */
+        get: operations["getActivityJudgementFrame"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5559,12 +5599,90 @@ export interface components {
         };
         /** @description Pair of potentially identical videos. */
         VersionCandidate: {
+            judgement: components["schemas"]["VersionCandidateJudgement"];
             /** @description Two videos in ID ascending order, each shaped like GET /api/videos/{id}. */
             videos: components["schemas"]["Video"][];
             /** @description Median Hamming distance between video fingerprints; lower means more similar. */
             distance: number;
         };
+        /** @description The automatic judgement of a listed pair. */
+        VersionCandidateJudgement: {
+            /**
+             * @description held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "undecided" | "failed" | "no_connection" | "held";
+            /**
+             * Format: int64
+             * @description The pair's version_judgement record; absent when none was opened, as while judging is off.
+             */
+            activityId?: number;
+            /**
+             * Format: double
+             * @description The classifier's answer for an undecided pair; absent when the rule decided.
+             */
+            probability?: number;
+            /** @description Why the last attempt failed. */
+            error?: string;
+            /**
+             * Format: date-time
+             * @description Next automatic retry of a failed pair.
+             */
+            retryAt?: string;
+            /**
+             * Format: int64
+             * @description The video whose frames are on the left of the evidence images and whose times are evidence's aMs.
+             */
+            leftVideoId: number;
+            evidence?: components["schemas"]["VersionJudgeEvidence"];
+        };
+        /** @description Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md. */
+        VersionJudgeEvidence: {
+            /**
+             * @description frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+             * @enum {string}
+             */
+            rule: "frames_match" | "frames_differ" | "incomparable";
+            /** @description Frame pairs compared by time, flat frames skipped. */
+            compared: number;
+            /** @description Compared pairs whose pictures differ. */
+            differing: number;
+            /** @description Pairs in the longest run of consecutive differing pairs; absent without such a run. */
+            longestRun?: number;
+            /**
+             * Format: int64
+             * @description Start of that run on the left video's timeline.
+             */
+            runStartMs?: number;
+            /**
+             * Format: int64
+             * @description End of that run on the left video's timeline.
+             */
+            runEndMs?: number;
+            /** @description The fingerprints were made by different fingerprint versions, so the frames could not be compared. */
+            versionMismatch?: boolean;
+            /** @description The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided. */
+            conflict?: boolean;
+            /** @description The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image. */
+            frames?: components["schemas"]["VersionEvidenceFrame"][];
+        };
+        VersionEvidenceFrame: {
+            /**
+             * Format: int64
+             * @description Frame time in the left video.
+             */
+            aMs: number;
+            /**
+             * Format: int64
+             * @description Frame time in the right video.
+             */
+            bMs: number;
+            /** @description Hamming distance between the two frames' hashes; over 12 differs. */
+            distance: number;
+        };
         VersionCandidatePage: {
+            /** @description Whether duplicate judging is on, which a rejudge needs. */
+            judging: boolean;
             /** @description Newest first, at most 200 pairs. */
             items: components["schemas"]["VersionCandidate"][];
             /** @description Total candidate count. */
@@ -5956,6 +6074,7 @@ export interface components {
              * @description Next retry timestamp for a failed version_judgement.
              */
             retryAt?: string;
+            evidence?: components["schemas"]["VersionJudgeEvidence"];
             progress?: components["schemas"]["ActivityProgress"];
             undoes?: components["schemas"]["ActivityUndone"];
             /** @description Tags assigned by auto_tag. */
@@ -6146,7 +6265,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported";
     };
     responses: {
         /** @description Resource not found */
@@ -6490,6 +6609,8 @@ export interface operations {
                 playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
+                /** @description Restrict to videos bundled with other versions; each video must satisfy it, like `tag` */
+                hasVersions?: boolean;
                 /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
                 /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
@@ -6544,6 +6665,8 @@ export interface operations {
                 playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
+                /** @description Restrict to videos bundled with other versions; each video must satisfy it, like `tag` */
+                hasVersions?: boolean;
                 /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
                 /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
@@ -10852,6 +10975,32 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    rejudgeVersionCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionCandidateDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listActivity: {
         parameters: {
             query?: {
@@ -10935,6 +11084,33 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getActivityJudgementFrame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Activity record ID */
+                id: components["parameters"]["ActivityId"];
+                /** @description Position in the record's evidence frames */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     undoActivity: {

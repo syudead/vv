@@ -37,11 +37,14 @@ func (o VersionFrameOutcome) String() string {
 }
 
 // Shown contains at most VersionJudgeMaxImages pairs in timestamp order, only for VersionFramesDiffer.
+// Run holds the first and last pair of the longest differing run when it has two or more pairs.
 type VersionFrameRule struct {
-	Outcome   VersionFrameOutcome
-	Compared  int
-	Differing int
-	Shown     []FramePair
+	Outcome    VersionFrameOutcome
+	Compared   int
+	Differing  int
+	LongestRun int
+	Run        [2]FramePair
+	Shown      []FramePair
 }
 
 // JudgeVersionFrames tolerates at most 5% isolated differences; otherwise it samples the longest differing run (earliest tie), or all isolated differences, evenly up to the image limit.
@@ -68,6 +71,10 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 		}
 	}
 	rule.Differing = len(differing)
+	if len(longest) >= 2 {
+		rule.LongestRun = len(longest)
+		rule.Run = [2]FramePair{longest[0], longest[len(longest)-1]}
+	}
 	if len(longest) < 2 && rule.Differing*versionFramesDifferingDivisor <= rule.Compared {
 		rule.Outcome = VersionFramesSame
 		return rule

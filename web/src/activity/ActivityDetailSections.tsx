@@ -25,6 +25,7 @@ import { formatDateTime, t } from "../i18n";
 import { cn } from "../lib/cn";
 import { PageSection } from "../ui/patterns/page-section";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+import { JudgementEvidence } from "../versions/JudgementEvidence";
 import {
   FaceLinkFace,
   MarkIcon,
@@ -395,6 +396,20 @@ export function PartOfSection({
           </Muted>
         </DetailRow>
       ))}
+    </PageSection>
+  );
+}
+
+/** Why a duplicate check reached its result, with the frames the AI saw. */
+export function EvidenceSection({ entry }: { entry: ActivityDetail }) {
+  if (entry.kind !== "version_judgement" || entry.evidence === undefined) return null;
+  return (
+    <PageSection title={t.activity.detail.section.evidence}>
+      <JudgementEvidence
+        evidence={entry.evidence}
+        probability={entry.probability}
+        activityId={entry.id}
+      />
     </PageSection>
   );
 }

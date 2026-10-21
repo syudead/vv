@@ -462,7 +462,11 @@ describe("LibraryPage", () => {
       const checks = within(filter)
         .getAllByRole("checkbox")
         .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
-      expect(checks).toEqual(["Favorites only", "Playable only"]);
+      expect(checks).toEqual([
+        "Favorites only",
+        "Playable only",
+        "With other versions only",
+      ]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
 
       expect(screen.getByTestId("location").textContent).toBe("?fav=1&sort=titleAsc");

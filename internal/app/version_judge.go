@@ -235,6 +235,7 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 	if ctx.Err() != nil {
 		return true
 	}
+	result.Evidence = domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
 	attrs := []any{
 		slog.String("key_a", job.Keys[0]), slog.String("key_b", job.Keys[1]),
 		slog.String("rule", rule.Outcome.String()), slog.Int("frames_compared", rule.Compared),

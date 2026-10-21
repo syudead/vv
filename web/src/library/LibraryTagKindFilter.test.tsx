@@ -113,7 +113,9 @@ function install(kinds: ReturnType<typeof kind>[]) {
     if (path === "/api/tag-kinds") return Promise.resolve(json({ items: kinds }));
     if (path === "/api/library") {
       const tagKind = url.searchParams.get("tagKind");
-      const ids = tagKind === null ? [1, 2, 3] : (videosByKind.get(tagKind) ?? []);
+      let ids = tagKind === null ? [1, 2, 3] : (videosByKind.get(tagKind) ?? []);
+      if (url.searchParams.get("hasVersions") === "true")
+        ids = ids.filter((id) => id === 3);
       return Promise.resolve(
         json({ items: ids.map((id) => videoItem(video(id))), total: ids.length }),
       );
@@ -331,5 +333,57 @@ describe("タグの種類での絞り込み", () => {
     await screen.findByRole("checkbox", { name: "Playable only" });
     expect(screen.queryByRole("combobox", { name: "Tag kind" })).toBeNull();
     expect(requests("/api/tag-kinds")).toHaveLength(0);
+  });
+});
+
+describe("ほかのバージョンがある動画での絞り込み", () => {
+  beforeEach(() => {
+    __resetTagsForTest();
+    __resetTagKindsForTest();
+    clearListSnapshot();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    install([]);
+  });
+
+  afterEach(() => {
+    cleanup();
+    fetchMock.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("チェックすると URL に versions が付き、束ねた動画だけが出るが、スマートフォルダには保存させない", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: "With other versions only" }),
+    );
+
+    await waitFor(() => expect(location()).toBe("?versions=1"));
+    expect(await screen.findByRole("link", { name: "動画 3" })).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "動画 1" })).toBeNull(),
+    );
+    expect(requests("/api/library").at(-1)?.searchParams.get("hasVersions")).toBe("true");
+    expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Save as smart folder" })).toBeNull();
+  });
+
+  it("ゲストには URL に versions があっても送らない", async () => {
+    renderAt("/?versions=1", "guest");
+    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+    expect(
+      requests("/api/library").every((url) => !url.searchParams.has("hasVersions")),
+    ).toBe(true);
   });
 });

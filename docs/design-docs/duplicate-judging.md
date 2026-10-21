@@ -57,6 +57,48 @@ The question and the thresholds 0.8 and 0.2 are fixed in
 | Frames from the media files with ffmpeg | Decoding both files costs far more than cutting the frames from the two seek previews, which already hold them at the paired times |
 | A reply without the question's key as probability 0 | It would dismiss a pair the model never judged |
 
+## The owner sees why
+
+Each judgement stores its frame rule result on the pair's activity entry, in
+`activity_entries.evidence` as JSON of `domain.VersionJudgeEvidence`, so the
+reason survives the candidate row that bundling or dismissal removes. The
+Duplicates screen reads it through `GET /api/version-candidates`, which also
+returns each pair's judgement state, and the activity entry's `Why` section
+reads it from the entry. A waiting pair that the claim skips for a
+`video_version_unbundles` or `video_version_judging_holds` row is listed as
+`held`, so the screen says it is left to the owner instead of waiting forever.
+
+| Field | Shown to the owner as |
+| --- | --- |
+| `rule`, `compared`, `differing` | How many frames were compared by time and how many differ |
+| `longestRun`, `runStartMs`, `runEndMs` | The section that differs throughout, on the left video's timeline |
+| `versionMismatch` | Incomparable because the fingerprints come from different fingerprint versions |
+| `conflict` | A same verdict left undecided because a side is already marked different from the other |
+| `frames` | The frame pairs shown to the classifier, with their times on both videos |
+
+`GET /api/activity/{id}/judgement-frames/{index}` cuts the indexed pair from
+the two current seek previews, as the request to the classifier did, instead
+of storing the images: the evidence is a few hundred bytes per pair, and a
+stored copy would outlive the seek preview it came from.
+The screen states the thresholds next to the probability, so a 55% answer
+reads as between the 20% and 80% that would decide.
+
+## The owner can judge a pair again
+
+`POST /api/version-candidates/rejudge` returns an `undecided`, `failed` or
+`no_connection` pair to waiting with its attempt count reset, its entry to
+`running`/`waiting` and its evidence cleared, and wakes the worker
+([`internal/app/version_judge_review.go`](../../internal/app/version_judge_review.go)).
+It covers the results that leave a pair on Duplicates: an owner who changed
+the model or its connection, or rescanned a file, has no other way to ask
+again about an undecided pair, which the claim never takes on its own.
+
+| Refused | Why |
+| --- | --- |
+| Judging turned off (`409 version_judging_off`) | Nothing would claim the pair |
+| A waiting or running pair (`409 version_not_rejudgeable`) | It is about to be judged already |
+| A bundled or dismissed pair | It has left Duplicates; a force rescan judges automatic decisions again, as described below |
+
 ## The worker runs only while it is on
 
 One goroutine, like `AutoTagger`, claims one pair at a time while
@@ -70,6 +112,7 @@ One goroutine, like `AutoTagger`, claims one pair at a time while
 | Saving the setting | Turning it on judges every waiting pair |
 | Saving the Ollama connection | `no_connection` pairs return to waiting |
 | A retry or undo from the activity log | A retried pair is claimable now |
+| `Judge again` on Duplicates | A pair returned to waiting is claimable now |
 | The earliest `retry_at` of a failed pair | Retries need nothing from the owner  |
 
 The worker asks the store whether an `ollama.endpoint` row exists before a

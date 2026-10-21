@@ -710,6 +710,8 @@ const (
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
+	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
+	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
 	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
 	ErrorReasonWorkInfoDuplicate             ErrorReason = "work_info_duplicate"
@@ -893,6 +895,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUnreachable:
 		return true
 	case ErrorReasonUsernameLength:
+		return true
+	case ErrorReasonVersionJudgingOff:
+		return true
+	case ErrorReasonVersionNotRejudgeable:
 		return true
 	case ErrorReasonVideoNotFound:
 		return true
@@ -1944,6 +1950,57 @@ func (e ThumbnailEditState) Valid() bool {
 	}
 }
 
+// Defines values for VersionCandidateJudgementState.
+const (
+	VersionCandidateJudgementStateFailed       VersionCandidateJudgementState = "failed"
+	VersionCandidateJudgementStateHeld         VersionCandidateJudgementState = "held"
+	VersionCandidateJudgementStateNoConnection VersionCandidateJudgementState = "no_connection"
+	VersionCandidateJudgementStateRunning      VersionCandidateJudgementState = "running"
+	VersionCandidateJudgementStateUndecided    VersionCandidateJudgementState = "undecided"
+	VersionCandidateJudgementStateWaiting      VersionCandidateJudgementState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the VersionCandidateJudgementState enum.
+func (e VersionCandidateJudgementState) Valid() bool {
+	switch e {
+	case VersionCandidateJudgementStateFailed:
+		return true
+	case VersionCandidateJudgementStateHeld:
+		return true
+	case VersionCandidateJudgementStateNoConnection:
+		return true
+	case VersionCandidateJudgementStateRunning:
+		return true
+	case VersionCandidateJudgementStateUndecided:
+		return true
+	case VersionCandidateJudgementStateWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionJudgeEvidenceRule.
+const (
+	FramesDiffer VersionJudgeEvidenceRule = "frames_differ"
+	FramesMatch  VersionJudgeEvidenceRule = "frames_match"
+	Incomparable VersionJudgeEvidenceRule = "incomparable"
+)
+
+// Valid indicates whether the value is a known member of the VersionJudgeEvidenceRule enum.
+func (e VersionJudgeEvidenceRule) Valid() bool {
+	switch e {
+	case FramesDiffer:
+		return true
+	case FramesMatch:
+		return true
+	case Incomparable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -2609,6 +2666,9 @@ type ActivityDetail struct {
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
 
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
@@ -2689,6 +2749,9 @@ type ActivityEntryFields struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -2789,6 +2852,9 @@ type ActivityListItem struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -5478,6 +5544,9 @@ type VersionCandidate struct {
 	// Distance Median Hamming distance between video fingerprints; lower means more similar.
 	Distance int `json:"distance"`
 
+	// Judgement The automatic judgement of a listed pair.
+	Judgement VersionCandidateJudgement `json:"judgement"`
+
 	// Videos Two videos in ID ascending order, each shaped like GET /api/videos/{id}.
 	Videos []Video `json:"videos"`
 }
@@ -5488,14 +5557,89 @@ type VersionCandidateDismissRequest struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
+// VersionCandidateJudgement The automatic judgement of a listed pair.
+type VersionCandidateJudgement struct {
+	// ActivityId The pair's version_judgement record; absent when none was opened, as while judging is off.
+	ActivityId *int64 `json:"activityId,omitempty"`
+
+	// Error Why the last attempt failed.
+	Error *string `json:"error,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
+	// LeftVideoId The video whose frames are on the left of the evidence images and whose times are evidence's aMs.
+	LeftVideoId int64 `json:"leftVideoId"`
+
+	// Probability The classifier's answer for an undecided pair; absent when the rule decided.
+	Probability *float64 `json:"probability,omitempty"`
+
+	// RetryAt Next automatic retry of a failed pair.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// State held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+	State VersionCandidateJudgementState `json:"state"`
+}
+
+// VersionCandidateJudgementState held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+type VersionCandidateJudgementState string
+
 // VersionCandidatePage defines model for VersionCandidatePage.
 type VersionCandidatePage struct {
 	// Items Newest first, at most 200 pairs.
 	Items []VersionCandidate `json:"items"`
 
+	// Judging Whether duplicate judging is on, which a rejudge needs.
+	Judging bool `json:"judging"`
+
 	// Total Total candidate count.
 	Total int `json:"total"`
 }
+
+// VersionEvidenceFrame defines model for VersionEvidenceFrame.
+type VersionEvidenceFrame struct {
+	// AMs Frame time in the left video.
+	AMs int64 `json:"aMs"`
+
+	// BMs Frame time in the right video.
+	BMs int64 `json:"bMs"`
+
+	// Distance Hamming distance between the two frames' hashes; over 12 differs.
+	Distance int `json:"distance"`
+}
+
+// VersionJudgeEvidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+type VersionJudgeEvidence struct {
+	// Compared Frame pairs compared by time, flat frames skipped.
+	Compared int `json:"compared"`
+
+	// Conflict The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided.
+	Conflict *bool `json:"conflict,omitempty"`
+
+	// Differing Compared pairs whose pictures differ.
+	Differing int `json:"differing"`
+
+	// Frames The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image.
+	Frames *[]VersionEvidenceFrame `json:"frames,omitempty"`
+
+	// LongestRun Pairs in the longest run of consecutive differing pairs; absent without such a run.
+	LongestRun *int `json:"longestRun,omitempty"`
+
+	// Rule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+	Rule VersionJudgeEvidenceRule `json:"rule"`
+
+	// RunEndMs End of that run on the left video's timeline.
+	RunEndMs *int64 `json:"runEndMs,omitempty"`
+
+	// RunStartMs Start of that run on the left video's timeline.
+	RunStartMs *int64 `json:"runStartMs,omitempty"`
+
+	// VersionMismatch The fingerprints were made by different fingerprint versions, so the frames could not be compared.
+	VersionMismatch *bool `json:"versionMismatch,omitempty"`
+}
+
+// VersionJudgeEvidenceRule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+type VersionJudgeEvidenceRule string
 
 // VersionJudgingSettings Automatic duplicate-judging enablement
 type VersionJudgingSettings struct {
@@ -6641,6 +6785,9 @@ type ListLibraryParams struct {
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
+	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
+	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
+
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
 
@@ -6882,6 +7029,9 @@ type ListVideosParams struct {
 
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
+	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
 
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -7228,6 +7378,9 @@ type RunThumbnailEditMultipartRequestBody = RunThumbnailEditRequest
 // DismissVersionCandidateJSONRequestBody defines body for DismissVersionCandidate for application/json ContentType.
 type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 
+// RejudgeVersionCandidateJSONRequestBody defines body for RejudgeVersionCandidate for application/json ContentType.
+type RejudgeVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
+
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
@@ -7299,6 +7452,9 @@ type ServerInterface interface {
 	// GetActivity Read one activity record with its details
 	// (GET /api/activity/{id})
 	GetActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
+	// GetActivityJudgementFrame Return a frame pair a duplicate judgement showed the classifier
+	// (GET /api/activity/{id}/judgement-frames/{index})
+	GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request, id ActivityId, index int)
 	// RetryActivity Retry an activity operation
 	// (POST /api/activity/{id}/retry)
 	RetryActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
@@ -7716,6 +7872,9 @@ type ServerInterface interface {
 	// DismissVersionCandidate Record two videos as different
 	// (POST /api/version-candidates/dismiss)
 	DismissVersionCandidate(w http.ResponseWriter, r *http.Request)
+	// RejudgeVersionCandidate Judge a possible duplicate again
+	// (POST /api/version-candidates/rejudge)
+	RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request)
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
@@ -8014,6 +8173,41 @@ func (siw *ServerInterfaceWrapper) GetActivity(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetActivityJudgementFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetActivityJudgementFrame(w, r, id, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9180,6 +9374,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hasVersions" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -12162,6 +12369,20 @@ func (siw *ServerInterfaceWrapper) DismissVersionCandidate(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// RejudgeVersionCandidate operation middleware
+func (siw *ServerInterfaceWrapper) RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejudgeVersionCandidate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BundleVideos operation middleware
 func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -12303,6 +12524,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hasVersions" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -14389,9 +14623,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/rejudge", wrapper.RejudgeVersionCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity", wrapper.ListActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}", wrapper.GetActivity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/retry", wrapper.RetryActivity)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}/judgement-frames/{index}", wrapper.GetActivityJudgementFrame)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/undo", wrapper.UndoActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)

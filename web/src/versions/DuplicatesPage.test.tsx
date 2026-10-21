@@ -46,8 +46,16 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function pair(first: Video, second: Video): VersionCandidate {
-  return { videos: [first, second], distance: 3 };
+function pair(
+  first: Video,
+  second: Video,
+  judgement: Partial<VersionCandidate["judgement"]> = {},
+): VersionCandidate {
+  return {
+    videos: [first, second],
+    distance: 3,
+    judgement: { state: "waiting", leftVideoId: first.id, ...judgement },
+  };
 }
 
 const movieA = video(1, {
@@ -59,6 +67,13 @@ const movieA = video(1, {
   location: { path: "/media/movies/anime/劇場版.mkv", openable: true },
   container: "matroska",
   videoCodec: "hevc",
+  mediaInfo: {
+    video: { hdr: "sdr", frameRate: 23.976, bitRate: 8_000_000 },
+    audioTracks: [
+      { index: 1, codec: "aac", channels: 2 },
+      { index: 2, codec: "ac3", channels: 6 },
+    ],
+  },
 });
 const movieB = video(2, {
   title: "劇場版 720p",
@@ -83,6 +98,8 @@ const server = {
   holdingList: false,
   bundleRequests: [] as { videoIds: number[]; representativeId: number }[],
   videoFetches: 0,
+  judging: true,
+  rejudgeRequests: [] as number[][],
 };
 
 function install() {
@@ -98,6 +115,7 @@ function install() {
         json({
           items: server.candidates,
           total: server.total ?? server.candidates.length,
+          judging: server.judging,
         });
       if (server.holdingList) {
         return new Promise<Response>((resolve) => {
@@ -127,6 +145,19 @@ function install() {
         }).then(respond);
       }
       return Promise.resolve(respond());
+    }
+    if (url === "/api/version-candidates/rejudge" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+      server.rejudgeRequests.push(body.videoIds);
+      server.candidates = server.candidates.map((candidate) =>
+        candidate.videos[0]?.id === body.videoIds[0]
+          ? {
+              ...candidate,
+              judgement: { state: "waiting", leftVideoId: body.videoIds[0] ?? 0 },
+            }
+          : candidate,
+      );
+      return Promise.resolve(new Response(null, { status: 202 }));
     }
     if (url === "/api/video-bundles" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as {
@@ -202,6 +233,8 @@ beforeEach(() => {
   server.holdingList = false;
   server.bundleRequests = [];
   server.videoFetches = 0;
+  server.judging = true;
+  server.rejudgeRequests = [];
   location = undefined;
   installFakeEventSource();
   install();
@@ -244,6 +277,10 @@ describe("DuplicatesPage", () => {
 
     const left = within(item).getByRole("link", { name: "劇場版 1:00" });
     expect(left.getAttribute("href")).toBe("/videos/1");
+    expect(within(left).getByText("劇場版.mkv")).toBeDefined();
+    expect(within(left).getByText("23.98 fps")).toBeDefined();
+    expect(within(left).getByText("8 Mbps")).toBeDefined();
+    expect(within(left).getByText("AAC 2 ch +1 more")).toBeDefined();
     expect(within(left).getByText("1920×1080")).toBeDefined();
     expect(within(left).getByText("MATROSKA")).toBeDefined();
     expect(within(left).getByText("H.265")).toBeDefined();
@@ -258,6 +295,84 @@ describe("DuplicatesPage", () => {
     expect(within(right).getByText("1.0 GB")).toBeDefined();
     expect(within(right).getByText("backup / old")).toBeDefined();
     expect(item.textContent).not.toContain("3 ");
+    expect(within(item).getByText("Waiting to be judged")).toBeDefined();
+  });
+
+  it("AI が決めかねた組は理由と見せたコマを出し、左に映る動画を先に並べる", async () => {
+    server.candidates = [
+      pair(movieA, movieB, {
+        state: "undecided",
+        leftVideoId: 2,
+        activityId: 9,
+        probability: 0.55,
+        evidence: {
+          rule: "frames_differ",
+          compared: 40,
+          differing: 6,
+          longestRun: 5,
+          runStartMs: 80_000,
+          runEndMs: 95_000,
+          frames: [
+            { aMs: 81_000, bMs: 81_000, distance: 30 },
+            { aMs: 90_000, bMs: 90_500, distance: 28 },
+          ],
+        },
+      }),
+    ];
+    renderPage();
+    const [item] = await screen.findAllByRole("listitem");
+    const links = within(item!).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/videos/2",
+      "/videos/1",
+    ]);
+    expect(within(links[0]!).getByText("Left in the frames")).toBeDefined();
+    expect(within(links[1]!).getByText("Right in the frames")).toBeDefined();
+
+    const panel = within(item!).getByRole("region", { name: "Automatic judgement" });
+    expect(
+      within(panel).getByText(
+        "Left to you: it couldn't tell whether these are the same video",
+      ),
+    ).toBeDefined();
+    expect(panel.textContent).toContain(
+      "6 of 40 frames compared by time differ, 5 of them in a row from 1:20 to 1:35.",
+    );
+    expect(panel.textContent).toContain("It answered 55%.");
+    const images = within(panel).getAllByRole("img");
+    expect(images.map((image) => image.getAttribute("src"))).toEqual([
+      "/api/activity/9/judgement-frames/0",
+      "/api/activity/9/judgement-frames/1",
+    ]);
+    expect(within(panel).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+  });
+
+  it("「Judge again」で判定に戻し、取り直した組は待ちになる", async () => {
+    const user = userEvent.setup();
+    server.candidates = [pair(movieA, movieB, { state: "failed", error: "timeout" })];
+    renderPage();
+    const button = await screen.findByRole("button", {
+      name: "Judge again, for 劇場版 and 劇場版 720p",
+    });
+    expect(screen.getByText("The judgement failed: timeout")).toBeDefined();
+    await user.click(button);
+    expect(server.rejudgeRequests).toEqual([[1, 2]]);
+    expect(await screen.findByText("Sent back to duplicate judging")).toBeDefined();
+    expect(await screen.findByText("Waiting to be judged")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Judge again/ })).toBeNull();
+  });
+
+  it("判定がオフなら「Judge again」を置かず、待っている組はあなたに任されると伝える", async () => {
+    server.judging = false;
+    server.candidates = [
+      pair(movieA, movieB, { state: "undecided" }),
+      pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" })),
+    ];
+    renderPage();
+    expect(
+      await screen.findByText("Duplicate judging is off, so this pair waits for you."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Judge again/ })).toBeNull();
   });
 
   it("動画のリンクは戻り先を候補の画面にして再生画面へ移る", async () => {
