@@ -31,7 +31,7 @@ export async function listFaceCandidates(
   return body.items;
 }
 
-/** Merge the other person into id, or id into a named other when id has no name; returns the merged person. */
+/** Merge otherId into id, or id into otherId when only otherId has a name; returns the merged person. */
 export function confirmFaceCandidate(id: number, otherId: number): Promise<Person> {
   return request<Person>(pairPath(id, otherId, "confirm"), { method: "POST" });
 }
