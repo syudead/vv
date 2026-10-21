@@ -50,6 +50,9 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 			AppearanceId: a.ID, VideoId: optionalPositive(a.VideoID), Title: a.Title, Spans: spans, HasCrop: a.HasCrop,
 			Similarity: a.Similarity,
 		})
+		if a.Unlike {
+			body.Items[len(body.Items)-1].Unlike = &a.Unlike
+		}
 	}
 	s.writeCreditBody(w, http.StatusOK, body)
 }
@@ -86,6 +89,11 @@ func (s *server) acceptAppearanceIDs(w http.ResponseWriter, ids []int64) bool {
 func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
 	var body gen.FaceAppearanceMoveRequest
 	if !s.readJSONBody(w, r, &body) || !s.acceptAppearanceIDs(w, body.AppearanceIds) || !s.creditsConfigured(w) {
+		return
+	}
+	// The store reads a zero target as a new person, which only a split may ask for.
+	if body.TargetId < 1 {
+		s.invalidRequest(w, "targetId must be a positive integer.")
 		return
 	}
 	person, err := s.credits.MoveFaceAppearances(r.Context(), id, body.AppearanceIds, body.TargetId)

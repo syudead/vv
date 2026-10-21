@@ -70,7 +70,7 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 	credits := &faceAppearanceCredits{page: domain.PersonAppearancePage{
 		Items: []domain.PersonAppearance{
 			{ID: 7, VideoID: 3, Title: "Beach", Spans: []domain.FaceTimeSpan{{Start: 12, End: 100}}, HasCrop: true,
-				Similarity: &similarity},
+				Similarity: &similarity, Unlike: true},
 			{ID: 4, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
 		},
 		NextCursor: "next",
@@ -82,10 +82,10 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	videoID, next := int64(3), "next"
+	videoID, next, unlike := int64(3), "next", true
 	want := gen.FaceAppearanceList{Items: []gen.FaceAppearance{
 		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true,
-			Similarity: &similarity},
+			Similarity: &similarity, Unlike: &unlike},
 		{AppearanceId: 4, Title: "key-gone", Spans: []gen.FaceAppearanceSpan{{Start: 0, End: 10}}},
 	}, NextCursor: &next, Total: 12}
 	if got := decode[gen.FaceAppearanceList](t, rec); !reflect.DeepEqual(got, want) {
@@ -219,6 +219,17 @@ func TestMoveFaceAppearancesPassesTheTarget(t *testing.T) {
 	rec = f.owned(http.MethodPost, target, `{"appearanceIds":[7],"targetId":5}`)
 	assertErrorBody(t, "same person", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+
+	// A missing or zero target would read as a new person in the store.
+	credits.calls = nil
+	for _, body := range []string{`{"appearanceIds":[7]}`, `{"appearanceIds":[7],"targetId":0}`} {
+		rec = f.owned(http.MethodPost, target, body)
+		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if len(credits.calls) != 0 {
+		t.Errorf("store calls = %+v, want none for an invalid target", credits.calls)
+	}
 }
 
 func TestListSimilarPeopleAnswersEachPersonWithTheirCrops(t *testing.T) {

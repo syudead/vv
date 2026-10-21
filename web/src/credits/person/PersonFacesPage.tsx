@@ -1,5 +1,5 @@
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { mergeCredits, type Person } from "../../api/credits";
@@ -12,7 +12,7 @@ import {
   splitFaceAppearance,
   splitFaceAppearances,
 } from "../../api/personFaces";
-import { formatNumber, t } from "../../i18n";
+import { errorText, formatNumber, t } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageSection } from "../../ui/patterns/page-section";
@@ -107,6 +107,16 @@ function FacesShown({
 }) {
   const toast = useToast();
   const navigate = useNavigate();
+  // Merges already undone, so a retry after a failed reopen only reopens the pair.
+  const undone = useRef(new Set<number>());
+
+  async function undoConfirmOf(personId: number, otherId: number, activityId: number) {
+    if (!undone.current.has(activityId)) {
+      await undoActivity(activityId);
+      undone.current.add(activityId);
+    }
+    await reopenFaceCandidate(personId, otherId);
+  }
   // Each refresh remounts the lists, so decided rows and split tiles start over from the server.
   const [round, setRound] = useState(0);
   const candidates = useFaceCandidates(person.id, markGone);
@@ -127,7 +137,25 @@ function FacesShown({
       other.id,
     );
     if (target.id !== person.id) {
-      toast(text.mergedInto(creditDisplayName(target)));
+      // The shown person is merged away, so their Undo travels with the toast to the named person's page.
+      toast(
+        text.mergedInto(creditDisplayName(target)),
+        undoActivityId === undefined
+          ? undefined
+          : {
+              action: {
+                label: text.candidates.undo,
+                run: async () => {
+                  try {
+                    await undoConfirmOf(person.id, target.id, undoActivityId);
+                    void navigate(personFacesPath(person.id));
+                  } catch (failure) {
+                    toast(text.candidates.undoFailed(errorText(failure)));
+                  }
+                },
+              },
+            },
+      );
       void navigate(personFacesPath(target.id));
       return undefined;
     }
@@ -137,8 +165,7 @@ function FacesShown({
 
   /** Undo brings the merged person back and dismisses the pair; reopening offers it again as before. */
   async function undoConfirm(other: FaceCandidatePerson, activityId: number) {
-    await undoActivity(activityId);
-    await reopenFaceCandidate(person.id, other.id);
+    await undoConfirmOf(person.id, other.id, activityId);
   }
 
   function splitAppearances(appearanceIds: readonly number[]): Promise<Person> {

@@ -4568,6 +4568,8 @@ export interface components {
              * @description Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
              */
             similarity?: number;
+            /** @description True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise. */
+            unlike?: boolean;
         };
         SimilarPersonList: {
             items: components["schemas"]["SimilarPerson"][];

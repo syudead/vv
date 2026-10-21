@@ -68,6 +68,30 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("reads the rest whole after a split rescored the faces, adding only unseen ones", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    server.laterAppearances = [
+      { appearanceId: 5, videoId: 7, title: "River", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await screen.findByText("Split into #12");
+    await user.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(await screen.findByRole("img", { name: "River" })).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "Mountain" })).toHaveLength(1);
+    const more = sent("GET", "/api/people/7/appearances").at(-1);
+    expect(more?.url.searchParams.has("limit")).toBe(false);
+    expect(more?.url.searchParams.has("cursor")).toBe(false);
+  });
+
   it("splits selected faces into one person, and one Undo takes them all back", async () => {
     const user = userEvent.setup();
     server.appearances = [
@@ -122,13 +146,50 @@ describe("PersonFacesPage", () => {
       ),
     ).toEqual(["3"]);
 
+    // A second move to the same person is its own operation, which the first Undo leaves alone.
+    await user.click(screen.getByRole("checkbox", { name: "Select Mountain" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const again = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(again).findByRole("radio", { name: /Mio/ }));
+    await user.click(within(again).getByRole("button", { name: "Move" }));
+    expect(
+      await screen.findByRole("button", { name: "Undo the move in Mountain" }),
+    ).toBeTruthy();
+
     await user.click(screen.getByRole("button", { name: "Undo the move in Beach day" }));
 
-    await waitFor(() => expect(screen.queryByText("Moved to Mio")).toBeNull());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Undo the move in Beach day" }),
+      ).toBeNull(),
+    );
     expect(sentBody(sent("POST", "/api/people/9/appearances/move")[0])).toEqual({
       appearanceIds: [3],
       targetId: 7,
     });
+    expect(
+      screen.getByRole("button", { name: "Undo the move in Mountain" }),
+    ).toBeTruthy();
+  });
+
+  it("clears the selection when the order changes", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    // jsdom lacks the pointer APIs the Select's popup calls.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
+    Element.prototype.scrollIntoView ??= () => undefined;
+    await user.click(screen.getByRole("combobox", { name: "Order" }));
+    await user.click(await screen.findByRole("option", { name: "Newest video first" }));
+
+    await waitFor(() => expect(screen.queryByText("1 selected")).toBeNull());
   });
 
   it("orders the faces least like the person first, with each score, and can switch to newest", async () => {
@@ -179,6 +240,14 @@ describe("PersonFacesPage", () => {
     expect(await screen.findByText('Merged into "Alice"')).toBeTruthy();
     expect(await screen.findByRole("link", { name: "Back to Alice" })).toBeTruthy();
     expect(sent("POST", "/api/people/7/face-candidates/9/confirm")).toHaveLength(1);
+
+    // The merged-away person's Undo comes along in the toast and brings their page back; Sonner captures the pointer.
+    Element.prototype.setPointerCapture ??= () => undefined;
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByRole("link", { name: "Back to #7" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
   });
 
   it("keeps a confirmed pair in place and reads nothing again until Refresh", async () => {
@@ -228,6 +297,23 @@ describe("PersonFacesPage", () => {
     expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
     expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
     expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
+  });
+
+  it("only reopens the pair when Undo is pressed again after the reopen failed", async () => {
+    const user = userEvent.setup();
+    server.faceCandidates = [candidate(9, "")];
+    server.mergeTarget = person();
+    server.reopenFailures = 1;
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
+    await user.click(await screen.findByRole("button", { name: "Undo for #9" }));
+    await screen.findByText(/Couldn't undo/);
+    await user.click(screen.getByRole("button", { name: "Undo for #9" }));
+
+    expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(2);
   });
 
   it("keeps a dismissed pair with Undo, which reopens it", async () => {
