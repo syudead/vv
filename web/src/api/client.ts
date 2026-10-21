@@ -76,6 +76,8 @@ export type VideoLocation = components["schemas"]["VideoLocation"];
 export type VideoVersions = components["schemas"]["VideoVersions"];
 export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
 export type VersionCandidate = components["schemas"]["VersionCandidate"];
+export type VersionRepresentativeRecommendation =
+  components["schemas"]["VersionRepresentativeRecommendation"];
 export type VersionCandidateJudgement =
   components["schemas"]["VersionCandidateJudgement"];
 export type VersionJudgeEvidence = components["schemas"]["VersionJudgeEvidence"];

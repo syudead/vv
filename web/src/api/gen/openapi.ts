@@ -5859,11 +5859,22 @@ export interface components {
         };
         /** @description Pair of potentially identical videos. */
         VersionCandidate: {
+            recommendation: components["schemas"]["VersionRepresentativeRecommendation"];
             judgement: components["schemas"]["VersionCandidateJudgement"];
             /** @description Two videos in ID ascending order, each shaped like GET /api/videos/{id}. */
             videos: components["schemas"]["Video"][];
             /** @description Median Hamming distance between video fingerprints; lower means more similar. */
             distance: number;
+        };
+        /** @description The video whose file is the better representative, judged from the files alone. */
+        VersionRepresentativeRecommendation: {
+            /** Format: int64 */
+            videoId: number;
+            /**
+             * @description The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+             * @enum {string}
+             */
+            reason: "playable" | "audio" | "audio_sync" | "resolution" | "bitrate" | "older";
         };
         /** @description The automatic judgement of a listed pair. */
         VersionCandidateJudgement: {

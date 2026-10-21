@@ -2082,6 +2082,36 @@ func (e VersionPropertySignalKind) Valid() bool {
 	}
 }
 
+// Defines values for VersionRepresentativeRecommendationReason.
+const (
+	Audio      VersionRepresentativeRecommendationReason = "audio"
+	AudioSync  VersionRepresentativeRecommendationReason = "audio_sync"
+	Bitrate    VersionRepresentativeRecommendationReason = "bitrate"
+	Older      VersionRepresentativeRecommendationReason = "older"
+	Playable   VersionRepresentativeRecommendationReason = "playable"
+	Resolution VersionRepresentativeRecommendationReason = "resolution"
+)
+
+// Valid indicates whether the value is a known member of the VersionRepresentativeRecommendationReason enum.
+func (e VersionRepresentativeRecommendationReason) Valid() bool {
+	switch e {
+	case Audio:
+		return true
+	case AudioSync:
+		return true
+	case Bitrate:
+		return true
+	case Older:
+		return true
+	case Playable:
+		return true
+	case Resolution:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -5894,6 +5924,9 @@ type VersionCandidate struct {
 	// Judgement The automatic judgement of a listed pair.
 	Judgement VersionCandidateJudgement `json:"judgement"`
 
+	// Recommendation The video whose file is the better representative, judged from the files alone.
+	Recommendation VersionRepresentativeRecommendation `json:"recommendation"`
+
 	// Videos Two videos in ID ascending order, each shaped like GET /api/videos/{id}.
 	Videos []Video `json:"videos"`
 }
@@ -6021,6 +6054,16 @@ type VersionPropertySignal struct {
 
 // VersionPropertySignalKind defines model for VersionPropertySignal.Kind.
 type VersionPropertySignalKind string
+
+// VersionRepresentativeRecommendation The video whose file is the better representative, judged from the files alone.
+type VersionRepresentativeRecommendation struct {
+	// Reason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+	Reason  VersionRepresentativeRecommendationReason `json:"reason"`
+	VideoId int64                                     `json:"videoId"`
+}
+
+// VersionRepresentativeRecommendationReason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+type VersionRepresentativeRecommendationReason string
 
 // Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
 type Video struct {

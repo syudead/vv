@@ -33,9 +33,13 @@ func upsertMediaInfo(ctx context.Context, db queryExecer, videoID int64, info do
 
 // MediaInfo is detail-only and returns nil for missing, outdated or malformed rows.
 func (s *LibraryStore) MediaInfo(ctx context.Context, videoID int64) (*domain.MediaInfo, error) {
+	return readMediaInfo(ctx, s.db.sql, videoID)
+}
+
+func readMediaInfo(ctx context.Context, q rowQueryer, videoID int64) (*domain.MediaInfo, error) {
 	var version int
 	var encoded string
-	err := s.db.sql.QueryRowContext(ctx,
+	err := q.QueryRowContext(ctx,
 		`select version, info from video_media_info where video_id = ?`, videoID,
 	).Scan(&version, &encoded)
 	if errors.Is(err, sql.ErrNoRows) {

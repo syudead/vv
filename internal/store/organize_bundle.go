@@ -30,6 +30,7 @@ func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID i
 		if len(plan.members) > domain.MaxOrganizeBundleVideos {
 			return nil, domain.ErrTooManyVersions
 		}
+		plan.representativeByOwner = true
 		image, err := bundleImage(ctx, tx, plan)
 		if err != nil {
 			return nil, err

@@ -1,4 +1,4 @@
-import { Info, Layers, RotateCw } from "lucide-react";
+import { BadgeCheck, Info, Layers, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -10,6 +10,7 @@ import {
   RequestFailed,
   type VersionCandidate,
   type VersionCandidateJudgement,
+  type VersionRepresentativeRecommendation,
   type Video,
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
@@ -21,6 +22,7 @@ import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
+import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import {
   Dialog,
@@ -37,6 +39,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 import BundleDialog from "./BundleDialog";
 import { JudgementEvidence } from "./JudgementEvidence";
+import { representativeHints } from "./representativeHints";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
 const backTo = "/duplicates";
@@ -46,6 +49,7 @@ interface Pair {
   key: string;
   videos: readonly [Video, Video];
   judgement: VersionCandidateJudgement;
+  recommendation: VersionRepresentativeRecommendation;
 }
 
 type Page =
@@ -62,6 +66,7 @@ function toPair(candidate: VersionCandidate): Pair | null {
     key: `${String(first.id)}-${String(second.id)}`,
     videos: [first, second],
     judgement: candidate.judgement,
+    recommendation: candidate.recommendation,
   };
 }
 
@@ -317,6 +322,7 @@ export default function DuplicatesPage() {
         <BundleDialog
           videoIds={pairIds(bundling)}
           videos={bundling.videos}
+          recommendation={bundling.recommendation}
           onClose={() => setBundling(null)}
           onBundled={() => {
             const key = bundling.key;
@@ -403,6 +409,12 @@ function PairRow({
           <CandidateVideo
             key={video.id}
             video={video}
+            other={shown[1 - index] ?? video}
+            recommended={
+              pair.recommendation.videoId === video.id
+                ? t.versions.duplicates.recommendedReason[pair.recommendation.reason]
+                : undefined
+            }
             side={
               framed
                 ? index === 0
@@ -531,9 +543,21 @@ function playbackFacts(video: Video): string[] {
   ].filter((value): value is string => value !== undefined && value !== "");
 }
 
-/** Give both videos equal visual emphasis. */
-function CandidateVideo({ video, side }: { video: Video; side: string | undefined }) {
+/** Give both videos equal visual emphasis; only the badge and its reason mark the recommended one. */
+function CandidateVideo({
+  video,
+  other,
+  recommended,
+  side,
+}: {
+  video: Video;
+  other: Video;
+  /** The reason it is recommended as the representative. */
+  recommended: string | undefined;
+  side: string | undefined;
+}) {
   const details = versionDetails(video);
+  const hints = representativeHints(video, other);
   const specs = { specs: details.specs, place: "" };
   const playback = { specs: playbackFacts(video), place: "" };
   const absolute = video.location?.path ?? details.place;
@@ -574,6 +598,18 @@ function CandidateVideo({ video, side }: { video: Video; side: string | undefine
             title={absolute}
           >
             <bdi dir="ltr">{details.place}</bdi>
+          </span>
+        )}
+        {hints.length > 0 && (
+          <span className="text-xs text-muted-foreground">{hints.join(" · ")}</span>
+        )}
+        {recommended !== undefined && (
+          <span className="flex flex-col gap-0.5">
+            <Badge variant="success">
+              <BadgeCheck aria-hidden="true" />
+              {t.versions.duplicates.recommended}
+            </Badge>
+            <span className="text-xs text-muted-foreground">{recommended}</span>
           </span>
         )}
       </span>

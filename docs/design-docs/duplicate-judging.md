@@ -206,7 +206,9 @@ The decider is `ai` with the probability when the model's answer decided, and
 `rule` otherwise.
 An automatic bundle keeps the joined side's member keys and its former
 representative in `undo_keys`, the side whose representative did not become
-the bundle's.
+the bundle's. The representative is the owner's pick when one side has one, else
+the better file, and the bundle merges both sides' user data
+([video-versions.md](video-versions.md)).
 
 A pair entry that a fingerprint result opens joins the import pipelines of
 that run ([activity.md](activity.md#a-pipeline-groups-one-import-run)), so

@@ -35,13 +35,13 @@ func (s *server) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 	}
 	items := s.versionItems(r, videos)
 	// Owners compare the two files' bit rate, frame rate and audio, which only the detail's media information has.
+	infos := map[int64]*domain.MediaInfo{}
 	if s.mediaInfo != nil {
 		ids := make([]int64, 0, len(videos))
 		for _, video := range videos {
 			ids = append(ids, video.ID)
 		}
-		infos, err := s.mediaInfo.MediaInfos(r.Context(), ids)
-		if err != nil {
+		if infos, err = s.mediaInfo.MediaInfos(r.Context(), ids); err != nil {
 			s.internalError(w, "Could not load the possible duplicates.", err)
 			return
 		}
@@ -54,13 +54,24 @@ func (s *server) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, item := range page.Items {
 		payload.Items = append(payload.Items, gen.VersionCandidate{
-			Videos:    []gen.Video{items[2*i], items[2*i+1]},
-			Distance:  item.Distance,
-			Judgement: toAPICandidateJudgement(item.Judgement),
+			Videos:         []gen.Video{items[2*i], items[2*i+1]},
+			Distance:       item.Distance,
+			Judgement:      toAPICandidateJudgement(item.Judgement),
+			Recommendation: recommendRepresentative(item.Videos, infos),
 		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// recommendRepresentative judges the two files alone; bundling keeps both sides' user data whichever is chosen.
+func recommendRepresentative(videos [2]domain.Video, infos map[int64]*domain.MediaInfo) gen.VersionRepresentativeRecommendation {
+	chosen, reason := domain.RecommendVersionRepresentative([2]domain.VersionSide{
+		{Video: videos[0], Media: infos[videos[0].ID]}, {Video: videos[1], Media: infos[videos[1].ID]},
+	})
+	return gen.VersionRepresentativeRecommendation{
+		VideoId: videos[chosen].ID, Reason: gen.VersionRepresentativeRecommendationReason(reason),
+	}
 }
 
 // readPairBody writes 400 unless the body names two different videos.
