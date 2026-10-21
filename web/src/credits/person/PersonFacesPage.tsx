@@ -174,7 +174,13 @@ function FacesShown({
             {text.facesPage.refresh}
           </Button>
         </div>
-        <TabsContent value="candidates" key={`candidates-${String(round)}`}>
+        {/* Both tabs stay mounted, so a decided row or a split tile keeps its result across tab switches. */}
+        <TabsContent
+          value="candidates"
+          key={`candidates-${String(round)}`}
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
           <PageSection
             title={text.candidates.heading}
             description={text.facesPage.refreshHint}
@@ -191,7 +197,12 @@ function FacesShown({
             />
           </PageSection>
         </TabsContent>
-        <TabsContent value="faces" key={`faces-${String(round)}`}>
+        <TabsContent
+          value="faces"
+          key={`faces-${String(round)}`}
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
           <PageSection
             title={text.faces.heading}
             description={text.facesPage.refreshHint}

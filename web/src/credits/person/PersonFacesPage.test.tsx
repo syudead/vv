@@ -133,6 +133,9 @@ describe("PersonFacesPage", () => {
     expect(sent("POST", "/api/people/7/face-candidates/9/dismiss")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Open Alice" })).toBeTruthy();
 
+    // The result survives a visit to the other tab.
+    await user.click(screen.getByRole("tab", { name: /^Faces in videos/ }));
+    await user.click(screen.getByRole("tab", { name: /^Same person\?/ }));
     await user.click(screen.getByRole("button", { name: "Undo for Alice" }));
 
     expect(
