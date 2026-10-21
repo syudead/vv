@@ -383,17 +383,23 @@ describe("PersonFacesPage", () => {
   it("undoes Same person by its merge entry and offers the pair again", async () => {
     const user = userEvent.setup();
     server.faceCandidates = [candidate(9, "")];
-    server.mergeTarget = person();
+    // The merge gives the faceless shown person #9's face, which the undo takes back.
+    server.mergeTarget = person({ imageRevision: 5 });
     renderPage("/people/7/faces");
 
     await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
     expect(await screen.findByText("Merged into Aoi")).toBeTruthy();
+    const pair = screen.getByRole("group", { name: "Pair with #9" });
+    expect(within(pair).getByRole("img", { name: "Aoi" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Undo for #9" }));
 
     expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
     expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
     expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
+    await waitFor(() =>
+      expect(within(pair).queryByRole("img", { name: "Aoi" })).toBeNull(),
+    );
   });
 
   it("only reopens the pair when Undo is pressed again after the reopen failed", async () => {

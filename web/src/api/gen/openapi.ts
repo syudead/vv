@@ -1959,7 +1959,7 @@ export interface paths {
         put?: never;
         /**
          * Merge a face candidate pair
-         * @description Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
+         * @description Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name and holds no external ID, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back; a merged person with an external ID is merged without one, since the undo cannot restore the ID. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
          */
         post: operations["confirmFaceCandidate"];
         delete?: never;
@@ -4537,7 +4537,7 @@ export interface components {
             person: components["schemas"]["Person"];
             /**
              * Format: int64
-             * @description The face_merge entry that undoes the merge; absent when the merged person had a name.
+             * @description The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID.
              */
             undoActivityId?: number;
         };
