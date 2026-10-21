@@ -138,6 +138,10 @@ function faceRoute(method: string, url: URL): Response | null {
     return jsonResponse({ items: server.faceCandidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
+    if (!url.searchParams.has("limit")) {
+      const all = [...server.appearances, ...server.laterAppearances];
+      return jsonResponse({ items: all, total: all.length });
+    }
     if (url.searchParams.get("cursor") === "page-2") {
       return jsonResponse({
         items: server.laterAppearances,
@@ -149,6 +153,9 @@ function faceRoute(method: string, url: URL): Response | null {
       total: server.appearances.length + server.laterAppearances.length,
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
+  }
+  if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
   const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
   if (split !== null && method === "POST") {

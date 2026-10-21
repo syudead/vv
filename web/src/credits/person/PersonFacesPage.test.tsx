@@ -68,6 +68,120 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("reads the rest whole after a split rescored the faces, adding only unseen ones", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    server.laterAppearances = [
+      { appearanceId: 5, videoId: 7, title: "River", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await screen.findByText("Split into #12");
+    await user.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(await screen.findByRole("img", { name: "River" })).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "Mountain" })).toHaveLength(1);
+    const more = sent("GET", "/api/people/7/appearances").at(-1);
+    expect(more?.url.searchParams.has("limit")).toBe(false);
+    expect(more?.url.searchParams.has("cursor")).toBe(false);
+  });
+
+  it("keeps a split face and its Undo when the order changes", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await screen.findByText("Split into #12");
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Mountain" }));
+    expect(screen.getByText("1 selected")).toBeTruthy();
+
+    // jsdom lacks the pointer APIs the Select's popup calls.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
+    Element.prototype.scrollIntoView ??= () => undefined;
+    await user.click(screen.getByRole("combobox", { name: "Order" }));
+    await user.click(await screen.findByRole("option", { name: "Newest video first" }));
+
+    // The new order no longer holds the split face, yet its tile and Undo stay, and the selection is cleared.
+    await waitFor(() => expect(screen.queryByText("1 selected")).toBeNull());
+    expect(screen.getByText("Split into #12")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    expect(
+      screen.getByRole("button", { name: "Undo the split in Beach day" }),
+    ).toBeTruthy();
+  });
+
+  it("splits selected faces into one person, and one Undo takes them all back", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+      { appearanceId: 5, videoId: 7, title: "River", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select River" }));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Not this person" }));
+
+    expect(await screen.findAllByText("Split into #12")).toHaveLength(2);
+    expect(sentBody(sent("POST", "/api/people/7/appearances/split")[0])).toEqual({
+      appearanceIds: [3, 5],
+    });
+    expect(screen.queryByText("2 selected")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Undo the split in River" }));
+
+    await waitFor(() => expect(screen.queryByText("Split into #12")).toBeNull());
+    expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
+  });
+
+  it("orders the faces least like the person first, with each score, and can switch to newest", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      {
+        appearanceId: 3,
+        videoId: 5,
+        title: "Beach day",
+        spans: [],
+        hasCrop: true,
+        similarity: 0.21,
+      },
+    ];
+    renderPage("/people/7/faces");
+
+    expect(await screen.findByLabelText("Beach day, 21% like this person")).toBeTruthy();
+    // The grid's reads carry an order; the pair rows' sample of four does not.
+    const sorts = () =>
+      sent("GET", "/api/people/7/appearances")
+        .map((request) => request.url.searchParams.get("sort"))
+        .filter((sort) => sort !== null);
+    expect(sorts()).toEqual(["leastSimilar"]);
+
+    // jsdom lacks the pointer APIs the Select's popup calls.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
+    Element.prototype.scrollIntoView ??= () => undefined;
+    await user.click(screen.getByRole("combobox", { name: "Order" }));
+    await user.click(await screen.findByRole("option", { name: "Newest video first" }));
+
+    await waitFor(() => expect(sorts()).toEqual(["leastSimilar", "newest"]));
+  });
+
   it("leaves a person without a face faceless after undoing a split", async () => {
     const user = userEvent.setup();
     server.appearances = [

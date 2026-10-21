@@ -3120,9 +3120,15 @@ paths:
     get:
       operationId: listPersonAppearances
       summary: "List a person's face appearances"
-      description: "Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor."
+      description: "Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor."
       parameters:
         - $ref: "#/components/parameters/PersonId"
+        - name: sort
+          in: query
+          description: "newest (default) or leastSimilar"
+          schema:
+            type: string
+            enum: [newest, leastSimilar]
         - name: cursor
           in: query
           description: "Opaque nextCursor from the previous response; ignored without limit"
@@ -3142,6 +3148,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FaceAppearanceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/appearances/split:
+    post:
+      operationId: splitFaceAppearances
+      summary: "Split several face appearances into one new person"
+      description: "Owner-only. For \"Not this person\" on a selection: as splitFaceAppearance, with every listed appearance moving to one new provisional person whose face is the first appearance's crop, in one transaction. Returns the new person. Missing person returns 404 person_not_found; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and splits none."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaceAppearanceSplitRequest"
+      responses:
+        "201":
+          description: "The new provisional person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -7918,6 +7951,28 @@ components:
         hasCrop:
           type: boolean
           description: "True when getFaceAppearanceCrop has a face to return."
+        similarity:
+          type: number
+          format: double
+          description: "Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared."
+        unlike:
+          type: boolean
+          description: "True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise."
+
+    FaceAppearanceSplitRequest:
+      type: object
+      required: [appearanceIds]
+      additionalProperties: false
+      properties:
+        appearanceIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: integer
+            format: int64
+            minimum: 1
 
     FaceAppearanceSpan:
       type: object

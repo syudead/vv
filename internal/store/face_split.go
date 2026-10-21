@@ -9,18 +9,21 @@ import (
 	"fmt"
 	"image"
 	_ "image/jpeg" // Read the size of a stored crop.
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SplitFaceAppearance turns one appearance the analysis linked to the person into its own provisional person, in
-// one transaction: the new person's face is the appearance's crop, the appearance and the video's performer credit
-// move to it, and the pair of the two people is dismissed so neither automatic rule nor candidates join them
-// again. See docs/design-docs/face-recognition.md. It returns the new person; a missing person is
-// domain.ErrNotFound, and an appearance that is dropped or linked to another person
-// domain.ErrFaceAppearanceNotFound.
-func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appearanceID int64) (domain.Credit, error) {
+// SplitFaceAppearances turns appearances the analysis linked to the person into one new provisional person, in one
+// transaction: the new person's face is the first appearance's crop, the appearances and their videos' performer
+// credits move to it, and the pair of the two people is dismissed so neither automatic rule nor candidates join them
+// again. See docs/design-docs/face-recognition.md. It returns the new person; a missing person is domain.ErrNotFound,
+// and any appearance that is dropped or linked to another person domain.ErrFaceAppearanceNotFound, splitting none.
+func (s *CreditStore) SplitFaceAppearances(ctx context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error) {
+	if len(appearanceIDs) == 0 {
+		return domain.Credit{}, domain.ErrFaceAppearanceNotFound
+	}
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Credit{}, err
@@ -29,22 +32,32 @@ func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appeara
 	if err := requirePerson(ctx, tx, personID); err != nil {
 		return domain.Credit{}, err
 	}
-	contentKey, crop, err := readSplitAppearance(ctx, tx, personID, appearanceID)
-	if err != nil {
-		return domain.Credit{}, err
+	contentKeys := make([]string, 0, len(appearanceIDs))
+	var crop domain.PersonImage
+	for i, id := range appearanceIDs {
+		contentKey, appearanceCrop, err := readSplitAppearance(ctx, tx, personID, id)
+		if err != nil {
+			return domain.Credit{}, err
+		}
+		if i == 0 {
+			crop = appearanceCrop
+		}
+		contentKeys = append(contentKeys, contentKey)
 	}
 	now := time.Now()
 	newID, err := createFacePerson(ctx, tx, crop, now)
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `update face_appearances set person_id = ? where id = ?`, newID, appearanceID); err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot move face appearance %d: %w", appearanceID, err)
+	for _, id := range appearanceIDs {
+		if _, err := tx.ExecContext(ctx, `update face_appearances set person_id = ? where id = ?`, newID, id); err != nil {
+			return domain.Credit{}, fmt.Errorf("cannot move face appearance %d: %w", id, err)
+		}
 	}
 	if err := dismissFacePair(ctx, tx, newID, personID, now); err != nil {
 		return domain.Credit{}, err
 	}
-	events, err := splitCreditEvents(ctx, tx, contentKey, personID, newID, now)
+	events, err := splitCreditEvents(ctx, tx, contentKeys, personID, newID, now)
 	if err != nil {
 		return domain.Credit{}, err
 	}
@@ -57,21 +70,30 @@ func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appeara
 	c := &changes{}
 	c.matchesChanged()
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot split face appearance %d from person %d: %w", appearanceID, personID, err)
+		return domain.Credit{}, fmt.Errorf("cannot split face appearances %v from person %d: %w", appearanceIDs, personID, err)
 	}
 	return created, nil
 }
 
-// splitCreditEvents moves the performer credit and returns the events of the work it changed, if any.
-func splitCreditEvents(ctx context.Context, tx *sql.Tx, contentKey string, oldID, newID int64, now time.Time) ([]domain.Event, error) {
-	edited, err := moveFacePerformer(ctx, tx, contentKey, oldID, newID)
-	if err != nil || edited == "" {
+// splitCreditEvents moves the performer credits of the videos and returns the events of the works they changed.
+func splitCreditEvents(ctx context.Context, tx *sql.Tx, contentKeys []string, oldID, newID int64, now time.Time) ([]domain.Event, error) {
+	var edited []string
+	for _, contentKey := range contentKeys {
+		userKey, err := moveFacePerformer(ctx, tx, contentKey, oldID, newID)
+		if err != nil {
+			return nil, err
+		}
+		if userKey != "" && !slices.Contains(edited, userKey) {
+			edited = append(edited, userKey)
+		}
+	}
+	if len(edited) == 0 {
+		return nil, nil
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, edited, now); err != nil {
 		return nil, err
 	}
-	if err := touchEditedAtForUserKeys(ctx, tx, []string{edited}, now); err != nil {
-		return nil, err
-	}
-	return workInfoChangedEvents(ctx, tx, []string{edited})
+	return workInfoChangedEvents(ctx, tx, edited)
 }
 
 // readSplitAppearance returns the video and the decoded crop of an appearance still linked to the person.

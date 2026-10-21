@@ -67,7 +67,7 @@ func TestSplitFaceAppearanceMakesAProvisionalPersonOfTheFace(t *testing.T) {
 	}
 	vectorsBefore := personVectorCount(t, f.db, f.named)
 
-	created, err := f.db.Credits().SplitFaceAppearance(ctx, f.named, moved.id)
+	created, err := f.db.Credits().SplitFaceAppearances(ctx, f.named, []int64{moved.id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestSplitFaceAppearanceKeepsTheCreditAnotherAppearanceStillLinks(t *testing
 		t.Fatalf("appearances = %+v, want both linked to the named person", appearances)
 	}
 
-	created, err := f.db.Credits().SplitFaceAppearance(ctx, named, appearances[1].id)
+	created, err := f.db.Credits().SplitFaceAppearances(ctx, named, []int64{appearances[1].id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestSplitFaceAppearancePublishesTheNewFaceWithoutACreditChange(t *testing.T
 		t.Fatal(err)
 	}
 
-	created, err := f.db.Credits().SplitFaceAppearance(context.Background(), f.named, faceAppearances(t, f.db)[0].id)
+	created, err := f.db.Credits().SplitFaceAppearances(context.Background(), f.named, []int64{faceAppearances(t, f.db)[0].id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,13 +151,43 @@ func TestSplitFaceAppearanceRefusesAnAppearanceOfAnotherPerson(t *testing.T) {
 	appearances := faceAppearances(t, f.db)
 	people := personCount(t, f.db)
 
-	if _, err := f.db.Credits().SplitFaceAppearance(ctx, f.named, appearances[1].id); !errors.Is(err, domain.ErrFaceAppearanceNotFound) {
+	if _, err := f.db.Credits().SplitFaceAppearances(ctx, f.named, []int64{appearances[1].id}); !errors.Is(err, domain.ErrFaceAppearanceNotFound) {
 		t.Errorf("another person's appearance: err = %v, want ErrFaceAppearanceNotFound", err)
 	}
-	if _, err := f.db.Credits().SplitFaceAppearance(ctx, f.named+1000, appearances[0].id); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.db.Credits().SplitFaceAppearances(ctx, f.named+1000, []int64{appearances[0].id}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing person: err = %v, want ErrNotFound", err)
 	}
 	if personCount(t, f.db) != people || faceAppearances(t, f.db)[1].personID != f.provisional {
 		t.Error("a refused split changed people or appearances")
+	}
+}
+
+// Several faces go to one new person, whose face is the first one's crop; a face the person does not have splits none.
+func TestSplitFaceAppearancesMovesEveryFaceToOnePerson(t *testing.T) {
+	f, crop := newSplitFixture(t)
+	ctx := context.Background()
+	first := faceAppearances(t, f.db)[0].id
+	gone := insertFaceAppearance(t, f.db, "key-gone", f.named, false, `[[0, 10, 0.5, 0.5, 0.1]]`, nil)
+	other := faceAppearances(t, f.db)[1].id
+
+	if _, err := f.db.Credits().SplitFaceAppearances(ctx, f.named, []int64{first, other}); !errors.Is(err, domain.ErrFaceAppearanceNotFound) {
+		t.Fatalf("with another person's face: err = %v, want ErrFaceAppearanceNotFound", err)
+	}
+	if got := faceAppearances(t, f.db)[0].personID; got != f.named {
+		t.Fatalf("after a refused split the first face belongs to %d, want %d", got, f.named)
+	}
+
+	created, err := f.db.Credits().SplitFaceAppearances(ctx, f.named, []int64{first, gone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range faceAppearances(t, f.db) {
+		if (a.id == first || a.id == gone) && a.personID != created.ID {
+			t.Errorf("appearance %d belongs to %d, want the new person %d", a.id, a.personID, created.ID)
+		}
+	}
+	image, err := f.db.Credits().PersonImage(ctx, created.ID)
+	if err != nil || !bytes.Equal(image.JPEG, crop) {
+		t.Errorf("face of the new person = %d bytes, %v; want the first face's crop", len(image.JPEG), err)
 	}
 }

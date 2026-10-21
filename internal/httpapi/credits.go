@@ -29,10 +29,10 @@ type Credits interface {
 	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
 	ReopenFaceCandidate(ctx context.Context, personID, otherID int64) error
 	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.
-	PersonAppearances(ctx context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error)
+	PersonAppearances(ctx context.Context, personID int64, q domain.PersonAppearanceQuery) (domain.PersonAppearancePage, error)
 	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
-	// SplitFaceAppearance returns domain.ErrFaceAppearanceNotFound when the person has no such appearance.
-	SplitFaceAppearance(ctx context.Context, personID, appearanceID int64) (domain.Credit, error)
+	// SplitFaceAppearances returns domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
+	SplitFaceAppearances(ctx context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error)
 }
 
 type creditKindAPI struct {
