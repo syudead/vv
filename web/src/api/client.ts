@@ -76,6 +76,9 @@ export type VideoLocation = components["schemas"]["VideoLocation"];
 export type VideoVersions = components["schemas"]["VideoVersions"];
 export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
 export type VersionCandidate = components["schemas"]["VersionCandidate"];
+export type VersionCandidateJudgement =
+  components["schemas"]["VersionCandidateJudgement"];
+export type VersionJudgeEvidence = components["schemas"]["VersionJudgeEvidence"];
 export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
@@ -310,6 +313,8 @@ export interface CreditFilterParams {
   organization?: number;
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
+  /** Owner-only; send true only. */
+  hasVersions?: boolean;
 }
 
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
@@ -319,6 +324,7 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
     query.set("organization", String(params.organization));
   }
   if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
+  if (params.hasVersions === true) query.set("hasVersions", "true");
 }
 
 /** Send bounds unchanged; the server rejects out-of-range values instead of clamping them. */
@@ -666,6 +672,27 @@ export async function dismissVersionCandidate(
   if (!response.ok) {
     throw await toRequestFailed(response);
   }
+}
+
+/** Send an undecided, failed or no_connection pair back to duplicate judging. */
+export async function rejudgeVersionCandidate(
+  videoIds: readonly [number, number],
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch("/api/version-candidates/rejudge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds }),
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
+}
+
+/** The side-by-side image the classifier saw for one evidence frame of a version_judgement entry. */
+export function judgementFrameUrl(activityId: number, index: number): string {
+  return `/api/activity/${String(activityId)}/judgement-frames/${String(index)}`;
 }
 
 /** Open the representative file on the server's machine. */

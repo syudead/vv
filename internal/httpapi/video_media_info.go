@@ -11,6 +11,8 @@ import (
 type MediaInfoReader interface {
 	// Return nil when the current version is absent.
 	MediaInfo(ctx context.Context, videoID int64) (*domain.MediaInfo, error)
+	// MediaInfos leaves out videos without current information.
+	MediaInfos(ctx context.Context, videoIDs []int64) (map[int64]*domain.MediaInfo, error)
 }
 
 // Media information appears only in video details, identically for owners and guests.

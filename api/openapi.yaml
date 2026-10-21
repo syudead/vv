@@ -152,7 +152,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List videos"
-      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
+      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
       parameters:
         - name: query
           in: query
@@ -174,6 +174,12 @@ paths:
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
+          schema:
+            type: boolean
+            default: false
+        - name: hasVersions
+          in: query
+          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -237,7 +243,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List library items (videos and groups)"
-      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
+      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
       parameters:
         - name: query
           in: query
@@ -259,6 +265,12 @@ paths:
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
+          schema:
+            type: boolean
+            default: false
+        - name: hasVersions
+          in: query
+          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -3942,6 +3954,29 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/version-candidates/rejudge:
+    post:
+      operationId: rejudgeVersionCandidate
+      summary: "Judge a possible duplicate again"
+      description: "Owner-only. Returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its activity record to running, so the duplicate judging worker sends it to the classifier again. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos return 404 video_not_found; a pair that is not a judgeable candidate returns 404 not_found. Judging turned off returns 409 version_judging_off; a waiting or running pair returns 409 version_not_rejudgeable."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionCandidateDismissRequest"
+      responses:
+        "202":
+          description: "Queued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/activity:
     get:
       operationId: listActivity
@@ -4039,6 +4074,33 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+
+  /api/activity/{id}/judgement-frames/{index}:
+    get:
+      operationId: getActivityJudgementFrame
+      summary: "Return a frame pair a duplicate judgement showed the classifier"
+      description: "Owner-only. Returns the image at index in the version_judgement record's evidence frames: the left video's frame on the left and the other's on the right, cut from the two current seek previews as the classifier received them. A missing record, a record without evidence, an index outside its frames or a missing seek preview returns 404 not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the record's evidence frames"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Image"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/activity/{id}/undo:
     post:
@@ -9800,10 +9862,12 @@ components:
 
     VersionCandidate:
       type: object
-      required: [videos, distance]
+      required: [videos, distance, judgement]
       additionalProperties: false
       description: "Pair of potentially identical videos."
       properties:
+        judgement:
+          $ref: "#/components/schemas/VersionCandidateJudgement"
         videos:
           type: array
           minItems: 2
@@ -9816,11 +9880,139 @@ components:
           minimum: 0
           description: "Median Hamming distance between video fingerprints; lower means more similar."
 
-    VersionCandidatePage:
+    VersionCandidateJudgement:
       type: object
-      required: [items, total]
+      required: [state, leftVideoId]
+      additionalProperties: false
+      description: "The automatic judgement of a listed pair."
+      properties:
+        state:
+          type: string
+          enum: [waiting, running, undecided, failed, no_connection, held]
+          description: "held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge."
+        activityId:
+          type: integer
+          format: int64
+          description: "The pair's version_judgement record; absent when none was opened, as while judging is off."
+        probability:
+          type: number
+          format: double
+          description: "The classifier's answer for an undecided pair; absent when the rule decided."
+        error:
+          type: string
+          description: "Why the last attempt failed."
+        retryAt:
+          type: string
+          format: date-time
+          description: "Next automatic retry of a failed pair."
+        leftVideoId:
+          type: integer
+          format: int64
+          description: "The video whose frames are on the left of the evidence images and whose times are evidence's aMs."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
+
+    VersionJudgeEvidence:
+      type: object
+      required: [rule, compared, differing]
+      additionalProperties: false
+      description: "Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md."
+      properties:
+        rule:
+          type: string
+          enum: [frames_match, frames_differ, incomparable]
+          description: "frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner."
+        compared:
+          type: integer
+          minimum: 0
+          description: "Frame pairs compared by time, flat frames skipped."
+        differing:
+          type: integer
+          minimum: 0
+          description: "Compared pairs whose pictures differ."
+        longestRun:
+          type: integer
+          minimum: 2
+          description: "Pairs in the longest run of consecutive differing pairs; absent without such a run."
+        runStartMs:
+          type: integer
+          format: int64
+          description: "Start of that run on the left video's timeline."
+        runEndMs:
+          type: integer
+          format: int64
+          description: "End of that run on the left video's timeline."
+        versionMismatch:
+          type: boolean
+          description: "The fingerprints were made by different fingerprint versions, so the frames could not be compared."
+        conflict:
+          type: boolean
+          description: "The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided."
+        properties:
+          type: array
+          description: "Properties both files have, read at import: chapters, recording time, embedded title and duration."
+          items:
+            $ref: "#/components/schemas/VersionPropertySignal"
+        byProperties:
+          type: boolean
+          description: "The properties decided the result, or held a different answer they contradict for the owner."
+        frames:
+          type: array
+          maxItems: 4
+          description: "The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image."
+          items:
+            $ref: "#/components/schemas/VersionEvidenceFrame"
+
+    VersionPropertySignal:
+      type: object
+      required: [kind, same, a, b]
       additionalProperties: false
       properties:
+        kind:
+          type: string
+          enum: [chapters, recorded_at, embedded_title, duration]
+        same:
+          type: boolean
+          description: "The two values agree: matching chapter starts, equal times or titles, or durations within a second."
+        strong:
+          type: boolean
+          description: "Decides a pair on its own: titled chapters at matching starts, or an equal recording time."
+        counts:
+          type: boolean
+          description: "Counted towards the verdict; a duration and a disagreeing value are shown only."
+        a:
+          type: string
+          description: "The left video's value: a chapter count, a time, a title or milliseconds."
+        b:
+          type: string
+          description: "The right video's value."
+
+    VersionEvidenceFrame:
+      type: object
+      required: [aMs, bMs, distance]
+      additionalProperties: false
+      properties:
+        aMs:
+          type: integer
+          format: int64
+          description: "Frame time in the left video."
+        bMs:
+          type: integer
+          format: int64
+          description: "Frame time in the right video."
+        distance:
+          type: integer
+          minimum: 0
+          description: "Hamming distance between the two frames' hashes; over 12 differs."
+
+    VersionCandidatePage:
+      type: object
+      required: [items, total, judging]
+      additionalProperties: false
+      properties:
+        judging:
+          type: boolean
+          description: "Whether duplicate judging is on, which a rejudge needs."
         items:
           type: array
           maxItems: 200
@@ -10550,6 +10742,8 @@ components:
           type: string
           format: date-time
           description: "Next retry timestamp for a failed version_judgement."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
         progress:
           $ref: "#/components/schemas/ActivityProgress"
         undoes:
@@ -10972,6 +11166,8 @@ components:
         - not_bundled
         - listen_failed
         - auto_tagging_off
+        - version_judging_off
+        - version_not_rejudgeable
         - comfyui_url_invalid
         - comfyui_api_key_missing
         - thumbnail_edit_not_found

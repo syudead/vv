@@ -57,6 +57,9 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 			return domain.VersionJudgeJob{}, fmt.Errorf("the version candidate has no fingerprint (key=%s)", key)
 		}
 		job.Fingerprints[i] = fingerprint
+		if job.Properties[i], err = versionProperties(ctx, tx, key); err != nil {
+			return domain.VersionJudgeJob{}, err
+		}
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
@@ -70,6 +73,40 @@ var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
 	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
+
+// versionProperties reads the duration and media information a key's file had at import; a key without a video in
+// the library has none.
+func versionProperties(ctx context.Context, tx *sql.Tx, key string) (domain.VersionProperties, error) {
+	var properties domain.VersionProperties
+	var id int64
+	var duration sql.NullInt64
+	err := tx.QueryRowContext(ctx, `select v.id, v.duration_ms from videos v where v.content_key = ? and v.content_key <> ''
+		order by v.id limit 1`, key).Scan(&id, &duration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return properties, nil
+	}
+	if err != nil {
+		return properties, fmt.Errorf("cannot read the video properties (key=%s): %w", key, err)
+	}
+	properties.DurationMs = duration.Int64
+	var version int
+	var encoded string
+	err = tx.QueryRowContext(ctx, `select version, info from video_media_info where video_id = ?`, id).
+		Scan(&version, &encoded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return properties, nil
+	}
+	if err != nil {
+		return properties, fmt.Errorf("cannot read the media information (id=%d): %w", id, err)
+	}
+	if info := decodeMediaInfo(version, encoded); info != nil {
+		properties.Chapters = info.Chapters
+		if info.Embedded != nil {
+			properties.EmbeddedTitle, properties.RecordedAt = info.Embedded.Title, info.Embedded.RecordedAt
+		}
+	}
+	return properties, nil
+}
 
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
 	var version int
@@ -176,10 +213,34 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	if err != nil {
 		return false, err
 	}
+	if err := recordJudgementEvidence(ctx, tx, claimed.entryID, result); err != nil {
+		return false, err
+	}
 	if err := s.db.commitWith(ctx, tx, c, append(events, domain.VersionCandidatesChanged{})...); err != nil {
 		return false, fmt.Errorf("cannot apply the version judgement: %w", err)
 	}
 	return true, nil
+}
+
+// A same verdict that left the entry undecided met a known difference across the two sides.
+func recordJudgementEvidence(ctx context.Context, tx *sql.Tx, id int64, result domain.VersionJudgeResult) error {
+	if result.Evidence == nil {
+		return nil
+	}
+	evidence := *result.Evidence
+	if result.Verdict == domain.VersionSame {
+		var reason sql.NullString
+		if err := tx.QueryRowContext(ctx, `select reason from activity_entries where id = ?`, id).
+			Scan(&reason); err != nil {
+			return fmt.Errorf("cannot read the activity entry (id=%d): %w", id, err)
+		}
+		evidence.Conflict = reason.String == string(domain.ActivityUndecided)
+	}
+	if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = ? where id = ?`,
+		evidence.Encode(), id); err != nil {
+		return fmt.Errorf("cannot record the judgement evidence (id=%d): %w", id, err)
+	}
+	return nil
 }
 
 // claimedCandidate is a running candidate and the activity entry that reports its judgement.
@@ -468,4 +529,112 @@ func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled b
 		return fmt.Errorf("cannot save setting %s: %w", versionJudgingEnabledKey, err)
 	}
 	return nil
+}
+
+// RejudgeCandidate returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its
+// entry with it; the caller wakes the worker.
+func (s *VersionStore) RejudgeCandidate(ctx context.Context, videoIDs [2]int64) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	keys, err := sortedPairKeys(ctx, tx, videoIDs)
+	if err != nil {
+		return err
+	}
+	var judgement sql.NullString
+	var activityID sql.NullInt64
+	err = tx.QueryRowContext(ctx, `select c.judgement, c.activity_id `+judgeablePairs+` and c.key_a = ? and c.key_b = ?`,
+		keys[0], keys[1]).Scan(&judgement, &activityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrNotVersionCandidate
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read the version candidate: %w", err)
+	}
+	if !domain.VersionRejudgeable(domain.VersionJudgement(judgement.String)) {
+		return domain.ErrVersionNotRejudgeable
+	}
+	if _, err := tx.ExecContext(ctx, `update video_version_candidates
+		   set judgement = null, attempts = 0, retry_at = null, judgement_error = null, probability = null
+		 where key_a = ? and key_b = ?`, keys[0], keys[1]); err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	c := &changes{}
+	if activityID.Valid {
+		if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = null where id = ?`,
+			activityID.Int64); err != nil {
+			return fmt.Errorf("cannot clear the judgement evidence: %w", err)
+		}
+		if err := updateActivity(ctx, tx, c, activityID.Int64, waitingUpdate, time.Now()); err != nil {
+			return err
+		}
+	}
+	if err := s.db.commitWith(ctx, tx, c, domain.VersionCandidatesChanged{}); err != nil {
+		return fmt.Errorf("cannot judge the version candidate again: %w", err)
+	}
+	return nil
+}
+
+// JudgementEvidence returns a version_judgement entry's pair keys and its evidence, recomputed for a pair still left
+// on Duplicates by a judgement made before evidence was stored, nil when there is none.
+func (s *VersionStore) JudgementEvidence(ctx context.Context, entryID int64) ([2]string, *domain.VersionJudgeEvidence, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return [2]string{}, nil, fmt.Errorf("cannot read the activity entry (id=%d): %w", entryID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	entry, err := scanOneActivityEntry(ctx, tx, entryID)
+	if err != nil {
+		return [2]string{}, nil, err
+	}
+	if entry.Kind != domain.ActivityVersionJudgement {
+		return [2]string{}, nil, fmt.Errorf("activity entry %d: %w", entryID, domain.ErrNotFound)
+	}
+	evidence, err := entryEvidence(ctx, tx, entry)
+	return [2]string{entry.Subject.Key, entry.Subject.KeyB}, evidence, err
+}
+
+// entryEvidence is the entry's stored evidence, or for an entry still waiting on the owner, evidence derived from the
+// current fingerprints.
+func entryEvidence(ctx context.Context, tx *sql.Tx, entry domain.ActivityEntry) (*domain.VersionJudgeEvidence, error) {
+	if entry.Evidence != nil || entry.Status != domain.ActivityAttention {
+		return entry.Evidence, nil
+	}
+	return derivedEvidence(ctx, tx, [2]string{entry.Subject.Key, entry.Subject.KeyB},
+		domain.VersionJudgement(entry.Reason), entry.Probability)
+}
+
+// derivedEvidence recomputes the frame rule for a pair the classifier sees the same way; nil for a state without a
+// result or a key without a fingerprint.
+func derivedEvidence(
+	ctx context.Context, tx *sql.Tx, keys [2]string, state domain.VersionJudgement, probability *float64,
+) (*domain.VersionJudgeEvidence, error) {
+	if !domain.VersionRejudgeable(state) {
+		return nil, nil
+	}
+	var fingerprints [2]domain.Fingerprint
+	for i, key := range keys {
+		fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
+		if err != nil || !found {
+			return nil, err
+		}
+		fingerprints[i] = fingerprint
+	}
+	rule := domain.JudgeVersionFrames(fingerprints[0], fingerprints[1])
+	evidence := domain.NewVersionJudgeEvidence(fingerprints[0], fingerprints[1], rule)
+	var properties [2]domain.VersionProperties
+	for i, key := range keys {
+		var err error
+		if properties[i], err = versionProperties(ctx, tx, key); err != nil {
+			return nil, err
+		}
+	}
+	evidence.Properties = domain.CompareVersionProperties(properties[0], properties[1])
+	if state == domain.VersionJudgementUndecided {
+		evidence.InferConflict(probability)
+	}
+	return evidence, nil
 }

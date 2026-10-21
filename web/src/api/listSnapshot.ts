@@ -32,6 +32,7 @@ export interface ListKey {
   person?: number;
   organization?: number;
   tagKind?: number;
+  hasVersions?: boolean;
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
@@ -74,6 +75,7 @@ function normalize(key: ListKey): string {
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
     key.tagKind === undefined ? "" : String(key.tagKind),
+    key.hasVersions === true ? "1" : "",
     key.addedWithin === undefined ? "" : String(key.addedWithin),
     key.minDuration === undefined ? "" : String(key.minDuration),
     key.maxDuration === undefined ? "" : String(key.maxDuration),

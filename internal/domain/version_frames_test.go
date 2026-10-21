@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -177,5 +178,40 @@ func TestVersionVerdictFor(t *testing.T) {
 		if got := VersionVerdictFor(c.probability); got != c.want {
 			t.Errorf("VersionVerdictFor(%v) = %v, want %v", c.probability, got, c.want)
 		}
+	}
+}
+
+func TestJudgeVersionFramesRecordsTheLongestRun(t *testing.T) {
+	distances := make([]int, 20)
+	distances[3] = 30
+	for i := 8; i < 12; i++ {
+		distances[i] = 33
+	}
+	a, b := frameRuleFingerprints(distances)
+	rule := JudgeVersionFrames(a, b)
+	if rule.LongestRun != 4 || rule.Run[0].A != 8 || rule.Run[1].A != 11 {
+		t.Fatalf("最長の連続 = %d（%+v）, want 4（8〜11）", rule.LongestRun, rule.Run)
+	}
+}
+
+func TestNewVersionJudgeEvidenceTimesEachSideOnItsOwnInterval(t *testing.T) {
+	a := Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
+	b := Fingerprint{Version: FingerprintVersion + 1, IntervalMs: 500}
+	rule := VersionFrameRule{
+		Outcome: VersionFramesDiffer, Compared: 10, Differing: 3, LongestRun: 3,
+		Run:   [2]FramePair{{A: 2, B: 4}, {A: 4, B: 8}},
+		Shown: []FramePair{{A: 3, B: 6, Distance: 20}},
+	}
+	got := NewVersionJudgeEvidence(a, b, rule)
+	want := &VersionJudgeEvidence{
+		Rule: "frames_differ", Compared: 10, Differing: 3, LongestRun: 3, RunStartMs: 2000, RunEndMs: 5000,
+		VersionMismatch: true, Frames: []VersionEvidenceFrame{{A: 3, B: 6, AMs: 3000, BMs: 3000, Distance: 20}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("根拠 = %+v, want %+v", got, want)
+	}
+	decoded, err := DecodeVersionJudgeEvidence(got.Encode())
+	if err != nil || !reflect.DeepEqual(decoded, want) {
+		t.Errorf("往復 = %+v, %v", decoded, err)
 	}
 }

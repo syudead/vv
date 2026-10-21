@@ -401,6 +401,7 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
+		VersionReview:     app.NewVersionJudgeReview(db.Versions(), artifactStore, versionJudge),
 		FaceRecognition:   faces.settings,
 		FaceAnalysis:      faces.analysis,
 		Ollama:            ollamaConnection,

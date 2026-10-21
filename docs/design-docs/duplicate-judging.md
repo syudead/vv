@@ -25,6 +25,19 @@ flowchart LR
   ask -->|error or no answer| failed[failed, retry later]
 ```
 
+## Versions the owner would not tell apart are the goal
+
+Bundling is for files the owner sees as one video: a re-encode, black bands, a
+watermark or channel logo, burned-in subtitles, or a start shifted by a few
+seconds. Names, folders and other stored facts are not compared; they tell
+whether two files are the same file, which is a different question.
+
+| Difference | Where it is absorbed |
+| --- | --- |
+| Quality, resolution, black bands, a small logo | The fingerprint: 32×32 low-frequency luma hashes with black bands trimmed |
+| A large watermark, burned-in subtitles, a shift of a few seconds | The classifier, whose question says to ignore them |
+| Frames the classifier is unsure about | The files' own properties, below |
+
 ## The frame rule decides first
 
 Frames are paired by time and flat frames are skipped, as the candidate check
@@ -48,14 +61,102 @@ Each image is frame A on the left and the paired frame B on the right, cut
 from the two seek previews by
 [`internal/artifacts`](../../internal/artifacts/seek_frames.go), with B scaled
 to A's frame size. The request carries no facts: no file name, folder or
-duration.
-The question and the thresholds 0.8 and 0.2 are fixed in
-`internal/domain`.
+duration. The question asks whether both halves show the same scene of the
+same video, ignoring quality, colour, cropping, black bands, watermarks, logos,
+burned-in subtitles and a few seconds of timing; asking whether the pictures
+are the same let a watermark or subtitle mark one video different. It and the
+thresholds 0.8 and 0.2 are fixed in `internal/domain`.
 
 | Rejected | Why |
 | --- | --- |
 | Frames from the media files with ffmpeg | Decoding both files costs far more than cutting the frames from the two seek previews, which already hold them at the paired times |
 | A reply without the question's key as probability 0 | It would dismiss a pair the model never judged |
+
+## The owner sees why
+
+Each judgement stores its frame rule result on the pair's activity entry, in
+`activity_entries.evidence` as JSON of `domain.VersionJudgeEvidence`, so the
+reason survives the candidate row that bundling or dismissal removes. The
+Duplicates screen reads it through `GET /api/version-candidates`, which also
+returns each pair's judgement state, and the activity entry's `Why` section
+reads it from the entry. A waiting pair that the claim skips for a
+`video_version_unbundles` or `video_version_judging_holds` row is listed as
+`held`, so the screen says it is left to the owner instead of waiting forever.
+
+| Field | Shown to the owner as |
+| --- | --- |
+| `rule`, `compared`, `differing` | How many frames were compared by time and how many differ |
+| `longestRun`, `runStartMs`, `runEndMs` | The section that differs throughout, on the left video's timeline |
+| `versionMismatch` | Incomparable because the fingerprints come from different fingerprint versions |
+| `conflict` | A same verdict left undecided because a side is already marked different from the other |
+| `frames` | The frame pairs shown to the classifier, with their times on both videos |
+
+`GET /api/activity/{id}/judgement-frames/{index}` cuts the indexed pair from
+the two current seek previews, as the request to the classifier did, instead
+of storing the images: the evidence is a few hundred bytes per pair, and a
+stored copy would outlive the seek preview it came from. A content change at
+the same path removes `frames` from the pair entries of the old key before
+re-keying them, since the frame indexes point into the old content's seek
+preview; the counts and the sentences stay.
+
+A pair left on Duplicates by a judgement made before evidence was stored gets
+evidence recomputed from the two stored fingerprints when it is read, on
+Duplicates and in the entry's detail. The frame rule is deterministic, so the
+counts and frames match what the classifier was shown while the fingerprints
+are unchanged. A rule match or a same answer left `undecided` can only have
+met a known difference across the two sides, so such evidence is marked
+`conflict`. The screen's headline names the reason: a conflict, frames that
+could not be compared, or the classifier's answer between the thresholds.
+A Duplicates row shows only that headline; `Why?` opens a dialog with the
+sentences and the frame pairs in one column, so up to four side-by-side
+images do not stretch every row of the list.
+The screen states the thresholds next to the probability, so a 55% answer
+reads as between the 20% and 80% that would decide.
+
+## The owner can judge a pair again
+
+`POST /api/version-candidates/rejudge` returns an `undecided`, `failed` or
+`no_connection` pair to waiting with its attempt count reset, its entry to
+`running`/`waiting` and its evidence cleared, and wakes the worker
+([`internal/app/version_judge_review.go`](../../internal/app/version_judge_review.go)).
+It covers the results that leave a pair on Duplicates: an owner who changed
+the model or its connection, or rescanned a file, has no other way to ask
+again about an undecided pair, which the claim never takes on its own.
+
+| Refused | Why |
+| --- | --- |
+| Judging turned off (`409 version_judging_off`) | Nothing would claim the pair |
+| A waiting or running pair (`409 version_not_rejudgeable`) | It is about to be judged already |
+| A bundled or dismissed pair | It has left Duplicates; a force rescan judges automatic decisions again, as described below |
+
+## The files' own properties settle what the frames leave open
+
+The claim reads each side's duration and stored media information, which the
+import read from the file itself, so a judgement adds no file reads
+([`internal/domain/version_properties.go`](../../internal/domain/version_properties.go)).
+A version may differ in resolution, codec, bit rate, audio or subtitle tracks,
+so properties only ever say same, and those are not compared.
+
+| Property | Says same when | Weight |
+| --- | --- | --- |
+| Chapters | Both have 3 or more, the same count, starts within a second, and an equal title, unless the titles differ only by their numbers ("Chapter 1", "Chapter 2") | Strong |
+| Chapters | The same starts, with numbered or missing titles | Weak |
+| Recording time (`creation_time`) | Equal; a difference says nothing, since many encoders rewrite it | Strong |
+| Embedded title | Equal, folded, and not "Untitled" or a number | Weak |
+| Duration | Shown only: candidates already have close durations | — |
+
+| Frames and classifier | Strong same | Weak same |
+| --- | --- | --- |
+| Frames match | Same | Same |
+| Frames differ | Same, without asking the classifier | Asked |
+| Incomparable, no connection or failed | Same | Unchanged |
+| The classifier answers different | Undecided, left to the owner | Different |
+| The classifier is unsure | Same | Same when it answered 0.5 or more |
+
+A verdict the properties decide is the rule's, keeping any probability as
+evidence, and the evidence marks `byProperties`. File names, folders and work
+information are not used: they are often empty at import, and they tell
+whether two files are the same file.
 
 ## The worker runs only while it is on
 
@@ -70,6 +171,7 @@ One goroutine, like `AutoTagger`, claims one pair at a time while
 | Saving the setting | Turning it on judges every waiting pair |
 | Saving the Ollama connection | `no_connection` pairs return to waiting |
 | A retry or undo from the activity log | A retried pair is claimable now |
+| `Judge again` on Duplicates | A pair returned to waiting is claimable now |
 | The earliest `retry_at` of a failed pair | Retries need nothing from the owner  |
 
 The worker asks the store whether an `ollama.endpoint` row exists before a

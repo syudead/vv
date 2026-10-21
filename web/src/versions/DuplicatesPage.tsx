@@ -1,4 +1,4 @@
-import { Layers } from "lucide-react";
+import { Info, Layers, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -6,23 +6,37 @@ import {
   dismissVersionCandidate,
   isAborted,
   listVersionCandidates,
+  rejudgeVersionCandidate,
   RequestFailed,
   type VersionCandidate,
+  type VersionCandidateJudgement,
   type Video,
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
-import { errorText, t } from "../i18n";
+import { errorText, formatTime, t } from "../i18n";
 import { inProgress } from "../shell/ScanProvider";
+import { audioCodecName } from "../player/MediaInfoGroups";
 import { VideoThumbnail, videoLinkLabel } from "../player/RelatedVideos";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/shadcn/dialog";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 import BundleDialog from "./BundleDialog";
+import { JudgementEvidence } from "./JudgementEvidence";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
 const backTo = "/duplicates";
@@ -31,19 +45,24 @@ const backTo = "/duplicates";
 interface Pair {
   key: string;
   videos: readonly [Video, Video];
+  judgement: VersionCandidateJudgement;
 }
 
 type Page =
   | { kind: "loading" }
   | { kind: "failed" }
-  | { kind: "ready"; items: Pair[]; total: number };
+  | { kind: "ready"; items: Pair[]; total: number; judging: boolean };
 
 /** Ignore malformed pairs with other than two videos. */
 function toPair(candidate: VersionCandidate): Pair | null {
   const [first, second] = candidate.videos;
   if (first === undefined || second === undefined || candidate.videos.length !== 2)
     return null;
-  return { key: `${String(first.id)}-${String(second.id)}`, videos: [first, second] };
+  return {
+    key: `${String(first.id)}-${String(second.id)}`,
+    videos: [first, second],
+    judgement: candidate.judgement,
+  };
 }
 
 function pairIds(pair: Pair): [number, number] {
@@ -107,7 +126,7 @@ export default function DuplicatesPage() {
           if (dropped > 0) again.current = true;
           else total = 0;
         }
-        showPage({ kind: "ready", items, total });
+        showPage({ kind: "ready", items, total, judging: result.judging });
         if (again.current) load();
       },
       (error: unknown) => {
@@ -162,7 +181,7 @@ export default function DuplicatesPage() {
     if (index < 0) return;
     const items = page.items.filter((_, position) => position !== index);
     const total = Math.max(0, page.total - 1);
-    showPage({ kind: "ready", items, total });
+    showPage({ ...page, items, total });
     if (items.length === 0 && total > 0) load();
     const next = items[index] ?? items[index - 1];
     const nextKey = next === undefined ? undefined : next.key;
@@ -173,7 +192,8 @@ export default function DuplicatesPage() {
     }, 0);
   }
 
-  function dismiss(pair: Pair) {
+  /** Disable a pair's buttons while one request for it runs. */
+  function sendForPair(pair: Pair, send: () => Promise<void>, sent: () => void) {
     const key = pair.key;
     if (dismissing.has(key)) return;
     setDismissing((current) => new Set(current).add(key));
@@ -183,11 +203,10 @@ export default function DuplicatesPage() {
         rest.delete(key);
         return rest;
       });
-    dismissVersionCandidate(pairIds(pair)).then(
+    send().then(
       () => {
         settle();
-        removePair(key);
-        toast(t.versions.duplicates.dismissed);
+        sent();
       },
       (error: unknown) => {
         settle();
@@ -197,6 +216,28 @@ export default function DuplicatesPage() {
           return;
         }
         toast(errorText(error));
+      },
+    );
+  }
+
+  function dismiss(pair: Pair) {
+    sendForPair(
+      pair,
+      () => dismissVersionCandidate(pairIds(pair)),
+      () => {
+        removePair(pair.key);
+        toast(t.versions.duplicates.dismissed);
+      },
+    );
+  }
+
+  function rejudge(pair: Pair) {
+    sendForPair(
+      pair,
+      () => rejudgeVersionCandidate(pairIds(pair)),
+      () => {
+        toast(t.versions.duplicates.rejudged);
+        load();
       },
     );
   }
@@ -256,6 +297,7 @@ export default function DuplicatesPage() {
               <PairRow
                 key={key}
                 pair={pair}
+                judging={page.judging}
                 pending={dismissing.has(key)}
                 differentRef={(element) => {
                   if (element === null) differentButtons.current.delete(key);
@@ -263,6 +305,7 @@ export default function DuplicatesPage() {
                 }}
                 onDifferent={() => dismiss(pair)}
                 onSame={() => setBundling(pair)}
+                onRejudge={() => rejudge(pair)}
               />
             );
           })}
@@ -286,26 +329,53 @@ export default function DuplicatesPage() {
   );
 }
 
+const rejudgeable: ReadonlySet<VersionCandidateJudgement["state"]> = new Set([
+  "undecided",
+  "failed",
+  "no_connection",
+]);
+
 function PairRow({
   pair,
+  judging,
   pending,
   differentRef,
   onDifferent,
   onSame,
+  onRejudge,
 }: {
   pair: Pair;
+  judging: boolean;
   pending: boolean;
   differentRef: (element: HTMLButtonElement | null) => void;
   onDifferent: () => void;
   onSame: () => void;
+  onRejudge: () => void;
 }) {
   const [first, second] = pair.videos;
+  const { judgement } = pair;
+  // Show the video whose frames are on the left of the evidence images first.
+  const shown = judgement.leftVideoId === second.id ? [second, first] : [first, second];
+  const framed =
+    judgement.evidence?.frames !== undefined && judgement.evidence.frames.length > 0;
   return (
     <li className="flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">{t.versions.duplicates.reason}</p>
         {/* Place decisions before video details in DOM order too. */}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          {judging && rejudgeable.has(judgement.state) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              aria-label={t.versions.duplicates.rejudgeFor(first.title, second.title)}
+              onClick={onRejudge}
+            >
+              <RotateCw aria-hidden="true" />
+              {t.versions.duplicates.rejudge}
+            </Button>
+          )}
           <Button
             ref={differentRef}
             variant="outline"
@@ -329,19 +399,145 @@ function PairRow({
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {pair.videos.map((video) => (
-          <CandidateVideo key={video.id} video={video} />
+        {shown.map((video, index) => (
+          <CandidateVideo
+            key={video.id}
+            video={video}
+            side={
+              framed
+                ? index === 0
+                  ? t.versions.duplicates.left
+                  : t.versions.duplicates.right
+                : undefined
+            }
+          />
         ))}
       </div>
+      <JudgementPanel
+        judgement={judgement}
+        judging={judging}
+        titles={[first.title, second.title]}
+      />
     </li>
   );
 }
 
+function judgementState(judgement: VersionCandidateJudgement, judging: boolean): string {
+  const state = t.versions.judgement.state;
+  switch (judgement.state) {
+    case "waiting":
+      return judging ? state.waiting : t.versions.judgement.judgingOff;
+    case "failed": {
+      const failed = state.failed(judgement.error ?? "");
+      return judgement.retryAt === undefined
+        ? failed
+        : `${failed} · ${t.versions.judgement.retryAt(formatTime(judgement.retryAt))}`;
+    }
+    case "undecided":
+      return undecidedReason(judgement);
+    default:
+      return state[judgement.state];
+  }
+}
+
+/** Name what left the pair undecided, so the headline says more than that it was. */
+function undecidedReason(judgement: VersionCandidateJudgement): string {
+  const state = t.versions.judgement.state;
+  if (judgement.evidence?.conflict === true) return state.undecidedConflict;
+  if (judgement.evidence?.byProperties === true) return state.undecidedProperties;
+  if (judgement.evidence?.rule === "incomparable") return state.undecidedIncomparable;
+  if (judgement.probability !== undefined)
+    return state.undecidedAi(t.activity.percent(judgement.probability));
+  return state.undecided;
+}
+
+/** The automatic judgement's state in one line; the reasons and frames open in a dialog. */
+function JudgementPanel({
+  judgement,
+  judging,
+  titles,
+}: {
+  judgement: VersionCandidateJudgement;
+  judging: boolean;
+  titles: readonly [string, string];
+}) {
+  const [open, setOpen] = useState(false);
+  const j = t.versions.judgement;
+  const headline = judgementState(judgement, judging);
+  const evidence = rejudgeable.has(judgement.state) ? judgement.evidence : undefined;
+  return (
+    <section
+      aria-label={j.heading}
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted px-3 py-2"
+    >
+      <p className="min-w-0 text-sm text-foreground">{headline}</p>
+      {evidence !== undefined && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" aria-label={j.whyFor(...titles)}>
+              <Info aria-hidden="true" />
+              {j.why}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{j.whyTitle}</DialogTitle>
+              <DialogDescription>{headline}</DialogDescription>
+            </DialogHeader>
+            <JudgementEvidence
+              evidence={evidence}
+              probability={judgement.probability}
+              activityId={judgement.activityId}
+              columns={1}
+            />
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">{t.common.close}</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </section>
+  );
+}
+
+function fileName(video: Video): string {
+  const path = video.location?.path ?? "";
+  return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+}
+
+/** Frame rate, bit rate and audio, which with the thumbnail's length tell two encodes of one video apart. */
+function playbackFacts(video: Video): string[] {
+  const m = t.player.mediaInfo;
+  const media = video.mediaInfo?.video;
+  const [track, ...more] = video.mediaInfo?.audioTracks ?? [];
+  let audio: string = t.versions.duplicates.noAudio;
+  if (track !== undefined) {
+    // A space, not the line's separator, keeps one track's codec and channels together.
+    audio = [
+      track.codec === undefined ? undefined : audioCodecName(track.codec),
+      track.channels === undefined ? undefined : m.channels(track.channels),
+      more.length === 0 ? undefined : t.versions.duplicates.moreAudio(more.length),
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join(" ");
+  } else if (video.audioCodec !== undefined && video.audioCodec !== "")
+    audio = audioCodecName(video.audioCodec);
+  return [
+    media?.frameRate === undefined ? undefined : m.frameRate(media.frameRate),
+    media?.bitRate === undefined ? undefined : m.bitRate(media.bitRate),
+    video.probeState === "done" ? audio : undefined,
+  ].filter((value): value is string => value !== undefined && value !== "");
+}
+
 /** Give both videos equal visual emphasis. */
-function CandidateVideo({ video }: { video: Video }) {
+function CandidateVideo({ video, side }: { video: Video; side: string | undefined }) {
   const details = versionDetails(video);
   const specs = { specs: details.specs, place: "" };
+  const playback = { specs: playbackFacts(video), place: "" };
   const absolute = video.location?.path ?? details.place;
+  const name = fileName(video);
   return (
     <Link
       to={`/videos/${String(video.id)}`}
@@ -351,12 +547,24 @@ function CandidateVideo({ video }: { video: Video }) {
     >
       <VideoThumbnail video={video} className="w-list-thumb-cell" />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
+        {side !== undefined && (
+          <span className="text-xs font-medium text-muted-foreground">{side}</span>
+        )}
         <span
           className="line-clamp-2 text-sm font-medium wrap-anywhere text-foreground"
           title={video.title}
         >
           {video.title}
         </span>
+        {name !== "" && name !== video.title && (
+          <span className="truncate text-xs text-muted-foreground" title={name}>
+            {name}
+          </span>
+        )}
+        <VersionDetailsLine
+          details={playback}
+          title={versionDetailsText(playback, " · ")}
+        />
         <VersionDetailsLine details={specs} title={versionDetailsText(specs, " · ")} />
         {details.place !== "" && (
           // Preserve the path suffix nearest the file.
