@@ -35,12 +35,16 @@ func (s *server) ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request, id
 	if !s.creditsConfigured(w) {
 		return
 	}
-	person, err := s.credits.ConfirmFaceCandidate(r.Context(), id, otherID)
+	confirmed, err := s.credits.ConfirmFaceCandidate(r.Context(), id, otherID)
 	if err != nil {
 		s.writeFaceCandidateError(w, err)
 		return
 	}
-	s.writeCreditBody(w, http.StatusOK, toAPIPerson(person))
+	body := gen.FaceCandidateConfirmation{Person: toAPIPerson(confirmed.Person)}
+	if confirmed.UndoActivityID != 0 {
+		body.UndoActivityId = &confirmed.UndoActivityID
+	}
+	s.writeCreditBody(w, http.StatusOK, body)
 }
 
 func (s *server) DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id gen.PersonId, otherID gen.FaceCandidateOtherId) {

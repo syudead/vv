@@ -25,7 +25,7 @@ type Credits interface {
 	Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error)
 	Delete(ctx context.Context, kind domain.CreditKind, id int64) error
 	FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error)
-	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error)
+	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.FaceCandidateConfirmation, error)
 	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
 	ReopenFaceCandidate(ctx context.Context, personID, otherID int64) error
 	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.

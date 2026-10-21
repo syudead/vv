@@ -32,8 +32,16 @@ export async function listFaceCandidates(
 }
 
 /** Merge otherId into id, or id into otherId when only otherId has a name; returns the merged person. */
-export function confirmFaceCandidate(id: number, otherId: number): Promise<Person> {
-  return request<Person>(pairPath(id, otherId, "confirm"), { method: "POST" });
+export type FaceCandidateConfirmation =
+  components["schemas"]["FaceCandidateConfirmation"];
+
+export function confirmFaceCandidate(
+  id: number,
+  otherId: number,
+): Promise<FaceCandidateConfirmation> {
+  return request<FaceCandidateConfirmation>(pairPath(id, otherId, "confirm"), {
+    method: "POST",
+  });
 }
 
 async function postPair(

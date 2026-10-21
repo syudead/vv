@@ -73,7 +73,8 @@ func TestConfirmFaceCandidateMergesTheProvisionalPersonWhicheverIDComesFirst(t *
 			id, other = other, id
 		}
 
-		person, err := f.db.Credits().ConfirmFaceCandidate(ctx, id, other)
+		confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, id, other)
+		person := confirmed.Person
 		if err != nil {
 			t.Fatalf("provisional first %v: %v", provisionalFirst, err)
 		}
@@ -126,7 +127,8 @@ func TestConfirmFaceCandidateKeepsTheConfirmingPersonBetweenUnnamedPeople(t *tes
 			from, merged, crop = stored, other, "crop-stored"
 		}
 
-		person, err := f.db.Credits().ConfirmFaceCandidate(ctx, from, merged)
+		confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, from, merged)
+		person := confirmed.Person
 		if err != nil {
 			t.Fatalf("from the stored side %v: %v", fromStoredSide, err)
 		}
@@ -233,4 +235,38 @@ func TestMergingKeepsOneCandidateRowPerPairOfPeople(t *testing.T) {
 			t.Errorf("candidates of the target = %v, want the provisional person %d once", got, f.provisional)
 		}
 	})
+}
+
+// Confirming an unnamed person records a face_merge decided by the owner, whose undo brings the person and their
+// faces back; a merge of a named person records none.
+func TestConfirmFaceCandidateOfAnUnnamedPersonCanBeUndone(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmed.Person.ID != f.near || confirmed.UndoActivityID == 0 {
+		t.Fatalf("confirmed = %+v, want Near with an undo entry", confirmed)
+	}
+	entry := entriesOfKind(t, f.db, domain.ActivityFaceMerge)[0]
+	if entry.ID != confirmed.UndoActivityID || entry.Decider != domain.ActivityByOwner {
+		t.Errorf("entry = %+v, want entry %d decided by the owner", entry, confirmed.UndoActivityID)
+	}
+
+	if undo, err := f.db.Activity().UndoFaceMerge(ctx, confirmed.UndoActivityID); err != nil || undo.Outcome != domain.ActivityCompleted {
+		t.Fatalf("undo = %+v, %v; want completed", undo, err)
+	}
+	if _, err := f.db.Credits().Get(ctx, domain.CreditPerson, f.provisional); err != nil {
+		t.Errorf("the unnamed person after undo: %v, want them back", err)
+	}
+	if got := faceAppearances(t, f.db)[1].personID; got != f.provisional {
+		t.Errorf("their face belongs to %d after undo, want %d", got, f.provisional)
+	}
+
+	offerFaceCandidate(t, f.db, f.near, f.nearer)
+	named, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.nearer)
+	if err != nil || named.UndoActivityID != 0 {
+		t.Errorf("confirm of two named people = %+v, %v; want no undo entry", named, err)
+	}
 }

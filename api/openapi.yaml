@@ -3054,7 +3054,7 @@ paths:
     post:
       operationId: confirmFaceCandidate
       summary: "Merge a face candidate pair"
-      description: "Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
+      description: "Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/FaceCandidateOtherId"
@@ -3064,7 +3064,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Person"
+                $ref: "#/components/schemas/FaceCandidateConfirmation"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -7848,6 +7848,18 @@ components:
           type: number
           format: double
           description: "The pair's highest face similarity when last computed, from 0 to 1."
+
+    FaceCandidateConfirmation:
+      type: object
+      required: [person]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        undoActivityId:
+          type: integer
+          format: int64
+          description: "The face_merge entry that undoes the merge; absent when the merged person had a name."
 
     FaceAppearanceList:
       type: object

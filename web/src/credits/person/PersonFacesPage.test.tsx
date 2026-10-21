@@ -178,6 +178,22 @@ describe("PersonFacesPage", () => {
     expect(faceReads()).toBeGreaterThan(before.faces);
   });
 
+  it("undoes Same person by its merge entry and offers the pair again", async () => {
+    const user = userEvent.setup();
+    server.faceCandidates = [candidate(9, "")];
+    server.mergeTarget = person();
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
+    expect(await screen.findByText("Merged into Aoi")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Undo for #9" }));
+
+    expect(await screen.findByRole("button", { name: "Same person as #9" })).toBeTruthy();
+    expect(sent("POST", "/api/activity/31/undo")).toHaveLength(1);
+    expect(sent("POST", "/api/people/7/face-candidates/9/reopen")).toHaveLength(1);
+  });
+
   it("keeps a dismissed pair with Undo, which reopens it", async () => {
     const user = userEvent.setup();
     server.faceCandidates = [candidate(9, "Alice"), candidate(10, "Mio")];

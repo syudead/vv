@@ -162,7 +162,10 @@ function faceRoute(method: string, url: URL): Response | null {
       (item) => item.person.id !== Number(pair[1]),
     );
     if (pair[2] === "dismiss") return new Response(null, { status: 204 });
-    return jsonResponse(server.mergeTarget);
+    return jsonResponse({ person: server.mergeTarget, undoActivityId: 31 });
+  }
+  if (url.pathname === "/api/activity/31/undo" && method === "POST") {
+    return jsonResponse({ id: 32 });
   }
   if (url.pathname === "/api/people/7/merge" && method === "POST") {
     return jsonResponse({ person: server.person, notFoundIds: [] });

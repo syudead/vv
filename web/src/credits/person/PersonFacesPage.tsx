@@ -3,9 +3,11 @@ import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import { mergeCredits, type Person } from "../../api/credits";
+import { undoActivity } from "../../api/activity";
 import {
   confirmFaceCandidate,
   type FaceCandidatePerson,
+  reopenFaceCandidate,
   splitFaceAppearance,
   splitFaceAppearances,
 } from "../../api/personFaces";
@@ -119,13 +121,23 @@ function FacesShown({
 
   /** The shown person stays unless they have no name and the other has; then the page follows the merge. */
   async function confirmCandidate(other: FaceCandidatePerson) {
-    const target = await confirmFaceCandidate(person.id, other.id);
+    const { person: target, undoActivityId } = await confirmFaceCandidate(
+      person.id,
+      other.id,
+    );
     if (target.id !== person.id) {
       toast(text.mergedInto(creditDisplayName(target)));
       void navigate(personFacesPath(target.id));
-      return;
+      return undefined;
     }
     replace(target);
+    return undoActivityId;
+  }
+
+  /** Undo brings the merged person back and dismisses the pair; reopening offers it again as before. */
+  async function undoConfirm(other: FaceCandidatePerson, activityId: number) {
+    await undoActivity(activityId);
+    await reopenFaceCandidate(person.id, other.id);
   }
 
   function splitAppearances(appearanceIds: readonly number[]): Promise<Person> {
@@ -193,6 +205,7 @@ function FacesShown({
               items={candidates.items}
               actions={{
                 confirm: confirmCandidate,
+                undoConfirm,
                 remove: candidates.remove,
                 onGone: markGone,
               }}

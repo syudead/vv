@@ -77,7 +77,7 @@ func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int
 	}
 	defer func() { _ = tx.Rollback() }()
 	c := &changes{}
-	after, events, err := mergeProvisional(ctx, tx, c, sourceID, targetID, time.Now())
+	after, events, _, err := mergeProvisional(ctx, tx, c, sourceID, targetID, domain.ActivityByRule, time.Now())
 	if err != nil {
 		return domain.Credit{}, err
 	}
@@ -87,55 +87,57 @@ func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int
 	return after, nil
 }
 
-// mergeProvisional performs MergeProvisional inside tx and returns the target with the events of a face it took.
-func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, targetID int64, now time.Time) (
-	domain.Credit, []domain.Event, error,
-) {
+// mergeProvisional performs MergeProvisional inside tx, recorded as decided by decider, and returns the target with
+// the events of a face it took and the face_merge entry that can undo it.
+func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, targetID int64,
+	decider domain.ActivityDecider, now time.Time,
+) (domain.Credit, []domain.Event, int64, error) {
 	t := creditTablesByKind[domain.CreditPerson]
 	merged, _, err := mergeSources(ctx, tx, t, targetID, []int64{sourceID})
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	if len(merged) == 0 {
-		return domain.Credit{}, nil, domain.ErrNotFound
+		return domain.Credit{}, nil, 0, domain.ErrNotFound
 	}
 	source, err := creditByID(ctx, tx, t, sourceID)
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	if !source.Provisional {
-		return domain.Credit{}, nil, domain.ErrPersonNotProvisional
+		return domain.Credit{}, nil, 0, domain.ErrPersonNotProvisional
 	}
 	before, err := creditByID(ctx, tx, t, targetID)
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	snapshot, err := readFaceMergeSource(ctx, tx, source, targetID)
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	credits, err := readFaceMergeCredits(ctx, tx, sourceID, targetID)
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	if err := mergeCreditsInto(ctx, tx, t, targetID, merged); err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	if err := checkMergedCreditLimits(ctx, tx, t, targetID); err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	after, err := creditByID(ctx, tx, t, targetID)
 	if err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
 	if snapshot.Target, err = faceMergeTarget(ctx, tx, before, after); err != nil {
-		return domain.Credit{}, nil, err
+		return domain.Credit{}, nil, 0, err
 	}
-	if err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, now); err != nil {
-		return domain.Credit{}, nil, err
+	entryID, err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, decider, now)
+	if err != nil {
+		return domain.Credit{}, nil, 0, err
 	}
 	c.matchesChanged()
-	return after, personFaceEvents(before, after), nil
+	return after, personFaceEvents(before, after), entryID, nil
 }
 
 // readFaceMergeSource reads what the merge is about to move from the source, other than credits.
@@ -273,33 +275,33 @@ func faceMergeTarget(ctx context.Context, tx *sql.Tx, before, after domain.Credi
 }
 
 func recordFaceMerge(ctx context.Context, tx *sql.Tx, c *changes, sourceID int64, target domain.Credit,
-	snapshot faceMergeSnapshot, credits []faceMergeCredit, now time.Time,
-) error {
+	snapshot faceMergeSnapshot, credits []faceMergeCredit, decider domain.ActivityDecider, now time.Time,
+) (int64, error) {
 	entryID, err := recordActivity(ctx, tx, c, domain.ActivityEntry{
 		Kind: domain.ActivityFaceMerge, Status: domain.ActivityDone, Outcome: domain.ActivityCompleted,
-		Decider: domain.ActivityByRule,
+		Decider: decider,
 		Subject: domain.ActivitySubject{
 			Kind: domain.ActivitySubjectPerson, Key: strconv.FormatInt(target.ID, 10), Label: target.Name,
 		},
 	}, now)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {
-		return fmt.Errorf("cannot encode the merge of person %d: %w", sourceID, err)
+		return 0, fmt.Errorf("cannot encode the merge of person %d: %w", sourceID, err)
 	}
 	if _, err := tx.ExecContext(ctx, `insert into activity_entry_person_merges (entry_id, source_id, target_id, snapshot)
 		values (?, ?, ?, ?)`, entryID, sourceID, target.ID, string(encoded)); err != nil {
-		return fmt.Errorf("cannot record the merge of person %d: %w", sourceID, err)
+		return 0, fmt.Errorf("cannot record the merge of person %d: %w", sourceID, err)
 	}
 	for _, credit := range credits {
 		if _, err := tx.ExecContext(ctx, `insert into activity_entry_merge_credits (entry_id, user_key, role, target_had)
 			values (?, ?, ?, ?)`, entryID, credit.userKey, credit.role, boolToInt(credit.targetHad)); err != nil {
-			return fmt.Errorf("cannot record the merged credits of person %d: %w", sourceID, err)
+			return 0, fmt.Errorf("cannot record the merged credits of person %d: %w", sourceID, err)
 		}
 	}
-	return nil
+	return entryID, nil
 }
 
 // markOwnerChangedMergeCredits marks the credits a work-information write removes from the target of a face_merge

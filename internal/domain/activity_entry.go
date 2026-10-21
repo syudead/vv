@@ -299,7 +299,8 @@ func (e ActivityEntry) RetryOffered() bool {
 // UndoOffered accepts automatic same/different judgements and completed automatic merges not already undone; auto_tag
 // and face_analysis entries need one tag or link that TagUndoOffered or FaceLinkUndoOffered accepts.
 func (e ActivityEntry) UndoOffered() bool {
-	if e.UndoneBy != 0 || !e.Decider.automatic() {
+	// A face merge the owner confirmed on the faces page is undone from there like an automatic one.
+	if e.UndoneBy != 0 || !e.Decider.automatic() && e.Kind != ActivityFaceMerge {
 		return false
 	}
 	switch e.Kind {

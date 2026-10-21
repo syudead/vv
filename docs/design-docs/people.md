@@ -333,7 +333,9 @@ then `Not the same` and `Same person`. One face alone is a poor basis for the
 decision, so the crops come from each person's first appearances
 (`GET /api/people/{id}/appearances?limit=4`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
-and the row reads `Merged into {name}`; only an unnamed person confirmed with a
+and the row reads `Merged into {name}`, with `Undo` when the merged person had
+no name, which takes the merge back and offers the pair again; only an unnamed
+person confirmed with a
 named one is merged away, and the page then opens the named person's faces
 page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
 A pressed row disables only its own buttons.

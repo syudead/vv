@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -65,30 +66,42 @@ func requirePerson(ctx context.Context, q rowQueryer, personID int64) error {
 
 // ConfirmFaceCandidate merges the other person of the open pair into personID through the ordinary merge, or personID
 // into the other when only the other has a name, and returns the target; without an open pair it returns
-// domain.ErrFaceCandidateNotFound.
-func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error) {
-	t, err := creditTablesFor(domain.CreditPerson)
-	if err != nil {
-		return domain.Credit{}, err
-	}
+// domain.ErrFaceCandidateNotFound. A merged person without a name is recorded as a face_merge decided by the owner,
+// whose id the result carries so the faces page can undo it.
+func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.FaceCandidateConfirmation, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.Credit{}, err
+		return domain.FaceCandidateConfirmation{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	sourceID, targetID, err := openFacePairDirection(ctx, tx, personID, otherID)
 	if err != nil {
-		return domain.Credit{}, err
+		return domain.FaceCandidateConfirmation{}, err
 	}
-	outcome, events, err := mergeCreditsInTx(ctx, tx, t, targetID, []int64{sourceID})
+	source, err := creditByID(ctx, tx, creditTablesByKind[domain.CreditPerson], sourceID)
 	if err != nil {
-		return domain.Credit{}, err
+		return domain.FaceCandidateConfirmation{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot merge person %d into person %d: %w", sourceID, targetID, err)
+	c := &changes{}
+	var result domain.FaceCandidateConfirmation
+	var events []domain.Event
+	if source.Provisional {
+		result.Person, events, result.UndoActivityID, err = mergeProvisional(ctx, tx, c, sourceID, targetID,
+			domain.ActivityByOwner, time.Now())
+	} else {
+		var outcome domain.CreditMergeOutcome
+		outcome, events, err = mergeCreditsInTx(ctx, tx, creditTablesByKind[domain.CreditPerson], targetID, []int64{sourceID})
+		result.Person = outcome.Credit
+		c.matchesChanged()
 	}
-	return outcome.Credit, nil
+	if err != nil {
+		return domain.FaceCandidateConfirmation{}, err
+	}
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
+		return domain.FaceCandidateConfirmation{}, fmt.Errorf("cannot merge person %d into person %d: %w", sourceID, targetID, err)
+	}
+	return result, nil
 }
 
 // openFacePairDirection returns the open pair's people as (source, target): the person the owner confirms from stays,
