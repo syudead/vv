@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -43,10 +44,18 @@ func (s *server) ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request, id
 }
 
 func (s *server) DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id gen.PersonId, otherID gen.FaceCandidateOtherId) {
+	s.setFaceCandidateDismissed(w, r, func(ctx context.Context) error { return s.credits.DismissFaceCandidate(ctx, id, otherID) })
+}
+
+func (s *server) ReopenFaceCandidate(w http.ResponseWriter, r *http.Request, id gen.PersonId, otherID gen.FaceCandidateOtherId) {
+	s.setFaceCandidateDismissed(w, r, func(ctx context.Context) error { return s.credits.ReopenFaceCandidate(ctx, id, otherID) })
+}
+
+func (s *server) setFaceCandidateDismissed(w http.ResponseWriter, r *http.Request, set func(context.Context) error) {
 	if !s.creditsConfigured(w) {
 		return
 	}
-	if err := s.credits.DismissFaceCandidate(r.Context(), id, otherID); err != nil {
+	if err := set(r.Context()); err != nil {
 		s.writeFaceCandidateError(w, err)
 		return
 	}

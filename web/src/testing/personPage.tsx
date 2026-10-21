@@ -131,10 +131,14 @@ function faceRoute(method: string, url: URL): Response | null {
   }
   if (url.pathname === "/api/people/7/appearances") {
     if (url.searchParams.get("cursor") === "page-2") {
-      return jsonResponse({ items: server.laterAppearances });
+      return jsonResponse({
+        items: server.laterAppearances,
+        total: server.appearances.length + server.laterAppearances.length,
+      });
     }
     return jsonResponse({
       items: server.appearances,
+      total: server.appearances.length + server.laterAppearances.length,
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
   }
@@ -145,15 +149,20 @@ function faceRoute(method: string, url: URL): Response | null {
     );
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
-  const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
-    url.pathname,
-  );
+  const pair =
+    /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss|reopen)$/.exec(
+      url.pathname,
+    );
   if (pair !== null && method === "POST") {
+    if (pair[2] === "reopen") return new Response(null, { status: 204 });
     server.faceCandidates = server.faceCandidates.filter(
       (item) => item.person.id !== Number(pair[1]),
     );
     if (pair[2] === "dismiss") return new Response(null, { status: 204 });
     return jsonResponse(server.mergeTarget);
+  }
+  if (url.pathname === "/api/people/7/merge" && method === "POST") {
+    return jsonResponse({ person: server.person, notFoundIds: [] });
   }
   const target = server.mergeTarget;
   if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {

@@ -11,7 +11,11 @@ function personPath(id: number): string {
   return `/api/people/${String(id)}`;
 }
 
-function pairPath(id: number, otherId: number, action: "confirm" | "dismiss"): string {
+function pairPath(
+  id: number,
+  otherId: number,
+  action: "confirm" | "dismiss" | "reopen",
+): string {
   return `${personPath(id)}/face-candidates/${String(otherId)}/${action}`;
 }
 
@@ -27,14 +31,27 @@ export async function listFaceCandidates(
   return body.items;
 }
 
-/** Merge the provisional one of the pair into the other; returns the merged person. */
+/** Merge the other person into id, or id into a named other when id has no name; returns the merged person. */
 export function confirmFaceCandidate(id: number, otherId: number): Promise<Person> {
   return request<Person>(pairPath(id, otherId, "confirm"), { method: "POST" });
 }
 
-export async function dismissFaceCandidate(id: number, otherId: number): Promise<void> {
-  const response = await apiFetch(pairPath(id, otherId, "dismiss"), { method: "POST" });
+async function postPair(
+  id: number,
+  otherId: number,
+  action: "dismiss" | "reopen",
+): Promise<void> {
+  const response = await apiFetch(pairPath(id, otherId, action), { method: "POST" });
   if (!response.ok) throw await toRequestFailed(response);
+}
+
+export function dismissFaceCandidate(id: number, otherId: number): Promise<void> {
+  return postPair(id, otherId, "dismiss");
+}
+
+/** Takes back a dismissal, so the pair is offered again. */
+export function reopenFaceCandidate(id: number, otherId: number): Promise<void> {
+  return postPair(id, otherId, "reopen");
 }
 
 /** True when the pair is no longer open, so its row has nothing left to decide. */

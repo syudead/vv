@@ -3088,6 +3088,22 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/face-candidates/{otherId}/reopen:
+    post:
+      operationId: reopenFaceCandidate
+      summary: "Take back the dismissal of a face candidate pair"
+      description: "Owner-only; no body. For undoing \"Not the same\": marks the dismissed pair of id and otherId, in either order, open again, so it is offered as before. No dismissed pair of these two people returns 404 face_candidate_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "204":
+          description: "Reopened"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/people/{id}/appearances:
     get:
       operationId: listPersonAppearances
@@ -7802,13 +7818,16 @@ components:
 
     FaceAppearanceList:
       type: object
-      required: [items]
+      required: [items, total]
       additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/FaceAppearance"
+        total:
+          type: integer
+          description: "Every appearance of the person that is not dropped, across all pages."
         nextCursor:
           type: string
           description: "Next-page cursor, included only when limit is supplied and more results remain."

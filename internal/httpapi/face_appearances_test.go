@@ -58,6 +58,7 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 			{ID: 4, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
 		},
 		NextCursor: "next",
+		Total:      12,
 	}}
 	f := newFaceAppearanceFixture(t, credits)
 
@@ -69,7 +70,7 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 	want := gen.FaceAppearanceList{Items: []gen.FaceAppearance{
 		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true},
 		{AppearanceId: 4, Title: "key-gone", Spans: []gen.FaceAppearanceSpan{{Start: 0, End: 10}}},
-	}, NextCursor: &next}
+	}, NextCursor: &next, Total: 12}
 	if got := decode[gen.FaceAppearanceList](t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("body = %+v, want %+v", got, want)
 	}

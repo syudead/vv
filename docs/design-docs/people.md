@@ -317,34 +317,48 @@ shows only while `GET /api/settings/face-recognition` reports face recognition
 on; while it is off, or the settings cannot be read, the page neither shows it
 nor reads the candidates.
 
-`Same person?` comes first on the faces page, drawn only while that request
-returns a pair, one row per pair with the other person's `PersonFace judge`,
-name and similarity, and `Same person` and `Not the same` under them. A
-confirm keeps the shown person
+The faces page puts its two lists in `line` tabs, `Same person?` and
+`Faces in videos`, each with its count, and keeps the tab in the address
+(`?tab=candidates` or `?tab=faces`); without one it opens `Same person?`
+unless no pair waits. A `Refresh` button after the tabs reads both lists again.
+Nothing else reads them again: a decided pair and a split face stay where they
+are, dimmed with the result and `Undo` where one applies, so the next row never
+moves under the owner's press. Before, every decision read the lists again,
+which put the faces back to their first page and reordered the pairs.
+
+`Same person?` is one row per pair: the shown person's `PersonFace judge` and
+the other person's side by side, each over the name, the face count and up to
+four of their crops, with the similarity between them (under them below `sm`),
+then `Not the same` and `Same person`. One face alone is a poor basis for the
+decision, so the crops come from each person's first appearances
+(`GET /api/people/{id}/appearances?limit=4`). A confirm keeps the shown person
 ([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
-and reads the candidates and the faces again; only an unnamed person confirmed
-with a named one is merged away, and the page then opens the named person's
-faces page. A pressed row disables only its own
-buttons.
+and the row reads `Merged into {name}`; only an unnamed person confirmed with a
+named one is merged away, and the page then opens the named person's faces
+page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
+A pressed row disables only its own buttons.
 
-`Faces in videos` follows, from `GET /api/people/{id}/appearances`: a
-`PersonFace scene` crop beside the video's title and its spans, each a link
-that plays the video from that time (`?t=`), and `Show more` for the next
-page; with none it says so. An appearance whose video left the library reads
-`Not in the library` without links.
+`Faces in videos` is a `CardGrid size="face"` of `PersonFace scene` crops,
+newest video first, each over the video's title and the start of each span,
+each a link that plays the video from that time (`?t=`); the crop and the title
+open the video at the first span. `Show more` reads the next page; with none it
+says so. An appearance whose video left the library reads
+`Not in the library` without links. A grid shows many faces at once, so a face
+that is not the person stands out, where a list of rows led with titles.
 
-Each row ends with a small `Not this person` button, for a face the analysis
-linked to the wrong person. It splits the face into a new unnamed person with
-no confirmation, since the split is undone by merging the two people: the row
-leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
-action to the new person's page, and the candidates are read again.
-A pressed row disables only its own button, and a failure shows under the row.
+Each crop carries a `Not this person` icon button in its `PersonFaceMark`
+`top-end`, for a face the analysis linked to the wrong person. It splits the
+face into a new unnamed person with no confirmation: the tile stays, dimmed,
+with `Split into #12` and `Undo`, which merges the new person back into the
+shown one (`POST /api/people/{id}/merge`). A pressed tile disables only its own
+button, and a failure shows under it.
 
 | Rejected                                | Why                                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------------- |
 | Candidates and faces on the person page | They crowded out the profile and the videos, which the page is for                |
 | A strip of crops alone                  | Reaching a scene would take a second press, and a crop does not say which video   |
 | Confirming in the people list           | A pair is judged with both faces and the similarity in view, one person at a time |
+| Removing a decided row or a split tile  | The rows after it moved up under the pointer, and a misclick had no way back      |
 
 ## Faces elsewhere on the screens
 

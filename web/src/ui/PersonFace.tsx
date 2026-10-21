@@ -15,8 +15,8 @@ const frames: Record<PersonFaceShape, string> = {
   token: "size-6 rounded-full",
   option: "size-8 rounded-full",
   compare: "size-8 rounded-full",
-  judge: "size-12 rounded-full",
-  scene: "size-12 rounded-md",
+  judge: "size-card-face rounded-full",
+  scene: "aspect-square w-full rounded-md",
 };
 
 const icons: Record<PersonFaceShape, string> = {
@@ -26,8 +26,8 @@ const icons: Record<PersonFaceShape, string> = {
   token: "size-3.5",
   option: "size-4",
   compare: "size-4",
-  judge: "size-5",
-  scene: "size-5",
+  judge: "size-1/3",
+  scene: "size-1/3",
 };
 
 export interface PersonFaceProps {

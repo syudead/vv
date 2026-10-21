@@ -167,6 +167,28 @@ func TestDismissFaceCandidateHidesThePairForGood(t *testing.T) {
 	}
 }
 
+func TestReopenFaceCandidateOffersADismissedPairAgain(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	if err := f.db.Credits().ReopenFaceCandidate(ctx, f.near, f.provisional); !errors.Is(err, domain.ErrFaceCandidateNotFound) {
+		t.Errorf("reopen an open pair: err = %v, want ErrFaceCandidateNotFound", err)
+	}
+	if err := f.db.Credits().DismissFaceCandidate(ctx, f.provisional, f.near); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.db.Credits().ReopenFaceCandidate(ctx, f.near, f.provisional); err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := f.db.Credits().FaceCandidates(ctx, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := facePairPeople(pairs); !slices.Equal(got, []int64{f.nearer, f.near}) {
+		t.Errorf("candidates after reopen = %v, want Nearer %d and Near %d", got, f.nearer, f.near)
+	}
+}
+
 // A merge can bring one pair of people in both orientations; only one row may remain, or the pair is listed twice.
 func TestMergingKeepsOneCandidateRowPerPairOfPeople(t *testing.T) {
 	t.Run("the target's dismissed pair stays", func(t *testing.T) {

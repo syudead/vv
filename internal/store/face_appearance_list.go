@@ -45,12 +45,17 @@ func (s *CreditStore) PersonAppearances(ctx context.Context, personID int64, cur
 	if err := requirePerson(ctx, tx, personID); err != nil {
 		return domain.PersonAppearancePage{}, err
 	}
+	var total int
+	if err := tx.QueryRowContext(ctx, `select count(*) from face_appearances where person_id = ? and dropped = 0`,
+		personID).Scan(&total); err != nil {
+		return domain.PersonAppearancePage{}, fmt.Errorf("cannot count the appearances of person %d: %w", personID, err)
+	}
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return domain.PersonAppearancePage{}, fmt.Errorf("cannot read the appearances of person %d: %w", personID, err)
 	}
 	defer func() { _ = rows.Close() }()
-	page := domain.PersonAppearancePage{Items: []domain.PersonAppearance{}}
+	page := domain.PersonAppearancePage{Items: []domain.PersonAppearance{}, Total: total}
 	var addedAts []int64
 	for rows.Next() {
 		var item domain.PersonAppearance

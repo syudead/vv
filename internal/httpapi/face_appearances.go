@@ -28,7 +28,7 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 		s.writeCreditError(w, peopleAPI, err)
 		return
 	}
-	body := gen.FaceAppearanceList{Items: make([]gen.FaceAppearance, 0, len(page.Items))}
+	body := gen.FaceAppearanceList{Items: make([]gen.FaceAppearance, 0, len(page.Items)), Total: page.Total}
 	if page.NextCursor != "" {
 		body.NextCursor = &page.NextCursor
 	}

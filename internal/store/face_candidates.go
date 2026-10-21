@@ -11,8 +11,9 @@ import (
 
 // A candidate pair is stored once, as (provisional_id, person_id); the API names it by its two people in either
 // order, so every query here matches both orientations.
-const openFacePairCondition = `dismissed = 0 and ((provisional_id = ?1 and person_id = ?2)
-	or (provisional_id = ?2 and person_id = ?1))`
+const facePairCondition = `((provisional_id = ?1 and person_id = ?2) or (provisional_id = ?2 and person_id = ?1))`
+
+const openFacePairCondition = `dismissed = 0 and ` + facePairCondition
 
 // FaceCandidates lists the open pairs the person takes part in, highest similarity first, as the other person of
 // each; a missing person returns domain.ErrNotFound.
@@ -115,14 +116,28 @@ func openFacePairDirection(ctx context.Context, tx *sql.Tx, personID, otherID in
 // DismissFaceCandidate marks the open pair of the two people dismissed, so no later result offers it again; without
 // an open pair it returns domain.ErrFaceCandidateNotFound.
 func (s *CreditStore) DismissFaceCandidate(ctx context.Context, personID, otherID int64) error {
-	res, err := s.sql.ExecContext(ctx, `update face_candidates set dismissed = 1 where `+openFacePairCondition,
-		personID, otherID)
+	return s.setFaceCandidateDismissed(ctx, personID, otherID, true)
+}
+
+// ReopenFaceCandidate takes back a dismissal of the pair of the two people, so it is offered again; without a
+// dismissed pair it returns domain.ErrFaceCandidateNotFound.
+func (s *CreditStore) ReopenFaceCandidate(ctx context.Context, personID, otherID int64) error {
+	return s.setFaceCandidateDismissed(ctx, personID, otherID, false)
+}
+
+func (s *CreditStore) setFaceCandidateDismissed(ctx context.Context, personID, otherID int64, dismissed bool) error {
+	action := "dismiss"
+	if !dismissed {
+		action = "reopen"
+	}
+	res, err := s.sql.ExecContext(ctx, `update face_candidates set dismissed = ?3
+		 where dismissed = 1 - ?3 and `+facePairCondition, personID, otherID, dismissed)
 	if err != nil {
-		return fmt.Errorf("cannot dismiss the face candidate of people %d and %d: %w", personID, otherID, err)
+		return fmt.Errorf("cannot %s the face candidate of people %d and %d: %w", action, personID, otherID, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("cannot dismiss the face candidate of people %d and %d: %w", personID, otherID, err)
+		return fmt.Errorf("cannot %s the face candidate of people %d and %d: %w", action, personID, otherID, err)
 	}
 	if n == 0 {
 		return domain.ErrFaceCandidateNotFound
