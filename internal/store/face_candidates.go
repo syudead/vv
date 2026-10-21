@@ -86,7 +86,8 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 	c := &changes{}
 	var result domain.FaceCandidateConfirmation
 	var events []domain.Event
-	if source.Provisional {
+	// The undo snapshot keeps no external IDs, so a person holding some is merged like a named one, without undo.
+	if source.Provisional && len(source.ExternalIDs) == 0 {
 		result.Person, events, result.UndoActivityID, err = mergeProvisional(ctx, tx, c, sourceID, targetID,
 			domain.ActivityByOwner, time.Now())
 	} else {

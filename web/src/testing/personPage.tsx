@@ -78,6 +78,8 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** How many reopen requests fail before they succeed again. */
+  reopenFailures: 0,
   /** Whether face recognition is on, as the settings report it. */
   faceRecognition: true,
   /** How many videos the person performs in. */
@@ -161,7 +163,13 @@ function faceRoute(method: string, url: URL): Response | null {
       url.pathname,
     );
   if (pair !== null && method === "POST") {
-    if (pair[2] === "reopen") return new Response(null, { status: 204 });
+    if (pair[2] === "reopen") {
+      if (server.reopenFailures > 0) {
+        server.reopenFailures -= 1;
+        return jsonResponse({ code: "internal", message: "Down" }, 500);
+      }
+      return new Response(null, { status: 204 });
+    }
     server.faceCandidates = server.faceCandidates.filter(
       (item) => item.person.id !== Number(pair[1]),
     );
@@ -232,6 +240,7 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.reopenFailures = 0;
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(

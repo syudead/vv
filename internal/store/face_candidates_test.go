@@ -270,3 +270,21 @@ func TestConfirmFaceCandidateOfAnUnnamedPersonCanBeUndone(t *testing.T) {
 		t.Errorf("confirm of two named people = %+v, %v; want no undo entry", named, err)
 	}
 }
+
+// The undo snapshot keeps no external IDs, so an unnamed person holding one merges without undo and the ID moves.
+func TestConfirmFaceCandidateOfAnUnnamedPersonWithAnExternalIDCannotBeUndone(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.sql.Exec(`insert into people_external_ids (person_id, source, value) values (?, 'fanza', 'p-1')`,
+		f.provisional); err != nil {
+		t.Fatal(err)
+	}
+
+	confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmed.UndoActivityID != 0 || !slices.Equal(confirmed.Person.ExternalIDs, []domain.ExternalID{{Source: "fanza", Value: "p-1"}}) {
+		t.Errorf("confirmed = %+v, want Near holding the ID without an undo entry", confirmed)
+	}
+}

@@ -729,7 +729,10 @@ is the target person, and it keeps what the merge moved.
 
 The faces page's `Undo` of a confirmed pair uses the same entry, so
 `UndoOffered` accepts a `face_merge` decided by the owner as it does an
-automatic one; the page then reopens the pair, which undo marks dismissed.
+automatic one; the page then reopens the pair, which undo marks dismissed. The
+snapshot keeps no external IDs, so a confirmed unnamed person who holds one is
+merged as a named person is, with no entry and no `Undo`, rather than lose the
+ID to the target on undo.
 
 Undo re-creates the source under its old id, which SQLite's `AUTOINCREMENT`
 never hands out again, so links to the person page work again. It then moves
