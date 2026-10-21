@@ -126,3 +126,11 @@ func TestParseFilmGrain(t *testing.T) {
 		t.Errorf("パスが最後でない: %v", args)
 	}
 }
+
+func TestParseMediaInfoDropsCountsBeyondInt32(t *testing.T) {
+	video := mediaVideoFixture(t, `{"index": 0, "codec_type": "video", "codec_name": "hevc",
+		"side_data_list": [{"side_data_type": "Frame Cropping", "crop_top": 4294967296, "crop_bottom": 8}]}`)
+	if video.Crop == nil || *video.Crop != (domain.MediaCrop{Bottom: 8}) {
+		t.Errorf("Crop = %+v, want 読めない上だけ省く", video.Crop)
+	}
+}

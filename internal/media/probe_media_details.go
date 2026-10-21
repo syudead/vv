@@ -2,6 +2,7 @@ package media
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"strings"
 
@@ -96,6 +97,15 @@ func probeInt(value probeText) int64 {
 	return parsed
 }
 
+// probeSmallInt is probeInt for counts and codes that fit an int32; a larger value is unreadable.
+func probeSmallInt(value probeText) int {
+	parsed := probeInt(value)
+	if parsed > math.MaxInt32 {
+		return 0
+	}
+	return int(parsed)
+}
+
 func probeFloat(value probeText) *float64 {
 	parsed, ok := domain.MediaRational(string(value))
 	if !ok {
@@ -176,8 +186,8 @@ func addVideoSideData(video *domain.MediaVideo, sideData probeSideData) {
 	case kind == sideDataDisplayMatrix:
 		video.Mirrored = domain.DisplayMatrixMirrored(string(details.DisplayMatrix))
 	case kind == sideDataCropping:
-		crop := domain.MediaCrop{Top: int(probeInt(details.CropTop)), Bottom: int(probeInt(details.CropBottom)),
-			Left: int(probeInt(details.CropLeft)), Right: int(probeInt(details.CropRight))}
+		crop := domain.MediaCrop{Top: probeSmallInt(details.CropTop), Bottom: probeSmallInt(details.CropBottom),
+			Left: probeSmallInt(details.CropLeft), Right: probeSmallInt(details.CropRight)}
 		if crop != (domain.MediaCrop{}) {
 			video.Crop = &crop
 		}
@@ -193,15 +203,15 @@ func addVideoSideData(video *domain.MediaVideo, sideData probeSideData) {
 			video.Mastering = &mastering
 		}
 	case kind == sideDataContentLight:
-		light := domain.MediaContentLight{MaxContent: int(probeInt(details.MaxContent)),
-			MaxAverage: int(probeInt(details.MaxAverage))}
+		light := domain.MediaContentLight{MaxContent: probeSmallInt(details.MaxContent),
+			MaxAverage: probeSmallInt(details.MaxAverage)}
 		if light != (domain.MediaContentLight{}) {
 			video.ContentLight = &light
 		}
 	case kind == sideDataDolbyVision:
-		if profile := probeInt(details.DVProfile); profile > 0 {
-			video.DolbyVision = &domain.MediaDolbyVision{Profile: int(profile), Level: int(probeInt(details.DVLevel)),
-				Compatibility: int(probeInt(details.DVCompatible))}
+		if profile := probeSmallInt(details.DVProfile); profile > 0 {
+			video.DolbyVision = &domain.MediaDolbyVision{Profile: profile, Level: probeSmallInt(details.DVLevel),
+				Compatibility: probeSmallInt(details.DVCompatible)}
 		}
 	case kind == sideDataHEVCLayers:
 		video.MultiLayer = true
@@ -214,7 +224,7 @@ func addAudioDetails(track *domain.MediaAudioTrack, stream probeStream, format p
 	track.SampleRate = parsePositiveInt(stream.SampleRate)
 	track.BitDepth = parsePositiveInt(stream.BitsPerRawSample)
 	if track.BitDepth == 0 {
-		track.BitDepth = int(probeInt(stream.BitsPerSample))
+		track.BitDepth = probeSmallInt(stream.BitsPerSample)
 	}
 	track.SampleFormat = domain.CleanMediaText(stream.SampleFormat)
 	if strings.EqualFold(track.SampleFormat, "unknown") {
@@ -291,7 +301,7 @@ func parseContainer(parsed probeOutput, durationMs int64) *domain.MediaContainer
 		StartMs:          probeMs(string(parsed.Format.StartTime)),
 		MajorBrand:       domain.MediaCodecTag(tags.get("major_brand")),
 		CompatibleBrands: domain.MediaBrands(tags.get("compatible_brands")),
-		ProbeScore:       int(probeInt(parsed.Format.ProbeScore)),
+		ProbeScore:       probeSmallInt(parsed.Format.ProbeScore),
 	}
 	var sizes []domain.MediaStreamSize
 	for _, stream := range parsed.Streams {
