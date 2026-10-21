@@ -5663,8 +5663,24 @@ export interface components {
             versionMismatch?: boolean;
             /** @description The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided. */
             conflict?: boolean;
+            /** @description Stored facts both videos have, compared: work code, external id, recording time, cleaned file title, embedded title, broadcast program and audio languages. */
+            facts?: components["schemas"]["VersionFactSignal"][];
+            /** @description The facts decided the result, or held a frames-or-classifier verdict they contradict for the owner. */
+            byFacts?: boolean;
             /** @description The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image. */
             frames?: components["schemas"]["VersionEvidenceFrame"][];
+        };
+        VersionFactSignal: {
+            /** @enum {string} */
+            kind: "work_code" | "external_id" | "recorded_at" | "title" | "embedded_title" | "program" | "audio_language";
+            /** @enum {string} */
+            match: "same" | "different";
+            /** @description Work code, external id and recording time can decide a pair on their own; the others only lean. */
+            strong?: boolean;
+            /** @description The left video's value. */
+            a: string;
+            /** @description The right video's value. */
+            b: string;
         };
         VersionEvidenceFrame: {
             /**

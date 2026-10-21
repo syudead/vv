@@ -317,6 +317,7 @@ describe("DuplicatesPage", () => {
             { aMs: 81_000, bMs: 81_000, distance: 30 },
             { aMs: 90_000, bMs: 90_500, distance: 28 },
           ],
+          facts: [{ kind: "audio_language", match: "different", a: "jpn", b: "eng" }],
         },
       }),
     ];
@@ -358,6 +359,9 @@ describe("DuplicatesPage", () => {
       "/api/activity/9/judgement-frames/1",
     ]);
     expect(within(dialog).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+    const facts = within(dialog).getByRole("region", { name: "Stored facts" });
+    expect(within(facts).getByText("Audio languages · Different")).toBeDefined();
+    expect(within(facts).getByText("Left: jpn · Right: eng")).toBeDefined();
   });
 
   it("決めかねた理由が比べられないコマか、別物の記録とのぶつかりかを見出しで言い分ける", async () => {
@@ -365,6 +369,10 @@ describe("DuplicatesPage", () => {
       pair(movieA, movieB, {
         state: "undecided",
         evidence: { rule: "incomparable", compared: 2, differing: 0 },
+      }),
+      pair(video(5, { title: "旅行" }), video(6, { title: "旅行 2" }), {
+        state: "undecided",
+        evidence: { rule: "frames_match", compared: 40, differing: 0, byFacts: true },
       }),
       pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" }), {
         state: "undecided",
@@ -379,6 +387,9 @@ describe("DuplicatesPage", () => {
       screen.getByText(
         "Left to you: they look the same, but one is marked as a different video from the other's versions",
       ),
+    ).toBeDefined();
+    expect(
+      screen.getByText("Left to you: the stored facts contradict what the frames show"),
     ).toBeDefined();
   });
 

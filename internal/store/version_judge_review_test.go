@@ -134,3 +134,18 @@ func TestCandidatesDeriveEvidenceJudgedBeforeItWasStored(t *testing.T) {
 		t.Errorf("JudgementEvidence = %+v, %v, want %+v", got, err, evidence)
 	}
 }
+
+func TestClaimJudgementReadsBothSidesFacts(t *testing.T) {
+	db, ids := judgementFixture(t)
+	for _, name := range []string{"a", "b"} {
+		if _, err := db.WorkInfo().Set(context.Background(), ids[name], domain.WorkInfo{Code: "ABC-1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job := claimJudgement(t, db)
+	for i, facts := range job.Facts {
+		if facts.WorkCode != "abc-1" || facts.FileTitle == "" {
+			t.Errorf("%d 本目の事実 = %+v, want 畳んだ作品コードとファイル名", i, facts)
+		}
+	}
+}

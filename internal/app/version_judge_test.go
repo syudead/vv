@@ -438,3 +438,19 @@ func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
 		t.Errorf("待ち = %v, want 10m1s", wait)
 	}
 }
+
+func TestVersionJudgeLetsAMatchingWorkCodeDecideAnUnsureAnswer(t *testing.T) {
+	job := versionJudgeJob(8, 9, 10, 11)
+	job.Facts = [2]domain.VersionFacts{{WorkCode: "abc-1"}, {WorkCode: "abc-1"}}
+	store := newFakeVersionJudgeStore(job)
+	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.5}}
+	judge, _, _ := newTestVersionJudge(store, classifier)
+
+	judge.step(context.Background())
+
+	got := store.lastResult(t)
+	if got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule || got.Probability == nil ||
+		got.Evidence == nil || !got.Evidence.ByFacts || len(got.Evidence.Facts) != 1 {
+		t.Errorf("結果 = %+v（根拠 %+v）, want 作品コードで決めた same、AI の答えは残す", got, got.Evidence)
+	}
+}

@@ -9948,12 +9948,41 @@ components:
         conflict:
           type: boolean
           description: "The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided."
+        facts:
+          type: array
+          description: "Stored facts both videos have, compared: work code, external id, recording time, cleaned file title, embedded title, broadcast program and audio languages."
+          items:
+            $ref: "#/components/schemas/VersionFactSignal"
+        byFacts:
+          type: boolean
+          description: "The facts decided the result, or held a frames-or-classifier verdict they contradict for the owner."
         frames:
           type: array
           maxItems: 4
           description: "The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image."
           items:
             $ref: "#/components/schemas/VersionEvidenceFrame"
+
+    VersionFactSignal:
+      type: object
+      required: [kind, match, a, b]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [work_code, external_id, recorded_at, title, embedded_title, program, audio_language]
+        match:
+          type: string
+          enum: [same, different]
+        strong:
+          type: boolean
+          description: "Work code, external id and recording time can decide a pair on their own; the others only lean."
+        a:
+          type: string
+          description: "The left video's value."
+        b:
+          type: string
+          description: "The right video's value."
 
     VersionEvidenceFrame:
       type: object

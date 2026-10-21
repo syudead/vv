@@ -236,10 +236,12 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 		return true
 	}
 	result.Evidence = domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
+	result = settleByFacts(result, job.Facts)
 	attrs := []any{
 		slog.String("key_a", job.Keys[0]), slog.String("key_b", job.Keys[1]),
 		slog.String("rule", rule.Outcome.String()), slog.Int("frames_compared", rule.Compared),
 		slog.Int("frames_differing", rule.Differing), slog.String("verdict", result.Verdict.String()),
+		slog.Bool("by_facts", result.Evidence.ByFacts),
 	}
 	if probability != nil {
 		attrs = append(attrs, slog.Float64("probability", *probability))
@@ -324,6 +326,23 @@ func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.F
 		return 0, errNoVersionAnswer
 	}
 	return probability, nil
+}
+
+// settleByFacts records the stored facts both sides have and lets them decide or hold the verdict; a verdict the facts
+// decide is the rule's, and the classifier's answer stays as evidence.
+func settleByFacts(result domain.VersionJudgeResult, facts [2]domain.VersionFacts) domain.VersionJudgeResult {
+	signals := domain.CompareVersionFacts(facts[0], facts[1])
+	result.Evidence.Facts = signals
+	verdict, byFacts := domain.SettleVersionVerdict(result.Verdict, domain.LeanVersionFacts(signals), result.Probability)
+	if !byFacts {
+		return result
+	}
+	result.Evidence.ByFacts = true
+	result.Verdict, result.Error = verdict, ""
+	if verdict != domain.VersionUndecided || result.Probability == nil {
+		result.Decider = domain.ActivityByRule
+	}
+	return result
 }
 
 func failedJudgement(err error) domain.VersionJudgeResult {
