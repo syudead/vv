@@ -31,7 +31,6 @@ const (
 type VersionJudgeJob struct {
 	Keys         [2]string
 	Fingerprints [2]Fingerprint
-	Facts        [2]VersionFacts
 	Attempts     int
 }
 
@@ -87,9 +86,6 @@ type VersionJudgeEvidence struct {
 	Frames          []VersionEvidenceFrame `json:"frames,omitempty"`
 	// Conflict marks a same verdict left undecided because a side is known to differ from the other side.
 	Conflict bool `json:"conflict,omitempty"`
-	// Facts are the stored facts both sides have; ByFacts marks a verdict the facts decided or held for the owner.
-	Facts   []VersionFactSignal `json:"facts,omitempty"`
-	ByFacts bool                `json:"byFacts,omitempty"`
 }
 
 // VersionEvidenceFrame is one frame pair shown to the classifier; A and B are frame indexes in each seek preview.

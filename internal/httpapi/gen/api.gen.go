@@ -1980,57 +1980,6 @@ func (e VersionCandidateJudgementState) Valid() bool {
 	}
 }
 
-// Defines values for VersionFactSignalKind.
-const (
-	VersionFactSignalKindAudioLanguage VersionFactSignalKind = "audio_language"
-	VersionFactSignalKindEmbeddedTitle VersionFactSignalKind = "embedded_title"
-	VersionFactSignalKindExternalId    VersionFactSignalKind = "external_id"
-	VersionFactSignalKindProgram       VersionFactSignalKind = "program"
-	VersionFactSignalKindRecordedAt    VersionFactSignalKind = "recorded_at"
-	VersionFactSignalKindTitle         VersionFactSignalKind = "title"
-	VersionFactSignalKindWorkCode      VersionFactSignalKind = "work_code"
-)
-
-// Valid indicates whether the value is a known member of the VersionFactSignalKind enum.
-func (e VersionFactSignalKind) Valid() bool {
-	switch e {
-	case VersionFactSignalKindAudioLanguage:
-		return true
-	case VersionFactSignalKindEmbeddedTitle:
-		return true
-	case VersionFactSignalKindExternalId:
-		return true
-	case VersionFactSignalKindProgram:
-		return true
-	case VersionFactSignalKindRecordedAt:
-		return true
-	case VersionFactSignalKindTitle:
-		return true
-	case VersionFactSignalKindWorkCode:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for VersionFactSignalMatch.
-const (
-	VersionFactSignalMatchDifferent VersionFactSignalMatch = "different"
-	VersionFactSignalMatchSame      VersionFactSignalMatch = "same"
-)
-
-// Valid indicates whether the value is a known member of the VersionFactSignalMatch enum.
-func (e VersionFactSignalMatch) Valid() bool {
-	switch e {
-	case VersionFactSignalMatchDifferent:
-		return true
-	case VersionFactSignalMatchSame:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for VersionJudgeEvidenceRule.
 const (
 	FramesDiffer VersionJudgeEvidenceRule = "frames_differ"
@@ -5659,31 +5608,8 @@ type VersionEvidenceFrame struct {
 	Distance int `json:"distance"`
 }
 
-// VersionFactSignal defines model for VersionFactSignal.
-type VersionFactSignal struct {
-	// A The left video's value.
-	A string `json:"a"`
-
-	// B The right video's value.
-	B     string                 `json:"b"`
-	Kind  VersionFactSignalKind  `json:"kind"`
-	Match VersionFactSignalMatch `json:"match"`
-
-	// Strong Work code, external id and recording time can decide a pair on their own; the others only lean.
-	Strong *bool `json:"strong,omitempty"`
-}
-
-// VersionFactSignalKind defines model for VersionFactSignal.Kind.
-type VersionFactSignalKind string
-
-// VersionFactSignalMatch defines model for VersionFactSignal.Match.
-type VersionFactSignalMatch string
-
 // VersionJudgeEvidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
 type VersionJudgeEvidence struct {
-	// ByFacts The facts decided the result, or held a frames-or-classifier verdict they contradict for the owner.
-	ByFacts *bool `json:"byFacts,omitempty"`
-
 	// Compared Frame pairs compared by time, flat frames skipped.
 	Compared int `json:"compared"`
 
@@ -5692,9 +5618,6 @@ type VersionJudgeEvidence struct {
 
 	// Differing Compared pairs whose pictures differ.
 	Differing int `json:"differing"`
-
-	// Facts Stored facts both videos have, compared: work code, external id, recording time, cleaned file title, embedded title, broadcast program and audio languages.
-	Facts *[]VersionFactSignal `json:"facts,omitempty"`
 
 	// Frames The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image.
 	Frames *[]VersionEvidenceFrame `json:"frames,omitempty"`

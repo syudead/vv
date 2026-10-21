@@ -2,7 +2,6 @@ import { judgementFrameUrl, type VersionJudgeEvidence } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
-import { FactList } from "../ui/patterns/fact-list";
 import { evidenceSentences } from "./evidenceSentences";
 
 /**
@@ -28,18 +27,6 @@ export function JudgementEvidence({
       {evidenceSentences(evidence, probability).map((sentence, index) => (
         <p key={index}>{sentence}</p>
       ))}
-      {evidence.facts !== undefined && evidence.facts.length > 0 && (
-        <section aria-label={j.facts} className="flex flex-col gap-1.5">
-          <h3 className="text-xs font-medium text-foreground">{j.facts}</h3>
-          <FactList
-            facts={evidence.facts.map((fact) => ({
-              id: fact.kind,
-              term: `${j.factKind[fact.kind]} · ${j.factMatch[fact.match]}`,
-              value: j.factValues(fact.a, fact.b),
-            }))}
-          />
-        </section>
-      )}
       {activityId !== undefined && frames.length > 0 && (
         <figure className="flex flex-col gap-1.5">
           <figcaption className="text-xs font-medium text-foreground">

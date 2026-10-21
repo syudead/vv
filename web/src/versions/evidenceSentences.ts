@@ -9,7 +9,6 @@ export function evidenceSentences(
 ): UiText[] {
   const sentences = ruleSentences(evidence, probability);
   if (evidence.conflict === true) sentences.push(t.versions.judgement.conflict);
-  if (evidence.byFacts === true) sentences.push(t.versions.judgement.byFacts);
   return sentences;
 }
 

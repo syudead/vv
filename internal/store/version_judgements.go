@@ -57,9 +57,6 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 			return domain.VersionJudgeJob{}, fmt.Errorf("the version candidate has no fingerprint (key=%s)", key)
 		}
 		job.Fingerprints[i] = fingerprint
-		if job.Facts[i], err = versionFacts(ctx, tx, key); err != nil {
-			return domain.VersionJudgeJob{}, err
-		}
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
@@ -73,81 +70,6 @@ var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
 	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
-
-// versionFacts reads a side's file title, the work information of its user-data key and its media information; a
-// key that left the library has no facts.
-func versionFacts(ctx context.Context, tx *sql.Tx, key string) (domain.VersionFacts, error) {
-	var facts domain.VersionFacts
-	id, err := videoIDForContent(ctx, tx, key)
-	if errors.Is(err, domain.ErrNotFound) {
-		return facts, nil
-	}
-	if err != nil {
-		return facts, err
-	}
-	video, err := getVideo(ctx, tx, domain.AudienceOwner, id)
-	if err != nil {
-		return facts, err
-	}
-	facts.FileTitle = video.FileTitle
-	if err := tx.QueryRowContext(ctx, `select coalesce((select code_key from video_work_info where content_key = ?), '')`,
-		video.UserKey).Scan(&facts.WorkCode); err != nil {
-		return facts, fmt.Errorf("cannot read the work code: %w", err)
-	}
-	if facts.ExternalIDs, err = workExternalIDs(ctx, tx, video.UserKey); err != nil {
-		return facts, err
-	}
-	var version int
-	var encoded string
-	err = tx.QueryRowContext(ctx, `select version, info from video_media_info where video_id = ?`, id).
-		Scan(&version, &encoded)
-	if errors.Is(err, sql.ErrNoRows) {
-		return facts, nil
-	}
-	if err != nil {
-		return facts, fmt.Errorf("cannot read the media information (id=%d): %w", id, err)
-	}
-	mediaFacts(&facts, decodeMediaInfo(version, encoded))
-	return facts, nil
-}
-
-func workExternalIDs(ctx context.Context, tx *sql.Tx, userKey string) ([]domain.ExternalID, error) {
-	rows, err := tx.QueryContext(ctx, `select source, value from video_work_external_ids where content_key = ?
-		order by source, value`, userKey)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var ids []domain.ExternalID
-	for rows.Next() {
-		var id domain.ExternalID
-		if err := rows.Scan(&id.Source, &id.Value); err != nil {
-			return nil, fmt.Errorf("cannot read the external ids: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the external ids: %w", err)
-	}
-	return ids, nil
-}
-
-func mediaFacts(facts *domain.VersionFacts, info *domain.MediaInfo) {
-	if info == nil {
-		return
-	}
-	if info.Embedded != nil {
-		facts.EmbeddedTitle, facts.RecordedAt = info.Embedded.Title, info.Embedded.RecordedAt
-	}
-	if info.Broadcast != nil {
-		facts.Program = info.Broadcast.Program
-	}
-	for _, track := range info.AudioTracks {
-		if track.Language != "" {
-			facts.AudioLanguages = append(facts.AudioLanguages, track.Language)
-		}
-	}
-}
 
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
 	var version int
@@ -666,14 +588,6 @@ func derivedEvidence(
 	}
 	rule := domain.JudgeVersionFrames(fingerprints[0], fingerprints[1])
 	evidence := domain.NewVersionJudgeEvidence(fingerprints[0], fingerprints[1], rule)
-	var facts [2]domain.VersionFacts
-	for i, key := range keys {
-		var err error
-		if facts[i], err = versionFacts(ctx, tx, key); err != nil {
-			return nil, err
-		}
-	}
-	evidence.Facts = domain.CompareVersionFacts(facts[0], facts[1])
 	if state == domain.VersionJudgementUndecided {
 		evidence.InferConflict(probability)
 	}

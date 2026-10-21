@@ -2644,7 +2644,6 @@ export const en = {
         undecidedAi: (percent: string) =>
           `Left to you: the AI was unsure, ${percent} sure both show the same picture`,
         undecidedIncomparable: "Left to you: the two videos' frames couldn't be compared",
-        undecidedFacts: "Left to you: the stored facts contradict what the frames show",
         undecidedConflict:
           "Left to you: they look the same, but one is marked as a different video from the other's versions",
         failed: (detail: string) =>
@@ -2682,23 +2681,6 @@ export const en = {
       noAnswer: "The AI hasn't answered yet, so these frames are what it will be shown.",
       conflict:
         "The judgement found the same video, but one of these is already marked different from a video bundled with the other, so it was left to you.",
-      byFacts:
-        "The stored facts below settled this. A work code, external ID or recording time decides on its own, a matching file title only tips an unsure AI answer, and facts that contradict the frames leave the pair to you.",
-      facts: "Stored facts",
-      factKind: {
-        work_code: "Work code",
-        external_id: "External ID",
-        recorded_at: "Recorded at",
-        title: "File title",
-        embedded_title: "Embedded title",
-        program: "Broadcast program",
-        audio_language: "Audio languages",
-      },
-      factMatch: {
-        same: "Same",
-        different: "Different",
-      },
-      factValues: (left: string, right: string) => `Left: ${left} · Right: ${right}`,
       frames: "Frames shown to the AI",
       frame: (left: string, right: string) => `Left at ${left}, right at ${right}`,
       frameAlt: (left: string, right: string) =>

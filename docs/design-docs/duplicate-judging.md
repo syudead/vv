@@ -114,37 +114,6 @@ again about an undecided pair, which the claim never takes on its own.
 | A waiting or running pair (`409 version_not_rejudgeable`) | It is about to be judged already |
 | A bundled or dismissed pair | It has left Duplicates; a force rescan judges automatic decisions again, as described below |
 
-## Stored facts settle what the frames leave open
-
-After the frame rule and the classifier, the stored facts of both sides
-([`internal/domain/version_facts.go`](../../internal/domain/version_facts.go))
-decide a pair they agree on, or hold one they contradict. The claim reads them
-in the same transaction as the fingerprints: the representative file title,
-the work information of the side's user-data key, and the media information.
-The classifier still sees only the frames, so a name cannot sway its answer.
-
-| Fact | Compared as | Weight |
-| --- | --- | --- |
-| Work code | Folded code | Strong |
-| External ID | Same source; any equal value means same, otherwise different | Strong |
-| Recording time (embedded `RecordedAt`) | Exact text | Strong when equal; a difference counts for nothing, since many encoders rewrite `creation_time` to the encode time |
-| File title | Folded, with bracketed parts, encode words (`1080p`, `x265`, `BD`) and separators removed; episode numbers stay | Weak, same only |
-| Embedded title, broadcast program, audio languages | Folded or exact text | Shown only |
-
-Strong facts count only when they agree; a strong same and a strong different
-together count as nothing.
-
-| Frames and classifier | Strong same | Strong different | Weak same |
-| --- | --- | --- | --- |
-| Same | Same | Undecided | Same |
-| Different | Undecided | Different | Different |
-| Undecided, no connection or failed | Same | Different | Same when the classifier answered 0.5 or more, otherwise unchanged |
-
-A verdict the facts decide is the rule's, keeping any probability as evidence,
-and the evidence marks `byFacts`. An audio language difference never counts:
-a dub is still a version of the same video. Facts the owner adds later, such
-as a work code, take effect when the pair is judged again with `Judge again`.
-
 ## The worker runs only while it is on
 
 One goroutine, like `AutoTagger`, claims one pair at a time while
