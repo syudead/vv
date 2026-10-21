@@ -729,7 +729,10 @@ is the target person, and it keeps what the merge moved.
 
 The faces page's `Undo` of a confirmed pair uses the same entry, so
 `UndoOffered` accepts a `face_merge` decided by the owner as it does an
-automatic one; the page then reopens the pair, which undo marks dismissed.
+automatic one; the page then reopens the pair, which undo marks dismissed. The
+snapshot keeps no external IDs, so a confirmed unnamed person who holds one is
+merged as a named person is, with no entry and no `Undo`, rather than lose the
+ID to the target on undo.
 
 Undo re-creates the source under its old id, which SQLite's `AUTOINCREMENT`
 never hands out again, so links to the person page work again. It then moves
@@ -814,7 +817,9 @@ for the person without needing a face image. `sort=leastSimilar` orders by that
 similarity, lowest first, so faces linked by mistake come first; appearances
 that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
-`sort=mostSimilar` is the reverse with the same tail, for choosing the
+An appearance whose similarity is below the candidate threshold of the
+recognizer that made its centroid, found by the vector's length, is marked
+`unlike`. `sort=mostSimilar` is the reverse with the same tail, for choosing the
 person's face from the faces most like them
 ([people.md](people.md#a-face-can-be-framed-from-a-video)). Each appearance also
 carries its `focus`, the middle, mean centre and width of its longest track.

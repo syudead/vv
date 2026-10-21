@@ -1876,6 +1876,8 @@ export const en = {
         select: "Select",
         selectFace: (title: string) => `Select ${title}`,
         selected: (count: number) => `${formatNumber(count)} selected`,
+        selectedFull: (count: number) =>
+          `${formatNumber(count)} selected, the most at once`,
         clearSelection: "Clear selection",
         splitSelected: "Not this person",
         moveSelected: "Move to person…",

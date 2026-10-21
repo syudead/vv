@@ -148,6 +148,32 @@ func TestPersonAppearancesLeastSimilarFirst(t *testing.T) {
 	}
 }
 
+// A face below its recognizer's candidate threshold is unlike the person; vectors no recognizer makes never are.
+func TestPersonAppearancesMarkTheUnlikeFaces(t *testing.T) {
+	db := migratedDB(t)
+	person := createPerson(t, db, "Hanako").ID
+	const track = `[[0, 10, 0.5, 0.5, 0.1]]`
+	like := insertFaceAppearance(t, db, "key-a", person, false, track, nil)
+	alike := insertFaceAppearance(t, db, "key-b", person, false, track, nil)
+	stranger := insertFaceAppearance(t, db, "key-c", person, false, track, nil)
+	setAppearanceCentroid(t, db, like, faceBasis(0))
+	setAppearanceCentroid(t, db, alike, faceNear(0, 2, 0.95))
+	for _, key := range []string{"key-d", "key-e"} {
+		setAppearanceCentroid(t, db, insertFaceAppearance(t, db, key, person, false, track, nil), faceBasis(0))
+	}
+	setAppearanceCentroid(t, db, stranger, faceBasis(1))
+
+	page, err := db.Credits().PersonAppearances(context.Background(), person, domain.PersonAppearanceQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range page.Items {
+		if item.Unlike != (item.ID == stranger) {
+			t.Errorf("appearance %d unlike = %v at similarity %v", item.ID, item.Unlike, *item.Similarity)
+		}
+	}
+}
+
 func TestFaceAppearanceCropIsGoneWithItsPerson(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

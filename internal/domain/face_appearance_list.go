@@ -17,6 +17,8 @@ type PersonAppearance struct {
 	AddedAt int64
 	// Similarity is how close the appearance is to the person's other faces, nil when it cannot be compared.
 	Similarity *float64
+	// Unlike is true when Similarity is below its recognizer's candidate threshold, as unlike as a stranger usually is.
+	Unlike bool
 	// Focus is where the face is in its longest track, nil without tracks.
 	Focus *FaceFocus
 }
