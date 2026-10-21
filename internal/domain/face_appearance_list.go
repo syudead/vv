@@ -66,7 +66,8 @@ func ComparePersonAppearances(sort PersonAppearanceSort) func(a, b PersonAppeara
 }
 
 // FaceAppearanceSimilarities scores each vector by its similarity to the normalized mean of all vectors of the most
-// common length, which stands for the person; a vector of another length, from another recognizer, gets no score.
+// common length, which stands for the person; a vector of another length, from another recognizer, gets no score,
+// and neither does a lone face.
 func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 	counts := map[int]int{}
 	for _, v := range vectors {
@@ -78,7 +79,8 @@ func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 			size, best = n, c
 		}
 	}
-	if size == 0 {
+	// A lone face would only be compared with itself.
+	if size == 0 || best < 2 {
 		return map[int64]float64{}
 	}
 	mean := make([]float32, size)

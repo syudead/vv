@@ -1813,6 +1813,7 @@ export const en = {
         merged: (name: string) => `Merged "${name}"`,
         confirmFailed: (reason: string) => `Couldn't merge: ${reason}`,
         dismissFailed: (reason: string) => `Couldn't dismiss: ${reason}`,
+        loadFailed: (reason: string) => `Couldn't load the pairs: ${reason}`,
       },
       faces: {
         heading: "Faces in videos",

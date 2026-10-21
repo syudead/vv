@@ -98,7 +98,6 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
     setLoadingMore(true);
     // After a rescoring the rest is read whole and only faces not yet shown are added.
     const whole = rescored.current;
-    rescored.current = false;
     listPersonAppearances(
       personId,
       whole ? { sort } : { limit: pageSize, cursor, sort },
@@ -107,6 +106,8 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
       .then(
         (page) => {
           if (controller.signal.aborted) return;
+          // Only a whole read that arrived settles the rescoring; a failed one is read whole again.
+          if (whole) rescored.current = false;
           setState((current) => {
             if (current.kind !== "ready") return current;
             const shown = new Set(current.items.map((item) => item.appearanceId));
@@ -233,8 +234,9 @@ export function PersonAppearances({
   appearances: ReturnType<typeof usePersonAppearances>;
   actions: AppearanceActions;
 }) {
-  const { state, sort, setSort, reload, loadMore, loadingMore } = appearances;
+  const { sort, setSort, reload, loadMore, loadingMore } = appearances;
   const splits = useSplits(actions, appearances.remove, appearances.markRescored);
+  const state = useKeptSplitFaces(appearances.state, splits.splits);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
 
@@ -254,7 +256,14 @@ export function PersonAppearances({
 
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={sort} onValueChange={(next) => setSort(next as FaceAppearanceSort)}>
+      <Select
+        value={sort}
+        onValueChange={(next) => {
+          // The new order starts from its first page, so faces checked further down would be split unseen.
+          setSelected(new Set());
+          setSort(next as FaceAppearanceSort);
+        }}
+      >
         <SelectTrigger size="sm" aria-label={text.sortLabel}>
           <SelectValue />
         </SelectTrigger>
@@ -342,6 +351,25 @@ export function PersonAppearances({
       )}
     </>
   );
+}
+
+/**
+ * The list with the faces split on the page kept first when a new order or page no longer holds them, so their
+ * Undo stays within reach until a Refresh.
+ */
+function useKeptSplitFaces(
+  state: AppearancesState,
+  splits: ReadonlyMap<number, unknown>,
+): AppearancesState {
+  const known = useRef(new Map<number, FaceAppearance>());
+  if (state.kind !== "ready") return state;
+  for (const item of state.items) known.current.set(item.appearanceId, item);
+  const listed = new Set(state.items.map((item) => item.appearanceId));
+  const kept = [...splits.keys()]
+    .filter((id) => !listed.has(id))
+    .map((id) => known.current.get(id))
+    .filter((item) => item !== undefined);
+  return kept.length === 0 ? state : { ...state, items: [...kept, ...state.items] };
 }
 
 function AppearancesBody({
