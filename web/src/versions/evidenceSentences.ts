@@ -9,6 +9,7 @@ export function evidenceSentences(
 ): UiText[] {
   const sentences = ruleSentences(evidence, probability);
   if (evidence.conflict === true) sentences.push(t.versions.judgement.conflict);
+  if (evidence.byProperties === true) sentences.push(t.versions.judgement.byProperties);
   return sentences;
 }
 
@@ -43,4 +44,22 @@ function ruleSentences(
     probability === undefined ? j.noAnswer : j.answer(t.activity.percent(probability)),
   );
   return sentences;
+}
+
+type PropertySignal = NonNullable<VersionJudgeEvidence["properties"]>[number];
+
+/** A property's two values as the owner reads them. */
+export function propertyValues(signal: PropertySignal): UiText {
+  const j = t.versions.judgement;
+  const format = (value: string): string => {
+    switch (signal.kind) {
+      case "chapters":
+        return j.propertyChapters(value);
+      case "duration":
+        return formatDuration(Number(value));
+      default:
+        return value;
+    }
+  };
+  return j.propertyValues(format(signal.a), format(signal.b));
 }

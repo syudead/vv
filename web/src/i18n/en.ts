@@ -2644,6 +2644,8 @@ export const en = {
         undecidedAi: (percent: string) =>
           `Left to you: the AI was unsure, ${percent} sure both show the same picture`,
         undecidedIncomparable: "Left to you: the two videos' frames couldn't be compared",
+        undecidedProperties:
+          "Left to you: the AI says they differ, but the video information says they're the same",
         undecidedConflict:
           "Left to you: they look the same, but one is marked as a different video from the other's versions",
         failed: (detail: string) =>
@@ -2681,6 +2683,23 @@ export const en = {
       noAnswer: "The AI hasn't answered yet, so these frames are what it will be shown.",
       conflict:
         "The judgement found the same video, but one of these is already marked different from a video bundled with the other, so it was left to you.",
+      byProperties:
+        "The video information below settled this. Titled chapters at the same times or an equal recording time decide on their own; an equal embedded title or untitled chapters at the same times only tip an unsure AI answer; and an AI answer of different that they contradict is left to you.",
+      properties: "Video information",
+      propertyKind: {
+        chapters: "Chapters",
+        recorded_at: "Recorded at",
+        embedded_title: "Embedded title",
+        duration: "Length",
+      },
+      propertySame: "Same",
+      propertyDifferent: "Different",
+      propertyChapters: (count: string) =>
+        selectPlural(Number(count), {
+          one: `${formatNumber(Number(count))} chapter`,
+          other: `${formatNumber(Number(count))} chapters`,
+        }),
+      propertyValues: (left: string, right: string) => `Left: ${left} · Right: ${right}`,
       frames: "Frames shown to the AI",
       frame: (left: string, right: string) => `Left at ${left}, right at ${right}`,
       frameAlt: (left: string, right: string) =>

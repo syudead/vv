@@ -317,6 +317,10 @@ describe("DuplicatesPage", () => {
             { aMs: 81_000, bMs: 81_000, distance: 30 },
             { aMs: 90_000, bMs: 90_500, distance: 28 },
           ],
+          properties: [
+            { kind: "chapters", same: false, a: "12", b: "10" },
+            { kind: "duration", same: true, a: "1440000", b: "1440500" },
+          ],
         },
       }),
     ];
@@ -358,6 +362,12 @@ describe("DuplicatesPage", () => {
       "/api/activity/9/judgement-frames/1",
     ]);
     expect(within(dialog).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+    const properties = within(dialog).getByRole("region", { name: "Video information" });
+    expect(within(properties).getByText("Chapters · Different")).toBeDefined();
+    expect(
+      within(properties).getByText("Left: 12 chapters · Right: 10 chapters"),
+    ).toBeDefined();
+    expect(within(properties).getByText("Left: 24:00 · Right: 24:00")).toBeDefined();
   });
 
   it("決めかねた理由が比べられないコマか、別物の記録とのぶつかりかを見出しで言い分ける", async () => {
@@ -365,6 +375,16 @@ describe("DuplicatesPage", () => {
       pair(movieA, movieB, {
         state: "undecided",
         evidence: { rule: "incomparable", compared: 2, differing: 0 },
+      }),
+      pair(video(5, { title: "旅行" }), video(6, { title: "旅行 2" }), {
+        state: "undecided",
+        probability: 0.1,
+        evidence: {
+          rule: "frames_differ",
+          compared: 40,
+          differing: 9,
+          byProperties: true,
+        },
       }),
       pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" }), {
         state: "undecided",
@@ -378,6 +398,11 @@ describe("DuplicatesPage", () => {
     expect(
       screen.getByText(
         "Left to you: they look the same, but one is marked as a different video from the other's versions",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "Left to you: the AI says they differ, but the video information says they're the same",
       ),
     ).toBeDefined();
   });

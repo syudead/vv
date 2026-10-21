@@ -133,6 +133,10 @@ func toAPIJudgeEvidence(evidence *domain.VersionJudgeEvidence) *gen.VersionJudge
 	if evidence.Conflict {
 		out.Conflict = &evidence.Conflict
 	}
+	if evidence.ByProperties {
+		out.ByProperties = &evidence.ByProperties
+	}
+	out.Properties = toAPIPropertySignals(evidence.Properties)
 	if len(evidence.Frames) > 0 {
 		frames := make([]gen.VersionEvidenceFrame, 0, len(evidence.Frames))
 		for _, frame := range evidence.Frames {
@@ -141,6 +145,26 @@ func toAPIJudgeEvidence(evidence *domain.VersionJudgeEvidence) *gen.VersionJudge
 		out.Frames = &frames
 	}
 	return out
+}
+
+func toAPIPropertySignals(signals []domain.VersionPropertySignal) *[]gen.VersionPropertySignal {
+	if len(signals) == 0 {
+		return nil
+	}
+	out := make([]gen.VersionPropertySignal, 0, len(signals))
+	for _, signal := range signals {
+		item := gen.VersionPropertySignal{
+			Kind: gen.VersionPropertySignalKind(signal.Kind), Same: signal.Same, A: signal.A, B: signal.B,
+		}
+		if signal.Strong {
+			item.Strong = &signal.Strong
+		}
+		if signal.Counts {
+			item.Counts = &signal.Counts
+		}
+		out = append(out, item)
+	}
+	return &out
 }
 
 func (s *server) RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request) {

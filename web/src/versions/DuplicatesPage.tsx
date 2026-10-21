@@ -444,6 +444,7 @@ function judgementState(judgement: VersionCandidateJudgement, judging: boolean):
 function undecidedReason(judgement: VersionCandidateJudgement): string {
   const state = t.versions.judgement.state;
   if (judgement.evidence?.conflict === true) return state.undecidedConflict;
+  if (judgement.evidence?.byProperties === true) return state.undecidedProperties;
   if (judgement.evidence?.rule === "incomparable") return state.undecidedIncomparable;
   if (judgement.probability !== undefined)
     return state.undecidedAi(t.activity.percent(judgement.probability));

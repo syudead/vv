@@ -57,6 +57,9 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 			return domain.VersionJudgeJob{}, fmt.Errorf("the version candidate has no fingerprint (key=%s)", key)
 		}
 		job.Fingerprints[i] = fingerprint
+		if job.Properties[i], err = versionProperties(ctx, tx, key); err != nil {
+			return domain.VersionJudgeJob{}, err
+		}
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
@@ -70,6 +73,40 @@ var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
 	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
+
+// versionProperties reads the duration and media information a key's file had at import; a key without a video in
+// the library has none.
+func versionProperties(ctx context.Context, tx *sql.Tx, key string) (domain.VersionProperties, error) {
+	var properties domain.VersionProperties
+	var id int64
+	var duration sql.NullInt64
+	err := tx.QueryRowContext(ctx, `select v.id, v.duration_ms from videos v where v.content_key = ? and v.content_key <> ''
+		order by v.id limit 1`, key).Scan(&id, &duration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return properties, nil
+	}
+	if err != nil {
+		return properties, fmt.Errorf("cannot read the video properties (key=%s): %w", key, err)
+	}
+	properties.DurationMs = duration.Int64
+	var version int
+	var encoded string
+	err = tx.QueryRowContext(ctx, `select version, info from video_media_info where video_id = ?`, id).
+		Scan(&version, &encoded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return properties, nil
+	}
+	if err != nil {
+		return properties, fmt.Errorf("cannot read the media information (id=%d): %w", id, err)
+	}
+	if info := decodeMediaInfo(version, encoded); info != nil {
+		properties.Chapters = info.Chapters
+		if info.Embedded != nil {
+			properties.EmbeddedTitle, properties.RecordedAt = info.Embedded.Title, info.Embedded.RecordedAt
+		}
+	}
+	return properties, nil
+}
 
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
 	var version int
@@ -588,6 +625,14 @@ func derivedEvidence(
 	}
 	rule := domain.JudgeVersionFrames(fingerprints[0], fingerprints[1])
 	evidence := domain.NewVersionJudgeEvidence(fingerprints[0], fingerprints[1], rule)
+	var properties [2]domain.VersionProperties
+	for i, key := range keys {
+		var err error
+		if properties[i], err = versionProperties(ctx, tx, key); err != nil {
+			return nil, err
+		}
+	}
+	evidence.Properties = domain.CompareVersionProperties(properties[0], properties[1])
 	if state == domain.VersionJudgementUndecided {
 		evidence.InferConflict(probability)
 	}

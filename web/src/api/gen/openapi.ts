@@ -5663,8 +5663,26 @@ export interface components {
             versionMismatch?: boolean;
             /** @description The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided. */
             conflict?: boolean;
+            /** @description Properties both files have, read at import: chapters, recording time, embedded title and duration. */
+            properties?: components["schemas"]["VersionPropertySignal"][];
+            /** @description The properties decided the result, or held a different answer they contradict for the owner. */
+            byProperties?: boolean;
             /** @description The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image. */
             frames?: components["schemas"]["VersionEvidenceFrame"][];
+        };
+        VersionPropertySignal: {
+            /** @enum {string} */
+            kind: "chapters" | "recorded_at" | "embedded_title" | "duration";
+            /** @description The two values agree: matching chapter starts, equal times or titles, or durations within a second. */
+            same: boolean;
+            /** @description Decides a pair on its own: titled chapters at matching starts, or an equal recording time. */
+            strong?: boolean;
+            /** @description Counted towards the verdict; a duration and a disagreeing value are shown only. */
+            counts?: boolean;
+            /** @description The left video's value: a chapter count, a time, a title or milliseconds. */
+            a: string;
+            /** @description The right video's value. */
+            b: string;
         };
         VersionEvidenceFrame: {
             /**

@@ -9948,12 +9948,44 @@ components:
         conflict:
           type: boolean
           description: "The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided."
+        properties:
+          type: array
+          description: "Properties both files have, read at import: chapters, recording time, embedded title and duration."
+          items:
+            $ref: "#/components/schemas/VersionPropertySignal"
+        byProperties:
+          type: boolean
+          description: "The properties decided the result, or held a different answer they contradict for the owner."
         frames:
           type: array
           maxItems: 4
           description: "The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image."
           items:
             $ref: "#/components/schemas/VersionEvidenceFrame"
+
+    VersionPropertySignal:
+      type: object
+      required: [kind, same, a, b]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [chapters, recorded_at, embedded_title, duration]
+        same:
+          type: boolean
+          description: "The two values agree: matching chapter starts, equal times or titles, or durations within a second."
+        strong:
+          type: boolean
+          description: "Decides a pair on its own: titled chapters at matching starts, or an equal recording time."
+        counts:
+          type: boolean
+          description: "Counted towards the verdict; a duration and a disagreeing value are shown only."
+        a:
+          type: string
+          description: "The left video's value: a chapter count, a time, a title or milliseconds."
+        b:
+          type: string
+          description: "The right video's value."
 
     VersionEvidenceFrame:
       type: object

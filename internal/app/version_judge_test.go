@@ -438,3 +438,24 @@ func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
 		t.Errorf("待ち = %v, want 10m1s", wait)
 	}
 }
+
+// Titled chapters at the same starts settle a pair whose frames differ, so the classifier is not asked.
+func TestVersionJudgeLetsMatchingChaptersSkipTheClassifier(t *testing.T) {
+	job := versionJudgeJob(8, 9, 10, 11)
+	titled := []domain.MediaChapter{{StartMs: 0, Title: "Opening"}, {StartMs: 5000, Title: "Middle"}, {StartMs: 15000, Title: "End"}}
+	job.Properties = [2]domain.VersionProperties{{Chapters: titled}, {Chapters: titled}}
+	store := newFakeVersionJudgeStore(job)
+	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.1}}
+	judge, _, _ := newTestVersionJudge(store, classifier)
+
+	judge.step(context.Background())
+
+	got := store.lastResult(t)
+	if got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule || got.Evidence == nil ||
+		!got.Evidence.ByProperties || len(got.Evidence.Properties) != 1 {
+		t.Errorf("結果 = %+v（根拠 %+v）, want チャプターで決めた same", got, got.Evidence)
+	}
+	if len(classifier.requests) != 0 {
+		t.Errorf("分類器に %d 回聞いた, want 0", len(classifier.requests))
+	}
+}

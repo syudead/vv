@@ -31,6 +31,7 @@ const (
 type VersionJudgeJob struct {
 	Keys         [2]string
 	Fingerprints [2]Fingerprint
+	Properties   [2]VersionProperties
 	Attempts     int
 }
 
@@ -86,6 +87,9 @@ type VersionJudgeEvidence struct {
 	Frames          []VersionEvidenceFrame `json:"frames,omitempty"`
 	// Conflict marks a same verdict left undecided because a side is known to differ from the other side.
 	Conflict bool `json:"conflict,omitempty"`
+	// Properties compare what both files have; ByProperties marks a verdict they decided or held for the owner.
+	Properties   []VersionPropertySignal `json:"properties,omitempty"`
+	ByProperties bool                    `json:"byProperties,omitempty"`
 }
 
 // VersionEvidenceFrame is one frame pair shown to the classifier; A and B are frame indexes in each seek preview.

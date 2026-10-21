@@ -134,3 +134,23 @@ func TestCandidatesDeriveEvidenceJudgedBeforeItWasStored(t *testing.T) {
 		t.Errorf("JudgementEvidence = %+v, %v, want %+v", got, err, evidence)
 	}
 }
+
+func TestClaimJudgementReadsBothSidesProperties(t *testing.T) {
+	db, ids := judgementFixture(t)
+	media := &domain.MediaInfo{
+		Chapters: []domain.MediaChapter{{StartMs: 0, EndMs: 1000, Title: "A"}},
+		Embedded: &domain.MediaEmbedded{Title: "Trip", RecordedAt: "2024-01-01T00:00:00Z"},
+	}
+	probe := domain.Probe{DurationMs: 100_000, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac", Media: media}
+	if err := db.Ingest().ApplyProbe(context.Background(), ids["a"], probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	job := claimJudgement(t, db)
+	if got := job.Properties[0]; got.DurationMs != 100_000 || len(got.Chapters) != 1 || got.EmbeddedTitle != "Trip" ||
+		got.RecordedAt != "2024-01-01T00:00:00Z" {
+		t.Errorf("a の情報 = %+v, want 長さ・チャプター・タイトル・録画日時", got)
+	}
+	if got := job.Properties[1]; got.DurationMs != 100_400 || got.Chapters != nil {
+		t.Errorf("b の情報 = %+v, want 長さだけ", got)
+	}
+}

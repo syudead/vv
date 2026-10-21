@@ -2,7 +2,8 @@ import { judgementFrameUrl, type VersionJudgeEvidence } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
-import { evidenceSentences } from "./evidenceSentences";
+import { FactList } from "../ui/patterns/fact-list";
+import { evidenceSentences, propertyValues } from "./evidenceSentences";
 
 /**
  * Explain a duplicate judgement in sentences and show the frame pairs the AI saw; frames need the
@@ -27,6 +28,18 @@ export function JudgementEvidence({
       {evidenceSentences(evidence, probability).map((sentence, index) => (
         <p key={index}>{sentence}</p>
       ))}
+      {evidence.properties !== undefined && evidence.properties.length > 0 && (
+        <section aria-label={j.properties} className="flex flex-col gap-1.5">
+          <h3 className="text-xs font-medium text-foreground">{j.properties}</h3>
+          <FactList
+            facts={evidence.properties.map((signal) => ({
+              id: signal.kind,
+              term: `${j.propertyKind[signal.kind]} · ${signal.same ? j.propertySame : j.propertyDifferent}`,
+              value: propertyValues(signal),
+            }))}
+          />
+        </section>
+      )}
       {activityId !== undefined && frames.length > 0 && (
         <figure className="flex flex-col gap-1.5">
           <figcaption className="text-xs font-medium text-foreground">

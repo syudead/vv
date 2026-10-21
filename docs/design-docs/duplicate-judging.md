@@ -36,6 +36,7 @@ whether two files are the same file, which is a different question.
 | --- | --- |
 | Quality, resolution, black bands, a small logo | The fingerprint: 32×32 low-frequency luma hashes with black bands trimmed |
 | A large watermark, burned-in subtitles, a shift of a few seconds | The classifier, whose question says to ignore them |
+| Frames the classifier is unsure about | The files' own properties, below |
 
 ## The frame rule decides first
 
@@ -127,6 +128,35 @@ again about an undecided pair, which the claim never takes on its own.
 | Judging turned off (`409 version_judging_off`) | Nothing would claim the pair |
 | A waiting or running pair (`409 version_not_rejudgeable`) | It is about to be judged already |
 | A bundled or dismissed pair | It has left Duplicates; a force rescan judges automatic decisions again, as described below |
+
+## The files' own properties settle what the frames leave open
+
+The claim reads each side's duration and stored media information, which the
+import read from the file itself, so a judgement adds no file reads
+([`internal/domain/version_properties.go`](../../internal/domain/version_properties.go)).
+A version may differ in resolution, codec, bit rate, audio or subtitle tracks,
+so properties only ever say same, and those are not compared.
+
+| Property | Says same when | Weight |
+| --- | --- | --- |
+| Chapters | Both have 3 or more, the same count, starts within a second, and an equal title, unless the titles differ only by their numbers ("Chapter 1", "Chapter 2") | Strong |
+| Chapters | The same starts, with numbered or missing titles | Weak |
+| Recording time (`creation_time`) | Equal; a difference says nothing, since many encoders rewrite it | Strong |
+| Embedded title | Equal, folded, and not "Untitled" or a number | Weak |
+| Duration | Shown only: candidates already have close durations | — |
+
+| Frames and classifier | Strong same | Weak same |
+| --- | --- | --- |
+| Frames match | Same | Same |
+| Frames differ | Same, without asking the classifier | Asked |
+| Incomparable, no connection or failed | Same | Unchanged |
+| The classifier answers different | Undecided, left to the owner | Different |
+| The classifier is unsure | Same | Same when it answered 0.5 or more |
+
+A verdict the properties decide is the rule's, keeping any probability as
+evidence, and the evidence marks `byProperties`. File names, folders and work
+information are not used: they are often empty at import, and they tell
+whether two files are the same file.
 
 ## The worker runs only while it is on
 

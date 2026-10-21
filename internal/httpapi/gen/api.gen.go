@@ -2001,6 +2001,30 @@ func (e VersionJudgeEvidenceRule) Valid() bool {
 	}
 }
 
+// Defines values for VersionPropertySignalKind.
+const (
+	Chapters      VersionPropertySignalKind = "chapters"
+	Duration      VersionPropertySignalKind = "duration"
+	EmbeddedTitle VersionPropertySignalKind = "embedded_title"
+	RecordedAt    VersionPropertySignalKind = "recorded_at"
+)
+
+// Valid indicates whether the value is a known member of the VersionPropertySignalKind enum.
+func (e VersionPropertySignalKind) Valid() bool {
+	switch e {
+	case Chapters:
+		return true
+	case Duration:
+		return true
+	case EmbeddedTitle:
+		return true
+	case RecordedAt:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -5610,6 +5634,9 @@ type VersionEvidenceFrame struct {
 
 // VersionJudgeEvidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
 type VersionJudgeEvidence struct {
+	// ByProperties The properties decided the result, or held a different answer they contradict for the owner.
+	ByProperties *bool `json:"byProperties,omitempty"`
+
 	// Compared Frame pairs compared by time, flat frames skipped.
 	Compared int `json:"compared"`
 
@@ -5624,6 +5651,9 @@ type VersionJudgeEvidence struct {
 
 	// LongestRun Pairs in the longest run of consecutive differing pairs; absent without such a run.
 	LongestRun *int `json:"longestRun,omitempty"`
+
+	// Properties Properties both files have, read at import: chapters, recording time, embedded title and duration.
+	Properties *[]VersionPropertySignal `json:"properties,omitempty"`
 
 	// Rule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
 	Rule VersionJudgeEvidenceRule `json:"rule"`
@@ -5646,6 +5676,28 @@ type VersionJudgingSettings struct {
 	// Enabled Saved choice; defaults to false
 	Enabled bool `json:"enabled"`
 }
+
+// VersionPropertySignal defines model for VersionPropertySignal.
+type VersionPropertySignal struct {
+	// A The left video's value: a chapter count, a time, a title or milliseconds.
+	A string `json:"a"`
+
+	// B The right video's value.
+	B string `json:"b"`
+
+	// Counts Counted towards the verdict; a duration and a disagreeing value are shown only.
+	Counts *bool                     `json:"counts,omitempty"`
+	Kind   VersionPropertySignalKind `json:"kind"`
+
+	// Same The two values agree: matching chapter starts, equal times or titles, or durations within a second.
+	Same bool `json:"same"`
+
+	// Strong Decides a pair on its own: titled chapters at matching starts, or an equal recording time.
+	Strong *bool `json:"strong,omitempty"`
+}
+
+// VersionPropertySignalKind defines model for VersionPropertySignal.Kind.
+type VersionPropertySignalKind string
 
 // Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
 type Video struct {
