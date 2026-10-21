@@ -275,8 +275,8 @@ with the other dates;
 date favorited follows recently played and sorts newest first.
 
 The filter popover lists watch status, `Favorites only` (URL `fav=1`),
-playability and, for the owner, a `Tag kind` select (URL `tagKind=<id>`), in
-that order. The select offers `Any kind` and the kinds in natural name order,
+playability and, for the owner, `With other versions only` (URL `versions=1`)
+and a `Tag kind` select (URL `tagKind=<id>`), in that order. The select offers `Any kind` and the kinds in natural name order,
 read from the shared kind list when the popover first opens; an applied kind
 also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
 the loaded list no longer holds leaves the URL with a toast.
@@ -286,15 +286,17 @@ and guests alike (URL `addedWithin=<days>`, `minDuration=<s>` and
 and an out-of-range value or a minimum over the maximum leaves the URL before
 the request.
 The filter button counts each as one applied filter.
-`Clear filters` clears favorites only, the kind, the added date and the length
-with the other filters and keeps the sort. A guest URL with `fav=1`, `tagKind`
-or `sort=favorited*` is reset to the defaults before the request and the URL
-is corrected.
+`Clear filters` clears favorites only, the versions filter, the kind, the
+added date and the length with the other filters and keeps the sort. A guest
+URL with `fav=1`, `versions=1`, `tagKind` or `sort=favorited*` is reset to the
+defaults before the request and the URL is corrected.
 
 While any filter applies, the owner's library header carries the `outline`
 action `Save as smart folder`, which opens the smart folder dialog with the
 filter as its conditions and the current sort, `Random` replaced by date added;
 the `Created "{name}"` toast carries `Open` to the new folder's page.
+A smart folder cannot hold the versions filter, so the action is absent while
+it applies rather than saving a folder that drops it.
 
 ### Scan entry and progress
 
@@ -888,8 +890,9 @@ conditions, each ANDed with the others:
 | `personRole` | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
 | `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
 | `tagKind` | Videos with at least one tag of that kind, manual or from the folder | `400 guest_filter_not_allowed` |
+| `hasVersions` | Videos bundled with other versions | `400 guest_filter_not_allowed` |
 
-`query`, `tag`, `person` and `organization` apply to each group member, so a
+`query`, `tag`, `hasVersions`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
 that is not a positive integer is `400 invalid_request`. `personRole` without

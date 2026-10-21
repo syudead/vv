@@ -23,6 +23,7 @@ import {
 } from "./activityDetail";
 import {
   type DetailOperations,
+  EvidenceSection,
   PartOfSection,
   PeopleSection,
   StagesSection,
@@ -282,6 +283,7 @@ function Loaded({
       <PageSection title={t.activity.detail.section.summary}>
         <FactList facts={summaryFacts(entry, ops, here)} />
       </PageSection>
+      <EvidenceSection entry={entry} />
       <TasksSection entry={entry} ops={ops} now={now} listFrom={listFrom} />
       <StagesSection entry={entry} />
       <TagsSection entry={entry} ops={ops} />

@@ -226,4 +226,45 @@ describe("ActivityDetailPage", () => {
       screen.getByRole("link", { name: "Back to Activity" }).getAttribute("href"),
     ).toBe("/activity");
   });
+
+  it("重複チェックの記録は判定の理由と AI に見せたコマを Why に出す", async () => {
+    server.entries.set(
+      20,
+      record(20, {
+        kind: "version_judgement",
+        feature: "duplicate_check",
+        outcome: "different",
+        decider: "ai",
+        probability: 0.1,
+        subject: {
+          kind: "pair",
+          items: [
+            { label: "a.mp4", videoId: 1 },
+            { label: "b.mp4", videoId: 2 },
+          ],
+        },
+        evidence: {
+          rule: "frames_differ",
+          compared: 12,
+          differing: 12,
+          longestRun: 12,
+          runStartMs: 0,
+          runEndMs: 60_000,
+          frames: [{ aMs: 7_000, bMs: 7_000, distance: 31 }],
+        },
+      }),
+    );
+    renderDetail(20);
+    const why = await screen.findByRole("region", { name: "Why" });
+    expect(why.textContent).toContain("It answered 10%.");
+    expect(within(why).getByRole("img").getAttribute("src")).toBe(
+      "/api/activity/20/judgement-frames/0",
+    );
+  });
+
+  it("根拠の無い記録には Why を出さない", async () => {
+    renderDetail(1);
+    await screen.findByRole("region", { name: "Summary" });
+    expect(screen.queryByRole("region", { name: "Why" })).toBeNull();
+  });
 });

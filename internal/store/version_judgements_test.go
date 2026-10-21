@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,7 +86,8 @@ func expectNoClaim(t *testing.T, db *DB, why string) {
 	}
 }
 
-func TestJudgementSameBundlesWithOwnersRepresentative(t *testing.T) {
+// The files choose the representative; the tagged side loses nothing, since the bundle merges both sides' data.
+func TestJudgementSameBundlesByTheFilesKeepingBothSidesData(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
 	attachNamedTag(t, db, "cat", a)
@@ -103,8 +105,12 @@ func TestJudgementSameBundlesWithOwnersRepresentative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if versions.RepresentativeID != a || len(versions.Items) != 2 {
-		t.Errorf("代表 = %d（%d 本）, want タグの付いた %d（2 本）", versions.RepresentativeID, len(versions.Items), a)
+	// b's file has the higher bit rate.
+	if versions.RepresentativeID != b || len(versions.Items) != 2 {
+		t.Errorf("代表 = %d（%d 本）, want ファイルで選んだ %d（2 本）", versions.RepresentativeID, len(versions.Items), b)
+	}
+	if got := manualTagNames(t, db, ownerVideo(t, db, b).UserKey); !slices.Equal(got, []string{"cat"}) {
+		t.Errorf("集まりのタグ = %v, want a の cat", got)
 	}
 	if rows := candidateRows(t, db); rows != 0 {
 		t.Errorf("束ねたあとの候補の行 = %d, want 0", rows)
@@ -439,4 +445,20 @@ func TestSavedOllamaSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("保存のあと", want, true)
+}
+
+func TestJudgementSameKeepsTheRepresentativeTheOwnerChose(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b, c := ids["a"], ids["b"], ids["c"]
+	bundle(t, db, a, a, c)
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame})
+
+	versions, err := db.Versions().Versions(context.Background(), domain.AudienceOwner, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if versions.RepresentativeID != a || len(versions.Items) != 3 {
+		t.Errorf("代表 = %d（%d 本）, want 持ち主が選んだ %d（3 本）", versions.RepresentativeID, len(versions.Items), a)
+	}
 }

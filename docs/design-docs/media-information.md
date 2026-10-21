@@ -1,8 +1,8 @@
 # Media information from the import probe
 
 The import's single `ffprobe` run also reads the video stream's details, every
-audio and subtitle track, the embedded tags and the chapters, and stores them
-as one versioned JSON row per video in `video_media_info`
+audio and subtitle track, the container, the embedded tags and the chapters,
+and stores them as one versioned JSON row per video in `video_media_info`
 ([`internal/media/probe_media.go`](../../internal/media/probe_media.go),
 [`internal/domain/media_info.go`](../../internal/domain/media_info.go),
 [`internal/store/media_info.go`](../../internal/store/media_info.go)).
@@ -19,6 +19,10 @@ flowchart LR
   row --> read[LibraryStore.MediaInfo]
   read --> detail["GET /api/videos/{id} mediaInfo"]
 ```
+
+The items beyond what the video page shows are kept so that versions, wasted
+space, audio sync and playback problems can be told apart
+([Items for comparing files](#items-for-comparing-files)).
 
 Only the video detail carries the value, for the owner and a guest of a public
 video alike; list items, related videos and the owner's `PUT` responses omit
@@ -42,6 +46,19 @@ transcoding keeps the default limits so a transcode does not wait for them.
 | --- | --- |
 | A second `ffprobe` per item | A library of 10,000 videos would start 10,000 more processes |
 | The longer limits for every container | They change nothing for a container with a header |
+
+The one exception is AV1 film grain. AV1 declares it only in the sequence
+header, and `ffprobe` reports it only after decoding a frame
+(`-analyze_frames`), so for an AV1 file alone `media.Probe` runs a second
+`ffprobe` that decodes the first frame of the first video stream
+(`-select_streams v:0 -analyze_frames -export_side_data film_grain
+-read_intervals %+#1`). A failure, or an `ffprobe` without
+`-analyze_frames`, leaves the item unknown.
+
+| Rejected | Why |
+| --- | --- |
+| `-analyze_frames` in the import run | It decodes frames of every file to answer an AV1-only question |
+| Parsing the AV1 sequence header from `-show_data` | The dump also prints every attachment's bytes, a whole font for each Matroska font |
 
 ## A TS recording's station and programme come from its SI
 
@@ -82,6 +99,17 @@ classify and clean them.
 | Location | ISO 6709 in degrees, degrees and minutes, or degrees, minutes and seconds, with an optional altitude; outside ±90 or ±180 is omitted |
 | Chapters | Sorted by start; a start at or past the duration is dropped; the end is cut to the duration and to at least the start; overlaps are kept |
 
+| Chroma subsampling | From `pix_fmt`: `yuv420*`, `nv12`, `p010` are 4:2:0, `yuv422*` 4:2:2, `yuv444*` and RGB 4:4:4, `gray` 4:0:0 |
+| Colour range | `tv` is limited, `pc` is full, anything else is omitted |
+| Codec tag, vendor | An absent fourcc (`[0][0][0][0]`) is omitted |
+| Variable frame rate | Estimated from the header: `avg_frame_rate` differs from `r_frame_rate` by more than 1%; omitted when either is unknown. Only reading every frame's timestamp can tell for certain |
+| Mirroring | A negative determinant of the display matrix; a vertical flip is a mirror with a 180° rotation |
+| Multiple layers | The `multilayer` disposition, more than one HEVC `view_ids_available`, or an HEVC enhancement-layer configuration |
+| Track roles | The dispositions `dub`, `original`, `comment`, `visual_impaired`, `hearing_impaired`, `karaoke`, `lyrics`, `clean_effects`, `captions`, `descriptions` |
+| Stream times | `start_time` and `duration` in milliseconds, or Matroska's `DURATION` tag |
+| Size breakdown | See [Items for comparing files](#items-for-comparing-files) |
+| Encryption | An encryption side data record, a Matroska `enc_key_id` tag or an `encv`/`enca` codec tag |
+
 A value that does not parse is omitted and never fails the probe; only a
 missing duration fails it. A tag value whose JSON type differs from what the
 parser expects is skipped rather than failing the whole output. Keeping the
@@ -90,8 +118,9 @@ rules out of the parser lets each case be a unit test without a process.
 ## One versioned row per video
 
 The probe job writes `video_media_info` in the `ApplyProbeForJob`
-transaction, under the identity check that guards the `videos` update, and a
-row whose `version` differs from `domain.MediaInfoVersion` reads as absent.
+transaction, under the identity check that guards the `videos` update. A row
+of a newer `version` than `domain.MediaInfoVersion` reads as absent, and an
+older one as what it holds.
 
 A file replaced during the probe therefore leaves no row of the old file, and
 deleting the video deletes its row. Nothing else reads the value, so one JSON
@@ -104,11 +133,49 @@ instead of adding a migration. The table is a rebuildable index
 | Columns on `videos` | About 30 nullable columns read by every list query |
 | Tables per item (streams, chapters, tags) | No query joins or filters on them |
 
-## Videos imported earlier are not read again
+## Items for comparing files
 
-Only the probe of a new or changed file writes the row; a video probed before
-`video_media_info` existed has none and its page shows no extra groups until
-its file changes (maintainer decision, 2026-10-16). Migration
-`00052_metadata_jobs.sql` stays unchanged because databases already applied
-it; `00053_drop_metadata_jobs.sql` deletes the `metadata` jobs and
+These items are stored for comparisons the page does not draw yet.
+
+| Question | Items |
+| --- | --- |
+| Does the audio start late or drift? | Each stream's `startMs` and `durationMs`, and the container's `startMs` |
+| Is a file large without being better? | The size breakdown, and `bitsPerPixel`: the video bit rate per pixel per frame |
+| Why does it not play? | Profile, level, pixel format, colour range, codec tag and codec string, encryption, multiple layers |
+| What is the track for? | Track roles and the audio service type |
+| What made the file? | Each stream's encoder, handler, vendor, creation time and timecode; the MP4 brands; the embedded encoder and source URL |
+
+The size breakdown sums each kind of stream from Matroska's exact
+`NUMBER_OF_BYTES` tag, else its bit rate over its duration (or the file's).
+A kind is omitted unless every stream of it is known, and the remainder
+(container overhead, attachments, data streams, cover art) only when video,
+audio and subtitles all are and their sum does not exceed the file. A guess
+is never stored: a Matroska file without statistics tags has no breakdown.
+
+## Videos imported earlier are read again in the background
+
+Bump `domain.MediaInfoVersion` when the parser adds items. A row of an older
+version still reads as what it holds, so the page keeps its groups, and
+`app.BackfillMediaInfo` re-reads one probed video at a time, a quarter second
+apart and a minute between passes, the same loop as the keyframe backfill
+([`internal/app/backfill.go`](../../internal/app/backfill.go)). It runs the
+import's `ffprobe` through `media.ProbeMediaInfo` and writes only
+`video_media_info`; the video's other probe results and its jobs are
+untouched. A video with a probe job queued or running is left to the import.
+
+`IngestStore.SaveMediaInfoProbe` writes under the job identity check and only
+when the file still has the indexed size and modification time, so a file
+replaced during the read never stores the old file's values. A read that fails
+keeps the stored row and records the file's stamp in
+`video_media_info_failures`, and the file is not read again until it changes
+or the version is bumped. A bump may add fields but must not change what an
+existing field means, since older rows stay readable.
+
+| Rejected | Why |
+| --- | --- |
+| Reading an older row as absent | Every video would lose its groups until its turn in the re-read |
+| Queueing probe jobs | A probe job rewrites playability, thumbnails' inputs and activity, and competes with imports |
+
+Migration `00052_metadata_jobs.sql` stays unchanged because databases already
+applied it; `00053_drop_metadata_jobs.sql` deletes the `metadata` jobs and
 `metadata_failed` issues that `00052` queued.
