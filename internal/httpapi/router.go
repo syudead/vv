@@ -150,6 +150,13 @@ type VersionJudging interface {
 	SaveEnabled(ctx context.Context, enabled bool) error
 }
 
+// VersionJudgeReview is app.VersionJudgeReview.
+type VersionJudgeReview interface {
+	Rejudge(ctx context.Context, videoIDs [2]int64) error
+	// JudgementFrame returns a JPEG; a missing entry, frame or seek preview returns ErrNotFound.
+	JudgementFrame(ctx context.Context, entryID int64, index int) ([]byte, error)
+}
+
 type TranscodeProbeWriter interface {
 	SaveTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe) error
 }
@@ -285,6 +292,7 @@ type Options struct {
 	// Nil FaceAnalysis makes the face analysis runs route fail with 500.
 	FaceAnalysis   FaceAnalysis
 	VersionJudging VersionJudging
+	VersionReview  VersionJudgeReview
 
 	Ollama OllamaConnection
 
@@ -374,6 +382,7 @@ type server struct {
 	faceAnalysis      FaceAnalysis
 	onboarding        Onboarding
 	versionJudging    VersionJudging
+	versionReview     VersionJudgeReview
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
@@ -457,6 +466,7 @@ func NewRouter(opts Options) http.Handler {
 		faceAnalysis:           opts.FaceAnalysis,
 		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
+		versionReview:          opts.VersionReview,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
@@ -588,7 +598,7 @@ func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
 		"/api/video-tags", "/api/video-tags/summary", "/api/video-edits", "/api/video-edits/summary",
-		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/version-candidates/rejudge", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",

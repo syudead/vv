@@ -106,8 +106,8 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	if a.UserKey == a.ContentKey || a.UserKey != b.UserKey || len(a.UserKey) < len("bundle:") || a.UserKey[:7] != "bundle:" {
 		t.Fatalf("UserKey = %q / %q", a.UserKey, b.UserKey)
 	}
-	if got := manualTagNames(t, db, a.UserKey); !slices.Equal(got, []string{"X"}) {
-		t.Errorf("集まりのタグ = %v, want [X]", got)
+	if got := manualTagNames(t, db, a.UserKey); !slices.Equal(got, []string{"X", "Y"}) {
+		t.Errorf("集まりのタグ = %v, want 両側の [X Y]", got)
 	}
 	if got := manualTagNames(t, db, b.ContentKey); !slices.Equal(got, []string{"Y"}) {
 		t.Errorf("B の content_key のタグ = %v, want [Y]", got)
@@ -118,8 +118,8 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{x}}); !slices.Equal(got, []int64{ids["a"]}) {
 		t.Errorf("タグ X で絞った動画 = %v", got)
 	}
-	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{y}}); len(got) != 0 {
-		t.Errorf("タグ Y で絞った動画 = %v, want なし", got)
+	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{y}}); !slices.Equal(got, []int64{ids["a"]}) {
+		t.Errorf("タグ Y で絞った動画 = %v, want 代表 a", got)
 	}
 	if got, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit}); err != nil {
 		t.Fatal(err)
@@ -138,14 +138,15 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Total != 1 || len(summary.Items) != 1 || summary.Items[0].Tag.ID != x || summary.Items[0].Count != 1 {
-		t.Errorf("summary = %+v", summary)
+	if summary.Total != 1 || len(summary.Items) != 2 || summary.Items[0].Tag.ID != x || summary.Items[0].Count != 1 ||
+		summary.Items[1].Tag.ID != y || summary.Items[1].Count != 1 {
+		t.Errorf("summary = %+v, want 集まり 1 本に X と Y", summary)
 	}
 	if _, applied, err := db.Tags().AttachTagByName(context.Background(), []int64{ids["b"]}, "Z"); err != nil || applied != 1 {
 		t.Fatalf("B への付与 = %d, %v", applied, err)
 	}
-	if got := manualTagNames(t, db, a.UserKey); !slices.Equal(got, []string{"X", "Z"}) {
-		t.Errorf("B に付けたあとの集まりのタグ = %v, want [X Z]", got)
+	if got := manualTagNames(t, db, a.UserKey); !slices.Equal(got, []string{"X", "Y", "Z"}) {
+		t.Errorf("B に付けたあとの集まりのタグ = %v, want [X Y Z]", got)
 	}
 }
 
@@ -168,8 +169,8 @@ func TestMakeRepresentativeKeepsBundleValues(t *testing.T) {
 			t.Errorf("動画 %d の UserKey = %q, want %q", id, got, before)
 		}
 	}
-	if got := manualTagNames(t, db, before); !slices.Equal(got, []string{"X"}) {
-		t.Errorf("集まりのタグ = %v, want [X]", got)
+	if got := manualTagNames(t, db, before); !slices.Equal(got, []string{"X", "Y"}) {
+		t.Errorf("集まりのタグ = %v, want [X Y]", got)
 	}
 	if _, err := db.Versions().MakeRepresentative(context.Background(), ids["c"]); !errors.Is(err, domain.ErrNotBundled) {
 		t.Errorf("束ねていない動画 = %v, want ErrNotBundled", err)
@@ -193,8 +194,8 @@ func TestUnbundleRestoresOwnValues(t *testing.T) {
 	if got := manualTagNames(t, db, b.UserKey); !slices.Equal(got, []string{"Y"}) {
 		t.Errorf("外した B のタグ = %v, want [Y]", got)
 	}
-	if got := manualTagNames(t, db, bundleKey); !slices.Equal(got, []string{"X"}) {
-		t.Errorf("集まりのタグ = %v, want [X]", got)
+	if got := manualTagNames(t, db, bundleKey); !slices.Equal(got, []string{"X", "Y"}) {
+		t.Errorf("集まりのタグ = %v, want [X Y]", got)
 	}
 
 	if _, err := db.Versions().Unbundle(context.Background(), ids["a"]); err != nil {
@@ -247,8 +248,8 @@ func TestUnbundleDissolvesAndCopiesValues(t *testing.T) {
 	if b.UserKey != b.ContentKey || !b.Public {
 		t.Errorf("残った B: UserKey %q, Public %v", b.UserKey, b.Public)
 	}
-	if got := manualTagNames(t, db, b.ContentKey); !slices.Equal(got, []string{"X"}) {
-		t.Errorf("残った B のタグ = %v, want [X]（集まりの値で置き換える）", got)
+	if got := manualTagNames(t, db, b.ContentKey); !slices.Equal(got, []string{"X", "Y"}) {
+		t.Errorf("残った B のタグ = %v, want [X Y]（集まりの値で置き換える）", got)
 	}
 	if progress, err := db.Playback().Progress(ctx, b.ContentKey); err != nil || progress.PositionMs != 4000 {
 		t.Errorf("残った B の再生位置 = %+v, %v", progress, err)
@@ -284,8 +285,8 @@ func TestBundleMergesBundles(t *testing.T) {
 	if key == firstKey || key == secondKey {
 		t.Errorf("新しい集まりの鍵 = %q が前の鍵と同じ", key)
 	}
-	if got := manualTagNames(t, db, key); !slices.Equal(got, []string{"Z"}) {
-		t.Errorf("集まりのタグ = %v, want [Z]", got)
+	if got := manualTagNames(t, db, key); !slices.Equal(got, []string{"X", "Z"}) {
+		t.Errorf("集まりのタグ = %v, want 両方の集まりの [X Z]", got)
 	}
 	if got := manualTagNames(t, db, firstKey); !slices.Equal(got, []string{"X"}) {
 		t.Errorf("吸収した集まりの鍵のタグ = %v, want [X]（消さない）", got)
@@ -414,5 +415,47 @@ func TestExternalVideoTagsUseBundleKey(t *testing.T) {
 	}
 	if got := manualTagNames(t, db, "key-b"); len(got) != 0 {
 		t.Errorf("B の content_key のタグ = %v, want なし", got)
+	}
+}
+
+// Bundling keeps every side's data whichever is the representative: the latest position, either side's
+// publication, and the representative's work information, else the other side's.
+func TestBundleMergesBothSidesUserData(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	a, b, c := ownerVideo(t, db, ids["a"]), ownerVideo(t, db, ids["b"]), ownerVideo(t, db, ids["c"])
+	for key, updatedAt := range map[string]int64{a.ContentKey: 100, b.ContentKey: 200} {
+		if _, err := db.sql.Exec(`insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
+			values (?, ?, 10000, 0, ?)`, key, updatedAt*10, updatedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{ids["b"]}, true); err != nil {
+		t.Fatal(err)
+	}
+	for key, code := range map[string]string{b.ContentKey: "B-1", c.ContentKey: "C-1"} {
+		if _, err := db.sql.Exec(`insert into video_work_info (content_key, code, code_key, description, search_version)
+			values (?, ?, ?, '', 0)`, key, code, code); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	bundle(t, db, ids["a"], ids["a"], ids["b"])
+	key := ownerVideo(t, db, ids["a"]).UserKey
+	if progress, err := db.Playback().Progress(ctx, key); err != nil || progress.PositionMs != 2000 {
+		t.Errorf("集まりの再生位置 = %+v, %v, want 後で更新した b の 2000", progress, err)
+	}
+	if !ownerVideo(t, db, ids["a"]).Public {
+		t.Error("b の公開が集まりに残らない")
+	}
+	var code string
+	if err := db.sql.QueryRow(`select code from video_work_info where content_key = ?`, key).Scan(&code); err != nil || code != "B-1" {
+		t.Errorf("代表に作品情報が無いときの作品情報 = %q, %v, want b の B-1", code, err)
+	}
+
+	bundle(t, db, ids["c"], ids["a"], ids["c"])
+	key = ownerVideo(t, db, ids["c"]).UserKey
+	if err := db.sql.QueryRow(`select code from video_work_info where content_key = ?`, key).Scan(&code); err != nil || code != "C-1" {
+		t.Errorf("代表の作品情報 = %q, %v, want 代表 c の C-1 だけ", code, err)
 	}
 }

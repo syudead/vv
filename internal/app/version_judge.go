@@ -231,14 +231,20 @@ func (j *VersionJudge) logError(ctx context.Context, message string, err error) 
 // before the next judgement.
 func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) bool {
 	rule := domain.JudgeVersionFrames(job.Fingerprints[0], job.Fingerprints[1])
-	result, probability := j.decide(ctx, job, rule)
+	properties := domain.CompareVersionProperties(job.Properties[0], job.Properties[1])
+	leaning := domain.LeanVersionProperties(properties)
+	result, probability := j.decide(ctx, job, rule, leaning)
 	if ctx.Err() != nil {
 		return true
 	}
+	result.Evidence = domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
+	result.Evidence.Properties = properties
+	result = settleByProperties(result, leaning)
 	attrs := []any{
 		slog.String("key_a", job.Keys[0]), slog.String("key_b", job.Keys[1]),
 		slog.String("rule", rule.Outcome.String()), slog.Int("frames_compared", rule.Compared),
 		slog.Int("frames_differing", rule.Differing), slog.String("verdict", result.Verdict.String()),
+		slog.Bool("by_properties", result.Evidence.ByProperties),
 	}
 	if probability != nil {
 		attrs = append(attrs, slog.Float64("probability", *probability))
@@ -279,12 +285,16 @@ func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain
 // Matching fingerprints need no classifier; incomparable pairs remain for the owner, while
 // mismatches require saved connection settings or return no_connection.
 func (j *VersionJudge) decide(
-	ctx context.Context, job domain.VersionJudgeJob, rule domain.VersionFrameRule,
+	ctx context.Context, job domain.VersionJudgeJob, rule domain.VersionFrameRule, leaning domain.VersionLeaning,
 ) (domain.VersionJudgeResult, *float64) {
 	switch rule.Outcome {
 	case domain.VersionFramesSame:
 		return domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule}, nil
 	case domain.VersionFramesDiffer:
+		// A strong same from the properties settles the pair without asking the classifier.
+		if leaning == domain.VersionLeansStronglySame {
+			return domain.VersionJudgeResult{Verdict: domain.VersionUndecided, Decider: domain.ActivityByRule}, nil
+		}
 	default:
 		return domain.VersionJudgeResult{Verdict: domain.VersionUndecided, Decider: domain.ActivityByRule}, nil
 	}
@@ -323,6 +333,21 @@ func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.F
 		return 0, errNoVersionAnswer
 	}
 	return probability, nil
+}
+
+// settleByProperties lets the properties decide or hold the verdict; a verdict they decide is the rule's, and the
+// classifier's answer stays as evidence.
+func settleByProperties(result domain.VersionJudgeResult, leaning domain.VersionLeaning) domain.VersionJudgeResult {
+	verdict, byProperties := domain.SettleVersionVerdict(result.Verdict, leaning, result.Probability)
+	if !byProperties {
+		return result
+	}
+	result.Evidence.ByProperties = true
+	result.Verdict, result.Error = verdict, ""
+	if verdict != domain.VersionUndecided || result.Probability == nil {
+		result.Decider = domain.ActivityByRule
+	}
+	return result
 }
 
 func failedJudgement(err error) domain.VersionJudgeResult {

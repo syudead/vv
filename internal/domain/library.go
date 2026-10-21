@@ -85,7 +85,9 @@ type VideoQuery struct {
 	// An empty Watch means WatchAll.
 	Watch        WatchFilter
 	PlayableOnly bool
-	Sort         VideoSort
+	// HasVersionsOnly keeps videos bundled with other versions; it is an owner filter.
+	HasVersionsOnly bool
+	Sort            VideoSort
 	// Seed is used only by SortRandom and ranges from zero to MaxShuffleSeed.
 	Seed   int64
 	Cursor string

@@ -261,6 +261,7 @@ var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, c
 	e.subject_label, coalesce(e.subject_label_b, ''), e.status, coalesce(e.reason, ''), coalesce(e.outcome, ''),
 	coalesce(e.detail, ''), coalesce(e.stage, ''), coalesce(e.undoes_id, 0), e.decider, e.probability,
 	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), coalesce(e.scan_id, 0), e.created_at, e.updated_at,
+	coalesce(e.evidence, ''),
 	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
 	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
@@ -291,11 +292,12 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 		createdAt, updatedAt                     int64
 		retryAt                                  sql.NullInt64
 		undoneKind, undoneOutcome, undoneTagName sql.NullString
+		evidence                                 string
 	)
 	err := row.Scan(&entry.ID, &kind, &feature, &subjectKind, &entry.Subject.Key, &entry.Subject.KeyB,
 		&entry.Subject.Label, &entry.Subject.LabelB, &status, &reason, &outcome, &entry.Detail, &stage,
 		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &entry.ScanID, &createdAt,
-		&updatedAt,
+		&updatedAt, &evidence,
 		&entry.Candidate, &judgement, &retryAt, &undoneKind, &undoneOutcome, &undoneTagName, &entry.Replaced)
 	if err != nil {
 		return domain.ActivityEntry{}, err
@@ -314,6 +316,9 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 	}
 	entry.CreatedAt = time.UnixMilli(createdAt)
 	entry.UpdatedAt = time.UnixMilli(updatedAt)
+	if entry.Evidence, err = domain.DecodeVersionJudgeEvidence(evidence); err != nil {
+		return domain.ActivityEntry{}, err
+	}
 	if judgement == string(domain.VersionJudgementFailed) && retryAt.Valid && entry.Kind == domain.ActivityVersionJudgement {
 		entry.RetryAt = time.Unix(retryAt.Int64, 0)
 	}

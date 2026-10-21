@@ -62,6 +62,7 @@ import {
 } from "../videoList/listCriteria";
 import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { FilterCheckbox } from "../videoList/FilterMenu";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
@@ -90,6 +91,8 @@ import {
   ORGANIZATION_PARAM,
   PERSON_PARAM,
   TAG_KIND_PARAM,
+  VERSIONS_PARAM,
+  withVersions,
   useCreditFilter,
   withoutCredit,
 } from "./creditCriteria";
@@ -158,7 +161,8 @@ function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: bool
 function libraryConditioned(filter: LibraryFilter): boolean {
   return (
     hasTagConditions(filter.criteria, filter.tagIds, filter.credits) ||
-    hasAddedLength(filter.addedLength)
+    hasAddedLength(filter.addedLength) ||
+    filter.credits.hasVersions === true
   );
 }
 
@@ -178,6 +182,7 @@ const libraryParams = [
   PERSON_PARAM,
   ORGANIZATION_PARAM,
   TAG_KIND_PARAM,
+  VERSIONS_PARAM,
   ...addedLengthParams,
 ];
 
@@ -296,6 +301,10 @@ export default function LibraryPage() {
     applyTagKind,
   );
   const changeTagKind = tagKinds.change;
+  const changeVersions = useCallback(
+    (on: boolean) => applyTagKind(withVersions(on), "push"),
+    [applyTagKind],
+  );
   const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
 
   const pressTag = useCallback(
@@ -825,6 +834,13 @@ export default function LibraryPage() {
               extraFilter={
                 <>
                   {owner && (
+                    <FilterCheckbox
+                      checked={credits.hasVersions === true}
+                      onCheckedChange={changeVersions}
+                      label={t.library.versionsFilter}
+                    />
+                  )}
+                  {owner && (
                     <TagKindSelect
                       value={credits.tagKind}
                       kinds={tagKinds.kinds}
@@ -839,7 +855,9 @@ export default function LibraryPage() {
                 </>
               }
               extraFilterCount={
-                (credits.tagKind === undefined ? 0 : 1) + addedLengthCount(addedLength)
+                (credits.tagKind === undefined ? 0 : 1) +
+                (credits.hasVersions === true ? 1 : 0) +
+                addedLengthCount(addedLength)
               }
               onFilterOpen={owner ? tagKinds.load : undefined}
             />
@@ -878,7 +896,13 @@ export default function LibraryPage() {
             <PageHeader
               title={t.library.resultsLabel}
               headingLevel={2}
-              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
+              // A smart folder cannot keep the versions filter, so saving it would drop a condition.
+              actions={saveSmartFolderAction(
+                owner,
+                conditioned && credits.hasVersions !== true,
+                smartFolderFilter,
+                sort,
+              )}
               count={
                 initialLoadFailed ? undefined : (
                   <span
