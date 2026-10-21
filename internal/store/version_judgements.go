@@ -541,19 +541,55 @@ func (s *VersionStore) RejudgeCandidate(ctx context.Context, videoIDs [2]int64) 
 	return nil
 }
 
-// JudgementEvidence returns a version_judgement entry's pair keys and its evidence, nil when none was recorded.
+// JudgementEvidence returns a version_judgement entry's pair keys and its evidence, recomputed for a pair still left
+// on Duplicates by a judgement made before evidence was stored, nil when there is none.
 func (s *VersionStore) JudgementEvidence(ctx context.Context, entryID int64) ([2]string, *domain.VersionJudgeEvidence, error) {
-	var keys [2]string
-	var evidence string
-	err := s.db.read.QueryRowContext(ctx, `select subject_key, coalesce(subject_key_b, ''), coalesce(evidence, '')
-		from activity_entries where id = ? and kind = ?`, entryID, string(domain.ActivityVersionJudgement)).
-		Scan(&keys[0], &keys[1], &evidence)
-	if errors.Is(err, sql.ErrNoRows) {
-		return keys, nil, fmt.Errorf("activity entry %d: %w", entryID, domain.ErrNotFound)
-	}
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return keys, nil, fmt.Errorf("cannot read the activity entry (id=%d): %w", entryID, err)
+		return [2]string{}, nil, fmt.Errorf("cannot read the activity entry (id=%d): %w", entryID, err)
 	}
-	decoded, err := domain.DecodeVersionJudgeEvidence(evidence)
-	return keys, decoded, err
+	defer func() { _ = tx.Rollback() }()
+	entry, err := scanOneActivityEntry(ctx, tx, entryID)
+	if err != nil {
+		return [2]string{}, nil, err
+	}
+	if entry.Kind != domain.ActivityVersionJudgement {
+		return [2]string{}, nil, fmt.Errorf("activity entry %d: %w", entryID, domain.ErrNotFound)
+	}
+	evidence, err := entryEvidence(ctx, tx, entry)
+	return [2]string{entry.Subject.Key, entry.Subject.KeyB}, evidence, err
+}
+
+// entryEvidence is the entry's stored evidence, or for an entry still waiting on the owner, evidence derived from the
+// current fingerprints.
+func entryEvidence(ctx context.Context, tx *sql.Tx, entry domain.ActivityEntry) (*domain.VersionJudgeEvidence, error) {
+	if entry.Evidence != nil || entry.Status != domain.ActivityAttention {
+		return entry.Evidence, nil
+	}
+	return derivedEvidence(ctx, tx, [2]string{entry.Subject.Key, entry.Subject.KeyB},
+		domain.VersionJudgement(entry.Reason), entry.Probability)
+}
+
+// derivedEvidence recomputes the frame rule for a pair the classifier sees the same way; nil for a state without a
+// result or a key without a fingerprint.
+func derivedEvidence(
+	ctx context.Context, tx *sql.Tx, keys [2]string, state domain.VersionJudgement, probability *float64,
+) (*domain.VersionJudgeEvidence, error) {
+	if !domain.VersionRejudgeable(state) {
+		return nil, nil
+	}
+	var fingerprints [2]domain.Fingerprint
+	for i, key := range keys {
+		fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
+		if err != nil || !found {
+			return nil, err
+		}
+		fingerprints[i] = fingerprint
+	}
+	rule := domain.JudgeVersionFrames(fingerprints[0], fingerprints[1])
+	evidence := domain.NewVersionJudgeEvidence(fingerprints[0], fingerprints[1], rule)
+	if state == domain.VersionJudgementUndecided {
+		evidence.InferConflict(probability)
+	}
+	return evidence, nil
 }

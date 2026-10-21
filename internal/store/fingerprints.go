@@ -245,6 +245,12 @@ func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidateP
 		}
 		item.Distance = p.distance
 		item.Judgement = p.judgement
+		if item.Judgement.Evidence == nil {
+			if item.Judgement.Evidence, err = derivedEvidence(ctx, tx, p.keys, p.judgement.State,
+				p.judgement.Probability); err != nil {
+				return domain.VersionCandidatePage{}, err
+			}
+		}
 		page.Items = append(page.Items, item)
 	}
 	if err := tx.Commit(); err != nil {
@@ -255,12 +261,13 @@ func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidateP
 
 type candidatePair struct {
 	ids       [2]int64
+	keys      [2]string
 	distance  int
 	judgement domain.VersionCandidateJudgement
 }
 
 func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]candidatePair, error) {
-	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.distance, coalesce(c.judgement, ''),
+	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.key_a, c.key_b, c.distance, coalesce(c.judgement, ''),
 		coalesce(c.activity_id, 0), c.probability, coalesce(c.judgement_error, ''), c.retry_at,
 		coalesce((select e.evidence from activity_entries e where e.id = c.activity_id), ''),
 		exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
@@ -300,7 +307,7 @@ func scanCandidatePair(rows *sql.Rows) (candidatePair, error) {
 		evidence    string
 		held        bool
 	)
-	if err := rows.Scan(&p.ids[0], &p.ids[1], &p.distance, &state, &p.judgement.ActivityID, &probability,
+	if err := rows.Scan(&p.ids[0], &p.ids[1], &p.keys[0], &p.keys[1], &p.distance, &state, &p.judgement.ActivityID, &probability,
 		&p.judgement.Error, &retryAt, &evidence, &held); err != nil {
 		return candidatePair{}, fmt.Errorf("cannot read the version candidates: %w", err)
 	}

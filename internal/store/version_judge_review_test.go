@@ -112,3 +112,25 @@ func TestSuccessionDropsTheJudgementFrames(t *testing.T) {
 		t.Errorf("引き継いだあとの根拠 = %+v, %v, want 数は残りコマは無い", evidence, err)
 	}
 }
+
+// A pair left undecided before evidence was stored gets it recomputed from the fingerprints; a rule match left
+// undecided can only have met a known difference.
+func TestCandidatesDeriveEvidenceJudgedBeforeItWasStored(t *testing.T) {
+	db, _ := judgementFixture(t)
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionUndecided})
+
+	_, page := candidatePairs(t, db)
+	evidence := page.Items[0].Judgement.Evidence
+	if evidence == nil || evidence.Rule != "frames_match" || evidence.Compared != 12 || !evidence.Conflict {
+		t.Fatalf("候補の根拠 = %+v, want 計算し直した frames_match と衝突の印", evidence)
+	}
+	id := page.Items[0].Judgement.ActivityID
+	detail, err := db.Activity().ActivityDetail(context.Background(), id)
+	if err != nil || !reflect.DeepEqual(detail.Evidence, evidence) {
+		t.Errorf("記録の詳細の根拠 = %+v, %v, want %+v", detail.Evidence, err, evidence)
+	}
+	if _, got, err := db.Versions().JudgementEvidence(context.Background(), id); err != nil || !reflect.DeepEqual(got, evidence) {
+		t.Errorf("JudgementEvidence = %+v, %v, want %+v", got, err, evidence)
+	}
+}

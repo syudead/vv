@@ -332,7 +332,7 @@ describe("DuplicatesPage", () => {
     const panel = within(item!).getByRole("region", { name: "Automatic judgement" });
     expect(
       within(panel).getByText(
-        "Left to you: it couldn't tell whether these are the same video",
+        "Left to you: the AI was unsure, 55% sure both show the same picture",
       ),
     ).toBeDefined();
     expect(panel.textContent).toContain(
@@ -345,6 +345,28 @@ describe("DuplicatesPage", () => {
       "/api/activity/9/judgement-frames/1",
     ]);
     expect(within(panel).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+  });
+
+  it("決めかねた理由が比べられないコマか、別物の記録とのぶつかりかを見出しで言い分ける", async () => {
+    server.candidates = [
+      pair(movieA, movieB, {
+        state: "undecided",
+        evidence: { rule: "incomparable", compared: 2, differing: 0 },
+      }),
+      pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" }), {
+        state: "undecided",
+        evidence: { rule: "frames_match", compared: 40, differing: 0, conflict: true },
+      }),
+    ];
+    renderPage();
+    expect(
+      await screen.findByText("Left to you: the two videos' frames couldn't be compared"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "Left to you: they look the same, but one is marked as a different video from the other's versions",
+      ),
+    ).toBeDefined();
   });
 
   it("「Judge again」で判定に戻し、取り直した組は待ちになる", async () => {

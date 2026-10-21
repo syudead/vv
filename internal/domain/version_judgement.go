@@ -131,6 +131,13 @@ func DecodeVersionJudgeEvidence(value string) (*VersionJudgeEvidence, error) {
 	return &evidence, nil
 }
 
+// InferConflict sets Conflict on evidence recomputed for an undecided pair judged before evidence was stored: a rule
+// match or a same answer left undecided can only have met a known difference across the two sides.
+func (e *VersionJudgeEvidence) InferConflict(probability *float64) {
+	e.Conflict = e.Rule == VersionFramesSame.String() ||
+		(probability != nil && VersionVerdictFor(*probability) == VersionSame)
+}
+
 // FramePairs returns the shown frames as the pairs the frame source cuts.
 func (e VersionJudgeEvidence) FramePairs() []FramePair {
 	pairs := make([]FramePair, 0, len(e.Frames))

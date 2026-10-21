@@ -2637,6 +2637,11 @@ export const en = {
         waiting: "Waiting to be judged",
         running: "Being judged now",
         undecided: "Left to you: it couldn't tell whether these are the same video",
+        undecidedAi: (percent: string) =>
+          `Left to you: the AI was unsure, ${percent} sure both show the same picture`,
+        undecidedIncomparable: "Left to you: the two videos' frames couldn't be compared",
+        undecidedConflict:
+          "Left to you: they look the same, but one is marked as a different video from the other's versions",
         failed: (detail: string) =>
           detail === "" ? "The judgement failed" : `The judgement failed: ${detail}`,
         no_connection: "Needs the AI connection to decide",

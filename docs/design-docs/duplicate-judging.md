@@ -83,6 +83,15 @@ stored copy would outlive the seek preview it came from. A content change at
 the same path removes `frames` from the pair entries of the old key before
 re-keying them, since the frame indexes point into the old content's seek
 preview; the counts and the sentences stay.
+
+A pair left on Duplicates by a judgement made before evidence was stored gets
+evidence recomputed from the two stored fingerprints when it is read, on
+Duplicates and in the entry's detail. The frame rule is deterministic, so the
+counts and frames match what the classifier was shown while the fingerprints
+are unchanged. A rule match or a same answer left `undecided` can only have
+met a known difference across the two sides, so such evidence is marked
+`conflict`. The screen's headline names the reason: a conflict, frames that
+could not be compared, or the classifier's answer between the thresholds.
 The screen states the thresholds next to the probability, so a 55% answer
 reads as between the 20% and 80% that would decide.
 

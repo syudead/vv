@@ -419,9 +419,21 @@ function judgementState(judgement: VersionCandidateJudgement, judging: boolean):
         ? failed
         : `${failed} · ${t.versions.judgement.retryAt(formatTime(judgement.retryAt))}`;
     }
+    case "undecided":
+      return undecidedReason(judgement);
     default:
       return state[judgement.state];
   }
+}
+
+/** Name what left the pair undecided, so the headline says more than that it was. */
+function undecidedReason(judgement: VersionCandidateJudgement): string {
+  const state = t.versions.judgement.state;
+  if (judgement.evidence?.conflict === true) return state.undecidedConflict;
+  if (judgement.evidence?.rule === "incomparable") return state.undecidedIncomparable;
+  if (judgement.probability !== undefined)
+    return state.undecidedAi(t.activity.percent(judgement.probability));
+  return state.undecided;
 }
 
 /** The automatic judgement's state and, once it has a result, why. */
