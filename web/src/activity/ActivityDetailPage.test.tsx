@@ -211,14 +211,12 @@ describe("ActivityDetailPage", () => {
     expect(
       within(people).queryByRole("button", { name: "Undo link to Alice" }),
     ).toBeNull();
-    expect(
-      within(people).getByRole("link", { name: "Unnamed person" }).getAttribute("href"),
-    ).toBe("/people/6");
+    expect(within(people).getByRole("link", { name: "#6" }).getAttribute("href")).toBe(
+      "/people/6",
+    );
     // Undo removes the link, not the fact that the run created the person.
     expect(within(people).getAllByText("New person")).toHaveLength(2);
-    expect(
-      within(people).getByRole("button", { name: "Undo link to Unnamed person" }),
-    ).toBeDefined();
+    expect(within(people).getByRole("button", { name: "Undo link to #6" })).toBeDefined();
   });
 
   it("says the entry doesn't exist when the server has no such id", async () => {

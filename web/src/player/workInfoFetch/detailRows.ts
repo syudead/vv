@@ -177,7 +177,11 @@ function matchChip(
   const name =
     match.name === undefined
       ? entry.name
-      : creditDisplayName({ name: match.name, provisional: match.name === "" });
+      : creditDisplayName({
+          id: match.id,
+          name: match.name,
+          provisional: match.name === "",
+        });
   return {
     key,
     name,

@@ -223,13 +223,13 @@ describe("PeoplePage", () => {
     expect(listRequests().at(-1)?.get("favorite")).toBe("true");
   });
 
-  it("names a provisional person's card Unnamed person in place of the empty name", async () => {
+  it("names a provisional person's card by their number in place of the empty name", async () => {
     server.pages.set(null, {
       items: [person(3, { name: "", provisional: true, videoCount: 2 })],
     });
     renderPage();
 
-    const link = await screen.findByRole("link", { name: /Unnamed person/ });
+    const link = await screen.findByRole("link", { name: /#3/ });
     expect(link.getAttribute("href")).toBe("/people/3");
     expect(within(link).getByText("2 videos")).toBeTruthy();
   });

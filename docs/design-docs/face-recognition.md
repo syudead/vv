@@ -762,7 +762,7 @@ Both kinds belong to the `face_recognition` feature of the activity filter. A
 `face_merge` entry's subject is the merge target as a `person` subject, whose
 item carries `personId` from the subject key, so the card and the detail page
 open `/people/:id`; its result names the source as `Unnamed person`, since a
-merged source is always provisional. A `face_analysis` entry lists its
+merged source is always provisional and the entry keeps no number for it. A `face_analysis` entry lists its
 `faceLinks` in the list, in the detail and in an import pipeline's member
 summaries, so a pipeline's member reads the same names as its own card
 (`web/src/activity/activityEntry.ts`).
@@ -783,18 +783,20 @@ and the people API names it by its two people in either order
 `GET /api/people/{id}/face-candidates` lists the open pairs a person takes part
 in as the other person of each, highest similarity first.
 
-| Action  | Effect                                                                                                                                                                              |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Confirm | The ordinary merge of the pair's person without a canonical name into the other, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
-| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                    |
+| Action  | Effect                                                                                                                                                                          |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirm | The ordinary merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
+| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                |
 
-When both people have a name, or neither has, confirm merges the stored
-provisional side: a name given after the pair was offered does not reverse
-it. Without an open pair, both actions answer `404 face_candidate_not_found`.
+The person confirmed from stays, with their face, whichever side the pair
+stores as provisional; only when that person has no canonical name and the
+other has one does it merge into the other, so a name is never lost. Without
+an open pair, both actions answer `404 face_candidate_not_found`.
 
-| Rejected             | Why                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------- |
-| Pairs of appearances | The person page offers people, and one person's many appearances would repeat one choice |
+| Rejected                                       | Why                                                                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Pairs of appearances                           | The person page offers people, and one person's many appearances would repeat one choice                                            |
+| Merging the stored provisional side, as before | Sorting unnamed people, the person on the page was often the one merged away, so the page and its face switched to the other person |
 
 ## The faces page reads a person's appearances
 

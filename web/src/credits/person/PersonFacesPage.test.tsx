@@ -115,11 +115,9 @@ describe("PersonFacesPage", () => {
     await screen.findByText("No faces found in videos yet.");
     const faceReads = sent("GET", "/api/people/7/appearances").length;
 
-    await user.click(
-      await screen.findByRole("button", { name: "Same person as Unnamed person" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Same person as #9" }));
 
-    expect(await screen.findByText('Merged "Unnamed person"')).toBeTruthy();
+    expect(await screen.findByText('Merged "#9"')).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to Aoi" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Same person?" })).toBeNull();
     await waitFor(() =>

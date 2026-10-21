@@ -167,7 +167,7 @@ describe("PersonEditPage", () => {
     it("名前を空のまま placeholder で出し、空のまま Save しても name を送らない", async () => {
       const name = await opened();
       expect(name.value).toBe("");
-      expect(name.getAttribute("placeholder")).toBe("Unnamed person");
+      expect(name.getAttribute("placeholder")).toBe("#7");
       expect(document.activeElement).toBe(name);
 
       await userEvent.setup().click(screen.getByRole("button", { name: "Save" }));

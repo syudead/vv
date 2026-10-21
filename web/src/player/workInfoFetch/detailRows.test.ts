@@ -99,7 +99,7 @@ describe("detailRows", () => {
     expect(row.state).toBe("differs");
   });
 
-  it("名前の無い仮の人物は、今の値でも照合先でも Unnamed person と出す", () => {
+  it("名前の無い仮の人物は、今の値でも照合先でも番号で出す", () => {
     const unnamed = { id: 6, name: "", provisional: true };
     const row = list(
       detailRow(
@@ -108,9 +108,9 @@ describe("detailRows", () => {
         result({ people: [performer("ゆい", { state: "existing", id: 6, name: "" })] }),
       ),
     );
-    expect(row.now.map((chip) => chip.name)).toEqual(["Unnamed person"]);
+    expect(row.now.map((chip) => chip.name)).toEqual(["#6"]);
     expect(row.fetched.map((chip) => [chip.name, chip.mark, chip.fetchedAs])).toEqual([
-      ["Unnamed person", "onVideo", "ゆい"],
+      ["#6", "onVideo", "ゆい"],
     ]);
   });
 

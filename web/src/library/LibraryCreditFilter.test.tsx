@@ -290,7 +290,7 @@ describe("人物・団体での絞り込み", () => {
     ).toBeDefined();
   });
 
-  it("仮の人物の絞り込みは、空の名前ではなく Unnamed person のチップで顔と出す", async () => {
+  it("仮の人物の絞り込みは、空の名前ではなく番号のチップで顔と出す", async () => {
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       if (new URL(String(input), "http://localhost").pathname === "/api/people/1") {
@@ -311,9 +311,9 @@ describe("人物・団体での絞り込み", () => {
     renderAt("/?person=1");
 
     const chip = await screen.findByRole("button", {
-      name: "Remove the filter for Unnamed person",
+      name: "Remove the filter for #1",
     });
-    expect(chip.textContent).toBe("Unnamed person");
+    expect(chip.textContent).toBe("#1");
     expect(chip.querySelector("img")?.getAttribute("src")).toBe(
       "/api/people/1/image?v=3",
     );

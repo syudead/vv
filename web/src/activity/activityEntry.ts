@@ -54,7 +54,12 @@ export function subjectParts(entry: Pick<ActivityEntry, "subject">): SubjectPart
   if (kind === "person")
     // A provisional person's label is empty.
     return items.map((item) => ({
-      label: item.label === "" ? t.credits.unnamedPerson : item.label,
+      label:
+        item.label !== ""
+          ? item.label
+          : item.personId === undefined
+            ? t.credits.unnamedPerson
+            : t.credits.personNumber(item.personId),
       ...(item.personId === undefined ? {} : { personId: item.personId }),
     }));
   return items.map((item) =>
