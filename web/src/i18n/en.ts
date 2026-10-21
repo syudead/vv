@@ -2633,6 +2633,10 @@ export const en = {
     },
     judgement: {
       heading: "Automatic judgement",
+      why: "Why?",
+      whyFor: (first: string, second: string) =>
+        `Why the automatic judgement ended this way, for ${first} and ${second}`,
+      whyTitle: "Why the automatic judgement ended this way",
       state: {
         waiting: "Waiting to be judged",
         running: "Being judged now",

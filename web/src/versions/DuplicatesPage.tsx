@@ -1,4 +1,4 @@
-import { Layers, RotateCw } from "lucide-react";
+import { Info, Layers, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -22,6 +22,16 @@ import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/shadcn/dialog";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
@@ -403,7 +413,11 @@ function PairRow({
           />
         ))}
       </div>
-      <JudgementPanel judgement={judgement} judging={judging} />
+      <JudgementPanel
+        judgement={judgement}
+        judging={judging}
+        titles={[first.title, second.title]}
+      />
     </li>
   );
 }
@@ -436,29 +450,52 @@ function undecidedReason(judgement: VersionCandidateJudgement): string {
   return state.undecided;
 }
 
-/** The automatic judgement's state and, once it has a result, why. */
+/** The automatic judgement's state in one line; the reasons and frames open in a dialog. */
 function JudgementPanel({
   judgement,
   judging,
+  titles,
 }: {
   judgement: VersionCandidateJudgement;
   judging: boolean;
+  titles: readonly [string, string];
 }) {
+  const [open, setOpen] = useState(false);
+  const j = t.versions.judgement;
+  const headline = judgementState(judgement, judging);
   const evidence = rejudgeable.has(judgement.state) ? judgement.evidence : undefined;
   return (
     <section
-      aria-label={t.versions.judgement.heading}
-      className="flex flex-col gap-2 rounded-md bg-muted p-3"
+      aria-label={j.heading}
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted px-3 py-2"
     >
-      <p className="text-sm font-medium text-foreground">
-        {judgementState(judgement, judging)}
-      </p>
+      <p className="min-w-0 text-sm text-foreground">{headline}</p>
       {evidence !== undefined && (
-        <JudgementEvidence
-          evidence={evidence}
-          probability={judgement.probability}
-          activityId={judgement.activityId}
-        />
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" aria-label={j.whyFor(...titles)}>
+              <Info aria-hidden="true" />
+              {j.why}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{j.whyTitle}</DialogTitle>
+              <DialogDescription>{headline}</DialogDescription>
+            </DialogHeader>
+            <JudgementEvidence
+              evidence={evidence}
+              probability={judgement.probability}
+              activityId={judgement.activityId}
+              columns={1}
+            />
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">{t.common.close}</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </section>
   );

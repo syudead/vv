@@ -298,7 +298,8 @@ describe("DuplicatesPage", () => {
     expect(within(item).getByText("Waiting to be judged")).toBeDefined();
   });
 
-  it("AI が決めかねた組は理由と見せたコマを出し、左に映る動画を先に並べる", async () => {
+  it("AI が決めかねた組は見出しに理由を出し、「Why?」で説明と見せたコマを開き、左に映る動画を先に並べる", async () => {
+    const user = userEvent.setup();
     server.candidates = [
       pair(movieA, movieB, {
         state: "undecided",
@@ -335,16 +336,28 @@ describe("DuplicatesPage", () => {
         "Left to you: the AI was unsure, 55% sure both show the same picture",
       ),
     ).toBeDefined();
-    expect(panel.textContent).toContain(
+    // The reasons and frames stay out of the row until the owner asks for them.
+    expect(within(panel).queryByRole("img")).toBeNull();
+    expect(panel.textContent).not.toContain("frames compared by time");
+
+    await user.click(
+      within(panel).getByRole("button", {
+        name: "Why the automatic judgement ended this way, for 劇場版 and 劇場版 720p",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Why the automatic judgement ended this way",
+    });
+    expect(dialog.textContent).toContain(
       "6 of 40 frames compared by time differ, 5 of them in a row from 1:20 to 1:35.",
     );
-    expect(panel.textContent).toContain("It answered 55%.");
-    const images = within(panel).getAllByRole("img");
+    expect(dialog.textContent).toContain("It answered 55%.");
+    const images = within(dialog).getAllByRole("img");
     expect(images.map((image) => image.getAttribute("src"))).toEqual([
       "/api/activity/9/judgement-frames/0",
       "/api/activity/9/judgement-frames/1",
     ]);
-    expect(within(panel).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+    expect(within(dialog).getByText("Left at 1:30, right at 1:30")).toBeDefined();
   });
 
   it("決めかねた理由が比べられないコマか、別物の記録とのぶつかりかを見出しで言い分ける", async () => {

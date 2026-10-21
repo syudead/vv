@@ -92,6 +92,9 @@ are unchanged. A rule match or a same answer left `undecided` can only have
 met a known difference across the two sides, so such evidence is marked
 `conflict`. The screen's headline names the reason: a conflict, frames that
 could not be compared, or the classifier's answer between the thresholds.
+A Duplicates row shows only that headline; `Why?` opens a dialog with the
+sentences and the frame pairs in one column, so up to four side-by-side
+images do not stretch every row of the list.
 The screen states the thresholds next to the probability, so a 55% answer
 reads as between the 20% and 80% that would decide.
 

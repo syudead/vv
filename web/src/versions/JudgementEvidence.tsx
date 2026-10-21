@@ -1,5 +1,6 @@
 import { judgementFrameUrl, type VersionJudgeEvidence } from "../api/client";
 import { t } from "../i18n";
+import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import { evidenceSentences } from "./evidenceSentences";
 
@@ -11,10 +12,13 @@ export function JudgementEvidence({
   evidence,
   probability,
   activityId,
+  columns = 2,
 }: {
   evidence: VersionJudgeEvidence;
   probability: number | undefined;
   activityId: number | undefined;
+  /** One column keeps each frame pair large enough to compare inside a narrow dialog. */
+  columns?: 1 | 2;
 }) {
   const j = t.versions.judgement;
   const frames = activityId === undefined ? [] : (evidence.frames ?? []);
@@ -28,7 +32,7 @@ export function JudgementEvidence({
           <figcaption className="text-xs font-medium text-foreground">
             {j.frames}
           </figcaption>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className={cn("grid gap-2", columns === 2 && "sm:grid-cols-2")}>
             {frames.map((frame, index) => {
               const left = formatDuration(frame.aMs);
               const right = formatDuration(frame.bMs);
