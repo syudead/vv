@@ -191,3 +191,97 @@ func TestSplitFaceAppearancesMovesEveryFaceToOnePerson(t *testing.T) {
 		t.Errorf("face of the new person = %d bytes, %v; want the first face's crop", len(image.JPEG), err)
 	}
 }
+
+// Faces moved to an existing person take the old person's credit, or leave the target's own credit alone.
+func TestMoveFaceAppearancesHandsFacesAndCreditsToTheTarget(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	ctx := context.Background()
+	appearances := faceAppearances(t, f.db)
+
+	moved, err := f.db.Credits().MoveFaceAppearances(ctx, f.named, []int64{appearances[0].id}, f.near, nil)
+	if err != nil || moved.Person.ID != f.near || len(moved.Restore) != 0 {
+		t.Fatalf("move = %+v, %v; want Near with nothing to restore", moved, err)
+	}
+	if got := faceAppearances(t, f.db)[0].personID; got != f.near {
+		t.Errorf("the face belongs to %d, want Near %d", got, f.near)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.near, f.provisional}) {
+		t.Errorf("performers = %v, want Near in Named's place", got)
+	}
+
+	// Near is credited now, so the provisional person's face moving to Near drops only the provisional credit.
+	if _, err := f.db.Credits().MoveFaceAppearances(ctx, f.provisional, []int64{appearances[1].id}, f.near, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.near}) {
+		t.Errorf("performers = %v, want Near alone", got)
+	}
+	if _, err := f.db.Credits().MoveFaceAppearances(ctx, f.near, []int64{appearances[1].id}, f.near, nil); !errors.Is(err, domain.ErrMergeSameCredit) {
+		t.Errorf("move to the same person: err = %v, want ErrMergeSameCredit", err)
+	}
+	if _, err := f.db.Credits().MoveFaceAppearances(ctx, f.near, []int64{appearances[1].id}, f.near+1000, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("move to a missing person: err = %v, want ErrNotFound", err)
+	}
+}
+
+// A move to a person already credited takes the old person's credit; the reverse move given what it returned keeps
+// the target's own credit and puts the old person's back in place.
+func TestMoveFaceAppearancesUndoKeepsTheTargetsOwnCredit(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	ctx := context.Background()
+	face := faceAppearances(t, f.db)[0].id
+	// Near is credited in the work without a face of their own there.
+	if _, err := f.db.sql.Exec(`insert into video_work_people (content_key, role, position, person_id)
+		select content_key, 'performer', 2, ? from video_work_people where role = 'performer' limit 1`, f.near); err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.named, f.provisional, f.near}) {
+		t.Fatalf("performers before = %v", got)
+	}
+
+	moved, err := f.db.Credits().MoveFaceAppearances(ctx, f.named, []int64{face}, f.near, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.provisional, f.near}) || len(moved.Restore) != 1 {
+		t.Fatalf("after the move: performers %v, restore %+v; want Named's credit taken", got, moved.Restore)
+	}
+
+	if _, err := f.db.Credits().MoveFaceAppearances(ctx, f.near, []int64{face}, f.named, moved.Restore); err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.named, f.provisional, f.near}) {
+		t.Errorf("after the undo: performers %v, want Named back first and Near kept", got)
+	}
+	if got := faceAppearances(t, f.db)[0].personID; got != f.named {
+		t.Errorf("the face belongs to %d, want Named %d", got, f.named)
+	}
+}
+
+// The people closest to the faces come first, the person themself is left out, and each carries their crops, newest
+// video first and a face whose video is gone last.
+func TestSimilarPeopleRanksByTheClosestFace(t *testing.T) {
+	f, crop := newSplitFixture(t)
+	ctx := context.Background()
+	appearances := faceAppearances(t, f.db)
+	gone := insertFaceAppearance(t, f.db, "key-gone", f.named, false, `[[0, 10, 0.5, 0.5, 0.1]]`, crop)
+
+	got, err := f.db.Credits().SimilarPeople(ctx, f.provisional, nil, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]int64, 0, len(got))
+	for _, p := range got {
+		ids = append(ids, p.Person.ID)
+	}
+	if want := []int64{f.nearer, f.near, f.named}; !slices.Equal(ids, want) {
+		t.Fatalf("people = %v, want %v", ids, want)
+	}
+	if named := got[2]; named.FaceCount != 2 || !slices.Equal(named.SampleAppearanceIDs, []int64{appearances[0].id, gone}) ||
+		named.FirstSeenTitle == "" {
+		t.Errorf("Named = %+v, want two faces, the one in a video first, and a first video", named)
+	}
+	if got, err := f.db.Credits().SimilarPeople(ctx, f.provisional, []int64{appearances[0].id}, 3); err != nil || len(got) != 0 {
+		t.Errorf("with another person's face only = %+v, %v; want none", got, err)
+	}
+}

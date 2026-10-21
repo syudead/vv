@@ -150,6 +150,154 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("moves selected faces to a person picked by face, and Undo moves them back", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+    expect(within(dialog).getByText("6 faces · first in Beach day")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(await screen.findByText("Moved to Mio")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/appearances/move")[0])).toEqual({
+      appearanceIds: [3],
+      targetId: 9,
+      restoreCredits: [],
+    });
+    expect(
+      sent("GET", "/api/people/7/similar-people")[0]?.url.searchParams.getAll(
+        "appearanceId",
+      ),
+    ).toEqual(["3"]);
+
+    // A second move to the same person is its own operation, which the first Undo leaves alone.
+    await user.click(screen.getByRole("checkbox", { name: "Select Mountain" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const again = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(again).findByRole("radio", { name: /Mio/ }));
+    await user.click(within(again).getByRole("button", { name: "Move" }));
+    expect(
+      await screen.findByRole("button", { name: "Undo the move in Mountain" }),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Undo the move in Beach day" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Undo the move in Beach day" }),
+      ).toBeNull(),
+    );
+    // The undo hands back the credit the move took, so the target's own one stays.
+    expect(sentBody(sent("POST", "/api/people/9/appearances/move")[0])).toEqual({
+      appearanceIds: [3],
+      targetId: 7,
+      restoreCredits: [{ workKey: "work-5", position: 1 }],
+    });
+    expect(
+      screen.getByRole("button", { name: "Undo the move in Mountain" }),
+    ).toBeTruthy();
+  });
+
+  it("moves faces to a person found by name instead of by face", async () => {
+    const user = userEvent.setup();
+    server.searchable = [
+      person({ id: 11, name: "Ren" }),
+      person({ id: 12, name: "Rika" }),
+    ];
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search by name" }),
+      "ren",
+    );
+    await user.click(await within(dialog).findByRole("option", { name: /Ren/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    await screen.findByText("Moved to Mio");
+    expect(sentBody(sent("POST", "/api/people/7/appearances/move")[0])).toMatchObject({
+      appearanceIds: [3],
+      targetId: 11,
+    });
+  });
+
+  it("keeps the move dialog open, saying so, when a face is no longer the person's", async () => {
+    const user = userEvent.setup();
+    server.moveGone = true;
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    await user.click(await within(dialog).findByRole("radio", { name: /Mio/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+    expect(
+      await within(dialog).findByText(
+        "Some of these faces are no longer this person's. Refresh and try again.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Moved to Mio")).toBeNull();
+  });
+
+  it("says when the people alike could not be read, with a retry", async () => {
+    const user = userEvent.setup();
+    server.similarFailures = 1;
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    await user.click(screen.getByRole("button", { name: "Move to person…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move 1 face to…" });
+    expect(
+      await within(dialog).findByText("Couldn't look for people who look alike."),
+    ).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+
+    expect(await within(dialog).findByRole("radio", { name: /Mio/ })).toBeTruthy();
+  });
+
+  it("clears the selection when the order changes", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(await screen.findByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Beach day" }));
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    // jsdom lacks the pointer APIs the Select's popup calls.
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
+    Element.prototype.scrollIntoView ??= () => undefined;
+    await user.click(screen.getByRole("combobox", { name: "Order" }));
+    await user.click(await screen.findByRole("option", { name: "Newest video first" }));
+
+    await waitFor(() => expect(screen.queryByText("1 selected")).toBeNull());
+  });
+
   it("orders the faces least like the person first, with each score, and can switch to newest", async () => {
     const user = userEvent.setup();
     server.appearances = [

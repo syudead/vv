@@ -33,6 +33,12 @@ type Credits interface {
 	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
 	// SplitFaceAppearances returns domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
 	SplitFaceAppearances(ctx context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error)
+	// MoveFaceAppearances returns domain.ErrMergeSameCredit for the same person and
+	// domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
+	MoveFaceAppearances(
+		ctx context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
+	) (domain.FaceMove, error)
+	SimilarPeople(ctx context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error)
 }
 
 type creditKindAPI struct {

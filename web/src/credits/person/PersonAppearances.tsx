@@ -1,4 +1,4 @@
-import { UserX } from "lucide-react";
+import { UserRoundPlus, UserX } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -7,6 +7,7 @@ import { isCreditGone, type Person } from "../../api/credits";
 import {
   type FaceAppearance,
   type FaceAppearanceSort,
+  type FaceMoveCredit,
   faceCropPath,
   isAppearanceGone,
   listPersonAppearances,
@@ -29,6 +30,7 @@ import { Spinner } from "../../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { creditDisplayName } from "../displayName";
+import MoveToPersonDialog from "./MoveToPersonDialog";
 
 const text = t.credits.personPage.faces;
 
@@ -156,7 +158,23 @@ export interface AppearanceActions {
   split: (appearanceIds: readonly number[]) => Promise<Person>;
   /** Merges the split person back, taking the faces and their credits back. */
   undoSplit: (created: Person) => Promise<void>;
+  /** Moves faces moved to target back to the shown person, putting back the credits the move took. */
+  undoMove: (
+    target: Person,
+    appearanceIds: readonly number[],
+    restore: readonly FaceMoveCredit[],
+  ) => Promise<void>;
   onGone: () => void;
+}
+
+/** Where a face went: a person split off from the shown one, or one the owner moved it to. */
+interface Relink {
+  person: Person;
+  kind: "split" | "moved";
+  /** The credits a move took that only its undo can put back. */
+  restore?: readonly FaceMoveCredit[];
+  /** The split or move that sent it, so Undo takes back that one alone. */
+  operation: number;
 }
 
 /** The video page at the span's start; the address keeps `t` in seconds across a reload. */
@@ -164,17 +182,18 @@ export function spanPath(videoId: number, span: Span): string {
   return `/videos/${String(videoId)}?t=${String(Math.floor(span.start))}`;
 }
 
-/** Which faces are split into whom, with the faces in flight; split faces stay in the grid with Undo. */
+/** Where faces went, with the faces in flight; such faces stay in the grid with Undo. */
 function useSplits(
   actions: AppearanceActions,
   remove: (appearanceId: number) => void,
   rescored: () => void,
 ) {
-  const [splits, setSplits] = useState<ReadonlyMap<number, Person>>(new Map());
+  const [splits, setSplits] = useState<ReadonlyMap<number, Relink>>(new Map());
   const [pending, setPending] = useState<ReadonlySet<number>>(new Set());
   const [error, setError] = useState<UiText | null>(null);
   // The faces in flight as of now, so a second press before the next render sends nothing.
   const inFlight = useRef(new Set<number>());
+  const operations = useRef(0);
 
   async function track(ids: readonly number[], work: () => Promise<void>) {
     if (ids.length === 0 || ids.some((id) => inFlight.current.has(id))) return;
@@ -192,11 +211,7 @@ function useSplits(
   async function split(ids: readonly number[]) {
     await track(ids, async () => {
       try {
-        const created = await actions.split(ids);
-        rescored();
-        setSplits(
-          (current) => new Map([...current, ...ids.map((id) => [id, created] as const)]),
-        );
+        record(ids, { person: await actions.split(ids), kind: "split" });
       } catch (failure) {
         if (ids.length === 1 && isAppearanceGone(failure)) remove(ids[0] as number);
         else if (isCreditGone(failure)) actions.onGone();
@@ -205,13 +220,23 @@ function useSplits(
     });
   }
 
-  async function undo(created: Person) {
+  function record(ids: readonly number[], to: Omit<Relink, "operation">) {
+    operations.current += 1;
+    const relink = { ...to, operation: operations.current };
+    rescored();
+    setSplits(
+      (current) => new Map([...current, ...ids.map((id) => [id, relink] as const)]),
+    );
+  }
+
+  async function undo(relink: Relink) {
     const ids = [...splits]
-      .filter(([, person]) => person.id === created.id)
+      .filter(([, other]) => other.operation === relink.operation)
       .map(([id]) => id);
     await track(ids, async () => {
       try {
-        await actions.undoSplit(created);
+        if (relink.kind === "split") await actions.undoSplit(relink.person);
+        else await actions.undoMove(relink.person, ids, relink.restore ?? []);
         rescored();
         setSplits((current) => new Map([...current].filter(([id]) => !ids.includes(id))));
       } catch (failure) {
@@ -219,7 +244,7 @@ function useSplits(
       }
     });
   }
-  return { splits, pending, error, split, undo };
+  return { splits, pending, error, split, record, undo };
 }
 
 /**
@@ -228,9 +253,11 @@ function useSplits(
  * under the owner; several faces can be selected and split into one new person.
  */
 export function PersonAppearances({
+  person,
   appearances,
   actions,
 }: {
+  person: Person;
   appearances: ReturnType<typeof usePersonAppearances>;
   actions: AppearanceActions;
 }) {
@@ -239,6 +266,11 @@ export function PersonAppearances({
   const state = useKeptSplitFaces(appearances.state, splits.splits);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [moving, setMoving] = useState(false);
+  const selectedFaces =
+    state.kind === "ready"
+      ? state.items.filter((item) => selected.has(item.appearanceId))
+      : [];
 
   function toggle(id: number) {
     setSelected((current) => {
@@ -259,7 +291,7 @@ export function PersonAppearances({
       <Select
         value={sort}
         onValueChange={(next) => {
-          // The new order starts from its first page, so faces checked further down would be split unseen.
+          // The new order starts from its first page, so faces checked further down would be split or moved unseen.
           setSelected(new Set());
           setSort(next as FaceAppearanceSort);
         }}
@@ -295,7 +327,7 @@ export function PersonAppearances({
           <AppearanceTile
             key={item.appearanceId}
             appearance={item}
-            created={splits.splits.get(item.appearanceId)}
+            relink={splits.splits.get(item.appearanceId)}
             pending={splits.pending.has(item.appearanceId)}
             selection={
               selecting
@@ -307,7 +339,7 @@ export function PersonAppearances({
                 : undefined
             }
             split={() => void splits.split([item.appearanceId])}
-            undo={(created) => void splits.undo(created)}
+            undo={(relink) => void splits.undo(relink)}
           />
         )}
       />
@@ -342,12 +374,41 @@ export function PersonAppearances({
             variant="ghost"
             size="sm"
             aria-disabled={splits.pending.size > 0 || undefined}
+            onClick={() => setMoving(true)}
+          >
+            <UserRoundPlus aria-hidden="true" />
+            {text.moveSelected}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-disabled={splits.pending.size > 0 || undefined}
             onClick={() => void splitSelected()}
           >
             <UserX aria-hidden="true" />
             {text.splitSelected}
           </Button>
         </SelectionBar>
+      )}
+      {moving && (
+        <MoveToPersonDialog
+          person={person}
+          faces={selectedFaces}
+          onClose={() => setMoving(false)}
+          onGone={actions.onGone}
+          onMoved={(moved) => {
+            splits.record(
+              selectedFaces.map((face) => face.appearanceId),
+              {
+                person: moved.person,
+                kind: "moved",
+                restore: moved.restoreCredits,
+              },
+            );
+            setSelected(new Set());
+            setMoving(false);
+          }}
+        />
       )}
     </>
   );
@@ -406,19 +467,19 @@ function AppearancesBody({
 
 function AppearanceTile({
   appearance,
-  created,
+  relink,
   pending,
   selection,
   split,
   undo,
 }: {
   appearance: FaceAppearance;
-  created: Person | undefined;
+  relink: Relink | undefined;
   pending: boolean;
   /** full is true once the selection holds as many faces as one split takes. */
   selection: { checked: boolean; full: boolean; toggle: () => void } | undefined;
   split: () => void;
-  undo: (created: Person) => void;
+  undo: (relink: Relink) => void;
 }) {
   const location = useLocation();
   const from = `${location.pathname}${location.search}`;
@@ -448,7 +509,7 @@ function AppearanceTile({
   );
   return (
     <div className="relative flex min-w-0 flex-col gap-1">
-      <div className={cn("flex flex-col gap-1", created !== undefined && "opacity-40")}>
+      <div className={cn("flex flex-col gap-1", relink !== undefined && "opacity-40")}>
         {videoId === undefined ? (
           <>
             {crop}
@@ -475,7 +536,7 @@ function AppearanceTile({
         )}
         <SpanLinks videoId={videoId} title={title} spans={spans} from={from} />
       </div>
-      {created === undefined ? (
+      {relink === undefined ? (
         <PersonFaceMark corner="top-end">
           {selection === undefined ? (
             <Tooltip>
@@ -510,14 +571,18 @@ function AppearanceTile({
         </PersonFaceMark>
       ) : (
         <p className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
-          {text.splitResult(creditDisplayName(created))}
+          {(relink.kind === "split" ? text.splitResult : text.movedResult)(
+            creditDisplayName(relink.person),
+          )}
           <Button
             variant="link"
             size="sm"
             className="h-auto p-0 text-xs"
-            aria-label={text.undoSplitFor(title)}
+            aria-label={(relink.kind === "split" ? text.undoSplitFor : text.undoMoveFor)(
+              title,
+            )}
             aria-busy={pending || undefined}
-            onClick={() => undo(created)}
+            onClick={() => undo(relink)}
           >
             {t.credits.personPage.candidates.undo}
           </Button>

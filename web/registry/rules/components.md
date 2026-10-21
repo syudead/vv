@@ -420,19 +420,20 @@ Do not use the `favorite` colour or a heart for anything else.
 
 ### PersonFace
 
-Item `person-face`. A person's face in one of eight frames, or the placeholder
+Item `person-face`. A person's face in one of nine frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
-| Shape     | Frame                                       | Where                                                                                          |
-| --------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                                      |
-| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                                               |
-| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                                        |
-| `token`   | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                              |
-| `option`  | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                    |
-| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                               |
-| `judge`   | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                     |
-| `scene`   | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video |
+| Shape        | Frame                                       | Where                                                                                          |
+| ------------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `card`       | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                                      |
+| `profile`    | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                                               |
+| `chip`       | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                                        |
+| `token`      | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                              |
+| `option`     | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                    |
+| `compare`    | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                               |
+| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                     |
+| `scene`      | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video |
+| `suggestion` | `size-16`, `rounded-full`                   | A person offered as where faces belong, in a ranked list                                       |
 
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the

@@ -2028,6 +2028,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/similar-people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List people whose faces look like some of a person's faces
+         * @description Owner-only. Ranks the other people by how close their faces are to the mean of the listed appearances of id, or of all of its appearances without appearanceId: each person is compared by the face image's vector and by the mean of their faces in videos, whichever is closer, most similar first. Each item carries the face count, up to four appearances with a crop and the title of the first appearance's video, so unnamed people can be told apart. Appearances id lacks are ignored; with none left the list is empty. Missing person returns 404 person_not_found.
+         */
+        get: operations["listSimilarPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move face appearances to another person
+         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
+         */
+        post: operations["moveFaceAppearances"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people/{id}/appearances/split": {
         parameters: {
             query?: never;
@@ -4570,6 +4610,41 @@ export interface components {
             similarity?: number;
             /** @description True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise. */
             unlike?: boolean;
+        };
+        SimilarPersonList: {
+            items: components["schemas"]["SimilarPerson"][];
+        };
+        SimilarPerson: {
+            person: components["schemas"]["Person"];
+            /**
+             * Format: double
+             * @description Cosine similarity, from -1 to 1, of the compared faces to the person.
+             */
+            similarity: number;
+            /** @description The person's appearances that are not dropped. */
+            faceCount: number;
+            /** @description Up to four of the person's appearances with a crop, latest first. */
+            sampleAppearanceIds: number[];
+            /** @description The title of the video of the person's first appearance; absent without appearances. */
+            firstSeenTitle?: string;
+        };
+        FaceAppearanceMoveRequest: {
+            appearanceIds: number[];
+            /** Format: int64 */
+            targetId: number;
+            /** @description The restoreCredits of the move this request undoes. */
+            restoreCredits?: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceAppearanceMove: {
+            person: components["schemas"]["Person"];
+            /** @description Works whose performer credit of the moved-from person was removed because the target already held one. */
+            restoreCredits: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceMoveCredit: {
+            /** @description An opaque key of the work. */
+            workKey: string;
+            /** @description The position the credit had among the work's performers. */
+            position: number;
         };
         FaceAppearanceSplitRequest: {
             appearanceIds: number[];
@@ -10405,6 +10480,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FaceAppearanceList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSimilarPeople: {
+        parameters: {
+            query?: {
+                /** @description Appearances of the person to compare; repeat for several */
+                appearanceId?: number[];
+                /** @description At most this many people; default 8 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description People, most similar first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarPersonList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    moveFaceAppearances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceAppearanceMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description The person the faces moved to, with the credits only the reverse move can put back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAppearanceMove"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

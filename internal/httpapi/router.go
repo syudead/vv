@@ -781,7 +781,7 @@ func requiresCreditJSONBody(method, path string) bool {
 		return method == http.MethodPost && (segments[1] == "merge" || isPersonPluginFetch(path, segments))
 	case 3:
 		return method == http.MethodPost && strings.HasPrefix(path, "/api/people/") &&
-			segments[1] == "appearances" && segments[2] == "split"
+			segments[1] == "appearances" && (segments[2] == "split" || segments[2] == "move")
 	case 4:
 		return method == http.MethodPost && isPersonPluginFetch(path, segments) && segments[2] != "" &&
 			segments[3] == "apply"

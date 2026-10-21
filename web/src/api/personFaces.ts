@@ -6,6 +6,7 @@ export type FaceCandidate = components["schemas"]["FaceCandidate"];
 export type FaceCandidatePerson = components["schemas"]["FaceCandidatePerson"];
 export type FaceAppearance = components["schemas"]["FaceAppearance"];
 export type FaceAppearanceList = components["schemas"]["FaceAppearanceList"];
+export type SimilarPerson = components["schemas"]["SimilarPerson"];
 
 function personPath(id: number): string {
   return `/api/people/${String(id)}`;
@@ -88,6 +89,43 @@ export function splitFaceAppearances(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ appearanceIds }),
   });
+}
+
+export type FaceAppearanceMove = components["schemas"]["FaceAppearanceMove"];
+export type FaceMoveCredit = components["schemas"]["FaceMoveCredit"];
+
+/**
+ * Move appearances of the person to another person; returns that person with the credits only the reverse move puts
+ * back, which an undo passes as restoreCredits.
+ */
+export function moveFaceAppearances(
+  id: number,
+  appearanceIds: readonly number[],
+  targetId: number,
+  restoreCredits: readonly FaceMoveCredit[] = [],
+): Promise<FaceAppearanceMove> {
+  return request<FaceAppearanceMove>(`${personPath(id)}/appearances/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appearanceIds, targetId, restoreCredits }),
+  });
+}
+
+/** Other people whose faces look like the given appearances of the person, or all of them; most similar first. */
+export async function listSimilarPeople(
+  id: number,
+  appearanceIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<SimilarPerson[]> {
+  const params = new URLSearchParams();
+  for (const appearanceId of appearanceIds)
+    params.append("appearanceId", String(appearanceId));
+  const query = params.size === 0 ? "" : `?${params.toString()}`;
+  const body = await request<components["schemas"]["SimilarPersonList"]>(
+    `${personPath(id)}/similar-people${query}`,
+    { signal },
+  );
+  return body.items;
 }
 
 /** True when the appearance is no longer linked to the person, so its row has nothing left to split. */

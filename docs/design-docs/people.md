@@ -375,17 +375,30 @@ each button with a checkbox; with faces checked, a `SelectionBar` offers
 `Not this person`, which splits them all into one new person
 (`POST /api/people/{id}/appearances/split`), since faces wrongly linked together
 are usually one other person, and the `Undo` of any of them takes them all
-back. A selection holds at most 200 faces, what one split takes; past that the
-other checkboxes are disabled and the bar says so. A pressed tile disables only
+back. A selection holds at most 200 faces, what one split or move takes; past
+that the other checkboxes are disabled and the bar says so. `Move to person…`
+in the same bar opens a dialog that picks where the checked faces belong:
+before a name is typed it lists, as a `RadioGroup`, the people whose faces look
+most like them (`GET /api/people/{id}/similar-people`), each with a
+`PersonFace suggestion`, up to four more crops from `sm`, the face count, the
+video they were first seen in and the similarity, so even people without a name
+are told apart; typing searches by name as the merge dialog does. A failed read
+says so with `Retry` rather than look like no one alike. `Move` hands
+the faces and their credits to that person
+(`POST /api/people/{id}/appearances/move`), and the tiles read
+`Moved to {name}` with an `Undo` that moves back the faces of that move alone,
+even when another move went to the same person, and puts back the credits the
+move took where the target was already credited. A pressed tile disables only
 its own button, a second press while it runs sends nothing, and a failure shows
 under the grid.
 
-| Rejected                                | Why                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| Candidates and faces on the person page | They crowded out the profile and the videos, which the page is for                |
-| A strip of crops alone                  | Reaching a scene would take a second press, and a crop does not say which video   |
-| Confirming in the people list           | A pair is judged with both faces and the similarity in view, one person at a time |
-| Removing a decided row or a split tile  | The rows after it moved up under the pointer, and a misclick had no way back      |
+| Rejected                                   | Why                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| Candidates and faces on the person page    | They crowded out the profile and the videos, which the page is for                |
+| A strip of crops alone                     | Reaching a scene would take a second press, and a crop does not say which video   |
+| Confirming in the people list              | A pair is judged with both faces and the similarity in view, one person at a time |
+| Removing a decided row or a split tile     | The rows after it moved up under the pointer, and a misclick had no way back      |
+| A name search alone to pick where faces go | An unnamed person has no name to search, and a name says nothing about the face   |
 
 ## Faces elsewhere on the screens
 

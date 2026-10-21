@@ -65,10 +65,9 @@ func ComparePersonAppearances(sort PersonAppearanceSort) func(a, b PersonAppeara
 	}
 }
 
-// FaceAppearanceSimilarities scores each vector by its similarity to the normalized mean of all vectors of the most
-// common length, which stands for the person; a vector of another length, from another recognizer, gets no score,
-// and neither does a lone face.
-func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
+// MeanFaceVector is the normalized mean of the vectors of the most common length, which stands for the person or
+// the faces they come from; vectors of another length, from another recognizer, are left out. It is nil without any.
+func MeanFaceVector(vectors [][]float32) []float32 {
 	counts := map[int]int{}
 	for _, v := range vectors {
 		counts[len(v)]++
@@ -79,9 +78,8 @@ func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 			size, best = n, c
 		}
 	}
-	// A lone face would only be compared with itself.
-	if size == 0 || best < 2 {
-		return map[int64]float64{}
+	if size == 0 {
+		return nil
 	}
 	mean := make([]float32, size)
 	for _, v := range vectors {
@@ -92,14 +90,81 @@ func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
 			mean[i] += x
 		}
 	}
-	mean = NormalizeFaceVector(mean)
-	out := make(map[int64]float64, best)
+	return NormalizeFaceVector(mean)
+}
+
+// FaceAppearanceSimilarities scores each vector by its similarity to MeanFaceVector of them all; a vector of another
+// length than the mean gets no score, and neither does a lone face, which would only be compared with itself.
+func FaceAppearanceSimilarities(vectors map[int64][]float32) map[int64]float64 {
+	all := make([][]float32, 0, len(vectors))
+	for _, v := range vectors {
+		all = append(all, v)
+	}
+	mean := MeanFaceVector(all)
+	out := make(map[int64]float64, len(vectors))
 	for id, v := range vectors {
-		if len(v) == size {
+		if mean != nil && len(v) == len(mean) {
 			out[id] = FaceSimilarity(v, mean)
 		}
 	}
+	if len(out) < 2 {
+		return map[int64]float64{}
+	}
 	return out
+}
+
+// RankFacePeople orders people by how close query is to the nearest of each one's reference vectors, such as their
+// face image's vector and the mean of their faces in videos, most similar first and then by id, and keeps limit.
+func RankFacePeople(query []float32, references map[int64][][]float32, limit int) []FaceCandidate {
+	out := make([]FaceCandidate, 0, len(references))
+	for personID, refs := range references {
+		best, found := 0.0, false
+		for _, ref := range refs {
+			if len(ref) == len(query) && len(ref) > 0 {
+				if s := FaceSimilarity(query, ref); !found || s > best {
+					best, found = s, true
+				}
+			}
+		}
+		if found {
+			out = append(out, FaceCandidate{PersonID: personID, Similarity: best})
+		}
+	}
+	slices.SortFunc(out, func(a, b FaceCandidate) int {
+		if c := cmp.Compare(b.Similarity, a.Similarity); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.PersonID, b.PersonID)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+// FaceMoveCredit is a work's performer credit a move took from the old person because the new person already held
+// one there; passed back with the reverse move, it puts the old person's credit back at Position.
+type FaceMoveCredit struct {
+	UserKey  string
+	Position int
+}
+
+// FaceMove is the person faces moved to, with the credits only the reverse move can put back.
+type FaceMove struct {
+	Person  Credit
+	Restore []FaceMoveCredit
+}
+
+// SimilarPerson is a person whose faces look like a set of faces, offered as where those faces belong.
+type SimilarPerson struct {
+	Person     Credit
+	Similarity float64
+	// FaceCount counts the person's appearances that are not dropped.
+	FaceCount int
+	// SampleAppearanceIDs are a few of their appearances with a crop, latest first.
+	SampleAppearanceIDs []int64
+	// FirstSeenTitle is the title of the video of their first appearance, which tells unnamed people apart.
+	FirstSeenTitle string
 }
 
 // PersonAppearancePage is one page of a person's appearances; NextCursor is empty on the last page.

@@ -1649,6 +1649,21 @@ export const en = {
       submit: "Save",
       submitting: "Saving…",
     },
+    similarPeople: {
+      loading: "Looking for people who look alike…",
+      none: "No one looks alike yet.",
+      failed: "Couldn't look for people who look alike.",
+      likeFaces: "Looks most like these faces",
+      likePerson: (name: string) => `Looks most like ${name}`,
+      meta: (faces: number, firstSeen: string | undefined) => {
+        const count = selectPlural(faces, {
+          one: `${formatNumber(faces)} face`,
+          other: `${formatNumber(faces)} faces`,
+        });
+        return firstSeen === undefined ? count : `${count} · first in ${firstSeen}`;
+      },
+      percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+    },
     mergeDialog: {
       title: (name: string) => `Merge "${name}"`,
       aliasHint: (alias: string) => `Alias: ${alias}`,
@@ -1831,6 +1846,7 @@ export const en = {
         notThisPersonFor: (title: string) => `Not this person in ${title}`,
         splitResult: (name: string) => `Split into ${name}`,
         undoSplitFor: (title: string) => `Undo the split in ${title}`,
+        undoMoveFor: (title: string) => `Undo the move in ${title}`,
         splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
         undoSplitFailed: (reason: string) => `Couldn't undo the split: ${reason}`,
         sortLabel: "Order",
@@ -1846,6 +1862,30 @@ export const en = {
           `${formatNumber(count)} selected, the most at once`,
         clearSelection: "Clear selection",
         splitSelected: "Not this person",
+        moveSelected: "Move to person…",
+        movedResult: (name: string) => `Moved to ${name}`,
+      },
+      moveDialog: {
+        title: (count: number) =>
+          selectPlural(count, {
+            one: "Move 1 face to…",
+            other: `Move ${formatNumber(count)} faces to…`,
+          }),
+        description: "Pick the person these faces belong to.",
+        moving: "Moving",
+        search: "Search by name",
+        searchFailed: (reason: string) => `Couldn't search: ${reason}`,
+        noCandidates: "No people match",
+        summary: (count: number, name: string) =>
+          selectPlural(count, {
+            one: `1 face and its credit move to ${name}.`,
+            other: `${formatNumber(count)} faces and their credits move to ${name}.`,
+          }),
+        submit: "Move",
+        submitting: "Moving…",
+        failed: (reason: string) => `Couldn't move the faces: ${reason}`,
+        facesGone:
+          "Some of these faces are no longer this person's. Refresh and try again.",
       },
       pluginFetch: {
         entry: "Fetch info…",

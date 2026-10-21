@@ -80,6 +80,12 @@ export const server = {
   mergeTarget: null as Person | null,
   /** How many reopen requests fail before they succeed again. */
   reopenFailures: 0,
+  /** The people a name search of the move and merge dialogs finds among. */
+  searchable: [] as Person[],
+  /** When set, a move answers that a face is no longer the person's. */
+  moveGone: false,
+  /** How many similar-people reads fail before they succeed again. */
+  similarFailures: 0,
   /** How many candidate reads fail before they succeed again. */
   candidateFailures: 0,
   /** What the merge into the person answers, when not the person with nothing missing. */
@@ -156,6 +162,40 @@ function faceRoute(method: string, url: URL): Response | null {
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
   }
+  if (url.pathname === "/api/people/7/similar-people") {
+    if (server.similarFailures > 0) {
+      server.similarFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
+    return jsonResponse({
+      items: [
+        {
+          person: person({ id: 9, name: "Mio" }),
+          similarity: 0.71,
+          faceCount: 6,
+          sampleAppearanceIds: [],
+          firstSeenTitle: "Beach day",
+        },
+      ],
+    });
+  }
+  const move = /^\/api\/people\/(7|9)\/appearances\/move$/.exec(url.pathname);
+  if (move !== null && method === "POST") {
+    if (server.moveGone) {
+      return jsonResponse(
+        { code: "not_found", reason: "face_appearance_not_found", message: "Gone" },
+        404,
+      );
+    }
+    return jsonResponse(
+      move[1] === "7"
+        ? {
+            person: person({ id: 9, name: "Mio" }),
+            restoreCredits: [{ workKey: "work-5", position: 1 }],
+          }
+        : { person: person(), restoreCredits: [] },
+    );
+  }
   if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
@@ -210,6 +250,15 @@ function respond(method: string, url: URL, body: unknown): Response {
       ? jsonResponse({ items: ids.map((id) => video(id)), total: ids.length })
       : jsonResponse({ items: [], total: 0 });
   }
+  if (url.pathname === "/api/people" && method === "GET") {
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const items = server.searchable.filter((item) => item.name.toLowerCase().includes(q));
+    return jsonResponse({
+      items,
+      total: items.length,
+      totalAll: server.searchable.length,
+    });
+  }
   if (url.pathname === "/api/settings/face-recognition") {
     return jsonResponse({ enabled: server.faceRecognition });
   }
@@ -255,6 +304,9 @@ export function installPersonServer() {
     server.reopenFailures = 0;
     server.mergeAnswer = null;
     server.candidateFailures = 0;
+    server.similarFailures = 0;
+    server.moveGone = false;
+    server.searchable = [];
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(

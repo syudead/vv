@@ -22,6 +22,7 @@ interface MergeCommandProps {
   frameClassName: string;
   busy: boolean;
   describedBy: string | undefined;
+  hideEmptyPanel: boolean;
 }
 
 export function MergeTargetField({
@@ -47,7 +48,8 @@ export function MergeTargetField({
   chosenId: string | undefined;
   searching: boolean;
   searchError: UiText | null;
-  emptyText: UiText;
+  /** Shown when no choice matches; without it an empty list draws no panel at all. */
+  emptyText?: UiText;
 }) {
   const searchErrorId = useId();
   const labelId = useId();
@@ -70,6 +72,7 @@ export function MergeTargetField({
         icon={<Search aria-hidden="true" />}
         chosenId={chosenId}
         emptyText={searching || searchError !== null ? undefined : emptyText}
+        hideEmptyPanel={emptyText === undefined}
         value={value}
         onValueChange={onValueChange}
         choices={choices}
