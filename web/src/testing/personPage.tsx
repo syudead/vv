@@ -130,6 +130,10 @@ function faceRoute(method: string, url: URL): Response | null {
     return jsonResponse({ items: server.faceCandidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
+    if (!url.searchParams.has("limit")) {
+      const all = [...server.appearances, ...server.laterAppearances];
+      return jsonResponse({ items: all, total: all.length });
+    }
     if (url.searchParams.get("cursor") === "page-2") {
       return jsonResponse({
         items: server.laterAppearances,

@@ -103,10 +103,11 @@ export type FaceAppearanceSort = "newest" | "leastSimilar";
 
 export function listPersonAppearances(
   id: number,
-  query: { limit: number; cursor?: string; sort?: FaceAppearanceSort },
+  query: { limit?: number; cursor?: string; sort?: FaceAppearanceSort },
   signal?: AbortSignal,
 ): Promise<FaceAppearanceList> {
-  const params = new URLSearchParams({ limit: String(query.limit) });
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.sort !== undefined) params.set("sort", query.sort);
   if (query.cursor !== undefined) params.set("cursor", query.cursor);
   return request<FaceAppearanceList>(

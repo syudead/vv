@@ -814,7 +814,9 @@ for the person without needing a face image. `sort=leastSimilar` orders by that
 similarity, lowest first, so faces linked by mistake come first; appearances
 that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
-By default they come newest video first by the video's added time, then by
+An appearance whose similarity is below the candidate threshold of the
+recognizer that made its centroid, found by the vector's length, is marked
+`unlike`. By default they come newest video first by the video's added time, then by
 descending appearance id. The store reads every appearance of the person and
 orders and pages them in memory, since the similarity needs all centroids; a
 cursor names the last appearance by what its order compares, so a split face

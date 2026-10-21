@@ -68,6 +68,30 @@ describe("PersonFacesPage", () => {
     expect(sentBody(sent("POST", "/api/people/7/merge")[0])).toEqual({ sourceIds: [12] });
   });
 
+  it("reads the rest whole after a split rescored the faces, adding only unseen ones", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    server.laterAppearances = [
+      { appearanceId: 5, videoId: 7, title: "River", spans: [], hasCrop: true },
+    ];
+    renderPage("/people/7/faces?tab=faces");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+    await screen.findByText("Split into #12");
+    await user.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(await screen.findByRole("img", { name: "River" })).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "Mountain" })).toHaveLength(1);
+    const more = sent("GET", "/api/people/7/appearances").at(-1);
+    expect(more?.url.searchParams.has("limit")).toBe(false);
+    expect(more?.url.searchParams.has("cursor")).toBe(false);
+  });
+
   it("splits selected faces into one person, and one Undo takes them all back", async () => {
     const user = userEvent.setup();
     server.appearances = [

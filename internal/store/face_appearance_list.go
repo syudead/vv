@@ -99,6 +99,8 @@ func (s *CreditStore) allPersonAppearances(ctx context.Context, personID int64) 
 	for i := range items {
 		if score, ok := scores[items[i].ID]; ok {
 			items[i].Similarity = &score
+			threshold, known := domain.FaceCandidateThreshold(len(vectors[items[i].ID]))
+			items[i].Unlike = known && score < threshold
 		}
 	}
 	return items, nil

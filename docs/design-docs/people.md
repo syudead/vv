@@ -345,11 +345,14 @@ each over the video's title and the start of each span, each a link that plays
 the video from that time (`?t=`); the crop and the title open the video at the
 first span. A select above the grid orders it `Least like this person first`
 (the default) or `Newest video first`, and each crop shows its similarity to
-the person in its `PersonFaceMark` `bottom-end`, in `warning` below 36%, the
-candidate threshold, where a face is as unlike the person as a stranger
-usually is. The default order puts the faces most likely linked by mistake
+the person in its `PersonFaceMark` `bottom-end`, in `warning` when the
+appearance is `unlike`: below its recognizer's candidate threshold, where a
+face is as unlike the person as a stranger usually is. The default order puts the faces most likely linked by mistake
 first, so the owner finds them without paging through the person's own
-faces. `Show more` reads the next page; with none it says so. An appearance
+faces. `Show more` reads the next page; with none it says so. A split or its
+`Undo` rescores the person's other faces, so the cursor no longer marks where
+the shown faces end; the next `Show more` reads the rest whole and adds only
+the faces not yet shown. An appearance
 whose video left the library reads `Not in the library` without links. A grid
 shows many faces at once, so a face that is not the person stands out, where a
 list of rows led with titles.
@@ -362,8 +365,10 @@ shown one (`POST /api/people/{id}/merge`). `Select` replaces each button with a
 checkbox; with faces checked, a `SelectionBar` offers `Not this person`, which
 splits them all into one new person (`POST /api/people/{id}/appearances/split`),
 since faces wrongly linked together are usually one other person, and the
-`Undo` of any of them takes them all back. A pressed tile disables only its own
-button, and a failure shows under the grid.
+`Undo` of any of them takes them all back. A selection holds at most 200 faces,
+what one split takes; past that the other checkboxes are disabled and the bar
+says so. A pressed tile disables only its own button, a second press while it
+runs sends nothing, and a failure shows under the grid.
 
 | Rejected                                | Why                                                                               |
 | --------------------------------------- | --------------------------------------------------------------------------------- |
