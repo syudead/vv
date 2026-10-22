@@ -13,15 +13,6 @@ import (
 
 // Match videos first, collapse wholly matched groups, then filter and page items; group values always include all visible descendants.
 
-func memberConditions(spec listSpec) ([]string, []any) {
-	var conditions []string
-	if spec.playableOnly {
-		conditions = append(conditions, playableCondition)
-	}
-	matches, args := matchConditions(spec)
-	return append(conditions, matches...), args
-}
-
 // Apply member filters at every stacked spec level before forming items.
 func matchConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
@@ -30,16 +21,12 @@ func matchConditions(spec listSpec) ([]string, []any) {
 		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
 		args = append(args, spec.withinVideos)
 	}
-	if spec.hasVersions {
-		conditions = append(conditions, hasVersionsCondition)
-	}
 	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
 		works, workArgs := workInfoConditions(level, userKey)
-		facts, factArgs := addedAndLengthConditions(level)
-		conditions = append(append(append(conditions, tags...), works...), facts...)
-		args = append(append(append(args, tagArgs...), workArgs...), factArgs...)
+		conditions = append(append(conditions, tags...), works...)
+		args = append(append(args, tagArgs...), workArgs...)
 	}
 	return conditions, args
 }
@@ -56,7 +43,7 @@ func (s listSpec) levels() []listSpec {
 	return append([]listSpec{s}, s.and...)
 }
 
-// Playable and favorite-only filters apply if any stacked level requests them.
+// Favorite-only filters apply if any stacked level requests them.
 func (s listSpec) anyLevel(test func(listSpec) bool) bool {
 	return slices.ContainsFunc(s.levels(), test)
 }
@@ -67,28 +54,6 @@ func (s listSpec) searchExprs() []domain.SearchExpr {
 		exprs = append(exprs, level.expr)
 	}
 	return exprs
-}
-
-const secondsPerDay = 24 * 60 * 60
-
-// Use one captured query time for age filters; compare inclusive whole-second durations and exclude unknown lengths.
-func addedAndLengthConditions(spec listSpec) ([]string, []any) {
-	var conditions []string
-	var args []any
-	if spec.addedWithinDays > 0 {
-		conditions = append(conditions, `videos.added_at >= ?`)
-		args = append(args, spec.now-int64(spec.addedWithinDays)*secondsPerDay)
-	}
-	if spec.minDurationSec != nil {
-		conditions = append(conditions, `videos.duration_ms >= ?`)
-		args = append(args, int64(*spec.minDurationSec)*1000)
-	}
-	if spec.maxDurationSec != nil {
-		// A floored duration is below the inclusive upper bound exactly when milliseconds precede the next second.
-		conditions = append(conditions, `videos.duration_ms < ?`)
-		args = append(args, int64(*spec.maxDurationSec+1)*1000)
-	}
-	return conditions, args
 }
 
 // Match credits on the user-data key in any role unless personRole is set; missing entity IDs match nothing.
@@ -160,14 +125,6 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
 	}
-	// Apply playability after forming items; a group is playable when any descendant is playable.
-	videoPlayable := ""
-	groupPlayable := ""
-	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
-		videoPlayable = ` and ` + playableCondition
-		groupPlayable = ` and exists (select 1 from gm pm join videos on videos.id = pm.video_id
-			where pm.group_id = hits.group_id and ` + playableCondition + `)`
-	}
 	// Unidentified content has no playback position.
 	progressJoin := func(videoAlias string) string {
 		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
@@ -184,7 +141,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
-	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)` + groupPlayable
+	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)`
 	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() {
 		whole = storedWholeGroupsSQL(spec, roots)
 	}
@@ -210,38 +167,14 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
 			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
-			fav.favorited_at as favorited_at, ` + videoWatchStateExpr + ` as watch_state
+			fav.favorited_at as favorited_at
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
-		where matched.video_id not in (select video_id from carded)` +
-		videoPlayable + videoFavorite + `
+		where matched.video_id not in (select video_id from carded)` + videoFavorite + `
 		union all
 ` + groupSQL.items + folderItems + `)`
 	return cte, append(args, folderArgs...)
-}
-
-func itemWatchCondition(filter domain.WatchFilter) (string, []any) {
-	switch filter {
-	case domain.WatchUnwatched, domain.WatchInProgress, domain.WatchWatched:
-		return `watch_state = ?`, []any{string(filter)}
-	default:
-		return "", nil
-	}
-}
-
-func itemWatchConditions(spec listSpec) (string, []any) {
-	var clauses []string
-	var args []any
-	for _, level := range spec.levels() {
-		clause, clauseArgs := itemWatchCondition(level.watch)
-		if clause == "" {
-			continue
-		}
-		clauses = append(clauses, clause)
-		args = append(args, clauseArgs...)
-	}
-	return strings.Join(clauses, " and "), args
 }
 
 // Reuse listOrders cursor semantics with item-specific value expressions.
@@ -326,20 +259,14 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 
 	cte, args := libraryItemsCTE(spec)
-	watchClause, watchArgs := itemWatchConditions(spec)
-	whereWatch := ""
-	if watchClause != "" {
-		whereWatch = ` where ` + watchClause
-	}
 
-	// Materialize filtered items once for page and count; count before applying the cursor and bind arguments in SQL order.
+	// Materialize items once for page and count; count before applying the cursor and bind arguments in SQL order.
 	cteArgs := append([]any{}, args...)
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
-	args = append(args, watchArgs...)
 	query := cte + `, filtered as materialized (select items.*, ` + order.value +
-		` as sort_value from items` + whereWatch + `)
+		` as sort_value from items)
 	select group_id, id, video_id, path, sort_value, (select count(*) from filtered) from filtered`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
@@ -372,8 +299,7 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 	if total < 0 {
 		// An empty page needs a separate count within the same snapshot.
-		if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
-			append(cteArgs, watchArgs...)...).Scan(&total); err != nil {
+		if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`, cteArgs...).Scan(&total); err != nil {
 			return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
 		}
 	}
@@ -521,16 +447,12 @@ func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
 		values: `mv as (
 		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
-			p.updated_at as played_at,
-			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
+			p.updated_at as played_at
 		from gm join whole on whole.group_id = gm.group_id
 		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progress + `)`,
 		items: `select g.id, g.id * 2 + 1, null, null,
 			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
-			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `,
-			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
-				when sum(mv.completed = 1) = count(*) then 'watched'
-				else 'inProgress' end
+			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `
 		from mv join groups g on g.id = mv.group_id
 		group by g.id`,
 	}

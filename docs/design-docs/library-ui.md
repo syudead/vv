@@ -209,9 +209,10 @@ sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
 Home, folder, group and smart-folder pages keep the same search field in the
 top bar, including loading and empty results, at desktop and mobile widths.
-They share search, watch-state/favorite/playability filters and sort controls,
-including the compact layout on narrow screens. Guests see only playability
-filtering and sorts based on public data. Query and filter changes preserve
+They share search, the `Favorites only` filter and sort controls, including
+the compact layout on narrow screens. Guests have no filter, so the filter
+button is hidden for them, and see only sorts based on public data. Query and
+filter changes preserve
 the current scope. The controls share debounce, IME handling, syntax help and `q` URL state. IME input
 commits after composition ends. Changing a query, filter, sort or shuffle seed resets pagination and
 scrolls to the top; obsolete responses cannot append to the new results.
@@ -224,16 +225,15 @@ Smart-folder pages apply the same video search expression to the videos that
 match the saved rules, including ancestor rules, before paging. Search uses
 the current viewer's searchable fields and hides child-folder navigation until
 cleared. It does not change saved rules, summaries or playback order. Both the
-detail and next-page requests carry the same `query`, `watch`, `favorite`,
-`playable`, `sort` and random `seed`; zero matches return an empty page,
+detail and next-page requests carry the same `query`, `favorite`, `sort`
+and random `seed`; zero matches return an empty page,
 including for a guest who can still access the folder.
 Group and smart-folder sorts are temporary URL state. An omitted `sort` uses
 the saved order, exposed as `Saved order` in the shared sort menu. Clearing
 conditions keeps the chosen sort, as on home and folder pages; choosing
 `Saved order` restores group positions or the smart folder's configured sort.
-Group filters retain direct items and child cards; watch state and favorites
-apply to each displayed item, while playability and text search inspect its
-visible videos. SQL filters and sorts before taking the page. Group item IDs,
+Group filters retain direct items and child cards; favorites apply to each
+displayed item, while text search inspects its visible videos. SQL filters and sorts before taking the page. Group item IDs,
 full summaries and playback order retain their original meaning.
 The sidebar has two states (rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
@@ -248,7 +248,7 @@ Card width follows the zoom level. Guest rules are in
 | Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
 | `Scan library` button and import progress | Shown | Hidden |
 | Sort orders | 9 | 7 |
-| Watch status and `Favorites only` filters | Shown | Hidden |
+| Filter button | Shown | Hidden |
 
 The toolbar holds search, filters, sort, view (library only) and zoom, in
 that Tab order. It never wraps: the search field takes the remaining width,
@@ -274,29 +274,38 @@ owner-only recently played and date favorited. Date created sits
 with the other dates;
 date favorited follows recently played and sorts newest first.
 
-The filter popover lists watch status, `Favorites only` (URL `fav=1`),
-playability and, for the owner, `With other versions only` (URL `versions=1`)
-and a `Tag kind` select (URL `tagKind=<id>`), in that order. The select offers `Any kind` and the kinds in natural name order,
-read from the shared kind list when the popover first opens; an applied kind
-also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
-the loaded list no longer holds leaves the URL with a toast.
-After them come `Added` and `Length`, two selects of presets for the owner
-and guests alike (URL `addedWithin=<days>`, `minDuration=<s>` and
-`maxDuration=<s>`); a value outside the presets is drawn as its own option,
-and an out-of-range value or a minimum over the maximum leaves the URL before
-the request.
-The filter button counts each as one applied filter.
-`Clear filters` clears favorites only, the versions filter, the kind, the
-added date and the length with the other filters and keeps the sort. A guest
-URL with `fav=1`, `versions=1`, `tagKind` or `sort=favorited*` is reset to the
-defaults before the request and the URL is corrected.
+On folder, group and smart-folder pages the filter popover holds only
+`Favorites only` (URL `fav=1`). On the library it lists `Tags`, `Person`,
+`Organization` and `Favorites only`, in that order:
+
+| Control | Picks | URL |
+| --- | --- | --- |
+| `Tags` | Tags and tag kinds from one candidate list, kinds marked by their icon; selected ones show as chips in the field | `tag=<id>` per tag (all must match, at most 16); `tagKind=<id>` for one kind, which a newly picked kind replaces |
+| `Person` | One person | `person=<id>` |
+| `Organization` | One organization | `organization=<id>` |
+
+Applied tags, kinds, people and organizations also show as chips in the
+`Filtering by` row, and an id the server or the loaded lists no longer hold
+leaves the URL with a toast.
+The filter button counts each condition as one applied filter.
+`Clear filters` clears every condition and keeps the sort. A guest URL with
+`fav=1`, `tag`, `tagKind`, `person`, `organization` or `sort=favorited*` is
+reset to the defaults before the request and the URL is corrected. Parameters
+of removed filters (`watch`, `playable`, `versions`, `addedWithin`,
+`minDuration`, `maxDuration`) are dropped from the URL.
+
+While the owner types in the library search field, a listbox under it offers
+`Search for "<text>"` first, then a few matching people, tags and tag kinds,
+and organizations, matched with `foldForMatch`. `Enter` on the first option
+keeps the plain text search; choosing another option applies that filter as
+the menu does and clears the text.
 
 While any filter applies, the owner's library header carries the `outline`
 action `Save as smart folder`, which opens the smart folder dialog with the
 filter as its conditions and the current sort, `Random` replaced by date added;
 the `Created "{name}"` toast carries `Open` to the new folder's page.
-A smart folder cannot hold the versions filter, so the action is absent while
-it applies rather than saving a folder that drops it.
+The dialog's conditions are the search text, `Favorites only`, tags and tag
+kind, person and organization, the same set as the library filter.
 
 ### Scan entry and progress
 
@@ -883,16 +892,13 @@ conditions, each ANDed with the others:
 | --- | --- | --- |
 | `query` | Videos the search expression matches (see below) | Allowed; matches only the title and relative path |
 | `tag` | Videos that carry every listed tag | `400 guest_filter_not_allowed` |
-| `watch` | Videos in that watch state (`all` keeps every video) | Only `all` |
-| `playable` | Videos that play in the browser | Allowed |
 | `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
 | `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
 | `personRole` | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
 | `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
 | `tagKind` | Videos with at least one tag of that kind, manual or from the folder | `400 guest_filter_not_allowed` |
-| `hasVersions` | Videos bundled with other versions | `400 guest_filter_not_allowed` |
 
-`query`, `tag`, `hasVersions`, `person` and `organization` apply to each group member, so a
+`query`, `tag`, `tagKind`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
 that is not a positive integer is `400 invalid_request`. `personRole` without

@@ -57,8 +57,7 @@ export function useListCriteria(
   );
   const guestLeftovers =
     guest &&
-    (parsed.criteria.watch !== "all" ||
-      parsed.criteria.favorite ||
+    (parsed.criteria.favorite ||
       (parsed.hasExplicitSort && ownerOnlySort(parsed.criteria.sort)) ||
       ownerOnlyExtra.some(([, values]) => values.length > 0));
   const extra: ExtraValues = guest

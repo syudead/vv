@@ -26,35 +26,28 @@ it("検索・フィルターは保存順を保ち、一時ソート・解除・�
     { wrapper: Wrapper },
   );
   expect(result.current.toolbar.nativeOrder.active).toBe(true);
-  act(() => result.current.toolbar.onWatchChange("unwatched"));
+  act(() => result.current.toolbar.onFavoriteChange(true));
   expect(new URLSearchParams(result.current.location.search).get("sort")).toBeNull();
   expect(result.current.conditions).toMatchObject({
-    watch: "unwatched",
+    favorite: true,
     sort: undefined,
   });
   act(() => result.current.toolbar.onSortChange("titleDesc"));
-  act(() => result.current.toolbar.onFavoriteChange(true));
-  act(() => result.current.toolbar.onPlayableChange(true));
   expect(result.current.criteria).toMatchObject({
     query: "cat",
-    watch: "unwatched",
     favorite: true,
-    playable: true,
     sort: "titleDesc",
   });
   act(() => result.current.toolbar.onClear());
   expect(result.current.criteria).toMatchObject({
     query: "",
-    watch: "all",
     favorite: false,
-    playable: false,
     sort: "titleDesc",
   });
   act(() => {
     void result.current.navigate(-1);
   });
   await waitFor(() => expect(result.current.criteria.favorite).toBe(true));
-  expect(result.current.criteria.playable).toBe(true);
   expect(new URLSearchParams(result.current.location.search).get("trail")).toBe("9");
   act(() => result.current.toolbar.nativeOrder.onSelect());
   expect(result.current.toolbar.nativeOrder.active).toBe(true);
@@ -73,13 +66,11 @@ it("同じ描画から連続して操作しても検索・フィルター・ソ�
   const { result } = renderHook(useCollectionCriteria, { wrapper: Wrapper });
   const toolbar = result.current.toolbar;
   act(() => {
-    toolbar.onWatchChange("unwatched");
     toolbar.onSortChange("titleAsc");
     toolbar.onFavoriteChange(true);
   });
   expect(result.current.criteria).toMatchObject({
     query: "cat",
-    watch: "unwatched",
     sort: "titleAsc",
     favorite: true,
   });
@@ -89,7 +80,7 @@ it("ランダムの再シャッフルは条件を保ち、保存順へ戻すとs
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter initialEntries={["/groups/1?trail=9&watch=unwatched"]}>
+      <MemoryRouter initialEntries={["/groups/1?trail=9&fav=1"]}>
         <AudienceProvider audience="owner">{children}</AudienceProvider>
       </MemoryRouter>
     );
@@ -103,7 +94,7 @@ it("ランダムの再シャッフルは条件を保ち、保存順へ戻すとs
   expect(firstSeed).toBeGreaterThan(0);
   expect(result.current.customOrder).toBe(true);
   act(() => result.current.toolbar.onShuffle());
-  expect(result.current.conditions).toMatchObject({ watch: "unwatched", sort: "random" });
+  expect(result.current.conditions).toMatchObject({ favorite: true, sort: "random" });
   expect(result.current.conditions?.seed).not.toBe(firstSeed);
   expect(new URLSearchParams(result.current.location.search).get("seed")).toBe(
     String(result.current.conditions?.seed),
@@ -114,7 +105,7 @@ it("ランダムの再シャッフルは条件を保ち、保存順へ戻すとs
   expect(params.has("seed")).toBe(false);
   expect(params.get("trail")).toBe("9");
   expect(result.current.conditions).toMatchObject({
-    watch: "unwatched",
+    favorite: true,
     seed: undefined,
     sort: undefined,
   });

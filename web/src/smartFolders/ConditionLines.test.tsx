@@ -67,14 +67,14 @@ describe("ConditionLines", () => {
     render(
       <MemoryRouter>
         <ConditionLines
-          rule={{ watch: "unwatched" }}
+          rule={{ favorite: true }}
           ancestors={[{ folder: { id: 1, name: "親" } }]}
           missing={[]}
         />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Unwatched")).toBeTruthy();
+    expect(screen.getByText("Favorites")).toBeTruthy();
     expect(screen.getByRole("link", { name: 'From "親":' })).toBeTruthy();
     expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(1);
     const paths = fetchMock.mock.calls.map(

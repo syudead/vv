@@ -113,7 +113,7 @@ export interface paths {
         };
         /**
          * List videos
-         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * List library items (videos and groups)
-         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
@@ -4948,12 +4948,6 @@ export interface components {
          */
         VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "favoritedAsc" | "favoritedDesc" | "random";
         /**
-         * @description Watch filter: all, unwatched, inProgress or watched.
-         * @default all
-         * @enum {string}
-         */
-        WatchFilter: "all" | "unwatched" | "inProgress" | "watched";
-        /**
          * @description direct selects immediate locations; subtree includes all descendants
          * @default direct
          * @enum {string}
@@ -4961,7 +4955,7 @@ export interface components {
         FolderScope: "direct" | "subtree";
         VideoPage: {
             items: components["schemas"]["Video"][];
-            /** @description Total after applying query, watch, playable and listFolderVideos scope, independent of pagination. */
+            /** @description Total after applying query, favorite and listFolderVideos scope, independent of pagination. */
             total: number;
             /** @description Next-page cursor; omitted when no more results remain. */
             nextCursor?: string;
@@ -5223,13 +5217,6 @@ export interface components {
         SmartRule: {
             /** @description Search input matched with owner semantics. */
             q?: string;
-            /**
-             * @description Watch state.
-             * @enum {string}
-             */
-            watch?: "unwatched" | "inProgress" | "watched";
-            /** @description Restrict to browser-playable videos. */
-            playable?: boolean;
             /** @description Restrict to favorite videos. */
             favorite?: boolean;
             /** @description Distinct tag IDs that every matching video must carry. */
@@ -5249,12 +5236,6 @@ export interface components {
              * @description Organization IDs linked in any role.
              */
             organization?: number;
-            /** @description Days since addition. */
-            addedWithin?: number;
-            /** @description Inclusive minimum duration in seconds; at most maxDuration. */
-            minDuration?: number;
-            /** @description Inclusive maximum duration in seconds. */
-            maxDuration?: number;
         };
         /** @description Entities referenced by filters that no longer exist. */
         SmartRuleRef: {
@@ -6832,12 +6813,6 @@ export interface components {
         PersonRoleFilter: components["schemas"]["WorkPersonRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
-        /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-        AddedWithinFilter: number;
-        /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-        MinDurationFilter: number;
-        /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-        MaxDurationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
         /** @description Media folder ID */
@@ -7059,14 +7034,8 @@ export interface operations {
             query?: {
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description Restrict to videos bundled with other versions; each video must satisfy it, like `tag` */
-                hasVersions?: boolean;
                 /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
                 /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
@@ -7083,12 +7052,6 @@ export interface operations {
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-                addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-                minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-                maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
             };
@@ -7115,14 +7078,8 @@ export interface operations {
             query?: {
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description Restrict to videos bundled with other versions; each video must satisfy it, like `tag` */
-                hasVersions?: boolean;
                 /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
                 /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
@@ -7137,12 +7094,6 @@ export interface operations {
                 person?: components["parameters"]["PersonFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-                addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-                minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-                maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
             };
@@ -11829,10 +11780,6 @@ export interface operations {
                 scope?: components["schemas"]["FolderScope"];
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
                 /** @description Sort order */
@@ -11924,12 +11871,8 @@ export interface operations {
     getGroup: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -12017,12 +11960,8 @@ export interface operations {
     listGroupItems: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -12254,12 +12193,8 @@ export interface operations {
     getSmartFolder: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -12348,12 +12283,8 @@ export interface operations {
     listSmartFolderItems: {
         parameters: {
             query: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */

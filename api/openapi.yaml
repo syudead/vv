@@ -152,7 +152,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List videos"
-      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
+      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
       parameters:
         - name: query
           in: query
@@ -160,26 +160,9 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
-          schema:
-            type: boolean
-            default: false
-        - name: hasVersions
-          in: query
-          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -222,9 +205,6 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
-        - $ref: "#/components/parameters/AddedWithinFilter"
-        - $ref: "#/components/parameters/MinDurationFilter"
-        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -243,7 +223,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List library items (videos and groups)"
-      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `hasVersions=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
+      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
       parameters:
         - name: query
           in: query
@@ -251,26 +231,9 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
-          schema:
-            type: boolean
-            default: false
-        - name: hasVersions
-          in: query
-          description: "Restrict to videos bundled with other versions; each video must satisfy it, like `tag`"
           schema:
             type: boolean
             default: false
@@ -312,9 +275,6 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
-        - $ref: "#/components/parameters/AddedWithinFilter"
-        - $ref: "#/components/parameters/MinDurationFilter"
-        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -4361,17 +4321,6 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
@@ -4487,21 +4436,11 @@ paths:
       description: "Returns LibraryGroup, the still-connected portion of trail and the first 100 matching items. Omitted sort uses saved position order; temporary filters and explicit sort apply before paging and never modify positions. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/GroupId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4592,21 +4531,11 @@ paths:
       description: "Continues getGroup items after nextCursor using the same temporary filters, sort and seed. Omitted sort uses position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup."
       parameters:
         - $ref: "#/components/parameters/GroupId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4833,21 +4762,11 @@ paths:
       description: "Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4937,21 +4856,11 @@ paths:
       description: "Continues getSmartFolder content after nextCursor; child folders appear only on the first page. Invalid cursors return 400 invalid_cursor. Missing or invisible folders return 404 not_found as in getSmartFolder."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -5321,30 +5230,6 @@ components:
         type: integer
         format: int64
         minimum: 1
-    AddedWithinFilter:
-      name: addedWithin
-      in: query
-      description: "Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests."
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 36500
-    MinDurationFilter:
-      name: minDuration
-      in: query
-      description: "Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests."
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 360000
-    MaxDurationFilter:
-      name: maxDuration
-      in: query
-      description: "Inclusive maximum duration in seconds; follows minDuration semantics"
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 360000
     TagKindFilter:
       name: tagKind
       in: query
@@ -8801,11 +8686,6 @@ components:
         - random
       default: addedDesc
       description: "Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md."
-    WatchFilter:
-      type: string
-      enum: [all, unwatched, inProgress, watched]
-      default: all
-      description: "Watch filter: all, unwatched, inProgress or watched."
     FolderScope:
       type: string
       enum: [direct, subtree]
@@ -8823,7 +8703,7 @@ components:
             $ref: "#/components/schemas/Video"
         total:
           type: integer
-          description: "Total after applying query, watch, playable and listFolderVideos scope, independent of pagination."
+          description: "Total after applying query, favorite and listFolderVideos scope, independent of pagination."
         nextCursor:
           type: string
           description: "Next-page cursor; omitted when no more results remain."
@@ -9300,13 +9180,6 @@ components:
           type: string
           maxLength: 500
           description: "Search input matched with owner semantics."
-        watch:
-          type: string
-          enum: [unwatched, inProgress, watched]
-          description: "Watch state."
-        playable:
-          type: boolean
-          description: "Restrict to browser-playable videos."
         favorite:
           type: boolean
           description: "Restrict to favorite videos."
@@ -9330,21 +9203,6 @@ components:
           type: integer
           format: int64
           description: "Organization IDs linked in any role."
-        addedWithin:
-          type: integer
-          minimum: 1
-          maximum: 36500
-          description: "Days since addition."
-        minDuration:
-          type: integer
-          minimum: 0
-          maximum: 360000
-          description: "Inclusive minimum duration in seconds; at most maxDuration."
-        maxDuration:
-          type: integer
-          minimum: 0
-          maximum: 360000
-          description: "Inclusive maximum duration in seconds."
 
     SmartRuleRef:
       type: object

@@ -62,7 +62,6 @@ import {
 } from "../videoList/listCriteria";
 import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
-import { FilterCheckbox } from "../videoList/FilterMenu";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
@@ -76,27 +75,20 @@ import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import ActiveTagFilters from "./ActiveTagFilters";
 import {
-  addedLengthCount,
-  addedLengthParams,
-  addedLengthSignature,
-  clearedAddedLength,
-  hasAddedLength,
-  useAddedLength,
-} from "./addedLengthCriteria";
-import { AddedSelect, LengthSelect } from "./AddedLengthSelects";
-import {
   clearedCredits,
+  creditKinds,
   creditSignature,
   hasFilterChips,
   ORGANIZATION_PARAM,
   PERSON_PARAM,
   TAG_KIND_PARAM,
-  VERSIONS_PARAM,
-  withVersions,
   useCreditFilter,
   withoutCredit,
 } from "./creditCriteria";
 import CardTagRow from "./CardTagRow";
+import { CreditFilterField, TagFilterField } from "./FilterFields";
+import { type LibraryFilterPick, pickParams } from "./filterPicks";
+import { useSearchSuggestions } from "./searchSuggestions";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
@@ -120,16 +112,13 @@ import {
   setVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
-import TagKindSelect from "./TagKindSelect";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
-import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
 import { useMarqueeSelection } from "./useMarqueeSelection";
 import { useRangeSelection } from "./useRangeSelection";
 import {
-  addTagId,
   clearConditions as clearTagConditions,
   hasConditions as hasTagConditions,
   MAX_TAG_COUNT,
@@ -159,10 +148,19 @@ function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: bool
 }
 
 function libraryConditioned(filter: LibraryFilter): boolean {
+  return hasTagConditions(filter.criteria, filter.tagIds, filter.credits);
+}
+
+/** Each tag, the kind, the person and the organization count as one applied filter. */
+function idFilterCount(
+  tagIds: readonly number[],
+  credits: LibraryFilter["credits"],
+): number {
   return (
-    hasTagConditions(filter.criteria, filter.tagIds, filter.credits) ||
-    hasAddedLength(filter.addedLength) ||
-    filter.credits.hasVersions === true
+    tagIds.length +
+    [credits.tagKind, credits.person, credits.organization].filter(
+      (id) => id !== undefined,
+    ).length
   );
 }
 
@@ -177,17 +175,8 @@ function saveSmartFolderAction(
   ) : undefined;
 }
 
-const libraryParams = [
-  TAG_PARAM,
-  PERSON_PARAM,
-  ORGANIZATION_PARAM,
-  TAG_KIND_PARAM,
-  VERSIONS_PARAM,
-  ...addedLengthParams,
-];
-
-/** Added-date and length filters are available to guests. */
-const libraryGuestParams = addedLengthParams;
+/** Retired parameters (versions, addedWithin, minDuration, maxDuration) are dropped on the next write. */
+const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM, TAG_KIND_PARAM];
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -198,13 +187,8 @@ export default function LibraryPage() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   // URL owns criteria; only sort is persisted on the device.
   // Pass library-specific filters through useListCriteria's extension so every URL update preserves them.
-  // Added-date and length filters are also available to guests.
-  const { criteria, apply } = useListCriteria(
-    preferences.sort,
-    libraryParams,
-    libraryGuestParams,
-  );
-  const { query, watch, playable, favorite, sort } = criteria;
+  const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
+  const { query, favorite, sort } = criteria;
   // Preserve tag-array identity across unrelated URL changes so card callbacks and memoization remain stable.
   const rawTagKey = JSON.stringify(
     new URLSearchParams(location.search).getAll(TAG_PARAM),
@@ -214,12 +198,7 @@ export default function LibraryPage() {
     [owner, rawTagKey],
   );
   const credits = useCreditFilter(location.search, owner);
-  const parsedAddedLength = useAddedLength(location.search);
-  const addedLength = parsedAddedLength.filter;
-  const libraryFilter = useMemo(
-    () => ({ ...credits, ...addedLength }),
-    [credits, addedLength],
-  );
+  const libraryFilter = credits;
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
@@ -248,15 +227,13 @@ export default function LibraryPage() {
     },
     [preferences, savePreferences, update],
   );
-  const { shuffle, changeWatch, changePlayable, changeFavorite, commitQuery } =
-    useListActions(update);
+  const { shuffle, changeFavorite, commitQuery } = useListActions(update);
   const clearAll = useCallback(() => {
     resetPreview();
     const cleared = clearTagConditions(criteria);
     apply(cleared.criteria, "push", {
       [TAG_PARAM]: serializeTagIds(cleared.tag),
       ...clearedCredits,
-      ...clearedAddedLength,
     });
   }, [apply, criteria, resetPreview]);
 
@@ -296,30 +273,36 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
-  const { changeAdded, changeLength } = useAddedLengthControls(
-    parsedAddedLength,
-    applyTagKind,
-  );
   const changeTagKind = tagKinds.change;
-  const changeVersions = useCallback(
-    (on: boolean) => applyTagKind(withVersions(on), "push"),
-    [applyTagKind],
-  );
   const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
 
-  const pressTag = useCallback(
-    (tag: TagRef) => {
+  // A search suggestion also clears the typed text, in the same history entry as the filter.
+  const applyPick = useCallback(
+    (pick: LibraryFilterPick, clearQuery = false) => {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
-      if (currentTagIds.includes(tag.id)) return;
-      if (currentTagIds.length >= MAX_TAG_COUNT) {
+      const result = pickParams(pick, currentTagIds);
+      if (result.kind === "tagLimit") {
         toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
-        return;
       }
+      if (result.kind !== "params" && !clearQuery) return;
       resetPreview();
-      applyTags(current, "push", addTagId(currentTagIds, tag.id));
+      apply(
+        clearQuery ? { ...current, query: "" } : current,
+        "push",
+        result.kind === "params" ? result.params : undefined,
+      );
     },
-    [applyTags, resetPreview, toast],
+    [apply, resetPreview, toast],
   );
+  const pressTag = useCallback(
+    (tag: TagRef) => applyPick({ kind: "tag", id: tag.id }),
+    [applyPick],
+  );
+  const pickSuggestion = useCallback(
+    (pick: LibraryFilterPick) => applyPick(pick, true),
+    [applyPick],
+  );
+  const suggestions = useSearchSuggestions(owner, pickSuggestion);
   const removeActiveTag = useCallback(
     (id: number) => {
       resetPreview();
@@ -360,7 +343,7 @@ export default function LibraryPage() {
   // Keep newly nonmatching watched rows in place until the next reload.
   useEffect(() => {
     resetPreview();
-  }, [favorite, items, playable, query, resetPreview, sort, view, watch, zoom]);
+  }, [favorite, items, query, resetPreview, sort, view, zoom]);
 
   // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
@@ -457,7 +440,6 @@ export default function LibraryPage() {
     criteriaKey(criteria),
     tagIds.join(","),
     creditSignature(credits),
-    addedLengthSignature(addedLength),
   ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
@@ -633,7 +615,7 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const smartFolderFilter = { criteria, tagIds, credits, addedLength };
+  const smartFolderFilter = { criteria, tagIds, credits };
   const conditioned = libraryConditioned(smartFolderFilter);
   const selectionMode = selectedCount(selection) > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
@@ -816,10 +798,6 @@ export default function LibraryPage() {
               sort={sort}
               onSortChange={changeSort}
               onShuffle={shuffle}
-              watch={watch}
-              onWatchChange={changeWatch}
-              playable={playable}
-              onPlayableChange={changePlayable}
               favorite={favorite}
               onFavoriteChange={changeFavorite}
               canClear={conditioned}
@@ -833,33 +811,30 @@ export default function LibraryPage() {
               onZoomChange={changeZoom}
               extraFilter={
                 <>
-                  {owner && (
-                    <FilterCheckbox
-                      checked={credits.hasVersions === true}
-                      onCheckedChange={changeVersions}
-                      label={t.library.versionsFilter}
-                    />
-                  )}
-                  {owner && (
-                    <TagKindSelect
-                      value={credits.tagKind}
-                      kinds={tagKinds.kinds}
-                      onValueChange={changeTagKind}
-                    />
-                  )}
-                  <AddedSelect
-                    value={addedLength.addedWithin}
-                    onValueChange={changeAdded}
+                  <TagFilterField
+                    tagIds={tagIds}
+                    kindId={credits.tagKind}
+                    kinds={tagKinds.kinds}
+                    maxTags={MAX_TAG_COUNT}
+                    onAddTag={(id) => applyPick({ kind: "tag", id })}
+                    onRemoveTag={removeActiveTag}
+                    onKindChange={changeTagKind}
                   />
-                  <LengthSelect value={addedLength} onValueChange={changeLength} />
+                  {creditKinds.map((kind) => (
+                    <CreditFilterField
+                      key={kind}
+                      kind={kind}
+                      value={credits[kind]}
+                      onChange={(id) =>
+                        id === undefined ? removeCredit(kind) : applyPick({ kind, id })
+                      }
+                    />
+                  ))}
                 </>
               }
-              extraFilterCount={
-                (credits.tagKind === undefined ? 0 : 1) +
-                (credits.hasVersions === true ? 1 : 0) +
-                addedLengthCount(addedLength)
-              }
+              extraFilterCount={idFilterCount(tagIds, credits)}
               onFilterOpen={owner ? tagKinds.load : undefined}
+              suggestions={suggestions}
             />
           </TopBarPortal>
         }
@@ -896,13 +871,7 @@ export default function LibraryPage() {
             <PageHeader
               title={t.library.resultsLabel}
               headingLevel={2}
-              // A smart folder cannot keep the versions filter, so saving it would drop a condition.
-              actions={saveSmartFolderAction(
-                owner,
-                conditioned && credits.hasVersions !== true,
-                smartFolderFilter,
-                sort,
-              )}
+              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
               count={
                 initialLoadFailed ? undefined : (
                   <span

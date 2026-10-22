@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 
-import type { VideoSort, WatchFilter } from "../api/client";
+import type { VideoSort } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { Toolbar } from "../ui/patterns/toolbar";
@@ -19,10 +19,6 @@ export interface FolderToolbarProps {
   sort: VideoSort;
   onSortChange: (value: VideoSort) => void;
   onShuffle: () => void;
-  watch: WatchFilter;
-  onWatchChange: (value: WatchFilter) => void;
-  playable: boolean;
-  onPlayableChange: (value: boolean) => void;
   favorite: boolean;
   onFavoriteChange: (value: boolean) => void;
   /** Whether Clear conditions has any active query or filter to remove. */
@@ -46,10 +42,6 @@ export default function FolderToolbar({
   sort,
   onSortChange,
   onShuffle,
-  watch,
-  onWatchChange,
-  playable,
-  onPlayableChange,
   favorite,
   onFavoriteChange,
   canClear,
@@ -116,10 +108,6 @@ export default function FolderToolbar({
       viewLabel={t.list.viewAndSort}
     >
       <FilterMenu
-        watch={watch}
-        onWatchChange={onWatchChange}
-        playable={playable}
-        onPlayableChange={onPlayableChange}
         favorite={favorite}
         onFavoriteChange={onFavoriteChange}
         canClear={canClear}

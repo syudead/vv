@@ -861,12 +861,10 @@ describe("list API client", () => {
     );
   });
 
-  it("sends watch, playable and seed to the library list", async () => {
+  it("sends the query and seed to the library list", async () => {
     const fetch = stubFetch();
     await listVideos({
       query: "京都 -2023",
-      watch: "unwatched",
-      playable: true,
       sort: "random",
       seed: 42,
       limit: 10,
@@ -875,8 +873,6 @@ describe("list API client", () => {
     expect(url.pathname).toBe("/api/videos");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       query: "京都 -2023",
-      watch: "unwatched",
-      playable: "true",
       sort: "random",
       seed: "42",
       limit: "10",
@@ -909,49 +905,12 @@ describe("list API client", () => {
     expect(urls[1]?.searchParams.get("sort")).toBe("favoritedAsc");
   });
 
-  // docs/design-docs/catalog-organization.md: added within and length go to the library lists.
-  it("sends addedWithin, minDuration and maxDuration to the library lists only when given", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockImplementation(() =>
-        Promise.resolve(jsonResponse({ items: [], total: 0, ids: [] })),
-      );
-    vi.stubGlobal("fetch", fetch);
-    const filter = { addedWithin: 7, minDuration: 0, maxDuration: 600 };
-
-    await listVideos(filter);
-    await listLibrary(filter);
-    await listVideos({});
-
-    const urls = fetch.mock.calls.map(
-      ([input]) => new URL(String(input), "http://localhost"),
-    );
-    const sent = urls.map((url) => [
-      url.searchParams.get("addedWithin"),
-      url.searchParams.get("minDuration"),
-      url.searchParams.get("maxDuration"),
-    ]);
-    expect(sent).toEqual([
-      ["7", "0", "600"],
-      ["7", "0", "600"],
-      [null, null, null],
-    ]);
-  });
-
-  it("omits playable when it is false", async () => {
-    const fetch = stubFetch();
-    await listVideos({ playable: false });
-    expect(requestedURL(fetch).searchParams.has("playable")).toBe(false);
-  });
-
   it("sends scope, query and filters to the folder list", async () => {
     const fetch = stubFetch();
     await listFolderVideos({
       folder: { rootId: 3, path: "A/B" },
       scope: "subtree",
       query: "京都",
-      watch: "inProgress",
-      playable: true,
       sort: "durationDesc",
       seed: 0,
     });
@@ -961,8 +920,6 @@ describe("list API client", () => {
       path: "A/B",
       scope: "subtree",
       query: "京都",
-      watch: "inProgress",
-      playable: "true",
       sort: "durationDesc",
       seed: "0",
       limit: "60",

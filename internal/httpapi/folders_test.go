@@ -215,7 +215,7 @@ func TestListFolderVideosPassesQueryAndReturnsPage(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	if want := (domain.FolderVideoQuery{
-		Dir: "/a/movies/A", Scope: domain.FolderScopeDirect, Watch: domain.WatchAll,
+		Dir: "/a/movies/A", Scope: domain.FolderScopeDirect,
 		Sort: domain.SortTitleAsc, Cursor: "abc", Limit: domain.MaxLimit,
 	}); folders.lastQuery != want {
 		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
@@ -238,7 +238,6 @@ func TestListFolderVideosRejectsBadParameters(t *testing.T) {
 	for _, target := range []string{
 		"/api/folders/3/videos?sort=sideways",
 		"/api/folders/3/videos?limit=0",
-		"/api/folders/3/videos?watch=someday",
 		"/api/folders/3/videos?scope=everywhere",
 		"/api/folders/3/videos?seed=-1",
 		"/api/folders/3/videos?seed=2147483648",
@@ -306,14 +305,13 @@ func TestListFolderVideosSearchesSubtree(t *testing.T) {
 	handler := newTestServer(t, Options{Folders: folders})
 
 	target := "/api/folders/3/videos?path=A&scope=subtree&query=" + url.QueryEscape("京都") +
-		"&watch=inProgress&playable=true&sort=random&seed=2147483647"
+		"&sort=random&seed=2147483647"
 	rec := do(t, handler, http.MethodGet, target)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	want := domain.FolderVideoQuery{
 		Dir: "/a/movies/A", Scope: domain.FolderScopeSubtree, Query: "京都",
-		Watch: domain.WatchInProgress, PlayableOnly: true,
 		Sort: domain.SortRandom, Seed: domain.MaxShuffleSeed, Limit: domain.DefaultLimit,
 	}
 	if folders.lastQuery != want {
@@ -339,7 +337,6 @@ func TestListFolderVideosMissingFolderIgnoresScope(t *testing.T) {
 		"/api/folders/3/videos?path=missing&scope=subtree",
 		"/api/folders/3/videos?path=missing&scope=subtree&query=x",
 		"/api/folders/3/videos?path=missing&scope=everywhere",
-		"/api/folders/3/videos?path=missing&watch=never",
 	} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != http.StatusNotFound {

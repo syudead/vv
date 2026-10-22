@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	"github.com/syudead/vv/internal/domain"
 )
 
@@ -55,16 +57,15 @@ func TestCreateSmartFolderNestsUnderItsParent(t *testing.T) {
 		root.CreatedAt != at.UnixMilli() || root.UpdatedAt != at.UnixMilli() {
 		t.Fatalf("root = %+v", root)
 	}
-	five := 5
 	child, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{
-		Name: "  Cats  ", Rule: domain.SmartRule{Watch: domain.WatchUnwatched, AddedWithin: &five},
+		Name: "  Cats  ", Rule: domain.SmartRule{Q: "cat", Favorite: true},
 		Sort: domain.SortTitleAsc, ParentID: root.ID,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := domain.SmartFolder{
-		ID: child.ID, ParentID: root.ID, Name: "Cats", Rule: domain.SmartRule{Watch: domain.WatchUnwatched, AddedWithin: &five},
+		ID: child.ID, ParentID: root.ID, Name: "Cats", Rule: domain.SmartRule{Q: "cat", Favorite: true},
 		Sort: domain.SortTitleAsc, CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli(),
 	}
 	if !reflect.DeepEqual(child, want) {
@@ -87,7 +88,7 @@ func TestCreateSmartFolderRefusesInvalidInput(t *testing.T) {
 		want   error
 	}{
 		"random sort":    {domain.SmartFolderCreate{Name: "A", Sort: domain.SortRandom}, domain.ErrInvalidSmartRule},
-		"invalid rule":   {domain.SmartFolderCreate{Name: "A", Rule: domain.SmartRule{Watch: domain.WatchAll}}, domain.ErrInvalidSmartRule},
+		"invalid rule":   {domain.SmartFolderCreate{Name: "A", Rule: domain.SmartRule{Person: -1}}, domain.ErrInvalidSmartRule},
 		"missing parent": {domain.SmartFolderCreate{Name: "A", ParentID: 99}, domain.ErrSmartFolderNotFound},
 	}
 	for name, c := range cases {
@@ -266,5 +267,42 @@ func TestRuleNamingADeletedTagIsStoredAndReportedMissing(t *testing.T) {
 	}
 	if _, err := db.SmartFolders().MissingRefs(ctx, 999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing folder error = %v", err)
+	}
+}
+
+// Stored rules lose the removed filter keys, which ParseSmartRule would otherwise reject, and keep the rest.
+func TestRemovedListFiltersMigrationStripsStoredRules(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	files, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 75); err != nil {
+		t.Fatal(err)
+	}
+	execSQL(t, db, `insert into smart_folders (id, name, title_key, rule, sort, created_at, updated_at) values
+		(1, 'kept', 'kept', '{"q":"cat","watch":"unwatched","playable":true,"addedWithin":7,"minDuration":60,"maxDuration":600}', 'titleAsc', 1, 1),
+		(2, 'emptied', 'emptied', '{"watch":"watched"}', 'titleAsc', 1, 1)`)
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+
+	for id, want := range map[int64]string{1: `{"q":"cat"}`, 2: `{}`} {
+		var rule string
+		if err := db.sql.QueryRow(`select rule from smart_folders where id = ?`, id).Scan(&rule); err != nil {
+			t.Fatal(err)
+		}
+		if rule != want {
+			t.Errorf("rule of folder %d = %s, want %s", id, rule, want)
+		}
 	}
 }

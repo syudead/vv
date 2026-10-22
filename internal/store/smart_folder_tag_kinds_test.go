@@ -23,11 +23,10 @@ func smartFolderVideoIDs(t *testing.T, db *DB, id int64) []int64 {
 	return ids
 }
 
-func TestSmartFolderMatchesTagKindAndWatchState(t *testing.T) {
+func TestSmartFolderMatchesTagKind(t *testing.T) {
 	f := tagKindListingFixture(t)
 	ctx := context.Background()
-	folder := newSmartFolder(t, f.db, "未視聴のジャンル",
-		domain.SmartRule{TagKind: f.genre.ID, Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
+	folder := newSmartFolder(t, f.db, "ジャンル", domain.SmartRule{TagKind: f.genre.ID}, domain.SortTitleAsc, 0)
 
 	if got, want := smartFolderVideoIDs(t, f.db, folder), sortedIDs(f.folder, f.manual, f.both); !slices.Equal(got, want) {
 		t.Fatalf("中身 = %v, want %v", got, want)
@@ -38,13 +37,6 @@ func TestSmartFolderMatchesTagKindAndWatchState(t *testing.T) {
 	}
 	if len(cards) != 1 || cards[0].VideoCount != 3 {
 		t.Fatalf("カード = %+v, want 3 本", cards)
-	}
-
-	if _, err := f.db.Playback().SaveProgress(ctx, "k-manual", domain.Progress{PositionMs: 9000, Completed: true}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := smartFolderVideoIDs(t, f.db, folder), sortedIDs(f.folder, f.both); !slices.Equal(got, want) {
-		t.Fatalf("見終えたあとの中身 = %v, want %v", got, want)
 	}
 }
 

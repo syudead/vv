@@ -56,28 +56,13 @@ export function useCollectionCriteria() {
   const key = `${nativeOrder}:${criteriaKey(criteria)}`;
   useScrollTopOnChange(key);
   const conditions = useMemo<CollectionCriteria | undefined>(() => {
-    if (
-      criteria.watch === "all" &&
-      !criteria.playable &&
-      !criteria.favorite &&
-      nativeOrder
-    )
-      return undefined;
+    if (!criteria.favorite && nativeOrder) return undefined;
     return {
-      watch: criteria.watch,
-      playable: criteria.playable,
       favorite: criteria.favorite,
       sort: nativeOrder ? undefined : criteria.sort,
       seed: criteria.seed,
     };
-  }, [
-    criteria.watch,
-    criteria.playable,
-    criteria.favorite,
-    criteria.sort,
-    criteria.seed,
-    nativeOrder,
-  ]);
+  }, [criteria.favorite, criteria.sort, criteria.seed, nativeOrder]);
   return {
     criteria,
     conditions,
@@ -91,10 +76,6 @@ export function useCollectionCriteria() {
       sort: criteria.sort,
       onSortChange: changeSort,
       onShuffle: actions.shuffle,
-      watch: criteria.watch,
-      onWatchChange: actions.changeWatch,
-      playable: criteria.playable,
-      onPlayableChange: actions.changePlayable,
       favorite: criteria.favorite,
       onFavoriteChange: actions.changeFavorite,
       canClear: hasConditions(criteria),

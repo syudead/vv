@@ -88,7 +88,7 @@ describe("見出しの More（所有者）", () => {
     const dialog = await screen.findByRole("dialog", {
       name: 'New smart folder in "タグ: 猫"',
     });
-    await user.click(within(dialog).getByRole("checkbox", { name: "Playable only" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Favorites only" }));
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "好き{Enter}");
 
     expect(await screen.findByText('Created "好き"')).toBeTruthy();
@@ -477,7 +477,7 @@ describe("経路と欠けた条件", () => {
     server.folders.set(6, {
       smartFolder: folderCard(6, "子", { videoCount: 0, openVideoId: undefined }),
       settings: {
-        rule: { watch: "watched" },
+        rule: { favorite: true },
         sort: "addedDesc",
         missing: [{ kind: "tag", id: 99 }],
       },

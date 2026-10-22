@@ -47,8 +47,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     searchField,
     changeSort,
     shuffle,
-    changeWatch,
-    changePlayable,
     changeFavorite,
     commitQuery,
     clearAll,
@@ -73,8 +71,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const videos = useVideos(
     {
       query: criteria.query,
-      watch: criteria.watch,
-      playable: criteria.playable,
       favorite: criteria.favorite,
       sort: criteria.sort,
       seed: criteria.seed,
@@ -348,10 +344,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             sort={criteria.sort}
             onSortChange={changeSort}
             onShuffle={shuffle}
-            watch={criteria.watch}
-            onWatchChange={changeWatch}
-            playable={criteria.playable}
-            onPlayableChange={changePlayable}
             favorite={criteria.favorite}
             onFavoriteChange={changeFavorite}
             canClear={hasConditions(criteria)}

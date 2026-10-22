@@ -110,34 +110,38 @@ describe("ConditionsFields", () => {
     vi.unstubAllGlobals();
   });
 
-  it("検索・お気に入り・再生できるものだけ・追加日・長さを条件に書き込む", async () => {
+  it("writes the search and Favorites only into the rule", async () => {
     const user = userEvent.setup();
     renderFields({});
 
     await user.type(screen.getByRole("searchbox", { name: "Search" }), "kyoto");
     expect(lastRule()?.q).toBe("kyoto");
     await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
-    await user.click(screen.getByRole("checkbox", { name: "Playable only" }));
-    expect(lastRule()).toMatchObject({ favorite: true, playable: true });
-
-    await user.click(screen.getByRole("combobox", { name: "Added" }));
-    await user.click(await screen.findByRole("option", { name: "Last 7 days" }));
-    expect(lastRule()?.addedWithin).toBe(7);
-    await user.click(screen.getByRole("combobox", { name: "Length" }));
-    await user.click(await screen.findByRole("option", { name: "5 to 20 minutes" }));
-    expect(lastRule()).toMatchObject({ minDuration: 300, maxDuration: 1199 });
+    expect(lastRule()).toMatchObject({ q: "kyoto", favorite: true });
   });
 
   describe("Tag kind", () => {
-    it("種類を選ぶと条件に書き込む", async () => {
+    it("takes a kind from the Add tag picker, and another kind replaces it while tags stay", async () => {
+      kindLists = [[kind(1, "Genre"), kind(2, "Mood")]];
       const user = userEvent.setup();
-      renderFields({});
-      await user.click(screen.getByRole("combobox", { name: "Tag kind" }));
-      await user.click(await screen.findByRole("option", { name: "Genre" }));
-      expect(lastRule()?.tagKind).toBe(1);
+      renderFields({ tags: [1] });
+      const input = screen.getByRole("combobox", { name: "Add tag" });
+
+      await user.type(input, "Gen");
+      await user.click(await screen.findByRole("option", { name: "Tag kind Genre" }));
+      expect(lastRule()).toMatchObject({ tags: [1], tagKind: 1 });
+      expect(await screen.findByText("Kind: Genre")).toBeDefined();
+
+      await user.type(input, "Mo");
+      await user.click(await screen.findByRole("option", { name: "Tag kind Mood" }));
+      expect(lastRule()).toMatchObject({ tags: [1], tagKind: 2 });
+      expect(screen.queryByText("Kind: Genre")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Remove the kind Mood" }));
+      expect(lastRule()?.tagKind).toBeUndefined();
     });
 
-    it("もう無い種類は警告のチップで出し、外すと Select に戻る", async () => {
+    it("shows a kind that no longer exists as a warning chip, which removes it", async () => {
       const user = userEvent.setup();
       renderFields({ tagKind: 9 }, [{ kind: "tagKind", id: 9 }]);
       expect(screen.getByText("Kind: deleted")).toBeDefined();
@@ -145,7 +149,6 @@ describe("ConditionsFields", () => {
         screen.getByRole("button", { name: "Remove the deleted condition" }),
       );
       expect(lastRule()?.tagKind).toBeUndefined();
-      expect(screen.getByRole("combobox", { name: "Tag kind" })).toBeDefined();
     });
 
     it("開いた時点の保持に無い種類は取り直して確かめ、あれば削除扱いにしない", async () => {
@@ -154,27 +157,8 @@ describe("ConditionsFields", () => {
       await getTagKinds();
       renderFields({ tagKind: 2 });
 
-      await waitFor(() =>
-        expect(screen.getByRole("combobox", { name: "Tag kind" }).textContent).toBe(
-          "Mood",
-        ),
-      );
+      expect(await screen.findByText("Kind: Mood")).toBeDefined();
       expect(screen.queryByText("Kind: deleted")).toBeNull();
-    });
-
-    it("種類の一覧を読めなくても Select は Any kind で出す", async () => {
-      fetchMock.mockImplementation((input) => {
-        const url = new URL(String(input), "http://localhost");
-        if (url.pathname === "/api/tag-kinds") {
-          return Promise.resolve(json({ code: "internal", message: "boom" }, 500));
-        }
-        return Promise.resolve(json({ items: [] }));
-      });
-      renderFields({});
-      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-      expect(screen.getByRole("combobox", { name: "Tag kind" }).textContent).toBe(
-        "Any kind",
-      );
     });
 
     it("取り直しても無い種類は削除扱いにする", async () => {

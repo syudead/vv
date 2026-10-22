@@ -218,11 +218,8 @@ describe("FolderPage", () => {
           return Promise.resolve(json({ code: "internal", message: "broken" }, 500));
         }
         if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
-        if (params.get("watch") === "unwatched") {
-          const page: VideoPage = { items: [video(1, "x")], total: 1 };
-          return Promise.resolve(json(page));
-        }
-        if (params.get("watch") === "watched") {
+        // Favorites by size hold no videos; this stands for a filter that matches none.
+        if (params.get("favorite") === "true" && params.get("sort") === "sizeAsc") {
           return Promise.resolve(json({ items: [], total: 0 }));
         }
         const page: VideoPage = { items: [video(1, "x")], total: 1 };
@@ -959,26 +956,26 @@ describe("FolderPage", () => {
     );
   }, 10_000);
 
-  it("URL の q・watch をそのまま送り、q があるときだけ scope=subtree にする", async () => {
-    renderFolders("/folders/3/A?q=京都&watch=unwatched");
+  it("URL の q・fav をそのまま送り、q があるときだけ scope=subtree にする", async () => {
+    renderFolders("/folders/3/A?q=京都&fav=1");
     await waitFor(() =>
       expect(
         requests.some(
           (url) =>
             url.startsWith("/api/folders/3/videos?path=A&scope=subtree") &&
             url.includes("query=%E4%BA%AC%E9%83%BD") &&
-            url.includes("watch=unwatched"),
+            url.includes("favorite=true"),
         ),
       ).toBe(true),
     );
 
     requests.length = 0;
-    renderFolders("/folders/3/A?watch=unwatched");
+    renderFolders("/folders/3/A?fav=1");
     await waitFor(() =>
       expect(
         requests.some(
           (url) =>
-            url.startsWith("/api/folders/3/videos?path=A&watch=unwatched") &&
+            url.startsWith("/api/folders/3/videos?path=A&favorite=true") &&
             !url.includes("scope=") &&
             !url.includes("query="),
         ),
@@ -986,7 +983,7 @@ describe("FolderPage", () => {
     );
   });
 
-  it("URL の tag は読まず、watch を変えると tag が URL から消える（issue 269）", async () => {
+  it("URL の tag は読まず、絞り込みを変えると tag が URL から消える（issue 269）", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?tag=1");
     await screen.findByRole("link", { name: "x" });
@@ -997,10 +994,10 @@ describe("FolderPage", () => {
     ).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
-    await user.click(screen.getByRole("radio", { name: "Unwatched" }));
+    await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
     await waitFor(() => {
       const location = screen.getByTestId("location").textContent ?? "";
-      expect(location).toContain("watch=unwatched");
+      expect(location).toContain("fav=1");
       expect(location).not.toContain("tag=");
     });
   });
@@ -1190,7 +1187,7 @@ describe("FolderPage", () => {
   });
 
   it("絞り込みだけでは子フォルダのカードが残り、Nは絞った後のtotalになる", async () => {
-    renderFolders("/folders/3/A?watch=unwatched");
+    renderFolders("/folders/3/A?fav=1");
     const b = await screen.findByRole("link", {
       name: "B, 1 video, 1 folder",
     });
@@ -1202,13 +1199,13 @@ describe("FolderPage", () => {
   });
 
   it("絞り込みだけで一致が無いと、子フォルダの下に簡潔な一致なしを出す", async () => {
-    renderFolders("/folders/3/A?watch=watched");
+    renderFolders("/folders/3/A?fav=1&sort=sizeAsc");
     await screen.findByRole("link", { name: "B, 1 video, 1 folder" });
     expect(
       screen.getByRole("heading", { name: "No videos match these conditions" }),
     ).toBeDefined();
     expect(screen.queryByText(/中のフォルダも探すには/)).toBeNull();
-    expect(screen.queryByText("Watched")).toBeNull();
+    expect(screen.queryByText("Favorites only")).toBeNull();
     expect(screen.queryByText("Aの直下")).toBeNull();
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
   });
@@ -1376,7 +1373,7 @@ describe("FolderPage", () => {
       expect(within(nav).getByText("A").getAttribute("aria-current")).toBe("page");
     });
 
-    it("「Favorites only」を出さず、URL に残った fav=1 と favorited* は既定に丸めて要求し、URL も直す", async () => {
+    it("絞り込みのボタンを出さず、URL に残った fav=1 と favorited* は既定に丸めて要求し、URL も直す", async () => {
       guestResponses();
       const user = userEvent.setup();
       renderFolders("/folders/3/A?fav=1&sort=favoritedDesc", "guest");
@@ -1395,19 +1392,14 @@ describe("FolderPage", () => {
         ),
       );
 
-      await user.click(screen.getByRole("button", { name: "Filter" }));
-      const filter = await screen.findByRole("dialog");
-      expect(
-        within(filter).queryByRole("checkbox", { name: "Favorites only" }),
-      ).toBeNull();
-      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("button", { name: /^Filter/ })).toBeNull();
       await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
       const menu = await screen.findByRole("menu");
       expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(7);
       expect(within(menu).queryByText("Date favorited")).toBeNull();
     });
 
-    it("URL に残った watch と最近再生した順は既定に丸めて要求し、URL も直す", async () => {
+    it("URL に残った廃止の watch と最近再生した順は既定に丸めて要求し、URL も直す", async () => {
       guestResponses();
       renderFolders("/folders/3/A?watch=watched&sort=playedAsc", "guest");
       await screen.findByRole("link", { name: "x" });

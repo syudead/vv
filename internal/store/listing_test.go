@@ -232,121 +232,6 @@ func TestListingScopes(t *testing.T) {
 	}
 }
 
-func watchFixture(t *testing.T) *DB {
-	t.Helper()
-	db := migratedDB(t)
-	ctx := context.Background()
-	states := []struct {
-		name     string
-		progress *domain.Progress
-	}{
-		{"none", nil},
-		{"zero", &domain.Progress{PositionMs: 0}},
-		{"middle", &domain.Progress{PositionMs: 30_000}},
-		{"done", &domain.Progress{PositionMs: 100_000, Completed: true}},
-	}
-	offset := 0
-	for _, state := range states {
-		for _, playable := range []bool{true, false} {
-			title := fmt.Sprintf("%s-%v", state.name, playable)
-			key := "key-" + title
-			ids := upsertAll(t, db, listingFile(fixturePath("/media/")+title+".mp4", title, key, offset))
-			offset++
-			if playable {
-				if err := db.Ingest().ApplyProbe(ctx, ids[fixturePath("/media/")+title+".mp4"], domain.Probe{DurationMs: 100_000, VideoCodec: "h264"},
-					domain.Playability{Playable: true}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if state.progress != nil {
-				if _, err := db.Playback().SaveProgress(ctx, key, *state.progress, nil); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-	}
-	return db
-}
-
-func TestListVideosWatchAndPlayableFilters(t *testing.T) {
-	db := watchFixture(t)
-	ctx := context.Background()
-
-	tests := []struct {
-		watch    domain.WatchFilter
-		playable bool
-		want     []string
-	}{
-		{"", false, sorted("none-true", "none-false", "zero-true", "zero-false", "middle-true", "middle-false", "done-true", "done-false")},
-		{domain.WatchAll, true, sorted("none-true", "zero-true", "middle-true", "done-true")},
-		{domain.WatchUnwatched, false, sorted("none-true", "none-false", "zero-true", "zero-false")},
-		{domain.WatchUnwatched, true, sorted("none-true", "zero-true")},
-		{domain.WatchInProgress, false, sorted("middle-true", "middle-false")},
-		{domain.WatchInProgress, true, sorted("middle-true")},
-		{domain.WatchWatched, false, sorted("done-true", "done-false")},
-		{domain.WatchWatched, true, sorted("done-true")},
-	}
-	for _, tc := range tests {
-		var seen []string
-		cursor := ""
-		for range 10 {
-			page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: tc.watch, PlayableOnly: tc.playable, Limit: 1, Cursor: cursor})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if page.Total != len(tc.want) {
-				t.Errorf("watch=%q playable=%v: total = %d, want %d", tc.watch, tc.playable, page.Total, len(tc.want))
-			}
-			seen = append(seen, titlesOf(page)...)
-			if page.NextCursor == "" {
-				break
-			}
-			cursor = page.NextCursor
-		}
-		slices.Sort(seen)
-		if !slices.Equal(seen, tc.want) {
-			t.Errorf("watch=%q playable=%v = %q, want %q", tc.watch, tc.playable, seen, tc.want)
-		}
-	}
-
-	if got, want := sortedTitles(t, db, domain.VideoQuery{Query: "none OR done", Watch: domain.WatchWatched, PlayableOnly: true}), sorted("done-true"); !slices.Equal(got, want) {
-		t.Errorf("検索と絞り込み = %q, want %q", got, want)
-	}
-}
-
-func TestWatchConditionMatchesDomainClassification(t *testing.T) {
-	db := watchFixture(t)
-	ctx := context.Background()
-	for _, filter := range []domain.WatchFilter{domain.WatchUnwatched, domain.WatchInProgress, domain.WatchWatched} {
-		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: filter, Limit: domain.MaxLimit})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, item := range page.Items {
-			var progress *domain.Progress
-			if got, err := db.Playback().Progress(ctx, item.ContentKey); err == nil {
-				progress = &got
-			}
-			if state := domain.ClassifyWatch(progress); !filter.Matches(state) {
-				t.Errorf("%q の一覧に %q（%q）が出た", filter, item.Title, state)
-			}
-		}
-	}
-}
-
-func TestListFolderVideosFilters(t *testing.T) {
-	db := watchFixture(t)
-	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
-		Dir: fixturePath("/media"), Watch: domain.WatchInProgress, PlayableOnly: true, Limit: domain.MaxLimit,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 1 || !slices.Equal(titlesOf(page), []string{"middle-true"}) {
-		t.Errorf("total = %d, items = %q, want middle-true だけ", page.Total, titlesOf(page))
-	}
-}
-
 func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		for _, query := range []string{"", "旅"} {
@@ -477,31 +362,6 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	}
 }
 
-// Unidentified content stays unwatched even if an empty-key progress row exists.
-func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile(fixturePath("/media/legacy.mp4"), "legacy", "legacy-key", 0))
-	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids[fixturePath("/media/legacy.mp4")]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Playback().SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}, nil); err != nil {
-		t.Fatal(err)
-	}
-	for watch, want := range map[domain.WatchFilter]int{
-		domain.WatchWatched:   0,
-		domain.WatchUnwatched: 1,
-	} {
-		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: watch})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if page.Total != want {
-			t.Errorf("watch=%s: total = %d, want %d", watch, page.Total, want)
-		}
-	}
-}
-
 func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -534,17 +394,6 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 	if len(page.MissingTagIDs) != 0 {
 		t.Errorf("MissingTagIDs = %v, want 空", page.MissingTagIDs)
-	}
-
-	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}, nil); err != nil {
-		t.Fatal(err)
-	}
-	unwatched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}, Watch: domain.WatchUnwatched})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if unwatched.Total != 0 {
-		t.Errorf("タグ AND + 未視聴 = %d 件, want 0 (both は視聴済み)", unwatched.Total)
 	}
 
 	searched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID}, Query: "b-only"})

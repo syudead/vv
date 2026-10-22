@@ -65,7 +65,7 @@ func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domai
 	if err != nil {
 		return err
 	}
-	if err := refreshCollectionValues(ctx, tx, listNow().Unix()); err != nil {
+	if err := refreshCollectionValues(ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -89,7 +89,7 @@ func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Eve
 	if err != nil {
 		return err
 	}
-	if err := refreshCollectionValues(ctx, tx, listNow().Unix()); err != nil {
+	if err := refreshCollectionValues(ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

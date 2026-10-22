@@ -1,35 +1,22 @@
 import { ListFilter } from "lucide-react";
 import { type ReactNode, type Ref, useId, useState } from "react";
 
-import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "../ui/shadcn/field";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "../ui/shadcn/field";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
-import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
-import { watchLabel, watchValues } from "./listSummary";
 
 export interface FilterMenuProps {
-  watch: WatchFilter;
-  onWatchChange: (value: WatchFilter) => void;
-  playable: boolean;
-  onPlayableChange: (value: boolean) => void;
   favorite: boolean;
   onFavoriteChange: (value: boolean) => void;
   canClear: boolean;
   /** Clear conditions but retain sort. */
   onClear: () => void;
   disabled?: boolean;
+  /** Page-specific fields drawn before `Favorites only`. */
   children?: ReactNode;
   /** Include custom child-row filters in the button count. */
   extraCount?: number;
@@ -38,14 +25,10 @@ export interface FilterMenuProps {
 }
 
 /**
- * Exclude search from the badge because it is visible in the input; guests have only playability
- * filtering because watch state and favorites are owner data.
+ * Exclude search from the badge because it is visible in the input. Every list filter is owner
+ * data, so guests get no Filter button rather than an empty popover.
  */
 export default function FilterMenu({
-  watch,
-  onWatchChange,
-  playable,
-  onPlayableChange,
   favorite,
   onFavoriteChange,
   canClear,
@@ -56,9 +39,8 @@ export default function FilterMenu({
   onOpen,
 }: FilterMenuProps) {
   const owner = useAudience() === "owner";
-  const watchCount = owner && watch !== "all" ? 1 : 0;
-  const favoriteCount = owner && favorite ? 1 : 0;
-  const filterCount = watchCount + favoriteCount + (playable ? 1 : 0) + extraCount;
+  if (!owner) return null;
+  const filterCount = (favorite ? 1 : 0) + extraCount;
 
   return (
     <FilterPopover
@@ -68,55 +50,13 @@ export default function FilterMenu({
       onClear={onClear}
       onOpen={onOpen}
     >
-      {owner && <WatchStatusField value={watch} onValueChange={onWatchChange} />}
-
-      <div className="flex flex-col gap-2">
-        {owner && (
-          <FilterCheckbox
-            checked={favorite}
-            onCheckedChange={onFavoriteChange}
-            label={t.list.filter.favoritesOnly}
-          />
-        )}
-        <FilterCheckbox
-          checked={playable}
-          onCheckedChange={onPlayableChange}
-          label={t.list.filter.playableOnly}
-        />
-      </div>
       {children}
+      <FilterCheckbox
+        checked={favorite}
+        onCheckedChange={onFavoriteChange}
+        label={t.list.filter.favoritesOnly}
+      />
     </FilterPopover>
-  );
-}
-
-export function WatchStatusField({
-  value,
-  onValueChange,
-}: {
-  value: WatchFilter;
-  onValueChange: (value: WatchFilter) => void;
-}) {
-  return (
-    <FieldSet>
-      <FieldLegend variant="label">{t.list.filter.watch}</FieldLegend>
-      {/* Use radio semantics for mutually exclusive choices that apply immediately. */}
-      <ToggleGroup
-        type="single"
-        size="sm"
-        value={value}
-        onValueChange={(next) => {
-          if (next !== "") onValueChange(next as WatchFilter);
-        }}
-        aria-label={t.list.filter.watch}
-        className="grid w-full grid-cols-2 gap-1"
-      >
-        {watchValues.map((option) => (
-          <ToggleGroupItem key={option} value={option} className="rounded-md">
-            {watchLabel(option)}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-    </FieldSet>
   );
 }
 

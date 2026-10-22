@@ -13,8 +13,6 @@ import {
 
 const unfiltered = {
   query: "",
-  watch: "all" as const,
-  playable: false,
   favorite: false,
   sort: "addedDesc" as const,
 };
@@ -23,29 +21,23 @@ describe("ruleFromLibrary", () => {
   it("ライブラリの絞り込みの効いている条件だけを持つ", () => {
     expect(
       ruleFromLibrary({
-        criteria: { ...unfiltered, watch: "unwatched" },
+        criteria: unfiltered,
         tagIds: [3],
         credits: {},
-        addedLength: {},
       }),
-    ).toEqual({ watch: "unwatched", tags: [3] });
+    ).toEqual({ tags: [3] });
     expect(
       ruleFromLibrary({
-        criteria: { ...unfiltered, query: "kyoto", favorite: true, playable: true },
+        criteria: { ...unfiltered, query: "kyoto", favorite: true },
         tagIds: [],
         credits: { person: 4, organization: 5, tagKind: 6 },
-        addedLength: { addedWithin: 7, minDuration: 300, maxDuration: 1199 },
       }),
     ).toEqual({
       q: "kyoto",
       favorite: true,
-      playable: true,
       person: 4,
       organization: 5,
       tagKind: 6,
-      addedWithin: 7,
-      minDuration: 300,
-      maxDuration: 1199,
     });
   });
 });
@@ -54,7 +46,7 @@ describe("条件の検査", () => {
   it("空の条件は条件として数えない", () => {
     expect(hasRuleMember({})).toBe(false);
     expect(hasRuleMember({ q: "", tags: [], favorite: false })).toBe(false);
-    expect(hasRuleMember({ playable: true })).toBe(true);
+    expect(hasRuleMember({ favorite: true })).toBe(true);
   });
 
   it("サーバーの範囲の外の条件は送れない", () => {
@@ -62,8 +54,6 @@ describe("条件の検査", () => {
     expect(validRule({ q: "a".repeat(501) })).toBe(false);
     expect(validRule({ tags: [1, 1] })).toBe(false);
     expect(validRule({ tags: Array.from({ length: 17 }, (_, i) => i + 1) })).toBe(false);
-    expect(validRule({ minDuration: 601, maxDuration: 600 })).toBe(false);
-    expect(validRule({ addedWithin: 0 })).toBe(false);
     expect(validRule({ tagKind: 0 })).toBe(false);
     expect(validRule({ person: -1 })).toBe(false);
     expect(validRule({ organization: 1.5 })).toBe(false);
@@ -71,8 +61,8 @@ describe("条件の検査", () => {
   });
 
   it("鍵は空の条件と鍵の順を無視して比べる", () => {
-    expect(ruleKey({ tags: [1], watch: "watched", q: "" })).toBe(
-      ruleKey({ watch: "watched", tags: [1] }),
+    expect(ruleKey({ tags: [1], favorite: true, q: "" })).toBe(
+      ruleKey({ favorite: true, tags: [1] }),
     );
   });
 

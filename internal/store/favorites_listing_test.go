@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Fixture watch states: ep1 watched, ep2 unwatched, ep10 in progress.
-
 func favoriteLibrary(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	t.Helper()
 	q.FavoriteOnly = true
@@ -52,17 +50,6 @@ func TestListLibraryFavoriteOnlyBuildsItemsPerFavorite(t *testing.T) {
 	favoriteVideos(t, db, true, ep2, ep10)
 	if names := favoriteLibrary(t, db, domain.VideoQuery{}); !slices.Equal(names, []string{"ep1", "ep10", "ep2"}) {
 		t.Errorf("A・B・C = %v, want [ep1 ep10 ep2]", names)
-	}
-
-	if names := favoriteLibrary(t, db, domain.VideoQuery{Watch: domain.WatchUnwatched}); !slices.Equal(names, []string{"ep2"}) {
-		t.Errorf("A・B・C の未視聴 = %v, want [ep2]", names)
-	}
-	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
-	if names := favoriteLibrary(t, db, domain.VideoQuery{Watch: domain.WatchUnwatched}); len(names) != 0 {
-		t.Errorf("G の未視聴 = %v, want 空", names)
-	}
-	if names := favoriteLibrary(t, db, domain.VideoQuery{Watch: domain.WatchInProgress}); !slices.Equal(names, []string{"group:show"}) {
-		t.Errorf("G の途中 = %v, want [group:show]", names)
 	}
 }
 

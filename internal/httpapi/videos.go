@@ -30,11 +30,9 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, hasVersions: params.HasVersions,
-		sort: params.Sort,
+		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind, personRole: params.PersonRole,
 	})
 	if !ok {
@@ -58,9 +56,6 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 // videoQueryParams is shared by listVideos and listLibrary.
 type videoQueryParams struct {
 	query        *string
-	watch        *gen.WatchFilter
-	playable     *bool
-	hasVersions  *bool
 	sort         *gen.VideoSort
 	seed         *int64
 	cursor       *string
@@ -69,11 +64,7 @@ type videoQueryParams struct {
 	favorite     *bool
 	person       *int64
 	organization *int64
-	// addedWithin is in days; duration bounds are in seconds.
-	addedWithin *int
-	minDuration *int
-	maxDuration *int
-	tagKind     *int64
+	tagKind      *int64
 	// personRole is accepted only by listVideos and requires person.
 	personRole *gen.WorkPersonRole
 }
@@ -82,15 +73,12 @@ type videoQueryParams struct {
 func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience, params videoQueryParams) (domain.VideoQuery, bool) {
 	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
 
-	filters, ok := s.parseListFilters(w, listFilterParams{
-		watch: params.watch, playable: params.playable, sort: params.sort, seed: params.seed,
-	})
+	filters, ok := s.parseListFilters(w, listFilterParams{sort: params.sort, seed: params.seed})
 	if !ok {
 		return domain.VideoQuery{}, false
 	}
-	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	query.Sort, query.Seed = filters.sort, filters.seed
 	query.FavoriteOnly = params.favorite != nil && *params.favorite
-	query.HasVersionsOnly = params.hasVersions != nil && *params.hasVersions
 
 	// Clamp the limit at the boundary so response metadata matches the query and schema maximum.
 	query.Limit = domain.DefaultLimit
@@ -114,9 +102,6 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 		return domain.VideoQuery{}, false
 	}
 	if !s.parseIDFilters(w, params, &query) {
-		return domain.VideoQuery{}, false
-	}
-	if !s.parseAddedAndLength(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
 	if !s.checkAudienceQuery(w, audience, query) {
@@ -156,25 +141,6 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 	return true
 }
 
-// parseAddedAndLength rejects out-of-range values and inverted duration bounds; guests may use these filters.
-func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
-	switch err := domain.CheckAddedAndLength(params.addedWithin, params.minDuration, params.maxDuration); {
-	case errors.Is(err, domain.ErrInvalidAddedWithin):
-		s.invalidRequest(w, fmt.Sprintf("addedWithin must be between 1 and %d.", domain.MaxAddedWithinDays))
-		return false
-	case err != nil:
-		s.invalidRequest(w, fmt.Sprintf(
-			"minDuration and maxDuration must be between 0 and %d, and minDuration must not exceed maxDuration.",
-			domain.MaxDurationBoundSec))
-		return false
-	}
-	if params.addedWithin != nil {
-		query.AddedWithinDays = *params.addedWithin
-	}
-	query.MinDurationSec, query.MaxDurationSec = params.minDuration, params.maxDuration
-	return true
-}
-
 // writeVideoPage includes progress, tags, and the selected location's folder when roots are available. Preserve MissingTagIDs in the response.
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
 	progress := s.progressFor(r.Context(), page.Items)
@@ -206,7 +172,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 // checkAudienceQuery rejects guest filters that depend on owner data with 400.
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
-		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
+		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by tags, people, or favorites, or to sort by last played or date favorited.")
 		return false
 	}
 	return true
@@ -252,33 +218,18 @@ func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
 }
 
 type listFilterParams struct {
-	watch    *gen.WatchFilter
-	playable *bool
-	sort     *gen.VideoSort
-	seed     *int64
+	sort *gen.VideoSort
+	seed *int64
 }
 
 type listFilters struct {
-	watch        domain.WatchFilter
-	playableOnly bool
-	sort         domain.VideoSort
-	seed         int64
+	sort domain.VideoSort
+	seed int64
 }
 
-// Reject unknown filters and invalid seeds instead of silently returning a list with different criteria.
+// Reject unknown sorts and invalid seeds instead of silently returning a list in a different order.
 func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams) (listFilters, bool) {
-	out := listFilters{watch: domain.WatchAll, sort: domain.SortAddedDesc}
-	if params.watch != nil {
-		watch := domain.WatchFilter(*params.watch)
-		if !watch.Valid() {
-			s.invalidRequest(w, "Unknown watch filter.")
-			return listFilters{}, false
-		}
-		out.watch = watch
-	}
-	if params.playable != nil {
-		out.playableOnly = *params.playable
-	}
+	out := listFilters{sort: domain.SortAddedDesc}
 	if params.sort != nil {
 		sort := domain.VideoSort(*params.sort)
 		if !sort.Valid() {

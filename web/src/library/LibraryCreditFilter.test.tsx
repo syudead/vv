@@ -126,6 +126,15 @@ function install(entities: Entities) {
         json({ items: [{ id: 2, name: "旅行", synonyms: [], videoCount: 1 }] }),
       );
     }
+    if (path === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
+    if (path === "/api/people" || path === "/api/organizations") {
+      const names = path === "/api/people" ? entities.people : entities.organizations;
+      const q = url.searchParams.get("q") ?? "";
+      const items = [...names]
+        .filter(([, name]) => name.includes(q))
+        .map(([id, name]) => ({ id, name, aliases: [], externalIds: [], videoCount: 1 }));
+      return Promise.resolve(json({ items, total: items.length, totalAll: names.size }));
+    }
     const credit = /^\/api\/(people|organizations)\/(\d+)$/.exec(path);
     if (credit !== null) {
       const [, kind, id] = credit;
@@ -338,7 +347,9 @@ describe("人物・団体での絞り込み", () => {
     await user.click(travel);
     await waitFor(() => expect(location()).toBe(""));
     expect(screen.queryByText("Filtering by")).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole("searchbox"));
+    expect(document.activeElement).toBe(
+      screen.getByRole("combobox", { name: "Search videos" }),
+    );
   });
 
   it("「Clear filters」は person と organization も外し、並べ替えは残す", async () => {
@@ -346,9 +357,36 @@ describe("人物・団体での絞り込み", () => {
     renderAt("/?person=1&organization=5&sort=titleAsc");
     await screen.findByRole("button", { name: "Remove the filter for Alice" });
 
-    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
     await user.click(await screen.findByRole("button", { name: "Clear filters" }));
     await waitFor(() => expect(location()).toBe("?sort=titleAsc"));
+  });
+
+  it("the filter popover's Person picker sets person, and another pick replaces it", async () => {
+    install({
+      people: new Map([
+        [1, "Alice"],
+        [2, "Alfred"],
+      ]),
+      organizations: new Map([[5, "Studio"]]),
+    });
+    const user = userEvent.setup();
+    renderAt("/?organization=5");
+    await screen.findByRole("button", { name: "Remove the filter for Studio" });
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    const person = await screen.findByRole("combobox", { name: "Person" });
+    await user.type(person, "Alice");
+    await user.click(await screen.findByRole("option", { name: /Alice/ }));
+    await waitFor(() => expect(location()).toBe("?person=1&organization=5"));
+
+    await user.type(person, "Alf");
+    await user.click(await screen.findByRole("option", { name: /Alfred/ }));
+    await waitFor(() => expect(location()).toBe("?person=2&organization=5"));
+    expect(libraryRequests().at(-1)?.searchParams.get("person")).toBe("2");
+    expect(
+      await screen.findByRole("button", { name: "Remove the filter for Alfred" }),
+    ).toBeDefined();
   });
 
   it("/ の控えは /?person=1 には使われない（listSnapshot の鍵に person が要る）", async () => {

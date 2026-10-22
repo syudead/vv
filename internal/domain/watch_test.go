@@ -20,25 +20,3 @@ func TestClassifyWatch(t *testing.T) {
 		}
 	}
 }
-
-func TestWatchFilter(t *testing.T) {
-	for _, f := range []WatchFilter{WatchAll, WatchUnwatched, WatchInProgress, WatchWatched} {
-		if !f.Valid() {
-			t.Errorf("%q は既知の値のはず", f)
-		}
-	}
-	for _, f := range []WatchFilter{"", "Watched", "done"} {
-		if f.Valid() {
-			t.Errorf("%q は未知の値のはず", f)
-		}
-	}
-	states := []WatchState{WatchStateUnwatched, WatchStateInProgress, WatchStateWatched}
-	for _, state := range states {
-		if !WatchAll.Matches(state) || !WatchFilter("").Matches(state) {
-			t.Errorf("all は %q に合うはず", state)
-		}
-	}
-	if !WatchInProgress.Matches(WatchStateInProgress) || WatchInProgress.Matches(WatchStateWatched) {
-		t.Error("inProgress は視聴途中だけに合うはず")
-	}
-}

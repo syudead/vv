@@ -17,8 +17,7 @@ func storedGroupListSQL(roots string, audience domain.Audience) groupListSQL {
 		count:  `select video_count from group_values where group_id = hits.group_id and audience = ` + a,
 		values: `mv as (select v.* from group_values v join whole on whole.group_id = v.group_id where v.audience = ` + a + `)`,
 		items: `select g.id, g.id * 2 + 1, null, null,
-			mv.added_at, mv.mtime, mv.created_at, g.title_key, mv.duration_ms, mv.size_bytes, mv.played_at, ` + groupFavoritedAtExpr("g") + `,
-			case when mv.started = 0 then 'unwatched' when mv.watched = mv.video_count then 'watched' else 'inProgress' end
+			mv.added_at, mv.mtime, mv.created_at, g.title_key, mv.duration_ms, mv.size_bytes, mv.played_at, ` + groupFavoritedAtExpr("g") + `
 			from mv join groups g on g.id = mv.group_id`,
 	}
 }
@@ -60,10 +59,6 @@ func readLibraryFolderSummaries(ctx context.Context, tx *sql.Tx, audience domain
 }
 
 func storedWholeGroupsSQL(spec listSpec, roots string) string {
-	condition := ""
-	if spec.playableOnly {
-		condition = " and playable = 1"
-	}
 	return `select group_id from group_values where audience = ` + strconv.Itoa(audienceValue(spec.scope.audience)) +
-		` and video_count > 0 and group_id in (` + roots + `)` + condition
+		` and video_count > 0 and group_id in (` + roots + `)`
 }
