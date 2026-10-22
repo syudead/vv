@@ -105,6 +105,18 @@ function renderAt(initial: string, audience: Audience = "owner") {
 
 const fetchMock = vi.fn<typeof fetch>();
 
+/** An empty name stands for a provisional person, who has no name of its own. */
+function creditBody(id: number, name: string) {
+  return {
+    id,
+    name,
+    provisional: name === "",
+    aliases: [],
+    externalIds: [],
+    videoCount: 1,
+  };
+}
+
 interface Entities {
   people: Map<number, string>;
   organizations: Map<number, string>;
@@ -132,7 +144,7 @@ function install(entities: Entities) {
       const q = url.searchParams.get("q") ?? "";
       const items = [...names]
         .filter(([, name]) => name.includes(q))
-        .map(([id, name]) => ({ id, name, aliases: [], externalIds: [], videoCount: 1 }));
+        .map(([id, name]) => creditBody(id, name));
       return Promise.resolve(json({ items, total: items.length, totalAll: names.size }));
     }
     const credit = /^\/api\/(people|organizations)\/(\d+)$/.exec(path);
@@ -144,9 +156,7 @@ function install(entities: Entities) {
         const code = kind === "people" ? "person_not_found" : "organization_not_found";
         return Promise.resolve(json({ code: "not_found", reason: code }, 404));
       }
-      return Promise.resolve(
-        json({ id: Number(id), name, aliases: [], externalIds: [], videoCount: 1 }),
-      );
+      return Promise.resolve(json(creditBody(Number(id), name)));
     }
     if (path === "/api/library") {
       const filtered =
@@ -360,6 +370,34 @@ describe("人物・団体での絞り込み", () => {
     await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
     await user.click(await screen.findByRole("button", { name: "Clear filters" }));
     await waitFor(() => expect(location()).toBe("?sort=titleAsc"));
+  });
+
+  it("the Person picker offers people before any typing, unnamed ones as #id, and #id finds one", async () => {
+    install({
+      people: new Map([
+        [1, "Alice"],
+        [7, ""],
+      ]),
+      organizations: new Map(),
+    });
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(await screen.findByRole("combobox", { name: "Person" }));
+    await user.click(await screen.findByRole("option", { name: /#7/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(location()).toBe("?person=7"));
+    expect(
+      await screen.findByRole("button", { name: "Remove the filter for #7" }),
+    ).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    await user.type(await screen.findByRole("combobox", { name: "Person" }), "#1");
+    await user.click(await screen.findByRole("option", { name: /Alice/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(location()).toBe("?person=1"));
   });
 
   it("the filter popover's Person picker sets person, and another pick replaces it", async () => {
