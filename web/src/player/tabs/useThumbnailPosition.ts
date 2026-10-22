@@ -3,16 +3,19 @@ import { useEffect, useRef, useState } from "react";
 import {
   isAborted,
   RequestFailed,
-  revertThumbnailImage,
   setVideoThumbnailPosition,
   type Video,
 } from "../../api/client";
 import { detailMark, type DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
 
-export type ThumbnailSending = "capture" | "clear" | "revert" | null;
+export type ThumbnailSending = "capture" | "clear" | null;
 
-/** Serialize thumbnail mutations; refresh stale videos on 404. Return successful video data with the detail mark captured before submission. */
+/**
+ * Serialize thumbnail position changes; refresh stale videos on 404. A null position clears both
+ * the applied image and the recorded position in one request. Successful video data comes back
+ * with the detail mark captured before submission.
+ */
 export function useThumbnailPosition(
   videoId: number,
   report: (failure: UiText | null) => void,
@@ -20,7 +23,7 @@ export function useThumbnailPosition(
   onStale: (() => void) | undefined,
 ): {
   sending: ThumbnailSending;
-  send: (positionMs: number | null | "revert") => void;
+  send: (positionMs: number | null) => void;
 } {
   const [sending, setSending] = useState<ThumbnailSending>(null);
   // A ref also blocks two clicks within the same render.
@@ -36,20 +39,15 @@ export function useThumbnailPosition(
     [videoId],
   );
 
-  const send = (positionMs: number | null | "revert") => {
+  const send = (positionMs: number | null) => {
     if (busy.current) return;
     busy.current = true;
     const controller = new AbortController();
     request.current = controller;
     const mark = detailMark();
     report(null);
-    setSending(
-      positionMs === "revert" ? "revert" : positionMs === null ? "clear" : "capture",
-    );
-    (positionMs === "revert"
-      ? revertThumbnailImage(videoId, controller.signal)
-      : setVideoThumbnailPosition(videoId, positionMs, controller.signal)
-    )
+    setSending(positionMs === null ? "clear" : "capture");
+    setVideoThumbnailPosition(videoId, positionMs, controller.signal)
       .then(
         (video) => {
           if (controller.signal.aborted) return;

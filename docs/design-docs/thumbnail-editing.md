@@ -290,19 +290,29 @@ framing for an edit from the current thumbnail.
 
 ### One entry opens the preview from any source
 
-The video page has one `Change thumbnail` entry whose menu offers the frame on
-screen, the current thumbnail and `Upload an image…`; each opens the same
-preview. The frame and the current thumbnail come from a short-lived session
-(`source` `frame` or `thumbnail`): the page reads its `/frame` and discards
-it, so the preview starts from the image a ComfyUI edit would, at up to
-2048 px, and the owner frames it like a picked file. Applying sends the
-drawing through the upload route, so the result is stored with origin
-`uploaded` whatever its source.
+The video page's Thumbnail tab
+([library-ui.md](library-ui.md#tabs)) shows the current thumbnail with its
+origin and offers three ways to replace it. `Use this frame`, present only
+while the player shows a frame, sends the player's position as
+`PUT /api/videos/{id}/thumbnail-position`, with no preview. `Upload…` opens the
+file picker, and `Touch up with ComfyUI` reads the current thumbnail through a
+short-lived session (`source` `thumbnail`) whose `/frame` the page reads before
+discarding it; both open the same preview, where the owner frames the image and
+may touch it up. Applying sends the drawing through the upload route, so the
+result is stored with origin `uploaded` whatever its source.
+
+`Back to automatic`, shown while an image is applied or a position is
+recorded, sends the position `null`, which removes both in one request. The
+page has no entry for `DELETE /api/videos/{id}/thumbnail-image`, which keeps a
+recorded position. One send runs at a time: while one way sends, the others are
+`aria-disabled`.
 
 | Rejected | Why |
 | --- | --- |
 | Keep a separate ComfyUI entry that applies through `applyThumbnailEdit` | Two screens for one task, and its result skipped the framing |
 | Draw the frame from the player's `<video>` element | A transcoded or HLS stream is not the original's resolution, and a player-less video has no element |
+| Open the preview for the frame on screen as a fourth way | Two entries for the same frame; a frame needs no framing |
+| Every way opens the preview first | A frame would need a confirmation it does not need |
 
 ### The preview touches up its framing with ComfyUI
 

@@ -2146,9 +2146,6 @@ export const en = {
       rescan: "Rescan",
       rescanNeedsMediaFolder: "Add a media folder in Settings first.",
       rescanStarted: "Started a force rescan of this video",
-      thumbnailAt: (time: string) => `Thumbnail at ${time}`,
-      useCurrentFrame: "Use current frame as thumbnail",
-      useAutomaticThumbnail: "Use automatic thumbnail",
       thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
       //
       favorite: "Favorite",
@@ -2186,6 +2183,18 @@ export const en = {
       seenLoading: "Loading the people seen in this video",
       spanRange: (start: string, end: string) => `${start}–${end}`,
       spansOf: (name: string) => `When ${name} is on screen`,
+      currentThumbnail: "Current",
+      replaceWith: "Replace with",
+      uploadedOrigin: "Uploaded image",
+      generatedOrigin: "Generated image",
+      automaticOrigin: "Automatic",
+      backToAutomatic: "Back to automatic",
+      useThisFrame: "Use this frame",
+      useThisFrameNote: "The frame the player shows now",
+      uploadImage: "Upload…",
+      uploadImageNote: "PNG, JPEG or WebP, up to 64 MB",
+      touchUp: "Touch up with ComfyUI",
+      touchUpNote: "Frames the current thumbnail, then runs an instruction",
     },
     //
     thumbnailEdit: {
@@ -2194,7 +2203,6 @@ export const en = {
       title: "Edit thumbnail",
       frameAt: (time: string) => `Frame at ${time}`,
       //
-      frameOnScreen: "Frame on screen",
       currentThumbnail: "Current thumbnail",
       thumbnailFrameAt: (time: string) => `Current thumbnail, frame at ${time}`,
       thumbnailSavedImage: "Current thumbnail, saved image",
@@ -2250,8 +2258,6 @@ export const en = {
       confirmDescription:
         "The run is cancelled and the generated image is lost. The thumbnail stays as it is.",
       keepEditing: "Keep editing",
-      generatedThumbnail: "Generated thumbnail",
-      useFrameInstead: "Use the frame instead",
       presetsLabel: "Common edits",
       presets: {
         enhance: "Enhance quality",
@@ -2262,12 +2268,9 @@ export const en = {
     },
     //
     thumbnailUpload: {
-      entry: "Change thumbnail",
-      chooseFile: "Upload an image…",
       refusedType: "Choose a PNG, JPEG or WebP image.",
       refusedSize: "Choose an image up to 64 MB.",
       failed: (reason: string) => `Couldn't upload the image: ${reason}`,
-      uploadedThumbnail: "Uploaded thumbnail",
       preview: {
         title: "Preview thumbnail",
         close: "Cancel and close",

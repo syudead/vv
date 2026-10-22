@@ -16,6 +16,7 @@ import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
 import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
 import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
+import ThumbnailPanel from "./ThumbnailPanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
 
@@ -123,13 +124,29 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
 function panel(
   tab: VideoTab,
-  { video, owner, player }: Pick<VideoPageTabsProps, "video" | "owner" | "player">,
+  {
+    video,
+    owner,
+    player,
+    capture,
+  }: Pick<VideoPageTabsProps, "video" | "owner" | "player" | "capture">,
+  operations: ReturnType<typeof useOperations>,
 ): ReactNode {
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
     case "people":
       return <PeoplePanel video={video} player={player} />;
+    case "thumbnail":
+      return (
+        <ThumbnailPanel
+          video={video}
+          capture={capture}
+          position={operations.thumbnail}
+          upload={operations.upload}
+          failure={operations.failure}
+        />
+      );
     case "file":
       return <FileMediaPanel video={video} owner={owner} />;
     default:
@@ -180,7 +197,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         )}
       </div>
       <TabsContent value={current} className="pt-4 text-base">
-        {panel(current, props)}
+        {panel(current, props, operations)}
       </TabsContent>
       {operations.fetchOpen && (
         <FetchDialog
