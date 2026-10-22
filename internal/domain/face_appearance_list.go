@@ -226,3 +226,35 @@ func FaceTimeSpans(spans []FaceSpan) []FaceTimeSpan {
 	}
 	return joined
 }
+
+// VideoFaceAppearances is what face recognition found in one video; Items is empty unless Analysed.
+type VideoFaceAppearances struct {
+	// Analysed is true once the analysis of the video's content finished, so an empty Items means nobody was found.
+	Analysed bool
+	Items    []VideoFaceAppearance
+}
+
+// VideoFaceAppearance is one not-dropped appearance in a video, with its linked person.
+type VideoFaceAppearance struct {
+	ID     int64
+	Person CreditRef
+	// ImageRevision is zero unless the person has a face image.
+	ImageRevision int64
+	HasCrop       bool
+	Spans         []FaceTimeSpan
+}
+
+// CompareVideoFaceAppearances orders by the first span's start, appearances without spans last, then by ID.
+func CompareVideoFaceAppearances(a, b VideoFaceAppearance) int {
+	switch {
+	case len(a.Spans) == 0 && len(b.Spans) != 0:
+		return 1
+	case len(a.Spans) != 0 && len(b.Spans) == 0:
+		return -1
+	case len(a.Spans) != 0:
+		if c := cmp.Compare(a.Spans[0].Start, b.Spans[0].Start); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(a.ID, b.ID)
+}

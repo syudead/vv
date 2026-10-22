@@ -834,6 +834,21 @@ owner sees that the person was found in a file that has left the library.
 Each item's spans are its tracks' times in order, with overlapping tracks
 joined.
 
+## The video page reads a video's appearances
+
+`GET /api/videos/{id}/face-appearances` lists the people found in one video,
+for the lower section of the video page's People tab. It reads by the video's
+content key, which indexes `face_appearances`, so the video detail response
+does not join the appearances and decode their tracks for every read.
+`analysed` is true only when the content key's `face_queue` row is `done`;
+while the analysis is queued or running, after a failure, and for content
+never analysed, the list is empty, so the page can tell "nobody found" from
+"not analysed yet". The items are the appearances that are not dropped and
+whose person still exists, each with its person as a `CreditRef`, the
+person's face `imageRevision`, `hasCrop` and the same joined spans as the
+person's list, ordered by the first span's start and then by appearance id
+([`video_face_appearances.go`](../../internal/store/video_face_appearances.go)).
+
 `GET /api/face-appearances/{id}/crop` answers the crop with
 `Cache-Control: private, max-age=86400`: a crop is never rewritten, and a
 re-analysis gives a new appearance a new id. A missing appearance and one whose
