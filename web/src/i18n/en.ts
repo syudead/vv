@@ -2317,17 +2317,11 @@ export const en = {
           one: `${formatNumber(count)} version`,
           other: `${formatNumber(count)} versions`,
         }),
-      show: (count: number) =>
-        selectPlural(count, {
-          one: `${formatNumber(count)} version of this video. Show versions`,
-          other: `${formatNumber(count)} versions of this video. Show versions`,
-        }),
       label: "Versions",
       representative: "Representative",
       nowPlaying: "Now playing",
       play: (title: string, details: string) =>
         details === "" ? `Play ${title}` : `Play ${title}, ${details}`,
-      more: (title: string) => `More actions for ${title}`,
       makeRepresentative: "Make representative",
       remove: "Remove from versions",
       loadFailed: "Couldn't load the versions",

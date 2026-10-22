@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import type { Video } from "../../api/client";
 import type { DetailMark } from "../../api/useVideoDetail";
@@ -17,6 +17,7 @@ import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
 import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
+import VersionsPanel, { type VersionsNavigation } from "./VersionsPanel";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
 import WorkPanel from "./WorkPanel";
 
@@ -33,6 +34,11 @@ export interface VideoPageTabsProps {
   onEditingChange: (open: boolean) => void;
   details: DetailsEntryProps["details"];
   state: VideoTabState;
+  versions: {
+    navigation: VersionsNavigation;
+    /** Replace the page's video after its own version is removed. */
+    onReplace: (video: Video, mark: DetailMark) => void;
+  };
 }
 
 /**
@@ -65,7 +71,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "player">) {
+}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "versions" | "player">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -115,6 +121,16 @@ function useActiveTabInView(current: VideoTab) {
   return strip;
 }
 
+/**
+ * Focus Overview, the first tab, after the render that removes the focused control; focusing a
+ * tab also selects it.
+ */
+function focusOverview(strip: RefObject<HTMLDivElement | null>) {
+  requestAnimationFrame(() => {
+    strip.current?.querySelector<HTMLElement>('[role="tab"]')?.focus();
+  });
+}
+
 function tabCount(tab: VideoTab, video: Video): number | undefined {
   if (tab === "people") return creditedPeopleCount(video.workInfo);
   if (tab === "versions") return video.versions?.count;
@@ -122,18 +138,18 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
 }
 
 interface PanelContext {
-  video: Video;
-  owner: boolean;
-  player: SpanPlayer;
   workPlugin: boolean;
   openFetch: () => void;
+  strip: RefObject<HTMLDivElement | null>;
 }
 
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
 function panel(
   tab: VideoTab,
-  { video, owner, player, workPlugin, openFetch }: PanelContext,
+  props: VideoPageTabsProps,
+  { workPlugin, openFetch, strip }: PanelContext,
 ): ReactNode {
+  const { video, owner, player } = props;
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
@@ -143,6 +159,17 @@ function panel(
       );
     case "people":
       return <PeoplePanel video={video} player={player} />;
+    case "versions":
+      return (
+        <VersionsPanel
+          video={video}
+          owner={owner}
+          navigation={props.versions.navigation}
+          onReplace={props.versions.onReplace}
+          onRefresh={props.onStale}
+          onLeave={() => focusOverview(strip)}
+        />
+      );
     case "file":
       return <FileMediaPanel video={video} owner={owner} />;
     default:
@@ -152,7 +179,7 @@ function panel(
 
 /** The tab strip under the tags with the record's actions at its end, and the selected panel. */
 export default function VideoPageTabs(props: VideoPageTabsProps) {
-  const { video, owner, player, details, onStale, state } = props;
+  const { video, owner, details, onStale, state } = props;
   const { plugins, reload, select } = state;
   const tabs = availableTabs(video, owner, state.workPlugin);
   const current = nextTab(state.selected, tabs);
@@ -193,12 +220,10 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         )}
       </div>
       <TabsContent value={current} className="pt-4 text-base">
-        {panel(current, {
-          video,
-          owner,
-          player,
+        {panel(current, props, {
           workPlugin: state.workPlugin,
           openFetch: operations.openFetch,
+          strip,
         })}
       </TabsContent>
       {operations.fetchOpen && (
