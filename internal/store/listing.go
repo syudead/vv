@@ -57,6 +57,10 @@ func (s locationScope) choosesVirtual() bool {
 	return s.kind == scopeLibrary && s.videoKind.IncludesVirtual()
 }
 
+func (s locationScope) choosesAllKinds() bool {
+	return s.choosesFiles() && s.choosesVirtual()
+}
+
 // Collection restrictions apply to a row exposing video_id, whether a location or a virtual video.
 func (s locationScope) membership(alias string) (string, []any) {
 	var clause string

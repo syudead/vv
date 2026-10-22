@@ -109,11 +109,12 @@ type VideoQuery struct {
 	Kind VideoKind
 }
 
-// ListsSmartFolders allows only unfiltered or favorite-only listings; sort order does not count as a filter.
+// ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
 		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
+		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil &&
+		q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
 }
 
 const MaxAddedWithinDays = 36500

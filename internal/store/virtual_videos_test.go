@@ -241,3 +241,50 @@ func TestVirtualVideoWritesRejectWrongTargets(t *testing.T) {
 		t.Errorf("保存した後の検索 = %v, want [After]", got)
 	}
 }
+
+// Related candidates, tag summaries and credit counts include a virtual video.
+func TestVirtualVideoInRelatedAndCounts(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))
+	virtual := createVirtual(t, db, "Moonlight", fixedTime)
+	if _, _, err := db.Tags().AttachTagByName(ctx, []int64{virtual.ID}, "piano"); err != nil {
+		t.Fatal(err)
+	}
+	person := createPerson(t, db, "A")
+	linkPeople(t, db, virtual.UserKey, "performer", person.ID)
+
+	candidates, err := db.Library().RelatedCandidates(ctx, owner, ids[fixturePath("/media/clip.mp4")])
+	if err != nil {
+		t.Fatalf("関連動画の候補: %v", err)
+	}
+	if !slices.ContainsFunc(candidates, func(c domain.RelatedCandidate) bool {
+		return c.VideoID == virtual.ID && c.Title == "Moonlight" && c.Path == ""
+	}) {
+		t.Errorf("候補 = %+v, want バーチャルな動画をタイトル付きで含む", candidates)
+	}
+	summary, err := db.Tags().Summary(ctx, []int64{virtual.ID})
+	if err != nil || summary.Total != 1 || len(summary.Items) != 1 || summary.Items[0].Tag.Name != "piano" {
+		t.Errorf("タグのまとめ = %+v, err = %v, want piano が 1 件", summary, err)
+	}
+	if got, err := db.Credits().Get(ctx, domain.CreditPerson, person.ID); err != nil || got.VideoCount != 1 {
+		t.Errorf("人物の本数 = %+v, err = %v, want 1", got, err)
+	}
+}
+
+// A kind that drops some videos must not list a group whose members it drops.
+func TestVirtualKindLeavesOutFileGroups(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))
+	createGroup(t, db, "files", domain.GroupAdd{VideoIDs: []int64{ids[fixturePath("/media/clip.mp4")]}})
+	createVirtual(t, db, "Moonlight", fixedTime)
+
+	page, err := db.Library().ListLibrary(ctx, owner, domain.VideoQuery{Kind: domain.VideoKindVirtual, Limit: domain.MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Video == nil || page.Items[0].Video.Title != "Moonlight" {
+		t.Errorf("バーチャルな動画だけのライブラリ = %+v, want [Moonlight] だけ", page.Items)
+	}
+}

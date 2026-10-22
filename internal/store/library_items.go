@@ -182,7 +182,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	}
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
 	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)` + groupPlayable
-	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() {
+	// Stored group values count every member, so a kind that drops some members must count the matched ones.
+	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
 		whole = storedWholeGroupsSQL(spec, roots)
 	}
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
