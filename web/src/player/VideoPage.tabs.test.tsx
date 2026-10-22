@@ -316,4 +316,63 @@ describe("VideoPage tabs", () => {
     ]);
     expect(selectedTab()).toBe("File & media");
   });
+
+  describe("Versions", () => {
+    const other: Video = { ...owned, id: 20, title: "別のバージョン" };
+
+    function versionCalls(): string[] {
+      return fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.endsWith("/versions"));
+    }
+
+    it("一覧は Versions タブを選んでから読む", async () => {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        return Promise.resolve(
+          url === "/api/videos/7/versions"
+            ? json({ representativeId: 7, items: [owned, other] })
+            : respond(url),
+        );
+      });
+      await openPage();
+      expect(versionCalls()).toEqual([]);
+
+      openTab("Versions");
+      expect(await screen.findByRole("list", { name: "Versions" })).toBeDefined();
+      expect(versionCalls()).toEqual(["/api/videos/7/versions"]);
+    });
+
+    it("再生中のバージョンを自分の行から外すと、ページの動画が外した動画に替わり Overview を選ぶ（Edge Case）", async () => {
+      const removed: Video = { ...owned, title: "外した動画", versions: undefined };
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/videos/7/versions") {
+          return Promise.resolve(json({ representativeId: 7, items: [owned, other] }));
+        }
+        if (url === "/api/videos/7/unbundle" && init?.method === "POST") {
+          server.videos.set(7, removed);
+          return Promise.resolve(json(removed));
+        }
+        return Promise.resolve(respond(url));
+      });
+      await openPage();
+      openTab("Versions");
+      const list = await screen.findByRole("list", { name: "Versions" });
+      const current = within(list).getAllByRole("listitem")[0] as HTMLElement;
+      expect(current.getAttribute("aria-current")).toBe("true");
+      fireEvent.click(
+        within(current).getByRole("button", { name: "Remove from versions" }),
+      );
+
+      await screen.findByRole("heading", { level: 1, name: "外した動画" });
+      expect(tabNames().some((name) => name.startsWith("Versions"))).toBe(false);
+      expect(selectedTab()).toBe("Overview");
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("tab", { name: "Overview" }),
+        ),
+      );
+    });
+  });
 });
