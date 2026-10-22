@@ -31,6 +31,8 @@ type Credits interface {
 	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.
 	PersonAppearances(ctx context.Context, personID int64, q domain.PersonAppearanceQuery) (domain.PersonAppearancePage, error)
 	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
+	// VideoFaceAppearances returns domain.ErrNotFound for a missing video.
+	VideoFaceAppearances(ctx context.Context, videoID int64) (domain.VideoFaceAppearances, error)
 	// SplitFaceAppearances returns domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
 	SplitFaceAppearances(ctx context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error)
 	// MoveFaceAppearances returns domain.ErrMergeSameCredit for the same person and

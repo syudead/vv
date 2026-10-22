@@ -281,12 +281,14 @@ func toAPIWorkInfo(info *domain.WorkInfo) *gen.WorkInfo {
 
 func toAPIWorkPerson(person domain.WorkPerson) gen.WorkPerson {
 	return gen.WorkPerson{
-		Role: gen.WorkPersonRole(person.Role),
-		Person: gen.CreditRef{
-			Id: person.Person.ID, Name: person.Person.Name, Provisional: person.Person.Provisional,
-		},
+		Role:        gen.WorkPersonRole(person.Role),
+		Person:      toAPIPersonRef(person.Person),
 		Provisional: person.Person.Provisional, ImageRevision: optionalPositive(person.ImageRevision),
 	}
+}
+
+func toAPIPersonRef(person domain.CreditRef) gen.CreditRef {
+	return gen.CreditRef{Id: person.ID, Name: person.Name, Provisional: person.Provisional}
 }
 
 func toAPIOrganizationRef(organization domain.CreditRef) gen.CreditRef {
