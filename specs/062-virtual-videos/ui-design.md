@@ -12,6 +12,22 @@ Video page layout, Information rows, Details editor),
 `web/src/player/WorkInfo.tsx`, `web/src/player/detailsEditor/`,
 `web/src/playlists/PlaylistPage.tsx`, `web/src/playlists/PlaylistPanel.tsx`.
 
+The screens and dialogs this design covers, and the request each one sends:
+
+```mermaid
+flowchart LR
+  lib[Library] -->|New virtual video| create[Create dialog]
+  create -->|POST virtual-videos| page[Virtual video page]
+  lib -->|card| page
+  pl[Playlist page] -->|item| page
+  page -->|Edit details| editor[Details editor]
+  editor -->|PUT details| page
+  page -->|More, Merge| merge[Merge dialog]
+  merge -->|POST merge| file[File video page]
+  page -->|More, Delete| del[Delete dialog]
+  del -->|DELETE video| lib
+```
+
 ## Why this shape
 
 A virtual video is a library item like any other, so it takes the shapes the
@@ -50,17 +66,17 @@ appears.
 | Create dialog submit | `Create` / `Creating…` | |
 | Create dialog failure | `Couldn't create the virtual video: {reason}` | `destructive` `Alert` |
 | Mark | `Virtual` | Next to the `SquareDashed` icon in the duration's place on cards, rows and playlist items |
-| Mark, accessible | `Virtual video, no file` | `sr-only` after the mark |
+| Mark, accessible | `Virtual video, no file` | `sr-only` after the mark, with an `id` the card link names in `aria-describedby` |
 | Video page band | `Virtual video` | In the breadcrumb's place, with the icon, not a link |
 | Thumbnail placeholder (owner) | `No thumbnail yet` / `Upload an image…` | Inside the media frame |
 | Thumbnail placeholder (guest) | `No thumbnail` | Inside the media frame |
 | Facts row | `Added`, `Edited` | Existing words |
 | Thumbnail item | `Uploaded thumbnail` / `Remove image` | `Remove image` replaces `Use the frame instead` |
-| Change thumbnail menu | `Upload an image…`, `Current thumbnail` | Existing words; `Frame on screen` absent |
+| Change thumbnail | `Change thumbnail` | Existing words; opens the file picker directly, no menu |
 | More menu | `Merge into a file video…` | After `Edit details` in the actions row |
 | More menu | `Delete…` | `destructive` item after a separator |
 | Merge dialog title | `Merge into a file video` | `FormDialog` |
-| Merge dialog description | `Tags, favorite, playlists, links and the description move to the file video. The file video keeps its title and thumbnail. This can't be undone.` | |
+| Merge dialog description | `Tags, favorite, playlists and work details (description, links, dates, code, people, organizations and IDs) move to the file video, filling or adding to its own. The file video keeps its title, thumbnail and visibility, so a public virtual video's page is gone for guests. This can't be undone.` | |
 | Merge dialog search | `Search file videos` | `CommandInput` placeholder |
 | Merge dialog list | `File videos` | `aria-label` of the list |
 | Merge dialog empty | `No file video matches` | `CommandEmpty` |
@@ -83,7 +99,7 @@ appears.
 | Details editor title rule | `Enter a title.` | Under `Title`, for an empty value |
 | Details editor gone | `This virtual video was deleted or merged. Nothing was saved.` / `Back to the library` | `404` on save |
 | Details editor changed | `This video changed in another tab. Reload it to keep editing.` / `Reload` | `409 content_changed` on save |
-| Playlist page description | `These are all virtual videos, so there's nothing to play.` | `playableCount` `0` with items |
+| Playlist page description | `These are all virtual videos, so there's nothing to play.` | Every item is a virtual video |
 | Playlist panel line | `Nothing to play` | Under the panel's heading when `playableCount` is `0` |
 
 ## Library: create action and the mark
@@ -127,6 +143,11 @@ so rows keep their height. What differs:
 | Unplayable notice | None: the `AlertTriangle` notice is for a file that cannot play, and would say the video is broken |
 | Title, tags row, favorite heart, `Add to playlist`, `Add to group`, selection check | Unchanged |
 
+The pill's visible word is `aria-hidden`; its `sr-only` text carries an `id`
+that the card link adds to `aria-describedby`, as `VersionsMark` does, because
+the link's `aria-label` (the title) hides the card's other text from screen
+readers.
+
 The pill carries the word `Virtual` in the duration's place. This narrows the
 `VideoThumbnail` rule (no text on the image but the duration and the notice):
 the card unit updates that sentence in components.md to allow the mark where
@@ -147,12 +168,13 @@ in two places: the band and the frame.
 | Part | Virtual video |
 | --- | --- |
 | Header band | Logo, then `SquareDashed` icon and `Virtual video` in the breadcrumb's place (muted, not a link), then × |
-| Media | The player frame (`bg-navbar`, `aspect-player`, `rounded-lg` from `lg`) holding the uploaded image, `object-contain`. Without an image: the `SquareDashed` icon (`size-8`, `text-muted-foreground`) over `No thumbnail yet` in `text-sm` muted, and for the owner the `secondary` button `Upload an image…`, which opens the same picker as `Change thumbnail` → `Upload an image…`. No play button, no control bar, no cursor change, no previous and next arrows outside a playlist |
-| Title unit | Title with the pencil, tags, auto-tag and visibility switch as today |
+| Media | The player frame (`bg-navbar`, `aspect-player`, `rounded-lg` from `lg`) holding the uploaded image, `object-contain`. Without an image: the `SquareDashed` icon (`size-8`, `text-muted-foreground`) over `No thumbnail yet` in `text-sm` muted, and for the owner the `secondary` button `Upload an image…`, which opens the same picker as `Change thumbnail`. No play button, no control bar, no cursor change, no previous and next arrows outside a playlist |
+| Title unit | Title with the pencil, tags, auto-tag and visibility switch as today. The pencil's save sends the page's `contentVersion`; an empty title shows `Enter a title.` before sending, `409 content_changed` shows the details editor's `changed` text with `Reload`, and `404` opens the `MissingVideo` layer |
 | Links | One `outline` `Button` (`default` size) per link, wrapping with `gap-2`, directly under the title unit: `ExternalLink` icon and the link without its scheme, truncated at `max-w-xs`, full URL in `title`; opens in a new tab (`target="_blank"`, `rel="noreferrer"`). Absent without links |
 | Description | The `Description` component under the links, `text-foreground`, three lines then `Show more`. Absent without a description |
 | Facts row | `Added` and `Edited` with their icons; no length, size or created item; the thumbnail item with `ImageUp`, `Uploaded thumbnail` and `Remove image` while an image exists. Actions at the right end |
-| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch entry, `Change thumbnail` (menu without `Frame on screen`), then `More` (`Ellipsis`, `ghost`, `icon-sm` with tooltip). No `Use current frame as thumbnail`, `Open file`, `Copy path` or `Read again` |
+| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch entry, `Change thumbnail`, then `More` (`Ellipsis`, `ghost`, `icon-sm` with tooltip). No `Use current frame as thumbnail`, `Open file`, `Copy path` or `Read again` |
+| `Change thumbnail` | Opens the file picker directly, then the upload preview with framing only. `Frame on screen`, `Current thumbnail`, AI touch-up and the advanced edit are absent: each starts a thumbnail edit, which answers `409 virtual_video` for a virtual video |
 | `More` menu | `Merge into a file video…`, a separator, `Delete…` (`destructive`) |
 | Work details row | Owner only, as today, without `Links` and the description, which are above |
 | Technical line, media information | Absent |
@@ -247,7 +269,7 @@ the editor open. Nothing is recreated.
 | Place | Virtual item |
 | --- | --- |
 | Playlist page row | The mark in the duration cell; the thumbnail, title, reorder handle and `Remove from playlist` unchanged; the title opens the virtual video page in the playlist context |
-| Playlist page header | `Play` as today, starting at the first item with a file. With items but `playableCount` `0`, no `Play` and the header's `description` reads `These are all virtual videos, so there's nothing to play.` |
+| Playlist page header | `Play` as today, starting at the first item that has a play target and is not a virtual video, so a virtual first item is passed over. With no such item, no `Play`, as an empty smart folder already gets. When every item is a virtual video, the header's `description` reads `These are all virtual videos, so there's nothing to play.`; other unplayable mixes, such as empty smart folders, get no description. The page decides from the playlist read, because `playableCount` comes only from the player's playback read |
 | Player's playlist panel | The row shows the mark instead of the duration; with `playableCount` `0` the panel's heading gets `Nothing to play` in `text-xs` muted under it |
 | Continuous play | The server's `next` skips virtual items, so the ended notice names the next file video. Reaching the last file video with only virtual items after it shows `End of playlist` as today |
 | Manual steps | Previous and next reach a virtual item; its page shows the playlist line and panel and never advances by itself |
