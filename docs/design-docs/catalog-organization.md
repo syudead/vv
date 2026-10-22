@@ -42,6 +42,27 @@ also answers `409 content_changed`. A virtual
 video never joins a version bundle, because a bundle chooses a file to play;
 every bundle operation answers `409 virtual_video` for one.
 
+Merging a virtual video into a file video moves its user data to the file
+video's user key, the bundle key when the file video is bundled, and deletes
+the virtual video in one transaction. The merge reuses the succession helpers
+that move tags and playlist and group items, and applies these rules.
+
+| Data | Rule |
+| --- | --- |
+| Tags, people, organizations, external ids | Union |
+| Favorite | Favorite when either is |
+| Playlist items | Re-keyed in place; where a playlist holds both, the file video's item stays |
+| Description | The file video's, then a blank line and the virtual video's |
+| Links | The file video's, then the virtual video's not already present |
+| Code and each date | The file video's when present, otherwise the virtual video's |
+| Title, thumbnail, public flag | The file video's |
+
+The public flag is not carried, so a merge never publishes a file the owner
+did not publish. A combined description over the work-information limit or
+more than 20 links rejects the merge and changes nothing, so the owner
+shortens one side instead of losing text. A merge has no undo, which would
+keep the virtual key alive as a bundle keeps absorbed keys.
+
 | Read | Value for a virtual video |
 | --- | --- |
 | Added, created and modified sort | Its creation time |

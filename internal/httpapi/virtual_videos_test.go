@@ -27,6 +27,8 @@ type virtualCall struct {
 	contentVersion string
 	title          string
 	info           domain.WorkInfo
+	targetID       int64
+	targetVersion  string
 }
 
 func (f *fakeVirtualVideos) Create(_ context.Context, title string) (domain.Video, error) {
@@ -51,6 +53,15 @@ func (f *fakeVirtualVideos) SaveDetails(
 func (f *fakeVirtualVideos) Delete(_ context.Context, videoID int64, contentVersion string) error {
 	f.calls = append(f.calls, virtualCall{op: "delete", videoID: videoID, contentVersion: contentVersion})
 	return f.err
+}
+
+func (f *fakeVirtualVideos) Merge(
+	_ context.Context, virtualID int64, contentVersion string, videoID int64, videoContentVersion string,
+) (domain.Video, error) {
+	f.calls = append(f.calls, virtualCall{
+		op: "merge", videoID: virtualID, contentVersion: contentVersion, targetID: videoID, targetVersion: videoContentVersion,
+	})
+	return f.video, f.err
 }
 
 // Fields as the store reads a projected row: no location, no media, and the file title equal to the title.
@@ -232,6 +243,51 @@ func TestSaveVirtualVideoErrors(t *testing.T) {
 	}
 }
 
+func TestMergeVirtualVideo(t *testing.T) {
+	const body = `{"contentVersion":"virtual:5","videoId":1,"videoContentVersion":"abcdef012345"}`
+	wantCall := []virtualCall{{op: "merge", videoID: 5, contentVersion: "virtual:5", targetID: 1, targetVersion: "abcdef012345"}}
+	store := &fakeVirtualVideos{video: sampleVideo(1, "clip")}
+	rec := jsonRequest(t, virtualServer(t, store), http.MethodPost, "/api/virtual-videos/5/merge", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Video](t, rec); got.Id != 1 || got.Virtual {
+		t.Errorf("まとめた先 = %+v, want ファイルのある動画 1", got)
+	}
+	if !reflect.DeepEqual(store.calls, wantCall) {
+		t.Errorf("ストアへの呼び出し = %+v", store.calls)
+	}
+
+	conflict := func(reason gen.ErrorReason) wantError {
+		return wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reason}
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want wantError
+	}{
+		{"無い", domain.ErrNotFound, wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound}},
+		{"版が違う", domain.ErrContentChanged, conflict(reasonContentChanged)},
+		{"ファイルがある", domain.ErrNotVirtual, conflict(reasonNotVirtual)},
+		{"まとめ先がバーチャル", domain.ErrVirtualVideo, conflict(reasonVirtualVideo)},
+		{"説明が長すぎる", domain.ErrMergedDescriptionTooLong, conflict(reasonDescriptionTooLong)},
+		{"リンクが多すぎる", domain.ErrMergedTooManyURLs, conflict(reasonTooManyURLs)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeVirtualVideos{err: tc.err}
+			rec := jsonRequest(t, virtualServer(t, store), http.MethodPost, "/api/virtual-videos/5/merge", body)
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), tc.want)
+		})
+	}
+
+	store = &fakeVirtualVideos{}
+	rec = jsonRequest(t, virtualServer(t, store), http.MethodPost, "/api/virtual-videos/5/merge", `{"contentVersion":"virtual:5","videoId":1}`)
+	assertStatus(t, "videoContentVersion が無い", rec, http.StatusBadRequest)
+	if len(store.calls) != 0 {
+		t.Errorf("版の無いまとめがストアに届いた: %+v", store.calls)
+	}
+}
+
 // A screen that read a deleted virtual video must not write into the file video that reused its row id.
 func TestSaveWithVirtualVersionRejectsFileVideo(t *testing.T) {
 	want := wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonContentChanged}
@@ -257,6 +313,7 @@ func TestGuestCannotWriteVirtualVideos(t *testing.T) {
 		{http.MethodDelete, "/api/videos/5?contentVersion=virtual%3A5", ""},
 		{http.MethodPut, "/api/videos/5/details", `{"displayName":"x","contentVersion":"virtual:5","workInfo":{}}`},
 		{http.MethodPut, "/api/videos/5/display-name", `{"displayName":"x","contentVersion":"virtual:5"}`},
+		{http.MethodPost, "/api/virtual-videos/5/merge", `{"contentVersion":"virtual:5","videoId":1,"videoContentVersion":"abcdef012345"}`},
 	} {
 		assertUnauthenticated(t, tc.method+" "+tc.target, jsonRequest(t, handler, tc.method, tc.target, tc.body))
 	}
