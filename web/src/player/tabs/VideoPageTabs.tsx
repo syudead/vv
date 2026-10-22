@@ -15,6 +15,7 @@ import FetchDialog from "../workInfoFetch/FetchDialog";
 import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
 import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
+import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
 import WorkPanel from "./WorkPanel";
@@ -24,6 +25,8 @@ export interface VideoPageTabsProps {
   owner: boolean;
   /** Supplied only for owners while the player is visible. */
   capture: ThumbnailCapture | undefined;
+  /** The player's controls while it is shown, otherwise null. */
+  player: SpanPlayer;
   onChanged: (video: Video, mark: DetailMark) => void;
   onStale: () => void;
   /** Suspend page shortcuts while the thumbnail preview or the fetch dialog is open. */
@@ -62,7 +65,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoPageTabsProps, "owner" | "details" | "state">) {
+}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "player">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -121,6 +124,7 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
 interface PanelContext {
   video: Video;
   owner: boolean;
+  player: SpanPlayer;
   workPlugin: boolean;
   openFetch: () => void;
 }
@@ -128,7 +132,7 @@ interface PanelContext {
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
 function panel(
   tab: VideoTab,
-  { video, owner, workPlugin, openFetch }: PanelContext,
+  { video, owner, player, workPlugin, openFetch }: PanelContext,
 ): ReactNode {
   switch (tab) {
     case "overview":
@@ -137,6 +141,8 @@ function panel(
       return (
         <WorkPanel info={video.workInfo} canFetch={workPlugin} onFetch={openFetch} />
       );
+    case "people":
+      return <PeoplePanel video={video} player={player} />;
     case "file":
       return <FileMediaPanel video={video} owner={owner} />;
     default:
@@ -146,7 +152,7 @@ function panel(
 
 /** The tab strip under the tags with the record's actions at its end, and the selected panel. */
 export default function VideoPageTabs(props: VideoPageTabsProps) {
-  const { video, owner, details, onStale, state } = props;
+  const { video, owner, player, details, onStale, state } = props;
   const { plugins, reload, select } = state;
   const tabs = availableTabs(video, owner, state.workPlugin);
   const current = nextTab(state.selected, tabs);
@@ -190,6 +196,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         {panel(current, {
           video,
           owner,
+          player,
           workPlugin: state.workPlugin,
           openFetch: operations.openFetch,
         })}

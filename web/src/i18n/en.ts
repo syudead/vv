@@ -2179,6 +2179,14 @@ export const en = {
           one: `${formatNumber(count)} chapter`,
           other: `${formatNumber(count)} chapters`,
         }),
+      credits: "Credits",
+      seenInVideo: "Seen in this video",
+      seenHint: "Press a bar to play from that moment",
+      seenFailed: (reason: string) =>
+        `Couldn't load the people seen in this video: ${reason}`,
+      seenLoading: "Loading the people seen in this video",
+      spanRange: (start: string, end: string) => `${start}–${end}`,
+      spansOf: (name: string) => `When ${name} is on screen`,
     },
     //
     thumbnailEdit: {

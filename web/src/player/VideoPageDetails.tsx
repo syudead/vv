@@ -7,6 +7,7 @@ import GroupLine from "./GroupLine";
 import PlaylistLine from "./PlaylistLine";
 import SmartFolderLine from "./SmartFolderLine";
 import type { ThumbnailCapture } from "./playerLayers";
+import type { SpanPlayer } from "./tabs/PeoplePanel";
 import { CreatingLine } from "./StatusOverlays";
 import type { VideoPlaylist } from "./useVideoPlaylist";
 import TitleRow from "./TitleRow";
@@ -25,6 +26,7 @@ export default function VideoPageDetails({
   backTo,
   trail,
   capture,
+  player,
   detail,
   related,
   handoff,
@@ -38,6 +40,7 @@ export default function VideoPageDetails({
   backTo: string;
   trail: number[];
   capture: ThumbnailCapture | undefined;
+  player: SpanPlayer;
   detail: Pick<Detail, "refresh" | "replace" | "setFavorite">;
   related: Pick<Related, "rename" | "rethumb">;
   handoff: ReturnType<typeof usePageHandoff>;
@@ -106,6 +109,7 @@ export default function VideoPageDetails({
         video={video}
         owner={owner}
         capture={capture}
+        player={player}
         onChanged={(saved, mark) => {
           replace(saved, mark, "keep");
           // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.

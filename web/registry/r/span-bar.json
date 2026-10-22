@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "span-bar",
+  "title": "SpanBar",
+  "description": "vv component: one lane the length of a video with a block per span at its place and width, clamped to the lane; the blocks are buttons when the lane is pressable. Uses button and tooltip.",
+  "files": [
+    {
+      "path": "src/ui/SpanBar.tsx",
+      "content": "import { cn } from \"@/lib/cn\";\n\nimport { Button } from \"./shadcn/button\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"./shadcn/tooltip\";\nimport { spanPlacement, type TimeSpan } from \"./spanPlacement\";\n\n// See web/registry/rules/components.md, SpanBar.\n\nexport interface SpanBarProps<S extends TimeSpan> {\n  /** The lane's length in seconds, the video's length. */\n  lengthSeconds: number;\n  spans: readonly S[];\n  /** Names the lane for screen readers, such as whose spans it holds. */\n  label: string;\n  /** One short line per span, its tooltip and its button's name. */\n  spanLabel: (span: S) => string;\n  /** Makes each block a button; without it the blocks are plain and grey. */\n  onPress?: (span: S) => void;\n  className?: string;\n}\n\nconst block = \"absolute inset-y-0 h-full min-w-1 rounded-full p-0\";\n\n/** One lane the length of a video with a block per span at its place and width. */\nexport function SpanBar<S extends TimeSpan>({\n  lengthSeconds,\n  spans,\n  label,\n  spanLabel,\n  onPress,\n  className,\n}: SpanBarProps<S>) {\n  return (\n    <div\n      role=\"group\"\n      aria-label={label}\n      data-slot=\"span-bar\"\n      className={cn(\"relative h-3 w-full rounded-full bg-muted\", className)}\n    >\n      {spans.map((span) => {\n        const place = spanPlacement(span, lengthSeconds);\n        if (place === null) return null;\n        const style = {\n          left: `${String(place.left)}%`,\n          width: `${String(place.width)}%`,\n        };\n        const text = spanLabel(span);\n        const key = `${String(span.start)}-${String(span.end)}`;\n        if (onPress === undefined) {\n          return (\n            <span\n              key={key}\n              title={text}\n              className={cn(block, \"bg-muted-foreground\")}\n              style={style}\n            />\n          );\n        }\n        return (\n          <Tooltip key={key}>\n            <TooltipTrigger asChild>\n              <Button\n                variant=\"ghost\"\n                aria-label={text}\n                className={cn(\n                  block,\n                  \"bg-primary hover:bg-primary-hover active:bg-primary-active\",\n                )}\n                style={style}\n                onClick={() => onPress(span)}\n              />\n            </TooltipTrigger>\n            <TooltipContent>{text}</TooltipContent>\n          </Tooltip>\n        );\n      })}\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    },
+    {
+      "path": "src/ui/spanPlacement.ts",
+      "content": "/** A stretch of a video, in seconds from its start. */\nexport interface TimeSpan {\n  start: number;\n  end: number;\n}\n\n/** Where a span sits on a lane, as percentages of the lane's width. */\nexport interface SpanPlacement {\n  left: number;\n  width: number;\n}\n\n/**\n * Places a span on a lane `lengthSeconds` long, clamped to the lane, so a span past the end is\n * drawn to the end. Answers null when the lane has no length or nothing of the span lies on it.\n */\nexport function spanPlacement(\n  span: TimeSpan,\n  lengthSeconds: number,\n): SpanPlacement | null {\n  if (!(lengthSeconds > 0)) return null;\n  const start = Math.min(Math.max(span.start, 0), lengthSeconds);\n  const end = Math.min(Math.max(span.end, 0), lengthSeconds);\n  // Negated comparisons also drop a span with a NaN bound.\n  if (!(start < lengthSeconds && end >= start)) return null;\n  return {\n    left: (start / lengthSeconds) * 100,\n    width: ((end - start) / lengthSeconds) * 100,\n  };\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#spanbar (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -263,6 +263,23 @@
       "dependencies": ["lucide-react"]
     },
     {
+      "name": "span-bar",
+      "type": "registry:ui",
+      "title": "SpanBar",
+      "description": "vv component: one lane the length of a video with a block per span at its place and width, clamped to the lane; the blocks are buttons when the lane is pressable. Uses button and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#spanbar (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/SpanBar.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/spanPlacement.ts",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",

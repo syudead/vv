@@ -458,6 +458,21 @@ Put marks over the frame, such as the favorite heart, as children in a
 Do not use it for anything but a person: organizations and videos have no
 face.
 
+### SpanBar
+
+Item `span-bar`. One lane the length of a video (`h-3`, `bg-muted`,
+`rounded-full`) with one block per span at the span's place and width, given
+in seconds and clamped to the lane by `spanPlacement`, so a span past the end
+is drawn to the end. A block is at least `min-w-1` wide, so a one-second span
+stays visible. Pass `onPress` while something can play: each block is then a
+`Button` in `primary` with `primary-hover` on hover, the shared focus ring and
+`spanLabel` as its name and tooltip. Without it the blocks are plain
+`muted-foreground`, so they do not look pressable. `label` names the lane,
+such as whose spans it holds.
+
+Do not use it for a progress or a position in the video; those are the
+player's bar and `VideoThumbnailProgress`.
+
 ### TentativeMark
 
 Item `tentative-mark`. The dashed circle after a tentative tag's name, in a
