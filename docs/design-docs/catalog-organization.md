@@ -36,7 +36,9 @@ in one transaction.
 Saving and deleting a virtual video carry the `contentVersion` the screen
 read, which is its whole user key. `videos.id` is a rowid that SQLite can
 reuse after a delete, so a stale screen gets `404` or `409 content_changed`
-instead of writing into another video, and nothing is recreated. A virtual
+instead of writing into another video, and nothing is recreated. A save to a
+file video that carries a virtual video's version is such a stale screen and
+also answers `409 content_changed`. A virtual
 video never joins a version bundle, because a bundle chooses a file to play;
 every bundle operation answers `409 virtual_video` for one.
 

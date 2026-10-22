@@ -4301,7 +4301,7 @@ export interface components {
             /** @description New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty. */
             displayName: string;
             workInfo: components["schemas"]["WorkInfoInput"];
-            /** @description The contentVersion the editor read; required for a virtual video and ignored for a video with a file. */
+            /** @description The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored. */
             contentVersion?: string;
         };
         /** @description One person. */
@@ -5646,7 +5646,7 @@ export interface components {
         DisplayNameUpdate: {
             /** @description New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty. */
             displayName: string;
-            /** @description The contentVersion the screen read; required for a virtual video and ignored for a video with a file. */
+            /** @description The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored. */
             contentVersion?: string;
         };
         VirtualVideoCreate: {

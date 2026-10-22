@@ -3338,7 +3338,7 @@ type DirectoryListing struct {
 
 // DisplayNameUpdate defines model for DisplayNameUpdate.
 type DisplayNameUpdate struct {
-	// ContentVersion The contentVersion the screen read; required for a virtual video and ignored for a video with a file.
+	// ContentVersion The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
 	ContentVersion *string `json:"contentVersion,omitempty"`
 
 	// DisplayName New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty.
@@ -5707,7 +5707,7 @@ type VideoDateEdit struct {
 
 // VideoDetailsInput Fullscreen editor save body; displayName and workInfo are required.
 type VideoDetailsInput struct {
-	// ContentVersion The contentVersion the editor read; required for a virtual video and ignored for a video with a file.
+	// ContentVersion The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
 	ContentVersion *string `json:"contentVersion,omitempty"`
 
 	// DisplayName New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty.

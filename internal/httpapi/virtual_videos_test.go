@@ -232,6 +232,22 @@ func TestSaveVirtualVideoErrors(t *testing.T) {
 	}
 }
 
+// A screen that read a deleted virtual video must not write into the file video that reused its row id.
+func TestSaveWithVirtualVersionRejectsFileVideo(t *testing.T) {
+	want := wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonContentChanged}
+	for endpoint, body := range map[string]string{
+		"details":      `{"displayName":"x","contentVersion":"virtual:5","workInfo":{}}`,
+		"display-name": `{"displayName":"x","contentVersion":"virtual:5"}`,
+	} {
+		store := &fakeVirtualVideos{}
+		rec := jsonRequest(t, virtualServer(t, store, sampleVideo(5, "clip")), http.MethodPut, "/api/videos/5/"+endpoint, body)
+		assertErrorBody(t, endpoint, rec.Code, rec.Body.Bytes(), want)
+		if len(store.calls) != 0 {
+			t.Errorf("%s: ストアに届いた: %+v", endpoint, store.calls)
+		}
+	}
+}
+
 // Writes stay owner-only at the auth boundary, which answers a guest before any store call.
 func TestGuestCannotWriteVirtualVideos(t *testing.T) {
 	store := &fakeVirtualVideos{}
@@ -280,7 +296,29 @@ func TestBundleOperationsRejectVirtualVideos(t *testing.T) {
 	}
 }
 
+// The versions list of an unbundled virtual video is the video alone, and it has no file location either.
+func TestVirtualVideoVersionsOmitLocation(t *testing.T) {
+	handler := newTestServer(t, Options{Versions: virtualVersions{}})
+	rec := do(t, handler, http.MethodGet, "/api/videos/5/versions")
+	assertStatus(t, "versions", rec, http.StatusOK)
+	got := decode[struct {
+		Items []map[string]json.RawMessage `json:"items"`
+	}](t, rec)
+	if len(got.Items) != 1 {
+		t.Fatalf("items = %s", rec.Body)
+	}
+	for _, absent := range []string{"location", "folder"} {
+		if _, ok := got.Items[0][absent]; ok {
+			t.Errorf("%s が入っている: %s", absent, rec.Body)
+		}
+	}
+}
+
 type virtualVersions struct{ VersionStore }
+
+func (virtualVersions) Versions(_ context.Context, _ domain.Audience, id int64) (domain.VideoVersions, error) {
+	return domain.VideoVersions{RepresentativeID: id, Items: []domain.Video{virtualVideo(id, "Moonlight")}}, nil
+}
 
 func (virtualVersions) Bundle(context.Context, []int64, int64) (domain.VideoVersions, error) {
 	return domain.VideoVersions{}, domain.ErrVirtualVideo

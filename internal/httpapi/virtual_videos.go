@@ -68,11 +68,19 @@ func (s *server) DeleteVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 }
 
 // virtualSaveTarget reports whether the video is virtual, writing 404 for a missing video and 400 when a virtual
-// video's save lacks contentVersion.
+// video's save lacks contentVersion. A file video saved with a virtual video's version answers 409 content_changed:
+// the screen read a deleted virtual video whose row id the file video reused.
 func (s *server) virtualSaveTarget(w http.ResponseWriter, r *http.Request, id int64, contentVersion *string) (bool, bool) {
 	video, ok := s.lookupVideo(w, r, id)
-	if !ok || !video.Virtual() {
-		return false, ok
+	if !ok {
+		return false, false
+	}
+	if !video.Virtual() {
+		if contentVersion != nil && domain.IsVirtualKey(*contentVersion) {
+			s.writeVirtualVideoError(w, domain.ErrNotVirtual, "", "Could not save the video.")
+			return false, false
+		}
+		return false, true
 	}
 	if contentVersion == nil {
 		s.invalidRequest(w, "contentVersion is required for a video without a file.")
