@@ -5,11 +5,11 @@ import type { Video } from "../../api/client";
 import { personFaceSrc } from "../../api/credits";
 import {
   listVideoFaceAppearances,
-  type VideoFaceAppearance,
   type VideoFaceAppearanceList,
 } from "../../api/personFaces";
 import type { WorkInfo, WorkPersonRole } from "../../api/workInfo";
 import { creditDisplayName } from "../../credits/displayName";
+import { personPath } from "../../credits/person/personPath";
 import { errorText, t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
@@ -18,6 +18,7 @@ import { PersonFace } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import { SpanBar } from "../../ui/SpanBar";
+import type { TimeSpan } from "../../ui/spanPlacement";
 import type { PlayerControls } from "../playerControls";
 import { PanelSection } from "./panelParts";
 
@@ -52,10 +53,6 @@ function creditedPeople(info: WorkInfo | undefined): CreditedPerson[] {
     }
   }
   return [...byId.values()];
-}
-
-function personPath(id: number): string {
-  return `/people/${String(id)}`;
 }
 
 function PersonName({ person, className }: { person: CreditRef; className?: string }) {
@@ -127,6 +124,44 @@ function useFaceAppearances(video: Video) {
   return { read, retry: () => setAttempt((n) => n + 1) };
 }
 
+interface SeenPerson {
+  person: CreditRef;
+  imageRevision?: number;
+  spans: TimeSpan[];
+}
+
+/** Sorted spans with each overlapping run joined into one. */
+function joinSpans(spans: TimeSpan[]): TimeSpan[] {
+  const out: TimeSpan[] = [];
+  for (const span of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = out.at(-1);
+    if (last !== undefined && span.start <= last.end) {
+      last.end = Math.max(last.end, span.end);
+    } else {
+      out.push({ start: span.start, end: span.end });
+    }
+  }
+  return out;
+}
+
+/** One entry per person, in order of their first appearance, since merged people can own several appearances. */
+function seenPeople(items: VideoFaceAppearanceList["items"]): SeenPerson[] {
+  const byId = new Map<number, SeenPerson>();
+  for (const item of items) {
+    const known = byId.get(item.person.id);
+    if (known === undefined) {
+      byId.set(item.person.id, {
+        person: item.person,
+        imageRevision: item.imageRevision,
+        spans: [...item.spans],
+      });
+    } else {
+      known.spans.push(...item.spans);
+    }
+  }
+  return [...byId.values()].map((seen) => ({ ...seen, spans: joinSpans(seen.spans) }));
+}
+
 function spanRange(span: { start: number; end: number }): string {
   return t.player.tabs.spanRange(
     formatDuration(span.start * 1000),
@@ -139,7 +174,7 @@ function SeenRow({
   lengthSeconds,
   player,
 }: {
-  item: VideoFaceAppearance;
+  item: SeenPerson;
   lengthSeconds: number | undefined;
   player: SpanPlayer;
 }) {
@@ -213,9 +248,9 @@ function SeenInVideo({ video, player }: { video: Video; player: SpanPlayer }) {
     <PanelSection title={text.seenInVideo}>
       {pressable && <p className="text-sm text-muted-foreground">{text.seenHint}</p>}
       <ul className="flex flex-col gap-3">
-        {items.map((item) => (
+        {seenPeople(items).map((item) => (
           <SeenRow
-            key={item.appearanceId}
+            key={item.person.id}
             item={item}
             lengthSeconds={lengthSeconds}
             player={player}

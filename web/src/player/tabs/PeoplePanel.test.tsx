@@ -108,6 +108,48 @@ describe("PeoplePanel", () => {
     expect(player.calls).toEqual(["seekTo 40", "play"]);
   });
 
+  it("同じ人物の複数の出現は1行にまとめ、重なる区間をつなぐ", async () => {
+    vi.mocked(listVideoFaceAppearances).mockResolvedValue({
+      analysed: true,
+      items: [
+        {
+          appearanceId: 11,
+          person: hanako,
+          hasCrop: true,
+          spans: [{ start: 15, end: 30 }],
+        },
+        {
+          appearanceId: 12,
+          person: unnamed,
+          hasCrop: true,
+          spans: [{ start: 20, end: 22 }],
+        },
+        {
+          appearanceId: 13,
+          person: hanako,
+          hasCrop: true,
+          spans: [
+            { start: 25, end: 35 },
+            { start: 50, end: 55 },
+          ],
+        },
+      ],
+    });
+    renderPanel(video, fakePlayer());
+    const section = await screen.findByRole("region", { name: "Seen in this video" });
+    const lanes = within(section).getAllByRole("group");
+    expect(lanes.map((lane) => lane.getAttribute("aria-label"))).toEqual([
+      "When 山田 花子 is on screen",
+      "When #1042 is on screen",
+    ]);
+    const lane = screen.getByRole("group", { name: "When 山田 花子 is on screen" });
+    const spans = within(lane).getAllByRole("button");
+    expect(spans.map((span) => span.getAttribute("aria-label"))).toEqual([
+      "0:15–0:35",
+      "0:50–0:55",
+    ]);
+  });
+
   it.each<[string, VideoFaceAppearanceList]>([
     ["顔認識が終わっていない", { analysed: false, items: [] }],
     ["見つかった人物がいない", { analysed: true, items: [] }],
