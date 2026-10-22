@@ -70,10 +70,12 @@ page and not as a card laid on it. Labels and values keep `FactList`'s two
 colours, muted term and body value, which is what the `UI品質` second point
 asks for.
 
-A panel is read when it is selected (Versions and People read their lists
-then), and its request keeps running while another tab is open
+A panel is read when it is selected: Versions and People read their lists
+then, and a list read belongs to its panel, so a tab selected again reads its
+list again. The work-info fetch and the thumbnail sends belong to the strip's
+container and keep running while another tab is open
 ([R-4](research.md#r-4-operations-in-flight-belong-to-the-tabs-container-not-to-a-panel)),
-so a switch during a fetch or a send shows the result on return. The
+so a switch during one of them shows the result on return. The
 selected tab is page memory, not the address
 ([R-2](research.md#r-2-the-selected-tab-lives-in-page-memory-not-in-the-address)).
 
@@ -81,17 +83,16 @@ selected tab is page memory, not the address
 
 | Place | Text | Notes |
 | --- | --- | --- |
-| Tab strip name | About this video | `aria-label` of the `TabsList` |
 | Tabs | Overview · Work · People · Versions · Thumbnail · File & media | In this order; `People` and `Versions` carry a count after the label |
-| Title row actions | Favorite · Add to playlist · Add to group | The visible labels; the accessible names stay today's (`Favorite`, `playlists.add.label`, `list.card.addToGroup`) |
+| Title row actions | Favorite · Add to playlist · Add to group | The visible labels |
 | Strip end | Private · Public · Edit details | Existing words |
 | Overview facts | Length · Resolution · Added · Last watched | `Last watched` is new ([R-8](research.md#r-8-last-watched-is-the-progress-rows-time)) |
-| Overview work summary | KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太 | The code, `Released {date}` and the performers' names joined by `, `, the three parts joined by ` · `, a missing part left out |
+| Overview work summary | `KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太` | The code, `Released {date}` and the performers' names joined by `, `, the three parts joined by ` · `, a missing part left out |
 | Work, empty | No work details yet. | One muted line in place of the list |
 | Work action | Fill in from a site | Replaces `Fetch work info from a plugin` as the entry's label; the dialog's words are unchanged |
 | People headings | Credits · Seen in this video | |
 | People hint | Press a bar to play from that moment | Muted, after the `Seen in this video` heading, only while the bars are buttons |
-| Span button | Play from 0:12 | The accessible name; the tooltip is the span, `0:12–0:30` |
+| Span tooltip | 0:12–0:30 | The span's start and end |
 | People, read failed | Couldn't load the people seen in this video: {reason} | With `Retry` |
 | Versions marks | Representative · Now playing | Existing words |
 | Versions actions | Make representative · Remove from versions | Existing words, now visible |
@@ -101,7 +102,7 @@ selected tab is page memory, not the address
 | Thumbnail ways | Use this frame · Upload… · Touch up with ComfyUI | Replace `Use current frame as thumbnail`, `Change thumbnail` and `Upload an image…` |
 | Thumbnail notes | The frame the player shows now · PNG, JPEG or WebP, up to 64 MB · Frames the current thumbnail, then runs an instruction | One muted note beside each way |
 | File & media headings | Location · Media · File | |
-| Location actions | Open file · Copy path · Rescan | `Rescan` replaces `Force rescan this video` as the label; the blocked reason stays its tooltip and name |
+| Location actions | Open file · Copy path · Rescan | `Rescan` replaces `Force rescan this video` as the label; the blocked reason stays its tooltip |
 | Media facts | Video · Audio · Subtitles · Chapters · Container · Embedded · Broadcast | `Chapters` and `Container` are new rows; the value of `Chapters` is `3 chapters` |
 | File facts | Size · Added · Edited · Created | Existing words |
 
@@ -121,10 +122,14 @@ not look pressable. No token, colour or pair is added: the fills are already
 paired with `background`.
 
 The "Tab strip" unit gives `FavoriteToggle`'s `page` form, `AddToPlaylistButton`
-and `AddToGroupButton` a visible label after the icon, and changes the
+and `AddToGroupButton` a visible label after the icon, changes the
 `DetailPage` children rule in
 [patterns.md](../../web/registry/rules/patterns.md#detail-page) from "facts
-as one icon row" to the tab strip and its panels.
+as one icon row" to the tab strip and its panels, and changes the "Size by
+density" rule in
+[components.md](../../web/registry/rules/components.md#shared-rules) so that
+the video page's controls below the player are `sm` (`h-8`) and `default` and
+`lg` stay the player's ([Title row](#title-row)).
 
 The icons are lucide `Heart`, `ListPlus`, `FolderPlus`, `Lock`, `Globe`,
 `Clapperboard`, `CloudDownload`, `Camera`, `ImageUp`, `WandSparkles`,
@@ -168,7 +173,9 @@ bottom-aligned with the tabs:
 
 A tab is the word in `text-sm font-medium`; `People` and `Versions` add the
 count after it in `font-normal text-muted-foreground`, as the faces page
-does. Only the tabs of
+does. The `People` count is the number of tiles in `Credits`, the distinct
+people of `workInfo.people` by person id, so a person of two roles counts
+once; the `Versions` count is `versions.count`. Only the tabs of
 [R-1](research.md#r-1-which-tabs-a-video-has-is-a-pure-rule-over-the-video-response)
 are drawn; a strip never holds a disabled tab.
 
@@ -208,7 +215,7 @@ and stays open across a switch
 | Section action | `outline` `sm` with its icon, in a row under the section's content, `gap-2` between actions |
 | Row action | `ghost` `sm` with the word, in the row's action column |
 | Busy | The pressed action spins; the other actions of the same panel are `aria-disabled` while one request runs, as the thumbnail actions are today |
-| Failure | One line at the end of the panel, `role="alert"`, `text-sm text-destructive` with `AlertCircle`; cleared on the next action and on a video change |
+| Failure | One line at the end of the panel, `text-sm text-destructive` with `AlertCircle`; cleared on the next action and on a video change |
 | Loading a list | Two `Skeleton` rows `h-12` in place of the list |
 | List read failed | The failure words and `Retry` (`link` `sm`) in place of the list |
 
@@ -264,7 +271,7 @@ person, in the order of the work's people with a person of two roles once:
 | Name | `text-sm` body colour, one line truncated; a provisional person as `#1042` in `muted-foreground` |
 | Role | `text-xs text-muted-foreground`, roles joined by ` · ` |
 
-The tile is one link to `/people/{id}`, named `Open {name}`.
+The tile is one link to `/people/{id}`.
 
 `Seen in this video` is drawn only while the appearances read answers
 `analysed` true with at least one item; it is read when the tab is selected
@@ -275,7 +282,8 @@ and again after the video is replaced. One row per item, `gap-3` apart:
 | Person | `PersonFace option` and the name in `text-sm`, `#1042` muted when provisional, in a column `w-chip-label` wide from `sm` (the name truncated) and on a line above the lane below `sm`; the pair is a link to the person page |
 | Spans | A `SpanBar` filling the rest of the row, the lane being `durationMs` long and each span placed at `start / (durationMs / 1000)` with the width of its length, clamped to the lane; a span past the end is drawn to the end |
 
-A span block is a button named `Play from {start}` while the player is shown;
+A span block is a button, with the span as its tooltip, while the player is
+shown;
 pressing it seeks the player to the span's start and plays
 ([R-7](research.md#r-7-a-span-bar-seeks-the-player-in-place)). While the
 player is not shown the blocks are plain, in `muted-foreground`, and the hint
@@ -297,7 +305,7 @@ apart with `border-b border-border` under each but the last:
 | Row part | Content |
 | --- | --- |
 | Thumbnail | `VideoThumbnail` `w-24` (`aspect-video`, `rounded-md`), the duration at its corner as a card has; the playing version's carries `ring-2 ring-primary ring-inset` on `bg-accent`, the mark the right column gives the current card |
-| Title | `text-sm font-medium`, two lines at most; a link named `Play {title}` that opens that version as today's rows do, except the playing version's, which is plain text with `Now playing` for screen readers |
+| Title | `text-sm font-medium`, two lines at most; a link that opens that version as today's rows do, except the playing version's, which is plain text |
 | Marks | `Representative` as a `Badge` `soft` with `Star` after the title, on the representative only |
 | Details | `VersionDetailsLine`: resolution · container · codec · size · place, `text-xs` muted, the place truncated from the left |
 | Actions | Owner only: `Make representative` on every row but the representative, `Remove from versions` on every row, the playing one included; `ghost` `sm`, at the row's end from `sm`, under the details below `sm` |
@@ -305,9 +313,11 @@ apart with `border-b border-border` under each but the last:
 A row's pressed action spins and that row's other action is `aria-disabled`;
 `Make representative` moves the badge on the response, `Remove from versions`
 removes the row and shows today's toast, and removing the playing version
-replaces the page's video and, since the tab is then gone or the list has one
-row, selects Overview
-([R-2](research.md#r-2-the-selected-tab-lives-in-page-memory-not-in-the-address)).
+replaces the page's video. The selection then follows
+[R-2](research.md#r-2-the-selected-tab-lives-in-page-memory-not-in-the-address):
+Versions stays selected while the new video still has two or more versions,
+as three versions less the removed one do, and Overview is selected when one
+version is left.
 A per-row `More` menu was rejected: it is an icon-only control holding the
 two actions the `UI品質` third point asks to see as words.
 
@@ -366,14 +376,14 @@ guests and for a video without a location.
 | Actions | `Open file` (`ExternalLink`) only while `openable` is true, `Copy path` (`Copy`), `Rescan` (`RefreshCw`); `outline` `sm` in one wrapping row |
 
 `Copy path` writes the path and shows today's toast; `Rescan` is
-`aria-disabled` with the blocked reason as its tooltip and name while a scan
+`aria-disabled` with the blocked reason as its tooltip while a scan
 runs or no media folder exists, as today.
 
 `Media` is a `FactList`, one row per group that has content, in this order:
 
 | Fact | Value |
 | --- | --- |
-| `Video` | The video group's items joined by ` · ` (codec, resolution, frame rate, HDR, bit depth, bit rate), as `MediaInfoGroups` words them |
+| `Video` | The codec and resolution from the `Video` response's `videoCodec`, `width` and `height`, as the technical line words them, then `videoItems(mediaInfo.video)` (HDR, frame rate, bit depth, bit rate and the other marks it returns), all joined by ` · ` |
 | `Audio` | One line per track, joined by ` · `; more than six fold to six and `+{n} more` |
 | `Subtitles` | As `Audio` |
 | `Chapters` | `{n} chapters` |
@@ -485,17 +495,3 @@ a video with none of these and one file, and as a guest on a public video.
     and no word; a tab that is present but empty; a strip that wraps to two
     lines or pushes the page wider at 390px; `Edit details` inside a panel;
     a span block that is pressable while nothing can play.
-
-## Accessibility
-
-The parent Issue does not ask for screen-reader or contrast design, so only
-names are decided.
-
-- The `TabsList` is named `About this video`; a tab's count is part of its
-  name (`Versions 3`).
-- A span block's name is `Play from {start}`; a plain block has no name and
-  the row's spans are read as text in its `title`.
-- A credit tile is named `Open {name}`; `#1042` is the name of a provisional
-  person.
-- `Rescan` keeps the blocked reason in its name while it is `aria-disabled`.
-- A date fact's popover trigger is named `{term} {date}`, as today.
