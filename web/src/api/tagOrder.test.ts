@@ -3,10 +3,34 @@ import { describe, expect, it } from "vitest";
 import type { VideoTag } from "./client";
 import {
   applyTagToTags,
+  cardTagOrder,
   compareNatural,
   compareTagRefs,
   tagsReflectChange,
 } from "./tagOrder";
+
+describe("cardTagOrder", () => {
+  const ref = (id: number, name: string, kind: { name: string; cardFirst: boolean } | null) => ({
+    id,
+    name,
+    tentative: false,
+    kind: kind === null ? null : { id: kind.name.length, ...kind },
+  });
+
+  it("先頭に出す種類のタグを種類名の自然順で前に寄せ、それ以外は元の順を保つ", () => {
+    const place = { name: "Place", cardFirst: true };
+    const genre = { name: "Genre", cardFirst: true };
+    const work = { name: "Work", cardFirst: false };
+    const tags = [
+      ref(1, "a", null),
+      ref(2, "b", place),
+      ref(3, "c", work),
+      ref(4, "d", genre),
+      ref(5, "e", genre),
+    ];
+    expect(cardTagOrder(tags).map((tag) => tag.id)).toEqual([4, 5, 2, 1, 3]);
+  });
+});
 
 describe("compareNatural", () => {
   it("数字の連続を数値として比べる（2話 < 10話）", () => {

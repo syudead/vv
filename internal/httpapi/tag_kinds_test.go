@@ -40,6 +40,14 @@ func (f *fakeTags) RenameTagKind(_ context.Context, id int64, name string) (doma
 	return domain.TagKind{ID: id, Name: name, TagCount: 2}, nil
 }
 
+func (f *fakeTags) SetTagKindCardFirst(_ context.Context, id int64, cardFirst bool) (domain.TagKind, error) {
+	f.operation, f.lastID, f.lastCardFirst = "cardFirstKind", id, cardFirst
+	if f.err != nil {
+		return domain.TagKind{}, f.err
+	}
+	return domain.TagKind{ID: id, Name: "Genre", CardFirst: cardFirst}, nil
+}
+
 func (f *fakeTags) DeleteTagKind(_ context.Context, id int64) error {
 	f.operation, f.lastID = "deleteKind", id
 	return f.err
@@ -92,6 +100,31 @@ func TestRenameTagKindReturnsKind(t *testing.T) {
 	if got := decode[gen.TagKind](t, rec); got.Id != 3 || got.Name != "Series" || got.TagCount != 2 {
 		t.Fatalf("kind = %#v", got)
 	}
+}
+
+func TestSetTagKindCardFirstReturnsKind(t *testing.T) {
+	fake := &fakeTags{}
+	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPut, "/api/tag-kinds/3/card-first", `{"cardFirst":true}`)
+	if rec.Code != http.StatusOK || fake.operation != "cardFirstKind" || fake.lastID != 3 || !fake.lastCardFirst {
+		t.Fatalf("response = %d operation=%s id=%d cardFirst=%v: %s", rec.Code, fake.operation, fake.lastID, fake.lastCardFirst, rec.Body)
+	}
+	if got := decode[gen.TagKind](t, rec); got.Id != 3 || !got.CardFirst {
+		t.Fatalf("kind = %#v", got)
+	}
+}
+
+func TestSetTagKindCardFirstRejectsMissingValueAndKind(t *testing.T) {
+	fake := &fakeTags{}
+	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPut, "/api/tag-kinds/3/card-first", `{}`)
+	assertErrorBody(t, "cardFirst なし", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	if fake.operation != "" {
+		t.Errorf("operation = %q, want none", fake.operation)
+	}
+	rec = jsonRequest(t, newTestServer(t, Options{Tags: &fakeTags{err: domain.ErrTagKindNotFound}}),
+		http.MethodPut, "/api/tag-kinds/999/card-first", `{"cardFirst":false}`)
+	assertErrorBody(t, "無い id", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonTagKindNotFound,
+	})
 }
 
 func TestDeleteTagKindReturnsNoContent(t *testing.T) {
@@ -190,14 +223,14 @@ func TestTagKindRoutesAreOwnerOnly(t *testing.T) {
 }
 
 func TestTagShapesCarryKind(t *testing.T) {
-	genre := &domain.TagKindRef{ID: 1, Name: "Genre"}
+	genre := &domain.TagKindRef{ID: 1, Name: "Genre", CardFirst: true}
 	fake := &fakeTags{tags: []domain.Tag{
 		{ID: 1, Name: "Action", Kind: genre},
 		{ID: 2, Name: "Misc"},
 	}}
 	rec := do(t, newTestServer(t, Options{Tags: fake}), http.MethodGet, "/api/tags")
 	body := rec.Body.String()
-	if !strings.Contains(body, `"kind":{"id":1,"name":"Genre"}`) || !strings.Contains(body, `"kind":null`) {
+	if !strings.Contains(body, `"kind":{"cardFirst":true,"id":1,"name":"Genre"}`) || !strings.Contains(body, `"kind":null`) {
 		t.Fatalf("tag list = %s", body)
 	}
 	if got := toAPITagRef(domain.TagRef{ID: 1, Name: "Action", Kind: genre}); got.Kind == nil || got.Kind.Name != "Genre" {

@@ -1844,6 +1844,26 @@ export interface paths {
         patch: operations["renameTagKind"];
         trace?: never;
     };
+    "/api/tag-kinds/{id}/card-first": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set whether cards list a kind's tags first
+         * @description Owner-only. Sets TagKind.cardFirst; an unchanged value returns current state. Missing ID returns 404 not_found/tag_kind_not_found. Lists read the new order on their next fetch.
+         */
+        put: operations["setTagKindCardFirst"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people": {
         parameters: {
             query?: never;
@@ -4211,17 +4231,21 @@ export interface components {
             /** @description Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page. */
             exact?: components["schemas"]["Tag"];
         };
-        /** @description Tag kind ID and name. */
+        /** @description Tag kind ID, name and card order flag. */
         TagKindRef: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description Cards list this kind's tags before other tags; see TagKind.cardFirst. */
+            cardFirst: boolean;
         };
         /** @description One kind-list entry. */
         TagKind: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false. */
+            cardFirst: boolean;
             /** @description Number of tags of this kind, including tentative tags. */
             tagCount: number;
             /**
@@ -4233,6 +4257,9 @@ export interface components {
         TagKindList: {
             /** @description All kinds in ID order; the UI reorders them by natural name. */
             items: components["schemas"]["TagKind"][];
+        };
+        TagKindCardFirstRequest: {
+            cardFirst: boolean;
         };
         TagKindNameRequest: {
             name: string;
@@ -10140,6 +10167,36 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    setTagKindCardFirst: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag kind ID */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindCardFirstRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listPeople: {

@@ -13,31 +13,32 @@ import (
 // Kind creation and renaming do not affect matches; deletion clears tag kinds and invalidates smart folders referencing the deleted kind.
 
 const (
-	tagKindColumns = `tk.id, tk.name`
+	tagKindColumns = `tk.id, tk.name, tk.card_first`
 	tagKindJoin    = ` left join tag_kinds tk on tk.id = tg.kind_id`
 )
 
-// Both columns are NULL for an unclassified tag.
+// Every column is NULL for an unclassified tag.
 type scannedTagKind struct {
-	id   sql.NullInt64
-	name sql.NullString
+	id        sql.NullInt64
+	name      sql.NullString
+	cardFirst sql.NullBool
 }
 
 func (k *scannedTagKind) targets() []any {
-	return []any{&k.id, &k.name}
+	return []any{&k.id, &k.name, &k.cardFirst}
 }
 
 func (k scannedTagKind) ref() *domain.TagKindRef {
 	if !k.id.Valid {
 		return nil
 	}
-	return &domain.TagKindRef{ID: k.id.Int64, Name: k.name.String}
+	return &domain.TagKindRef{ID: k.id.Int64, Name: k.name.String, CardFirst: k.cardFirst.Bool}
 }
 
 // ListTagKinds includes tentative tags in TagCount.
 func (s *TagStore) ListTagKinds(ctx context.Context) ([]domain.TagKind, error) {
 	rows, err := s.read.QueryContext(ctx, `
-		select k.id, k.name, k.created_at, (select count(*) from tags t where t.kind_id = k.id)
+		select k.id, k.name, k.card_first, k.created_at, (select count(*) from tags t where t.kind_id = k.id)
 		  from tag_kinds k
 		 order by k.id`)
 	if err != nil {
@@ -49,7 +50,7 @@ func (s *TagStore) ListTagKinds(ctx context.Context) ([]domain.TagKind, error) {
 	for rows.Next() {
 		var kind domain.TagKind
 		var createdAt int64
-		if err := rows.Scan(&kind.ID, &kind.Name, &createdAt, &kind.TagCount); err != nil {
+		if err := rows.Scan(&kind.ID, &kind.Name, &kind.CardFirst, &createdAt, &kind.TagCount); err != nil {
 			return nil, fmt.Errorf("cannot read tag kinds: %w", err)
 		}
 		kind.CreatedAt = time.Unix(createdAt, 0)
@@ -129,6 +130,27 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 	return current, nil
 }
 
+// SetTagKindCardFirst changes card order only, so it affects no matches and emits no events.
+func (s *TagStore) SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.TagKind{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `update tag_kinds set card_first = ? where id = ?`, cardFirst, id); err != nil {
+		return domain.TagKind{}, fmt.Errorf("cannot update the tag kind (id=%d): %w", id, err)
+	}
+	kind, err := tagKindByID(ctx, tx, id)
+	if err != nil {
+		return domain.TagKind{}, err
+	}
+	if err := s.db.commitEvents(ctx, tx); err != nil {
+		return domain.TagKind{}, fmt.Errorf("cannot update the tag kind (id=%d): %w", id, err)
+	}
+	return kind, nil
+}
+
 // DeleteTagKind preserves tags as unclassified and leaves smart-folder references missing rather than rewriting rules.
 func (s *TagStore) DeleteTagKind(ctx context.Context, id int64) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
@@ -171,8 +193,8 @@ func tagKindByID(ctx context.Context, q rowQueryer, id int64) (domain.TagKind, e
 	kind := domain.TagKind{ID: id}
 	var createdAt int64
 	err := q.QueryRowContext(ctx, `
-		select name, created_at, (select count(*) from tags where kind_id = ?)
-		  from tag_kinds where id = ?`, id, id).Scan(&kind.Name, &createdAt, &kind.TagCount)
+		select name, card_first, created_at, (select count(*) from tags where kind_id = ?)
+		  from tag_kinds where id = ?`, id, id).Scan(&kind.Name, &kind.CardFirst, &createdAt, &kind.TagCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.TagKind{}, domain.ErrTagKindNotFound
 	}

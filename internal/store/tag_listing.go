@@ -46,7 +46,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	}
 
 	statement, args := order.pageStatement(listed, listedArgs,
-		`id, name, tentative, created_at, sort_key, video_count, kind_id, kind_name`, cursorClause, cursorArgs, limit)
+		`id, name, tentative, created_at, sort_key, video_count, kind_id, kind_name, kind_card_first`, cursorClause, cursorArgs, limit)
 
 	items, keys, total, err := readListedTags(ctx, tx, statement, args)
 	if err != nil {
@@ -133,7 +133,7 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 		), listed as (
 			select t.id as id, tn.name as name, t.tentative as tentative, t.created_at as created_at,
 			       tn.sort_key as sort_key, coalesce(c.video_count, 0) as video_count,
-			       tk.id as kind_id, tk.name as kind_name
+			       tk.id as kind_id, tk.name as kind_name, tk.card_first as kind_card_first
 			  from tags t
 			  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1
 			  left join tag_kinds tk on tk.id = t.kind_id
@@ -157,7 +157,7 @@ func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []an
 		var sortKey string
 		var kind scannedTagKind
 		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative, &createdAt, &sortKey, &tag.VideoCount,
-			&kind.id, &kind.name, &total); err != nil {
+			&kind.id, &kind.name, &kind.cardFirst, &total); err != nil {
 			return nil, nil, 0, fmt.Errorf("cannot read tags: %w", err)
 		}
 		tag.Kind = kind.ref()

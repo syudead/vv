@@ -126,6 +126,22 @@ export async function renameTagKind(
   return updated;
 }
 
+/** Cached tags and list snapshots embed the flag in their kind refs, so they reload like after a rename. */
+export async function setTagKindCardFirst(
+  id: number,
+  cardFirst: boolean,
+  signal?: AbortSignal,
+): Promise<TagKind> {
+  const updated = await request<TagKind>(`/api/tag-kinds/${String(id)}/card-first`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cardFirst }),
+    signal,
+  }).catch(refreshOnStaleTagKindError);
+  afterTagKindRenamedOrDeleted();
+  return updated;
+}
+
 /** Tags survive kind deletion with no kind assigned. */
 export async function deleteTagKind(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tag-kinds/${String(id)}`, {

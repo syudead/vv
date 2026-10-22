@@ -5760,6 +5760,9 @@ type TagInput struct {
 
 // TagKind One kind-list entry.
 type TagKind struct {
+	// CardFirst Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false.
+	CardFirst bool `json:"cardFirst"`
+
 	// CreatedAt Kind creation timestamp with second precision.
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
@@ -5767,6 +5770,11 @@ type TagKind struct {
 
 	// TagCount Number of tags of this kind, including tentative tags.
 	TagCount int `json:"tagCount"`
+}
+
+// TagKindCardFirstRequest defines model for TagKindCardFirstRequest.
+type TagKindCardFirstRequest struct {
+	CardFirst bool `json:"cardFirst"`
 }
 
 // TagKindList defines model for TagKindList.
@@ -5780,10 +5788,12 @@ type TagKindNameRequest struct {
 	Name string `json:"name"`
 }
 
-// TagKindRef Tag kind ID and name.
+// TagKindRef Tag kind ID, name and card order flag.
 type TagKindRef struct {
-	Id   int64  `json:"id"`
-	Name string `json:"name"`
+	// CardFirst Cards list this kind's tags before other tags; see TagKind.cardFirst.
+	CardFirst bool   `json:"cardFirst"`
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
 }
 
 // TagList defines model for TagList.
@@ -7918,6 +7928,9 @@ type CreateTagKindJSONRequestBody = TagKindNameRequest
 // RenameTagKindJSONRequestBody defines body for RenameTagKind for application/json ContentType.
 type RenameTagKindJSONRequestBody = TagKindNameRequest
 
+// SetTagKindCardFirstJSONRequestBody defines body for SetTagKindCardFirst for application/json ContentType.
+type SetTagKindCardFirstJSONRequestBody = TagKindCardFirstRequest
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -8379,6 +8392,9 @@ type ServerInterface interface {
 	// RenameTagKind Rename a tag kind
 	// (PATCH /api/tag-kinds/{id})
 	RenameTagKind(w http.ResponseWriter, r *http.Request, id TagKindId)
+	// SetTagKindCardFirst Set whether cards list a kind's tags first
+	// (PUT /api/tag-kinds/{id}/card-first)
+	SetTagKindCardFirst(w http.ResponseWriter, r *http.Request, id TagKindId)
 	// ListTags List tags
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
@@ -12449,6 +12465,32 @@ func (siw *ServerInterfaceWrapper) RenameTagKind(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// SetTagKindCardFirst operation middleware
+func (siw *ServerInterfaceWrapper) SetTagKindCardFirst(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagKindId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTagKindCardFirst(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -15352,6 +15394,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tag-kinds", wrapper.CreateTagKind)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.DeleteTagKind)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.RenameTagKind)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/tag-kinds/{id}/card-first", wrapper.SetTagKindCardFirst)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people", wrapper.ClearPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people", wrapper.ListPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people", wrapper.CreatePerson)

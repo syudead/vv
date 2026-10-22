@@ -5,6 +5,7 @@ import { nextAfterRemoval, withKind } from "./useTagKindsTab";
 const kind = (id: number, name: string) => ({
   id,
   name,
+  cardFirst: false,
   tagCount: 0,
   createdAt: "2026-01-01T00:00:00Z",
 });

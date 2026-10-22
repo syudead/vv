@@ -77,10 +77,11 @@ describe("TagSelectionBar", () => {
     const genre = {
       id: 1,
       name: "Genre",
+      cardFirst: false,
       tagCount: 0,
       createdAt: "2026-01-01T00:00:00Z",
     };
-    const work = { id: 2, name: "Work", tagCount: 0, createdAt: "2026-01-01T00:00:00Z" };
+    const work = { id: 2, name: "Work", cardFirst: false, tagCount: 0, createdAt: "2026-01-01T00:00:00Z" };
     const onSetKind = vi.fn();
     renderBar(false, vi.fn(), { kinds: [genre, work], sharedKind: "2", onSetKind });
     await user.click(screen.getByRole("button", { name: t.tags.selection.setKind }));

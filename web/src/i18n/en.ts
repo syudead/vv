@@ -1380,14 +1380,16 @@ export const en = {
       tab: "Kinds",
       table: "Kinds",
       description:
-        "A tag has one kind or none. Set it from the Tags tab's selection bar. Deleting a kind leaves its tags without one.",
+        "A tag has one kind or none. Set it from the Tags tab's selection bar. Video cards list tags of kinds marked First on cards before the rest. Deleting a kind leaves its tags without one.",
       newKind: "New kind",
       loading: "Loading kinds…",
       columns: {
         name: "Name",
+        cardFirst: "First on cards",
         tags: "Tags",
       },
       tagCount,
+      cardFirst: (name: string) => `List tags of the kind "${name}" first on video cards`,
       open: (name: string) => `Show the tags of the kind "${name}"`,
       create: {
         label: "New kind name",

@@ -63,9 +63,35 @@ func TestTagKindsStartWithPresets(t *testing.T) {
 		t.Fatalf("ListTagKinds = %v, want %v", got, want)
 	}
 	for i, kind := range kinds {
-		if kind.ID != int64(i+1) || kind.TagCount != 0 || kind.CreatedAt.IsZero() {
+		// Only the genre preset lists its tags first on cards.
+		if kind.ID != int64(i+1) || kind.TagCount != 0 || kind.CreatedAt.IsZero() || kind.CardFirst != (i == 0) {
 			t.Errorf("kind[%d] = %+v", i, kind)
 		}
+	}
+}
+
+func TestSetTagKindCardFirst(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	tags := db.Tags()
+
+	work, err := tags.SetTagKindCardFirst(ctx, 2, true)
+	if err != nil || work.ID != 2 || work.Name != "Work" || !work.CardFirst {
+		t.Fatalf("SetTagKindCardFirst(2, true) = %+v, %v", work, err)
+	}
+	genre, err := tags.SetTagKindCardFirst(ctx, 1, false)
+	if err != nil || genre.CardFirst {
+		t.Fatalf("SetTagKindCardFirst(1, false) = %+v, %v", genre, err)
+	}
+	kinds, err := tags.ListTagKinds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kinds[0].CardFirst || !kinds[1].CardFirst {
+		t.Errorf("ListTagKinds = %+v, want only Work first", kinds)
+	}
+	if _, err := tags.SetTagKindCardFirst(ctx, 999, true); !errors.Is(err, domain.ErrTagKindNotFound) {
+		t.Errorf("missing kind error = %v", err)
 	}
 }
 
@@ -179,7 +205,7 @@ func TestTagReadsCarryKind(t *testing.T) {
 	setTagKindForTest(t, db, dog, 1)
 	attachTag(t, db, "key-a", dog)
 	videoIDs := []int64{ids[fixturePath("/media/a.mp4")]}
-	genre := domain.TagKindRef{ID: 1, Name: "Genre"}
+	genre := domain.TagKindRef{ID: 1, Name: "Genre", CardFirst: true}
 
 	page, err := tags.ListTags(ctx, domain.TagListQuery{Search: "犬", Limit: 10})
 	if err != nil {
