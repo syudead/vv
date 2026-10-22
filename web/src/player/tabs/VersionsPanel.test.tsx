@@ -171,6 +171,27 @@ describe("VersionsPanel", () => {
     expect(props.onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("フォーカスした Make representative が成功で消えると同じ行の残る操作へフォーカスを移し、失敗ではその場に残す", async () => {
+    makeRepresentative.mockRejectedValueOnce(new Error("offline"));
+    makeRepresentative.mockResolvedValueOnce(answer([versionB, versionA, versionC], 20));
+    renderPanel();
+    await rows();
+    const pressed = within(row("Bravo")).getByRole("button", {
+      name: "Make representative",
+    });
+    pressed.focus();
+    fireEvent.click(pressed);
+    await screen.findByRole("alert");
+    expect(document.activeElement).toBe(pressed);
+
+    fireEvent.click(pressed);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(row("Bravo")).getByRole("button", { name: "Remove from versions" }),
+      ),
+    );
+  });
+
   it("押した操作が終わるまで、その行の操作は回転と aria-disabled になり、もう一度送らない", async () => {
     makeRepresentative.mockReturnValue(new Promise(() => undefined));
     renderPanel();

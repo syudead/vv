@@ -100,6 +100,26 @@ function useVersionsList(video: Video, onDwindled: () => void) {
   return { list, setList, retry: () => load(true) };
 }
 
+function rowElement(list: HTMLUListElement | null, id: number): HTMLElement | null {
+  return (
+    list?.querySelector<HTMLElement>(`:scope > li[data-version-id="${String(id)}"]`) ??
+    null
+  );
+}
+
+function rowHoldsFocus(list: HTMLUListElement | null, id: number): boolean {
+  return rowElement(list, id)?.contains(document.activeElement) ?? false;
+}
+
+/** Focus the row's first remaining action once its focused button has been removed. */
+function refocusRow(listRef: RefObject<HTMLUListElement | null>, id: number) {
+  requestAnimationFrame(() => {
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && active.isConnected) return;
+    rowElement(listRef.current, id)?.querySelector<HTMLElement>("button")?.focus();
+  });
+}
+
 /** One request per row at a time; rows answer independently, so removals compose on the latest list. */
 function useVersionActions(
   props: VersionsPanelProps,
@@ -171,8 +191,11 @@ function useVersionActions(
     if (action === "representative") {
       makeRepresentativeVersion(target.id).then((answer) => {
         if (!alive.current) return;
+        const focusedRow = rowHoldsFocus(listRef.current, target.id);
         settle(target.id);
         versions.setList({ kind: "ready", versions: answer });
+        // The pressed button leaves the new representative's row; keep focus in that row.
+        if (focusedRow) refocusRow(listRef, target.id);
         onRefresh();
       }, onFailure);
       return;
@@ -270,6 +293,7 @@ function VersionRow({
 
   return (
     <li
+      data-version-id={item.id}
       aria-current={current ? "true" : undefined}
       className={cn(
         "flex flex-col gap-2 border-b border-border pb-3 last:border-b-0 last:pb-0 sm:flex-row sm:items-center sm:gap-3",
