@@ -50,11 +50,7 @@ func (s *WorkInfoStore) Set(ctx context.Context, videoID int64, info domain.Work
 	if err := touchEditedAtForUserKeys(ctx, tx, edited, now); err != nil {
 		return domain.Video{}, err
 	}
-	video, err := ownerVideoWithWorkInfo(ctx, tx, videoID)
-	if err != nil {
-		return domain.Video{}, err
-	}
-	events, err := workInfoChangedEvents(ctx, tx, edited)
+	video, events, err := savedWorkInfoVideo(ctx, tx, videoID, edited)
 	if err != nil {
 		return domain.Video{}, err
 	}
@@ -173,11 +169,7 @@ func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayNa
 	if err := touchEditedAt(ctx, tx, slices.Compact(touched), now); err != nil {
 		return domain.Video{}, err
 	}
-	video, err := ownerVideoWithWorkInfo(ctx, tx, videoID)
-	if err != nil {
-		return domain.Video{}, err
-	}
-	events, err := workInfoChangedEvents(ctx, tx, edited)
+	video, events, err := savedWorkInfoVideo(ctx, tx, videoID, edited)
 	if err != nil {
 		return domain.Video{}, err
 	}
@@ -376,6 +368,19 @@ var workInfoExistsQuery = func() string {
 	}
 	return `select ` + strings.Join(parts, ` or `)
 }()
+
+// Read the saved video with its work information and the change events of the edited user keys.
+func savedWorkInfoVideo(ctx context.Context, tx *sql.Tx, videoID int64, edited []string) (domain.Video, []domain.Event, error) {
+	video, err := ownerVideoWithWorkInfo(ctx, tx, videoID)
+	if err != nil {
+		return domain.Video{}, nil, err
+	}
+	events, err := workInfoChangedEvents(ctx, tx, edited)
+	if err != nil {
+		return domain.Video{}, nil, err
+	}
+	return video, events, nil
+}
 
 func ownerVideoWithWorkInfo(ctx context.Context, tx *sql.Tx, videoID int64) (domain.Video, error) {
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)

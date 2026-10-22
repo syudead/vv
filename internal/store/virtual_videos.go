@@ -173,17 +173,9 @@ func (s *VirtualVideoStore) Delete(ctx context.Context, videoID int64, contentVe
 	if err != nil {
 		return err
 	}
-	groups, err := deleteKeyUserData(ctx, tx, key)
+	groups, err := deleteVirtualVideo(ctx, tx, key)
 	if err != nil {
 		return err
-	}
-	for _, statement := range []string{
-		`delete from virtual_videos where user_key = ?`,
-		`delete from videos where content_key = ?`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement, key); err != nil {
-			return fmt.Errorf("cannot delete the virtual video: %w", err)
-		}
 	}
 	c := changes{}
 	c.videosDeleted([]domain.DeletedVideo{{ID: videoID, ContentKey: key}})
@@ -192,6 +184,23 @@ func (s *VirtualVideoStore) Delete(ctx context.Context, videoID int64, contentVe
 		return fmt.Errorf("cannot delete the virtual video: %w", err)
 	}
 	return nil
+}
+
+// Delete the virtual video's row, its projection and the user data still under its key; returns the changed groups.
+func deleteVirtualVideo(ctx context.Context, tx *sql.Tx, key string) ([]int64, error) {
+	groups, err := deleteKeyUserData(ctx, tx, key)
+	if err != nil {
+		return nil, err
+	}
+	for _, statement := range []string{
+		`delete from virtual_videos where user_key = ?`,
+		`delete from videos where content_key = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, key); err != nil {
+			return nil, fmt.Errorf("cannot delete the virtual video: %w", err)
+		}
+	}
+	return groups, nil
 }
 
 // A missing video is ErrNotFound, a file video ErrNotVirtual, and a key other than contentVersion ErrContentChanged,

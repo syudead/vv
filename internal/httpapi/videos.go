@@ -18,9 +18,6 @@ const maxQueryLength = 100
 // Keep the tag-filter limit aligned with OpenAPI maxItems.
 const maxTagFilterCount = 16
 
-// Use a content-key prefix as the thumbnail URL version for safe long-lived caching.
-const thumbnailVersionLength = 12
-
 // ListVideos uses cursor pagination and returns the total independently of the page.
 func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.ListVideosParams) {
 	if s.videos == nil {
@@ -623,13 +620,10 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 // Content version is owner-only and is echoed with image uploads; a virtual video's is its whole user key, which
 // its saves and deletion check (docs/design-docs/catalog-organization.md).
 func contentVersionOf(video domain.Video) *string {
-	switch {
-	case video.ContentKey == "":
+	if video.ContentKey == "" {
 		return nil
-	case video.Virtual():
-		return &video.ContentKey
 	}
-	version := thumbnailVersion(video.ContentKey)
+	version := domain.ContentVersion(video.ContentKey)
 	return &version
 }
 
@@ -699,9 +693,10 @@ func withBuild(version string, build int64) string {
 	return version + "-b" + strconv.FormatInt(build, 10)
 }
 
+// Use a content-key prefix as the thumbnail URL version for safe long-lived caching.
 func thumbnailVersion(contentKey string) string {
-	if len(contentKey) > thumbnailVersionLength {
-		return contentKey[:thumbnailVersionLength]
+	if len(contentKey) > domain.ContentVersionLength {
+		return contentKey[:domain.ContentVersionLength]
 	}
 	return contentKey
 }

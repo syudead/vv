@@ -21,6 +21,10 @@ type VirtualVideoStore interface {
 	// SaveDetails writes the title and the work information atomically.
 	SaveDetails(ctx context.Context, videoID int64, contentVersion, title string, info domain.WorkInfo) (domain.Video, error)
 	Delete(ctx context.Context, videoID int64, contentVersion string) error
+	// Merge returns the file video. Besides the errors of Delete for the virtual video, it returns ErrNotFound and
+	// ErrContentChanged for the file video, ErrVirtualVideo when videoID has no file, and
+	// ErrMergedDescriptionTooLong or ErrMergedTooManyURLs when the combined work information exceeds its limits.
+	Merge(ctx context.Context, virtualID int64, contentVersion string, videoID int64, videoContentVersion string) (domain.Video, error)
 }
 
 func (s *server) CreateVirtualVideo(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +69,45 @@ func (s *server) DeleteVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) MergeVirtualVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+	var body struct {
+		ContentVersion      *string `json:"contentVersion"`
+		VideoID             *int64  `json:"videoId"`
+		VideoContentVersion *string `json:"videoContentVersion"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.ContentVersion == nil || body.VideoID == nil || body.VideoContentVersion == nil {
+		s.invalidRequest(w, "contentVersion, videoId and videoContentVersion are required.")
+		return
+	}
+	if !s.virtualVideosConfigured(w) {
+		return
+	}
+	video, err := s.virtualVideos.Merge(r.Context(), id, *body.ContentVersion, *body.VideoID, *body.VideoContentVersion)
+	if err != nil {
+		s.writeMergeError(w, err)
+		return
+	}
+	s.writeVideoDetail(w, r, video)
+}
+
+func (s *server) writeMergeError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrNotVirtual):
+		s.conflictReason(w, reasonNotVirtual, "Only a video without a file can be merged.")
+	case errors.Is(err, domain.ErrVirtualVideo):
+		s.conflictReason(w, reasonVirtualVideo, "A video without a file cannot be merged into.")
+	case errors.Is(err, domain.ErrMergedDescriptionTooLong):
+		s.conflictReason(w, reasonDescriptionTooLong, "The combined description is too long.")
+	case errors.Is(err, domain.ErrMergedTooManyURLs):
+		s.conflictReason(w, reasonTooManyURLs, "The combined links are too many.")
+	default:
+		s.writeVirtualVideoError(w, err, "", "Could not merge the video.")
+	}
 }
 
 // virtualSaveTarget reports whether the video is virtual, writing 404 for a missing video and 400 when a virtual

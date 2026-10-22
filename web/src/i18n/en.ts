@@ -420,6 +420,10 @@ const errorReasons = {
   invalid_title: "Enter a title.",
   not_virtual: "This video has a file, so it can't be deleted here.",
   virtual_video: "A video without a file can't be used here.",
+  description_too_long:
+    "The two descriptions together are too long. Shorten one and try again.",
+  too_many_urls:
+    "The two videos have more than 20 links together. Remove some and try again.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
