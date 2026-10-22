@@ -286,7 +286,7 @@ func TestRemovedListFiltersMigrationStripsStoredRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(ctx, 75); err != nil {
+	if _, err := provider.UpTo(ctx, 76); err != nil {
 		t.Fatal(err)
 	}
 	execSQL(t, db, `insert into smart_folders (id, name, title_key, rule, sort, created_at, updated_at) values

@@ -43,7 +43,7 @@ describe("buildAddOptions", () => {
 });
 
 function kind(id: number, name: string): TagKind {
-  return { id, name, tagCount: 1, createdAt: "2026-01-01T00:00:00Z" };
+  return { id, name, cardFirst: false, tagCount: 1, createdAt: "2026-01-01T00:00:00Z" };
 }
 
 describe("buildTagAndKindOptions", () => {
