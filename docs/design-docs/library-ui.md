@@ -664,7 +664,7 @@ the panel; panels carry no frame.
 | Tab | Listed when | Panel |
 | --- | --- | --- |
 | Overview | Always | The description (folded to three lines) and the one-line work summary, `KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太`, for the owner; then `Length`, `Resolution`, `Added` and `Last watched` (the progress row's time, owner only) as a `FactList` |
-| Work | Owner, and the work has an item other than the description and the performers, or an approved work-info plugin exists | — |
+| Work | Owner, and the work has an item other than the description and the performers, or an approved work-info plugin exists | A `FactList` of `Code`, the dates as stored, the people of roles other than performer (a face chip and the name, each a link to the person page), the makers and labels (links to the filtered library), `Links` and `IDs`; a row with more than three entries shows three and `+{n} more`. With no item, `No work details yet.` in its place. Under it, `Fill in from a site` (`outline` `sm`) while an approved work-info plugin exists, which pauses the player and opens the fetch dialog |
 | People | Owner, and the work credits a person; the count is the distinct credited people | — |
 | Versions | Two or more visible versions; the count is the number of versions | — |
 | Thumbnail | Owner | — |

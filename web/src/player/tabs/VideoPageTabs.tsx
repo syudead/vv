@@ -17,6 +17,7 @@ import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
+import WorkPanel from "./WorkPanel";
 
 export interface VideoPageTabsProps {
   video: Video;
@@ -117,11 +118,25 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
   return undefined;
 }
 
+interface PanelContext {
+  video: Video;
+  owner: boolean;
+  workPlugin: boolean;
+  openFetch: () => void;
+}
+
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
-function panel(tab: VideoTab, video: Video, owner: boolean): ReactNode {
+function panel(
+  tab: VideoTab,
+  { video, owner, workPlugin, openFetch }: PanelContext,
+): ReactNode {
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
+    case "work":
+      return (
+        <WorkPanel info={video.workInfo} canFetch={workPlugin} onFetch={openFetch} />
+      );
     case "file":
       return <FileMediaPanel video={video} owner={owner} />;
     default:
@@ -172,7 +187,12 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         )}
       </div>
       <TabsContent value={current} className="pt-4 text-base">
-        {panel(current, video, owner)}
+        {panel(current, {
+          video,
+          owner,
+          workPlugin: state.workPlugin,
+          openFetch: operations.openFetch,
+        })}
       </TabsContent>
       {operations.fetchOpen && (
         <FetchDialog

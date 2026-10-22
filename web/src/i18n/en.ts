@@ -2168,6 +2168,7 @@ export const en = {
       resolution: "Resolution",
       lastWatched: "Last watched",
       released: (date: string) => `Released ${date}`,
+      noWorkDetails: "No work details yet.",
       location: "Location",
       media: "Media",
       fileSection: "File",
@@ -2337,7 +2338,6 @@ export const en = {
     },
     // Use singular roles for one person and plural for multiple people.
     workInfo: {
-      label: "Work details",
       code: "Code",
       released: "Released",
       recorded: "Recorded",
@@ -2414,7 +2414,7 @@ export const en = {
       program: "Program",
     },
     workInfoFetch: {
-      entry: "Fetch work info from a plugin",
+      entry: "Fill in from a site",
       title: "Fetch work info",
       description: "Nothing changes until you apply.",
       plugin: "Plugin",
