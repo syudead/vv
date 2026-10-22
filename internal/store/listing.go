@@ -34,6 +34,8 @@ type locationScope struct {
 	// Absolute folder path; unused for the library scope.
 	dir      string
 	audience domain.Audience
+	// Library reads also choose virtual videos unless the kind excludes them; folder reads never do.
+	videoKind domain.VideoKind
 }
 
 func libraryScope(audience domain.Audience) locationScope {
@@ -47,17 +49,32 @@ func folderScope(dir string, scope domain.FolderScope, audience domain.Audience)
 	return locationScope{kind: scopeDirect, dir: dir, audience: audience}
 }
 
-func (s locationScope) condition(alias string) (string, []any) {
-	visible := visibleLocationCondition(alias, s.audience)
-	var scopeArgs []any
+func (s locationScope) choosesFiles() bool {
+	return s.kind != scopeLibrary || s.videoKind.IncludesFiles()
+}
+
+func (s locationScope) choosesVirtual() bool {
+	return s.kind == scopeLibrary && s.videoKind.IncludesVirtual()
+}
+
+// Collection restrictions apply to a row exposing video_id, whether a location or a virtual video.
+func (s locationScope) membership(alias string) (string, []any) {
+	var clause string
+	var args []any
 	if s.withinGroup != 0 {
-		visible += ` and ` + alias + `.video_id in (select video_id from group_members where group_id = ? and audience = ?)`
-		scopeArgs = append(scopeArgs, s.withinGroup, audienceValue(s.audience))
+		clause += ` and ` + alias + `.video_id in (select video_id from group_members where group_id = ? and audience = ?)`
+		args = append(args, s.withinGroup, audienceValue(s.audience))
 	}
 	if s.withinVideos != "" {
-		visible += ` and ` + alias + `.video_id in (select value from json_each(?))`
-		scopeArgs = append(scopeArgs, s.withinVideos)
+		clause += ` and ` + alias + `.video_id in (select value from json_each(?))`
+		args = append(args, s.withinVideos)
 	}
+	return clause, args
+}
+
+func (s locationScope) condition(alias string) (string, []any) {
+	membership, scopeArgs := s.membership(alias)
+	visible := visibleLocationCondition(alias, s.audience) + membership
 	if s.kind == scopeLibrary {
 		return visible, scopeArgs
 	}
@@ -136,7 +153,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 var listNow = time.Now
 
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
-	return listSpec{
+	spec := listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
@@ -144,6 +161,8 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
+	spec.scope.videoKind = q.Kind
+	return spec
 }
 
 // ListFolderVideos uses ListVideos semantics within the requested folder scope, taking titles from matching locations.
@@ -170,7 +189,22 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 	return `with chosen as (` + selectSQL + `)`, args
 }
 
+// A virtual video is chosen with a NULL path; readers join its row through chosenLocationJoin.
 func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	var parts []string
+	var args []any
+	if scope.choosesFiles() {
+		files, fileArgs := chosenFilesSelect(scope, searchAudience, exprs)
+		parts, args = append(parts, files), append(args, fileArgs...)
+	}
+	if scope.choosesVirtual() {
+		virtual, virtualArgs := chosenVirtualSelect(scope, searchAudience, exprs)
+		parts, args = append(parts, virtual), append(args, virtualArgs...)
+	}
+	return strings.Join(parts, ` union all `), args
+}
+
+func chosenFilesSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
@@ -202,6 +236,22 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 		group by l.video_id`, args
 }
 
+// Every search expression must match the virtual video's title key, or for owner search its user data.
+func chosenVirtualSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	membership, args := scope.membership("vl")
+	clauses := []string{visibleVirtualCondition("vl.user_key", scope.audience) + membership}
+	for _, expr := range exprs {
+		clause, exprArgs := virtualSearchExprCondition(expr, "vl", searchAudience)
+		if clause == "" {
+			continue
+		}
+		clauses, args = append(clauses, clause), append(args, exprArgs...)
+	}
+	return `select vl.video_id, null as path from (select v.id as video_id, vv.user_key, vv.search_key
+		from virtual_videos vv join videos v on v.content_key = vv.user_key) vl
+		where ` + strings.Join(clauses, " and "), args
+}
+
 // Keep watch-state filtering equivalent to domain.ClassifyWatch.
 func watchCondition(filter domain.WatchFilter) string {
 	switch filter {
@@ -220,8 +270,7 @@ func watchCondition(filter domain.WatchFilter) string {
 const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 
 // Column order matches scanVideo; location attributes come from chosen, and path supports folder metadata.
-var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
-	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
+var listColumns = `videos.id, ` + locationColumns("chosen.path", "loc") + `, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public, ` + favoriteColumn + ` as favorite, ` + overrideColumns + `, ` + editedAtColumn + `, ` + buildColumns
@@ -230,7 +279,7 @@ var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	from := ` from chosen join videos on videos.id = chosen.video_id`
 	if withLocation {
-		from += ` join video_locations loc on loc.path = chosen.path`
+		from += chosenLocationJoin("chosen.path", "videos")
 	}
 	// Unidentified content has no playback position; use the shared user-data key.
 	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
@@ -415,17 +464,18 @@ type listOrder struct {
 var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortAddedAsc:     {value: `videos.added_at`},
 	domain.SortAddedDesc:    {value: `videos.added_at`, desc: true},
-	domain.SortModifiedAsc:  {value: `loc.mtime`},
-	domain.SortModifiedDesc: {value: `loc.mtime`, desc: true},
+	domain.SortModifiedAsc:  {value: locationMTimeExpr("loc")},
+	domain.SortModifiedDesc: {value: locationMTimeExpr("loc"), desc: true},
 	// Use location creation time, falling back to modification time.
-	domain.SortCreatedAsc:    {value: fileCreatedAtExpr("loc")},
-	domain.SortCreatedDesc:   {value: fileCreatedAtExpr("loc"), desc: true},
-	domain.SortTitleAsc:      {value: `loc.title_key`, kind: sortText},
-	domain.SortTitleDesc:     {value: `loc.title_key`, kind: sortText, desc: true},
-	domain.SortDurationAsc:   {value: `videos.duration_ms`, nullable: true},
-	domain.SortDurationDesc:  {value: `videos.duration_ms`, desc: true, nullable: true},
-	domain.SortSizeAsc:       {value: `loc.size_bytes`},
-	domain.SortSizeDesc:      {value: `loc.size_bytes`, desc: true},
+	domain.SortCreatedAsc:   {value: locationCreatedAtExpr("loc")},
+	domain.SortCreatedDesc:  {value: locationCreatedAtExpr("loc"), desc: true},
+	domain.SortTitleAsc:     {value: locationTitleKeyExpr("loc"), kind: sortText},
+	domain.SortTitleDesc:    {value: locationTitleKeyExpr("loc"), kind: sortText, desc: true},
+	domain.SortDurationAsc:  {value: `videos.duration_ms`, nullable: true},
+	domain.SortDurationDesc: {value: `videos.duration_ms`, desc: true, nullable: true},
+	// A virtual video has no size and sorts last, as an unknown duration does.
+	domain.SortSizeAsc:       {value: `loc.size_bytes`, nullable: true},
+	domain.SortSizeDesc:      {value: `loc.size_bytes`, desc: true, nullable: true},
 	domain.SortPlayedAsc:     {value: `p.updated_at`, nullable: true},
 	domain.SortPlayedDesc:    {value: `p.updated_at`, desc: true, nullable: true},
 	domain.SortFavoritedAsc:  {value: `fav.favorited_at`, nullable: true},

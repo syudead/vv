@@ -105,6 +105,8 @@ type VideoQuery struct {
 	// Duration bounds are inclusive seconds; nil leaves a side unbounded and any bound excludes unknown durations.
 	MinDurationSec *int
 	MaxDurationSec *int
+	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.
+	Kind VideoKind
 }
 
 // ListsSmartFolders allows only unfiltered or favorite-only listings; sort order does not count as a filter.

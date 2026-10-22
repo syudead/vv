@@ -207,10 +207,12 @@ func (db *DB) publishEvents(events ...domain.Event) {
 	}
 }
 
-// Delete orphan videos and their unreferenced content indexes in the same transaction.
+// Delete orphan videos and their unreferenced content indexes in the same transaction; a virtual video's projected
+// row has no location by design and stays.
 func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]domain.DeletedVideo, error) {
 	released, err := collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where not exists (
 		select 1 from video_locations where video_locations.video_id = videos.id)
+		and not exists (select 1 from virtual_videos where virtual_videos.user_key = videos.content_key)
 		returning id, content_key`))
 	if err != nil {
 		return nil, err

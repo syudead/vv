@@ -24,6 +24,23 @@ history, display overrides or work information. Folder-derived groups use a
 stable folder identity. Manual groups, playlists, people and organizations
 have ids of their own.
 
+A virtual video is a library entry with no file. It is user data in
+`virtual_videos`, whose id gives it the user key `virtual:<id>`; the prefix
+cannot collide with a content key or a bundle key. A `videos` row with that
+content key and no location projects it into the index, so per-video
+operations and the user-data tables serve it unchanged. The orphan sweep after
+a scan keeps that row, and startup recreates it when it is missing. Deleting a
+virtual video removes its row, its projection and the user data under its key
+in one transaction.
+
+| Read | Value for a virtual video |
+| --- | --- |
+| Added, created and modified sort | Its creation time |
+| Title sort and search | Its own title and search keys; search scans them instead of the location FTS index |
+| Duration and size sort | Unknown, so it sorts last |
+| Duration range and playable-only filters | Excluded |
+| Folder reads, external API, MCP | Absent, because they read locations |
+
 Database migrations define the schema. The recovery distinction is documented
 in [Data and recovery](../how-to/running-vv.md#data-and-recovery), and startup
 rebuilds are described in [process lifecycle](process-lifecycle.md).
@@ -50,7 +67,9 @@ are separate decisions ([duplicate judging](duplicate-judging.md)).
 Stored search and sort keys give locations and tag names consistent matching
 and ordering. Startup refreshes keys whose normalization version changed.
 All catalog reads apply the audience before counting or paging; a guest
-cannot discover hidden videos through a collection or a search.
+cannot discover hidden videos through a collection or a search. A file video
+is visible through a visible location; a virtual video is visible to the
+owner, and to a guest only while it is public.
 
 Screen operations and field definitions live in
 [the screen API schema](../../api/openapi.yaml). External tag operations,
