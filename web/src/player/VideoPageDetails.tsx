@@ -24,6 +24,7 @@ export default function VideoPageDetails({
   playlist,
   backTo,
   trail,
+  autoplay,
   capture,
   detail,
   related,
@@ -37,6 +38,8 @@ export default function VideoPageDetails({
   playlist: VideoPlaylist;
   backTo: string;
   trail: number[];
+  /** Whether a version row continues playback on its page. */
+  autoplay: boolean;
   capture: ThumbnailCapture | undefined;
   detail: Pick<Detail, "refresh" | "replace" | "setFavorite">;
   related: Pick<Related, "rename" | "rethumb">;
@@ -120,6 +123,11 @@ export default function VideoPageDetails({
           focusEntry: handoff.focusEntry(video.id),
         }}
         state={tabState}
+        versions={{
+          navigation: { backTo, autoplay },
+          // Refetch: the removed video's own work info replaces the bundle's.
+          onReplace: (removed, mark) => replace(removed, mark, "refetch"),
+        }}
       />
     </>
   );

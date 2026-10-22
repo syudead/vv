@@ -463,6 +463,7 @@ export default function VideoPage() {
           playlist={playlist}
           backTo={backTo}
           trail={trail}
+          autoplay={keepPlaying}
           capture={thumbnailCapture({
             shown: owner && showPlayer,
             controls,
