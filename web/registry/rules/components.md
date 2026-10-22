@@ -27,8 +27,9 @@ no older component is left.
   the same way (`opacity-50`, the `not-allowed` cursor) but keep their focus
   and their value; the handler still has to ignore the press or the keystroke.
 - **Size by density**: the library uses `sm` (`h-8`) controls and `icon-sm`
-  icon buttons; the video page uses `default` (`h-9`) and `lg` (`h-10`) for its
-  main action. Icon-only buttons in one area share one size.
+  icon buttons; the video page's controls below the player are `sm` too, and
+  `default` (`h-9`) and `lg` (`h-10`) stay the player's. Icon-only buttons in
+  one area share one size.
 - **Names**: an icon-only control has an `aria-label` from the i18n catalog and
   a tooltip with the same text.
 - **Text**: components take their text from the caller through `t`; they hold
@@ -420,7 +421,7 @@ put text other than the duration, the notice and the credits on the image.
 
 Item `favorite-toggle`. The favorite heart, which is both the mark and the
 toggle. `variant="card"` sits on a person's face card, `row` in a
-list row and `page` in the video page's action group. Video, group and smart
+list row and `page`, the heart with its word, in the video page's title row. Video, group and smart
 folder cards carry no heart; their list rows and the selection bar do. The heart is filled in
 `favorite` when on; when off it shows only on hover and focus of its card or
 row. Shown to the owner only.

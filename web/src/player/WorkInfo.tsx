@@ -213,10 +213,12 @@ function ListItem({
 export function Description({
   text,
   tone = "default",
+  size = "sm",
   label,
 }: {
   text: string;
   tone?: "default" | "muted";
+  size?: "sm" | "base";
   label?: UiText;
 }) {
   const ref = useRef<HTMLParagraphElement | null>(null);
@@ -238,7 +240,8 @@ export function Description({
       <p
         ref={ref}
         className={cn(
-          "max-w-prose text-sm wrap-anywhere whitespace-pre-line",
+          "max-w-prose wrap-anywhere whitespace-pre-line",
+          size === "base" ? "text-base" : "text-sm",
           tone === "muted" ? "text-muted-foreground" : "text-foreground",
           !open && "line-clamp-3",
         )}

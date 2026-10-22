@@ -1,0 +1,319 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useEffect, useState } from "react";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { setRenderedAudience as forgetAudience, type Video } from "../api/client";
+import { installFakeEventSource } from "../api/fakeEventSource";
+import type { WorkInfo } from "../api/workInfo";
+import { type Audience, AudienceProvider } from "../auth/audience";
+import { formatDate } from "../i18n";
+import { ToastProvider } from "../ui/Toast";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
+import type { PlayerControls } from "./playerControls";
+import VideoPage from "./VideoPage";
+
+vi.mock("./VideoPlayer", () => ({
+  default: function VideoPlayerMock(props: {
+    onControls: (controls: PlayerControls | null) => void;
+  }) {
+    const [initial] = useState(props);
+    useEffect(() => () => initial.onControls(null), [initial]);
+    return <div data-testid="video-player" />;
+  },
+  canStartPlayback: () => true,
+  initialPlayerStatus: {
+    loading: false,
+    reconnecting: false,
+    playing: false,
+    userActive: true,
+    ended: false,
+    stalled: false,
+    positioned: false,
+  },
+}));
+
+const work: WorkInfo = {
+  code: "KYT-002",
+  dates: [{ kind: "release", date: "2024-03-15" }],
+  people: [
+    {
+      role: "performer",
+      person: { id: 1, name: "山田 花子", provisional: false },
+      provisional: false,
+    },
+    {
+      role: "performer",
+      person: { id: 2, name: "佐藤 健太", provisional: false },
+      provisional: false,
+    },
+  ],
+  organizations: [],
+  urls: [],
+  externalIds: [],
+};
+
+// Noon keeps the formatted date stable in any time zone.
+const added = new Date(2026, 8, 20, 12, 0).toISOString();
+const watched = new Date(2026, 9, 2, 12, 0).toISOString();
+
+const owned: Video = {
+  id: 7,
+  title: "テスト動画",
+  public: false,
+  favorite: false,
+  sizeBytes: 84_331_821,
+  addedAt: added,
+  updatedAt: added,
+  fileCreatedAt: added,
+  playable: true,
+  probeState: "done",
+  thumbnailState: "done",
+  previewState: "done",
+  durationMs: 242_000,
+  width: 1920,
+  height: 1080,
+  container: "mkv",
+  videoCodec: "h264",
+  audioCodec: "aac",
+  location: { path: "/media/a/b.mkv", openable: true },
+  progress: { positionMs: 1_000, completed: false, updatedAt: watched },
+  versions: { count: 3, representativeId: 7 },
+  workInfo: work,
+  tags: [],
+};
+
+const server = {
+  videos: new Map<number, Video>(),
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function respond(url: string): Response {
+  if (url === "/api/auth/session") return json({ state: "owner" });
+  if (url === "/api/work-info-plugins") return json({ plugins: [] });
+  if (url === "/api/tags") return json([]);
+  const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?$/.exec(url);
+  if (match === null) return json({});
+  const id = Number(match[1]);
+  if (match[2] === "/related") return json({ items: [] });
+  if (match[2] === "/subtitles") return json({ subtitles: [] });
+  if (match[2] !== undefined) return json({});
+  const found = server.videos.get(id);
+  return found === undefined
+    ? json({ code: "not_found", message: "x" }, 404)
+    : json(found);
+}
+
+function renderPage(audience: Audience = "owner") {
+  return render(
+    <TooltipProvider>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/videos/7"]}>
+          <AudienceProvider audience={audience}>
+            <Link to="/videos/8">Next video</Link>
+            <Link to="/videos/9">Third video</Link>
+            <Routes>
+              <Route path="/videos/:id" element={<VideoPage />} />
+            </Routes>
+          </AudienceProvider>
+        </MemoryRouter>
+      </ToastProvider>
+    </TooltipProvider>,
+  );
+}
+
+async function openPage(audience: Audience = "owner", title = "テスト動画") {
+  renderPage(audience);
+  await screen.findByRole("heading", { level: 1, name: title });
+}
+
+function tabNames(): string[] {
+  return screen.getAllByRole("tab").map((tab) => tab.textContent ?? "");
+}
+
+function selectedTab(): string | null {
+  return screen.getByRole("tab", { selected: true }).textContent;
+}
+
+/** Radix tabs select on mouse down, not on click. */
+function openTab(name: string) {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: new RegExp(`^${name}`) }));
+}
+
+function facts(): [string, string][] {
+  return screen
+    .getAllByRole("term")
+    .map((term) => [term.textContent ?? "", term.nextElementSibling?.textContent ?? ""]);
+}
+
+describe("VideoPage tabs", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    server.videos.clear();
+    server.videos.set(7, owned);
+    installFakeEventSource();
+    forgetAudience(null);
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input) => Promise.resolve(respond(String(input))));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("コード・出演者・3 本のバージョンがある所有者の動画は 6 つのタブを並べて Overview を選び、題名まわりの操作はすべて文字付き（受け入れ条件 1）", async () => {
+    await openPage();
+    expect(tabNames()).toEqual([
+      "Overview",
+      "Work",
+      "People2",
+      "Versions3",
+      "Thumbnail",
+      "File & media",
+    ]);
+    expect(selectedTab()).toBe("Overview");
+    for (const control of [
+      screen.getByRole("button", { name: "Favorite" }),
+      screen.getByRole("button", { name: "Add to playlist" }),
+      screen.getByRole("button", { name: "Add to group" }),
+      screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
+      screen.getByRole("link", { name: "Edit details" }),
+    ]) {
+      expect(control.textContent).not.toBe("");
+    }
+    expect(
+      screen.queryByRole("button", { name: "Use current frame as thumbnail" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+  });
+
+  it("Overview は説明・作品の要約・ラベル付きの 4 つの数値を出す（受け入れ条件 2）", async () => {
+    server.videos.set(7, { ...owned, workInfo: { ...work, description: "夏の旅" } });
+    await openPage();
+    const panel = screen.getByRole("tabpanel", { name: "Overview" });
+    expect(within(panel).getByText("夏の旅")).toBeDefined();
+    expect(
+      within(panel).getByText("KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太"),
+    ).toBeDefined();
+    expect(facts()).toEqual([
+      ["Length", "4:02"],
+      ["Resolution", "1920×1080"],
+      ["Added", formatDate(added)],
+      ["Last watched", formatDate(watched)],
+    ]);
+  });
+
+  it("「Copy path」は所在の絶対パスをクリップボードへ書く（受け入れ条件 6）", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    await openPage();
+    openTab("File & media");
+    expect(screen.getByText("/media/a/b.mkv")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("/media/a/b.mkv"));
+  });
+
+  it("ゲストの公開動画は Overview と File & media、2 本なら Versions を並べ、所在・タグ・公開の切り替え・Edit details を出さない（受け入れ条件 8）", async () => {
+    // Guest responses omit the location, the progress, the work information and the tags.
+    server.videos.set(7, {
+      ...owned,
+      public: true,
+      favorite: undefined,
+      location: undefined,
+      progress: undefined,
+      workInfo: undefined,
+      versions: { count: 2, representativeId: 7 },
+    });
+    await openPage("guest");
+    expect(tabNames()).toEqual(["Overview", "Versions2", "File & media"]);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
+    expect(facts().map(([term]) => term)).toEqual(["Length", "Resolution", "Added"]);
+
+    openTab("File & media");
+    expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Media" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "File" })).toBeDefined();
+  });
+
+  it("Work のある動画から無い動画へ移ると Overview を選び、その次に Work のある動画へ移っても Overview のまま（受け入れ条件 9）", async () => {
+    // A code alone lists Work through the availability rule; its panel arrives with its own unit.
+    server.videos.set(8, { ...owned, id: 8, title: "後続の動画", workInfo: undefined });
+    server.videos.set(9, { ...owned, id: 9, title: "三本目" });
+    await openPage();
+    openTab("Work");
+    expect(selectedTab()).toBe("Work");
+
+    fireEvent.click(screen.getByRole("link", { name: "Next video" }));
+    await screen.findByRole("heading", { level: 1, name: "後続の動画" });
+    expect(tabNames()).not.toContain("Work");
+    expect(selectedTab()).toBe("Overview");
+
+    // The return to Overview is the new selection, not a fallback for this video only.
+    fireEvent.click(screen.getByRole("link", { name: "Third video" }));
+    await screen.findByRole("heading", { level: 1, name: "三本目" });
+    expect(selectedTab()).toBe("Overview");
+  });
+
+  it("次の動画にもあるタブは移った後も選んだまま", async () => {
+    server.videos.set(8, { ...owned, id: 8, title: "後続の動画" });
+    await openPage();
+    openTab("File & media");
+
+    fireEvent.click(screen.getByRole("link", { name: "Next video" }));
+    await screen.findByRole("heading", { level: 1, name: "後続の動画" });
+    expect(selectedTab()).toBe("File & media");
+  });
+
+  it("承認済みの作品情報プラグインが届くと、選んだタブを変えずに空の作品へ Work を足す", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url !== "/api/work-info-plugins") return Promise.resolve(respond(url));
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    });
+    server.videos.set(7, { ...owned, workInfo: undefined });
+    await openPage();
+    openTab("File & media");
+    expect(tabNames()).not.toContain("Work");
+
+    answer(
+      json({
+        plugins: [
+          {
+            id: 1,
+            kind: "work",
+            sources: [],
+            fileName: "a.js",
+            operations: ["search"],
+            digest: "d",
+            state: "approved",
+            settings: [],
+          },
+        ],
+      }),
+    );
+    await waitFor(() => expect(tabNames()).toContain("Work"));
+    expect(tabNames()).toEqual([
+      "Overview",
+      "Work",
+      "Versions3",
+      "Thumbnail",
+      "File & media",
+    ]);
+    expect(selectedTab()).toBe("File & media");
+  });
+});

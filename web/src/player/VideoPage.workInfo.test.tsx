@@ -123,8 +123,9 @@ async function openPage(audience: Audience = "owner") {
   await screen.findByRole("heading", { level: 1, name: /テスト動画|New title/ });
 }
 
-function workDetails() {
-  return screen.getByRole("list", { name: "Work details" });
+/** Overview's one-line work summary: the code, the release date and the performers. */
+function summary(text: string) {
+  return within(screen.getByRole("tabpanel", { name: "Overview" })).getByText(text);
 }
 
 async function openEditor() {
@@ -188,65 +189,15 @@ describe("VideoPage work information", () => {
     vi.restoreAllMocks();
   });
 
-  it("値のある項目だけを情報欄に出し、無い項目は出さない", async () => {
+  it("Overview の作品の要約に品番・発売日・出演者を出す", async () => {
     await openPage();
-    const row = workDetails();
-    expect(
-      within(row)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual(["CodeAB-123", "Released2024-03-01", "PerformerAlice"]);
-    expect(within(row).queryByText("Recorded")).toBeNull();
-    expect(within(row).queryByText("Links")).toBeNull();
-    const facts = screen.getByRole("list", { name: "File details" });
-    const technical = screen.getByRole("list", { name: "Technical details" });
-    expect(
-      facts.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      row.compareDocumentPosition(technical) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("作品情報の無い動画は、情報欄を今までどおりに描く", async () => {
-    server.video = plain;
-    await openPage();
-    expect(screen.queryByRole("list", { name: "Work details" })).toBeNull();
-    expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
-    expect(screen.getByRole("list", { name: "Technical details" })).toBeDefined();
-  });
-
-  it("4 人以上の役割は 3 人と +{n} more を出し、押すと全員を出して 4 人目へフォーカスを移す", async () => {
-    server.video = {
-      ...plain,
-      workInfo: {
-        ...info,
-        people: ["A", "B", "C", "D", "E"].map((name, index) => ({
-          role: "performer" as const,
-          person: { id: index + 1, name, provisional: false },
-          provisional: false,
-        })),
-      },
-    };
-    await openPage();
-    const more = within(workDetails()).getByRole("button", {
-      name: "Show all 5 performers",
-    });
-    expect(more.textContent).toBe("+2 more");
-    expect(within(workDetails()).queryByText("D")).toBeNull();
-    await userEvent.setup().click(more);
-    const fourth = within(workDetails()).getByRole("link", { name: "Open D" });
-    expect(document.activeElement).toBe(fourth);
-    expect(within(workDetails()).getByText("E")).toBeDefined();
-    expect(
-      within(workDetails()).getByRole("button", { name: "Show fewer" }),
-    ).toBeDefined();
+    expect(summary("AB-123 · Released 2024-03-01 · Alice")).toBeDefined();
   });
 
   it("ゲストには項目も編集の入口も無い", async () => {
     server.video = { ...plain, location: undefined, public: true };
     await openPage("guest");
-    expect(screen.queryByRole("list", { name: "Work details" })).toBeNull();
+    expect(screen.queryByText(/AB-123/)).toBeNull();
     expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
   });
 
@@ -344,11 +295,7 @@ describe("VideoPage work information", () => {
         externalIds: [],
       },
     });
-    expect(
-      within(workDetails())
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual(["CodeXY-9", "Released2025", "PerformersBob, Carol"]);
+    expect(summary("XY-9 · Released 2025 · Bob, Carol")).toBeDefined();
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("link", { name: "Edit details" }),
@@ -356,7 +303,7 @@ describe("VideoPage work information", () => {
     );
   });
 
-  it("編集画面で項目を消して保存すると、情報欄からその項目が消える", async () => {
+  it("編集画面で項目を消して保存すると、作品の要約からその項目が消える", async () => {
     const cleared: Video = { ...plain, workInfo: { ...info, code: undefined } };
     server.details.mockImplementation(() => json(cleared));
     await openPage();
@@ -372,8 +319,7 @@ describe("VideoPage work information", () => {
     expect(server.details.mock.calls[0]![0]).toMatchObject({
       workInfo: { code: null },
     });
-    expect(within(workDetails()).queryByText("Code")).toBeNull();
-    expect(within(workDetails()).getByText("2024-03-01")).toBeDefined();
+    expect(summary("Released 2024-03-01 · Alice")).toBeDefined();
   });
 
   it("dates[0].date の 400 では編集画面が開いたまま値を残し、その項目に理由を出し、離れても題名は変わらない", async () => {
@@ -443,7 +389,7 @@ describe("VideoPage work information", () => {
     expect(server.details).not.toHaveBeenCalled();
   });
 
-  it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品情報の行を残す", async () => {
+  it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品の要約を残す", async () => {
     // The display-name response omits workInfo by contract.
     server.displayName.mockImplementation(() =>
       json({ ...plain, title: "Quick", displayName: "Quick" }),
@@ -459,17 +405,19 @@ describe("VideoPage work information", () => {
       expect(server.displayName).toHaveBeenCalledWith({ displayName: "Quick" }),
     );
     expect(await screen.findByRole("heading", { level: 1, name: "Quick" })).toBeDefined();
-    expect(within(workDetails()).getByText("AB-123")).toBeDefined();
+    expect(summary("AB-123 · Released 2024-03-01 · Alice")).toBeDefined();
     expect(puts()).toHaveLength(0);
   });
 
   it("video の知らせでページを読み直し、ほかで書いた値を出す", async () => {
     await openPage();
-    expect(within(workDetails()).getByText("AB-123")).toBeDefined();
+    expect(summary("AB-123 · Released 2024-03-01 · Alice")).toBeDefined();
     server.video = { ...withInfo, workInfo: { ...info, code: "CD-456" } };
     await act(async () => {
       await emitServerEvent("video", { id: 7 });
     });
-    await waitFor(() => expect(within(workDetails()).getByText("CD-456")).toBeDefined());
+    await waitFor(() =>
+      expect(summary("CD-456 · Released 2024-03-01 · Alice")).toBeDefined(),
+    );
   });
 });

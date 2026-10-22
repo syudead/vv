@@ -5,19 +5,17 @@ import type { UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 /** Keep triggers visible while open; isolate them from card navigation and selection. */
 export default function PickerButton({
   variant,
   label,
-  tooltip,
   icon: Icon,
   picker,
 }: {
   variant: "card" | "row" | "page";
+  /** The page form's visible word; the other forms' accessible name. */
   label: UiText;
-  tooltip?: UiText;
   icon: LucideIcon;
   picker: (open: boolean, onOpenChange: (open: boolean) => void) => ReactNode;
 }) {
@@ -27,21 +25,12 @@ export default function PickerButton({
   if (variant === "page") {
     return (
       <Popover open={open} onOpenChange={setOpen}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={label}
-                className="text-muted-foreground"
-              >
-                <Icon aria-hidden="true" />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{tooltip ?? label}</TooltipContent>
-        </Tooltip>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            <Icon aria-hidden="true" />
+            {label}
+          </Button>
+        </PopoverTrigger>
         {content}
       </Popover>
     );

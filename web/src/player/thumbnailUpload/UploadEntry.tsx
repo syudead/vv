@@ -22,7 +22,7 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { Input } from "../../ui/shadcn/input";
 import ActionButton from "../ActionButton";
-import type { ThumbnailCapture } from "../VideoFacts";
+import type { ThumbnailCapture } from "../playerLayers";
 import {
   encodeComposition,
   type LoadResult,
