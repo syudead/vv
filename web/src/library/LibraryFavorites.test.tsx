@@ -19,6 +19,7 @@ import LibraryPage from "./LibraryPage";
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: false,
     sizeBytes: 1024 * 1024 * id,

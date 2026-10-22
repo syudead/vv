@@ -49,8 +49,9 @@ func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen
 func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	// Check raw field presence so generated zero values cannot silently clear data.
 	var body struct {
-		DisplayName *string            `json:"displayName"`
-		WorkInfo    *gen.WorkInfoInput `json:"workInfo"`
+		DisplayName    *string            `json:"displayName"`
+		WorkInfo       *gen.WorkInfoInput `json:"workInfo"`
+		ContentVersion *string            `json:"contentVersion"`
 	}
 	raw, ok := s.readJSONBodyRaw(w, r, &body)
 	if !ok {
@@ -60,8 +61,16 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 		s.invalidRequest(w, "displayName and workInfo are required.")
 		return
 	}
+	virtual, ok := s.virtualSaveTarget(w, r, id, body.ContentVersion)
+	if !ok {
+		return
+	}
 	// Validate displayName before work-info enums and required fields, even when both are invalid.
-	if _, _, err := domain.NormalizeDisplayName(*body.DisplayName); s.writeDetailsDisplayNameError(w, err) {
+	if virtual {
+		if !s.virtualTitleUsable(w, *body.DisplayName, "displayName") {
+			return
+		}
+	} else if _, _, err := domain.NormalizeDisplayName(*body.DisplayName); s.writeDetailsDisplayNameError(w, err) {
 		return
 	}
 	var fields struct {
@@ -75,12 +84,31 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 	if !ok || !s.workInfoConfigured(w) {
 		return
 	}
+	if virtual {
+		s.saveVirtualDetails(w, r, id, *body.ContentVersion, *body.DisplayName, info)
+		return
+	}
 	video, err := s.workInfo.SetDetails(r.Context(), id, *body.DisplayName, info)
 	if s.writeDetailsDisplayNameError(w, err) {
 		return
 	}
 	if err != nil {
 		s.writeVideoWorkInfoError(w, err)
+		return
+	}
+	s.writeVideoDetail(w, r, video)
+}
+
+func (s *server) saveVirtualDetails(
+	w http.ResponseWriter, r *http.Request, id int64, contentVersion, title string, info domain.WorkInfo,
+) {
+	video, err := s.virtualVideos.SaveDetails(r.Context(), id, contentVersion, title, info)
+	if _, ok := workInfoFailureOf(err); ok || errors.Is(err, domain.ErrInvalidWorkInfo) {
+		s.writeVideoWorkInfoError(w, err)
+		return
+	}
+	if err != nil {
+		s.writeVirtualVideoError(w, err, "displayName", "Could not save the video details.")
 		return
 	}
 	s.writeVideoDetail(w, r, video)
@@ -236,9 +264,9 @@ func valueOrZero[T any](value *T) T {
 	return *value
 }
 
-// Work details are owner-only; leave guest responses and responses without a store unchanged.
+// Guests read work information too, and forAudience keeps only its description and links.
 func (s *server) workInfoForDetail(ctx context.Context, video domain.Video) (domain.Video, error) {
-	if s.workInfo == nil || !audienceFrom(ctx).IsOwner() || video.UserKey == "" {
+	if s.workInfo == nil || video.UserKey == "" {
 		return video, nil
 	}
 	infos, err := s.workInfo.ByUserKeys(ctx, []string{video.UserKey})

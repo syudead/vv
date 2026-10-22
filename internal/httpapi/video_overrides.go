@@ -24,7 +24,8 @@ type OverrideStore interface {
 func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	// Require displayName presence to prevent accidental clearing.
 	var body struct {
-		DisplayName *string `json:"displayName"`
+		DisplayName    *string `json:"displayName"`
+		ContentVersion *string `json:"contentVersion"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
@@ -35,6 +36,14 @@ func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id 
 	}
 	if s.overrides == nil {
 		s.internalError(w, "Video override storage is not configured.", nil)
+		return
+	}
+	virtual, ok := s.virtualSaveTarget(w, r, id, body.ContentVersion)
+	if !ok {
+		return
+	}
+	if virtual {
+		s.saveVirtualTitle(w, r, id, *body.ContentVersion, *body.DisplayName)
 		return
 	}
 

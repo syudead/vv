@@ -62,6 +62,7 @@ function previews(count: number) {
 function video(id: number, title: string, extra: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title,
     public: false,
     sizeBytes: 1024,

@@ -17,7 +17,7 @@ import (
 var virtualNow = time.Now
 
 func virtualUserKey(id int64) string {
-	return fmt.Sprintf("virtual:%d", id)
+	return fmt.Sprintf("%s%d", domain.VirtualKeyPrefix, id)
 }
 
 // Create stores the virtual video and its projected row in one transaction and returns the projected video.
@@ -62,9 +62,31 @@ func (s *VirtualVideoStore) Create(ctx context.Context, title string) (domain.Vi
 
 // SaveTitle replaces the title and its keys; contentVersion is the whole user key the editor read.
 func (s *VirtualVideoStore) SaveTitle(ctx context.Context, videoID int64, contentVersion, title string) (domain.Video, error) {
+	return s.save(ctx, videoID, contentVersion, title, nil)
+}
+
+// SaveDetails saves the title and the work information in one transaction, writing neither when either fails;
+// contentVersion is the whole user key the editor read.
+func (s *VirtualVideoStore) SaveDetails(
+	ctx context.Context, videoID int64, contentVersion, title string, info domain.WorkInfo,
+) (domain.Video, error) {
+	return s.save(ctx, videoID, contentVersion, title, &info)
+}
+
+// save writes the title and, when info is set, the work information; the returned video carries work information
+// only then, as the file-video saves do.
+func (s *VirtualVideoStore) save(
+	ctx context.Context, videoID int64, contentVersion, title string, info *domain.WorkInfo,
+) (domain.Video, error) {
 	title, err := domain.NormalizeVirtualTitle(title)
 	if err != nil {
 		return domain.Video{}, err
+	}
+	var normalized domain.WorkInfo
+	if info != nil {
+		if normalized, _, err = domain.NormalizeWorkInfo(*info); err != nil {
+			return domain.Video{}, err
+		}
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -77,30 +99,65 @@ func (s *VirtualVideoStore) SaveTitle(ctx context.Context, videoID int64, conten
 		return domain.Video{}, err
 	}
 	now := virtualNow()
+	titleChanged, err := writeVirtualTitle(ctx, tx, key, title, now)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	var edited []string
+	if info != nil {
+		if edited, err = writeVirtualWorkInfo(ctx, tx, key, *info, normalized); err != nil {
+			return domain.Video{}, err
+		}
+	}
+	if titleChanged || len(edited) > 0 {
+		if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
+			return domain.Video{}, err
+		}
+	}
+	var video domain.Video
+	if info != nil {
+		video, err = ownerVideoWithWorkInfo(ctx, tx, videoID)
+	} else {
+		video, err = getVideo(ctx, tx, domain.AudienceOwner, videoID)
+	}
+	if err != nil {
+		return domain.Video{}, err
+	}
+	events, err := workInfoChangedEvents(ctx, tx, edited)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	if titleChanged {
+		events = append([]domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}, events...)
+	}
+	if err := s.db.commitMatchChangeIf(ctx, tx, titleChanged, events...); err != nil {
+		return domain.Video{}, fmt.Errorf("cannot save the virtual video: %w", err)
+	}
+	return video, nil
+}
+
+// Check the credits the input references, then replace the key's work information; returns the edited keys.
+func writeVirtualWorkInfo(ctx context.Context, tx *sql.Tx, key string, input, normalized domain.WorkInfo) ([]string, error) {
+	if _, err := checkCreditRefs(ctx, tx, []domain.WorkInfo{input}); err != nil {
+		return nil, err
+	}
+	return applyWorkInfo(ctx, tx, []string{key}, map[string]domain.WorkInfo{key: normalized})
+}
+
+// Write a changed title with its sort and search keys; reports whether the title changed.
+func writeVirtualTitle(ctx context.Context, tx *sql.Tx, key, title string, now time.Time) (bool, error) {
 	result, err := tx.ExecContext(ctx, `update virtual_videos
 		set title = ?, title_key = ?, search_key = ?, search_version = ?, updated_at = ?
 		where user_key = ? and title <> ?`,
 		title, domain.NaturalSortKey(title), searchKeyPart(title), domain.SearchKeyVersion, now.Unix(), key, title)
 	if err != nil {
-		return domain.Video{}, fmt.Errorf("cannot save the virtual video: %w", err)
+		return false, fmt.Errorf("cannot save the virtual video: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
-		return domain.Video{}, fmt.Errorf("cannot save the virtual video: %w", err)
+		return false, fmt.Errorf("cannot save the virtual video: %w", err)
 	}
-	if changed > 0 {
-		if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
-			return domain.Video{}, err
-		}
-	}
-	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)
-	if err != nil {
-		return domain.Video{}, err
-	}
-	if err := s.db.commitMatchChangeIf(ctx, tx, changed > 0, domain.VideoOverrideChanged{VideoID: videoID}); err != nil {
-		return domain.Video{}, fmt.Errorf("cannot save the virtual video: %w", err)
-	}
-	return video, nil
+	return changed > 0, nil
 }
 
 // Delete removes the virtual video, its projected row and every user-data row under its key in one transaction, and

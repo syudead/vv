@@ -51,6 +51,7 @@ const info: WorkInfo = {
 
 const plain: Video = {
   id: 7,
+  virtual: false,
   title: "テスト動画",
   public: false,
   sizeBytes: 1_000,

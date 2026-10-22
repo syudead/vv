@@ -7,6 +7,7 @@ import { ReadFailure } from "./StatusOverlays";
 
 const failed: Video = {
   id: 7,
+  virtual: false,
   title: "壊れた動画",
   public: false,
   sizeBytes: 100,

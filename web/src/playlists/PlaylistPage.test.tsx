@@ -14,6 +14,7 @@ import { itemTitle } from "./playlistItems";
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title: `Video ${String(id)}`,
     public: false,
     sizeBytes: 1024,

@@ -152,6 +152,9 @@ func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrTooFewVersions):
 		s.invalidRequest(w, "videoIds must contain a video other than the target.")
 		return
+	case errors.Is(err, domain.ErrVirtualVideo):
+		s.virtualVideoInBundle(w)
+		return
 	case err != nil:
 		s.writeGroupError(w, err, "Could not bundle the videos.")
 		return

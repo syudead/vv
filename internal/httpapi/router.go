@@ -250,6 +250,8 @@ type Options struct {
 
 	Overrides OverrideStore
 
+	VirtualVideos VirtualVideoStore
+
 	ThumbnailPicker ThumbnailPicker
 
 	Versions VersionStore
@@ -354,6 +356,7 @@ type server struct {
 	watchHistory     WatchHistory
 	activity         Activity
 	overrides        OverrideStore
+	virtualVideos    VirtualVideoStore
 	thumbnails       ThumbnailPicker
 	versions         VersionStore
 	folders          Folders
@@ -437,6 +440,7 @@ func NewRouter(opts Options) http.Handler {
 		watchHistory:           opts.WatchHistory,
 		activity:               opts.Activity,
 		overrides:              opts.Overrides,
+		virtualVideos:          opts.VirtualVideos,
 		thumbnails:             opts.ThumbnailPicker,
 		versions:               opts.Versions,
 		folders:                opts.Folders,
@@ -588,7 +592,7 @@ func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
 		"/api/video-tags", "/api/video-tags/summary", "/api/video-edits", "/api/video-edits/summary",
-		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/virtual-videos", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
@@ -921,6 +925,9 @@ const (
 	reasonUndoExpired                   = gen.ErrorReasonUndoExpired
 	reasonTagKindNotFound               = gen.ErrorReasonTagKindNotFound
 	reasonTagKindNameTaken              = gen.ErrorReasonTagKindNameTaken
+	reasonInvalidTitle                  = gen.ErrorReasonInvalidTitle
+	reasonNotVirtual                    = gen.ErrorReasonNotVirtual
+	reasonVirtualVideo                  = gen.ErrorReasonVirtualVideo
 )
 
 // Error messages must be English and exclude arbitrary OS/external-program output.

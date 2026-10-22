@@ -227,6 +227,7 @@ import VideoPlayer, { playerLanguage } from "./VideoPlayer";
 
 const video: Video = {
   id: 7,
+  virtual: false,
   title: "test",
   public: false,
   sizeBytes: 100,

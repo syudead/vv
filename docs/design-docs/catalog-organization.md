@@ -33,6 +33,13 @@ a scan keeps that row, and startup recreates it when it is missing. Deleting a
 virtual video removes its row, its projection and the user data under its key
 in one transaction.
 
+Saving and deleting a virtual video carry the `contentVersion` the screen
+read, which is its whole user key. `videos.id` is a rowid that SQLite can
+reuse after a delete, so a stale screen gets `404` or `409 content_changed`
+instead of writing into another video, and nothing is recreated. A virtual
+video never joins a version bundle, because a bundle chooses a file to play;
+every bundle operation answers `409 virtual_video` for one.
+
 | Read | Value for a virtual video |
 | --- | --- |
 | Added, created and modified sort | Its creation time |
@@ -69,7 +76,9 @@ and ordering. Startup refreshes keys whose normalization version changed.
 All catalog reads apply the audience before counting or paging; a guest
 cannot discover hidden videos through a collection or a search. A file video
 is visible through a visible location; a virtual video is visible to the
-owner, and to a guest only while it is public.
+owner, and to a guest only while it is public. A guest reads the description
+and links of a visible video's work information; its other fields stay
+owner-only.
 
 Screen operations and field definitions live in
 [the screen API schema](../../api/openapi.yaml). External tag operations,

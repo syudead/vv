@@ -7,6 +7,7 @@ import { type CardPreview, CardMedia, useCardPreview } from "./cardPreview";
 function video(): Video {
   return {
     id: 1,
+    virtual: false,
     title: "動画 1",
     public: false,
     sizeBytes: 1024,

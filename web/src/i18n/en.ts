@@ -417,6 +417,9 @@ const errorReasons = {
   face_recognition_off:
     "Face recognition is turned off. Turn it on under Settings, Face recognition.",
   face_recognition_unsupported: "vv has no face runtime for this platform.",
+  invalid_title: "Enter a title.",
+  not_virtual: "This video has a file, so it can't be deleted here.",
+  virtual_video: "A video without a file can't be used here.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

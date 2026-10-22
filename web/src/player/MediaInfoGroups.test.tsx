@@ -190,6 +190,7 @@ describe("MediaInfoGroups", () => {
 describe("VideoFacts と mediaInfo", () => {
   const video: Video = {
     id: 7,
+    virtual: false,
     title: "テスト動画",
     sizeBytes: 84_331_821,
     addedAt: "2026-09-20T03:00:00Z",

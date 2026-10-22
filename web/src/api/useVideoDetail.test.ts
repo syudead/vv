@@ -27,6 +27,7 @@ const { detailMark, isProcessing, useRelatedVideos, useVideoDetail } =
 
 const done: Video = {
   id: 7,
+  virtual: false,
   title: "動画",
   public: false,
   sizeBytes: 1,

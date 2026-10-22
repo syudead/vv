@@ -63,6 +63,7 @@ vi.mock("./VideoPlayer", () => ({
 
 const base: Video = {
   id: 0,
+  virtual: false,
   title: "",
   public: false,
   sizeBytes: 1_000,

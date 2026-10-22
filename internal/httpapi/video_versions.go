@@ -97,10 +97,17 @@ func (s *server) checkVersionsError(w http.ResponseWriter, err error, message st
 		s.invalidRequestReason(w, reasonRepresentativeNotSelected, "representativeId must be one of videoIds.")
 	case errors.Is(err, domain.ErrNotBundled):
 		s.invalidRequestReason(w, reasonNotBundled, "The video is not bundled with other videos.")
+	case errors.Is(err, domain.ErrVirtualVideo):
+		s.virtualVideoInBundle(w)
 	default:
 		s.internalError(w, message, err)
 	}
 	return false
+}
+
+// A bundle chooses a file to play, so a virtual video never joins one.
+func (s *server) virtualVideoInBundle(w http.ResponseWriter) {
+	s.conflictReason(w, reasonVirtualVideo, "A video without a file cannot be bundled with versions.")
 }
 
 func (s *server) writeVideoVersions(w http.ResponseWriter, r *http.Request, versions domain.VideoVersions) {
