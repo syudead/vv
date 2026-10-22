@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -264,6 +265,39 @@ func (f *fakeIngestStore) RevertThumbnailImage(_ context.Context, videoID int64)
 	return f.videos[videoID], nil
 }
 
+// Mirrors the store: the image row goes and the thumbnail returns to pending.
+func (f *fakeIngestStore) RemoveVirtualThumbnailImage(_ context.Context, videoID int64, contentKey string) (domain.Video, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	video, ok := f.videos[videoID]
+	switch {
+	case !ok:
+		return domain.Video{}, domain.ErrNotFound
+	case !video.Virtual():
+		return domain.Video{}, domain.ErrNotVirtual
+	case video.ContentKey != contentKey:
+		return domain.Video{}, domain.ErrContentChanged
+	}
+	delete(f.images, contentKey)
+	delete(f.rows, contentKey)
+	video.ThumbnailState, video.ThumbnailImageRevision, video.ThumbnailImageOrigin = domain.ThumbnailStatePending, 0, ""
+	f.videos[videoID] = video
+	return video, nil
+}
+
+func (f *fakeIngestStore) VirtualThumbnailKeys(context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var keys []string
+	for key := range f.images {
+		if domain.IsVirtualKey(key) {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return keys, nil
+}
+
 // Caller must hold f.mu.
 func (f *fakeIngestStore) setImageRevision(key string, revision int64, origin domain.ThumbnailImageOrigin) {
 	for id, other := range f.videos {
@@ -461,6 +495,14 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string, s
 		f.record("publish-thumbnail")
 	}
 	return nil
+}
+
+// A thumbnail counts as available once published through thumbnailDir.
+func (f *fakeGenerator) ThumbnailAvailable(contentKey string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.published[contentKey]
+	return ok
 }
 
 // Prefix source bytes with source: and share fitErr with thumbnail fitting.

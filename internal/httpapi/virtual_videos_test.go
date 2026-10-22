@@ -391,6 +391,28 @@ func (virtualVersions) Unbundle(context.Context, int64) (domain.Video, error) {
 
 func (virtualVersions) Dismiss(context.Context, [2]int64) error { return domain.ErrVirtualVideo }
 
+// A virtual video has no frames, so the frame position and every thumbnail edit start answer 409 virtual_video
+// before reaching the application, which these fakes would panic on.
+func TestFrameThumbnailEndpointsRejectVirtualVideos(t *testing.T) {
+	handler := newTestServer(t, Options{
+		Videos:          &fakeLibrary{videos: map[int64]domain.Video{7: virtualVideo(7, "Moonlight")}},
+		ThumbnailPicker: unusedThumbnailPicker{}, ThumbnailEdits: unusedThumbnailEdits{},
+	})
+	want := wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonVirtualVideo}
+	for _, tc := range []struct{ method, target, body string }{
+		{http.MethodPut, "/api/videos/7/thumbnail-position", `{"positionMs":null}`},
+		{http.MethodPost, "/api/videos/7/thumbnail-edits", `{"source":"thumbnail"}`},
+		{http.MethodPost, "/api/videos/7/thumbnail-edits/image", `{}`},
+	} {
+		rec := jsonRequest(t, handler, tc.method, tc.target, tc.body)
+		assertErrorBody(t, tc.target, rec.Code, rec.Body.Bytes(), want)
+	}
+}
+
+type unusedThumbnailPicker struct{ ThumbnailPicker }
+
+type unusedThumbnailEdits struct{ ThumbnailEdits }
+
 type virtualOrganizer struct{ Organizer }
 
 func (virtualOrganizer) Bundle(context.Context, []int64, int64) (domain.OrganizeResult, error) {
