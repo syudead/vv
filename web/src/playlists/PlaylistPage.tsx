@@ -50,6 +50,7 @@ import {
 } from "../videoList/reorder";
 import PlaylistItemRow from "./PlaylistItemRow";
 import {
+  allVirtual,
   dropItem,
   focusAfterRemove,
   itemTitle,
@@ -285,8 +286,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
   }
 
   const ready = page.kind === "ready" ? page : null;
-  // Play starts at the first playable item, skipping empty smart folders.
-  //
+  // Play starts at the first playable item, skipping empty smart folders and virtual videos.
   const firstTarget = id === null ? null : firstPlayTarget(id, ready?.items ?? []);
 
   // Positions are one-based in the current order.
@@ -322,6 +322,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
           ready.items.length,
           playlistDuration(ready.items),
         )}
+        description={allVirtual(ready.items) ? t.playlists.detail.allVirtual : undefined}
         actions={
           <>
             {firstTarget !== null && (

@@ -49,6 +49,7 @@ every bundle operation answers `409 virtual_video` for one.
 | Duration and size sort | Unknown, so it sorts last |
 | Duration range and playable-only filters | Excluded |
 | Folder reads, external API, MCP | Absent, because they read locations |
+| Playlist playback | Continuous play passes over it, and `playableCount` leaves it out; the manual previous and next steps still reach its page |
 
 Database migrations define the schema. The recovery distinction is documented
 in [Data and recovery](../how-to/running-vv.md#data-and-recovery), and startup

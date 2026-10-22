@@ -55,13 +55,14 @@ func (s *server) GetPlaylistPlayback(w http.ResponseWriter, r *http.Request, id 
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.PlaylistPlayback{
-		Playlist:     toAPIPlaylistSummary(playback.Playlist),
-		ItemId:       playback.ItemID,
-		Position:     playback.Position,
-		Count:        playback.Count,
-		Next:         out[0],
-		PreviousItem: out[1],
-		NextItem:     out[2],
+		Playlist:      toAPIPlaylistSummary(playback.Playlist),
+		ItemId:        playback.ItemID,
+		Position:      playback.Position,
+		Count:         playback.Count,
+		PlayableCount: playback.PlayableCount,
+		Next:          out[0],
+		PreviousItem:  out[1],
+		NextItem:      out[2],
 	}, s.logger)
 }
 
