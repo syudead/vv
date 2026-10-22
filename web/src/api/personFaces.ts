@@ -1,5 +1,5 @@
 import { apiFetch, request, RequestFailed, toRequestFailed } from "./client";
-import type { Person } from "./credits";
+import { afterCreditChange, type Person } from "./credits";
 import type { components } from "./gen/openapi";
 
 export type FaceCandidate = components["schemas"]["FaceCandidate"];
@@ -40,9 +40,11 @@ export function confirmFaceCandidate(
   id: number,
   otherId: number,
 ): Promise<FaceCandidateConfirmation> {
-  return request<FaceCandidateConfirmation>(pairPath(id, otherId, "confirm"), {
-    method: "POST",
-  });
+  return afterCreditChange(
+    request<FaceCandidateConfirmation>(pairPath(id, otherId, "confirm"), {
+      method: "POST",
+    }),
+  );
 }
 
 async function postPair(
@@ -74,9 +76,11 @@ export function isCandidateGone(error: unknown): boolean {
 
 /** Split the appearance into a new provisional person; returns that person. */
 export function splitFaceAppearance(id: number, appearanceId: number): Promise<Person> {
-  return request<Person>(`${personPath(id)}/appearances/${String(appearanceId)}/split`, {
-    method: "POST",
-  });
+  return afterCreditChange(
+    request<Person>(`${personPath(id)}/appearances/${String(appearanceId)}/split`, {
+      method: "POST",
+    }),
+  );
 }
 
 /** Split several appearances into one new provisional person; returns that person. */
@@ -84,11 +88,13 @@ export function splitFaceAppearances(
   id: number,
   appearanceIds: readonly number[],
 ): Promise<Person> {
-  return request<Person>(`${personPath(id)}/appearances/split`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ appearanceIds }),
-  });
+  return afterCreditChange(
+    request<Person>(`${personPath(id)}/appearances/split`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appearanceIds }),
+    }),
+  );
 }
 
 export type FaceAppearanceMove = components["schemas"]["FaceAppearanceMove"];
@@ -104,11 +110,13 @@ export function moveFaceAppearances(
   targetId: number,
   restoreCredits: readonly FaceMoveCredit[] = [],
 ): Promise<FaceAppearanceMove> {
-  return request<FaceAppearanceMove>(`${personPath(id)}/appearances/move`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ appearanceIds, targetId, restoreCredits }),
-  });
+  return afterCreditChange(
+    request<FaceAppearanceMove>(`${personPath(id)}/appearances/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appearanceIds, targetId, restoreCredits }),
+    }),
+  );
 }
 
 /** Other people whose faces look like the given appearances of the person, or all of them; most similar first. */

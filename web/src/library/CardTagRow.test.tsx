@@ -51,6 +51,18 @@ describe("CardTagRow", () => {
     expect(screen.getByRole("button", { name: "Filter by Anime" })).toBeDefined();
   });
 
+  it("先頭に出す種類のタグを前に並べる", () => {
+    const [travel, anime] = tags("旅行", "Anime");
+    const genre = { ...anime!, kind: { id: 1, name: "Genre", cardFirst: true } };
+    renderRow({ tags: [travel!, genre] });
+    const ul = screen.getByRole("list", { name: "Tags" });
+    expect(
+      within(ul)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Anime", "旅行"]);
+  });
+
   it("押すと onPress にそのタグを渡す", () => {
     const { onPress } = renderRow({ tags: tags("旅行") });
     fireEvent.click(screen.getByRole("button", { name: "Filter by 旅行" }));

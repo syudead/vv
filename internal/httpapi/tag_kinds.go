@@ -66,6 +66,31 @@ func (s *server) RenameTagKind(w http.ResponseWriter, r *http.Request, id gen.Ta
 	writeJSON(w, http.StatusOK, toAPITagKind(kind), s.logger)
 }
 
+func (s *server) SetTagKindCardFirst(w http.ResponseWriter, r *http.Request, id gen.TagKindId) {
+	// A pointer tells a missing value from false.
+	var body struct {
+		CardFirst *bool `json:"cardFirst"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.CardFirst == nil {
+		s.invalidRequest(w, "cardFirst is required.")
+		return
+	}
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	kind, err := s.tags.SetTagKindCardFirst(r.Context(), id, *body.CardFirst)
+	if err != nil {
+		s.writeTagKindError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, toAPITagKind(kind), s.logger)
+}
+
 // Deleting a kind preserves its tags with no kind.
 func (s *server) DeleteTagKind(w http.ResponseWriter, r *http.Request, id gen.TagKindId) {
 	if s.tags == nil {
@@ -103,12 +128,14 @@ func (s *server) writeTagKindError(w http.ResponseWriter, err error) {
 }
 
 func toAPITagKind(kind domain.TagKind) gen.TagKind {
-	return gen.TagKind{Id: kind.ID, Name: kind.Name, TagCount: kind.TagCount, CreatedAt: kind.CreatedAt}
+	return gen.TagKind{
+		Id: kind.ID, Name: kind.Name, CardFirst: kind.CardFirst, TagCount: kind.TagCount, CreatedAt: kind.CreatedAt,
+	}
 }
 
 func toAPITagKindRef(kind *domain.TagKindRef) *gen.TagKindRef {
 	if kind == nil {
 		return nil
 	}
-	return &gen.TagKindRef{Id: kind.ID, Name: kind.Name}
+	return &gen.TagKindRef{Id: kind.ID, Name: kind.Name, CardFirst: kind.CardFirst}
 }

@@ -155,7 +155,11 @@ describe("操作のあとの反映", () => {
   });
 
   it("種類の絞り込みは id の種類のタグか、none なら種類の無いタグに合う", () => {
-    const genre = tag({ id: 1, name: "A", kind: { id: 1, name: "Genre" } });
+    const genre = tag({
+      id: 1,
+      name: "A",
+      kind: { id: 1, name: "Genre", cardFirst: false },
+    });
     const plain = tag({ id: 2, name: "B" });
     expect(matchesTagQuery(genre, query({ kind: "1" }))).toBe(true);
     expect(matchesTagQuery(genre, query({ kind: "2" }))).toBe(false);
@@ -165,7 +169,7 @@ describe("操作のあとの反映", () => {
   });
 
   it("まとめて種類を付けた行は位置を変えずに書き換え、絞り込みから外れた行は取り除く", () => {
-    const work = { id: 2, name: "Work" };
+    const work = { id: 2, name: "Work", cardFirst: false };
     const base = page([tag({ id: 1, name: "A" }), tag({ id: 2, name: "B" })], {
       total: 5,
       totalAll: 9,

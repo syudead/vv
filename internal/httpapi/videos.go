@@ -177,14 +177,13 @@ func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryPar
 
 // writeVideoPage includes progress, tags, and the selected location's folder when roots are available. Preserve MissingTagIDs in the response.
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
-	progress := s.progressFor(r.Context(), page.Items)
-	tags := s.tagsFor(r.Context(), page.Items)
+	extras := s.extrasFor(r.Context(), page.Items)
 
 	audience := audienceFrom(r.Context())
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, view := range s.presentVideos(r.Context(), page.Items) {
 		video := view.Video
-		item := withTags(withProgress(toAPIVideo(view), progress, video.UserKey), tags, video.UserKey)
+		item := extras.item(view)
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
@@ -229,6 +228,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.ContentVersion = nil
 	video.Favorite = nil
 	video.WorkInfo = nil
+	video.CardCredits = nil
 	return video
 }
 
@@ -384,6 +384,10 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
 	// Include work information only when the caller loaded or saved it into video.
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
+	// Lists replace a changed item with this detail, so it carries the card's credits too.
+	if video.WorkInfo != nil {
+		payload.CardCredits = toAPICardCredits(*video.WorkInfo)
+	}
 	// Include additional media information only when GetVideo populated it.
 	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
 	// Detail context uses playback order and audience-visible counts; smart-folder context replaces group context.

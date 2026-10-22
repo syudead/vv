@@ -102,6 +102,7 @@ type Tags interface {
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
 	CreateTagKind(ctx context.Context, name string) (domain.TagKind, error)
 	RenameTagKind(ctx context.Context, id int64, name string) (domain.TagKind, error)
+	SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error)
 	DeleteTagKind(ctx context.Context, id int64) error
 }
 
@@ -660,6 +661,10 @@ func requiresPutJSONBody(path string) bool {
 	if suffix, ok := strings.CutPrefix(path, "/api/folders/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "grouping"
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "card-first"
 	}
 	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
 		return id != "" && !strings.Contains(id, "/")

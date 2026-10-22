@@ -2861,6 +2861,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/tag-kinds/{id}/card-first:
+    put:
+      operationId: setTagKindCardFirst
+      summary: "Set whether cards list a kind's tags first"
+      description: "Owner-only. Sets TagKind.cardFirst; an unchanged value returns current state. Missing ID returns 404 not_found/tag_kind_not_found. Lists read the new order on their next fetch."
+      parameters:
+        - $ref: "#/components/parameters/TagKindId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindCardFirstRequest"
+      responses:
+        "200":
+          description: "Updated kind"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/people:
     get:
       operationId: listPeople
@@ -7281,19 +7308,22 @@ components:
           description: "Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page."
     TagKindRef:
       type: object
-      required: [id, name]
+      required: [id, name, cardFirst]
       additionalProperties: false
-      description: "Tag kind ID and name."
+      description: "Tag kind ID, name and card order flag."
       properties:
         id:
           type: integer
           format: int64
         name:
           type: string
+        cardFirst:
+          type: boolean
+          description: "Cards list this kind's tags before other tags; see TagKind.cardFirst."
 
     TagKind:
       type: object
-      required: [id, name, tagCount, createdAt]
+      required: [id, name, cardFirst, tagCount, createdAt]
       additionalProperties: false
       description: "One kind-list entry."
       properties:
@@ -7302,6 +7332,9 @@ components:
           format: int64
         name:
           type: string
+        cardFirst:
+          type: boolean
+          description: "Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false."
         tagCount:
           type: integer
           description: "Number of tags of this kind, including tentative tags."
@@ -7320,6 +7353,14 @@ components:
           description: "All kinds in ID order; the UI reorders them by natural name."
           items:
             $ref: "#/components/schemas/TagKind"
+
+    TagKindCardFirstRequest:
+      type: object
+      required: [cardFirst]
+      additionalProperties: false
+      properties:
+        cardFirst:
+          type: boolean
 
     TagKindNameRequest:
       type: object
@@ -7560,6 +7601,24 @@ components:
           type: string
           description: "YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid."
           examples: ["2024", "2024-02", "2024-02-29"]
+
+    VideoCardCredits:
+      type: object
+      required: [performers]
+      additionalProperties: false
+      description: "Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards."
+      properties:
+        code:
+          type: string
+          description: "Product code; omitted when unset."
+        performers:
+          type: array
+          description: "Performer credits in work-information order; [] when none."
+          items:
+            $ref: "#/components/schemas/WorkPerson"
+        organization:
+          $ref: "#/components/schemas/CreditRef"
+          description: "The first label, otherwise the first maker; omitted when the work has neither."
 
     WorkPerson:
       type: object
@@ -9687,7 +9746,7 @@ components:
 
     Video:
       type: object
-      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags."
+      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags."
       required:
         [
           id,
@@ -9821,6 +9880,9 @@ components:
         workInfo:
           $ref: "#/components/schemas/WorkInfo"
           description: "Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items."
+        cardCredits:
+          $ref: "#/components/schemas/VideoCardCredits"
+          description: "Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests."
         mediaInfo:
           $ref: "#/components/schemas/MediaInfo"
           description: "Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses."

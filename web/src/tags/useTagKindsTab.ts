@@ -7,6 +7,7 @@ import {
   deleteTagKind,
   refreshTagKinds,
   renameTagKind,
+  setTagKindCardFirst,
   sortTagKinds,
   subscribeTagKinds,
   type TagKind,
@@ -54,6 +55,8 @@ export interface TagKindsTab {
   deleting: TagKind | null;
   deletePending: boolean;
   deleteError: UiText | null;
+  /** The kind whose card order is being saved. */
+  cardFirstPendingId: number | null;
   pending: boolean;
   editing: boolean;
   registerRefs: (id: number, refs: Partial<KindRowRefs>) => void;
@@ -69,6 +72,7 @@ export interface TagKindsTab {
   openDelete: (kind: TagKind) => void;
   cancelDelete: () => void;
   performDelete: (kind: TagKind) => void;
+  setCardFirst: (kind: TagKind, cardFirst: boolean) => void;
   closeEdits: () => void;
   /** Consume rename/deletion changes to decide whether the Tags tab must refresh. */
   takeChanged: () => boolean;
@@ -97,6 +101,7 @@ export function useTagKindsTab({
   const [deleting, setDeleting] = useState<TagKind | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
+  const [cardFirstPendingId, setCardFirstPendingId] = useState<number | null>(null);
   const changed = useRef(false);
   const rowRefs = useRef(new Map<number, Partial<KindRowRefs>>());
 
@@ -251,6 +256,23 @@ export function useTagKindsTab({
     }
   }
 
+  async function setCardFirst(kind: TagKind, cardFirst: boolean) {
+    const order = kinds ?? [];
+    setCardFirstPendingId(kind.id);
+    try {
+      const updated = await setTagKindCardFirst(kind.id, cardFirst);
+      setKinds((current) => withKind(current ?? [], updated));
+    } catch (failure) {
+      if (isKindNotFound(failure)) {
+        gone(order, kind.id);
+        return;
+      }
+      toast(errorText(failure));
+    } finally {
+      setCardFirstPendingId(null);
+    }
+  }
+
   function closeEdits() {
     setCreating(false);
     setCreateError(null);
@@ -279,6 +301,7 @@ export function useTagKindsTab({
     deleting,
     deletePending,
     deleteError,
+    cardFirstPendingId,
     pending: createPending || renamePending || deletePending,
     editing: creating || renamingId !== null || deleting !== null,
     registerRefs,
@@ -294,6 +317,7 @@ export function useTagKindsTab({
     openDelete,
     cancelDelete,
     performDelete: (kind) => void performDelete(kind),
+    setCardFirst: (kind, cardFirst) => void setCardFirst(kind, cardFirst),
     closeEdits,
     takeChanged,
   };
