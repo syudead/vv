@@ -188,6 +188,18 @@ describe("タグの種類での絞り込み", () => {
     await waitFor(() => expect(location()).toBe("?tagKind=1"));
   });
 
+  it("opening the filter focuses the panel and leaves the tag picker's list closed", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByRole("link", { name: "動画 3" });
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const picker = await screen.findByRole("combobox", { name: "Add tag" });
+    expect(picker.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("dialog", { name: "Filter" }));
+  });
+
   it("removing the kind chip in the filter popover drops only tagKind", async () => {
     const user = userEvent.setup();
     renderAt("/?tag=2&tagKind=1");

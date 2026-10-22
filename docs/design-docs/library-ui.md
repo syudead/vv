@@ -287,6 +287,8 @@ On folder, group and smart-folder pages the filter popover holds only
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
 leaves the URL with a toast.
+Opening the popover focuses the panel itself, not its first field, so the tag
+picker's candidate list stays closed until the owner enters the field.
 The filter button counts each condition as one applied filter.
 `Clear filters` clears every condition and keeps the sort. A guest URL with
 `fav=1`, `tag`, `tagKind`, `person`, `organization` or `sort=favorited*` is

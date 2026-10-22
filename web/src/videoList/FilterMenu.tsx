@@ -1,5 +1,5 @@
 import { ListFilter } from "lucide-react";
-import { type ReactNode, type Ref, useId, useState } from "react";
+import { type ReactNode, type Ref, useId, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
@@ -80,6 +80,7 @@ export function FilterPopover({
   children,
 }: FilterPopoverProps) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
   const shown = disabled ? 0 : count;
 
   return (
@@ -103,7 +104,18 @@ export function FilterPopover({
           {shown > 0 && <Badge variant="soft">{formatNumber(shown)}</Badge>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="gap-4">
+      <PopoverContent
+        align="start"
+        className="gap-4"
+        ref={panelRef}
+        aria-label={t.list.filter.label}
+        // Focus the panel, not its first field: the tag picker opens its candidate list on focus.
+        tabIndex={-1}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          panelRef.current?.focus();
+        }}
+      >
         {children}
 
         {canClear && (
