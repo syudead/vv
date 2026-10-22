@@ -23,36 +23,25 @@ var (
 	ErrSmartFolderCycle    = errors.New("smart folder cycle")
 )
 
-// SmartRule omits zero IDs and nil bounds; omitted fields do not filter, and empty rules match all videos.
+// SmartRule omits zero IDs; omitted fields do not filter, and empty rules match all videos.
 type SmartRule struct {
-	Q        string      `json:"q,omitempty"`
-	Watch    WatchFilter `json:"watch,omitempty"`
-	Playable bool        `json:"playable,omitempty"`
-	Favorite bool        `json:"favorite,omitempty"`
+	Q        string `json:"q,omitempty"`
+	Favorite bool   `json:"favorite,omitempty"`
 	// Tags uses AND matching with unique positive IDs.
 	Tags         []int64 `json:"tags,omitempty"`
 	TagKind      int64   `json:"tagKind,omitempty"`
 	Person       int64   `json:"person,omitempty"`
 	Organization int64   `json:"organization,omitempty"`
-	AddedWithin  *int    `json:"addedWithin,omitempty"`
-	// Duration bounds are inclusive seconds.
-	MinDuration *int `json:"minDuration,omitempty"`
-	MaxDuration *int `json:"maxDuration,omitempty"`
 }
 
 // Pointer IDs distinguish omitted fields from explicit zero or negative values.
 type smartRuleInput struct {
-	Q            string      `json:"q"`
-	Watch        WatchFilter `json:"watch"`
-	Playable     bool        `json:"playable"`
-	Favorite     bool        `json:"favorite"`
-	Tags         *[]int64    `json:"tags"`
-	TagKind      *int64      `json:"tagKind"`
-	Person       *int64      `json:"person"`
-	Organization *int64      `json:"organization"`
-	AddedWithin  *int        `json:"addedWithin"`
-	MinDuration  *int        `json:"minDuration"`
-	MaxDuration  *int        `json:"maxDuration"`
+	Q            string   `json:"q"`
+	Favorite     bool     `json:"favorite"`
+	Tags         *[]int64 `json:"tags"`
+	TagKind      *int64   `json:"tagKind"`
+	Person       *int64   `json:"person"`
+	Organization *int64   `json:"organization"`
 }
 
 // ParseSmartRule rejects nonobjects, unknown fields, wrong types, and out-of-range values with ErrInvalidSmartRule.
@@ -78,10 +67,7 @@ func ParseSmartRule(raw []byte) (SmartRule, error) {
 	if err := decoder.Decode(&input); err != nil {
 		return SmartRule{}, fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
 	}
-	rule := SmartRule{
-		Q: input.Q, Watch: input.Watch, Playable: input.Playable, Favorite: input.Favorite,
-		AddedWithin: input.AddedWithin, MinDuration: input.MinDuration, MaxDuration: input.MaxDuration,
-	}
+	rule := SmartRule{Q: input.Q, Favorite: input.Favorite}
 	if input.Tags != nil {
 		if len(*input.Tags) == 0 {
 			return SmartRule{}, fmt.Errorf("%w: tags is empty", ErrInvalidSmartRule)
@@ -115,11 +101,6 @@ func (r SmartRule) Validate() error {
 	if utf8.RuneCountInString(r.Q) > SmartRuleMaxQueryLength {
 		return fmt.Errorf("%w: q is longer than %d characters", ErrInvalidSmartRule, SmartRuleMaxQueryLength)
 	}
-	switch r.Watch {
-	case "", WatchUnwatched, WatchInProgress, WatchWatched:
-	default:
-		return fmt.Errorf("%w: watch %q is unknown", ErrInvalidSmartRule, r.Watch)
-	}
 	if err := validateSmartRuleTags(r.Tags); err != nil {
 		return err
 	}
@@ -127,9 +108,6 @@ func (r SmartRule) Validate() error {
 		if id < 0 {
 			return fmt.Errorf("%w: an id is negative", ErrInvalidSmartRule)
 		}
-	}
-	if err := CheckAddedAndLength(r.AddedWithin, r.MinDuration, r.MaxDuration); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
 	}
 	return nil
 }
@@ -168,33 +146,13 @@ func (r SmartRule) Encode() (string, error) {
 // Query leaves sorting, cursor, and limit to the caller.
 func (r SmartRule) Query() VideoQuery {
 	return VideoQuery{
-		Query:           r.Q,
-		Watch:           r.Watch,
-		PlayableOnly:    r.Playable,
-		FavoriteOnly:    r.Favorite,
-		TagIDs:          slices.Clone(r.Tags),
-		TagKindID:       r.TagKind,
-		Person:          r.Person,
-		Organization:    r.Organization,
-		AddedWithinDays: derefInt(r.AddedWithin),
-		MinDurationSec:  cloneInt(r.MinDuration),
-		MaxDurationSec:  cloneInt(r.MaxDuration),
+		Query:        r.Q,
+		FavoriteOnly: r.Favorite,
+		TagIDs:       slices.Clone(r.Tags),
+		TagKindID:    r.TagKind,
+		Person:       r.Person,
+		Organization: r.Organization,
 	}
-}
-
-func derefInt(v *int) int {
-	if v == nil {
-		return 0
-	}
-	return *v
-}
-
-func cloneInt(v *int) *int {
-	if v == nil {
-		return nil
-	}
-	c := *v
-	return &c
 }
 
 type SmartRuleRefKind string

@@ -167,7 +167,7 @@ func (s *server) GetSmartFolder(w http.ResponseWriter, r *http.Request, id gen.S
 	}
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
 	if !ok {
@@ -208,7 +208,7 @@ func (s *server) ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id
 	}
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
 	if !ok {

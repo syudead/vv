@@ -575,12 +575,11 @@ describe("useVideos（一覧の読み込み）", () => {
 });
 
 describe("useVideos（条件と重複）", () => {
-  it("条件（検索語・視聴状態・再生可否・並び順・seed）をそのまま要求へ渡す", async () => {
+  it("条件（検索語・お気に入り・並び順・seed）をそのまま要求へ渡す", async () => {
     renderHook(() =>
       useVideos({
         query: "京都",
-        watch: "unwatched",
-        playable: true,
+        favorite: true,
         sort: "random",
         seed: 42,
       }),
@@ -588,8 +587,7 @@ describe("useVideos（条件と重複）", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]?.params).toMatchObject({
       query: "京都",
-      watch: "unwatched",
-      playable: true,
+      favorite: true,
       sort: "random",
       seed: 42,
     });
@@ -605,8 +603,7 @@ describe("useVideos（条件と重複）", () => {
 
   const changes: [string, VideosCriteria][] = [
     ["検索語", { sort: "addedDesc", query: "奈良" }],
-    ["視聴状態", { sort: "addedDesc", watch: "watched" }],
-    ["再生可否", { sort: "addedDesc", playable: true }],
+    ["お気に入り", { sort: "addedDesc", favorite: true }],
     ["並び順", { sort: "durationDesc" }],
     ["seed", { sort: "random", seed: 8 }],
   ];

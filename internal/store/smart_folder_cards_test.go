@@ -61,30 +61,6 @@ func TestSmartFolderCardsReadValuesOverMatchingVideos(t *testing.T) {
 	}
 }
 
-// Card aggregates count individual matches even when group watch-state filtering leaves playback empty.
-func TestSmartFolderCardsCountMatchingVideosOfMixedGroups(t *testing.T) {
-	db, ids := itemsFixture(t)
-	ep2 := ids[fixturePath("/media/show/ep2.mp4")]
-	rule := domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}
-	folder := newSmartFolder(t, db, "未視聴のep", rule, domain.SortTitleAsc, 0)
-	twin := newSmartFolder(t, db, "同じ", rule, domain.SortTitleAsc, 0)
-
-	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, folder, "", 0, domain.VideoQuery{})
-	if err != nil || len(page.Items) != 0 {
-		t.Fatalf("ページ = %v, %v, want 空", smartItemNames(page.Items), err)
-	}
-	cards := smartFolderCards(t, db, domain.AudienceOwner, folder, twin)
-	if len(cards) != 2 {
-		t.Fatalf("cards = %+v", cards)
-	}
-	for i, want := range []string{"未視聴のep", "同じ"} {
-		card := cards[i]
-		if card.Name != want || card.VideoCount != 1 || card.OpenVideoID != ep2 || card.WatchState != domain.WatchStateUnwatched {
-			t.Errorf("%s のカード = %+v, want 1 本で ep2 を開く", want, card)
-		}
-	}
-}
-
 func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -159,20 +135,17 @@ func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 	}
 }
 
-func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
+func TestSmartFolderCardsApplyFavoriteRules(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, ep2, p2 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")],
 		ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
 	cat := attachNamedTag(t, db, "猫", solo, x, ep2, p2)
 	favoriteVideos(t, db, true, x, p2)
 	all := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
-	playable := newSmartFolder(t, db, "再生できる猫", domain.SmartRule{Tags: []int64{cat}, Playable: true}, domain.SortTitleAsc, 0)
 	favorite := newSmartFolder(t, db, "お気に入りの猫", domain.SmartRule{Tags: []int64{cat}, Favorite: true}, domain.SortTitleAsc, 0)
-	both := newSmartFolder(t, db, "再生できるお気に入りの猫", domain.SmartRule{Tags: []int64{cat}, Playable: true, Favorite: true},
-		domain.SortTitleAsc, 0)
 
-	cards := smartFolderCards(t, db, domain.AudienceOwner, all, playable, favorite, both)
-	if len(cards) != 4 {
+	cards := smartFolderCards(t, db, domain.AudienceOwner, all, favorite)
+	if len(cards) != 2 {
 		t.Fatalf("cards = %+v", cards)
 	}
 	for i, want := range []struct {
@@ -181,9 +154,7 @@ func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 		size  int64
 	}{
 		{4, ep2, 1050},
-		{2, x, 700},
 		{2, p2, 150},
-		{1, x, 100},
 	} {
 		card := cards[i]
 		if card.VideoCount != want.count || card.OpenVideoID != want.open || card.SizeBytes != want.size {

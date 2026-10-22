@@ -47,7 +47,6 @@ export function isTranscodeQuality(value: unknown): value is TranscodeQuality {
     typeof value === "string" && (transcodeQualities as readonly string[]).includes(value)
   );
 }
-export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
 export type VideoTag = components["schemas"]["VideoTag"];
 export type FolderScope = components["schemas"]["FolderScope"];
@@ -284,10 +283,6 @@ export const MAX_QUERY_LENGTH = 100;
 export interface ListFilterParams {
   /** Omit empty queries and truncate to 100 Unicode code points. */
   query?: string;
-  /** Omitted values use the server's all default. */
-  watch?: WatchFilter;
-  /** Send true only; false uses the server default. */
-  playable?: boolean;
   /** Send true only; false uses the server default. */
   favorite?: boolean;
   sort?: VideoSort;
@@ -301,8 +296,7 @@ export interface ListFilterParams {
 export const MAX_TAG_FILTER_COUNT = 16;
 
 /** Tag filtering applies to the library, not folder-video listings. */
-export interface ListVideosParams
-  extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
+export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
 }
@@ -315,8 +309,6 @@ export interface CreditFilterParams {
   organization?: number;
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
-  /** Owner-only; send true only. */
-  hasVersions?: boolean;
 }
 
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
@@ -326,29 +318,6 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
     query.set("organization", String(params.organization));
   }
   if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
-  if (params.hasVersions === true) query.set("hasVersions", "true");
-}
-
-/** Send bounds unchanged; the server rejects out-of-range values instead of clamping them. */
-export interface AddedLengthFilterParams {
-  /** Inclusive age bound in days, 1..36500. */
-  addedWithin?: number;
-  /** Inclusive minimum seconds, 0..360000; unknown durations do not match. */
-  minDuration?: number;
-  /** Inclusive maximum seconds, 0..360000; unknown durations do not match. */
-  maxDuration?: number;
-}
-
-function setAddedLengthFilter(
-  query: URLSearchParams,
-  params: AddedLengthFilterParams,
-): void {
-  if (params.addedWithin !== undefined)
-    query.set("addedWithin", String(params.addedWithin));
-  if (params.minDuration !== undefined)
-    query.set("minDuration", String(params.minDuration));
-  if (params.maxDuration !== undefined)
-    query.set("maxDuration", String(params.maxDuration));
 }
 
 function setListFilters(query: URLSearchParams, params: ListFilterParams): void {
@@ -356,8 +325,6 @@ function setListFilters(query: URLSearchParams, params: ListFilterParams): void 
     // Count Unicode code points like the server without splitting surrogate pairs.
     query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
   }
-  if (params.watch !== undefined) query.set("watch", params.watch);
-  if (params.playable === true) query.set("playable", "true");
   if (params.favorite === true) query.set("favorite", "true");
   if (params.sort !== undefined) query.set("sort", params.sort);
   if (params.seed !== undefined) query.set("seed", String(params.seed));
@@ -379,7 +346,6 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
-  setAddedLengthFilter(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -423,7 +389,6 @@ export async function listLibrary(
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
-  setAddedLengthFilter(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },

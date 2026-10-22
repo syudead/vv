@@ -82,12 +82,7 @@ func ShuffleKey(seed, id int64) int64 {
 type VideoQuery struct {
 	// Query uses ParseSearchQuery syntax; no remaining terms means no filtering.
 	Query string
-	// An empty Watch means WatchAll.
-	Watch        WatchFilter
-	PlayableOnly bool
-	// HasVersionsOnly keeps videos bundled with other versions; it is an owner filter.
-	HasVersionsOnly bool
-	Sort            VideoSort
+	Sort  VideoSort
 	// Seed is used only by SortRandom and ranges from zero to MaxShuffleSeed.
 	Seed   int64
 	Cursor string
@@ -102,43 +97,11 @@ type VideoQuery struct {
 	PersonRole PersonRole
 	// TagKindID matches manual or folder-derived tags; zero disables filtering and nonexistent IDs match nothing.
 	TagKindID int64
-	// AddedWithinDays is inclusive; zero disables filtering.
-	AddedWithinDays int
-	// Duration bounds are inclusive seconds; nil leaves a side unbounded and any bound excludes unknown durations.
-	MinDurationSec *int
-	MaxDurationSec *int
 }
 
 // ListsSmartFolders allows only unfiltered or favorite-only listings; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
-	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
-		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
-}
-
-const MaxAddedWithinDays = 36500
-
-const MaxDurationBoundSec = 360000
-
-var (
-	ErrInvalidAddedWithin   = errors.New("added within is out of range")
-	ErrInvalidDurationRange = errors.New("duration range is invalid")
-)
-
-// CheckAddedAndLength shares limits between library queries and smart-folder conditions; nil means unspecified.
-func CheckAddedAndLength(addedWithin, minSec, maxSec *int) error {
-	if addedWithin != nil && (*addedWithin < 1 || *addedWithin > MaxAddedWithinDays) {
-		return ErrInvalidAddedWithin
-	}
-	for _, bound := range []*int{minSec, maxSec} {
-		if bound != nil && (*bound < 0 || *bound > MaxDurationBoundSec) {
-			return ErrInvalidDurationRange
-		}
-	}
-	if minSec != nil && maxSec != nil && *minSec > *maxSec {
-		return ErrInvalidDurationRange
-	}
-	return nil
+	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0
 }
 
 type VideoPage struct {

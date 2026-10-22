@@ -1,7 +1,7 @@
 import { LayoutGrid, List } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
-import type { VideoSort, WatchFilter } from "../api/client";
+import type { VideoSort } from "../api/client";
 import { t } from "../i18n";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
@@ -9,6 +9,7 @@ import FilterMenu from "../videoList/FilterMenu";
 import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
+import type { SearchSuggestions } from "../videoList/SearchSuggestions";
 import {
   CompactSortControls,
   SortMenu,
@@ -79,21 +80,20 @@ export interface LibraryToolbarProps {
   sort: VideoSort;
   onSortChange: (value: VideoSort) => void;
   onShuffle: () => void;
-  watch: WatchFilter;
-  onWatchChange: (value: WatchFilter) => void;
-  playable: boolean;
-  onPlayableChange: (value: boolean) => void;
   favorite: boolean;
-  onFavoriteChange: (value: boolean) => void;
+  /** Applies the filter popover's drafts: favorites here, the page's own fields with it. */
+  onFilterApply: (favorite: boolean) => void;
   canClear: boolean;
   onClear: () => void;
   view: ViewMode;
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
+  /** Owner fields drawn before `Favorites only`. */
   extraFilter?: ReactNode;
   extraFilterCount?: number;
   onFilterOpen?: () => void;
+  suggestions?: SearchSuggestions;
 }
 
 export default function LibraryToolbar({
@@ -103,12 +103,8 @@ export default function LibraryToolbar({
   sort,
   onSortChange,
   onShuffle,
-  watch,
-  onWatchChange,
-  playable,
-  onPlayableChange,
   favorite,
-  onFavoriteChange,
+  onFilterApply,
   canClear,
   onClear,
   view,
@@ -119,6 +115,7 @@ export default function LibraryToolbar({
   extraFilterCount,
   onFilterOpen,
   nativeOrder,
+  suggestions,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
@@ -150,17 +147,21 @@ export default function LibraryToolbar({
   return (
     <Toolbar
       placement="topBar"
-      search={<SearchBox query={query} onCommit={onQueryCommit} inputRef={searchRef} />}
+      search={
+        <SearchBox
+          query={query}
+          onCommit={onQueryCommit}
+          inputRef={searchRef}
+          suggestions={suggestions}
+          commitOn="enter"
+        />
+      }
       view={controls}
       viewLabel={t.list.viewAndSort}
     >
       <FilterMenu
-        watch={watch}
-        onWatchChange={onWatchChange}
-        playable={playable}
-        onPlayableChange={onPlayableChange}
         favorite={favorite}
-        onFavoriteChange={onFavoriteChange}
+        onApply={onFilterApply}
         canClear={canClear}
         onClear={onClear}
         extraCount={extraFilterCount}

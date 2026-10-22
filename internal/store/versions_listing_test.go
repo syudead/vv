@@ -291,17 +291,3 @@ func TestGuestSeesThePublicBundleAsOneItem(t *testing.T) {
 		t.Errorf("ゲストの VideosByIDs = %+v", related)
 	}
 }
-
-func TestHasVersionsKeepsOnlyBundledVideos(t *testing.T) {
-	db, ids := versionFixture(t)
-	bundle(t, db, ids["b"], ids["a"], ids["b"])
-
-	q := domain.VideoQuery{HasVersionsOnly: true}
-	want := []int64{ids["b"]}
-	if got := listedIDs(t, db, q); !slices.Equal(got, want) {
-		t.Errorf("ListVideos = %v, want %v", got, want)
-	}
-	if got := libraryItemIDs(t, db, domain.AudienceOwner, q); !slices.Equal(got, want) {
-		t.Errorf("ListLibrary = %v, want %v", got, want)
-	}
-}

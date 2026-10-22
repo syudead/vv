@@ -604,7 +604,6 @@ func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Pla
 	if err != nil {
 		return nil, err
 	}
-	now := listNow().Unix()
 	items := make([]domain.PlaylistItem, 0, len(entries))
 	for _, e := range entries {
 		item := domain.PlaylistItem{ID: e.id}
@@ -622,7 +621,7 @@ func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Pla
 			}
 			item.Group = &group
 		default:
-			card, err := ownerSmartFolderCard(ctx, tx, e.folderID.Int64, now)
+			card, err := ownerSmartFolderCard(ctx, tx, e.folderID.Int64)
 			if err != nil {
 				return nil, err
 			}

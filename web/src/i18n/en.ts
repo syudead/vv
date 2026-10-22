@@ -53,25 +53,6 @@ function items(count: number): string {
   });
 }
 
-/** Round minutes to one decimal, keeping nonzero durations at least 0.1. */
-function minutesText(secondsCount: number): string {
-  const minutes = Math.round((secondsCount / 60) * 10) / 10;
-  return formatNumber(secondsCount > 0 ? Math.max(minutes, 0.1) : minutes);
-}
-
-/** max is inclusive, in seconds. */
-function lengthWords(min: number | undefined, max: number | undefined): string {
-  const upper = max === undefined ? undefined : max + 1;
-  const low = min ?? 0;
-  if (low === 0 && upper === 300) return "Under 5 minutes";
-  if (low === 300 && upper === 1200) return "5 to 20 minutes";
-  if (low === 1200 && upper === 3600) return "20 to 60 minutes";
-  if (low === 3600 && upper === undefined) return "Over an hour";
-  if (upper === undefined) return `Over ${minutesText(low)} minutes`;
-  if (low === 0) return `Under ${minutesText(upper)} minutes`;
-  return `${minutesText(low)} to ${minutesText(upper)} minutes`;
-}
-
 function seconds(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} second`,
@@ -858,6 +839,14 @@ export const en = {
       placeholder: "Search",
       clear: "Clear search",
     },
+    suggestions: {
+      label: "Search suggestions",
+      searchFor: (text: string) => `Search for “${text}”`,
+      people: "People",
+      tags: "Tags",
+      organizations: "Organizations",
+      kind: (name: string) => `Kind: ${name}`,
+    },
     searchHelp: {
       title: "How to search",
       allWords: {
@@ -890,40 +879,12 @@ export const en = {
       watch: "Watch status",
       watchOptions: {
         all: "All",
-        unwatched: "Unwatched",
         inProgress: "In progress",
         watched: "Watched",
       },
-      playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
-      added: "Added",
-      length: "Length",
-      addedOptions: {
-        any: "Any time",
-        preset: (days: number) => {
-          if (days === 1) return "Last 24 hours";
-          if (days === 365) return "Last year";
-          return `Last ${formatNumber(days)} days`;
-        },
-        // Fallback for day counts outside the preset options.
-        days: (days: number) =>
-          selectPlural(days, {
-            one: `Last ${formatNumber(days)} day`,
-            other: `Last ${formatNumber(days)} days`,
-          }),
-      },
-      lengthOptions: {
-        any: "Any length",
-        under5: "Under 5 minutes",
-        from5to20: "5 to 20 minutes",
-        from20to60: "20 to 60 minutes",
-        overHour: "Over an hour",
-        // The caller supplies formatted minute bounds.
-        between: (min: string, max: string) => `${min} to ${max} minutes`,
-        under: (max: string) => `Under ${max} minutes`,
-        over: (min: string) => `Over ${min} minutes`,
-      },
+      apply: "Apply",
     },
     sort: {
       heading: "Sort by",
@@ -1014,10 +975,9 @@ export const en = {
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
-    versionsFilter: "With other versions only",
-    tagKindFilter: {
-      label: "Tag kind",
-      any: "Any kind",
+    tagFilter: {
+      kindHint: "Tag kind",
+      kindOption: (name: string) => `Tag kind ${name}`,
     },
     tagRow: {
       label: "Tags",
@@ -2904,6 +2864,7 @@ export const en = {
       period: "Period",
       all: "All",
       clear: "Clear filters",
+      apply: "Apply",
       several: (first: string, rest: number) => `${first} +${formatNumber(rest)}`,
       count: (count: number) => formatNumber(count),
     },
@@ -3272,6 +3233,7 @@ export const en = {
       removeTag: (name: string) => `Remove the condition ${name}`,
       removePerson: (name: string) => `Remove the person ${name}`,
       removeOrganization: (name: string) => `Remove the organization ${name}`,
+      removeKind: (name: string) => `Remove the kind ${name}`,
       removeDeleted: "Remove the deleted condition",
       submit: "Create",
       submitting: "Creating…",
@@ -3283,7 +3245,6 @@ export const en = {
     condition: {
       search: (query: string) => `Search: ${query}`,
       favorite: "Favorites",
-      playable: "Playable",
       kind: (name: string) => `Kind: ${name}`,
       tag: (name: string) => `Tag: ${name}`,
       person: (name: string) => `Person: ${name}`,
@@ -3295,15 +3256,6 @@ export const en = {
           person: "Person: deleted",
           organization: "Organization: deleted",
         })[kind],
-      addedWithin: (days: number) =>
-        days === 1
-          ? "Added in the last 24 hours"
-          : days === 365
-            ? "Added in the last year"
-            : `Added in the last ${formatNumber(days)} days`,
-      // max is inclusive seconds; describe its next second as an exclusive minute limit (299 means Under 5 minutes).
-      length: (minSeconds: number | undefined, maxSeconds: number | undefined) =>
-        lengthWords(minSeconds, maxSeconds),
     },
     detail: {
       edit: "Edit…",

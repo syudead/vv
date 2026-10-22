@@ -90,8 +90,8 @@ function renderMenu(
   );
 }
 
-const unwatchedCats: SmartFolderSettings = {
-  rule: { watch: "unwatched", tags: [1] },
+const favoriteCats: SmartFolderSettings = {
+  rule: { favorite: true, tags: [1] },
   sort: "addedDesc",
   missing: [],
 };
@@ -124,7 +124,7 @@ describe("SmartFolderMenu", () => {
   });
 
   it("Edit はフォルダの条件で開き、変えた条件だけを送る", async () => {
-    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, unwatchedCats);
+    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, favoriteCats);
     const user = await openItem("Edit…");
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
 
@@ -133,7 +133,7 @@ describe("SmartFolderMenu", () => {
     ).toBe("未視聴");
     expect(
       within(dialog)
-        .getByRole("radio", { name: "Unwatched" })
+        .getByRole("checkbox", { name: "Favorites only" })
         .getAttribute("aria-checked"),
     ).toBe("true");
     expect(
@@ -147,13 +147,13 @@ describe("SmartFolderMenu", () => {
     const save = within(dialog).getByRole("button", { name: "Save" });
     expect((save as HTMLButtonElement).disabled).toBe(true);
 
-    await user.click(within(dialog).getByRole("radio", { name: "Watched" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Favorites only" }));
     await user.click(save);
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toEqual({
       method: "PATCH",
       path: "/api/smart-folders/2",
-      body: { rule: { watch: "watched", tags: [1] } },
+      body: { rule: { tags: [1] } },
     });
     expect(await screen.findByText('Saved "未視聴"')).toBeDefined();
     expect(callbacks.onSaved).toHaveBeenCalledWith({ id: 2, name: "未視聴" });
@@ -162,10 +162,10 @@ describe("SmartFolderMenu", () => {
 
   it("直す窓でフォルダがもう無ければ（404 not_found）、窓を閉じて onGone を呼ぶ", async () => {
     patchAnswer = () => json({ code: "not_found", message: "gone" }, 404);
-    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, unwatchedCats);
+    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, favoriteCats);
     const user = await openItem("Edit…");
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
-    await user.click(within(dialog).getByRole("radio", { name: "Watched" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Favorites only" }));
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(callbacks.onGone).toHaveBeenCalled());
@@ -174,11 +174,11 @@ describe("SmartFolderMenu", () => {
   });
 
   it("条件をすべて外すと送らずに条件の欄の誤りを出す", async () => {
-    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, unwatchedCats);
+    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, favoriteCats);
     const user = await openItem("Edit…");
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
 
-    await user.click(within(dialog).getByRole("radio", { name: "All" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Favorites only" }));
     await user.click(
       await within(dialog).findByRole("button", { name: "Remove the condition 猫" }),
     );
@@ -190,7 +190,7 @@ describe("SmartFolderMenu", () => {
   it("範囲の外の条件は送れない", async () => {
     renderMenu(
       { id: 2, name: "未視聴", parentId: 1 },
-      { rule: { minDuration: 600, maxDuration: 60 }, sort: "addedDesc", missing: [] },
+      { rule: { tagKind: 0 }, sort: "addedDesc", missing: [] },
     );
     const user = await openItem("Edit…");
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
@@ -201,7 +201,7 @@ describe("SmartFolderMenu", () => {
   });
 
   it("親の選択肢に自分と子孫は無く、自分の子の下へ移すと移せないと言う", async () => {
-    renderMenu({ id: 1, name: "猫" }, unwatchedCats);
+    renderMenu({ id: 1, name: "猫" }, favoriteCats);
     const user = await openItem("Edit…");
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
 
@@ -253,13 +253,13 @@ describe("SmartFolderMenu", () => {
   });
 
   it("New child は親をこのフォルダにして作る", async () => {
-    renderMenu({ id: 1, name: "猫" }, unwatchedCats);
+    renderMenu({ id: 1, name: "猫" }, favoriteCats);
     const user = await openItem("New child smart folder…");
     const dialog = await screen.findByRole("dialog", {
       name: 'New smart folder in "猫"',
     });
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "新しい子");
-    await user.click(within(dialog).getByRole("checkbox", { name: "Playable only" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Favorites only" }));
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toEqual({
@@ -267,7 +267,7 @@ describe("SmartFolderMenu", () => {
       path: "/api/smart-folders",
       body: {
         name: "新しい子",
-        rule: { playable: true },
+        rule: { favorite: true },
         sort: "addedDesc",
         parentId: 1,
       },
@@ -277,7 +277,7 @@ describe("SmartFolderMenu", () => {
   });
 
   it("Delete は子孫の数を言い、確かめてから消す", async () => {
-    renderMenu({ id: 1, name: "猫" }, unwatchedCats);
+    renderMenu({ id: 1, name: "猫" }, favoriteCats);
     const user = await openItem("Delete…");
     const dialog = await screen.findByRole("alertdialog", { name: 'Delete "猫"?' });
     expect(

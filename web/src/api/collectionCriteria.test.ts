@@ -13,9 +13,7 @@ it("グループとスマートフォルダの先頭・次ページへ同じ一�
     );
   vi.stubGlobal("fetch", fetch);
   const criteria = {
-    watch: "unwatched",
     favorite: true,
-    playable: true,
     sort: "random",
     seed: 37,
   } as const;
@@ -27,9 +25,7 @@ it("グループとスマートフォルダの先頭・次ページへ同じ一�
     const params = new URL(String(path), "https://vv.test").searchParams;
     expect(Object.fromEntries(params)).toMatchObject({
       query: "clip",
-      watch: "unwatched",
       favorite: "true",
-      playable: "true",
       sort: "random",
       seed: "37",
     });

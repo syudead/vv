@@ -80,7 +80,7 @@ func memberStarted(progress *Progress) bool {
 	return ClassifyWatch(progress) != WatchStateUnwatched
 }
 
-// GroupWatch must stay consistent with the watch-state SQL in internal/store's libraryItemsCTE.
+// GroupWatch must stay consistent with the started and watched counts in internal/store's groupValuesSelect.
 func GroupWatch(progress []*Progress) (WatchState, int) {
 	started, watched := 0, 0
 	for _, p := range progress {

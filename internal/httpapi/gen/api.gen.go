@@ -1746,27 +1746,6 @@ func (e SmartFolderItemKind) Valid() bool {
 	}
 }
 
-// Defines values for SmartRuleWatch.
-const (
-	SmartRuleWatchInProgress SmartRuleWatch = "inProgress"
-	SmartRuleWatchUnwatched  SmartRuleWatch = "unwatched"
-	SmartRuleWatchWatched    SmartRuleWatch = "watched"
-)
-
-// Valid indicates whether the value is a known member of the SmartRuleWatch enum.
-func (e SmartRuleWatch) Valid() bool {
-	switch e {
-	case SmartRuleWatchInProgress:
-		return true
-	case SmartRuleWatchUnwatched:
-		return true
-	case SmartRuleWatchWatched:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SmartRuleRefKind.
 const (
 	SmartRuleRefKindOrganization SmartRuleRefKind = "organization"
@@ -2385,30 +2364,6 @@ func (e VideoTagsAction) Valid() bool {
 	case Add:
 		return true
 	case Remove:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WatchFilter.
-const (
-	WatchFilterAll        WatchFilter = "all"
-	WatchFilterInProgress WatchFilter = "inProgress"
-	WatchFilterUnwatched  WatchFilter = "unwatched"
-	WatchFilterWatched    WatchFilter = "watched"
-)
-
-// Valid indicates whether the value is a known member of the WatchFilter enum.
-func (e WatchFilter) Valid() bool {
-	switch e {
-	case WatchFilterAll:
-		return true
-	case WatchFilterInProgress:
-		return true
-	case WatchFilterUnwatched:
-		return true
-	case WatchFilterWatched:
 		return true
 	default:
 		return false
@@ -5580,26 +5535,14 @@ type SmartFolderSummary struct {
 
 // SmartRule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
 type SmartRule struct {
-	// AddedWithin Days since addition.
-	AddedWithin *int `json:"addedWithin,omitempty"`
-
 	// Favorite Restrict to favorite videos.
 	Favorite *bool `json:"favorite,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds.
-	MaxDuration *int `json:"maxDuration,omitempty"`
-
-	// MinDuration Inclusive minimum duration in seconds; at most maxDuration.
-	MinDuration *int `json:"minDuration,omitempty"`
 
 	// Organization Organization IDs linked in any role.
 	Organization *int64 `json:"organization,omitempty"`
 
 	// Person Person IDs linked in any role.
 	Person *int64 `json:"person,omitempty"`
-
-	// Playable Restrict to browser-playable videos.
-	Playable *bool `json:"playable,omitempty"`
 
 	// Q Search input matched with owner semantics.
 	Q *string `json:"q,omitempty"`
@@ -5609,13 +5552,7 @@ type SmartRule struct {
 
 	// Tags Distinct tag IDs that every matching video must carry.
 	Tags *[]int64 `json:"tags,omitempty"`
-
-	// Watch Watch state.
-	Watch *SmartRuleWatch `json:"watch,omitempty"`
 }
-
-// SmartRuleWatch Watch state.
-type SmartRuleWatch string
 
 // SmartRuleRef Entities referenced by filters that no longer exist.
 type SmartRuleRef struct {
@@ -6503,7 +6440,7 @@ type VideoPage struct {
 	// NextCursor Next-page cursor; omitted when no more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Total after applying query, watch, playable and listFolderVideos scope, independent of pagination.
+	// Total Total after applying query, favorite and listFolderVideos scope, independent of pagination.
 	Total int `json:"total"`
 }
 
@@ -6643,9 +6580,6 @@ type VideoVisibilityResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state.
 	Applied int `json:"applied"`
 }
-
-// WatchFilter Watch filter: all, unwatched, inProgress or watched.
-type WatchFilter string
 
 // WatchHistoryDates defines model for WatchHistoryDates.
 type WatchHistoryDates struct {
@@ -7043,9 +6977,6 @@ type APITokenId = int64
 // ActivityId defines model for ActivityId.
 type ActivityId = int64
 
-// AddedWithinFilter defines model for AddedWithinFilter.
-type AddedWithinFilter = int
-
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -7079,14 +7010,8 @@ type GroupId = int64
 // GroupItemId defines model for GroupItemId.
 type GroupItemId = int64
 
-// MaxDurationFilter defines model for MaxDurationFilter.
-type MaxDurationFilter = int
-
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
-
-// MinDurationFilter defines model for MinDurationFilter.
-type MinDurationFilter = int
 
 // OrganizationFilter defines model for OrganizationFilter.
 type OrganizationFilter = int64
@@ -7234,12 +7159,6 @@ type ListFolderVideosParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
-
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
@@ -7270,14 +7189,8 @@ type ListGroupsParams struct {
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -7294,14 +7207,8 @@ type GetGroupParams struct {
 
 // ListGroupItemsParams defines parameters for ListGroupItems.
 type ListGroupItemsParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -7324,17 +7231,8 @@ type ListLibraryParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
-
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
-
-	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
-	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
 
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -7356,15 +7254,6 @@ type ListLibraryParams struct {
 
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
-
-	// AddedWithin Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests.
-	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
-
-	// MinDuration Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests.
-	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds; follows minDuration semantics
-	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
@@ -7485,14 +7374,8 @@ type ListSmartFolderCardsParams struct {
 
 // GetSmartFolderParams defines parameters for GetSmartFolder.
 type GetSmartFolderParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -7509,14 +7392,8 @@ type GetSmartFolderParams struct {
 
 // ListSmartFolderItemsParams defines parameters for ListSmartFolderItems.
 type ListSmartFolderItemsParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -7584,17 +7461,8 @@ type ListVideosParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
-
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
-
-	// HasVersions Restrict to videos bundled with other versions; each video must satisfy it, like `tag`
-	HasVersions *bool `form:"hasVersions,omitempty" json:"hasVersions,omitempty"`
 
 	// Sort Sort order
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -7619,15 +7487,6 @@ type ListVideosParams struct {
 
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
-
-	// AddedWithin Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests.
-	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
-
-	// MinDuration Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests.
-	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds; follows minDuration semantics
-	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
@@ -9305,32 +9164,6 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "favorite" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -9524,19 +9357,6 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetGroupParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -9546,19 +9366,6 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -9670,19 +9477,6 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListGroupItemsParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -9692,19 +9486,6 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -9934,32 +9715,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "favorite" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -9969,19 +9724,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "hasVersions" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -10073,45 +9815,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "addedWithin" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "minDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "maxDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}
@@ -12124,19 +11827,6 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSmartFolderParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -12146,19 +11836,6 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -12270,19 +11947,6 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSmartFolderItemsParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -12292,19 +11956,6 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -13265,32 +12916,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "favorite" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -13300,19 +12925,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "hasVersions" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasVersions", r.URL.Query(), &params.HasVersions, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasVersions"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasVersions", Err: err})
 		}
 		return
 	}
@@ -13417,45 +13029,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "addedWithin" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "minDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "maxDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}

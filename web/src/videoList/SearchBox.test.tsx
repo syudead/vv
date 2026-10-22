@@ -11,7 +11,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
+import { t } from "../i18n";
 import SearchBox, { limitQueryInput, searchDebounceMs } from "./SearchBox";
+import type { SuggestionGroup, SuggestionOption } from "./SearchSuggestions";
 
 function renderBox(query = "京都") {
   const onCommit = vi.fn();
@@ -214,4 +216,175 @@ it("IME変換中は検索せず、確定した検索語だけを送る", async (
     cleanup();
     vi.useRealTimers();
   }
+});
+
+describe('SearchBox with commitOn="enter"', () => {
+  function renderEnterBox(query = "") {
+    const onCommit = vi.fn();
+    render(<SearchBox query={query} onCommit={onCommit} commitOn="enter" />);
+    const box = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
+    return { onCommit, box };
+  }
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("does not search while typing, after the debounce or on blur, and searches on Enter", async () => {
+    vi.useFakeTimers();
+    const { onCommit, box } = renderEnterBox();
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "京都" } });
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    fireEvent.blur(box);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    fireEvent.focus(box);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("京都", "push");
+  });
+
+  it("ignores the Enter that confirms IME text", () => {
+    const { onCommit, box } = renderEnterBox();
+    fireEvent.focus(box);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "京都" } });
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    fireEvent.compositionEnd(box);
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("京都", "push");
+  });
+
+  it("clearing with × searches for the empty text at once", () => {
+    const { onCommit, box } = renderEnterBox("京都");
+    fireEvent.focus(box);
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("", "push");
+    expect(box.value).toBe("");
+  });
+});
+
+describe("SearchBox suggestions", () => {
+  const groups: SuggestionGroup[] = [
+    { heading: t.list.suggestions.people, options: [{ id: "person:1", label: "Kyoko" }] },
+    { heading: t.list.suggestions.tags, options: [{ id: "tag:2", label: "kyoto" }] },
+  ];
+
+  function renderSuggesting() {
+    const onCommit = vi.fn();
+    const onTermChange = vi.fn<(term: string) => void>();
+    const onPick = vi.fn<(option: SuggestionOption) => void>();
+    render(
+      <SearchBox
+        query=""
+        onCommit={onCommit}
+        suggestions={{ term: "kyo", groups, onTermChange, onPick }}
+      />,
+    );
+    const box = screen.getByRole("combobox", {
+      name: "Search videos",
+    }) as HTMLInputElement;
+    return { onCommit, onTermChange, onPick, box };
+  }
+
+  function type(box: HTMLInputElement, value: string) {
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value } });
+  }
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("lists Search for the text first, then each group, and the arrow keys move the active option", () => {
+    const { box } = renderSuggesting();
+    expect(box.getAttribute("aria-expanded")).toBe("false");
+    type(box, "kyo");
+
+    const list = screen.getByRole("listbox", { name: "Search suggestions" });
+    expect(box.getAttribute("aria-expanded")).toBe("true");
+    expect(box.getAttribute("aria-controls")).toBe(list.id);
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Search for “kyo”", "Kyoko", "kyoto"]);
+    expect(within(list).getByText("People")).toBeDefined();
+    expect(within(list).getByText("Tags")).toBeDefined();
+
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    const active = document.getElementById(
+      box.getAttribute("aria-activedescendant") ?? "",
+    );
+    expect(active?.textContent).toBe("Kyoko");
+    expect(active?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("Enter on a suggestion picks it and clears the text without a search", async () => {
+    vi.useFakeTimers();
+    const { onCommit, onPick, box } = renderSuggesting();
+    type(box, "kyo");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(onPick).toHaveBeenCalledExactlyOnceWith(groups[1]?.options[0]);
+    expect(box.value).toBe("");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("Enter with no suggestion chosen searches the text at once and closes the list", () => {
+    const { onCommit, onPick, box } = renderSuggesting();
+    type(box, "kyo");
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("kyo", "push");
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(box.value).toBe("kyo");
+  });
+
+  it("Escape closes the list first and clears the text on the next press", () => {
+    const { box } = renderSuggesting();
+    type(box, "kyo");
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(box.value).toBe("kyo");
+
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(box.value).toBe("");
+  });
+
+  it("asks for suggestions only after IME composition ends", async () => {
+    vi.useFakeTimers();
+    const { onTermChange, box } = renderSuggesting();
+    fireEvent.focus(box);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "きょう" } });
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    expect(onTermChange).not.toHaveBeenCalledWith("きょう");
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    fireEvent.change(box, { target: { value: "京" } });
+    fireEvent.compositionEnd(box);
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    expect(onTermChange).toHaveBeenLastCalledWith("京");
+    // Groups found for another text are not shown.
+    expect(
+      within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Search for “京”"]);
+  });
 });

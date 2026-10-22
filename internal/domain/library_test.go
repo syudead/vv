@@ -60,10 +60,9 @@ func TestShuffleKey(t *testing.T) {
 }
 
 func TestVideoQueryListsSmartFolders(t *testing.T) {
-	zero := 0
 	for _, q := range []VideoQuery{
 		{},
-		{Watch: WatchAll, Sort: SortTitleAsc, Seed: 3, Cursor: "c", Limit: 10},
+		{Sort: SortTitleAsc, Seed: 3, Cursor: "c", Limit: 10},
 		{Query: "   "},
 		{FavoriteOnly: true},
 	} {
@@ -73,14 +72,10 @@ func TestVideoQueryListsSmartFolders(t *testing.T) {
 	}
 	for _, q := range []VideoQuery{
 		{Query: "cat"},
-		{Watch: WatchUnwatched},
-		{PlayableOnly: true},
 		{TagIDs: []int64{1}},
 		{Person: 1},
 		{Organization: 1},
-		{AddedWithinDays: 1},
-		{MinDurationSec: &zero},
-		{MaxDurationSec: &zero},
+		{TagKindID: 1},
 		{FavoriteOnly: true, TagIDs: []int64{1}},
 	} {
 		if q.ListsSmartFolders() {

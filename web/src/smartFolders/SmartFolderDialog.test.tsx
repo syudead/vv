@@ -82,9 +82,9 @@ function editTarget(rule: SmartFolderDialogTarget["rule"]): SmartFolderDialogTar
   };
 }
 
-const playable: SmartFolderDialogTarget = {
+const favorites: SmartFolderDialogTarget = {
   kind: "create",
-  rule: { playable: true },
+  rule: { favorite: true },
   sort: "addedDesc",
 };
 
@@ -172,7 +172,7 @@ describe("SmartFolderDialog", () => {
 
   it("親を外すと parentId に null を送る", async () => {
     const user = userEvent.setup();
-    const dialog = renderDialog(editTarget({ playable: true }));
+    const dialog = renderDialog(editTarget({ favorite: true }));
     await waitFor(() =>
       expect(within(dialog).getByRole("combobox", { name: "Parent" }).textContent).toBe(
         "猫",
@@ -187,7 +187,7 @@ describe("SmartFolderDialog", () => {
 
   it("並べ順だけを変えると sort だけを送る", async () => {
     const user = userEvent.setup();
-    const dialog = renderDialog(editTarget({ playable: true }));
+    const dialog = renderDialog(editTarget({ favorite: true }));
     await user.click(within(dialog).getByRole("combobox", { name: "Sort by" }));
     await user.click(await screen.findByRole("option", { name: "Title, ascending" }));
     await user.click(button(dialog, "Save"));
@@ -199,7 +199,7 @@ describe("SmartFolderDialog", () => {
     async function createWith(answer: () => Response) {
       writeAnswer = answer;
       const user = userEvent.setup();
-      const dialog = renderDialog(playable);
+      const dialog = renderDialog(favorites);
       await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "名前");
       await user.click(button(dialog, "Create"));
       await waitFor(() => expect(writes).toHaveLength(1));
@@ -252,7 +252,7 @@ describe("SmartFolderDialog", () => {
     it("直す窓の欄の無い失敗は保存の失敗として出す", async () => {
       writeAnswer = () => failure(500, "internal");
       const user = userEvent.setup();
-      const dialog = renderDialog(editTarget({ playable: true }));
+      const dialog = renderDialog(editTarget({ favorite: true }));
       await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "!");
       await user.click(button(dialog, "Save"));
       expect((await within(dialog).findByRole("alert")).textContent).toContain(
@@ -263,7 +263,7 @@ describe("SmartFolderDialog", () => {
     it("直す窓でフォルダ自身が無い（404 not_found）ときは onGone を呼ぶ", async () => {
       writeAnswer = () => failure(404, "not_found");
       const user = userEvent.setup();
-      const dialog = renderDialog(editTarget({ playable: true }));
+      const dialog = renderDialog(editTarget({ favorite: true }));
       await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "!");
       await user.click(button(dialog, "Save"));
       await waitFor(() => expect(onGone).toHaveBeenCalled());
@@ -272,7 +272,7 @@ describe("SmartFolderDialog", () => {
     it("onGone の無い直す窓では、フォルダ自身が無い失敗も Alert に出す", async () => {
       writeAnswer = () => failure(404, "not_found");
       const user = userEvent.setup();
-      const dialog = renderDialog(editTarget({ playable: true }), false);
+      const dialog = renderDialog(editTarget({ favorite: true }), false);
       await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "!");
       await user.click(button(dialog, "Save"));
       expect((await within(dialog).findByRole("alert")).textContent).toContain(
@@ -283,7 +283,7 @@ describe("SmartFolderDialog", () => {
 
   it("親の一覧を読めなければ親の欄にその理由を出す", async () => {
     listAnswer = () => failure(500, "internal");
-    const dialog = renderDialog(playable);
+    const dialog = renderDialog(favorites);
     expect(
       await within(dialog).findByText(/Couldn't load the smart folders:/),
     ).toBeDefined();
@@ -307,7 +307,7 @@ describe("SmartFolderDialog", () => {
 
   it("ランダムを置き換えたことは並べ順を変えるまで添える", async () => {
     const user = userEvent.setup();
-    const dialog = renderDialog({ ...playable, randomReplaced: true });
+    const dialog = renderDialog({ ...favorites, randomReplaced: true });
     const hint = "Random can't be saved; the folder is sorted by date added";
     expect(within(dialog).getByText(hint)).toBeDefined();
 
@@ -318,7 +318,7 @@ describe("SmartFolderDialog", () => {
 
   it("Cancel で閉じる", async () => {
     const user = userEvent.setup();
-    const dialog = renderDialog(playable);
+    const dialog = renderDialog(favorites);
     await user.click(button(dialog, "Cancel"));
     expect(onClose).toHaveBeenCalled();
   });

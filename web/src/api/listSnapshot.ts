@@ -1,11 +1,4 @@
-import type {
-  FolderListing,
-  LibraryItem,
-  Progress,
-  TagRef,
-  VideoSort,
-  WatchFilter,
-} from "./client";
+import type { FolderListing, LibraryItem, Progress, TagRef, VideoSort } from "./client";
 import { groupsIn, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
@@ -15,10 +8,6 @@ const defaultSort: VideoSort = "addedDesc";
 export interface ListKey {
   /** Normalize by trimming surrounding whitespace. */
   query: string;
-  /** Omitted equals all. */
-  watch?: WatchFilter;
-  /** Omitted equals false. */
-  playable?: boolean;
   /** Omitted equals false; filtered and unfiltered snapshots remain distinct. */
   favorite?: boolean;
   /** Omitted equals the default sort. */
@@ -32,10 +21,6 @@ export interface ListKey {
   person?: number;
   organization?: number;
   tagKind?: number;
-  hasVersions?: boolean;
-  addedWithin?: number;
-  minDuration?: number;
-  maxDuration?: number;
 }
 
 export interface ListSnapshot {
@@ -54,10 +39,7 @@ export interface ListSnapshot {
 }
 
 /** Retain one in-memory snapshot only; per-key caches retain thousands of videos, and persistence adds unnecessary serialization. */
-let held: (ListSnapshot & { expiresAt?: number }) | undefined;
-
-/** Relative addedWithin filters become stale as time advances; expire snapshots even when their keys match. */
-export const ADDED_WITHIN_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+let held: ListSnapshot | undefined;
 
 /** NUL separators prevent ambiguous boundaries between search text and other key fields. */
 function normalize(key: ListKey): string {
@@ -66,8 +48,6 @@ function normalize(key: ListKey): string {
   const tags = [...(key.tags ?? [])].sort((a, b) => a - b).join(",");
   const list = [
     key.query.trim(),
-    key.watch ?? "all",
-    key.playable === true ? "1" : "",
     key.favorite === true ? "1" : "",
     sort,
     seed,
@@ -75,10 +55,6 @@ function normalize(key: ListKey): string {
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
     key.tagKind === undefined ? "" : String(key.tagKind),
-    key.hasVersions === true ? "1" : "",
-    key.addedWithin === undefined ? "" : String(key.addedWithin),
-    key.minDuration === undefined ? "" : String(key.minDuration),
-    key.maxDuration === undefined ? "" : String(key.maxDuration),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
@@ -103,15 +79,11 @@ export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">)
     return;
   }
   held = { key: normalize(key), ...value };
-  if (key.addedWithin !== undefined) {
-    held.expiresAt = Date.now() + ADDED_WITHIN_SNAPSHOT_TTL_MS;
-  }
 }
 
-/** Return matching unexpired snapshots without consuming them, supporting StrictMode and repeated back navigation. Missing snapshots restart at page one. */
+/** Return matching snapshots without consuming them, supporting StrictMode and repeated back navigation. Missing snapshots restart at page one. */
 export function takeListSnapshot(key: ListKey): ListSnapshot | undefined {
   if (held === undefined || held.key !== normalize(key)) return undefined;
-  if (held.expiresAt !== undefined && Date.now() >= held.expiresAt) return undefined;
   return held;
 }
 

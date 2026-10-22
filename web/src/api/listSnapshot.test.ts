@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type { LibraryItem, Video } from "./client";
 import { itemVideos, videoItem } from "./libraryItems";
 import {
-  ADDED_WITHIN_SNAPSHOT_TTL_MS,
   applyProgressToListSnapshot,
   clearListSnapshot,
   holdListSnapshot,
@@ -136,46 +135,6 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeDefined();
     expect(takeListSnapshot({ query: "ねこ" })).toBeDefined();
     expect(takeListSnapshot({ query: "ねこ", sort: "titleAsc" })).toBeUndefined();
-  });
-});
-
-describe("追加日と長さの絞り込みの控え", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("追加日・長さを含む鍵は、それの無い鍵や別の値の鍵と一致しない", () => {
-    const key = { query: "", addedWithin: 7, minDuration: 300, maxDuration: 1200 };
-    saveListSnapshot(key, body([1]));
-
-    expect(takeListSnapshot({ query: "" })).toBeUndefined();
-    expect(takeListSnapshot({ ...key, addedWithin: 30 })).toBeUndefined();
-    expect(takeListSnapshot({ ...key, minDuration: undefined })).toBeUndefined();
-    expect(takeListSnapshot({ ...key, maxDuration: 600 })).toBeUndefined();
-    expect(takeListSnapshot(key)).toBeDefined();
-  });
-
-  it("追加日の絞り込みの控えは、取ってから決めた時間を過ぎると返さない（期間は今から遡る）", () => {
-    vi.useFakeTimers({ now: new Date("2026-10-16T00:00:00Z") });
-    saveListSnapshot({ query: "", addedWithin: 1 }, body([1]));
-
-    vi.advanceTimersByTime(ADDED_WITHIN_SNAPSHOT_TTL_MS - 1);
-    expect(takeListSnapshot({ query: "", addedWithin: 1 })).toBeDefined();
-    applyProgressToListSnapshot(1, {
-      positionMs: 1000,
-      completed: false,
-      updatedAt: "2026-10-16T00:00:00Z",
-    });
-    vi.advanceTimersByTime(1);
-    expect(takeListSnapshot({ query: "", addedWithin: 1 })).toBeUndefined();
-  });
-
-  it("追加日の絞り込みの無い控えは、時間が経っても返す", () => {
-    vi.useFakeTimers({ now: new Date("2026-10-16T00:00:00Z") });
-    saveListSnapshot({ query: "", minDuration: 300 }, body([1]));
-
-    vi.advanceTimersByTime(2 * 24 * 60 * 60 * 1000);
-    expect(takeListSnapshot({ query: "", minDuration: 300 })).toBeDefined();
   });
 });
 

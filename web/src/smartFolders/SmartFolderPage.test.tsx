@@ -56,7 +56,7 @@ describe("スマートフォルダのページ", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "未視聴" })).toBeTruthy();
     expect(crumbs()).toEqual(["Home", "タグ: 猫", "未視聴"]);
     expect(screen.getByText("Conditions:")).toBeTruthy();
-    expect(screen.getByText("Unwatched")).toBeTruthy();
+    expect(screen.getByText("Favorites")).toBeTruthy();
     const fromParent = screen.getByRole("link", { name: 'From "タグ: 猫":' });
     expect(fromParent.getAttribute("href")).toBe("/smart-folders/1");
     expect(await screen.findByText("Tag: 猫")).toBeTruthy();
@@ -84,7 +84,7 @@ describe("スマートフォルダのページ", () => {
     server.folders.set(3, {
       smartFolder: folderCard(3, "消えた", { videoCount: 0, openVideoId: undefined }),
       settings: {
-        rule: { tags: [99], watch: "watched" },
+        rule: { tags: [99], favorite: true },
         sort: "addedDesc",
         missing: [{ kind: "tag", id: 99 }],
       },
@@ -95,7 +95,7 @@ describe("スマートフォルダのページ", () => {
 
     expect(await screen.findByText("A condition no longer works")).toBeTruthy();
     expect(screen.getByText("Tag: deleted")).toBeTruthy();
-    expect(screen.getByText("Watched")).toBeTruthy();
+    expect(screen.getByText("Favorites")).toBeTruthy();
   });
 
   it("表示中の id を運ぶ smartFolder の知らせで、骨組みなしに読み直す", async () => {

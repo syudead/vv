@@ -10,20 +10,15 @@ export const ORGANIZATION_PARAM = "organization";
 
 export const TAG_KIND_PARAM = "tagKind";
 
-/** Owner-only; keeps videos bundled with other versions. */
-export const VERSIONS_PARAM = "versions";
-
 export const creditKinds: readonly CreditKind[] = ["person", "organization"];
 
 export interface CreditFilter {
   person?: number;
   organization?: number;
   tagKind?: number;
-  /** True or absent; smart folders cannot save it, so it is not a chip or a saved condition. */
-  hasVersions?: true;
 }
 
-function creditParam(kind: CreditKind): string {
+export function creditParam(kind: CreditKind): string {
   return kind === "person" ? PERSON_PARAM : ORGANIZATION_PARAM;
 }
 
@@ -42,7 +37,6 @@ export function parseCreditFilter(search: URLSearchParams): CreditFilter {
     person: parseCreditParam(search.getAll(PERSON_PARAM)),
     organization: parseCreditParam(search.getAll(ORGANIZATION_PARAM)),
     tagKind: parseCreditParam(search.getAll(TAG_KIND_PARAM)),
-    ...(search.get(VERSIONS_PARAM) === "1" ? { hasVersions: true } : {}),
   };
 }
 
@@ -60,15 +54,14 @@ export function useCreditFilter(search: string, owner: boolean): CreditFilter {
   const person = owner ? parsed.person : undefined;
   const organization = owner ? parsed.organization : undefined;
   const tagKind = owner ? parsed.tagKind : undefined;
-  const hasVersions = owner && parsed.hasVersions === true;
   return useMemo(
-    () => ({ person, organization, tagKind, ...(hasVersions ? { hasVersions } : {}) }),
-    [person, organization, tagKind, hasVersions],
+    () => ({ person, organization, tagKind }),
+    [person, organization, tagKind],
   );
 }
 
 export function creditSignature(filter: CreditFilter): string {
-  return [filter.person, filter.organization, filter.tagKind, filter.hasVersions]
+  return [filter.person, filter.organization, filter.tagKind]
     .map((id) => String(id ?? ""))
     .join("\u0000");
 }
@@ -90,13 +83,13 @@ export function withTagKind(id: number): Record<string, string[]> {
   return { [TAG_KIND_PARAM]: [String(id)] };
 }
 
-export function withVersions(on: boolean): Record<string, string[]> {
-  return { [VERSIONS_PARAM]: on ? ["1"] : [] };
+/** Each credit filter holds one ID, so picking another replaces it. */
+export function withCredit(kind: CreditKind, id: number): Record<string, string[]> {
+  return { [creditParam(kind)]: [String(id)] };
 }
 
 export const clearedCredits: Readonly<Record<string, string[]>> = {
   [PERSON_PARAM]: [],
   [ORGANIZATION_PARAM]: [],
   [TAG_KIND_PARAM]: [],
-  [VERSIONS_PARAM]: [],
 };

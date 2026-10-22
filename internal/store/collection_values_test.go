@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -137,7 +136,7 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	ctx := context.Background()
 	one, two := looseVideo(t, db, "one"), looseVideo(t, db, "two")
 	groupID := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{one, two}})
-	folderID := newSmartFolder(t, db, "watched", domain.SmartRule{Watch: domain.WatchWatched}, domain.SortAddedDesc, 0)
+	folderID := newSmartFolder(t, db, "one", domain.SmartRule{Q: "one"}, domain.SortAddedDesc, 0)
 	if err := db.Ingest().ApplyProbe(ctx, one, domain.Probe{DurationMs: 2000}, domain.Playability{Playable: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -179,81 +178,5 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	var pending int
 	if err := db.sql.QueryRow(`select count(*) from collection_changes`).Scan(&pending); err != nil || pending != 0 {
 		t.Fatalf("pending changes after commit = %d, %v", pending, err)
-	}
-}
-
-func TestStoredSmartFolderAgeBoundary(t *testing.T) {
-	now := fixedTime
-	previous := listNow
-	listNow = func() time.Time { return now }
-	t.Cleanup(func() { listNow = previous })
-	db := migratedDB(t)
-	ctx := context.Background()
-	file := sampleFile(fixturePath("/media/recent.mp4"), "recent", "recent", 10, 0)
-	file.AddedAt = now.Add(-24 * time.Hour)
-	video, err := db.ScanIndex().UpsertVideo(ctx, file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{video.ID}, true); err != nil {
-		t.Fatal(err)
-	}
-	folder := newSmartFolder(t, db, "recent", domain.SmartRule{AddedWithin: new(1)}, domain.SortAddedDesc, 0)
-	for _, expired := range []bool{false, true} {
-		if expired {
-			now = now.Add(time.Second)
-		}
-		page, err := db.Library().ListLibrary(ctx, domain.AudienceGuest, domain.VideoQuery{Limit: 10})
-		if err != nil {
-			t.Fatal(err)
-		}
-		found := slices.ContainsFunc(page.Items, func(item domain.LibraryItem) bool { return item.SmartFolder != nil && item.SmartFolder.ID == folder })
-		if found == expired {
-			t.Fatalf("folder present = %v, expired = %v", found, expired)
-		}
-	}
-}
-
-// Group watch state can match without an individually matching member; its age boundary still expires.
-func TestStoredSmartFolderExpiresGroupOnlyMatch(t *testing.T) {
-	now := fixedTime
-	previous := listNow
-	listNow = func() time.Time { return now }
-	t.Cleanup(func() { listNow = previous })
-	db := migratedDB(t)
-	ctx := context.Background()
-	var ids []int64
-	for _, key := range []string{"watched", "unwatched"} {
-		file := sampleFile(fixturePath("/media/"+key+".mp4"), key, key, 10, 0)
-		file.AddedAt = now.Add(-24 * time.Hour)
-		video, err := db.ScanIndex().UpsertVideo(ctx, file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, video.ID)
-	}
-	createGroup(t, db, "mixed", domain.GroupAdd{VideoIDs: ids})
-	if _, err := db.Visibility().SetVideosPublic(ctx, ids, true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Playback().SaveProgress(ctx, "watched", domain.Progress{Completed: true}, nil); err != nil {
-		t.Fatal(err)
-	}
-	folder := newSmartFolder(t, db, "recent progress", domain.SmartRule{AddedWithin: new(1), Watch: domain.WatchInProgress}, domain.SortAddedDesc, 0)
-	var visible bool
-	var expiry sql.NullInt64
-	if err := db.sql.QueryRow(`select visible, expires_at from smart_folder_values where folder_id = ? and audience = 0`, folder).Scan(&visible, &expiry); err != nil {
-		t.Fatal(err)
-	}
-	if !visible || !expiry.Valid || expiry.Int64 != now.Unix()+1 {
-		t.Fatalf("group-only folder = visible %v, expiry %v", visible, expiry)
-	}
-	now = now.Add(time.Second)
-	page, err := db.Library().ListLibrary(ctx, domain.AudienceGuest, domain.VideoQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if slices.ContainsFunc(page.Items, func(item domain.LibraryItem) bool { return item.SmartFolder != nil && item.SmartFolder.ID == folder }) {
-		t.Fatal("expired group-only folder remains")
 	}
 }

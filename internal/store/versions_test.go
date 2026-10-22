@@ -309,9 +309,6 @@ func TestSaveProgressOnBundleMember(t *testing.T) {
 	if progress[a.UserKey].PositionMs != 3000 {
 		t.Errorf("A の再生位置 = %+v, want 3000", progress[a.UserKey])
 	}
-	if got := listedIDs(t, db, domain.VideoQuery{Watch: domain.WatchInProgress}); !slices.Equal(got, []int64{ids["a"]}) {
-		t.Errorf("見かけの動画 = %v", got)
-	}
 }
 
 func TestSetVideosPublicWritesBundleKey(t *testing.T) {

@@ -113,10 +113,22 @@ func (p *PlaybackStore) ListWatchHistoryDays(
 	return days, nil
 }
 
+// Keep watch-state filtering equivalent to domain.ClassifyWatch; WatchHistoryAll applies no condition.
+func watchHistoryStateCondition(filter domain.WatchHistoryFilter) string {
+	switch filter {
+	case domain.WatchHistoryInProgress:
+		return `(p.content_key is not null and p.completed = 0 and p.position_ms > 0)`
+	case domain.WatchHistoryWatched:
+		return `p.completed = 1`
+	default:
+		return ""
+	}
+}
+
 // Join videos only when filtering; shared bundle progress determines member watch-state classification.
 func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery) (string, []string, []any) {
 	from := ` from watch_history h`
-	watch := watchCondition(query.Filter.WatchFilter())
+	watch := watchHistoryStateCondition(query.Filter)
 	if watch == "" && query.Search.Empty() {
 		return from, nil, nil
 	}

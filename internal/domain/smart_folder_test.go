@@ -7,19 +7,14 @@ import (
 	"testing"
 )
 
-func intPtr(v int) *int { return &v }
-
 func TestParseSmartRuleAcceptsEveryMember(t *testing.T) {
-	raw := `{"q":"cat","watch":"inProgress","playable":true,"favorite":true,"tags":[3,1],
-		"tagKind":4,"person":5,"organization":6,"addedWithin":7,"minDuration":60,"maxDuration":600}`
+	raw := `{"q":"cat","favorite":true,"tags":[3,1],"tagKind":4,"person":5,"organization":6}`
 	rule, err := ParseSmartRule([]byte(raw))
 	if err != nil {
 		t.Fatalf("ParseSmartRule() error = %v", err)
 	}
 	want := SmartRule{
-		Q: "cat", Watch: WatchInProgress, Playable: true, Favorite: true, Tags: []int64{3, 1},
-		TagKind: 4, Person: 5, Organization: 6,
-		AddedWithin: intPtr(7), MinDuration: intPtr(60), MaxDuration: intPtr(600),
+		Q: "cat", Favorite: true, Tags: []int64{3, 1}, TagKind: 4, Person: 5, Organization: 6,
 	}
 	if !reflect.DeepEqual(rule, want) {
 		t.Fatalf("rule = %+v, want %+v", rule, want)
@@ -33,9 +28,8 @@ func TestParseSmartRuleAcceptsEveryMember(t *testing.T) {
 		t.Fatalf("round trip = %+v, %v", again, err)
 	}
 	query := rule.Query()
-	if query.Query != "cat" || query.Watch != WatchInProgress || !query.PlayableOnly || !query.FavoriteOnly ||
-		!reflect.DeepEqual(query.TagIDs, []int64{3, 1}) || query.Person != 5 || query.Organization != 6 ||
-		query.AddedWithinDays != 7 || *query.MinDurationSec != 60 || *query.MaxDurationSec != 600 {
+	if query.Query != "cat" || !query.FavoriteOnly || !reflect.DeepEqual(query.TagIDs, []int64{3, 1}) ||
+		query.TagKindID != 4 || query.Person != 5 || query.Organization != 6 {
 		t.Fatalf("Query() = %+v", query)
 	}
 	wantRefs := []SmartRuleRef{
@@ -62,45 +56,31 @@ func TestEmptySmartRuleMatchesEverything(t *testing.T) {
 func TestParseSmartRuleRejectsOutOfRangeMembers(t *testing.T) {
 	sixteen := "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
 	cases := map[string]string{
-		"not an object":       `[]`,
-		"null":                `null`,
-		"empty":               ``,
-		"unknown member":      `{"rating":3}`,
-		"trailing text":       `{} {}`,
-		"trailing brace":      `{}}`,
-		"trailing bracket":    `{}]`,
-		"q null":              `{"q":null}`,
-		"watch null":          `{"watch":null}`,
-		"playable null":       `{"playable":null}`,
-		"favorite null":       `{"favorite":null}`,
-		"tags null":           `{"tags":null}`,
-		"tagKind null":        `{"tagKind":null}`,
-		"person null":         `{"person":null}`,
-		"organization null":   `{"organization":null}`,
-		"addedWithin null":    `{"addedWithin":null}`,
-		"minDuration null":    `{"minDuration":null}`,
-		"maxDuration null":    `{"maxDuration":null}`,
-		"q too long":          `{"q":"` + strings.Repeat("あ", SmartRuleMaxQueryLength+1) + `"}`,
-		"q not a string":      `{"q":3}`,
-		"watch all":           `{"watch":"all"}`,
-		"watch unknown":       `{"watch":"seen"}`,
-		"playable not bool":   `{"playable":"yes"}`,
-		"favorite not bool":   `{"favorite":1}`,
-		"tags empty":          `{"tags":[]}`,
-		"tags too many":       `{"tags":` + sixteen + `,17]}`,
-		"tags zero id":        `{"tags":[0]}`,
-		"tags negative id":    `{"tags":[-1]}`,
-		"tags duplicate":      `{"tags":[2,2]}`,
-		"tags not array":      `{"tags":2}`,
-		"tagKind zero":        `{"tagKind":0}`,
-		"person negative":     `{"person":-3}`,
-		"organization zero":   `{"organization":0}`,
-		"addedWithin zero":    `{"addedWithin":0}`,
-		"addedWithin over":    `{"addedWithin":36501}`,
-		"minDuration under":   `{"minDuration":-1}`,
-		"maxDuration over":    `{"maxDuration":360001}`,
-		"min over max":        `{"minDuration":601,"maxDuration":600}`,
-		"addedWithin a float": `{"addedWithin":1.5}`,
+		"not an object":     `[]`,
+		"null":              `null`,
+		"empty":             ``,
+		"unknown member":    `{"rating":3}`,
+		"trailing text":     `{} {}`,
+		"trailing brace":    `{}}`,
+		"trailing bracket":  `{}]`,
+		"q null":            `{"q":null}`,
+		"favorite null":     `{"favorite":null}`,
+		"tags null":         `{"tags":null}`,
+		"tagKind null":      `{"tagKind":null}`,
+		"person null":       `{"person":null}`,
+		"organization null": `{"organization":null}`,
+		"q too long":        `{"q":"` + strings.Repeat("あ", SmartRuleMaxQueryLength+1) + `"}`,
+		"q not a string":    `{"q":3}`,
+		"favorite not bool": `{"favorite":1}`,
+		"tags empty":        `{"tags":[]}`,
+		"tags too many":     `{"tags":` + sixteen + `,17]}`,
+		"tags zero id":      `{"tags":[0]}`,
+		"tags negative id":  `{"tags":[-1]}`,
+		"tags duplicate":    `{"tags":[2,2]}`,
+		"tags not array":    `{"tags":2}`,
+		"tagKind zero":      `{"tagKind":0}`,
+		"person negative":   `{"person":-3}`,
+		"organization zero": `{"organization":0}`,
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -118,9 +98,6 @@ func TestParseSmartRuleRejectsOutOfRangeMembers(t *testing.T) {
 }
 
 func TestSmartRuleEncodeValidates(t *testing.T) {
-	if _, err := (SmartRule{MinDuration: intPtr(10), MaxDuration: intPtr(5)}).Encode(); !errors.Is(err, ErrInvalidSmartRule) {
-		t.Fatalf("Encode() error = %v", err)
-	}
 	if _, err := (SmartRule{Person: -1}).Encode(); !errors.Is(err, ErrInvalidSmartRule) {
 		t.Fatalf("Encode() error = %v", err)
 	}

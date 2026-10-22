@@ -126,15 +126,13 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
 		return
 	}
-	filters, ok := s.parseListFilters(w, listFilterParams{
-		watch: params.Watch, playable: params.Playable, sort: params.Sort, seed: params.Seed,
-	})
+	filters, ok := s.parseListFilters(w, listFilterParams{sort: params.Sort, seed: params.Seed})
 	if !ok {
 		return
 	}
-	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	query.Sort, query.Seed = filters.sort, filters.seed
 	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
-	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Watch: query.Watch, Sort: query.Sort, FavoriteOnly: query.FavoriteOnly}) {
+	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Sort: query.Sort, FavoriteOnly: query.FavoriteOnly}) {
 		return
 	}
 	if params.Limit != nil {

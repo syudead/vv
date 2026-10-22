@@ -57,7 +57,7 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 		t.Errorf("作成の応答 = %+v", parent)
 	}
 	child := f.createSmartFolder(t, map[string]any{
-		"name": "未視聴", "rule": map[string]any{"watch": "unwatched"}, "sort": "titleAsc", "parentId": parent.Id,
+		"name": "ep", "rule": map[string]any{"q": "ep"}, "sort": "titleAsc", "parentId": parent.Id,
 	})
 	if child.ParentId == nil || *child.ParentId != parent.Id {
 		t.Errorf("子の応答 = %+v", child)
@@ -68,7 +68,7 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 		body  map[string]any
 		want  wantError
 	}{
-		{"範囲の外の addedWithin", map[string]any{"name": "a", "rule": map[string]any{"addedWithin": 0}}, wantInvalidSmartRule},
+		{"廃止した watch", map[string]any{"name": "a", "rule": map[string]any{"watch": "unwatched"}}, wantInvalidSmartRule},
 		{"知らない項目", map[string]any{"name": "a", "rule": map[string]any{"color": "red"}}, wantInvalidSmartRule},
 		{"null の項目", map[string]any{"name": "a", "rule": map[string]any{"q": nil}}, wantInvalidSmartRule},
 		{"条件が配列", map[string]any{"name": "a", "rule": []int{}}, wantInvalidSmartRule},
@@ -113,7 +113,7 @@ func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 		{"無い親", child.Id, `{"parentId": 999999}`, wantSmartFolderMissing},
 		{"整数でない親", child.Id, `{"parentId": "x"}`, wantGroupInvalid},
 		{"空の本文", child.Id, `{}`, wantGroupInvalid},
-		{"範囲の外の条件", child.Id, `{"rule": {"minDuration": 10, "maxDuration": 5}}`, wantInvalidSmartRule},
+		{"範囲の外の条件", child.Id, `{"rule": {"person": 0}}`, wantInvalidSmartRule},
 		{"random の並べ順", child.Id, `{"sort": "random"}`, wantInvalidSmartRule},
 		{"空の名前", child.Id, `{"name": " "}`, wantGroupInvalid},
 		{"無いフォルダ", 999999, `{"name": "x"}`, wantGroupNotFound},
@@ -190,7 +190,7 @@ func TestSmartFolderSettingsNameAMissingTag(t *testing.T) {
 	f := newLibraryFixture(t)
 	gone := f.smartFolderTag(t, "消す", "solo")
 	folder := f.createSmartFolder(t, map[string]any{
-		"name": "消す", "rule": map[string]any{"tags": []int64{gone}, "watch": "unwatched"}, "sort": "titleAsc",
+		"name": "消す", "rule": map[string]any{"tags": []int64{gone}, "favorite": true}, "sort": "titleAsc",
 	})
 	child := f.createSmartFolder(t, map[string]any{"name": "子", "rule": map[string]any{}, "parentId": folder.Id})
 	if err := f.env.db.Tags().DeleteTag(context.Background(), gone); err != nil {
@@ -199,7 +199,7 @@ func TestSmartFolderSettingsNameAMissingTag(t *testing.T) {
 	detail := decode[gen.SmartFolderDetail](t, f.env.get(smartFolderPath(folder.Id, ""), f.owner))
 	settings := detail.Settings
 	if settings == nil || settings.Sort != gen.VideoSortTitleAsc || settings.Rule.Tags == nil ||
-		!slices.Equal(*settings.Rule.Tags, []int64{gone}) || settings.Rule.Watch == nil || *settings.Rule.Watch != gen.SmartRuleWatchUnwatched {
+		!slices.Equal(*settings.Rule.Tags, []int64{gone}) || settings.Rule.Favorite == nil || !*settings.Rule.Favorite {
 		t.Fatalf("settings = %+v", settings)
 	}
 	if !slices.Equal(settings.Missing, []gen.SmartRuleRef{{Kind: gen.SmartRuleRefKindTag, Id: gone}}) {
@@ -416,7 +416,7 @@ func TestSmartFolderRoutesAnswerInternalErrors(t *testing.T) {
 	routes := []struct{ method, target, body string }{
 		{http.MethodGet, "/api/smart-folders", ""},
 		{http.MethodPost, "/api/smart-folders", `{"name": "a", "rule": {}}`},
-		{http.MethodPatch, "/api/smart-folders/3", `{"rule": {"watch": "watched"}}`},
+		{http.MethodPatch, "/api/smart-folders/3", `{"rule": {"favorite": true}}`},
 		{http.MethodDelete, "/api/smart-folders/3", ""},
 		{http.MethodGet, "/api/smart-folders/3", ""},
 		{http.MethodGet, "/api/smart-folders/3/items?cursor=c1", ""},

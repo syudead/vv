@@ -110,18 +110,6 @@ func ParseWatchHistoryFilter(value string) (WatchHistoryFilter, error) {
 	}
 }
 
-// WatchFilter reuses storage's watchCondition; empty/all maps to WatchAll.
-func (f WatchHistoryFilter) WatchFilter() WatchFilter {
-	switch f {
-	case WatchHistoryInProgress:
-		return WatchInProgress
-	case WatchHistoryWatched:
-		return WatchWatched
-	default:
-		return WatchAll
-	}
-}
-
 // Before is exclusive and ignored by date listings; empty Filter/Search applies no corresponding restriction.
 type WatchHistoryQuery struct {
 	Filter WatchHistoryFilter

@@ -37,10 +37,10 @@ describe("missingParent", () => {
 
   it("自分の条件に無い欠けた参照を持ついちばん近い祖先を返す", () => {
     const ancestors = [
-      { folder: { id: 2, name: "near" }, rule: { watch: "watched" as const } },
+      { folder: { id: 2, name: "near" }, rule: { favorite: true } },
       { folder: parent, rule: { tags: [3] } },
     ];
-    expect(missingParent({ watch: "unwatched" }, ancestors, missing)).toEqual(parent);
+    expect(missingParent({ q: "cat" }, ancestors, missing)).toEqual(parent);
   });
 
   it("自分の条件にあるか、祖先の条件が読めていなければ返さない", () => {

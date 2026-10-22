@@ -25,11 +25,9 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	}
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, hasVersions: params.HasVersions,
-		sort: params.Sort,
+		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind,
 	})
 	if !ok {

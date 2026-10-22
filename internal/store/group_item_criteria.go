@@ -10,7 +10,7 @@ import (
 )
 
 func hasCollectionConditions(q domain.VideoQuery) bool {
-	return q.Query != "" || (q.Watch != "" && q.Watch != domain.WatchAll) || q.PlayableOnly || q.FavoriteOnly || q.Sort != ""
+	return q.Query != "" || q.FavoriteOnly || q.Sort != ""
 }
 
 type groupItemEntry struct {
@@ -18,12 +18,12 @@ type groupItemEntry struct {
 	videoID, childID sql.NullInt64
 }
 
-// Match descendant titles before paging; watch/favorite filters apply to each displayed item's own values.
+// Match descendant titles before paging; the favorite filter applies to each displayed item's own value.
 func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.VideoQuery) (string, []any) {
 	spec := libraryListSpec(audience, query, nil)
 	spec.scope.withinGroup = id
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
-	conditions, matchArgs := memberConditions(spec)
+	conditions, matchArgs := matchConditions(spec)
 	where := ""
 	for _, condition := range conditions {
 		where += " and " + condition
@@ -36,7 +36,7 @@ func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.Video
   from group_items gi where gi.group_id = ?),
  items as (
   select e.*, v.added_at, loc.mtime, ` + fileCreatedAtExpr("loc") + ` as created_at, loc.title_key,
-   v.duration_ms, loc.size_bytes, p.updated_at as played_at, fav.favorited_at, ` + videoWatchStateExpr + ` as watch_state
+   v.duration_ms, loc.size_bytes, p.updated_at as played_at, fav.favorited_at
   from entries e join videos v on v.id = e.video_id
   join chosen on chosen.video_id = v.id join video_locations loc on loc.path = chosen.path
   left join playback_progress p on p.content_key = ` + userKeyExpr("v") + ` and v.content_key <> ''
@@ -44,8 +44,7 @@ func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.Video
   where e.video_id in (select id from matched)
   union all
   select e.*, gv.added_at, gv.mtime, gv.created_at, g.title_key, gv.duration_ms, gv.size_bytes, gv.played_at,
-   ` + groupFavoritedAtExpr("g") + `,
-   case when gv.started = 0 then 'unwatched' when gv.watched = gv.video_count then 'watched' else 'inProgress' end
+   ` + groupFavoritedAtExpr("g") + `
   from entries e join groups g on g.id = e.child_id
   join group_values gv on gv.group_id = g.id and gv.audience = ` + a + `
   where exists (select 1 from group_members gm where gm.group_id = e.child_id and gm.audience = ` + a + ` and gm.video_id in (select id from matched)))`
@@ -72,19 +71,15 @@ func groupItemPageStatement(audience domain.Audience, id int64, cursor string, l
 		}
 	}
 	cte, args := groupItemCriteriaSQL(audience, id, query)
-	watch, watchArgs := itemWatchCondition(query.Watch)
-	if watch == "" {
-		watch = "1=1"
-	}
+	where := ""
 	if query.FavoriteOnly {
-		watch += " and favorited_at is not null"
+		where = " where favorited_at is not null"
 	}
 	if order.seeded {
 		args = append(args, query.Seed)
 	}
-	statement := cte + `, filtered as (select items.*, ` + order.value + ` as sort_value from items where ` + watch + `)
+	statement := cte + `, filtered as (select items.*, ` + order.value + ` as sort_value from items` + where + `)
   select id, position, video_id, child_id, sort_value from filtered`
-	args = append(args, watchArgs...)
 	if clause != "" {
 		statement += " where " + clause
 		args = append(args, cursorArgs...)
