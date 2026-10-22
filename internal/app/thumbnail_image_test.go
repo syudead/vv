@@ -87,6 +87,29 @@ func TestApplyThumbnailImageUnknownSize(t *testing.T) {
 	}
 }
 
+// A virtual video has no geometry; its upload is fitted to the 16:9 card frame and kept under its user key.
+func TestUploadThumbnailImageFitsVirtualVideoTo16By9(t *testing.T) {
+	video := domain.Video{ID: 3, ContentKey: "virtual:3", UserKey: "virtual:3"}
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{thumbnailDir: t.TempDir()}
+	ingest, _ := newTestIngest(store, generator)
+	image := uploadPNG(t)
+
+	if _, err := ingest.UploadThumbnailImage(context.Background(), video.ID, "virtual:3", image); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(generator.aspects, []float64{16.0 / 9.0}) {
+		t.Fatalf("縦横比 = %v, want 16:9", generator.aspects)
+	}
+	row := store.rows["virtual:3"]
+	if !bytes.Equal(row.Image, append([]byte("fitted:"), image...)) || row.Origin != domain.ThumbnailImageUploaded {
+		t.Fatalf("仮想キーの行 = %q / %q", row.Image, row.Origin)
+	}
+	if !bytes.Equal(generator.published["virtual:3"], row.Image) {
+		t.Fatal("仮想キーで公開していない")
+	}
+}
+
 // Reject changed content before fitting, publishing or recording.
 func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	for _, tc := range []struct {

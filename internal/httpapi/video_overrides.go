@@ -123,7 +123,7 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	video, ok := s.lookupVideo(w, r, id)
+	video, ok := s.lookupFrameVideo(w, r, id)
 	if !ok {
 		return
 	}
@@ -162,14 +162,18 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	if !ok {
 		return
 	}
-	if s.files == nil {
-		s.internalError(w, "Media file access is not configured.", nil)
-		return
-	}
-	location, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
-		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
-		return
+	// A virtual video has no frame to return to; its image is removed without opening a file.
+	var location, path string
+	if !video.Virtual() {
+		if s.files == nil {
+			s.internalError(w, "Media file access is not configured.", nil)
+			return
+		}
+		location, path, ok = s.resolveMediaFile(r, video)
+		if !ok {
+			s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+			return
+		}
 	}
 
 	saved, err := s.thumbnails.RevertThumbnailImage(r.Context(), id, location, path)
@@ -178,6 +182,17 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	s.writeVideoDetail(w, r, saved)
+}
+
+// lookupFrameVideo reads a video whose thumbnail comes from its frames; a virtual video has none and answers
+// 409 virtual_video.
+func (s *server) lookupFrameVideo(w http.ResponseWriter, r *http.Request, id int64) (domain.Video, bool) {
+	video, ok := s.lookupVideo(w, r, id)
+	if ok && video.Virtual() {
+		s.conflictReason(w, reasonVirtualVideo, "A video without a file has no frames; upload an image as its thumbnail.")
+		return domain.Video{}, false
+	}
+	return video, ok
 }
 
 // Use duration as the limit for out-of-range positions.

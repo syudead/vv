@@ -10,8 +10,15 @@ var ErrContentChanged = errors.New("the video no longer holds the content")
 // ErrThumbnailImageInvalid aborts without writes.
 var ErrThumbnailImageInvalid = errors.New("the thumbnail image cannot be decoded")
 
-// ThumbnailImageAspect prefers display geometry with rotation/pixel aspect, then width/height; unknown geometry returns zero to preserve the image's own aspect.
+// VirtualThumbnailAspect is the card frame, so a virtual video's card keeps the size of a file video's card.
+const VirtualThumbnailAspect = 16.0 / 9.0
+
+// ThumbnailImageAspect is 16:9 for a virtual video; otherwise it prefers display geometry with rotation/pixel aspect,
+// then width/height, and unknown geometry returns zero to preserve the image's own aspect.
 func ThumbnailImageAspect(video Video) float64 {
+	if video.Virtual() {
+		return VirtualThumbnailAspect
+	}
 	if video.DisplayAspectRatio != nil && *video.DisplayAspectRatio > 0 {
 		return *video.DisplayAspectRatio
 	}

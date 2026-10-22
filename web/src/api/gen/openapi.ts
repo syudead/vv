@@ -598,7 +598,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear the representative thumbnail position
-         * @description Owner-only. Generates and publishes a thumbnail at positionMs, then saves the position; null restores automatic selection. Waits for generation and returns Video with thumbnailState=done, a new thumbnailUrl and the explicit position when set. Unknown duration returns 409 duration_unknown; a negative position or position at/after duration returns 400 thumbnail_position_out_of_range with duration in limit. Generation failure returns 409 thumbnail_frame_unavailable, preserving the old image and position; inaccessible locations return 404 file_unavailable. Concurrent changes for one video serialize, leaving the last saved position. Clears any applied image atomically and emits a video event after commit.
+         * @description Owner-only. Generates and publishes a thumbnail at positionMs, then saves the position; null restores automatic selection. Waits for generation and returns Video with thumbnailState=done, a new thumbnailUrl and the explicit position when set. Unknown duration returns 409 duration_unknown; a negative position or position at/after duration returns 400 thumbnail_position_out_of_range with duration in limit. Generation failure returns 409 thumbnail_frame_unavailable, preserving the old image and position; inaccessible locations return 404 file_unavailable. A virtual video, which has no frames, returns 409 virtual_video. Concurrent changes for one video serialize, leaving the last saved position. Clears any applied image atomically and emits a video event after commit.
          */
         put: operations["setVideoThumbnailPosition"];
         post?: never;
@@ -619,12 +619,12 @@ export interface paths {
         put?: never;
         /**
          * Use an uploaded image as the video thumbnail
-         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP), up to 64 MiB and 120 million pixels, with 1 MiB additional multipart overhead. Fully decodes in memory and fits the video aspect ratio using the generated-image application path. Waits for publication, returning Video with thumbnailImage=uploaded and a new thumbnailUrl; preserves the saved frame position. Oversized data or dimensions return 400 thumbnail_upload_too_large with limit. Unsupported, animated or unreadable images return 400 thumbnail_upload_invalid. Missing video returns 404 video_not_found; deletion, changed content or stale contentVersion since request start returns 409 content_changed; failed fitting returns 409 thumbnail_image_invalid. Errors write nothing. After upload completes, validation/application continues despite disconnect, with a five-minute limit. Emits a video event after commit.
+         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP), up to 64 MiB and 120 million pixels, with 1 MiB additional multipart overhead. Fully decodes in memory and fits the video aspect ratio, 16:9 for a virtual video, using the generated-image application path. Waits for publication, returning Video with thumbnailImage=uploaded and a new thumbnailUrl; preserves the saved frame position. Oversized data or dimensions return 400 thumbnail_upload_too_large with limit. Unsupported, animated or unreadable images return 400 thumbnail_upload_invalid. Missing video returns 404 video_not_found; deletion, changed content or stale contentVersion since request start returns 409 content_changed; failed fitting returns 409 thumbnail_image_invalid. Errors write nothing. After upload completes, validation/application continues despite disconnect, with a five-minute limit. Emits a video event after commit.
          */
         post: operations["uploadThumbnailImage"];
         /**
          * Remove an applied thumbnail image
-         * @description Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. Emits a video event after commit.
+         * @description Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. For a virtual video, removes the uploaded image without opening a file and returns Video with no thumbnailUrl. Emits a video event after commit.
          */
         delete: operations["revertThumbnailImage"];
         options?: never;
@@ -643,7 +643,7 @@ export interface paths {
         put?: never;
         /**
          * Start thumbnail editing from a frame or the current thumbnail
-         * @description Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events.
+         * @description Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. A virtual video returns 409 virtual_video. Sessions are memory-only and emit no events.
          */
         post: operations["startThumbnailEdit"];
         delete?: never;
@@ -663,7 +663,7 @@ export interface paths {
         put?: never;
         /**
          * Start thumbnail editing from an image the page sends
-         * @description Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Runs need a ComfyUI configuration.
+         * @description Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. A virtual video returns 409 virtual_video. Runs need a ComfyUI configuration.
          */
         post: operations["startThumbnailEditFromImage"];
         delete?: never;
