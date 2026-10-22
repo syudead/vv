@@ -11,12 +11,13 @@ import { DateValue } from "./panelParts";
 export function workSummary(info: WorkInfo | undefined): string {
   if (info === undefined) return "";
   const release = info.dates.find((date) => date.kind === "release");
+  // By person ID: two people may share a name, and the People tab counts IDs.
   const performers = [
-    ...new Set(
+    ...new Map(
       info.people
         .filter((entry) => entry.role === "performer")
-        .map((entry) => creditDisplayName(entry.person)),
-    ),
+        .map((entry) => [entry.person.id, creditDisplayName(entry.person)]),
+    ).values(),
   ];
   return [
     info.code,

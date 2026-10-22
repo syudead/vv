@@ -18,7 +18,7 @@ import OverviewPanel from "./OverviewPanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
 
-export interface VideoTabsProps {
+export interface VideoPageTabsProps {
   video: Video;
   owner: boolean;
   /** Supplied only for owners while the player is visible. */
@@ -61,7 +61,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoTabsProps, "owner" | "details" | "state">) {
+}: Omit<VideoPageTabsProps, "owner" | "details" | "state">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -130,7 +130,7 @@ function panel(tab: VideoTab, video: Video, owner: boolean): ReactNode {
 }
 
 /** The tab strip under the tags with the record's actions at its end, and the selected panel. */
-export default function VideoTabs(props: VideoTabsProps) {
+export default function VideoPageTabs(props: VideoPageTabsProps) {
   const { video, owner, details, onStale, state } = props;
   const { plugins, reload, select } = state;
   const tabs = availableTabs(video, owner, state.workPlugin);

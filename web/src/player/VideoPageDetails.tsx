@@ -10,7 +10,7 @@ import type { ThumbnailCapture } from "./playerLayers";
 import { CreatingLine } from "./StatusOverlays";
 import type { VideoPlaylist } from "./useVideoPlaylist";
 import TitleRow from "./TitleRow";
-import VideoTabs, { useVideoTabState } from "./tabs/VideoTabs";
+import VideoPageTabs, { useVideoTabState } from "./tabs/VideoPageTabs";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
 
@@ -102,7 +102,7 @@ export default function VideoPageDetails({
         />
         {owner && <OwnerTags video={video} reread={reread} />}
       </div>
-      <VideoTabs
+      <VideoPageTabs
         video={video}
         owner={owner}
         capture={capture}

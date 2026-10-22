@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { Video } from "../../api/client";
-import OverviewPanel from "./OverviewPanel";
+import OverviewPanel, { workSummary } from "./OverviewPanel";
 
 const video: Video = {
   id: 7,
@@ -52,5 +52,24 @@ describe("OverviewPanel", () => {
     expect(terms()).toEqual(["Length", "Resolution", "Added"]);
     expect(screen.queryByText("about")).toBeNull();
     expect(screen.queryByText("A-1")).toBeNull();
+  });
+});
+
+describe("workSummary", () => {
+  it("出演者を人物ごとに一度だけ並べ、同名の別人は両方残す", () => {
+    const performer = (id: number, name: string) => ({
+      role: "performer" as const,
+      person: { id, name, provisional: false },
+      provisional: false,
+    });
+    const summary = workSummary({
+      code: "A-1",
+      dates: [],
+      organizations: [],
+      urls: [],
+      externalIds: [],
+      people: [performer(1, "Alice"), performer(2, "Alice"), performer(1, "Alice")],
+    });
+    expect(summary).toBe("A-1 · Alice, Alice");
   });
 });
