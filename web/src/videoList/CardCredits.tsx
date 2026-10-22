@@ -56,7 +56,7 @@ function PerformerFace({
       <PopoverContent
         side="bottom"
         align="start"
-        className="flex w-face-popover flex-col gap-2 p-2"
+        className="flex max-w-face-popover flex-col gap-2 p-2"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         {...contentHandlers}
