@@ -666,6 +666,7 @@ describe("progress API client", () => {
   };
   const unwatched = {
     id: 7,
+    virtual: false,
     title: "x",
     public: false,
     sizeBytes: 1,

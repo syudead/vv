@@ -12,6 +12,7 @@ import {
 function item(id: number, tags: VideoTag[] = []) {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: false,
     sizeBytes: 1,

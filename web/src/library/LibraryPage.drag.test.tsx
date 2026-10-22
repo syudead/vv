@@ -35,6 +35,7 @@ import LibraryPage from "./LibraryPage";
 function video(id: number): Video {
   return {
     id,
+    virtual: false,
     title: `Clip ${String(id)}`,
     public: false,
     sizeBytes: 1024,

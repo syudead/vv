@@ -5,6 +5,7 @@ import { creatingLine, processingStages } from "./processing";
 
 const base: Video = {
   id: 1,
+  virtual: false,
   title: "a",
   public: false,
   sizeBytes: 1,

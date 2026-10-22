@@ -584,16 +584,22 @@ func attachVersionsIn[K comparable](ctx context.Context, q rowsQueryer, audience
 	return nil
 }
 
-// Bundling requires identified content with a registered location.
+// Bundling requires identified content with a registered location, so a virtual video is ErrVirtualVideo and a video
+// with no registered location ErrNotFound.
 func bundlableContentKey(ctx context.Context, tx *sql.Tx, videoID int64) (string, error) {
 	var key string
-	err := tx.QueryRowContext(ctx, `select v.content_key from videos v
-		where v.id = ? and v.content_key <> '' and `+registeredVideoCondition("v"), videoID).Scan(&key)
-	if errors.Is(err, sql.ErrNoRows) {
+	var registered bool
+	err := tx.QueryRowContext(ctx, `select v.content_key, `+registeredVideoCondition("v")+` from videos v
+		where v.id = ? and v.content_key <> ''`, videoID).Scan(&key, &registered)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
 		return "", domain.ErrNotFound
-	}
-	if err != nil {
+	case err != nil:
 		return "", fmt.Errorf("cannot read the video (id=%d): %w", videoID, err)
+	case domain.IsVirtualKey(key):
+		return "", domain.ErrVirtualVideo
+	case !registered:
+		return "", domain.ErrNotFound
 	}
 	return key, nil
 }

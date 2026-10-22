@@ -25,6 +25,7 @@ import LibraryPage from "./LibraryPage";
 function video(id: number, title: string): Video {
   return {
     id,
+    virtual: false,
     title,
     public: false,
     sizeBytes: 1024,

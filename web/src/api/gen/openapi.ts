@@ -158,6 +158,30 @@ export interface paths {
         get: operations["getVideo"];
         put?: never;
         post?: never;
+        /**
+         * Delete a virtual video
+         * @description Owner-only. Deletes a virtual video with its tags, favorite, public flag, playlist items and work information in one transaction. A missing video, including one already deleted or merged, returns 404 video_not_found; a contentVersion other than the video's returns 409 content_changed; a video with a file returns 409 not_virtual. Errors change nothing. Emits a video deletion event after commit.
+         */
+        delete: operations["deleteVideo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/virtual-videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a virtual video
+         * @description Owner-only. Creates a video with no file from a title. The title follows the display-name rules and must not be empty after trimming: an empty or whitespace-only title returns 400 invalid_title. Returns the GET detail shape with virtual=true. Emits a library change after commit.
+         */
+        post: operations["createVirtualVideo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -514,7 +538,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear the video display name
-         * @description Owner-only. Trims surrounding whitespace; an empty name clears the override. Rejects control characters and names over 200 code points. Duplicate display names are allowed; concurrent edits are last-write-wins. Returns the same Video shape as GET details, including updated title, fileTitle and displayName. Emits a `video` event after commit.
+         * @description Owner-only. Trims surrounding whitespace; an empty name clears the override. Rejects control characters and names over 200 code points. Duplicate display names are allowed; concurrent edits are last-write-wins. Returns the same Video shape as GET details, including updated title, fileTitle and displayName. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed. Emits a `video` event after commit.
          */
         put: operations["setVideoDisplayName"];
         post?: never;
@@ -554,7 +578,7 @@ export interface paths {
         get?: never;
         /**
          * Save display name and work information atomically
-         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details.
+         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed.
          */
         put: operations["setVideoDetails"];
         post?: never;
@@ -679,7 +703,7 @@ export interface paths {
         put?: never;
         /**
          * Make this video the bundle representative
-         * @description Owner-only; no body. Selects the listed representative and returns all versions, including when already selected. Preserves bundle tags, playback position and visibility. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for all members after commit.
+         * @description Owner-only; no body. Selects the listed representative and returns all versions, including when already selected. Preserves bundle tags, playback position and visibility. Returns 400 not_bundled, 404 video_not_found when missing or without a registered-folder location, or 409 virtual_video for a virtual video. Emits video events for all members after commit.
          */
         post: operations["makeRepresentativeVersion"];
         delete?: never;
@@ -699,7 +723,7 @@ export interface paths {
         put?: never;
         /**
          * Remove this video from its version bundle
-         * @description Owner-only; no body. Returns the removed Video with its pre-bundle tags, progress and public state, without versions. A remaining singleton dissolves the bundle and inherits bundle values. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for every former member after commit.
+         * @description Owner-only; no body. Returns the removed Video with its pre-bundle tags, progress and public state, without versions. A remaining singleton dissolves the bundle and inherits bundle values. Returns 400 not_bundled, 404 video_not_found when missing or without a registered-folder location, or 409 virtual_video for a virtual video. Emits video events for every former member after commit.
          */
         post: operations["unbundleVideo"];
         delete?: never;
@@ -2527,7 +2551,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle videos as versions of the same video
-         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found. Errors change nothing. Emits video events for all members after commit.
+         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit.
          */
         post: operations["bundleVideos"];
         delete?: never;
@@ -2567,7 +2591,7 @@ export interface paths {
         put?: never;
         /**
          * Record two videos as different
-         * @description Owner-only. Dismisses the pair and removes its candidate, even if no candidate exists; the pair is excluded thereafter. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos or registered-folder locations return 404 video_not_found without changes. To mark them the same, use POST /api/video-bundles with both videos and a representative.
+         * @description Owner-only. Dismisses the pair and removes its candidate, even if no candidate exists; the pair is excluded thereafter. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos or registered-folder locations return 404 video_not_found and a virtual video returns 409 virtual_video, without changes. To mark them the same, use POST /api/video-bundles with both videos and a representative.
          */
         post: operations["dismissVersionCandidate"];
         delete?: never;
@@ -3052,7 +3076,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle dragged videos with the drop target as representative
-         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found. Errors write nothing.
+         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing.
          */
         post: operations["organizeBundle"];
         delete?: never;
@@ -4272,11 +4296,13 @@ export interface components {
             urls?: string[] | null;
             externalIds?: components["schemas"]["ExternalId"][] | null;
         };
-        /** @description Fullscreen editor save body; both fields are required. */
+        /** @description Fullscreen editor save body; displayName and workInfo are required. */
         VideoDetailsInput: {
-            /** @description New display name; whitespace-only after trimming clears it. */
+            /** @description New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty. */
             displayName: string;
             workInfo: components["schemas"]["WorkInfoInput"];
+            /** @description The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored. */
+            contentVersion?: string;
         };
         /** @description One person. */
         Person: {
@@ -5249,11 +5275,13 @@ export interface components {
             /** @description Registered media folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
-        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags. */
+        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo. */
         Video: {
             /** Format: int64 */
             id: number;
-            /** @description Effective title: display name when set, otherwise filename without extension. */
+            /** @description True for a virtual video, which has no file and is never playable. */
+            virtual: boolean;
+            /** @description Effective title: display name when set, otherwise filename without extension; a virtual video's own title. */
             title: string;
             /** @description Filename without extension; owner responses only. */
             fileTitle?: string;
@@ -5264,7 +5292,7 @@ export interface components {
              * @description Thumbnail frame position in milliseconds; included only when set and for owners.
              */
             thumbnailPositionMs?: number;
-            /** @description Content version: first 12 content-key characters, matching the thumbnailUrl version prefix; owner responses only. Submit with image uploads to reject changes since the preview opened; see Uploaded images in docs/design-docs/thumbnail-editing.md. */
+            /** @description Content version: first 12 content-key characters, matching the thumbnailUrl version prefix, or the whole user key for a virtual video; owner responses only. Submit with image uploads to reject changes since the preview opened (see Uploaded images in docs/design-docs/thumbnail-editing.md), and with saves and deletion of a virtual video. */
             contentVersion?: string;
             /**
              * @description Applied thumbnail image source: generated for ComfyUI output, uploaded for an uploaded image. Included only while applied and for owners.
@@ -5282,7 +5310,7 @@ export interface components {
             updatedAt: string;
             /**
              * Format: date-time
-             * @description Creation timestamp of the displayed-location file; falls back to its mtime when unavailable.
+             * @description Creation timestamp of the displayed-location file; falls back to its mtime when unavailable. A virtual video's creation time.
              */
             fileCreatedAt: string;
             /**
@@ -5315,7 +5343,7 @@ export interface components {
              * @example opus
              */
             audioCodec?: string;
-            /** @description Whether the video is judged directly playable in the browser. */
+            /** @description Whether the video is judged directly playable in the browser; always false, without unplayableReason, for a virtual video. */
             playable: boolean;
             /**
              * @description Reason for playable=false; omitted before classification.
@@ -5349,7 +5377,7 @@ export interface components {
             public: boolean;
             /** @description Whether the owner favorited the video; owner responses only. */
             favorite?: boolean;
-            /** @description Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items. */
+            /** @description Work information, only in GET /api/videos/{id} and owner PUT work-info/details responses when a row exists. Guests receive only description and urls, with the other lists empty, and no workInfo when both are empty. Omitted from lists, related videos and library items. */
             workInfo?: components["schemas"]["WorkInfo"];
             /** @description Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses. */
             mediaInfo?: components["schemas"]["MediaInfo"];
@@ -5616,8 +5644,14 @@ export interface components {
             group?: components["schemas"]["RelatedGroup"];
         };
         DisplayNameUpdate: {
-            /** @description New display name; whitespace-only after trimming clears it. */
+            /** @description New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty. */
             displayName: string;
+            /** @description The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored. */
+            contentVersion?: string;
+        };
+        VirtualVideoCreate: {
+            /** @description Title; follows the display-name rules and must not be empty after trimming. */
+            title: string;
         };
         ThumbnailPositionUpdate: {
             /**
@@ -6146,7 +6180,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video";
     };
     responses: {
         /** @description Resource not found */
@@ -6514,6 +6548,8 @@ export interface operations {
                 maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
+                kind?: "all" | "file" | "virtual";
             };
             header?: never;
             path?: never;
@@ -6612,6 +6648,60 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    deleteVideo: {
+        parameters: {
+            query: {
+                /** @description The contentVersion the screen read. */
+                contentVersion: string;
+            };
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createVirtualVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VirtualVideoCreate"];
+            };
+        };
+        responses: {
+            /** @description Created video */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getRelatedVideos: {
@@ -7259,6 +7349,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     setVideoWorkInfo: {
@@ -7319,6 +7410,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     setVideoThumbnailPosition: {
@@ -7519,6 +7611,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     unbundleVideo: {
@@ -7545,6 +7638,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     startScan: {
@@ -10804,6 +10898,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listVersionCandidates: {
@@ -10850,6 +10945,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listActivity: {
@@ -11743,6 +11839,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     organizeUndo: {

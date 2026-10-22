@@ -16,6 +16,7 @@ import FolderPage from "./FolderPage";
 function video(id: number, title: string): Video {
   return {
     id,
+    virtual: false,
     title,
     public: false,
     sizeBytes: 1024,

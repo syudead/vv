@@ -10,15 +10,36 @@ import (
 var (
 	ErrInvalidVirtualTitle = errors.New("a virtual video needs a title")
 	ErrNotVirtual          = errors.New("the video has a file")
+	// ErrVirtualVideo rejects a virtual video in an operation that needs a file, such as a version bundle.
+	ErrVirtualVideo = errors.New("the video has no file")
 )
 
-// NormalizeVirtualTitle trims the title and rejects one that is empty after trimming.
+// VirtualKeyPrefix starts every virtual video's user key, which is also the content key of its projected row.
+const VirtualKeyPrefix = "virtual:"
+
+// IsVirtualKey reports whether a content or user key belongs to a virtual video.
+func IsVirtualKey(key string) bool {
+	return strings.HasPrefix(key, VirtualKeyPrefix)
+}
+
+// Virtual reports whether the video is a virtual video, which has no file.
+func (v Video) Virtual() bool {
+	return IsVirtualKey(v.ContentKey)
+}
+
+// NormalizeVirtualTitle trims the title, rejects one that is empty after trimming, and applies the display-name rules.
 func NormalizeVirtualTitle(title string) (string, error) {
-	trimmed := strings.TrimSpace(title)
-	if trimmed == "" {
+	if strings.TrimSpace(title) == "" {
 		return "", ErrInvalidVirtualTitle
 	}
-	return trimmed, nil
+	name, clear, err := NormalizeDisplayName(title)
+	if err != nil {
+		return "", err
+	}
+	if clear {
+		return "", ErrInvalidVirtualTitle
+	}
+	return name, nil
 }
 
 // VideoKind narrows a library listing to file videos or virtual videos; empty means all.

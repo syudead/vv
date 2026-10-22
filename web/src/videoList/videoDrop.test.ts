@@ -13,6 +13,7 @@ import {
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title: `Video ${String(id)}`,
     public: false,
     sizeBytes: 100,

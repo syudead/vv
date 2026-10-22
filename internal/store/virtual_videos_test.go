@@ -288,3 +288,66 @@ func TestVirtualKindLeavesOutFileGroups(t *testing.T) {
 		t.Errorf("バーチャルな動画だけのライブラリ = %+v, want [Moonlight] だけ", page.Items)
 	}
 }
+
+// Saving details writes the title and the work information together; a rejected save writes neither.
+func TestSaveVirtualVideoDetails(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	virtual := createVirtual(t, db, "Before", fixedTime)
+	info := domain.WorkInfo{Description: "notes", URLs: []string{"https://example.com/a"}}
+
+	if _, err := db.VirtualVideos().SaveDetails(ctx, virtual.ID, virtual.UserKey, "After",
+		domain.WorkInfo{URLs: []string{"not a link"}}); !errors.Is(err, domain.ErrInvalidWorkInfo) {
+		t.Errorf("リンクでない文字列を保存: err = %v, want domain.ErrInvalidWorkInfo", err)
+	}
+	if _, err := db.VirtualVideos().SaveDetails(ctx, virtual.ID, virtual.UserKey+"0", "After", info); !errors.Is(err, domain.ErrContentChanged) {
+		t.Errorf("古い版で保存: err = %v, want domain.ErrContentChanged", err)
+	}
+	if got, _ := listTitles(t, db, owner, domain.VideoQuery{}); !slices.Equal(got, []string{"Before"}) {
+		t.Errorf("拒んだ後のタイトル = %v, want [Before]", got)
+	}
+
+	saved, err := db.VirtualVideos().SaveDetails(ctx, virtual.ID, virtual.UserKey, " After ", info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Title != "After" || saved.WorkInfo == nil || saved.WorkInfo.Description != "notes" ||
+		!slices.Equal(saved.WorkInfo.URLs, info.URLs) {
+		t.Errorf("保存した動画 = %+v, work info = %+v", saved, saved.WorkInfo)
+	}
+	stored, err := db.WorkInfo().ByUserKeys(ctx, []string{virtual.UserKey})
+	if err != nil || stored[virtual.UserKey].Description != "notes" {
+		t.Errorf("保存した作品情報 = %+v, err = %v", stored, err)
+	}
+}
+
+// A bundle chooses a file to play, so every bundle operation rejects a virtual video and changes nothing.
+func TestVersionBundlesRejectVirtualVideos(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))
+	file := ids[fixturePath("/media/clip.mp4")]
+	virtual := createVirtual(t, db, "Moonlight", fixedTime).ID
+
+	for name, run := range map[string]func() error{
+		"bundle": func() error {
+			_, err := db.Versions().Bundle(ctx, []int64{file, virtual}, file)
+			return err
+		},
+		"organize bundle": func() error {
+			_, err := db.Organize().Bundle(ctx, []int64{virtual}, file)
+			return err
+		},
+		"dismiss":             func() error { return db.Versions().Dismiss(ctx, [2]int64{file, virtual}) },
+		"make representative": func() error { _, err := db.Versions().MakeRepresentative(ctx, virtual); return err },
+		"unbundle":            func() error { _, err := db.Versions().Unbundle(ctx, virtual); return err },
+	} {
+		if err := run(); !errors.Is(err, domain.ErrVirtualVideo) {
+			t.Errorf("%s: err = %v, want domain.ErrVirtualVideo", name, err)
+		}
+	}
+	var members int
+	if err := db.sql.QueryRowContext(ctx, `select count(*) from video_bundle_members`).Scan(&members); err != nil || members != 0 {
+		t.Errorf("束の行 = %d, err = %v, want 0", members, err)
+	}
+}

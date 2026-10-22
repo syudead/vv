@@ -16,6 +16,7 @@ function json(body: unknown, status = 200): Response {
 
 const video: Video = {
   id: 7,
+  virtual: false,
   title: "clip_0042",
   fileTitle: "clip_0042",
   public: false,

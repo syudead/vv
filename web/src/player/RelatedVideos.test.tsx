@@ -22,6 +22,7 @@ vi.mock("../api/client", async (importOriginal) => ({
 function item(id: number, overrides: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title: `関連 ${String(id)}`,
     public: false,
     sizeBytes: 1,
