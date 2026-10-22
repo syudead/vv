@@ -687,22 +687,22 @@ func replaceUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return copyUserData(ctx, tx, from, to)
 }
 
-func queryStrings(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
+func queryStrings(ctx context.Context, q queryExecer, query string, args ...any) ([]string, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the bundle: %w", err)
+		return nil, fmt.Errorf("cannot read the rows: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var value string
 		if err := rows.Scan(&value); err != nil {
-			return nil, fmt.Errorf("cannot read the bundle: %w", err)
+			return nil, fmt.Errorf("cannot read the rows: %w", err)
 		}
 		out = append(out, value)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the bundle: %w", err)
+		return nil, fmt.Errorf("cannot read the rows: %w", err)
 	}
 	return out, nil
 }

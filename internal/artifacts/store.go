@@ -464,6 +464,12 @@ func (s *Store) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openRegular(path, nil)
 }
 
+// ThumbnailAvailable reports whether a non-empty thumbnail file is published for the key.
+func (s *Store) ThumbnailAvailable(contentKey string) bool {
+	path, ok := s.thumbnailPath(contentKey)
+	return ok && nonEmptyFile(path)
+}
+
 // PosterFile wraps fs.ErrNotExist when the thumbnail was published without a poster; the caller
 // must close it.
 func (s *Store) PosterFile(contentKey string) (*os.File, error) {
