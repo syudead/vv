@@ -246,6 +246,68 @@ func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 	}
 }
 
+// A virtual video takes the fetched title as its own title, never as a display-name override, and the other fields as
+// work information under its key; a stale plugin leaves it unchanged.
+func TestApplyFetchedWorkInfoToVirtualVideo(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	virtual := createVirtual(t, db, "Before", fixedTime)
+	plugin := approvedPlugin(t, db, "example", "d1")
+	title := "  Fetched title  "
+	apply := domain.FetchedWorkInfoApply{
+		VideoID: virtual.ID, PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation, Title: &title,
+		Details: domain.FetchedWorkInfo{
+			Description: "Fetched notes", Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "2024-03-01"}},
+			URLs: []string{"https://example.com/works/1"},
+		},
+		DetailFields: []domain.WorkInfoField{
+			domain.WorkInfoFieldDescription, domain.DateField(domain.DateRelease), domain.WorkInfoFieldURLs,
+		},
+	}
+	stored := func() (string, domain.WorkInfo, int) {
+		t.Helper()
+		var stored string
+		var overrides int
+		if err := db.sql.QueryRow(`select title from virtual_videos where user_key = ?`, virtual.UserKey).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.sql.QueryRow(`select count(*) from video_overrides where content_key = ?`, virtual.UserKey).Scan(&overrides); err != nil {
+			t.Fatal(err)
+		}
+		infos, err := db.WorkInfo().ByUserKeys(ctx, []string{virtual.UserKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stored, infos[virtual.UserKey], overrides
+	}
+
+	if _, err := db.WorkInfoPlugins().RevokeWorkInfoPlugin(ctx, plugin.ID, pluginNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, apply); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+		t.Fatalf("revoked plugin: err = %v, want ErrWorkInfoFetchStale", err)
+	}
+	if got, info, overrides := stored(); got != "Before" || info.Description != "" || len(info.URLs) != 0 || overrides != 0 {
+		t.Fatalf("after a stale apply: title %q, work info %+v, %d overrides; want nothing written", got, info, overrides)
+	}
+
+	plugin = approvedPlugin(t, db, "example", "d1")
+	apply.Generation = plugin.Generation
+	applied, err := db.Overrides().ApplyFetchedWorkInfo(ctx, apply)
+	if err != nil {
+		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
+	}
+	got, info, overrides := stored()
+	if got != "Fetched title" || applied.Video.Title != "Fetched title" || overrides != 0 {
+		t.Fatalf("title %q (video %q), %d overrides; want the trimmed title in virtual_videos alone",
+			got, applied.Video.Title, overrides)
+	}
+	if info.Description != "Fetched notes" || !slices.Equal(info.URLs, apply.Details.URLs) ||
+		!slices.Equal(info.Dates, apply.Details.Dates) {
+		t.Fatalf("work info = %+v; want the fetched description, release date and link", info)
+	}
+}
+
 func TestWorkInfoPluginModuleReturnsTheRowAndBytes(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()

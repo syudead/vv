@@ -226,11 +226,11 @@ func (s *OverrideStore) RecordWorkInfoFetch(ctx context.Context, videoID int64, 
 		return fmt.Errorf("cannot record the work-information fetch: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	keys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{videoID})
+	key, err := writableContentKeyOf(ctx, tx, videoID)
 	if err != nil {
 		return err
 	}
-	if len(keys) == 0 {
+	if key == "" {
 		return domain.ErrNotFound
 	}
 	subject, err := videoActivitySubject(ctx, tx, videoID)

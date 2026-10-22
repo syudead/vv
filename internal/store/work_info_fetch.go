@@ -36,7 +36,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	contentKeys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
+	contentKey, err := writableContentKeyOf(ctx, tx, apply.VideoID)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
@@ -44,14 +44,14 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	if len(contentKeys) == 0 || len(userKeys) == 0 {
+	if contentKey == "" || len(userKeys) == 0 {
 		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
 	}
 
 	now := time.Now()
 	var touched []string
 	if apply.Title != nil {
-		if touched, _, err = writeChangedDisplayName(ctx, tx, contentKeys[0], title, now); err != nil {
+		if touched, err = writeFetchedTitle(ctx, tx, contentKey, title, now); err != nil {
 			return domain.FetchedWorkInfoApplied{}, err
 		}
 	}
@@ -94,7 +94,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	}
 	c := &changes{}
 	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityWorkInfoApply,
-		ownerVideoChanges(contentKeys[:1], ""), now); err != nil {
+		ownerVideoChanges([]string{contentKey}, ""), now); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	c.matchesChanged()
@@ -103,6 +103,24 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
 	return out, nil
+}
+
+// writeFetchedTitle writes a virtual video's own title, or a file video's display name, and returns the touched keys.
+func writeFetchedTitle(ctx context.Context, tx *sql.Tx, key, title string, now time.Time) ([]string, error) {
+	if !domain.IsVirtualKey(key) {
+		touched, _, err := writeChangedDisplayName(ctx, tx, key, title, now)
+		return touched, err
+	}
+	// A virtual video has no file title to fall back to, so a fetched title never clears it.
+	title, err := domain.NormalizeVirtualTitle(title)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := writeVirtualTitle(ctx, tx, key, title, now)
+	if err != nil || !changed {
+		return nil, err
+	}
+	return []string{key}, nil
 }
 
 type appliedDetails struct {
