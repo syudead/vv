@@ -23,8 +23,8 @@ beforeAll(() => {
 
 type User = ReturnType<typeof userEvent.setup>;
 
-const genre = { id: 1, name: "Genre" };
-const work = { id: 2, name: "Work" };
+const genre = { id: 1, name: "Genre", cardFirst: false };
+const work = { id: 2, name: "Work", cardFirst: false };
 
 function seedKindTags() {
   server.tags = [

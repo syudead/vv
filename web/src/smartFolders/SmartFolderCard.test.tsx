@@ -228,7 +228,7 @@ describe("スマートフォルダのカード", () => {
     await waitFor(() => expect(screen.queryByRole("link", { name: /^犬/ })).toBeNull());
   });
 
-  describe("角の印", () => {
+  describe("行の印", () => {
     function renderMarked(audience: Audience = "owner", favorite = false) {
       render(
         <MemoryRouter>
@@ -236,9 +236,14 @@ describe("スマートフォルダのカード", () => {
             <ToastProvider>
               <AudienceProvider audience={audience}>
                 <SmartFolderCardsProvider>
-                  <SmartFolderCard folder={{ id: 1, name: "猫", favorite }} backTo="/" />
+                  <SmartFolderCard folder={{ id: 3, name: "鳥", favorite }} backTo="/" />
                   <table>
                     <tbody>
+                      <SmartFolderRow
+                        folder={{ id: 1, name: "猫", favorite }}
+                        backTo="/"
+                        owner={audience === "owner"}
+                      />
                       <SmartFolderRow
                         folder={{ id: 2, name: "犬", favorite }}
                         backTo="/"
@@ -288,6 +293,19 @@ describe("スマートフォルダのカード", () => {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    it("格子のカードには印を出さず、行に出す", () => {
+      renderMarked("owner", true);
+      expect(
+        screen.queryByRole("button", { name: 'Favorite smart folder "鳥"' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: 'Add smart folder "鳥" to a playlist' }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
+      ).toBeDefined();
+    });
 
     it("ハートはフォルダの id を smartFolderIds で送り、成功したら塗りを変える", async () => {
       answerMarks();

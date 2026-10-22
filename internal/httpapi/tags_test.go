@@ -20,7 +20,9 @@ type fakeTags struct {
 	lastID    int64
 	lastName  string
 	lastTag   *int64
-	err       error
+	// lastCardFirst records SetTagKindCardFirst's argument.
+	lastCardFirst bool
+	err           error
 
 	lastVideoIDs  []int64
 	attachRef     domain.TagRef

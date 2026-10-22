@@ -121,13 +121,11 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 }
 
 func (s *server) presenter(ctx context.Context, audience domain.Audience, shown []domain.Video) func(context.Context, []domain.Video) []gen.Video {
-	progress := s.progressFor(ctx, shown)
-	tags := s.tagsFor(ctx, shown)
+	extras := s.extrasFor(ctx, shown)
 	return func(ctx context.Context, videos []domain.Video) []gen.Video {
 		out := make([]gen.Video, 0, len(videos))
 		for _, view := range s.presentVideos(ctx, videos) {
-			item := withTags(withProgress(toAPIVideo(view), progress, view.Video.UserKey), tags, view.Video.UserKey)
-			out = append(out, forAudience(audience, item))
+			out = append(out, forAudience(audience, extras.item(view)))
 		}
 		return out
 	}

@@ -217,7 +217,8 @@ func ensureTagKind(ctx context.Context, tx *sql.Tx, name string) (int64, error) 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("cannot read the tag kind: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, `insert into tag_kinds (name, created_at) values (?, ?)`, name, time.Now().Unix())
+	// The interest kind holds genres, which cards list first.
+	result, err := tx.ExecContext(ctx, `insert into tag_kinds (name, card_first, created_at) values (?, 1, ?)`, name, time.Now().Unix())
 	if err != nil {
 		return 0, fmt.Errorf("cannot create the tag kind: %w", err)
 	}

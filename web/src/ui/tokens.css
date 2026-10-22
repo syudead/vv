@@ -111,6 +111,8 @@
   --spacing-card-3: 30rem;
   /* Face card minimum: three columns at 360px, eight or nine at 1280px with the full sidebar. */
   --spacing-card-face: 6.5rem;
+  /* A performer's face popped from a card: large enough to recognize, inside the narrowest card. */
+  --spacing-face-popover: 10rem;
   --spacing-list-thumb-cell: 8rem;
   --spacing-list-thumb: 7rem;
   --spacing-list-number: 5rem;

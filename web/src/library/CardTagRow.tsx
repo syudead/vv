@@ -1,8 +1,8 @@
 import { Folder } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { VideoTag } from "../api/client";
-import { isFolderOnly, showsTentative } from "../api/tagOrder";
+import { cardTagOrder, isFolderOnly, showsTentative } from "../api/tagOrder";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { badgeVariants } from "../ui/shadcn/badge";
@@ -102,11 +102,12 @@ function TagChip({
 }
 
 export default function CardTagRow({
-  tags,
+  tags: unordered,
   selectionMode,
   onPress,
   onToggleSelection,
 }: CardTagRowProps) {
+  const tags = useMemo(() => cardTagOrder(unordered), [unordered]);
   const rowRef = useRef<HTMLUListElement | null>(null);
   const measureRowRef = useRef<HTMLDivElement | null>(null);
   const overflowMeasureRef = useRef<HTMLSpanElement | null>(null);

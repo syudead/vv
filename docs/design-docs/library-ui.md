@@ -357,7 +357,9 @@ scan's id. The result of a hidden scan stays readable in `Scan status`.
 
 A video card ([`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)) shows
 the thumbnail, the duration at its bottom right, playback progress along the
-bottom edge and the title.
+bottom edge, the owner's credits on the image and the title. Grid cards carry
+no actions: favorite, `Add to playlist` and `Add to group` are in list rows,
+the selection bar and the video page.
 
 | Card | Rules |
 | --- | --- |
@@ -366,12 +368,25 @@ bottom edge and the title.
 | Folder (folder page) | Group card's box, artwork, count panel and name, with a Folder mark before the video and folder counts; no checks, actions or tag row |
 | Media folder (`/folders`) | Video card's width and border, folder artwork, Folder icon in the title; opens the folder only |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` on its list row send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
+
+The owner's video card shows the work's credits on the image as faint text
+without a panel ([`CardCredits.tsx`](../../web/src/videoList/CardCredits.tsx)),
+read from `cardCredits` in list items and in the detail a list refreshes a
+changed item from.
+
+| Credit | Rule |
+| --- | --- |
+| Product code | Top left; moves right of the selection check while the check shows |
+| Performers | Bottom left, the first three faces, then `+N`; hovering a face pops that performer's face and name, and pressing the face or the popped face opens the person page; in selection mode a press selects the card |
+| Organization | After the faces, truncated: the first label, otherwise the first maker |
+| Guests | Not shown |
 
 Video card behaviour:
 
 | Case | Behaviour |
 | --- | --- |
+| Tag order | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked |
 | Tag pressed in the library | Filters by the tag |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
@@ -441,16 +456,17 @@ visit.
 
 ### Favorite mark
 
-The owner's favorite mark is one heart that is both mark and toggle, at the
-top right of the thumbnail on video and group cards.
+The owner's favorite mark is one heart that is both mark and toggle, in the
+list rows of videos, groups and smart folders and on the video page. Grid
+cards carry none, so a card's favorite changes from its row, the selection bar
+or the video page.
 
 | Aspect | Rule |
 | --- | --- |
 | Shape | 20px heart in a 32px hit area, no fill or border behind it |
-| Readability | Dark `drop-shadow-mark` on cards; none in list view |
 | On | Filled pink `favorite`, everywhere |
-| Off | White outline, shown only on hover or focus (always where hover is impossible) |
-| Pressing | Outside the card link: does not open or select |
+| Off | Outline, shown only on hover or focus (always where hover is impossible) |
+| Pressing | Does not open the row's link or select it |
 | Filtered to favorites | Item stays until the next fetch |
 | Guests | Not shown |
 
@@ -466,16 +482,10 @@ flowchart LR
 
 A group is refetched with `GET /api/groups/{id}`.
 
-Left of the heart, in the same corner and shown exactly when the off heart is,
-the owner's `Add to playlist` control opens the playlist picker, and left of
-it `Add to group` opens the group picker; neither has state, so the heart
-stays nearest the corner.
-
 ### List view and selection
 
 List view (library only) shows title, favorite (owner), add to playlist and
-add to group (owner, from `sm`; below it the card and the selection bar offer
-them), watched,
+add to group (owner, from `sm`; below it the selection bar offers them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
 title, `3 / 12` watched, total duration and size, empty quality.

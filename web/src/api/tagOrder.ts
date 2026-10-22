@@ -47,6 +47,22 @@ function compareDigitRun(a: string, b: string): number {
   return ta < tb ? -1 : 1;
 }
 
+/**
+ * Card order: tags of cardFirst kinds lead in natural kind-name order; the stable sort keeps the
+ * server's tag order inside each group.
+ */
+export function cardTagOrder<T extends TagRef>(tags: readonly T[]): T[] {
+  const leadKind = (tag: T) => (tag.kind?.cardFirst === true ? tag.kind.name : undefined);
+  return [...tags].sort((a, b) => {
+    const ka = leadKind(a);
+    const kb = leadKind(b);
+    if (ka === undefined || kb === undefined) {
+      return Number(ka === undefined) - Number(kb === undefined);
+    }
+    return compareNatural(ka, kb);
+  });
+}
+
 /** Match domain.SortTagRefs: natural name order, then ID. */
 export function compareTagRefs(a: TagRef, b: TagRef): number {
   const byName = compareNatural(a.name, b.name);

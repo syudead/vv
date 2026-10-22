@@ -67,8 +67,8 @@ describe("selectedKinds", () => {
   });
 
   it("選んだタグがみな同じ種類ならその id、混ざっていれば undefined を返す", () => {
-    const genre = { id: 1, name: "Genre" };
-    const work = { id: 2, name: "Work" };
+    const genre = { id: 1, name: "Genre", cardFirst: false };
+    const work = { id: 2, name: "Work", cardFirst: false };
     const rows = [
       { ...tag(1), kind: genre },
       { ...tag(2), kind: genre },

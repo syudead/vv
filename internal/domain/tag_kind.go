@@ -15,11 +15,14 @@ var ErrTagKindNameTaken = errors.New("tag kind name is already in use")
 type TagKindRef struct {
 	ID   int64
 	Name string
+	// CardFirst lists the kind's tags before others on video cards.
+	CardFirst bool
 }
 
 type TagKind struct {
-	ID   int64
-	Name string
+	ID        int64
+	Name      string
+	CardFirst bool
 	// TagCount includes tentative tags.
 	TagCount int
 	// CreatedAt uses Unix seconds.
