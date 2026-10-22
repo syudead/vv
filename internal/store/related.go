@@ -19,7 +19,7 @@ func (s *LibraryStore) RelatedCandidates(ctx context.Context, audience domain.Au
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	rows, err := tx.QueryContext(ctx, `select videos.id, rep.path, rep.title,
+	rows, err := tx.QueryContext(ctx, `select videos.id, coalesce(rep.path, ''), coalesce(rep.title, vv.title),
 		(select ov.display_name from video_overrides ov
 		  where ov.content_key = videos.content_key and videos.content_key <> ''),
 		videos.added_at, f.version, f.interval_ms, f.hashes

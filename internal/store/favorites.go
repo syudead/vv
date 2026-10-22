@@ -117,7 +117,7 @@ func countMappedVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64) (int
 	var count int
 	if err := tx.QueryRowContext(ctx, `select count(distinct v.id) from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v"), string(encoded)).Scan(&count); err != nil {
+		libraryVideoCondition("v"), string(encoded)).Scan(&count); err != nil {
 		return 0, fmt.Errorf("cannot count the videos: %w", err)
 	}
 	return count, nil

@@ -66,6 +66,7 @@ func TestVideoQueryListsSmartFolders(t *testing.T) {
 		{Watch: WatchAll, Sort: SortTitleAsc, Seed: 3, Cursor: "c", Limit: 10},
 		{Query: "   "},
 		{FavoriteOnly: true},
+		{Kind: VideoKindAll},
 	} {
 		if !q.ListsSmartFolders() {
 			t.Errorf("%+v.ListsSmartFolders() = false, want true", q)
@@ -82,6 +83,8 @@ func TestVideoQueryListsSmartFolders(t *testing.T) {
 		{MinDurationSec: &zero},
 		{MaxDurationSec: &zero},
 		{FavoriteOnly: true, TagIDs: []int64{1}},
+		{Kind: VideoKindFile},
+		{Kind: VideoKindVirtual},
 	} {
 		if q.ListsSmartFolders() {
 			t.Errorf("%+v.ListsSmartFolders() = true, want false", q)

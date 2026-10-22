@@ -144,7 +144,7 @@ func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 			select l.{id} as credit_id, count(distinct l.content_key) as video_count
 			  from videos v
 			  join {links} l on l.content_key = ` + userKeyExpr("v") + `
-			 where v.content_key <> '' and ` + registeredVideoCondition("v") + ` and ` +
+			 where v.content_key <> '' and ` + libraryVideoCondition("v") + ` and ` +
 		shownVideoCondition("v", domain.AudienceOwner) + countFilter + `
 			 group by l.{id}
 		), listed as (

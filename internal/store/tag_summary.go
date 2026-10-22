@@ -37,7 +37,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 	return summary, nil
 }
 
-// Count tags of the selected registered videos by user key in the caller's snapshot, in natural-name order.
+// Count tags of the selected library videos by user key in the caller's snapshot, in natural-name order.
 func tagSummaryItems(ctx context.Context, q queryExecer, videoIDs []int64) ([]domain.TagSummaryItem, error) {
 	encodedIDs, err := json.Marshal(videoIDs)
 	if err != nil {
@@ -49,7 +49,7 @@ func tagSummaryItems(ctx context.Context, q queryExecer, videoIDs []int64) ([]do
 		with selected(video_id, content_key) as (
 			select v.id, `+userKeyExpr("v")+` from videos v
 			 where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v")+`),
+		libraryVideoCondition("v")+`),
 		tagged(content_key, tag_id, manual) as (
 			select vt.content_key, vt.tag_id, 1 from video_tags vt
 			 where vt.content_key in (select content_key from selected)
