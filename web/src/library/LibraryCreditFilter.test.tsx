@@ -378,14 +378,68 @@ describe("人物・団体での絞り込み", () => {
     const person = await screen.findByRole("combobox", { name: "Person" });
     await user.type(person, "Alice");
     await user.click(await screen.findByRole("option", { name: /Alice/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(location()).toBe("?person=1&organization=5"));
 
-    await user.type(person, "Alf");
+    await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
+    const reopened = await screen.findByRole("combobox", { name: "Person" });
+    await user.type(reopened, "Alf");
     await user.click(await screen.findByRole("option", { name: /Alfred/ }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(location()).toBe("?person=2&organization=5"));
     expect(libraryRequests().at(-1)?.searchParams.get("person")).toBe("2");
     expect(
       await screen.findByRole("button", { name: "Remove the filter for Alfred" }),
+    ).toBeDefined();
+  });
+
+  it("filter popover picks wait for Apply, which writes every drafted condition in one history entry", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByRole("link", { name: "動画 3" });
+    const before = libraryRequests().length;
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const filter = await screen.findByRole("dialog", { name: "Filter" });
+    await user.type(within(filter).getByRole("combobox", { name: "Add tag" }), "旅");
+    await user.click(await screen.findByRole("option", { name: /旅行/ }));
+    await user.type(within(filter).getByRole("combobox", { name: "Person" }), "Alice");
+    await user.click(await screen.findByRole("option", { name: /Alice/ }));
+    expect(
+      within(filter).getByRole("button", { name: "Remove the condition 旅行" }),
+    ).toBeDefined();
+    expect(
+      within(filter).getByRole("button", { name: "Remove the person Alice" }),
+    ).toBeDefined();
+    expect(location()).toBe("");
+    expect(libraryRequests()).toHaveLength(before);
+
+    await user.click(within(filter).getByRole("button", { name: "Apply" }));
+    expect(location()).toBe("?tag=2&person=1");
+    await waitFor(() => expect(libraryRequests().at(-1)?.search).toContain("tag=2"));
+    expect(libraryRequests().at(-1)?.searchParams.get("person")).toBe("1");
+
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(location()).toBe("");
+  });
+
+  it("closing the filter popover without Apply drops the draft, and reopening shows the applied conditions", async () => {
+    const user = userEvent.setup();
+    renderAt("/?person=1");
+    await screen.findByRole("button", { name: "Remove the filter for Alice" });
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Remove the person Alice" }),
+    );
+    expect(screen.queryByRole("button", { name: "Remove the person Alice" })).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(location()).toBe("?person=1");
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    expect(
+      await screen.findByRole("button", { name: "Remove the person Alice" }),
     ).toBeDefined();
   });
 

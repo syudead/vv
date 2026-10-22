@@ -218,6 +218,58 @@ it("IME変換中は検索せず、確定した検索語だけを送る", async (
   }
 });
 
+describe('SearchBox with commitOn="enter"', () => {
+  function renderEnterBox(query = "") {
+    const onCommit = vi.fn();
+    render(<SearchBox query={query} onCommit={onCommit} commitOn="enter" />);
+    const box = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
+    return { onCommit, box };
+  }
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("does not search while typing, after the debounce or on blur, and searches on Enter", async () => {
+    vi.useFakeTimers();
+    const { onCommit, box } = renderEnterBox();
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "京都" } });
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    fireEvent.blur(box);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    fireEvent.focus(box);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("京都", "push");
+  });
+
+  it("ignores the Enter that confirms IME text", () => {
+    const { onCommit, box } = renderEnterBox();
+    fireEvent.focus(box);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "京都" } });
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    fireEvent.compositionEnd(box);
+    fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("京都", "push");
+  });
+
+  it("clearing with × searches for the empty text at once", () => {
+    const { onCommit, box } = renderEnterBox("京都");
+    fireEvent.focus(box);
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("", "push");
+    expect(box.value).toBe("");
+  });
+});
+
 describe("SearchBox suggestions", () => {
   const groups: SuggestionGroup[] = [
     { heading: t.list.suggestions.people, options: [{ id: "person:1", label: "Kyoko" }] },

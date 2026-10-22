@@ -26,7 +26,7 @@ it("検索・フィルターは保存順を保ち、一時ソート・解除・�
     { wrapper: Wrapper },
   );
   expect(result.current.toolbar.nativeOrder.active).toBe(true);
-  act(() => result.current.toolbar.onFavoriteChange(true));
+  act(() => result.current.toolbar.onFilterApply(true));
   expect(new URLSearchParams(result.current.location.search).get("sort")).toBeNull();
   expect(result.current.conditions).toMatchObject({
     favorite: true,
@@ -67,7 +67,7 @@ it("同じ描画から連続して操作しても検索・フィルター・ソ�
   const toolbar = result.current.toolbar;
   act(() => {
     toolbar.onSortChange("titleAsc");
-    toolbar.onFavoriteChange(true);
+    toolbar.onFilterApply(true);
   });
   expect(result.current.criteria).toMatchObject({
     query: "cat",

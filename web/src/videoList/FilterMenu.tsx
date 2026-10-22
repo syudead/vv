@@ -10,8 +10,10 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "../ui/shadcn/
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 
 export interface FilterMenuProps {
+  /** The applied value; the popover edits a draft of it. */
   favorite: boolean;
-  onFavoriteChange: (value: boolean) => void;
+  /** Apply the drafted favorite together with the page's own drafted fields. */
+  onApply: (favorite: boolean) => void;
   canClear: boolean;
   /** Clear conditions but retain sort. */
   onClear: () => void;
@@ -20,7 +22,7 @@ export interface FilterMenuProps {
   children?: ReactNode;
   /** Include custom child-row filters in the button count. */
   extraCount?: number;
-  /** Allows child rows to defer loading until the popover opens. */
+  /** Called on each opening; pages reset the drafts of their own fields here. */
   onOpen?: () => void;
 }
 
@@ -30,7 +32,7 @@ export interface FilterMenuProps {
  */
 export default function FilterMenu({
   favorite,
-  onFavoriteChange,
+  onApply,
   canClear,
   onClear,
   disabled,
@@ -39,6 +41,7 @@ export default function FilterMenu({
   onOpen,
 }: FilterMenuProps) {
   const owner = useAudience() === "owner";
+  const [draftFavorite, setDraftFavorite] = useState(favorite);
   if (!owner) return null;
   const filterCount = (favorite ? 1 : 0) + extraCount;
 
@@ -48,12 +51,16 @@ export default function FilterMenu({
       disabled={disabled}
       canClear={canClear}
       onClear={onClear}
-      onOpen={onOpen}
+      onOpen={() => {
+        setDraftFavorite(favorite);
+        onOpen?.();
+      }}
+      onApply={() => onApply(draftFavorite)}
     >
       {children}
       <FilterCheckbox
-        checked={favorite}
-        onCheckedChange={onFavoriteChange}
+        checked={draftFavorite}
+        onCheckedChange={setDraftFavorite}
         label={t.list.filter.favoritesOnly}
       />
     </FilterPopover>
@@ -67,6 +74,8 @@ export interface FilterPopoverProps {
   onClear: () => void;
   triggerRef?: Ref<HTMLButtonElement>;
   onOpen?: () => void;
+  /** With it, the fields edit drafts that only this button applies; closing otherwise drops them. */
+  onApply?: () => void;
   children: ReactNode;
 }
 
@@ -77,6 +86,7 @@ export function FilterPopover({
   onClear,
   triggerRef,
   onOpen,
+  onApply,
   children,
 }: FilterPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -118,19 +128,35 @@ export function FilterPopover({
       >
         {children}
 
-        {canClear && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full"
-            onClick={() => {
-              onClear();
-              // Radix restores focus to the filter button on close.
-              setOpen(false);
-            }}
-          >
-            {t.list.filter.clear}
-          </Button>
+        {(canClear || onApply !== undefined) && (
+          <div className="flex gap-2">
+            {canClear && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  onClear();
+                  // Radix restores focus to the filter button on close.
+                  setOpen(false);
+                }}
+              >
+                {t.list.filter.clear}
+              </Button>
+            )}
+            {onApply !== undefined && (
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  onApply();
+                  setOpen(false);
+                }}
+              >
+                {t.list.filter.apply}
+              </Button>
+            )}
+          </div>
         )}
       </PopoverContent>
     </Popover>

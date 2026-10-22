@@ -188,10 +188,12 @@ describe("search suggestions on the library", () => {
     await screen.findByRole("link", { name: "動画 1" });
     const box = screen.getByRole("combobox", { name: "Search videos" });
 
-    await user.type(box, "Al");
+    await user.type(box, "Al{Enter}");
     await waitFor(() => expect(location()).toBe("?q=Al"));
+    // Enter closed the list; ArrowDown reopens it on "Search for".
+    await user.keyboard("{ArrowDown}");
     await screen.findByRole("option", { name: "Kind: Album" });
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
     await waitFor(() => expect(location()).toBe("?tagKind=4"));
     expect((box as HTMLInputElement).value).toBe("");
@@ -202,7 +204,10 @@ describe("search suggestions on the library", () => {
     renderAt("/", "guest");
     await screen.findByRole("link", { name: "動画 1" });
 
-    await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "Al");
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search videos" }),
+      "Al{Enter}",
+    );
     await waitFor(() => expect(location()).toBe("?q=Al"));
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(requests("/api/people")).toHaveLength(0);

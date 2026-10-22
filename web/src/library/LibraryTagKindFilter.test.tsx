@@ -171,6 +171,7 @@ describe("タグの種類での絞り込み", () => {
     const picker = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(picker, "Gen");
     await user.click(await screen.findByRole("option", { name: "Tag kind Genre" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() => expect(location()).toBe("?tagKind=2"));
     expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
@@ -183,8 +184,10 @@ describe("タグの種類での絞り込み", () => {
     expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
     expect(requests("/api/tag-kinds")).toHaveLength(1);
 
-    await user.type(picker, "Wor");
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    await user.type(await screen.findByRole("combobox", { name: "Add tag" }), "Wor");
     await user.click(await screen.findByRole("option", { name: "Tag kind Work" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(location()).toBe("?tagKind=1"));
   });
 
@@ -207,6 +210,7 @@ describe("タグの種類での絞り込み", () => {
 
     await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
     await user.click(await screen.findByRole("button", { name: "Remove the kind Work" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(location()).toBe("?tag=2"));
   });
 

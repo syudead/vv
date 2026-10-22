@@ -87,6 +87,7 @@ import {
 } from "./creditCriteria";
 import CardTagRow from "./CardTagRow";
 import { CreditFilterField, TagFilterField } from "./FilterFields";
+import { draftParams, useFilterDraft } from "./useFilterDraft";
 import { type LibraryFilterPick, pickParams } from "./filterPicks";
 import { useSearchSuggestions } from "./searchSuggestions";
 import EmptyLibrary from "./EmptyLibrary";
@@ -227,7 +228,7 @@ export default function LibraryPage() {
     },
     [preferences, savePreferences, update],
   );
-  const { shuffle, changeFavorite, commitQuery } = useListActions(update);
+  const { shuffle, commitQuery } = useListActions(update);
   const clearAll = useCallback(() => {
     resetPreview();
     const cleared = clearTagConditions(criteria);
@@ -303,6 +304,26 @@ export default function LibraryPage() {
     [applyPick],
   );
   const suggestions = useSearchSuggestions(owner, pickSuggestion);
+  const filterDraft = useFilterDraft(tagIds, credits);
+  const resetFilterDraft = filterDraft.reset;
+  const loadTagKinds = tagKinds.load;
+  const openFilter = useCallback(() => {
+    resetFilterDraft();
+    if (owner) loadTagKinds();
+  }, [loadTagKinds, owner, resetFilterDraft]);
+  const addDraftTag = (id: number) => {
+    if (!filterDraft.addTag(id)) {
+      toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
+    }
+  };
+  const applyFilter = (favorite: boolean) => {
+    resetPreview();
+    apply(
+      { ...latestConditions.current.criteria, favorite },
+      "push",
+      draftParams(filterDraft.draft),
+    );
+  };
   const removeActiveTag = useCallback(
     (id: number) => {
       resetPreview();
@@ -799,7 +820,7 @@ export default function LibraryPage() {
               onSortChange={changeSort}
               onShuffle={shuffle}
               favorite={favorite}
-              onFavoriteChange={changeFavorite}
+              onFilterApply={applyFilter}
               canClear={conditioned}
               onClear={clearAll}
               view={view}
@@ -812,28 +833,26 @@ export default function LibraryPage() {
               extraFilter={
                 <>
                   <TagFilterField
-                    tagIds={tagIds}
-                    kindId={credits.tagKind}
+                    tagIds={filterDraft.draft.tagIds}
+                    kindId={filterDraft.draft.tagKind}
                     kinds={tagKinds.kinds}
                     maxTags={MAX_TAG_COUNT}
-                    onAddTag={(id) => applyPick({ kind: "tag", id })}
-                    onRemoveTag={removeActiveTag}
-                    onKindChange={changeTagKind}
+                    onAddTag={addDraftTag}
+                    onRemoveTag={filterDraft.removeTag}
+                    onKindChange={(tagKind) => filterDraft.change({ tagKind })}
                   />
                   {creditKinds.map((kind) => (
                     <CreditFilterField
                       key={kind}
                       kind={kind}
-                      value={credits[kind]}
-                      onChange={(id) =>
-                        id === undefined ? removeCredit(kind) : applyPick({ kind, id })
-                      }
+                      value={filterDraft.draft[kind]}
+                      onChange={(id) => filterDraft.change({ [kind]: id })}
                     />
                   ))}
                 </>
               }
               extraFilterCount={idFilterCount(tagIds, credits)}
-              onFilterOpen={owner ? tagKinds.load : undefined}
+              onFilterOpen={openFilter}
               suggestions={suggestions}
             />
           </TopBarPortal>

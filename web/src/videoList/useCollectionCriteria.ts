@@ -77,7 +77,7 @@ export function useCollectionCriteria() {
       onSortChange: changeSort,
       onShuffle: actions.shuffle,
       favorite: criteria.favorite,
-      onFavoriteChange: actions.changeFavorite,
+      onFilterApply: actions.changeFavorite,
       canClear: hasConditions(criteria),
       onClear: actions.clearAll,
       nativeOrder: { active: nativeOrder, onSelect: savedOrder },

@@ -736,6 +736,7 @@ describe("FolderPage", () => {
     await user.click(screen.getByRole("button", { name: "Filter" }));
     const filter = await screen.findByRole("dialog");
     await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
+    await user.click(within(filter).getByRole("button", { name: "Apply" }));
     expect(screen.getByTestId("location").textContent).toBe(
       "/folders/3/A?fav=1&sort=addedDesc",
     );
@@ -747,7 +748,7 @@ describe("FolderPage", () => {
       ).toBe(true),
     );
     expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
-    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
     await user.click(
@@ -995,6 +996,7 @@ describe("FolderPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => {
       const location = screen.getByTestId("location").textContent ?? "";
       expect(location).toContain("fav=1");
@@ -1021,10 +1023,25 @@ describe("FolderPage", () => {
       "— searching inside",
     );
 
-    const box = screen.getByRole("searchbox", { name: "Search in A" });
-    await user.clear(box);
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
     expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
     expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
+  });
+
+  it("検索欄は入力や離れただけでは検索せず、Enter で検索する", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+
+    const box = screen.getByRole("searchbox", { name: "Search in A" });
+    await user.type(box, "京都");
+    await user.tab();
+    expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
+
+    await user.type(box, "{Enter}");
+    expect(screen.getByTestId("location").textContent).toBe(
+      `/folders/3/A?q=${encodeURIComponent("京都")}&sort=addedDesc`,
+    );
   });
 
   it("検索中にフォルダが無くなると、一致なしではなく見つからない案内を出す", async () => {

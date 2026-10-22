@@ -310,7 +310,10 @@ describe("LibraryPage", () => {
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
 
-    await user.type(screen.getByRole("combobox", { name: "Search videos" }), "broken");
+    await user.type(
+      screen.getByRole("combobox", { name: "Search videos" }),
+      "broken{Enter}",
+    );
 
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
@@ -342,6 +345,7 @@ describe("LibraryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
@@ -492,6 +496,7 @@ describe("LibraryPage", () => {
         .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
       expect(checks).toEqual(["Favorites only"]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
+      await user.click(within(filter).getByRole("button", { name: "Apply" }));
 
       expect(screen.getByTestId("location").textContent).toBe("?fav=1&sort=titleAsc");
       await waitFor(() =>
@@ -504,6 +509,7 @@ describe("LibraryPage", () => {
           .querySelector('[data-slot="badge"]')?.className,
       ).toContain("bg-primary-soft");
 
+      await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
       await user.click(screen.getByRole("button", { name: "Clear filters" }));
       expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
       await waitFor(() =>
@@ -657,19 +663,35 @@ describe("LibraryPage", () => {
     ).toBeDefined();
   });
 
+  it("検索欄は入力や離れただけでは検索せず、Enter で検索する", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    const box = screen.getByRole("combobox", { name: "Search videos" });
+    await user.type(box, "京都");
+    await user.tab();
+    expect(screen.getByTestId("location").textContent).toBe("");
+
+    await user.type(box, "{Enter}");
+    expect(screen.getByTestId("location").textContent).toBe(
+      `?q=${encodeURIComponent("京都")}&sort=addedDesc`,
+    );
+  });
+
   it("検索語の入力は一続きで履歴を1つだけ増やす", async () => {
     const user = userEvent.setup();
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
 
     const box = screen.getByRole("combobox", { name: "Search videos" });
-    await user.type(box, "京");
+    await user.type(box, "京{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         `?q=${encodeURIComponent("京")}&sort=addedDesc`,
       ),
     );
-    await user.type(box, "都");
+    await user.type(box, "都{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         `?q=${encodeURIComponent("京都")}&sort=addedDesc`,
@@ -964,6 +986,7 @@ describe("LibraryPage", () => {
     startFirst();
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await act(async () => Promise.resolve());
     expect(document.querySelector("video")).toBeNull();
 
@@ -2293,7 +2316,10 @@ describe("LibraryPage の英語の画面", () => {
       screen.getByRole("button", { name: "Filter by 京都 (from the folder name)" }),
     ).toBeDefined();
 
-    await user.type(screen.getByRole("combobox", { name: "Search videos" }), "京都");
+    await user.type(
+      screen.getByRole("combobox", { name: "Search videos" }),
+      "京都{Enter}",
+    );
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
     );

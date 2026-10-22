@@ -213,8 +213,10 @@ They share search, the `Favorites only` filter and sort controls, including
 the compact layout on narrow screens. Guests have no filter, so the filter
 button is hidden for them, and see only sorts based on public data. Query and
 filter changes preserve
-the current scope. The controls share debounce, IME handling, syntax help and `q` URL state. IME input
-commits after composition ends. Changing a query, filter, sort or shuffle seed resets pagination and
+the current scope. The controls share IME handling, syntax help and `q` URL
+state. The search field searches only on `Enter` and on clearing, never while
+the owner types or on blur, so unconfirmed IME text and half-typed words do not
+replace the list; the `Enter` that confirms an IME conversion does not search. Changing a query, filter, sort or shuffle seed resets pagination and
 scrolls to the top; obsolete responses cannot append to the new results.
 Clearing the query restores the current scope without changing saved settings.
 Search applies the video search expression before paging direct group items;
@@ -289,8 +291,13 @@ Applied tags, kinds, people and organizations also show as chips in the
 leaves the URL with a toast.
 Opening the popover focuses the panel itself, not its first field, so the tag
 picker's candidate list stays closed until the owner enters the field.
-The filter button counts each condition as one applied filter.
-`Clear filters` clears every condition and keeps the sort. A guest URL with
+The popover's fields edit a draft copied from the applied conditions on each
+opening; the primary `Apply` button writes the whole draft in one history
+entry, and closing without it drops the draft. Chips in the `Filtering by` row
+and search suggestions still apply at once.
+The filter button counts each applied condition as one filter.
+`Clear filters` clears every condition at once, closes the popover and keeps
+the sort. A guest URL with
 `fav=1`, `tag`, `tagKind`, `person`, `organization` or `sort=favorited*` is
 reset to the defaults before the request and the URL is corrected. Parameters
 of removed filters (`watch`, `playable`, `versions`, `addedWithin`,

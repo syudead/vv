@@ -81,7 +81,8 @@ export interface LibraryToolbarProps {
   onSortChange: (value: VideoSort) => void;
   onShuffle: () => void;
   favorite: boolean;
-  onFavoriteChange: (value: boolean) => void;
+  /** Applies the filter popover's drafts: favorites here, the page's own fields with it. */
+  onFilterApply: (favorite: boolean) => void;
   canClear: boolean;
   onClear: () => void;
   view: ViewMode;
@@ -103,7 +104,7 @@ export default function LibraryToolbar({
   onSortChange,
   onShuffle,
   favorite,
-  onFavoriteChange,
+  onFilterApply,
   canClear,
   onClear,
   view,
@@ -152,6 +153,7 @@ export default function LibraryToolbar({
           onCommit={onQueryCommit}
           inputRef={searchRef}
           suggestions={suggestions}
+          commitOn="enter"
         />
       }
       view={controls}
@@ -159,7 +161,7 @@ export default function LibraryToolbar({
     >
       <FilterMenu
         favorite={favorite}
-        onFavoriteChange={onFavoriteChange}
+        onApply={onFilterApply}
         canClear={canClear}
         onClear={onClear}
         extraCount={extraFilterCount}

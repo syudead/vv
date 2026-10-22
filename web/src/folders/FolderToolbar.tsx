@@ -61,6 +61,7 @@ export default function FolderToolbar({
           label={searchLabel}
           placeholder={searchPlaceholder}
           className="w-full"
+          commitOn="enter"
         />
       }
       view={[
@@ -109,7 +110,7 @@ export default function FolderToolbar({
     >
       <FilterMenu
         favorite={favorite}
-        onFavoriteChange={onFavoriteChange}
+        onApply={onFavoriteChange}
         canClear={canClear}
         onClear={onClear}
         disabled={disabled}

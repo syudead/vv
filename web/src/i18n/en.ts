@@ -884,6 +884,7 @@ export const en = {
       },
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
+      apply: "Apply",
     },
     sort: {
       heading: "Sort by",
@@ -2863,6 +2864,7 @@ export const en = {
       period: "Period",
       all: "All",
       clear: "Clear filters",
+      apply: "Apply",
       several: (first: string, rest: number) => `${first} +${formatNumber(rest)}`,
       count: (count: number) => formatNumber(count),
     },
