@@ -208,7 +208,7 @@ the reason. Secret values given with `--set` are printed as the plugin
 wrote them; VVMDM masks them only on the settings screen.
 
 The plugin's row shows its name and version with the **Approved** badge, and
-the video page offers **Fetch work info from a plugin**. A row without a name
+the video page's **Work** tab offers **Fill in from a site**. A row without a name
 shows why VVMDM refused the module; see [Troubleshooting](#troubleshooting).
 
 ## Module

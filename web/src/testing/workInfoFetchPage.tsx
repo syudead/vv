@@ -135,13 +135,19 @@ export async function openPage(audience: Audience = "owner") {
   await screen.findByRole("heading", { level: 1, name: "テスト動画" });
 }
 
+/** The Work tab is listed once the plugin list arrives, even for a video without work information. */
+export async function openWorkTab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("tab", { name: "Work" }));
+}
+
 export function entry() {
-  return screen.findByRole("button", { name: "Fetch work info from a plugin" });
+  return screen.findByRole("button", { name: "Fill in from a site" });
 }
 
 export async function openDialog() {
   await openPage();
   const user = userEvent.setup();
+  await openWorkTab(user);
   await user.click(await entry());
   const dialog = await screen.findByRole("dialog", { name: "Fetch work info" });
   return { user, dialog };

@@ -19,6 +19,7 @@ import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import VersionsPanel, { type VersionsNavigation } from "./VersionsPanel";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
+import WorkPanel from "./WorkPanel";
 
 export interface VideoPageTabsProps {
   video: Video;
@@ -136,16 +137,26 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
   return undefined;
 }
 
+interface PanelContext {
+  workPlugin: boolean;
+  openFetch: () => void;
+  strip: RefObject<HTMLDivElement | null>;
+}
+
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
 function panel(
   tab: VideoTab,
   props: VideoPageTabsProps,
-  strip: RefObject<HTMLDivElement | null>,
+  { workPlugin, openFetch, strip }: PanelContext,
 ): ReactNode {
   const { video, owner, player } = props;
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
+    case "work":
+      return (
+        <WorkPanel info={video.workInfo} canFetch={workPlugin} onFetch={openFetch} />
+      );
     case "people":
       return <PeoplePanel video={video} player={player} />;
     case "versions":
@@ -209,7 +220,11 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         )}
       </div>
       <TabsContent value={current} className="pt-4 text-base">
-        {panel(current, props, strip)}
+        {panel(current, props, {
+          workPlugin: state.workPlugin,
+          openFetch: operations.openFetch,
+          strip,
+        })}
       </TabsContent>
       {operations.fetchOpen && (
         <FetchDialog
