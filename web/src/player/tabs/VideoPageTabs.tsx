@@ -15,6 +15,7 @@ import FetchDialog from "../workInfoFetch/FetchDialog";
 import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
 import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
+import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import VersionsPanel, { type VersionsNavigation } from "./VersionsPanel";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
@@ -24,6 +25,8 @@ export interface VideoPageTabsProps {
   owner: boolean;
   /** Supplied only for owners while the player is visible. */
   capture: ThumbnailCapture | undefined;
+  /** The player's controls while it is shown, otherwise null. */
+  player: SpanPlayer;
   onChanged: (video: Video, mark: DetailMark) => void;
   onStale: () => void;
   /** Suspend page shortcuts while the thumbnail preview or the fetch dialog is open. */
@@ -67,7 +70,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "versions">) {
+}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "versions" | "player">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -139,10 +142,12 @@ function panel(
   props: VideoPageTabsProps,
   strip: RefObject<HTMLDivElement | null>,
 ): ReactNode {
-  const { video, owner } = props;
+  const { video, owner, player } = props;
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
+    case "people":
+      return <PeoplePanel video={video} player={player} />;
     case "versions":
       return (
         <VersionsPanel

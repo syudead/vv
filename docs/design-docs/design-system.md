@@ -280,6 +280,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
 | `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default                                                            |
 | `PersonFace`                                                                                              | —                                                                         | vv component; a person's face or the `UserRound` placeholder in one frame, in the `card`, `profile`, `chip`, `token`, `option`, `compare`, `judge` and `scene` shapes               |
+| `SpanBar` | — | vv component; when something happens in a video, as blocks on a lane the video's length, pressable while the player can play |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
