@@ -2143,8 +2143,7 @@ export const en = {
       pathCopied: "Copied the path",
       copyFailed: "Couldn't copy the path",
       openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
-      forceRescan: "Force rescan this video",
-      forceRescanBlocked: (reason: string) => `Force rescan this video. ${reason}`,
+      rescan: "Rescan",
       rescanNeedsMediaFolder: "Add a media folder in Settings first.",
       rescanStarted: "Started a force rescan of this video",
       thumbnailAt: (time: string) => `Thumbnail at ${time}`,
@@ -2157,6 +2156,28 @@ export const en = {
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
+    },
+    tabs: {
+      label: "About this video",
+      overview: "Overview",
+      work: "Work",
+      people: "People",
+      versions: "Versions",
+      thumbnail: "Thumbnail",
+      file: "File & media",
+      resolution: "Resolution",
+      lastWatched: "Last watched",
+      released: (date: string) => `Released ${date}`,
+      location: "Location",
+      media: "Media",
+      fileSection: "File",
+      chapters: "Chapters",
+      container: "Container",
+      chapterCount: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} chapter`,
+          other: `${formatNumber(count)} chapters`,
+        }),
     },
     //
     thumbnailEdit: {

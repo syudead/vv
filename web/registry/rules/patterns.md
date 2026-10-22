@@ -225,7 +225,7 @@ scrolls as one under the sticky band.
 | -------- | ------------------------------------------------------------------------------- | ----------------------- |
 | `header` | The band's content: the brand or a ghost `Back` button, the location, a close × | A page title block      |
 | `media`  | The player or image                                                             | Text or controls        |
-| children | The title, tags and controls about the item, then its facts as one icon row     | A card around the facts |
+| children | The title, tags and controls about the item, then a `line` tab strip and its panel | A card around a panel   |
 | `aside`  | A small heading and a plain list of related items                               | Main actions; long text |
 
 ## Centered form

@@ -4,13 +4,12 @@ import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { errorText, t, type UiText } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { Toggle } from "./shadcn/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./shadcn/tooltip";
 import { useToast } from "./Toast";
 
 /**
- * Render only for owners; stop click propagation and reject duplicate requests while pending. Page
- * placement reports via onFailed, while card and row placements default to a toast; see
- * web/registry/rules/components.md.
+ * Render only for owners; stop click propagation and reject duplicate requests while pending. The
+ * page form shows `label` as its word and reports via onFailed, while card and row placements use
+ * it as the name and default to a toast; see web/registry/rules/components.md.
  */
 export default function FavoriteToggle({
   favorite,
@@ -66,32 +65,21 @@ export default function FavoriteToggle({
     />
   );
   if (variant === "page") {
+    // The visible word names the toggle, so the page form needs no tooltip.
     return (
-      <Tooltip>
-        {/*
-         * Keep Toggle outside TooltipTrigger so its closed data-state cannot overwrite the pressed
-         * state.
-         */}
-        <Toggle
-          asChild
-          size="sm"
-          pressed={favorite}
-          className={cn(
-            // Also color by aria-pressed because an open tooltip replaces data-state.
-            "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite aria-pressed:text-favorite",
-            pending && "cursor-progress",
-          )}
-        >
-          <TooltipTrigger
-            aria-label={label}
-            aria-disabled={pending || undefined}
-            onClick={press}
-          >
-            {icon}
-          </TooltipTrigger>
-        </Toggle>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <Toggle
+        size="sm"
+        pressed={favorite}
+        aria-disabled={pending || undefined}
+        onClick={press}
+        className={cn(
+          "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite aria-pressed:text-favorite",
+          pending && "cursor-progress",
+        )}
+      >
+        {icon}
+        {label}
+      </Toggle>
     );
   }
   return (

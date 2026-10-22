@@ -1,25 +1,27 @@
-import { RotateCcw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { useId } from "react";
 
 import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
 import { useScanControlsIfProvided } from "../shell/ScanProvider";
+import { Button } from "../ui/shadcn/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
-import ActionButton from "./ActionButton";
 
 /**
  * Starts a force rescan of one video without confirmation. Blocked states stay focusable with
- * aria-disabled so the tooltip can give the reason.
+ * aria-disabled so the tooltip and the description can give the reason.
  */
 export default function RescanVideoButton({
   videoId,
   report,
 }: {
   videoId: number;
-  /** Receives null when starting and the failure otherwise, for the facts' shared error row. */
+  /** Receives null when starting and the failure otherwise, for the panel's failure line. */
   report: (failure: UiText | null) => void;
 }) {
   const controls = useScanControlsIfProvided();
   const toast = useToast();
+  const reasonId = useId();
   if (controls === null) return null;
 
   const f = t.player.facts;
@@ -43,14 +45,28 @@ export default function RescanVideoButton({
     });
   };
 
-  return (
-    <ActionButton
-      label={reason === null ? f.forceRescan : f.forceRescanBlocked(reason)}
+  const button = (
+    <Button
+      variant="outline"
+      size="sm"
       aria-disabled={blocked || undefined}
+      aria-describedby={reason === null ? undefined : reasonId}
       onClick={start}
-      className={cn("aria-disabled:cursor-default", blocked && "opacity-50")}
     >
-      <RotateCcw aria-hidden="true" />
-    </ActionButton>
+      <RefreshCw aria-hidden="true" />
+      {f.rescan}
+    </Button>
+  );
+  if (reason === null) return button;
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent>{reason}</TooltipContent>
+      </Tooltip>
+      <span id={reasonId} hidden>
+        {reason}
+      </span>
+    </>
   );
 }

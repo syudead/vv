@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import type { Video } from "../../api/client";
 import { t } from "../../i18n";
 import { videoEditPath } from "../../lib/videoEditPath";
-import ActionButton from "../ActionButton";
+import { Button } from "../../ui/shadcn/button";
 import { handVideoToEditor } from "./handoff";
 
 export interface DetailsLinkState {
@@ -33,7 +33,7 @@ export default function DetailsEntry({ video, owner, details }: DetailsEntryProp
 
   if (!owner || details === undefined) return null;
   return (
-    <ActionButton label={t.player.workInfo.edit} asChild>
+    <Button variant="ghost" size="sm" className="text-muted-foreground" asChild>
       <Link
         ref={ref}
         to={videoEditPath(video.id)}
@@ -41,7 +41,8 @@ export default function DetailsEntry({ video, owner, details }: DetailsEntryProp
         onClick={() => handVideoToEditor(video)}
       >
         <Clapperboard aria-hidden="true" />
+        {t.player.workInfo.edit}
       </Link>
-    </ActionButton>
+    </Button>
   );
 }
