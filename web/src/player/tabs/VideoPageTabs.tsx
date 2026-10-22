@@ -15,6 +15,7 @@ import FetchDialog from "../workInfoFetch/FetchDialog";
 import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
 import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
+import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
 
@@ -23,6 +24,8 @@ export interface VideoPageTabsProps {
   owner: boolean;
   /** Supplied only for owners while the player is visible. */
   capture: ThumbnailCapture | undefined;
+  /** The player's controls while it is shown, otherwise null. */
+  player: SpanPlayer;
   onChanged: (video: Video, mark: DetailMark) => void;
   onStale: () => void;
   /** Suspend page shortcuts while the thumbnail preview or the fetch dialog is open. */
@@ -61,7 +64,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoPageTabsProps, "owner" | "details" | "state">) {
+}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "player">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -118,10 +121,15 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
 }
 
 /** Only the selected panel is mounted, so a panel reads its data when it is opened. */
-function panel(tab: VideoTab, video: Video, owner: boolean): ReactNode {
+function panel(
+  tab: VideoTab,
+  { video, owner, player }: Pick<VideoPageTabsProps, "video" | "owner" | "player">,
+): ReactNode {
   switch (tab) {
     case "overview":
       return <OverviewPanel video={video} owner={owner} />;
+    case "people":
+      return <PeoplePanel video={video} player={player} />;
     case "file":
       return <FileMediaPanel video={video} owner={owner} />;
     default:
@@ -172,7 +180,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         )}
       </div>
       <TabsContent value={current} className="pt-4 text-base">
-        {panel(current, video, owner)}
+        {panel(current, props)}
       </TabsContent>
       {operations.fetchOpen && (
         <FetchDialog
