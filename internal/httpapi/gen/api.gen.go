@@ -3916,7 +3916,7 @@ type GroupItem struct {
 	Id   int64         `json:"id"`
 	Kind GroupItemKind `json:"kind"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -4114,7 +4114,7 @@ type LibraryItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -5013,7 +5013,7 @@ type PlaylistItem struct {
 	// SmartFolder Smart-folder card fields match LibraryGroup semantics. getSmartFolder uses playback order; listSmartFolderCards aggregates matching videos. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	SmartFolder *LibrarySmartFolder `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -5099,7 +5099,7 @@ type PlaylistStep struct {
 	// SmartFolderId Folder ID only for smart-folder items, absent for video/group items; the video page adds smartFolder to the destination URL.
 	SmartFolderId *int64 `json:"smartFolderId,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video Video `json:"video"`
 }
 
@@ -5534,7 +5534,7 @@ type SmartFolderItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -6170,12 +6170,15 @@ type VersionRepresentativeRecommendation struct {
 // VersionRepresentativeRecommendationReason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
 type VersionRepresentativeRecommendationReason string
 
-// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
 	// AudioCodec Examples: aac, opus
 	AudioCodec *string `json:"audioCodec,omitempty"`
+
+	// CardCredits Credits a card shows, only in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) when the video has a code, a performer or an organization. Omitted from guests and from GET /api/videos/{id}, which returns workInfo instead.
+	CardCredits *VideoCardCredits `json:"cardCredits,omitempty"`
 
 	// Container Examples: mp4, webm, mkv
 	Container *string `json:"container,omitempty"`
@@ -6305,6 +6308,18 @@ type VideoBundleRequest struct {
 
 	// VideoIds Videos to bundle: at least two distinct IDs, with duplicates counted once.
 	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoCardCredits Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards.
+type VideoCardCredits struct {
+	// Code Product code; omitted when unset.
+	Code *string `json:"code,omitempty"`
+
+	// Organization The first label, otherwise the first maker; omitted when the work has neither.
+	Organization *CreditRef `json:"organization,omitempty"`
+
+	// Performers Performer credits in work-information order; [] when none.
+	Performers []WorkPerson `json:"performers"`
 }
 
 // VideoChanged defines model for VideoChanged.
@@ -6639,7 +6654,7 @@ type WatchHistoryEntry struct {
 	// Title Title snapshot at playback start, possibly empty; displayed when video is absent.
 	Title string `json:"title"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -6755,7 +6770,7 @@ type WorkInfoFetchApplied struct {
 	// SkippedTags Unattached tag names in fetched-result order.
 	SkippedTags []SkippedTag `json:"skippedTags"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
 	Video Video `json:"video"`
 }
 

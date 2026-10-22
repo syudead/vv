@@ -4356,6 +4356,15 @@ export interface components {
              */
             date: string;
         };
+        /** @description Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards. */
+        VideoCardCredits: {
+            /** @description Product code; omitted when unset. */
+            code?: string;
+            /** @description Performer credits in work-information order; [] when none. */
+            performers: components["schemas"]["WorkPerson"][];
+            /** @description The first label, otherwise the first maker; omitted when the work has neither. */
+            organization?: components["schemas"]["CreditRef"];
+        };
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
@@ -5456,7 +5465,7 @@ export interface components {
             /** @description Registered media folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
-        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags. */
+        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags. */
         Video: {
             /** Format: int64 */
             id: number;
@@ -5558,6 +5567,8 @@ export interface components {
             favorite?: boolean;
             /** @description Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items. */
             workInfo?: components["schemas"]["WorkInfo"];
+            /** @description Credits a card shows, only in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) when the video has a code, a performer or an organization. Omitted from guests and from GET /api/videos/{id}, which returns workInfo instead. */
+            cardCredits?: components["schemas"]["VideoCardCredits"];
             /** @description Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses. */
             mediaInfo?: components["schemas"]["MediaInfo"];
             /**

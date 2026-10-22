@@ -7561,6 +7561,24 @@ components:
           description: "YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid."
           examples: ["2024", "2024-02", "2024-02-29"]
 
+    VideoCardCredits:
+      type: object
+      required: [performers]
+      additionalProperties: false
+      description: "Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards."
+      properties:
+        code:
+          type: string
+          description: "Product code; omitted when unset."
+        performers:
+          type: array
+          description: "Performer credits in work-information order; [] when none."
+          items:
+            $ref: "#/components/schemas/WorkPerson"
+        organization:
+          $ref: "#/components/schemas/CreditRef"
+          description: "The first label, otherwise the first maker; omitted when the work has neither."
+
     WorkPerson:
       type: object
       required: [role, person, provisional]
@@ -9687,7 +9705,7 @@ components:
 
     Video:
       type: object
-      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags."
+      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags."
       required:
         [
           id,
@@ -9821,6 +9839,9 @@ components:
         workInfo:
           $ref: "#/components/schemas/WorkInfo"
           description: "Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items."
+        cardCredits:
+          $ref: "#/components/schemas/VideoCardCredits"
+          description: "Credits a card shows, only in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) when the video has a code, a performer or an organization. Omitted from guests and from GET /api/videos/{id}, which returns workInfo instead."
         mediaInfo:
           $ref: "#/components/schemas/MediaInfo"
           description: "Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses."
