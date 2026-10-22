@@ -10,7 +10,11 @@ import {
 } from "./tagOrder";
 
 describe("cardTagOrder", () => {
-  const ref = (id: number, name: string, kind: { name: string; cardFirst: boolean } | null) => ({
+  const ref = (
+    id: number,
+    name: string,
+    kind: { name: string; cardFirst: boolean } | null,
+  ) => ({
     id,
     name,
     tentative: false,

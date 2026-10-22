@@ -14,7 +14,8 @@ export type PersonFaceShape =
   | "compare"
   | "judge"
   | "scene"
-  | "suggestion";
+  | "suggestion"
+  | "mark";
 
 const frames: Record<PersonFaceShape, string> = {
   card: "aspect-square w-full rounded-full",
@@ -26,6 +27,7 @@ const frames: Record<PersonFaceShape, string> = {
   judge: "size-card-face rounded-full",
   scene: "aspect-square w-full rounded-md",
   suggestion: "size-16 rounded-full",
+  mark: "size-5 rounded-full ring-1 ring-foreground/30",
 };
 
 const icons: Record<PersonFaceShape, string> = {
@@ -38,6 +40,7 @@ const icons: Record<PersonFaceShape, string> = {
   judge: "size-1/3",
   scene: "size-1/3",
   suggestion: "size-6",
+  mark: "size-3",
 };
 
 export interface PersonFaceProps {

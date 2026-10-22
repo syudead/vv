@@ -966,6 +966,7 @@ export const en = {
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
       addToGroup: (title: string) => `Add "${title}" to a group`,
+      morePerformers: (count: number) => `+${formatNumber(count)}`,
       watchedRatio: "Watched portion",
       // Position and duration are already formatted with formatDuration.
       //

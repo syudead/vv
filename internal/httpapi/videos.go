@@ -384,6 +384,10 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
 	// Include work information only when the caller loaded or saved it into video.
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
+	// Lists replace a changed item with this detail, so it carries the card's credits too.
+	if video.WorkInfo != nil {
+		payload.CardCredits = toAPICardCredits(*video.WorkInfo)
+	}
 	// Include additional media information only when GetVideo populated it.
 	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
 	// Detail context uses playback order and audience-visible counts; smart-folder context replaces group context.

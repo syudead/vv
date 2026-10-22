@@ -155,7 +155,11 @@ describe("操作のあとの反映", () => {
   });
 
   it("種類の絞り込みは id の種類のタグか、none なら種類の無いタグに合う", () => {
-    const genre = tag({ id: 1, name: "A", kind: { id: 1, name: "Genre", cardFirst: false } });
+    const genre = tag({
+      id: 1,
+      name: "A",
+      kind: { id: 1, name: "Genre", cardFirst: false },
+    });
     const plain = tag({ id: 2, name: "B" });
     expect(matchesTagQuery(genre, query({ kind: "1" }))).toBe(true);
     expect(matchesTagQuery(genre, query({ kind: "2" }))).toBe(false);

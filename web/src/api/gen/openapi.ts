@@ -5594,7 +5594,7 @@ export interface components {
             favorite?: boolean;
             /** @description Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items. */
             workInfo?: components["schemas"]["WorkInfo"];
-            /** @description Credits a card shows, only in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) when the video has a code, a performer or an organization. Omitted from guests and from GET /api/videos/{id}, which returns workInfo instead. */
+            /** @description Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests. */
             cardCredits?: components["schemas"]["VideoCardCredits"];
             /** @description Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses. */
             mediaInfo?: components["schemas"]["MediaInfo"];

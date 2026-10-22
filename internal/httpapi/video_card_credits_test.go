@@ -101,3 +101,18 @@ func TestForAudienceDropsCardCreditsForGuests(t *testing.T) {
 		t.Errorf("guest cardCredits = %+v, want omitted", got)
 	}
 }
+
+// Lists replace a changed item with the detail, so the detail must keep the card's credits.
+func TestGetVideoIncludesCardCredits(t *testing.T) {
+	video := sampleVideo(7, "a")
+	video.WorkInfo = &domain.WorkInfo{Code: "ABC-123"}
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{7: video}}})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/7")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Video](t, rec).CardCredits; got == nil || got.Code == nil || *got.Code != "ABC-123" {
+		t.Errorf("cardCredits = %+v, want code ABC-123", got)
+	}
+}

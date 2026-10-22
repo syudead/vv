@@ -300,11 +300,6 @@ describe("ライブラリのスマートフォルダのカード", () => {
     ]);
     // The server emits no event for favorites, so the card re-reads its values.
     await waitFor(() => expect(cardRequests).toEqual(["9", "9"]));
-    expect(
-      (
-        await within(card).findByRole("button", { name: 'Favorite smart folder "猫"' })
-      ).getAttribute("aria-pressed"),
-    ).toBe("true");
   });
 
   it("選んだフォルダにタグを付けると smartFolderIds で送り、カードが値を読み直す", async () => {

@@ -95,7 +95,12 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
 export function kind(
   overrides: Partial<TagKind> & { id: number; name: string },
 ): TagKind {
-  return { cardFirst: false, tagCount: 0, createdAt: "2026-01-01T00:00:00Z", ...overrides };
+  return {
+    cardFirst: false,
+    tagCount: 0,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
 }
 
 export function presetKinds(): TagKind[] {
@@ -195,7 +200,9 @@ function tagKindRoute(
   if (cardFirst !== null && method === "PUT") {
     const found = server.tagKinds.find((item) => item.id === Number(cardFirst[1]));
     if (found === undefined) return notFound();
-    found.cardFirst = (JSON.parse(String(init?.body)) as { cardFirst: boolean }).cardFirst;
+    found.cardFirst = (
+      JSON.parse(String(init?.body)) as { cardFirst: boolean }
+    ).cardFirst;
     return jsonResponse(found);
   }
   const match = /^\/api\/tag-kinds\/(\d+)$/.exec(path);

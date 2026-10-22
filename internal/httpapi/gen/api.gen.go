@@ -6187,7 +6187,7 @@ type Video struct {
 	// AudioCodec Examples: aac, opus
 	AudioCodec *string `json:"audioCodec,omitempty"`
 
-	// CardCredits Credits a card shows, only in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) when the video has a code, a performer or an organization. Omitted from guests and from GET /api/videos/{id}, which returns workInfo instead.
+	// CardCredits Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests.
 	CardCredits *VideoCardCredits `json:"cardCredits,omitempty"`
 
 	// Container Examples: mp4, webm, mkv
