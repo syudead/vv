@@ -195,3 +195,46 @@ func TestMergeVirtualVideoRejections(t *testing.T) {
 		t.Errorf("ファイルのある動画の説明が変わった: err = %v", err)
 	}
 }
+
+// A tag the owner confirmed on the virtual video stays confirmed where the file video only had it as a suggestion.
+func TestMergeVirtualVideoKeepsAConfirmedTag(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	fileID := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))[fixturePath("/media/clip.mp4")]
+	virtual := createVirtual(t, db, "Moonlight", fixedTime)
+	attachTags(t, db, fileID, "piano")
+	attachTags(t, db, virtual.ID, "piano")
+	// Auto-tagging's suggestion, without running the classifier.
+	if _, err := db.sql.ExecContext(ctx, `update video_tags set tentative = 1 where content_key = 'key-clip'`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.VirtualVideos().Merge(ctx, virtual.ID, virtual.UserKey, fileID, "key-clip"); err != nil {
+		t.Fatal(err)
+	}
+	var tentative int
+	if err := db.sql.QueryRowContext(ctx, `select tentative from video_tags where content_key = 'key-clip'`).Scan(&tentative); err != nil {
+		t.Fatal(err)
+	}
+	if tentative != 0 {
+		t.Errorf("まとめた先のタグ tentative = %d, want 確定 0", tentative)
+	}
+}
+
+// A merge that leaves the work information as it was still tells the screen that the file video changed.
+func TestMergeVirtualVideoNotifiesTheFileVideo(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	fileID := upsertAll(t, db, listingFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1))[fixturePath("/media/clip.mp4")]
+	virtual := createVirtual(t, db, "Moonlight", fixedTime)
+	attachTags(t, db, virtual.ID, "night")
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+
+	if _, err := db.VirtualVideos().Merge(ctx, virtual.ID, virtual.UserKey, fileID, "key-clip"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(recorder.events, domain.Event(domain.VideoOverrideChanged{VideoID: fileID})) {
+		t.Errorf("イベント = %+v, want ファイルのある動画 %d の変更", recorder.events, fileID)
+	}
+}

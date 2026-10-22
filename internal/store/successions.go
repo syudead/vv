@@ -261,10 +261,12 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, er
 	return rekeyUserItems(ctx, tx, from, to)
 }
 
-// Union tags and auto-tag rejections and move watch history; succession and a virtual-video merge share it.
+// Union tags and auto-tag rejections and move watch history; succession and a virtual-video merge share it. A tag
+// confirmed on either side stays confirmed.
 func unionTagsAndHistory(ctx context.Context, tx *sql.Tx, from, to string) error {
-	if _, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
-		select ?, tag_id, created_at, tentative from video_tags where content_key = ?`, to, from); err != nil {
+	if _, err := tx.ExecContext(ctx, `insert into video_tags (content_key, tag_id, created_at, tentative)
+		select ?, tag_id, created_at, tentative from video_tags where content_key = ?
+		on conflict (content_key, tag_id) do update set tentative = 0 where excluded.tentative = 0`, to, from); err != nil {
 		return fmt.Errorf("cannot move the video_tags values: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ?`, from); err != nil {

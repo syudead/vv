@@ -49,7 +49,7 @@ that move tags and playlist and group items, and applies these rules.
 
 | Data | Rule |
 | --- | --- |
-| Tags, people, organizations, external ids | Union |
+| Tags, people, organizations, external ids | Union; a tag confirmed on either side stays confirmed |
 | Favorite | Favorite when either is |
 | Playlist items | Re-keyed in place; where a playlist holds both, the file video's item stays |
 | Description | The file video's, then a blank line and the virtual video's |

@@ -54,10 +54,14 @@ func (s *VirtualVideoStore) Merge(
 	if err != nil {
 		return domain.Video{}, err
 	}
+	targetEvents, err := mergeTargetEvents(ctx, tx, to)
+	if err != nil {
+		return domain.Video{}, err
+	}
 	c := changes{}
 	c.videosDeleted([]domain.DeletedVideo{{ID: virtualID, ContentKey: from}})
 	c.groupsChanged(append(rekeyedGroups, deletedGroups...))
-	if err := s.db.commitWith(ctx, tx, &c, events...); err != nil {
+	if err := s.db.commitWith(ctx, tx, &c, append(events, targetEvents...)...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot merge the virtual video: %w", err)
 	}
 	return video, nil
@@ -81,6 +85,16 @@ func mergeTargetKey(ctx context.Context, tx *sql.Tx, videoID int64, contentVersi
 		return "", domain.ErrNotFound
 	}
 	return keys[0], nil
+}
+
+// Tags, the favorite and playlist items move even when the work information does not, so every video under the
+// target key refreshes on the screen.
+func mergeTargetEvents(ctx context.Context, tx *sql.Tx, key string) ([]domain.Event, error) {
+	ids, err := videoIDsForUserKeys(ctx, tx, []string{key})
+	if err != nil {
+		return nil, err
+	}
+	return overrideChangedEvents(ids), nil
 }
 
 func mergedWorkInfo(ctx context.Context, tx *sql.Tx, from, to string) (domain.WorkInfo, error) {
