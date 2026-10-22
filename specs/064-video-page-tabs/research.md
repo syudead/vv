@@ -15,6 +15,11 @@ This file records only the decisions this feature adds.
 **Decision**: One function in `web/src/player/tabs/videoTabs.ts` maps the
 `Video` response, the audience and whether an approved work-info plugin exists
 to the ordered list of available tabs; nothing else decides a tab's presence.
+The plugin input comes from `listWorkInfoPlugins`, which the tabs container
+reads once when it mounts and keeps across video changes. Until that list
+arrives, and when the read fails, the rule counts no approved plugin; Work
+for an empty work is then added in its fixed place when the list arrives,
+without changing the selected tab.
 
 | Tab | Shown when |
 | --- | --- |
@@ -27,13 +32,16 @@ to the ordered list of available tabs; nothing else decides a tab's presence.
 
 | Option | Flicker on open | Where the rule lives | Verdict |
 | --- | --- | --- | --- |
-| **Rule over `GET /api/videos/{id}` alone** | None: the response that shows the page decides the tabs | One tested function | Chosen |
+| **Rule over `GET /api/videos/{id}` and the plugin list** | Only for an empty work with an approved plugin: Work is added once the plugin list arrives, and the selection stays on Overview | One tested function | Chosen |
 | People waits for the appearances read | The tab appears after a second request | Split between the page and the panel | Rejected: an analysis's main people are always performers of the video, so credits already tell whether People has content |
 | Each panel reports whether it is empty | Tabs change while panels mount | Spread over six components | Rejected: requirement 2 needs the list before a tab is selected |
 
 **Rationale**: Requirement 3 hides empty tabs and requirement 2 keeps the
 selected tab across videos only when the next video has it, so the list must
-be known from the data the page already has. Face recognition writes a
+be known from the data the page already has. The plugin list is the one input
+outside the video response; it is read once per page rather than per video,
+so after its first answer a video change decides the tabs from the video
+alone, and before it Work can only be missing, never removed. Face recognition writes a
 `performer` row for every linked main person and drops the appearance when
 the credit is removed ([face-recognition.md](../../docs/design-docs/face-recognition.md#one-videos-result-is-stored-in-one-transaction)),
 so a video whose credits are empty has no appearance to show either.
@@ -128,7 +136,12 @@ opens the file picker and the preview (today's `Upload an image…`), and
 `Touch up with ComfyUI` opens the preview on the current thumbnail (today's
 `current thumbnail` source), whose ComfyUI section is unchanged. The menu
 entry `Change thumbnail`, the `frame on screen` preview source and the
-icon-only capture button go.
+icon-only capture button go. `Back to automatic` sends
+`PUT /api/videos/{id}/thumbnail-position` with `positionMs` null, which
+already deletes the applied image and the recorded position in one
+transaction under the generation lock, so a video with both returns to the
+automatic frame in one request; `DELETE /api/videos/{id}/thumbnail-image`,
+which keeps a recorded position, has no entry on the page.
 
 | Option | Acceptance criterion 5 | Verdict |
 | --- | --- | --- |

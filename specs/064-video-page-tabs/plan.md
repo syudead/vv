@@ -11,8 +11,8 @@ with six tabs under the tags (Overview, Work, People, Versions, Thumbnail,
 File & media), labelled actions in the title row and at the tab strip's end,
 and a People tab that shows, for the first time on this page, when each
 recognized person is on screen. The player, the tags and the right column
-stay as they are. One pure rule over the video response decides which tabs a
-video has ([R-1](research.md#r-1-which-tabs-a-video-has-is-a-pure-rule-over-the-video-response)),
+stay as they are. One pure rule over the video response and the plugin list
+decides which tabs a video has ([R-1](research.md#r-1-which-tabs-a-video-has-is-a-pure-rule-over-the-video-response)),
 the page keeps the selected tab in memory
 ([R-2](research.md#r-2-the-selected-tab-lives-in-page-memory-not-in-the-address)),
 and one new owner-only read lists a video's face appearances
@@ -158,9 +158,10 @@ the thumbnail and fetch hooks moved into the container
 the Overview panel (description, `Length`, `Resolution`, `Added`,
 `Last watched` ([R-8](research.md#r-8-last-watched-is-the-progress-rows-time)),
 the one-line work summary of code, release date and performers); the
-File & media panel (location with `Open file`, `Copy path` and `Rescan` for
-the owner, `MediaInfoGroups`, size and the three dates with labels; no
-location and no actions for a guest or a video without a location);
+File & media panel (location with `Copy path` and `Rescan` for the owner,
+and `Open file` only when `video.location?.openable` is true, as today;
+`MediaInfoGroups`, size and the three dates with labels; no location and no
+actions for a guest or a video without a location);
 `Favorite`, `Add to playlist` and `Add to group` with labels in the title
 row; the visibility switch and `Edit details` at the strip's end; the
 information rows, the technical line, the media rows and the icon-only
@@ -175,12 +176,14 @@ and the `DetailPage` children rule in
 **Dependencies**: None
 
 **Acceptance**: Unit cases on `videoTabs.ts` cover each row of R-1's table
-for owner and guest, and R-2's keep-or-Overview rule. Component tests of the
+for owner and guest, the plugin list not yet read counted as no plugin, and
+R-2's keep-or-Overview rule. Component tests of the
 page with a faked `api/` show: an owner's video with a code, performers and
 three versions lists the six tabs with Overview selected and no icon-only
 button in the title area (criterion 1); Overview shows the four facts with
 their labels (criterion 2); `Copy path` writes the location to the clipboard
-(criterion 6); a guest's public video lists Overview and File & media, plus
+(criterion 6); a location with `openable` false shows `Copy path` and
+`Rescan` without `Open file`; a guest's public video lists Overview and File & media, plus
 Versions with two versions, with no location, tags, visibility switch or
 `Edit details` (criterion 8); moving from a video with Work to one without
 selects Overview (criterion 9, with Work's row of R-1 stubbed through the
@@ -215,8 +218,9 @@ apply). The screen changes, so the implementation reviews it at the widths
 **Scope**: The People panel: the credited people as face, name and role,
 each a link to the person page; below them one row per item of
 `GET /api/videos/{id}/face-appearances` with the person's face, name (the
-provisional form from `displayName.ts`) and a bar per span scaled to
-`durationMs`, pressed to seek the player
+provisional form from `displayName.ts`) and a bar per span scaled to the
+video's length in seconds, `durationMs / 1000`, since span `start` and `end`
+are seconds; pressed to seek the player
 ([R-7](research.md#r-7-a-span-bar-seeks-the-player-in-place)); the lower
 section only when `analysed` is true and `items` is not empty, and bars only
 with a known length. Updates the People row of
@@ -224,8 +228,9 @@ with a known length. Updates the People row of
 
 **Dependencies**: Screen API lists the people face recognition found in a video; Tab strip, action placement, Overview and File & media on the video page
 
-**Acceptance**: Unit cases on the span placement rule show a span clamped to
-the length and a span past the end drawn to the end. Component tests with a
+**Acceptance**: Unit cases on the span placement rule show a span of 15 to
+30 seconds on a `durationMs` of 60000 placed at 25% with a width of 25%, a
+span clamped to the length and a span past the end drawn to the end. Component tests with a
 faked `api/` show a credited person's link to `/people/{id}` (criterion 3),
 a bar press calling `seekTo` with the span's start and then `play`
 (criterion 3), the lower section absent for `analysed` false and for no
@@ -237,19 +242,22 @@ items, bars absent without `durationMs`, and an unnamed person shown as
 
 **Scope**: The Versions panel reading `GET /api/videos/{id}/versions` when
 selected: one row per version with title, resolution, codec, size, container
-and place, the representative and the playing version marked, and for the
-owner `Make representative` and `Remove from versions` on the other rows,
-keeping `VersionsFact`'s request, focus and failure rules; a guest's rows
-play only. `VersionsFact` and the `3 versions` item go. Updates the
-Versions row of
+and place, the representative and the playing version marked, and the
+other rows playing their version. For the owner every row, the playing one
+included, has `Remove from versions`, and every row but the representative
+has `Make representative`, as `VersionsFact`'s row menu does today, keeping
+its request, focus and failure rules; a guest's rows play only.
+`VersionsFact` and the `3 versions` item go. Updates the Versions row of
 [library-ui.md, Video page layout](../../docs/design-docs/library-ui.md#video-page-layout).
 
 **Dependencies**: Tab strip, action placement, Overview and File & media on the video page
 
 **Acceptance**: Component tests with a faked `api/` show the marks on the
 representative and the playing rows, `Make representative` moving the mark
-and `Remove from versions` removing the row (criterion 4), removing the
-playing version replacing the page's video and selecting Overview
+and `Remove from versions` removing the row (criterion 4), the playing row
+offering `Remove from versions` and the representative row no
+`Make representative`, removing the playing version from its own row
+replacing the page's video and selecting Overview
 (the edge case through R-2), a guest's rows without actions, and the list
 read only once the tab is selected. `VersionsFact` tests move to the panel.
 The screen changes, so the implementation reviews it at the widths
@@ -259,7 +267,9 @@ The screen changes, so the implementation reviews it at the widths
 
 **Scope**: The Thumbnail panel: the current thumbnail with its origin
 (frame position, uploaded, generated or automatic) and `Back to automatic`
-(today's clear and revert); `Use this frame` only while the player shows a
+while an image is applied or a position is recorded, sending the position
+`null` that removes both in one request
+([R-6](research.md#r-6-the-three-replacement-ways-map-to-the-existing-flows)); `Use this frame` only while the player shows a
 frame, `Upload…` and `Touch up with ComfyUI`
 ([R-6](research.md#r-6-the-three-replacement-ways-map-to-the-existing-flows)),
 with the preview rendered by the container and one send at a time as today.
@@ -271,7 +281,10 @@ and the entry section of
 
 **Dependencies**: Tab strip, action placement, Overview and File & media on the video page
 
-**Acceptance**: Component tests with a faked `api/` show `Use this frame`
+**Acceptance**: Component tests with a faked `api/` show `Back to automatic`
+on a video with both a recorded position and an applied image calling
+`setVideoThumbnailPosition` with `null` and not `revertThumbnailImage`, and
+absent on an automatic thumbnail; `Use this frame`
 sending the player's position and the `Current` image changing to the
 response's thumbnail (criterion 5), `Use this frame` absent while the player
 is not shown with `Upload…` and `Touch up with ComfyUI` still present (the
