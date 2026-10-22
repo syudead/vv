@@ -1056,7 +1056,7 @@ describe("VideoCard の作品情報と操作", () => {
     expect(screen.getByText("ABC-123").className).not.toContain("left-9");
   });
 
-  it("顔に乗るとその人だけを大きな顔と名前で出し、選択モードでは顔が押せずフォーカスも受けない", () => {
+  it("顔に乗るとその人だけを大きな顔と名前で出してその人へのリンクにし、選択モードでは顔が押せずフォーカスも受けない", () => {
     vi.useFakeTimers();
     const credits = {
       performers: [performer(1, "出演者A", 5), performer(2, "出演者B")],
@@ -1071,6 +1071,7 @@ describe("VideoCard の作品情報と操作", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("出演者B")).toBeDefined();
     expect(within(dialog).queryByText("出演者A")).toBeNull();
+    expect(within(dialog).getByRole("link").getAttribute("href")).toBe("/people/2");
     expect(
       dialog.querySelector("[data-slot='person-face']")?.getAttribute("data-shape"),
     ).toBe("profile");

@@ -14,7 +14,7 @@ type Performer = NonNullable<Video["cardCredits"]>["performers"][number];
 
 const SHOWN_FACES = 3;
 
-/** Hovering a face pops that one performer large; pressing it opens the person. */
+/** Hovering a face pops that one performer large; pressing the face or the popped face opens the person. */
 function PerformerFace({
   performer,
   selectionMode,
@@ -27,6 +27,7 @@ function PerformerFace({
   const { open, setOpen, triggerHandlers, contentHandlers } =
     useHoverOpen(!selectionMode);
   const name = creditDisplayName(performer.person);
+  const personPath = `/people/${String(performer.person.id)}`;
   const src = personFaceSrc({
     id: performer.person.id,
     imageRevision: performer.imageRevision,
@@ -35,7 +36,7 @@ function PerformerFace({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <Link
-          to={`/people/${String(performer.person.id)}`}
+          to={personPath}
           aria-label={name}
           // In selection mode a press falls through to the card link, which toggles selection.
           tabIndex={selectionMode ? -1 : undefined}
@@ -61,10 +62,19 @@ function PerformerFace({
         onCloseAutoFocus={(event) => event.preventDefault()}
         {...contentHandlers}
       >
-        <PersonFace src={src} name={name} shape="profile" />
-        <p className="truncate text-sm text-foreground" title={name}>
-          {name}
-        </p>
+        <Link
+          to={personPath}
+          onClick={() => setOpen(false)}
+          className="group/face flex flex-col gap-2 rounded-md"
+        >
+          <PersonFace src={src} name={name} shape="profile" />
+          <span
+            className="truncate text-sm text-foreground group-hover/face:text-primary"
+            title={name}
+          >
+            {name}
+          </span>
+        </Link>
       </PopoverContent>
     </Popover>
   );

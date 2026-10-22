@@ -367,7 +367,7 @@ changed item from.
 | Credit | Rule |
 | --- | --- |
 | Product code | Top left; moves right of the selection check while the check shows |
-| Performers | Bottom left, the first three faces, then `+N`; hovering a face pops that performer's face and name, and pressing it opens the person page; in selection mode a press selects the card |
+| Performers | Bottom left, the first three faces, then `+N`; hovering a face pops that performer's face and name, and pressing the face or the popped face opens the person page; in selection mode a press selects the card |
 | Organization | After the faces, truncated: the first label, otherwise the first maker |
 | Guests | Not shown |
 
