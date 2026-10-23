@@ -1,4 +1,4 @@
-import { LoaderCircle, Star, Unlink } from "lucide-react";
+import { LoaderCircle, Star } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -13,7 +13,6 @@ import {
 } from "../../api/client";
 import { type DetailMark, detailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
-import { cn } from "../../lib/cn";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
@@ -248,7 +247,7 @@ export default function VersionsPanel(props: VersionsPanelProps) {
         </div>
       )}
       {list.kind === "ready" && (
-        <ul ref={listRef} aria-label={text.label} className="flex flex-col gap-3">
+        <ul ref={listRef} aria-label={text.label} className="flex flex-col">
           {list.versions.items.map((item) => (
             <VersionRow
               key={item.id}
@@ -268,15 +267,7 @@ export default function VersionsPanel(props: VersionsPanelProps) {
   );
 }
 
-function VersionRow({
-  item,
-  current,
-  representative,
-  owner,
-  pending,
-  navigation,
-  onAction,
-}: {
+interface RowProps {
   item: Video;
   current: boolean;
   representative: boolean;
@@ -284,102 +275,113 @@ function VersionRow({
   pending: RowAction | undefined;
   navigation: VersionsNavigation;
   onAction: (action: RowAction) => void;
-}) {
+}
+
+function VersionRow(props: RowProps) {
+  const { item, current, representative, owner } = props;
   const text = t.player.versions;
   const details = versionDetails(item);
-  // Owners see the absolute path in the tooltip; guests only the relative place.
-  const fullPlace = owner ? (item.location?.path ?? details.place) : details.place;
-  const titleClass = "line-clamp-2 min-w-0 text-sm font-medium wrap-anywhere";
+  // Owners read the absolute path; guests only the relative place.
+  const path = owner ? (item.location?.path ?? details.place) : details.place;
 
   return (
     <li
       data-version-id={item.id}
       aria-current={current ? "true" : undefined}
-      className={cn(
-        "flex flex-col gap-2 border-b border-border pb-3 last:border-b-0 last:pb-0 sm:flex-row sm:items-center sm:gap-3",
-        current &&
-          "-mx-1.5 rounded-lg border-b-0 bg-accent p-1.5 ring-2 ring-primary ring-inset",
-      )}
+      className="flex flex-col gap-3 border-b border-border py-3 sm:flex-row sm:items-center"
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <VideoThumbnail video={item} className="w-list-thumb rounded-md" />
+        <VideoThumbnail
+          video={item}
+          selected={current}
+          className="w-list-thumb-cell rounded-md"
+        />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex min-w-0 items-start gap-2">
-            {current ? (
-              <span className={titleClass}>
-                <span className="sr-only">{text.nowPlaying} </span>
-                {item.title}
-              </span>
-            ) : (
-              <Link
-                to={`/videos/${String(item.id)}`}
-                state={{ from: navigation.backTo, autoplay: navigation.autoplay }}
-                aria-label={text.play(item.title, versionDetailsText(details, " "))}
-                className={cn(titleClass, "hover:underline")}
-              >
-                {item.title}
-              </Link>
-            )}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="line-clamp-2 min-w-0 text-sm wrap-anywhere text-foreground">
+              {item.title}
+            </span>
             {representative && (
-              <Badge variant="soft">
+              <Badge variant="secondary">
                 <Star aria-hidden="true" />
                 {text.representative}
               </Badge>
             )}
+            {current && <Badge variant="soft">{text.nowPlaying}</Badge>}
           </div>
           <VersionDetailsLine
             details={details}
-            title={versionDetailsText(details, " · ", fullPlace)}
+            place={false}
+            title={versionDetailsText(details, " · ", path)}
           />
+          {path !== "" && (
+            // Truncate from the left so the file name stays.
+            <span
+              dir="rtl"
+              title={path}
+              className="min-w-0 truncate text-left font-mono text-2xs text-muted-foreground"
+            >
+              <bdi dir="ltr">{path}</bdi>
+            </span>
+          )}
         </div>
       </div>
-      {owner && (
-        <RowActions
-          representative={representative}
-          pending={pending}
-          onAction={onAction}
-        />
-      )}
+      <RowActions {...props} />
     </li>
   );
 }
 
+/** `Play` on every row but the playing one, then the owner's quiet actions. */
 function RowActions({
+  item,
+  current,
   representative,
+  owner,
   pending,
+  navigation,
   onAction,
-}: {
-  representative: boolean;
-  pending: RowAction | undefined;
-  onAction: (action: RowAction) => void;
-}) {
+}: RowProps) {
   const text = t.player.versions;
-  const action = (kind: RowAction, label: UiText, Icon: typeof Star) => (
+  if (current && !owner) return null;
+  const action = (kind: RowAction, label: UiText) => (
     <Button
       variant="ghost"
       size="sm"
       aria-disabled={pending !== undefined || undefined}
+      aria-busy={pending === kind || undefined}
       // Keep the pressed button mounted so it keeps focus while it spins.
       onClick={() => {
         if (pending === undefined) onAction(kind);
       }}
       className="aria-disabled:cursor-default"
     >
-      {pending === kind ? (
+      {pending === kind && (
         <LoaderCircle
           aria-hidden="true"
           className="animate-spin motion-reduce:animate-none"
         />
-      ) : (
-        <Icon aria-hidden="true" />
       )}
       {label}
     </Button>
   );
   return (
-    <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-      {!representative && action("representative", text.makeRepresentative, Star)}
-      {action("remove", text.remove, Unlink)}
+    <div className="flex shrink-0 flex-wrap items-center gap-1 sm:justify-end">
+      {!current && (
+        <Button variant="secondary" size="sm" shape="pill" asChild>
+          <Link
+            to={`/videos/${String(item.id)}`}
+            state={{ from: navigation.backTo, autoplay: navigation.autoplay }}
+            aria-label={text.play(
+              item.title,
+              versionDetailsText(versionDetails(item), " "),
+            )}
+          >
+            {text.playWord}
+          </Link>
+        </Button>
+      )}
+      {owner && !representative && action("representative", text.makeRepresentative)}
+      {owner && action("remove", text.remove)}
     </div>
   );
 }

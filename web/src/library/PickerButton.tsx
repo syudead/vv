@@ -26,7 +26,7 @@ export default function PickerButton({
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Button variant="secondary" size="sm" shape="pill" className="text-foreground">
             <Icon aria-hidden="true" />
             {label}
           </Button>

@@ -54,7 +54,7 @@ function renderPanel(value: Video, owner = true) {
 }
 
 function fileFacts(): string[] {
-  return within(screen.getByRole("region", { name: "File" }))
+  return within(screen.getByLabelText("File"))
     .getAllByRole("term")
     .map(
       (term) => `${term.textContent ?? ""} ${term.nextElementSibling?.textContent ?? ""}`,
@@ -69,17 +69,17 @@ describe("FileMediaPanel", () => {
     fetchMock.mockReset();
   });
 
-  it("所在・Media・File の順に節を置き、File はサイズと 3 つの日付をラベル付きで出す", () => {
+  it("所在と Media の節を置き、File の列はサイズと 3 つの日付をラベル付きで出す", () => {
     renderPanel(video);
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
-    ).toEqual(["Location", "Media", "File"]);
+    ).toEqual(["Location", "Media"]);
     expect(screen.getByText("/media/a/b.mp4")).toBeDefined();
     expect(fileFacts()).toEqual([
       "Size 80.4 MB",
       "Added Sep 20, 2026",
       "Edited Sep 27, 2026",
-      "Created Jul 3, 2026",
+      "File created Jul 3, 2026",
     ]);
   });
 
@@ -96,7 +96,7 @@ describe("FileMediaPanel", () => {
     renderPanel(video, false);
     expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
-    expect(fileFacts()).toContain("Created Jul 3, 2026");
+    expect(fileFacts()).toContain("File created Jul 3, 2026");
   });
 
   it("安全でない接続（clipboard が無い）では、選んだ文字をコピーする方法に切り替える", () => {

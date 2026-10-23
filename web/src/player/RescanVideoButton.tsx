@@ -1,4 +1,3 @@
-import { RefreshCw } from "lucide-react";
 import { useId } from "react";
 
 import { t, type UiText } from "../i18n";
@@ -47,13 +46,13 @@ export default function RescanVideoButton({
 
   const button = (
     <Button
-      variant="outline"
+      variant="secondary"
       size="sm"
+      shape="pill"
       aria-disabled={blocked || undefined}
       aria-describedby={reason === null ? undefined : reasonId}
       onClick={start}
     >
-      <RefreshCw aria-hidden="true" />
       {f.rescan}
     </Button>
   );

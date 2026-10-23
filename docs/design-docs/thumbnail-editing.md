@@ -295,7 +295,8 @@ The video page's Thumbnail tab
 origin and offers three ways to replace it. `Use this frame`, present only
 while the player shows a frame, sends the player's position as
 `PUT /api/videos/{id}/thumbnail-position`, with no preview. `Upload…` opens the
-file picker, and `Touch up with ComfyUI` reads the current thumbnail through a
+file picker, and `Touch up…` (the row `Touch up with ComfyUI`) reads the
+current thumbnail through a
 short-lived session (`source` `thumbnail`) whose `/frame` the page reads before
 discarding it; both open the same preview, where the owner frames the image and
 may touch it up. Applying sends the drawing through the upload route, so the

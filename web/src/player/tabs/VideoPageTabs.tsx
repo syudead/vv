@@ -207,14 +207,15 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
     <Tabs
       value={current}
       onValueChange={(next) => select(next as VideoTab)}
-      className="gap-0"
+      // The panel sits gap-3 under the strip, as the page's children stack.
+      className="gap-3"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:border-b sm:border-border">
         <div
           ref={strip}
           className="min-w-0 flex-1 overflow-x-auto border-b border-border pb-1.5 scrollbar-none sm:border-b-0"
         >
-          <TabsList variant="line" aria-label={text.label}>
+          <TabsList variant="line" aria-label={text.label} className="gap-1">
             {tabs.map((tab) => (
               <TabTrigger key={tab} tab={tab} count={tabCount(tab, video)} />
             ))}
@@ -222,7 +223,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
         </div>
         {owner && (
           // Above the strip below `sm`, so the tabs alone take its line.
-          <div className="order-first flex shrink-0 items-center justify-end gap-2 sm:order-none sm:pb-1">
+          <div className="order-first flex shrink-0 items-center justify-end gap-1 sm:order-none sm:pb-1">
             <VisibilitySwitch
               // Key by video ID so errors do not survive navigation.
               key={`visibility:${String(video.id)}`}
@@ -234,7 +235,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
           </div>
         )}
       </div>
-      <TabsContent value={current} className="pt-4 text-base">
+      <TabsContent value={current} className="pt-2">
         {panel(current, props, {
           workPlugin: state.workPlugin,
           operations,
@@ -268,10 +269,14 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
 
 function TabTrigger({ tab, count }: { tab: VideoTab; count: number | undefined }) {
   return (
-    <TabsTrigger value={tab} className="flex-none">
+    <TabsTrigger
+      value={tab}
+      // The underline spans the padding, as wide as the tab's hit area.
+      className="flex-none group-data-[variant=line]/tabs-list:px-3"
+    >
       {t.player.tabs[tab]}
       {count !== undefined && (
-        <span className="font-normal text-muted-foreground tabular-nums">
+        <span className="text-2xs font-normal text-muted-foreground tabular-nums">
           {formatNumber(count)}
         </span>
       )}

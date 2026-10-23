@@ -5,7 +5,7 @@ import { t } from "../../i18n";
 import { formatDuration, formatResolution } from "../../lib/format";
 import { type Fact, FactList } from "../../ui/patterns/fact-list";
 import { Description } from "../WorkInfo";
-import { DateValue } from "./panelParts";
+import { DateValue, PanelColumns } from "./panelParts";
 
 /** The code, the release date and the performers, each left out when missing. */
 export function workSummary(info: WorkInfo | undefined): string {
@@ -66,20 +66,23 @@ export default function OverviewPanel({
 }) {
   const description = owner ? video.workInfo?.description : undefined;
   const summary = owner ? workSummary(video.workInfo) : "";
+  const hasMain = description !== undefined || summary !== "";
   return (
-    <div className="flex flex-col gap-6">
-      {(description !== undefined || summary !== "") && (
-        <div className="flex flex-col gap-2">
-          {description !== undefined && (
-            // Remount per video so the fold does not carry over.
-            <Description key={video.id} text={description} size="base" />
-          )}
-          {summary !== "" && (
-            <p className="text-sm text-muted-foreground wrap-anywhere">{summary}</p>
-          )}
-        </div>
-      )}
-      <FactList facts={overviewFacts(video, owner)} />
-    </div>
+    <PanelColumns
+      main={
+        hasMain ? (
+          <div className="flex flex-col gap-4">
+            {description !== undefined && (
+              // Remount per video so the fold does not carry over.
+              <Description key={video.id} text={description} />
+            )}
+            {summary !== "" && (
+              <p className="text-xs text-muted-foreground wrap-anywhere">{summary}</p>
+            )}
+          </div>
+        ) : undefined
+      }
+      side={<FactList variant="divided" facts={overviewFacts(video, owner)} />}
+    />
   );
 }

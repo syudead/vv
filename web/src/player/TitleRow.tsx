@@ -26,9 +26,9 @@ export default function TitleRow({
   const favorite = video.favorite === true;
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
         <div className="min-w-0 flex-1">{title}</div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <FavoriteToggle
             variant="page"
             favorite={favorite}

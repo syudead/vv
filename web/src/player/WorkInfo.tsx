@@ -161,19 +161,22 @@ function FoldedEntries({
   label,
   entries,
   limit = foldLimit,
+  lines = false,
 }: {
   label: UiText;
   entries: readonly { key: string; node: ReactNode }[];
   limit?: number;
+  /** One entry per line instead of joined by commas. */
+  lines?: boolean;
 }) {
   const fold = useFold<HTMLSpanElement>(entries.length, limit);
   const shown = fold.folded ? entries.slice(0, limit) : entries;
 
   return (
-    <span className="min-w-0 wrap-anywhere">
+    <span className={cn("min-w-0 wrap-anywhere", lines && "flex flex-col items-start")}>
       {shown.map((entry, index) => (
         <Fragment key={entry.key}>
-          {index > 0 && ", "}
+          {index > 0 && !lines && ", "}
           <span
             ref={index === limit ? fold.nextRef : undefined}
             tabIndex={index === limit ? -1 : undefined}
@@ -200,12 +203,10 @@ function FoldedEntries({
 export function Description({
   text,
   tone = "default",
-  size = "sm",
   label,
 }: {
   text: string;
   tone?: "default" | "muted";
-  size?: "sm" | "base";
   label?: UiText;
 }) {
   const ref = useRef<HTMLParagraphElement | null>(null);
@@ -227,8 +228,7 @@ export function Description({
       <p
         ref={ref}
         className={cn(
-          "max-w-prose wrap-anywhere whitespace-pre-line",
-          size === "base" ? "text-base" : "text-sm",
+          "text-sm leading-relaxed wrap-anywhere whitespace-pre-line",
           tone === "muted" ? "text-muted-foreground" : "text-foreground",
           !open && "line-clamp-3",
         )}
@@ -255,8 +255,12 @@ interface Entry {
   node: ReactNode;
 }
 
-function listFact(id: string, label: UiText, entries: Entry[]): Fact {
-  return { id, term: label, value: <FoldedEntries label={label} entries={entries} /> };
+function listFact(id: string, label: UiText, entries: Entry[], lines = false): Fact {
+  return {
+    id,
+    term: label,
+    value: <FoldedEntries label={label} entries={entries} lines={lines} />,
+  };
 }
 
 function peopleFacts(info: WorkInfoValue): Fact[] {
@@ -303,7 +307,7 @@ function linkEntry(url: string): Entry {
         title={url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex max-w-full items-center gap-1 align-bottom hover:text-primary sm:max-w-xs"
+        className="inline-flex max-w-full items-center gap-1 align-bottom text-primary hover:underline"
       >
         <span className="truncate">{withoutScheme(url)}</span>
         <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
@@ -316,7 +320,7 @@ function linkFacts(info: WorkInfoValue): Fact[] {
   const w = t.player.workInfo;
   const facts: Fact[] = [];
   if (info.urls.length > 0)
-    facts.push(listFact("links", w.links, info.urls.map(linkEntry)));
+    facts.push(listFact("links", w.links, info.urls.map(linkEntry), true));
   if (info.externalIds.length > 0) {
     facts.push(
       listFact(
@@ -361,5 +365,5 @@ export function workFacts(info: WorkInfoValue | undefined): Fact[] {
 /** The Work tab's list; nothing when the work has no item to list. */
 export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) {
   const facts = workFacts(info);
-  return facts.length === 0 ? null : <FactList facts={facts} />;
+  return facts.length === 0 ? null : <FactList facts={facts} columns={2} />;
 }

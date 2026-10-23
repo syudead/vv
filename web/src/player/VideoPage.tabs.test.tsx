@@ -184,11 +184,15 @@ describe("VideoPage tabs", () => {
       screen.getByRole("button", { name: "Favorite" }),
       screen.getByRole("button", { name: "Add to playlist" }),
       screen.getByRole("button", { name: "Add to group" }),
-      screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
       screen.getByRole("link", { name: "Edit details" }),
     ]) {
       expect(control.textContent).not.toBe("");
     }
+    // The switch's word stands before the track, in the label that holds both.
+    const visibility = screen.getByRole("switch", {
+      name: "Show to people who aren't signed in",
+    });
+    expect(visibility.closest("label")?.textContent).toBe("Private");
     expect(
       screen.queryByRole("button", { name: "Use current frame as thumbnail" }),
     ).toBeNull();
@@ -244,7 +248,7 @@ describe("VideoPage tabs", () => {
     expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
     expect(screen.getByRole("region", { name: "Media" })).toBeDefined();
-    expect(screen.getByRole("region", { name: "File" })).toBeDefined();
+    expect(screen.getByLabelText("File")).toBeDefined();
   });
 
   it("Work のある動画から無い動画へ移ると Overview を選び、その次に Work のある動画へ移っても Overview のまま（受け入れ条件 9）", async () => {

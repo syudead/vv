@@ -1,23 +1,21 @@
-import {
-  Camera,
-  ImageUp,
-  LoaderCircle,
-  type LucideIcon,
-  WandSparkles,
-} from "lucide-react";
-import { type ChangeEvent, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { Video } from "../../api/client";
 import { t, type UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
+import { ScrubFrame } from "../../ui/ScrubPreview";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { Button } from "../../ui/shadcn/button";
 import { Input } from "../../ui/shadcn/input";
+import { Separator } from "../../ui/shadcn/separator";
 import type { ThumbnailCapture } from "../playerLayers";
 import type { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
 import { UPLOAD_TYPES } from "../thumbnailUpload/uploadRules";
 import { FailureLine, PanelSection } from "./panelParts";
 import type { useThumbnailPosition } from "./useThumbnailPosition";
+import { useSpriteFrame } from "./useSpriteFrame";
 
 type Way = "frame" | "automatic" | "upload" | "touchUp";
 
@@ -29,6 +27,9 @@ export interface ThumbnailPanelProps {
   upload: ReturnType<typeof useThumbnailUpload>;
   failure: UiText | null;
 }
+
+/** How often the frame row follows the player's position. */
+const positionPollMs = 250;
 
 /** The way whose request is running, if any; the other ways wait for it. */
 function sendingWay(
@@ -49,7 +50,22 @@ function framePosition(capture: ThumbnailCapture | undefined): number | null {
   return Math.max(0, Math.round(raw));
 }
 
-function originText(video: Video): UiText {
+/** The player's position, read again while the panel is shown, so the frame row follows playback. */
+function usePlayerPosition(capture: ThumbnailCapture | undefined): number | null {
+  const [positionMs, setPositionMs] = useState(() => framePosition(capture));
+  const latest = useRef(capture);
+  latest.current = capture;
+  const enabled = capture?.enabled === true;
+  useEffect(() => {
+    const read = () => setPositionMs(framePosition(latest.current));
+    read();
+    const timer = window.setInterval(read, positionPollMs);
+    return () => window.clearInterval(timer);
+  }, [enabled]);
+  return positionMs;
+}
+
+function originText(video: Video): ReactNode {
   const text = t.player.tabs;
   if (video.thumbnailImage === "uploaded") return text.uploadedOrigin;
   if (video.thumbnailImage === "generated") return text.generatedOrigin;
@@ -60,8 +76,9 @@ function originText(video: Video): UiText {
 }
 
 /**
- * The current thumbnail with its origin and the three ways to replace it. The requests and the
- * preview belong to the tabs container, so a send started here finishes after a tab switch.
+ * The current thumbnail with its origin, and the three ways to replace it as rows of preview, title
+ * and pill. The requests and the preview belong to the tabs container, so a send started here
+ * finishes after a tab switch.
  */
 export default function ThumbnailPanel({
   video,
@@ -72,6 +89,8 @@ export default function ThumbnailPanel({
 }: ThumbnailPanelProps) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const sending = sendingWay(position, upload);
+  const playerPosition = usePlayerPosition(capture);
+  const spriteFrame = useSpriteFrame(video.seekThumbnailUrl, playerPosition);
   const text = t.player.tabs;
   const automatic =
     video.thumbnailImage === undefined && video.thumbnailPositionMs === undefined;
@@ -94,73 +113,105 @@ export default function ThumbnailPanel({
 
   return (
     <div className="flex flex-col gap-6">
-      <PanelSection title={text.currentThumbnail}>
-        <div className="flex flex-col items-start gap-2">
-          <CurrentImage url={video.thumbnailUrl} />
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {originText(video)}
-          </p>
-          {!automatic && (
-            <WayButton
-              variant="ghost"
-              label={text.backToAutomatic}
-              {...action("automatic", () => position.send(null))}
-            />
-          )}
-        </div>
-      </PanelSection>
-      <PanelSection title={text.replaceWith}>
-        <div className="flex flex-col gap-2">
-          {frameShown && (
-            <WayRow
-              icon={Camera}
-              label={text.useThisFrame}
-              note={text.useThisFrameNote}
-              {...action("frame", () => {
-                const positionMs = framePosition(capture);
-                if (positionMs !== null) position.send(positionMs);
-              })}
-            />
-          )}
-          <WayRow
-            icon={ImageUp}
-            label={text.uploadImage}
-            note={text.uploadImageNote}
-            {...action("upload", () => fileInput.current?.click())}
-          />
-          <WayRow
-            icon={WandSparkles}
-            label={text.touchUp}
-            note={text.touchUpNote}
-            {...action("touchUp", () =>
-              upload.chooseSource(
-                { source: "thumbnail" },
-                t.player.thumbnailEdit.currentThumbnail,
-              ),
+      <div className="flex flex-col gap-6 md:flex-row">
+        <PanelSection title={text.currentThumbnail}>
+          <div className="flex flex-col items-start gap-2">
+            {/* The wrapper sets the width: cn keeps the thumbnail's w-full beside a named step. */}
+            <div className="w-card-0 max-w-full">
+              <ThumbnailImage url={video.thumbnailUrl} />
+            </div>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {originText(video)}
+            </p>
+            {!automatic && (
+              <WayButton
+                variant="ghost"
+                className="-ml-2"
+                label={text.backToAutomatic}
+                {...action("automatic", () => position.send(null))}
+              />
             )}
-          />
+          </div>
+        </PanelSection>
+        <Separator className="md:hidden" />
+        <Separator orientation="vertical" className="hidden md:block" />
+        <div className="min-w-0 flex-1">
+          <PanelSection title={text.replaceWith}>
+            <ul className="flex flex-col">
+              {frameShown && (
+                <WayRow
+                  preview={
+                    <WayPreview>
+                      <ScrubFrame frame={spriteFrame} />
+                    </WayPreview>
+                  }
+                  title={text.frameOnScreen}
+                  note={
+                    <span className="font-mono">
+                      {formatDuration(playerPosition ?? video.thumbnailPositionMs ?? 0)}
+                    </span>
+                  }
+                  label={text.useThisFrame}
+                  {...action("frame", () => {
+                    const positionMs = framePosition(capture);
+                    if (positionMs !== null) position.send(positionMs);
+                  })}
+                />
+              )}
+              <WayRow
+                preview={<WayPreview dashed />}
+                title={text.anImage}
+                note={text.uploadImageNote}
+                label={text.uploadImage}
+                {...action("upload", () => fileInput.current?.click())}
+              />
+              <WayRow
+                preview={
+                  <ThumbnailImage
+                    url={video.thumbnailUrl}
+                    className="w-replace-preview shrink-0 opacity-50"
+                  />
+                }
+                title={text.touchUp}
+                note={text.touchUpNote}
+                label={text.touchUpButton}
+                {...action("touchUp", () =>
+                  upload.chooseSource(
+                    { source: "thumbnail" },
+                    t.player.thumbnailEdit.currentThumbnail,
+                  ),
+                )}
+              />
+            </ul>
+            <Input
+              ref={fileInput}
+              type="file"
+              accept={UPLOAD_TYPES}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="hidden"
+              data-testid="thumbnail-upload-input"
+              onChange={choose}
+            />
+          </PanelSection>
         </div>
-        <Input
-          ref={fileInput}
-          type="file"
-          accept={UPLOAD_TYPES}
-          tabIndex={-1}
-          aria-hidden="true"
-          className="hidden"
-          data-testid="thumbnail-upload-input"
-          onChange={choose}
-        />
-      </PanelSection>
+      </div>
       <FailureLine failure={failure} />
     </div>
   );
 }
 
-/** The stored thumbnail at the right column's card width; the empty frame while there is none. */
-function CurrentImage({ url }: { url: string | undefined }) {
+/** The stored thumbnail; the empty frame while there is none or it fails to load. */
+function ThumbnailImage({
+  url,
+  className,
+}: {
+  url: string | undefined;
+  className?: string;
+}) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   return (
-    <VideoThumbnail className="max-w-card-0">
+    <VideoThumbnail className={className}>
       {url !== undefined && url !== brokenUrl && (
         <VideoThumbnailImage
           src={url}
@@ -168,6 +219,27 @@ function CurrentImage({ url }: { url: string | undefined }) {
           onError={() => setBrokenUrl(url)}
         />
       )}
+    </VideoThumbnail>
+  );
+}
+
+/** A row's small preview frame; dashed and unfilled for a way that has no image yet. */
+function WayPreview({
+  dashed = false,
+  children,
+}: {
+  dashed?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <VideoThumbnail
+      aria-hidden="true"
+      className={cn(
+        "w-replace-preview shrink-0",
+        dashed && "border border-dashed border-input bg-transparent",
+      )}
+    >
+      {children}
     </VideoThumbnail>
   );
 }
@@ -181,42 +253,52 @@ interface WayState {
 
 function WayButton({
   variant,
-  icon: Icon,
   label,
+  className,
   sending,
   waiting,
   onPress,
-}: WayState & { variant: "outline" | "ghost"; icon?: LucideIcon; label: UiText }) {
+}: WayState & { variant: "secondary" | "ghost"; label: UiText; className?: string }) {
   return (
     <Button
       variant={variant}
       size="sm"
+      shape={variant === "secondary" ? "pill" : "default"}
       aria-disabled={waiting || undefined}
       aria-busy={sending || undefined}
       onClick={onPress}
+      className={className}
     >
-      {sending ? (
+      {sending && (
         <LoaderCircle
           aria-hidden="true"
           className="animate-spin motion-reduce:animate-none"
         />
-      ) : (
-        Icon !== undefined && <Icon aria-hidden="true" />
       )}
       {label}
     </Button>
   );
 }
 
-/** A way's framed button with its muted note after it, under it below `sm`. */
+/** A way: its preview, title and note, then its pill; below `sm` the pill moves under the note. */
 function WayRow({
+  preview,
+  title,
   note,
   ...button
-}: WayState & { icon: LucideIcon; label: UiText; note: UiText }) {
+}: WayState & { preview: ReactNode; title: UiText; note: ReactNode; label: UiText }) {
   return (
-    <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
-      <WayButton variant="outline" {...button} />
-      <span className="text-xs text-muted-foreground">{note}</span>
-    </div>
+    <li className="flex items-center gap-3 border-b border-border py-2 last:border-b-0">
+      {preview}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm text-foreground">{title}</span>
+          <span className="text-2xs text-muted-foreground tabular-nums">{note}</span>
+        </div>
+        <div>
+          <WayButton variant="secondary" {...button} />
+        </div>
+      </div>
+    </li>
   );
 }

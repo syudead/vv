@@ -103,7 +103,7 @@ describe("PeoplePanel", () => {
     const lane = await screen.findByRole("group", {
       name: "When 山田 花子 is on screen",
     });
-    expect(screen.getByText("Press a bar to play from that moment")).not.toBeNull();
+    expect(screen.getByText("0:00 — 1:00 · press a bar to jump")).not.toBeNull();
     fireEvent.click(within(lane).getByRole("button", { name: "0:40–0:45" }));
     expect(player.calls).toEqual(["seekTo 40", "play"]);
   });
@@ -166,7 +166,7 @@ describe("PeoplePanel", () => {
     const section = await screen.findByRole("region", { name: "Seen in this video" });
     expect(within(section).getByRole("link", { name: /山田 花子/ })).not.toBeNull();
     expect(within(section).queryByRole("group")).toBeNull();
-    expect(screen.queryByText("Press a bar to play from that moment")).toBeNull();
+    expect(screen.queryByText(/^0:00 — /)).toBeNull();
   });
 
   it("プレイヤーが出ていなければ帯はボタンにならず、案内も出さない", async () => {
@@ -176,7 +176,8 @@ describe("PeoplePanel", () => {
       name: "When 山田 花子 is on screen",
     });
     expect(within(lane).queryByRole("button")).toBeNull();
-    expect(screen.queryByText("Press a bar to play from that moment")).toBeNull();
+    // The hint ends at the length: nothing can play.
+    expect(screen.getByText("0:00 — 1:00")).not.toBeNull();
   });
 
   it("名前の無い人物は両方の段で #{id} と出す", async () => {

@@ -141,7 +141,7 @@ export async function openWorkTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 export function entry() {
-  return screen.findByRole("button", { name: "Fill in from a site" });
+  return screen.findByRole("button", { name: /^Fetch( again)?$/ });
 }
 
 export async function openDialog() {

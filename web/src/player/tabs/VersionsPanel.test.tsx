@@ -119,29 +119,38 @@ describe("VersionsPanel", () => {
     vi.resetAllMocks();
   });
 
-  it("代表と再生中の行に印を付け、ほかの行は詳細付きの名前でそのバージョンを再生するリンクにする", async () => {
+  it("代表と再生中の行に見える印を付け、ほかの行は詳細付きの名前を持つ Play でそのバージョンを開く", async () => {
     renderPanel();
     const [first, second, third] = await rows();
     expect(list).toHaveBeenCalledWith(7, expect.any(AbortSignal));
 
     expect(first?.getAttribute("aria-current")).toBe("true");
-    expect(first?.textContent).toContain("Now playing");
-    expect(first?.textContent).toContain("Representative");
+    // Both marks are visible chips, not screen-reader text.
+    const nowPlaying = within(first as HTMLElement).getByText("Now playing");
+    expect(nowPlaying.closest(".sr-only")).toBeNull();
+    expect(within(first as HTMLElement).getByText("Representative")).toBeDefined();
     expect(within(first as HTMLElement).queryByRole("link")).toBeNull();
 
     expect(second?.getAttribute("aria-current")).toBeNull();
     expect(second?.textContent).not.toContain("Representative");
     const link = within(second as HTMLElement).getByRole("link");
+    expect(link.textContent).toBe("Play");
     expect(link.getAttribute("aria-label")).toBe(
-      `Play Bravo, 1280×720 MKV H.265 ${formatBytes(1_048_576)} Media / movies/small`,
+      `Play Bravo, 1280×720 H.265 ${formatBytes(1_048_576)} MKV Media / movies/small`,
     );
     expect(link.getAttribute("href")).toBe("/videos/20");
-    // The owner's tooltip carries the absolute path.
-    expect(second?.querySelector('[title*="/media/movies/small/B.mkv"]')).not.toBeNull();
-    expect(within(third as HTMLElement).getByRole("link").textContent).toBe("Cedar");
+    // The owner reads the absolute path on its own line.
+    expect(
+      within(second as HTMLElement).getByText("/media/movies/small/B.mkv"),
+    ).toBeDefined();
+    expect(
+      within(third as HTMLElement)
+        .getByRole("link")
+        .getAttribute("href"),
+    ).toBe("/videos/21");
   });
 
-  it("所有者には再生中を含む全行に Remove from versions、代表以外の行に Make representative を出す", async () => {
+  it("所有者には再生中を含む全行に Remove from versions、代表以外の行に Make representative を出し、再生中の行に Play を出さない", async () => {
     renderPanel({ video: versionB });
     await rows();
     expect(actions(row("Alpha"))).toEqual(["Remove from versions"]);
@@ -150,6 +159,8 @@ describe("VersionsPanel", () => {
       "Remove from versions",
     ]);
     expect(row("Bravo").getAttribute("aria-current")).toBe("true");
+    expect(within(row("Bravo")).queryByRole("link", { name: /^Play / })).toBeNull();
+    expect(within(row("Alpha")).getByRole("link", { name: /^Play Alpha/ })).toBeDefined();
     expect(actions(row("Cedar"))).toEqual([
       "Make representative",
       "Remove from versions",
@@ -320,5 +331,7 @@ describe("VersionsPanel", () => {
       "/videos/20",
     );
     expect(row("Bravo").querySelector('[title*="/media/"]')).toBeNull();
+    // A guest reads the version's place where the owner reads the path.
+    expect(within(row("Bravo")).getByText("Media / movies/small")).toBeDefined();
   });
 });

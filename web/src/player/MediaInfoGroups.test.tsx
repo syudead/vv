@@ -196,6 +196,13 @@ describe("MediaInfoGroups", () => {
     expect(items("Subtitles")).toEqual(["Closed captions"]);
   });
 
+  it("probe 済みで字幕も章も無い動画は、Subtitles と Chapters を None と出す", () => {
+    renderMedia({ container: "mp4", mediaInfo: { video: { hdr: "sdr" } } });
+    expect(terms()).toEqual(["Video", "Subtitles", "Chapters", "Container"]);
+    expect(value("Subtitles").textContent).toBe("None");
+    expect(value("Chapters").textContent).toBe("None");
+  });
+
   it("読み取り中は読み取り中と出し、失敗なら警告の色で 1 行出す", () => {
     const view = renderMedia({ probeState: "pending" });
     expect(screen.getByText("Reading technical details…")).toBeDefined();

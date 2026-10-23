@@ -95,6 +95,7 @@ describe("contrast", () => {
     ["primary", "primary-soft", 4.5],
     ["ring", "primary-soft", 4.5],
     ["favorite", "primary-soft", 4.5],
+    ["favorite", "favorite-soft", 4.5],
     ["destructive-foreground", "destructive-strong", 4.5],
     ["warning-foreground", "warning", 4.5],
     ["success-foreground", "success", 4.5],

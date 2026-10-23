@@ -63,7 +63,7 @@ describe("VideoPage work-info fetch", () => {
 
   it("ゲストには取得の入口が無く、プラグインの一覧も読まない", async () => {
     await openPage("guest");
-    expect(screen.queryByRole("button", { name: "Fill in from a site" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
     expect(server.requests).not.toContain("GET /api/work-info-plugins");
   });
 
@@ -78,7 +78,7 @@ describe("VideoPage work-info fetch", () => {
     await openWorkTab(userEvent.setup());
     await waitFor(() => expect(server.requests).toContain("GET /api/work-info-plugins"));
     expect(workPanel().getByText("ABC-123")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Fill in from a site" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
   });
 
   it("取得のダイアログは人物プラグインを並べない", async () => {
@@ -160,7 +160,7 @@ describe("VideoPage work-info fetch", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("button", {
-          name: "Fill in from a site",
+          name: /^Fetch( again)?$/,
         }),
       ),
     );
@@ -324,7 +324,7 @@ describe("VideoPage work-info fetch", () => {
     );
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.queryByRole("button", { name: "Fill in from a site" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
   });
 
   it("取得しかできないプラグインは動画の品番を最初の値にし、ID で取得して比較の段に ID を出す", async () => {

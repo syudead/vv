@@ -79,16 +79,16 @@ function Credits({ people }: { people: CreditedPerson[] }) {
         <Link
           key={person.id}
           to={personPath(person.id)}
-          className="flex min-w-0 flex-col items-center gap-2 rounded-md p-1 text-center transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
+          className="flex min-w-0 flex-col items-start gap-1.5 rounded-md text-left transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
         >
           <PersonFace
             src={personFaceSrc({ id: person.id, imageRevision })}
             name={creditDisplayName(person)}
-            shape="card"
+            shape="scene"
           />
-          <span className="flex w-full min-w-0 flex-col items-center">
+          <span className="flex w-full min-w-0 flex-col items-start gap-0.5">
             <PersonName person={person} className="w-full" />
-            <span className="w-full truncate text-xs text-muted-foreground">
+            <span className="w-full truncate text-2xs text-muted-foreground">
               {held.map((role) => roles[role]).join(" · ")}
             </span>
           </span>
@@ -183,14 +183,14 @@ function SeenRow({
     <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
       <Link
         to={personPath(item.person.id)}
-        className="flex min-w-0 items-center gap-2 rounded-md sm:w-chip-label sm:shrink-0"
+        className="flex min-w-0 items-center gap-2 rounded-md sm:shrink-0"
       >
         <PersonFace
           src={personFaceSrc({ id: item.person.id, imageRevision: item.imageRevision })}
           name={name}
           shape="option"
         />
-        <PersonName person={item.person} />
+        <PersonName person={item.person} className="sm:w-list-thumb" />
       </Link>
       {lengthSeconds !== undefined && (
         <SpanBar
@@ -244,9 +244,14 @@ function SeenInVideo({ video, player }: { video: Video; player: SpanPlayer }) {
       ? undefined
       : video.durationMs / 1000;
   const pressable = player !== null && lengthSeconds !== undefined;
+  const hint =
+    lengthSeconds === undefined ? undefined : (
+      <span className="text-2xs text-muted-foreground tabular-nums">
+        {text.seenHint(formatDuration(video.durationMs), pressable)}
+      </span>
+    );
   return (
-    <PanelSection title={text.seenInVideo}>
-      {pressable && <p className="text-sm text-muted-foreground">{text.seenHint}</p>}
+    <PanelSection title={text.seenInVideo} end={hint}>
       <ul className="flex flex-col gap-3">
         {seenPeople(items).map((item) => (
           <SeenRow
