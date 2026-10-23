@@ -635,6 +635,7 @@ const (
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
+	ErrorReasonDescriptionTooLong            ErrorReason = "description_too_long"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
 	ErrorReasonDisplayNameTooLong            ErrorReason = "display_name_too_long"
@@ -705,6 +706,7 @@ const (
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
+	ErrorReasonTooManyUrls                   ErrorReason = "too_many_urls"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
 	ErrorReasonUnauthorized                  ErrorReason = "unauthorized"
@@ -746,6 +748,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonContentChanged:
 		return true
 	case ErrorReasonCrossOrigin:
+		return true
+	case ErrorReasonDescriptionTooLong:
 		return true
 	case ErrorReasonDirectoryNotFound:
 		return true
@@ -886,6 +890,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonTooManyTagFilters:
 		return true
 	case ErrorReasonTooManyTags:
+		return true
+	case ErrorReasonTooManyUrls:
 		return true
 	case ErrorReasonTooManyVideos:
 		return true
@@ -6000,6 +6006,18 @@ type VirtualVideoCreate struct {
 	Title string `json:"title"`
 }
 
+// VirtualVideoMerge defines model for VirtualVideoMerge.
+type VirtualVideoMerge struct {
+	// ContentVersion The virtual video's contentVersion the screen read.
+	ContentVersion string `json:"contentVersion"`
+
+	// VideoContentVersion The file video's contentVersion the screen read.
+	VideoContentVersion string `json:"videoContentVersion"`
+
+	// VideoId The file video to merge into.
+	VideoId int64 `json:"videoId"`
+}
+
 // WatchFilter Watch filter: all, unwatched, inProgress or watched.
 type WatchFilter string
 
@@ -7339,6 +7357,9 @@ type ApplyWorkInfoFetchJSONRequestBody = ApplyWorkInfoFetchRequest
 // CreateVirtualVideoJSONRequestBody defines body for CreateVirtualVideo for application/json ContentType.
 type CreateVirtualVideoJSONRequestBody = VirtualVideoCreate
 
+// MergeVirtualVideoJSONRequestBody defines body for MergeVirtualVideo for application/json ContentType.
+type MergeVirtualVideoJSONRequestBody = VirtualVideoMerge
+
 // UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
 type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 
@@ -7905,6 +7926,9 @@ type ServerInterface interface {
 	// CreateVirtualVideo Create a virtual video
 	// (POST /api/virtual-videos)
 	CreateVirtualVideo(w http.ResponseWriter, r *http.Request)
+	// MergeVirtualVideo Merge a virtual video into a file video
+	// (POST /api/virtual-videos/{id}/merge)
+	MergeVirtualVideo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearWatchHistory Clear all watch history
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -13841,6 +13865,32 @@ func (siw *ServerInterfaceWrapper) CreateVirtualVideo(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// MergeVirtualVideo operation middleware
+func (siw *ServerInterfaceWrapper) MergeVirtualVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeVirtualVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -14378,6 +14428,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}", wrapper.DeleteVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos", wrapper.CreateVirtualVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos/{id}/merge", wrapper.MergeVirtualVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)

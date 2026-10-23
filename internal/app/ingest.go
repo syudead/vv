@@ -39,6 +39,11 @@ type IngestStore interface {
 	// After frame publication under the generation lock, atomically remove the image row and mark
 	// matching content done.
 	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
+	// Under the generation lock, remove a virtual video's image and return its thumbnail to the placeholder; a key
+	// other than contentKey is ErrContentChanged and a file video ErrNotVirtual.
+	RemoveVirtualThumbnailImage(ctx context.Context, videoID int64, contentKey string) (domain.Video, error)
+	// Keys of the virtual videos that have an uploaded image.
+	VirtualThumbnailKeys(ctx context.Context) ([]string, error)
 	// Nil means no applied image.
 	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
 	// Nil means no applied image or one applied before sources were stored.
@@ -58,6 +63,7 @@ type ArtifactStore interface {
 	ArtifactRemover
 	// write leaves poster empty when it has no larger image; the store then removes the old poster.
 	PublishThumbnail(contentKey string, write func(output, poster string) error) error
+	ThumbnailAvailable(contentKey string) bool
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
 	// Reuse complete sprites without write unless forced, replacing incomplete legacy directories during
@@ -309,7 +315,8 @@ func (i *Ingest) SetThumbnailPosition(
 
 // RevertThumbnailImage rereads position under the generation lock and restores that frame or the
 // automatic frame, even when no applied image exists. It shares SetThumbnailPosition identity
-// checks and rollback, preserving the image row/file on extraction failure.
+// checks and rollback, preserving the image row/file on extraction failure. A virtual video has no frame, so its
+// image is removed and its thumbnail returns to the placeholder.
 func (i *Ingest) RevertThumbnailImage(
 	ctx context.Context, videoID int64, locationPath, path string,
 ) (domain.Video, error) {
@@ -319,6 +326,9 @@ func (i *Ingest) RevertThumbnailImage(
 	}
 	if video.ContentKey == "" {
 		return domain.Video{}, domain.ErrNotFound
+	}
+	if video.Virtual() {
+		return i.removeVirtualThumbnailImage(ctx, video)
 	}
 	return i.replaceThumbnailWithFrame(ctx, video, locationPath, path,
 		func() (*int64, error) {

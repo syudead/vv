@@ -606,6 +606,10 @@ func requiresPostJSONBody(path string) bool {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "thumbnail-edits"
 	}
+	if suffix, ok := strings.CutPrefix(path, "/api/virtual-videos/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "merge"
+	}
 
 	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
 		segments := strings.Split(suffix, "/")
@@ -928,6 +932,8 @@ const (
 	reasonInvalidTitle                  = gen.ErrorReasonInvalidTitle
 	reasonNotVirtual                    = gen.ErrorReasonNotVirtual
 	reasonVirtualVideo                  = gen.ErrorReasonVirtualVideo
+	reasonDescriptionTooLong            = gen.ErrorReasonDescriptionTooLong
+	reasonTooManyURLs                   = gen.ErrorReasonTooManyUrls
 )
 
 // Error messages must be English and exclude arbitrary OS/external-program output.
