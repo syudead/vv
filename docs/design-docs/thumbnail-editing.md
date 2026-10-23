@@ -288,7 +288,7 @@ framing for an edit from the current thumbnail.
 | A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
 
-### One entry opens the preview from any source
+### The Thumbnail tab offers three ways to replace the thumbnail
 
 The video page's Thumbnail tab
 ([library-ui.md](library-ui.md#tabs)) shows the current thumbnail with its
