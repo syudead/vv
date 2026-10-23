@@ -1888,6 +1888,15 @@ export const en = {
         candidateDetail: (detail: string, sourceId: string) => `${detail} · ${sourceId}`,
         source: (plugin: string, source: string, id: string) =>
           `From ${plugin} · ${source} ${id}`,
+        sourceLink: (plugin: string, link: string) => `From ${plugin} · ${link}`,
+        chooseLink: (plugin: string) =>
+          `${plugin} has no ID for this person. Choose the link to fetch from.`,
+        handledLinks: (plugin: string) => `Links ${plugin} handles`,
+        linkTyped: "Fetches the person on this page instead of searching.",
+        linkUnsupported: (plugin: string, host: string, domains: readonly string[]) =>
+          `${plugin} doesn't handle links on ${host}. It accepts links from ${domains.join(", ")}.`,
+        noLinkFetch: (plugin: string) =>
+          `${plugin} doesn't fetch by link. Search by name instead.`,
         applied: (name: string) => `Applied to ${name}.`,
         gone: "This person no longer exists.",
         items: {
