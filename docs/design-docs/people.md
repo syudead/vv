@@ -159,11 +159,9 @@ upload share one gate, so they never decode at the same time.
 | -------------------------------------------------------------- | ----------------------------------------- |
 | Body over 64 MiB                                               | `413 person_image_too_large` with `limit` |
 | Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid`                |
-| No usable face, while the face runtime is ready                | `400 person_image_no_face`                |
-| More than one usable face, while the face runtime is ready     | `400 person_image_many_faces`             |
 | No face on `GET`                                               | `404 person_image_not_found`              |
 
-Face recognition checks the face
+Face recognition does not refuse an upload; it only embeds the stored face
 ([face-recognition.md](face-recognition.md#a-face-image-merges-only-one-provisional-person)).
 
 A face is user data, so it is not a file under the rebuildable thumbnails
@@ -175,10 +173,15 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 | Fitting through ffmpeg                 | Needs the media adapter for a still image, while `x/image/draw` scales without cgo                 |
 | Keeping the original upload            | An upload may be 64 MiB, and the screens show at most a portrait card                              |
 
-## A face can be framed from a video
+## A face is framed before it is saved
 
 The camera menu on the person's face offers `Choose from videos…` beside
-`Upload an image…`, with or without a face. It opens an `EditorDialog`
+`Upload an image…`, with or without a face; the placeholder's `Add a face`
+does the same. It opens `Upload a face`, an `ImageUploadDialog`, and the image
+dropped, chosen or pasted there opens `Frame the face`
+([`FaceCropDialog.tsx`](../../web/src/credits/person/FaceCropDialog.tsx)): the
+same stage, `Size`, `Preview` and `Set as face` as below, on the image, with
+the widest centred portrait to start from. `Choose from videos…` opens an `EditorDialog`
 ([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
 
 | Part    | Shows                                                                                                                                                                            |
@@ -198,8 +201,7 @@ whose video is gone do not crowd them out. A frame read for another face or
 moment counts as still loading, so `Set as face` waits for the chosen one.
 `Set as face` cuts the outline out of the frame at the frame's own pixels and
 sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
-the same fitting and face check as an upload and the dialog shows their
-refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
+the same fitting as an upload and the dialog shows its refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
 long side with `private, max-age=3600`, and reports a position outside the
 video, an unreadable file and a frame that does not decode as the thumbnail
 position endpoint does.

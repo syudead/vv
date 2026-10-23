@@ -175,17 +175,13 @@ describe("VideoPage for a virtual video", () => {
     ).toHaveLength(1);
   });
 
-  it("Change thumbnail はメニューを開かずにファイルを選ばせる", async () => {
-    const click = vi
-      .spyOn(HTMLInputElement.prototype, "click")
-      .mockImplementation(() => {});
+  it("Change thumbnail はメニューを開かずに画像のアップロードダイアログを開く", async () => {
     await openPage();
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Change thumbnail" }));
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(click).toHaveBeenCalledTimes(1);
-    expect(click.mock.contexts[0]).toBe(screen.getByTestId("thumbnail-upload-input"));
+    expect(screen.getByRole("dialog", { name: "Upload a thumbnail" })).toBeDefined();
   });
 
   it("空の題名は送らずに Enter a title. を出す", async () => {

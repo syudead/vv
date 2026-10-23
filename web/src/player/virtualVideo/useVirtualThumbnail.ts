@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
 import type { DetailMark } from "../../api/useVideoDetail";
@@ -12,15 +12,18 @@ export interface VirtualThumbnail {
   failure: UiText | null;
   report: (failure: UiText | null) => void;
   upload: ReturnType<typeof useThumbnailUpload>;
-  /** One upload at a time: the picker waits while an image is read or sent. */
+  /** One upload at a time: the dialog waits while an image is read or sent. */
   busy: boolean;
-  fileInput: RefObject<HTMLInputElement | null>;
+  /** The upload dialog is open; busy keeps it closed. */
+  picking: boolean;
+  setPicking: (open: boolean) => void;
   pick: () => void;
 }
 
 /**
- * Upload state for a virtual video's page, which has two entries to one picker: `Change thumbnail`
- * in the facts row and `Upload an image…` in the media frame. It stays idle for a file video.
+ * Upload state for a virtual video's page, which has two entries to one upload dialog: `Change
+ * thumbnail` in the facts row and `Upload an image…` in the media frame. It stays idle for a file
+ * video.
  */
 export function useVirtualThumbnail(
   page: Video | undefined,
@@ -32,9 +35,18 @@ export function useVirtualThumbnail(
   useEffect(() => setFailure(null), [video?.id]);
   const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
   const busy = upload.sending || upload.preparing;
-  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [picking, setPicking] = useState(false);
   const pick = useCallback(() => {
-    if (!busy) fileInput.current?.click();
+    if (!busy) setPicking(true);
   }, [busy]);
-  return { video, failure, report: setFailure, upload, busy, fileInput, pick };
+  return {
+    video,
+    failure,
+    report: setFailure,
+    upload,
+    busy,
+    picking: picking && !busy,
+    setPicking,
+    pick,
+  };
 }

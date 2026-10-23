@@ -675,8 +675,6 @@ const (
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
-	ErrorReasonPersonImageManyFaces          ErrorReason = "person_image_many_faces"
-	ErrorReasonPersonImageNoFace             ErrorReason = "person_image_no_face"
 	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
 	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
@@ -830,10 +828,6 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonPasswordLength:
 		return true
 	case ErrorReasonPersonImageInvalid:
-		return true
-	case ErrorReasonPersonImageManyFaces:
-		return true
-	case ErrorReasonPersonImageNoFace:
 		return true
 	case ErrorReasonPersonImageNotFound:
 		return true

@@ -460,6 +460,22 @@ Put marks over the frame, such as the favorite heart, as children in a
 Do not use it for anything but a person: organizations and videos have no
 face.
 
+### ImageUploadDialog
+
+Item `image-upload-dialog`. Every control that takes an image file opens
+`ImageUploadDialog` from its `Upload an image…` item or button. The dialog
+holds one dashed drop zone, which also opens the file picker when clicked,
+takes an image pasted anywhere in it, and has only `Cancel` in its footer. Its
+`description` names the accepted types and size and what happens next.
+
+`onFile` takes the file and returns `null` to go on, closing the dialog and
+opening the next step (a preview or a framing dialog), or a reason that the
+dialog shows in an `Alert` while it stays open. Check types and sizes there,
+so a dropped or pasted file is refused as a chosen one is.
+
+Do not take files dropped or pasted on the page itself, or add a hidden file
+input of your own beside a menu item.
+
 ### TentativeMark
 
 Item `tentative-mark`. The dashed circle after a tentative tag's name, in a

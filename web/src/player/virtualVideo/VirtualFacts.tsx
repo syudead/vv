@@ -27,7 +27,7 @@ import { useToast } from "../../ui/Toast";
 import ActionButton from "../ActionButton";
 import DetailsEntry, { type DetailsEntryProps } from "../detailsEditor/DetailsEntry";
 import {
-  ImageFileInput,
+  ThumbnailUploadDialog,
   UploadPreviewDialog,
   usePreviewEditing,
 } from "../thumbnailUpload/UploadEntry";
@@ -142,8 +142,9 @@ export default function VirtualFacts({
               onDeleted={onDeleted}
               onMerged={onMerged}
             />
-            <ImageFileInput
-              inputRef={thumbnail.fileInput}
+            <ThumbnailUploadDialog
+              open={thumbnail.picking}
+              onOpenChange={thumbnail.setPicking}
               onFile={thumbnail.upload.choose}
             />
             <UploadPreviewDialog video={video} upload={thumbnail.upload} framingOnly />

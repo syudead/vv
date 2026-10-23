@@ -239,7 +239,7 @@ func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
 	if err := png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 300, 200))); err != nil {
 		t.Fatal(err)
 	}
-	uploads := app.NewPersonImages(f.db.Credits(), app.NewIngest(app.IngestOptions{}), f.recognizer)
+	uploads := app.NewPersonImages(f.db.Credits(), app.NewIngest(app.IngestOptions{}))
 	if _, err := uploads.UploadPersonImage(ctx, named.ID, photo.Bytes()); err != nil {
 		t.Fatal(err)
 	}

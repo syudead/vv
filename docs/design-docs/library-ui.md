@@ -62,10 +62,10 @@ focus, the semantic colours and the favorite pink) is set in
 [design-system.md, Foundations](design-system.md#foundations). The test covers
 body text on surfaces, the main borders and focus.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                            | Why                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Values in TypeScript, CSS generated | Screens use Tailwind class names anyway, so names are duplicated and one more generated file appears |
-| axe or Lighthouse in CI | Needs a real browser; beyond contrast it adds findings people review anyway |
+| axe or Lighthouse in CI             | Needs a real browser; beyond contrast it adds findings people review anyway                          |
 
 ## Dark scheme only, without a light/dark switch
 
@@ -159,8 +159,8 @@ flowchart LR
 jsdom does not apply CSS, so `position: fixed`, media queries and wrapping are
 unresolved, and faking them gives passing tests on a broken screen.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                | Why                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Visual regression tests | New dependencies, false positives from glyph differences between environments, and every UI change updates reference images |
 
 ## List layout
@@ -244,25 +244,25 @@ small label in a 56px (`rail-item`) square, so every entry stays named.
 Card width follows the zoom level. Guest rules are in
 [authentication.md](authentication.md).
 
-| Part | Owner | Guest |
-| --- | --- | --- |
-| Sidebar, upper | All entries | `Home`, `Library` and `Folders` only |
-| Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
-| `Scan library` button and import progress | Shown | Hidden |
-| Sort orders | 9 | 7 |
-| Filter button | Shown | Hidden |
+| Part                                      | Owner                  | Guest                                |
+| ----------------------------------------- | ---------------------- | ------------------------------------ |
+| Sidebar, upper                            | All entries            | `Home`, `Library` and `Folders` only |
+| Sidebar, lower                            | `Settings`, `Sign out` | `Sign in`                            |
+| `Scan library` button and import progress | Shown                  | Hidden                               |
+| Sort orders                               | 9                      | 7                                    |
+| Filter button                             | Shown                  | Hidden                               |
 
 The toolbar holds search, filters, sort, view (library only) and zoom, in
 that Tab order. It never wraps: the search field takes the remaining width,
 and each view control moves into the icon-only `View and sort` popover below
 the width where it joins the row.
 
-| Width | Toolbar |
-| --- | --- |
-| `xl` and up | All controls inline |
-| `md` to `xl` | Sort inline from `md`, view (library) from `lg`, zoom from `xl`; the rest in `View and sort` |
-| Below `md` | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
-| Below `sm` | One full-width column at any zoom; zoom hidden |
+| Width        | Toolbar                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `xl` and up  | All controls inline                                                                                                      |
+| `md` to `xl` | Sort inline from `md`, view (library) from `lg`, zoom from `xl`; the rest in `View and sort`                             |
+| Below `md`   | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
+| Below `sm`   | One full-width column at any zoom; zoom hidden                                                                           |
 
 The tags page uses the same row with search, filter and sort; below `md` its
 sort moves into the icon-only `Sort` popover.
@@ -280,11 +280,11 @@ On folder, group and smart-folder pages the filter popover holds only
 `Favorites only` (URL `fav=1`). On the library it lists `Tags`, `Person`,
 `Organization` and `Favorites only`, in that order:
 
-| Control | Picks | URL |
-| --- | --- | --- |
-| `Tags` | Tags and tag kinds from one candidate list, kinds marked by their icon; selected ones show as chips in the field | `tag=<id>` per tag (all must match, at most 16); `tagKind=<id>` for one kind, which a newly picked kind replaces |
-| `Person` | One person | `person=<id>` |
-| `Organization` | One organization | `organization=<id>` |
+| Control        | Picks                                                                                                            | URL                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `Tags`         | Tags and tag kinds from one candidate list, kinds marked by their icon; selected ones show as chips in the field | `tag=<id>` per tag (all must match, at most 16); `tagKind=<id>` for one kind, which a newly picked kind replaces |
+| `Person`       | One person                                                                                                       | `person=<id>`                                                                                                    |
+| `Organization` | One organization                                                                                                 | `organization=<id>`                                                                                              |
 
 The `Person` and `Organization` pickers list the 20 with the most videos before
 any typing, so a person without a name, shown as `#<id>` with their face, can
@@ -343,14 +343,14 @@ The bottom-right indicator
 shows the latest import summary. The following rules govern its opening,
 closing and dismissal.
 
-| Event | Summary popover | Indicator |
-| --- | --- | --- |
-| Pointer enters the indicator or the summary | Opens | — |
-| Focus moves onto the indicator | Opens, unless the summary closed while the indicator kept focus | — |
-| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator | Pressing goes to `/settings/scan#scan-status` and ends a result notice |
-| The hide button (`×`) is pressed, in any state | Closes | Hidden for the rest of that scan and for its result |
-| The scan ends (done, partial or failed) | — | Shows the result for 8 seconds, then hides itself |
-| The next scan starts | — | Shown again |
+| Event                                                                                         | Summary popover                                                 | Indicator                                                              |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Pointer enters the indicator or the summary                                                   | Opens                                                           | —                                                                      |
+| Focus moves onto the indicator                                                                | Opens, unless the summary closed while the indicator kept focus | —                                                                      |
+| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator                  | Pressing goes to `/settings/scan#scan-status` and ends a result notice |
+| The hide button (`×`) is pressed, in any state                                                | Closes                                                          | Hidden for the rest of that scan and for its result                    |
+| The scan ends (done, partial or failed)                                                       | —                                                               | Shows the result for 8 seconds, then hides itself                      |
+| The next scan starts                                                                          | —                                                               | Shown again                                                            |
 
 The summary's open state changes only on these events. Deriving it from
 "hovered or focused" reopened it at once, because Radix returns focus to the
@@ -372,13 +372,13 @@ bottom edge, the owner's credits on the image and the title. Grid cards carry
 no actions: favorite, `Add to playlist` and `Add to group` are in list rows,
 the selection bar and the video page.
 
-| Card | Rules |
-| --- | --- |
-| Video, library and folder pages | Tag row under the title, none without tags  |
-| Video, folder search results | Location row under the title |
-| Folder (folder page) | Group card's box, artwork, count panel and name, with a Folder mark before the video and folder counts; no checks, actions or tag row |
-| Media folder (`/folders`) | Video card's width and border, folder artwork, Folder icon in the title; opens the folder only |
-| Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
+| Card                                                 | Rules                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Video, library and folder pages                      | Tag row under the title, none without tags                                                                                                                                                                                                                                                                             |
+| Video, folder search results                         | Location row under the title                                                                                                                                                                                                                                                                                           |
+| Folder (folder page)                                 | Group card's box, artwork, count panel and name, with a Folder mark before the video and folder counts; no checks, actions or tag row                                                                                                                                                                                  |
+| Media folder (`/folders`)                            | Video card's width and border, folder artwork, Folder icon in the title; opens the folder only                                                                                                                                                                                                                         |
+| Group (library only)                                 | Video card's box and size, folder artwork of up to 4 member thumbnails                                                                                                                                                                                                                                                 |
 | Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` on its list row send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
 
 The owner's video card shows the work's credits on the image as faint text
@@ -386,24 +386,24 @@ without a panel ([`CardCredits.tsx`](../../web/src/videoList/CardCredits.tsx)),
 read from `cardCredits` in list items and in the detail a list refreshes a
 changed item from.
 
-| Credit | Rule |
-| --- | --- |
-| Product code | Top left; moves right of the selection check while the check shows |
-| Performers | Bottom left, the first three faces, then `+N`; hovering a face pops that performer's face and name, and pressing the face or the popped face opens the person page; in selection mode a press selects the card |
-| Organization | After the faces, truncated: the first label, otherwise the first maker |
-| Guests | Not shown |
+| Credit       | Rule                                                                                                                                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product code | Top left; moves right of the selection check while the check shows                                                                                                                                             |
+| Performers   | Bottom left, the first three faces, then `+N`; hovering a face pops that performer's face and name, and pressing the face or the popped face opens the person page; in selection mode a press selects the card |
+| Organization | After the faces, truncated: the first label, otherwise the first maker                                                                                                                                         |
+| Guests       | Not shown                                                                                                                                                                                                      |
 
 Video card behaviour:
 
-| Case | Behaviour |
-| --- | --- |
-| Tag order | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked |
-| Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
-| Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
-| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; cannot be removed by bulk `Edit` |
-| Hover preview | One at a time on any screen |
-| Zoom changed | Returns to the card that was at the top |
+| Case                                         | Behaviour                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tag order                                    | Tags of kinds marked `First on cards` (the Kinds tab of `/tags`) lead, in natural kind-name order; the rest keep natural name order. The seeded genre kind starts marked       |
+| Tag pressed in the library                   | Filters by the tag                                                                                                                                                             |
+| Tag pressed on a folder page or a group page | Opens `/?tag=<id>`                                                                                                                                                             |
+| Tags that do not fit the row                 | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full |
+| Tag from a folder name only                  | Same size, no fill, dashed border, Folder marker; no × on the video page; cannot be removed by bulk `Edit`                                                                     |
+| Hover preview                                | One at a time on any screen                                                                                                                                                    |
+| Zoom changed                                 | Returns to the card that was at the top                                                                                                                                        |
 
 A virtual video, which has no file, is a video card of the same size whose
 duration pill holds `VirtualMark` (the `SquareDashed` icon and `Virtual`), after
@@ -486,14 +486,14 @@ list rows of videos, groups and smart folders and on the video page. Grid
 cards carry none, so a card's favorite changes from its row, the selection bar
 or the video page.
 
-| Aspect | Rule |
-| --- | --- |
-| Shape | 20px heart in a 32px hit area, no fill or border behind it |
-| On | Filled pink `favorite`, everywhere |
-| Off | Outline, shown only on hover or focus (always where hover is impossible) |
-| Pressing | Does not open the row's link or select it |
-| Filtered to favorites | Item stays until the next fetch |
-| Guests | Not shown |
+| Aspect                | Rule                                                                     |
+| --------------------- | ------------------------------------------------------------------------ |
+| Shape                 | 20px heart in a 32px hit area, no fill or border behind it               |
+| On                    | Filled pink `favorite`, everywhere                                       |
+| Off                   | Outline, shown only on hover or focus (always where hover is impossible) |
+| Pressing              | Does not open the row's link or select it                                |
+| Filtered to favorites | Item stays until the next fetch                                          |
+| Guests                | Not shown                                                                |
 
 The mark changes only after the server answers:
 
@@ -650,23 +650,23 @@ flowchart LR
   band --> related[Up next and related videos]
 ```
 
-| Part | Rule |
-| --- | --- |
-| Header band | Logo (home), breadcrumb to the folder, the only × |
-| Return target | The list before the page opened, kept through related videos and `Play next` |
-| Tags | Right below the title as one unit  |
-| Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
-| Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests | No tags, visibility toggle, `Edit details`, `Open file` or `Copy path`; of the work details, only the description and `Links`  |
+| Part              | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header band       | Logo (home), breadcrumb to the folder, the only ×                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Return target     | The list before the page opened, kept through related videos and `Play next`                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Tags              | Right below the title as one unit                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows                                                                                                                                                                                                                                                                                                                                                              |
+| Right column      | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
+| Guests            | No tags, visibility toggle, `Edit details`, `Open file` or `Copy path`; of the work details, only the description and `Links`                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
 
-| Width | Layout |
-| --- | --- |
+| Width          | Layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `lg` and above | The page keeps the viewport's height and the left column scrolls on its own. The right column is `detail-aside` wide (the card width plus its padding) and reaches the window's right edge, so its scrollbar sits at the edge. The playlist panel, `Up next` and related videos scroll in one container, and each section's heading stays at the top only while its section is in view. The player's height leaves room for one line of the title, so a landscape video fills the column's width. Its width also stops at the video's own display width (never below 60rem) and at 100rem, so a large window does not stretch a small video; when a limit stops it first, the player, title and information take the player's width and sit in the middle of the column. The tags and information rows are reached by scrolling the column |
-| Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md` |
-| Below `md` | The breadcrumb shows only its last segment |
+| Below `lg`     | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Below `md`     | The breadcrumb shows only its last segment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 The player frame takes its size from the named steps `player-width`,
 `player-height` and their `-lg` forms in `tokens.css`, which read the video's
@@ -676,12 +676,12 @@ aspect ratio from the frame at run time.
 
 The rows under the title, above which a divider runs, carry no frames.
 
-| Row | Content |
-| --- | --- |
-| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
-| Work details | Only when the video has work information; a guest sees only the description and `Links`. It shows the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
-| Technical | Resolution, container, codec separated by thin rules; smallest and most subdued |
-| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more`  |
+| Row               | Content                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First             | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end                                                              |
+| Work details      | Only when the video has work information; a guest sees only the description and `Links`. It shows the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them                |
+| Technical         | Resolution, container, codec separated by thin rules; smallest and most subdued                                                                                                                                                                                                                                                    |
+| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more` |
 
 The work details row takes words as labels, muted, and the values in the body
 colour. A role, `Links` or `IDs` with more than three entries shows three and
@@ -694,9 +694,11 @@ The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
 `Copy path`: icon-only ghost buttons with tooltips. `Change thumbnail` is the
 owner's even when the player is not shown and does not depend on ComfyUI; its
 menu offers the frame on screen (only while a frame is shown), the current
-thumbnail with a small copy of it, and `Upload an image…`, which opens the
-browser's file picker for PNG, JPEG and WebP and refuses another type or a
-file over 64 MB on the failure line before sending anything. The entry spins
+thumbnail with a small copy of it, and `Upload an image…`, which opens
+`Upload a thumbnail`, an
+[ImageUploadDialog](../../web/registry/rules/components.md#imageuploaddialog)
+where a PNG, JPEG or WebP is dropped, chosen or pasted. Another type or a file
+over 64 MB is refused in the dialog before sending anything. The entry spins
 while it reads the chosen source and while it sends. A
 readable source opens `Preview thumbnail`, an `EditorDialog` whose stage shows
 the image in the card's 16:9 thumbnail frame exactly as it will be stored:
@@ -774,7 +776,7 @@ the main action's place.
 | Media | The player frame holding the uploaded image (`object-contain`), or `SquareDashed` over `No thumbnail yet` and, for the owner, `Upload an image…`; a guest reads `No thumbnail`. No play button, control bar or cursor change |
 | Links and description | Under the title unit: one `outline` `Button` per link, opening in a new tab, then the `Description` component. The work details row leaves both out |
 | Information rows | `Added` and `Edited`, and the thumbnail item with `Remove image` while an image exists; no technical or media information. A guest sees `Added` only |
-| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the file picker directly and a preview with framing only, and `More` (`Ellipsis`) with `Merge into a file video…` and, after a separator, `Delete…` |
+| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the `ImageUploadDialog` directly and then a preview with framing only, and `More` (`Ellipsis`) with `Merge into a file video…` and, after a separator, `Delete…` |
 
 Saves of the title, the details, deletion and merging send the `contentVersion` the
 page read. `409 content_changed` shows
@@ -815,14 +817,14 @@ The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx),
 neither stops playback nor blocks controls, so it stays out of the
 one-at-a-time container.
 
-| Aspect | Rule |
-| --- | --- |
-| Stacking | Above the video, below the container and the control bar |
-| Input | Passes through to the controls, except its × |
-| Hidden while | Playback failure, playback ended, up next, reconnecting or importing shows |
-| Loading spinner | Shown together with it during a data wait |
-| Dismissed | Not shown again for the same video |
-| Actions | None; no quality change |
+| Aspect          | Rule                                                                       |
+| --------------- | -------------------------------------------------------------------------- |
+| Stacking        | Above the video, below the container and the control bar                   |
+| Input           | Passes through to the controls, except its ×                               |
+| Hidden while    | Playback failure, playback ended, up next, reconnecting or importing shows |
+| Loading spinner | Shown together with it during a data wait                                  |
+| Dismissed       | Not shown again for the same video                                         |
+| Actions         | None; no quality change                                                    |
 
 Rules: [Playback quality, Stall warning](playback-quality.md#stall-warning);
 details:
@@ -867,14 +869,14 @@ stateDiagram-v2
   Failed: Failure message shown
 ```
 
-| Rule | Value |
-| --- | --- |
-| Waits | 1, 2, 4, 8, 15 s (about 30 s in total) |
-| Early end of a wait | Device comes back `online`, or the viewer presses play |
-| Retry count reset | 10 s of real playback after a reload; seeks and paused changes do not count |
-| Pause during a wait | Playback stays paused after the reload |
-| Seek during a wait | Becomes the reload position; during a request, applied after metadata |
-| Paused state | Answered from the viewer's intent; the play/pause button follows it |
+| Rule                  | Value                                                                         |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Waits                 | 1, 2, 4, 8, 15 s (about 30 s in total)                                        |
+| Early end of a wait   | Device comes back `online`, or the viewer presses play                        |
+| Retry count reset     | 10 s of real playback after a reload; seeks and paused changes do not count   |
+| Pause during a wait   | Playback stays paused after the reload                                        |
+| Seek during a wait    | Becomes the reload position; during a request, applied after metadata         |
+| Paused state          | Answered from the viewer's intent; the play/pause button follows it           |
 | Switch to transcoding | Once, only from direct playback, only for data-unreadable and format failures |
 
 Viewer input during the wait never reaches the broken source. The final
@@ -888,22 +890,22 @@ subtitles, playback speed, current time/duration and the transcode indicator. Th
 display is React, because a video.js component could not share state with the
 rest of the screen.
 
-| Control | Rule |
-| --- | --- |
-| Right-hand group | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, full screen, in that order |
-| Quality | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts)) |
-| Quality label | The current quality; for the original, the video's short side |
-| Choosing a quality | Replaces the source at the same position without recreating the player |
-| Esc in an open menu | Closes only the menu |
-| Subtitle button | Next to playback speed; absent for videos without subtitles |
-| Subtitle menu | Subtitle names and `Off`; no appearance settings |
-| Subtitle choice | Remembered per browser; the next video with the same label starts with it |
-| Subtitle position | Raised above the control bar and progress bar while they show |
-| Chapters button | A video.js `ChaptersButton` reading a `chapters` text track built from `mediaInfo.chapters`; absent for videos without chapters ([`chapters.ts`](../../web/src/player/chapters.ts)) |
-| Chapters menu | `20em` wide; one `{start} {title}` item per chapter in start order, `Chapter {n}` when untitled; the playing chapter is marked; choosing one seeks to its start and keeps playing or paused |
-| Chapter marks | A `chapter-mark` (2px) break on the progress bar at each chapter start; no pointer, no label, hidden from screen readers |
-| Narrow frame | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px |
-| Seek preview title | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone |
+| Control             | Rule                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Right-hand group    | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, full screen, in that order                                                                                          |
+| Quality             | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts))                                                             |
+| Quality label       | The current quality; for the original, the video's short side                                                                                                                               |
+| Choosing a quality  | Replaces the source at the same position without recreating the player                                                                                                                      |
+| Esc in an open menu | Closes only the menu                                                                                                                                                                        |
+| Subtitle button     | Next to playback speed; absent for videos without subtitles                                                                                                                                 |
+| Subtitle menu       | Subtitle names and `Off`; no appearance settings                                                                                                                                            |
+| Subtitle choice     | Remembered per browser; the next video with the same label starts with it                                                                                                                   |
+| Subtitle position   | Raised above the control bar and progress bar while they show                                                                                                                               |
+| Chapters button     | A video.js `ChaptersButton` reading a `chapters` text track built from `mediaInfo.chapters`; absent for videos without chapters ([`chapters.ts`](../../web/src/player/chapters.ts))         |
+| Chapters menu       | `20em` wide; one `{start} {title}` item per chapter in start order, `Chapter {n}` when untitled; the playing chapter is marked; choosing one seeks to its start and keeps playing or paused |
+| Chapter marks       | A `chapter-mark` (2px) break on the progress bar at each chapter start; no pointer, no label, hidden from screen readers                                                                    |
+| Narrow frame        | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px                              |
+| Seek preview title  | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone                                                             |
 
 Quality: [Playback quality, Switching](playback-quality.md#switching) and
 [playback-quality.md](playback-quality.md).
@@ -927,15 +929,15 @@ The group is the one the video was opened from (`?group=<id>`, passed to the
 video, related-video and member reads), or else the group with the smallest id
 that holds the video directly; a playlist context overrides both.
 
-| Part | Rule |
-| --- | --- |
-| Above the title | Group name and position in the group, as a link to the group page |
-| Related videos column | `Up next` member list and a divider at the top |
-| Playback ended | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels |
-| Member rows, handles, notice | Keep `?group` on the video they open |
-| Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
-| After an action | Video and related videos read again without `group`; the page stays |
-| Previous/next handles | Move within the group |
+| Part                         | Rule                                                                                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Above the title              | Group name and position in the group, as a link to the group page                                                                                        |
+| Related videos column        | `Up next` member list and a divider at the top                                                                                                           |
+| Playback ended               | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels                                                                                   |
+| Member rows, handles, notice | Keep `?group` on the video they open                                                                                                                     |
+| Group actions (owner)        | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
+| After an action              | Video and related videos read again without `group`; the page stays                                                                                      |
+| Previous/next handles        | Move within the group                                                                                                                                    |
 
 A video opened from a smart folder (`?smartFolder=<id>`) follows the folder's
 play order in the same parts: the reads carry `smartFolder`, the line above the
@@ -974,15 +976,15 @@ URL).
 The list routes (`GET /api/videos` and `GET /api/library`) take these
 conditions, each ANDed with the others:
 
-| Parameter | Keeps | Guest |
-| --- | --- | --- |
-| `query` | Videos the search expression matches (see below) | Allowed; matches only the title and relative path |
-| `tag` | Videos that carry every listed tag | `400 guest_filter_not_allowed` |
-| `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
-| `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
-| `personRole` | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
-| `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
-| `tagKind` | Videos with at least one tag of that kind, manual or from the folder | `400 guest_filter_not_allowed` |
+| Parameter      | Keeps                                                                                  | Guest                                             |
+| -------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `query`        | Videos the search expression matches (see below)                                       | Allowed; matches only the title and relative path |
+| `tag`          | Videos that carry every listed tag                                                     | `400 guest_filter_not_allowed`                    |
+| `favorite`     | Favorite videos and favorite groups                                                    | `400 guest_filter_not_allowed`                    |
+| `person`       | Videos linked to that person in any role                                               | `400 guest_filter_not_allowed`                    |
+| `personRole`   | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed`                    |
+| `organization` | Videos linked to that organization in any role                                         | `400 guest_filter_not_allowed`                    |
+| `tagKind`      | Videos with at least one tag of that kind, manual or from the folder                   | `400 guest_filter_not_allowed`                    |
 
 `query`, `tag`, `tagKind`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A

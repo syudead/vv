@@ -447,6 +447,28 @@ describe("VideoPage thumbnail edit", () => {
     expect(server.run.mock.calls[0]?.[0].get("prompt")).toBe(PRESETS[2]?.prompt);
   });
 
+  it("「Add image…」のダイアログにドロップした画像は参照画像になる", async () => {
+    // jsdom has no object URLs; the editor shows the reference through one.
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = () => "blob:ref";
+        static revokeObjectURL = () => undefined;
+      },
+    );
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add image…" }));
+    const upload = await screen.findByRole("dialog", { name: "Add a reference image" });
+    const reference = new File(["ref"], "reference.png", { type: "image/png" });
+    fireEvent.drop(upload, {
+      dataTransfer: { types: ["Files"], files: [reference] },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add a reference image" })).toBeNull(),
+    );
+    expect(within(dialog).getByText("reference.png")).toBeTruthy();
+  });
+
   it("実行が失敗したら理由の文と提供元の文を出し、入力を残して Compose に戻る", async () => {
     const dialog = await openEditor();
     server.run.mockReturnValueOnce(

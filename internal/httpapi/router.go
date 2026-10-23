@@ -940,8 +940,6 @@ const (
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
 	reasonPersonImageNotFound           = gen.ErrorReasonPersonImageNotFound
 	reasonPersonImageInvalid            = gen.ErrorReasonPersonImageInvalid
-	reasonPersonImageNoFace             = gen.ErrorReasonPersonImageNoFace
-	reasonPersonImageManyFaces          = gen.ErrorReasonPersonImageManyFaces
 	reasonPersonImageTooLarge           = gen.ErrorReasonPersonImageTooLarge
 	reasonUndoConflict                  = gen.ErrorReasonUndoConflict
 	reasonUndoExpired                   = gen.ErrorReasonUndoExpired

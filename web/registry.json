@@ -249,6 +249,20 @@
       "dependencies": ["lucide-react"]
     },
     {
+      "name": "image-upload-dialog",
+      "type": "registry:ui",
+      "title": "ImageUploadDialog",
+      "description": "vv component: the dialog every image upload opens, with a drop zone that also opens the file picker and paste anywhere in it; the caller refuses a file with a reason the dialog shows. Uses dialog, button and alert.",
+      "docs": "Usage rules: web/registry/rules/components.md#imageuploaddialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/ImageUploadDialog.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "person-face",
       "type": "registry:ui",
       "title": "PersonFace",
