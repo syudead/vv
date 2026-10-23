@@ -667,7 +667,7 @@ describe("VideoCard のバーチャルの印", () => {
     vi.useRealTimers();
   });
 
-  // The fields the server leaves out of a video with no file (contracts/screen-api.md).
+  // The fields the server leaves out of a video with no file (the Video schema in api/openapi.yaml).
   const virtualVideo = video({
     virtual: true,
     public: true,
