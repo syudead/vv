@@ -441,6 +441,8 @@ type WorkInfoRunRequest struct {
 	Kind WorkInfoPluginKind
 	// Source is a person plugin fetch's external-ID source, one of Sources; it is sent only for that fetch.
 	Source string
+	// URL replaces Source and ID in a person plugin's fetch by link; it matches one of the plugin's domains.
+	URL string
 	// Sources is a person plugin's declared sources, which its search candidates must use; it is never sent.
 	Sources []string
 }
@@ -461,16 +463,19 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Query     string            `json:"query,omitempty"`
 		Source    string            `json:"source,omitempty"`
 		ID        string            `json:"id,omitempty"`
+		URL       string            `json:"url,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
-	switch r.Operation {
-	case WorkInfoSearch:
+	}{WorkInfoPluginContract, r.Operation, "", "", "", "", settings}
+	switch {
+	case r.Operation == WorkInfoSearch:
 		body.Query = r.Query
-	case WorkInfoFetch:
+	case r.Operation != WorkInfoFetch:
+	case r.Kind == WorkInfoPluginKindPerson && r.URL != "":
+		body.URL = r.URL
+	case r.Kind == WorkInfoPluginKindPerson:
+		body.Source, body.ID = r.Source, r.ID
+	default:
 		body.ID = r.ID
-		if r.Kind == WorkInfoPluginKindPerson {
-			body.Source = r.Source
-		}
 	}
 	return json.Marshal(body)
 }

@@ -2,7 +2,7 @@
 
 A person plugin is a work-info plugin module whose manifest says
 `"kind": "person"`; it searches a site for people and fetches one person by an
-external ID. The manifest rules are in
+external ID or by a link under the domains it declares. The manifest rules are in
 [`person_plugin.go`](../../internal/domain/person_plugin.go), the run in
 [`run.go`](../../internal/wasmplugin/run.go), the registry row in
 [`work_info_plugins.go`](../../internal/store/work_info_plugins.go), and the author's contract in
@@ -14,18 +14,19 @@ The diagram shows how one kind field steers a run of the shared runtime.
 flowchart LR
   manifest[vv.plugin manifest] --> kind{kind}
   kind -->|work| work[work-info request and response]
-  kind -->|person| person[search by name or fetch by source and id]
+  kind -->|person| person[search by name, fetch by source and id or by url]
   person --> limits[VVMDM limits: 50 candidates, 50 aliases, 20 IDs]
   limits --> image[up to 10 images fetched like the cover]
 ```
 
 ## Person plugins extend contract 1
 
-`kind` and `sources` are manifest fields of contract `1`, `fetch` gains a
-`source`, and the fetch response gains a `person` object; everything else
-about a module stays as for a work-info plugin.
+`kind`, `sources` and `domains` are manifest fields of contract `1`, `fetch`
+gains a `source` or a `url`, and the fetch response gains a `person` object;
+everything else about a module stays as for a work-info plugin.
 
-The owner sees the accepted sources in the manifest before approving, and
+The owner sees the accepted sources and the link domains in the manifest
+before approving, and
 inspection never runs the module
 ([work-info-plugins.md](work-info-plugins.md#inspection-never-runs-the-module)).
 An older VVMDM ignores `kind` and fails the run on the `person` response with
@@ -34,7 +35,8 @@ An older VVMDM ignores `kind` and fails the run on the `person` response with
 | Rejected | Why |
 | --- | --- |
 | Contract `2` for person plugins | Contract `2` would also have to describe work-info plugins, which do not change |
-| Sources returned by a `describe` operation | The approval would show values that unapproved code produced |
+| Sources or domains returned by a `describe` operation | The approval would show values that unapproved code produced |
+| URL patterns instead of domains | The owner could not read at approval which links the plugin receives, and the plugin parses the link itself anyway |
 
 ## A person plugin declares both operations
 
@@ -50,7 +52,9 @@ fetch is only ever asked for a declared source.
 VVMDM puts the request's `(source, id)` first in the fetched person's external
 IDs, then keeps the plugin's other distinct IDs up to 20 in all. A person found
 by name keeps the ID it was fetched by, so the next lookup can go by ID, even
-when the plugin leaves that ID out or returns 20 others.
+when the plugin leaves that ID out or returns 20 others. A fetch by link has no
+request ID, so the person keeps only the plugin's IDs; once the owner applies
+one the plugin accepts, the next fetch goes by that ID.
 
 ## The person's images are fetched like the cover
 
@@ -88,31 +92,79 @@ work-info plugin, answer `409 plugin_kind_mismatch` before the module runs.
 | Renaming `WorkInfoPlugin*` to `Plugin*` now | It touches every plugin file, the API and the SPA without changing behaviour |
 | Refusing a replacement of another kind | The owner would have to delete the plugin first, and a replacement already revokes approval |
 
-## The person page fetches by a stored ID the server picks
+## The person page fetches by a key the server picks
 
-`POST /api/people/{id}/plugin-fetches` with only `pluginId` sends the person's
-first stored external ID, in the stored `(source, value)` order, whose source
-the plugin declares, and answers `409 person_external_id_missing` before the
-module runs when there is none. With a search candidate's `source` and `id` it
-fetches that ID. The rule is
-[`PersonFetchID`](../../internal/domain/person_plugin_apply.go). The page's
-first fetch sends only `pluginId`, and a name search is always one press away,
-so the owner can pick another candidate when the stored ID points at the wrong
-person.
+`POST /api/people/{id}/plugin-fetches` with only `pluginId` picks the key in
+this order, all before the module runs:
+
+1. The person's first stored external ID, in the stored `(source, value)`
+   order, whose source the plugin declares
+   ([`PersonFetchID`](../../internal/domain/person_plugin_apply.go)).
+2. The person's one link the plugin handles, after folding
+   ([`PersonFetchLinks`](../../internal/domain/person_plugin_links.go)).
+   Several such links answer `409 person_link_ambiguous` with them as
+   `links`, in stored order, so the owner picks one.
+3. Otherwise `409 person_external_id_missing`, and the dialog offers the name
+   search.
+
+With a search candidate's `source` and `id` it fetches that ID, and with
+`link` it fetches that link; the three forms exclude each other. The page's
+first fetch sends only `pluginId`, and a name search is always one press
+away, so the owner can pick another candidate when the stored ID or link
+points at the wrong person.
+
+```mermaid
+flowchart LR
+  only[pluginId only] --> id{stored accepted ID}
+  id -->|yes| byID[fetch by ID]
+  id -->|no| links{handled links after folding}
+  links -->|one| byLink[fetch by link]
+  links -->|several| ambiguous[409 person_link_ambiguous]
+  links -->|none| missing[409 person_external_id_missing]
+```
 
 The result is kept for 10 minutes, bound to the person and to the plugin's
 digest and generation, in the store and under the image budget of work-info
 fetches ([work-info-plugins.md](work-info-plugins.md)). Its images are
 served by index from `GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}`,
-and the result tells their number as `imageCount`. The result keeps
+and the result tells their number as `imageCount` and the link it ran with as
+`link`. The result keeps
 only the profile values valid with each other, the ones the comparison shows,
 so an apply can select only a value the owner saw. The run rechecks the
-source against the plugin it executes and answers `400 invalid_request` when a
-replaced plugin no longer declares it.
+source and the link against the plugin it executes and answers
+`400 invalid_request` when a replaced plugin no longer declares them.
 
 | Rejected | Why |
 | --- | --- |
-| The page picks the ID and always sends it | The rule would live in Go and in TypeScript |
+| The page picks the ID or the link and always sends it | The rule would live in Go and in TypeScript |
+| A lookup endpoint the page calls before every fetch | One request more on every fetch for a choice needed only when several links match |
+| Fetching every handled link and comparing the results | Up to 20 runs of 30 seconds each before the owner sees anything |
+
+## A link fetch is the fetch operation with a url
+
+A plugin that declares `domains` accepts `fetch` with a `url` in place of
+`source` and `id`, and answers the same `person` object, so a link fetch is
+one run and compares and applies as a fetch by ID does. A link matches when it
+is an `http` or `https` URL whose host, lowercased, is a declared domain or
+ends with `.` and one, so `www.example.com` matches `example.com`
+([`LinkMatchesDomains`](../../internal/domain/person_plugin_links.go)). A
+`link` the owner typed that no domain matches answers
+`400 person_link_unsupported`, and one that is not an `http` or `https` URL
+answers `400 invalid_request`, both without a run. A missing, private or
+silent page fails the run as any fetch does and writes nothing.
+
+Folding keeps the first stored of the links that differ only in scheme, host
+case or a trailing slash. Query strings and fragments stay, since some sites
+carry the person in one of them, and the plugin handles path case and
+tracking parameters itself.
+
+| Rejected | Why |
+| --- | --- |
+| A `resolve` operation that maps a link to an ID, then a fetch by ID | Two runs of up to 30 seconds for a person the plugin had already loaded in the first |
+| Requiring a declared source's ID in a link fetch's result | A site without a stable ID could never be fetched by link |
+| Exact host match only | Most sites serve a person's page under `www.` and a bare host |
+| Dropping query strings or fragments when folding | A link whose ID is a query parameter or a fragment would fold into another person's |
+| Searching a link the plugin does not handle as a name | A URL as a search query finds nothing, and the owner would not learn why |
 
 ## A fetched person applies per item, and a profile value may replace
 
