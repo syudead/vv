@@ -5,7 +5,7 @@ import { t } from "../../i18n";
 import { formatDuration, formatResolution } from "../../lib/format";
 import { type Fact, FactList } from "../../ui/patterns/fact-list";
 import { Description } from "../WorkInfo";
-import { DateValue, PanelColumns } from "./panelParts";
+import { DateValue, PanelColumns, PanelSection } from "./panelParts";
 
 /** The code, the release date and the performers, each left out when missing. */
 export function workSummary(info: WorkInfo | undefined): string {
@@ -56,7 +56,10 @@ function overviewFacts(video: Video, owner: boolean): Fact[] {
   return facts.filter((fact): fact is Fact => fact !== null);
 }
 
-/** The description, the one-line work summary and the four facts; work information is the owner's. */
+/**
+ * At the left, the owner's description and work summary, each under its own heading; at the right,
+ * the facts.
+ */
 export default function OverviewPanel({
   video,
   owner,
@@ -66,20 +69,25 @@ export default function OverviewPanel({
 }) {
   const description = owner ? video.workInfo?.description : undefined;
   const summary = owner ? workSummary(video.workInfo) : "";
+  const text = t.player.tabs;
   const hasMain = description !== undefined || summary !== "";
   return (
     <PanelColumns
       main={
         hasMain ? (
-          <div className="flex flex-col gap-4">
+          <>
             {description !== undefined && (
-              // Remount per video so the fold does not carry over.
-              <Description key={video.id} text={description} />
+              <PanelSection title={text.description}>
+                {/* Remount per video so the fold does not carry over. */}
+                <Description key={video.id} text={description} lines="many" />
+              </PanelSection>
             )}
             {summary !== "" && (
-              <p className="text-xs text-muted-foreground wrap-anywhere">{summary}</p>
+              <PanelSection title={text.work}>
+                <p className="text-xs text-muted-foreground wrap-anywhere">{summary}</p>
+              </PanelSection>
             )}
-          </div>
+          </>
         ) : undefined
       }
       side={<FactList variant="divided" facts={overviewFacts(video, owner)} />}

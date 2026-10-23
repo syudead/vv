@@ -2141,7 +2141,7 @@ export const en = {
       duration: "Length",
       size: "Size",
       added: "Added",
-      edited: "Edited",
+      edited: "Edited in vv",
       created: "Created",
       dateDetail: (name: string, dateTime: string) => `${name} ${dateTime}`,
       openFile: "Open file",
@@ -2178,6 +2178,8 @@ export const en = {
       media: "Media",
       fileSection: "File",
       fileCreated: "File created",
+      fileModified: "File modified",
+      description: "Description",
       none: "None",
       chapters: "Chapters",
       container: "Container",
@@ -2209,6 +2211,11 @@ export const en = {
       touchUp: "Touch up with ComfyUI",
       touchUpButton: "Touch up…",
       touchUpNote: "Frame the image, then run an instruction",
+      frames: "A frame from the video",
+      framesNote: "Press a frame to make it the thumbnail",
+      framesLoading: "Loading the frames",
+      framesFailed: "Couldn't load the frames",
+      useFrameAt: (time: string) => `Use the frame at ${time}`,
     },
     //
     thumbnailEdit: {
@@ -2350,13 +2357,8 @@ export const en = {
       removed: (title: string) => `Removed "${title}" from the versions`,
     },
     title: {
-      edit: "Edit name",
-      input: "Display name",
-      save: "Save",
-      cancel: "Cancel",
       fileName: "File name",
       fileNameTitle: (name: string) => `File name: ${name}`,
-      saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
     },
     // Use singular roles for one person and plural for multiple people.
     workInfo: {

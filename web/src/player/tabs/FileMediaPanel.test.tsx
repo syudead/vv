@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan, Video } from "../../api/client";
-import { formatDateTime } from "../../i18n";
+import { formatPreciseTime } from "../../i18n";
 import { ScanProvider } from "../../shell/ScanProvider";
 import { OwnerAudience } from "../../testing/audience";
 import { ToastProvider } from "../../ui/Toast";
@@ -20,6 +20,7 @@ function json(body: unknown, status: number): Response {
 const added = new Date(2026, 8, 20, 12, 0).toISOString();
 const edited = new Date(2026, 8, 27, 15, 4).toISOString();
 const created = new Date(2026, 6, 3, 9, 30).toISOString();
+const modified = new Date(2026, 6, 4, 8, 15, 30, 250).toISOString();
 
 const video: Video = {
   id: 7,
@@ -28,6 +29,7 @@ const video: Video = {
   addedAt: added,
   updatedAt: edited,
   fileCreatedAt: created,
+  fileModifiedAt: modified,
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -69,7 +71,7 @@ describe("FileMediaPanel", () => {
     fetchMock.mockReset();
   });
 
-  it("所在と Media の節を置き、File の列はサイズと 3 つの日付をラベル付きで出す", () => {
+  it("所在と Media の節を置き、File の列はサイズと 4 つの日時を秒まで、ミリ秒を持つ値はミリ秒まで出す", () => {
     renderPanel(video);
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
@@ -77,10 +79,15 @@ describe("FileMediaPanel", () => {
     expect(screen.getByText("/media/a/b.mp4")).toBeDefined();
     expect(fileFacts()).toEqual([
       "Size 80.4 MB",
-      "Added Sep 20, 2026",
-      "Edited Sep 27, 2026",
-      "File created Jul 3, 2026",
+      `Added Sep 20, 2026 ${formatPreciseTime(added)}`,
+      `Edited in vv Sep 27, 2026 ${formatPreciseTime(edited)}`,
+      `File created Jul 3, 2026 ${formatPreciseTime(created)}`,
+      `File modified Jul 4, 2026 ${formatPreciseTime(modified)}`,
     ]);
+    expect(formatPreciseTime(edited)).toMatch(/^3:04:00\s?PM$/);
+    expect(formatPreciseTime(modified)).toMatch(/^8:15:30\.250\s?AM$/);
+    const modifiedTime = screen.getByText(/8:15:30/).closest("time");
+    expect(modifiedTime?.getAttribute("datetime")).toBe(modified);
   });
 
   it("開けないときは「ファイルを開く」を出さず、コピーを置く", () => {
@@ -96,7 +103,9 @@ describe("FileMediaPanel", () => {
     renderPanel(video, false);
     expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
-    expect(fileFacts()).toContain("File created Jul 3, 2026");
+    expect(fileFacts()).toContain(
+      `File modified Jul 4, 2026 ${formatPreciseTime(modified)}`,
+    );
   });
 
   it("安全でない接続（clipboard が無い）では、選んだ文字をコピーする方法に切り替える", () => {
@@ -157,21 +166,6 @@ describe("FileMediaPanel", () => {
     );
     fireEvent.click(button);
     expect(screen.queryByRole("alert")).toBeNull();
-  });
-
-  it("日付は日付だけを出し、名前と時刻を title に持ち、押すと吹き出しを開いて Esc で閉じる（UI品質）", async () => {
-    renderPanel(video);
-    const trigger = screen.getByRole("button", { name: "Edited Sep 27, 2026" });
-    expect(trigger.textContent).toBe("Sep 27, 2026");
-    expect(trigger.title).toBe(`Edited ${formatDateTime(edited)}`);
-    trigger.focus();
-    fireEvent.click(trigger);
-    const bubble = await screen.findByRole("dialog");
-    expect(bubble.textContent).toBe(`Edited ${formatDateTime(edited)}`);
-
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(document.activeElement).toBe(trigger);
   });
 });
 

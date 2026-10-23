@@ -6142,6 +6142,9 @@ type Video struct {
 	// FileCreatedAt Creation timestamp of the displayed-location file; falls back to its mtime when unavailable.
 	FileCreatedAt time.Time `json:"fileCreatedAt"`
 
+	// FileModifiedAt Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded.
+	FileModifiedAt time.Time `json:"fileModifiedAt"`
+
 	// FileTitle Filename without extension; owner responses only.
 	FileTitle *string `json:"fileTitle,omitempty"`
 

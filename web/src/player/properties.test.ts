@@ -10,6 +10,7 @@ const video: Video = {
   addedAt: "2026-09-20T03:00:00Z",
   updatedAt: "2026-09-20T03:00:00Z",
   fileCreatedAt: "2026-09-20T03:00:00Z",
+  fileModifiedAt: "2026-09-20T03:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",

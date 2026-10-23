@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { Video } from "../../api/client";
 import type { WorkInfo } from "../../api/workInfo";
-import { availableTabs, creditedPeopleCount, nextTab } from "./videoTabs";
+import {
+  availableTabs,
+  creditedPeopleCount,
+  nextTab,
+  searchWithTab,
+  tabFromSearch,
+} from "./videoTabs";
 
 const video: Video = {
   id: 1,
@@ -11,6 +17,7 @@ const video: Video = {
   addedAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
   fileCreatedAt: "2026-01-01T00:00:00Z",
+  fileModifiedAt: "2026-01-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -120,5 +127,20 @@ describe("nextTab", () => {
   it("keeps the selected tab while the new list has it and returns to Overview otherwise", () => {
     expect(nextTab("versions", ["overview", "versions", "file"])).toBe("versions");
     expect(nextTab("work", ["overview", "thumbnail", "file"])).toBe("overview");
+  });
+});
+
+describe("the tab in the address", () => {
+  it("reads a known tab name and ignores a missing or unknown one", () => {
+    expect(tabFromSearch("?group=3&tab=people")).toBe("people");
+    expect(tabFromSearch("?group=3")).toBeNull();
+    expect(tabFromSearch("?tab=nope")).toBeNull();
+  });
+
+  it("writes the tab beside the other parameters and leaves Overview out", () => {
+    expect(searchWithTab("?group=3", "file")).toBe("?group=3&tab=file");
+    expect(searchWithTab("?group=3&tab=file", "work")).toBe("?group=3&tab=work");
+    expect(searchWithTab("?group=3&tab=file", "overview")).toBe("?group=3");
+    expect(searchWithTab("?tab=file", "overview")).toBe("");
   });
 });

@@ -93,18 +93,7 @@ export default function VideoPageDetails({
           key={`title-row:${String(video.id)}`}
           video={video}
           onFavorite={owner ? setFavorite : undefined}
-          title={
-            <VideoTitle
-              key={`title:${String(video.id)}`}
-              video={video}
-              owner={owner}
-              onSaved={(saved, mark) => {
-                replace(saved, mark, "keep");
-                related.rename(saved);
-              }}
-              onStale={reread}
-            />
-          }
+          title={<VideoTitle video={video} owner={owner} />}
         />
         {owner && <OwnerTags video={video} reread={reread} />}
       </div>

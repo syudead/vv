@@ -51,6 +51,23 @@ export function availableTabs(
   return videoTabs.filter((tab) => shown[tab]);
 }
 
+const tabQuery = "tab";
+
+/** The tab the address's `tab` names; null without one or for an unknown name. */
+export function tabFromSearch(search: string): VideoTab | null {
+  const value = new URLSearchParams(search).get(tabQuery);
+  return videoTabs.find((tab) => tab === value) ?? null;
+}
+
+/** The search with `tab` naming the selected tab; Overview, the default, leaves it out. */
+export function searchWithTab(search: string, tab: VideoTab): string {
+  const params = new URLSearchParams(search);
+  if (tab === "overview") params.delete(tabQuery);
+  else params.set(tabQuery, tab);
+  const next = params.toString();
+  return next === "" ? "" : `?${next}`;
+}
+
 /** The tab to select after the video response changes: the same one while the new list has it. */
 export function nextTab(selected: VideoTab, tabs: readonly VideoTab[]): VideoTab {
   return tabs.includes(selected) ? selected : "overview";

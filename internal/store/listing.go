@@ -189,7 +189,7 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 }
 
 // Column order matches scanVideo; location attributes come from chosen, and path supports folder metadata.
-var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
+var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, ` + mtimeNsExpr("loc") + `,
 	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,

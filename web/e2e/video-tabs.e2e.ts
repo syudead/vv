@@ -155,7 +155,7 @@ function selectedTab(page: Page) {
   return page.getByRole("tab", { selected: true });
 }
 
-/** Controls after the title and its pencil, up to the panel, whose visible text is empty. */
+/** Controls after the title, up to the panel, whose visible text is empty. */
 function iconOnlyControls(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const title = document.querySelector("h1");
@@ -169,8 +169,6 @@ function iconOnlyControls(page: Page): Promise<string[]> {
         (control) =>
           title.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING &&
           panel.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING &&
-          // The title's own pencil is part of the title, not an action row.
-          control.getAttribute("aria-label") !== "Edit name" &&
           control.checkVisibility() &&
           control.innerText.trim() === "" &&
           // A switch's word stands beside it in the label that holds both.
@@ -232,6 +230,18 @@ test.describe.serial("video page tabs", () => {
     expect(await iconOnlyControls(page)).toEqual([]);
   });
 
+  test("選んだタブはアドレスに残り、ほかの画面へ移ってブラウザの戻るで戻ると同じタブを開く", async ({
+    page,
+  }) => {
+    await openVideo(page, representative);
+    await tabs(page).filter({ hasText: "File & media" }).click();
+    await expect(page).toHaveURL(/[?&]tab=file(&|$)/);
+    await page.goto("/");
+    await page.goBack();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(representative);
+    await expect(selectedTab(page)).toHaveText("File & media");
+  });
+
   test("ゲストの公開動画は Overview と File & media だけを並べ、場所・タグ・公開の切り替え・編集の操作を出さない（受け入れ条件 8）", async ({
     browser,
   }) => {
@@ -241,7 +251,6 @@ test.describe.serial("video page tabs", () => {
       await expect(page.getByRole("switch")).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Edit details" })).toHaveCount(0);
       await expect(page.getByRole("combobox", { name: "Add tag" })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Edit name" })).toHaveCount(0);
 
       await tabs(page).filter({ hasText: "File & media" }).click();
       await expect(page.getByRole("region", { name: "Media" })).toBeVisible();

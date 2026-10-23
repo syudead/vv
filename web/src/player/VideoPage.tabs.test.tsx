@@ -1,6 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
-import { Link, MemoryRouter, Route, Routes } from "react-router";
+import {
+  Link,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setRenderedAudience as forgetAudience, type Video } from "../api/client";
@@ -9,6 +16,7 @@ import type { WorkInfo } from "../api/workInfo";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { formatDate } from "../i18n";
 import { ToastProvider } from "../ui/Toast";
+import { Button } from "../ui/shadcn/button";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlayerControls } from "./playerControls";
 import VideoPage from "./VideoPage";
@@ -66,6 +74,7 @@ const owned: Video = {
   addedAt: added,
   updatedAt: added,
   fileCreatedAt: added,
+  fileModifiedAt: added,
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -268,6 +277,88 @@ describe("VideoPage tabs", () => {
     fireEvent.click(screen.getByRole("link", { name: "Third video" }));
     await screen.findByRole("heading", { level: 1, name: "三本目" });
     expect(selectedTab()).toBe("Overview");
+  });
+
+  describe("アドレスの tab", () => {
+    function Address() {
+      const location = useLocation();
+      return <output data-testid="address">{location.pathname + location.search}</output>;
+    }
+
+    function Back() {
+      const navigate = useNavigate();
+      return (
+        <Button variant="ghost" onClick={() => void navigate(-1)}>
+          Back
+        </Button>
+      );
+    }
+
+    function renderAt(entry: string) {
+      return render(
+        <TooltipProvider>
+          <ToastProvider>
+            <MemoryRouter initialEntries={["/", entry]} initialIndex={1}>
+              <AudienceProvider audience="owner">
+                <Link to="/">Library</Link>
+                <Link to="/videos/8">Next video</Link>
+                <Back />
+                <Address />
+                <Routes>
+                  <Route path="/" element={<p>ライブラリ</p>} />
+                  <Route path="/videos/:id" element={<VideoPage />} />
+                </Routes>
+              </AudienceProvider>
+            </MemoryRouter>
+          </ToastProvider>
+        </TooltipProvider>,
+      );
+    }
+
+    const address = () => screen.getByTestId("address").textContent;
+
+    it("選んだタブをアドレスに置き換えで書き、ほかの画面へ移って Back で戻ると同じタブを開く", async () => {
+      renderAt("/videos/7");
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      openTab("Work");
+      openTab("People");
+      await waitFor(() => expect(address()).toBe("/videos/7?tab=people"));
+
+      fireEvent.click(screen.getByRole("link", { name: "Library" }));
+      expect(await screen.findByText("ライブラリ")).toBeDefined();
+      // One Back step returns to the video: tab changes replaced the entry instead of adding ones.
+      fireEvent.click(screen.getByRole("button", { name: "Back" }));
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      expect(selectedTab()).toBe("People2");
+      expect(address()).toBe("/videos/7?tab=people");
+
+      openTab("Overview");
+      await waitFor(() => expect(address()).toBe("/videos/7"));
+    });
+
+    it("次の動画へ移ると選んだタブを保ち、アドレスにも書く", async () => {
+      server.videos.set(8, { ...owned, id: 8, title: "後続の動画" });
+      renderAt("/videos/7");
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      openTab("File & media");
+      fireEvent.click(screen.getByRole("link", { name: "Next video" }));
+      await screen.findByRole("heading", { level: 1, name: "後続の動画" });
+      expect(selectedTab()).toBe("File & media");
+      await waitFor(() => expect(address()).toBe("/videos/8?tab=file"));
+    });
+
+    it("知らないタブ名や、この動画に無いタブを名指すアドレスでは Overview を開く", async () => {
+      const { unmount } = renderAt("/videos/7?tab=nope");
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      expect(selectedTab()).toBe("Overview");
+      unmount();
+
+      server.videos.set(8, { ...owned, id: 8, title: "後続の動画", workInfo: undefined });
+      renderAt("/videos/8?tab=people");
+      await screen.findByRole("heading", { level: 1, name: "後続の動画" });
+      expect(tabNames()).not.toContain("People");
+      expect(selectedTab()).toBe("Overview");
+    });
   });
 
   it("次の動画にもあるタブは移った後も選んだまま", async () => {

@@ -5547,6 +5547,11 @@ export interface components {
              */
             fileCreatedAt: string;
             /**
+             * Format: date-time
+             * @description Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded.
+             */
+            fileModifiedAt: string;
+            /**
              * Format: int64
              * @description Duration; omitted before probing or when unavailable.
              */

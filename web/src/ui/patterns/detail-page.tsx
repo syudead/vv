@@ -49,14 +49,17 @@ export function DetailPage({
            */}
           <div
             data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
+            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6"
           >
             <div
               data-slot="detail-page-content"
               className={cn("flex flex-col gap-4 lg:mx-auto lg:w-full", contentClassName)}
             >
               {media}
-              <div className="flex flex-col gap-3 px-4 sm:px-6 lg:px-0">{children}</div>
+              {/* Room under the last child, so it is not read against the window's edge. */}
+              <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 lg:px-0 lg:pb-16">
+                {children}
+              </div>
             </div>
           </div>
           {/*

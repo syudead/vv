@@ -1,7 +1,13 @@
 import { AlertCircle } from "lucide-react";
 import { type ReactNode, useId } from "react";
 
-import { formatDate, formatDateTime, t, type UiText } from "../../i18n";
+import {
+  formatDate,
+  formatDateTime,
+  formatPreciseTime,
+  t,
+  type UiText,
+} from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/shadcn/popover";
@@ -40,15 +46,6 @@ export function PanelSection({
   );
 }
 
-/** A section label without a section of its own, such as over the right column's one action. */
-export function PanelLabel({ id, children }: { id?: string; children: ReactNode }) {
-  return (
-    <p id={id} className={labelClass}>
-      {children}
-    </p>
-  );
-}
-
 /**
  * A panel's two columns from `md`: what is read at the left, the figures or the one action in a
  * `facts-column` wide column at the right. Below `md` the right column follows, full width.
@@ -72,6 +69,34 @@ export function FailureLine({ failure }: { failure: UiText | null }) {
       <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
       {failure}
     </p>
+  );
+}
+
+/** A read that failed: the reason, then `Retry`. */
+export function ReadFailure({ text, onRetry }: { text: UiText; onRetry: () => void }) {
+  return (
+    <p
+      role="alert"
+      className="flex flex-wrap items-center gap-2 text-sm text-destructive"
+    >
+      {text}
+      <Button variant="link" size="sm" className="h-auto px-0" onClick={onRetry}>
+        {t.common.retry}
+      </Button>
+    </p>
+  );
+}
+
+/**
+ * The full date and the time with seconds (and milliseconds when the value has them); the two
+ * halves wrap as units in a narrow column.
+ */
+export function DateTimeValue({ value }: { value: string }) {
+  return (
+    <time dateTime={value} className="text-foreground">
+      <span className="whitespace-nowrap">{formatDate(value)}</span>{" "}
+      <span className="whitespace-nowrap">{formatPreciseTime(value)}</span>
+    </time>
   );
 }
 
