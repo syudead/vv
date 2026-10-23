@@ -233,13 +233,26 @@ fetch dialog: plugin, candidates when needed, comparison, result. Its first
 `Fetch` sends only `pluginId`. The dialog shows the `Name` field, prefilled
 with the person's name, after the server answers
 `409 person_external_id_missing`, or when the owner presses `Search by name`,
-which the plugin step and a comparison fetched by a stored ID offer; a chosen
+which the plugin step and a comparison fetched by a stored key offer; a chosen
 candidate's `source` and `id` are then sent with the fetch. Under the field,
 the person's name and aliases each search at a press, since a site may list the
 person under any of them. Every comparison has `Back` to the plugin step, and
 to the matches after a name search, so another plugin or candidate is one step
 away. The response of the apply replaces the page's person
 in memory, so the page shows the filled fields without reading it again.
+
+The page holds no link-matching rule; it follows the server's answers:
+
+| Answer or input | What the dialog does |
+| --- | --- |
+| `409 person_link_ambiguous` | The plugin step lists `links` as candidate rows, each its path over its host; a row press sends that `link`, and the submit button stays disabled while the rows are the action. `Back` from the comparison returns to the rows |
+| A `Name` value that parses as an `http` or `https` URL | The submit button reads `Fetch`, a line under the field says so, and the browser's serialization of the value is sent as `link` instead of searched, since the server's URL parser rejects forms the browser repairs, such as `https:example.com` |
+| `400 person_link_unsupported` | The field keeps the value; the reason, with the plugin's domains, stands under it until the next edit, and nothing is searched |
+| A result with `link` | The comparison's source line names that link instead of the first external ID |
+
+After a stale apply, `Fetch again` resends the `link`, or the candidate, the
+dialog sent, and only `pluginId` when the server picked the key, so a picked
+link is not asked for twice.
 
 The comparison, [`PersonCompare`](../../web/src/credits/person/pluginFetch/PersonCompare.tsx),
 is in the order the owner decides:

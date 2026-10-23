@@ -7,7 +7,7 @@ import type { WorkInfoCandidate, WorkInfoPlugin } from "../../api/workInfoPlugin
 import { errorText, t } from "../../i18n";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
-import { Field, FieldLabel } from "../../ui/shadcn/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
 import {
   Select,
@@ -181,7 +181,10 @@ export interface CandidateView {
 function CandidateText({ candidate }: { candidate: CandidateView }) {
   return (
     <>
-      <span title={candidate.title} className="line-clamp-2 text-sm text-foreground">
+      <span
+        title={candidate.title}
+        className="line-clamp-2 text-sm wrap-anywhere text-foreground"
+      >
         {candidate.title}
       </span>
       {candidate.detail !== undefined && candidate.detail !== "" && (
@@ -241,15 +244,17 @@ function CandidateRow({
   );
 }
 
-/** The first 50 candidates under their count; the caller shows the empty state. */
+/** The first 50 candidates under their count, or under heading; the caller shows the empty state. */
 export function CandidateList({
   candidates,
+  heading,
   choosable,
   chosenKey,
   busy,
   onChoose,
 }: {
   candidates: readonly CandidateView[];
+  heading?: string;
   choosable: boolean;
   chosenKey: string | undefined;
   busy: boolean;
@@ -261,7 +266,7 @@ export function CandidateList({
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-1">
       <h3 id={headingId} className="text-sm text-muted-foreground">
-        {text.matches(shown.length)}
+        {heading ?? text.matches(shown.length)}
       </h3>
       <ul className="flex flex-col divide-y divide-border border-y border-border">
         {shown.map((candidate) => (
@@ -310,13 +315,15 @@ function Candidates({
   );
 }
 
-/** A prefilled query, selected on its first focus so typing replaces it without reselecting later. */
+/** A prefilled query, selected on its first focus so typing replaces it without reselecting later. An error replaces the description. */
 export function QueryField({
   label,
   value,
   busy,
   inputRef,
   autoFocus,
+  description,
+  error,
   onChange,
 }: {
   label: string;
@@ -324,10 +331,15 @@ export function QueryField({
   busy: boolean;
   inputRef?: RefObject<HTMLInputElement | null>;
   autoFocus?: boolean;
+  description?: string;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   const id = useId();
+  const noteId = useId();
   const selectedOnce = useRef(false);
+  const invalid = error !== undefined;
+  const hasNote = invalid || description !== undefined;
   return (
     <Field>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -338,6 +350,8 @@ export function QueryField({
         autoFocus={autoFocus}
         readOnly={busy}
         aria-disabled={busy || undefined}
+        aria-invalid={invalid || undefined}
+        aria-describedby={hasNote ? noteId : undefined}
         autoComplete="off"
         onFocus={(event) => {
           if (selectedOnce.current) return;
@@ -346,6 +360,13 @@ export function QueryField({
         }}
         onChange={(event) => onChange(event.target.value)}
       />
+      {invalid ? (
+        <FieldError id={noteId}>{error}</FieldError>
+      ) : (
+        description !== undefined && (
+          <FieldDescription id={noteId}>{description}</FieldDescription>
+        )
+      )}
     </Field>
   );
 }

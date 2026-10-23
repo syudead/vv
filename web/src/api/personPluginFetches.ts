@@ -31,18 +31,17 @@ export async function searchPersonWithPlugin(
   return result.candidates;
 }
 
-/** Without a candidate the server picks the person's stored ID, or answers person_external_id_missing. */
+/** What a fetch runs with: a search candidate's ID, or a link the person has or the owner typed. */
+export type PersonFetchKey = { source: string; id: string } | { link: string };
+
+/** Without a key the server picks the person's stored ID or one handled link, or answers with a 409. */
 export function fetchPersonWithPlugin(
   personId: number,
   pluginId: number,
-  candidate?: { source: string; id: string },
+  key?: PersonFetchKey,
   signal?: AbortSignal,
 ): Promise<PersonPluginFetch> {
-  const body: components["schemas"]["PersonPluginFetchRequest"] = { pluginId };
-  if (candidate !== undefined) {
-    body.source = candidate.source;
-    body.id = candidate.id;
-  }
+  const body: components["schemas"]["PersonPluginFetchRequest"] = { pluginId, ...key };
   return request<PersonPluginFetch>(`/api/people/${String(personId)}/plugin-fetches`, {
     method: "POST",
     headers: jsonHeaders,

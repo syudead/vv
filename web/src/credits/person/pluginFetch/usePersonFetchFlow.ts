@@ -5,13 +5,14 @@ import { isCreditGone, type Person } from "../../../api/credits";
 import {
   applyPersonPluginFetch,
   fetchPersonWithPlugin,
+  type PersonFetchKey,
   type PersonPluginCandidate,
   type PersonPluginFetch,
   searchPersonWithPlugin,
 } from "../../../api/personPluginFetches";
 import type { WorkInfoPlugin } from "../../../api/workInfoPlugins";
 import { t } from "../../../i18n";
-import type { SkippedLine } from "../../../player/workInfoFetch/fetchRules";
+import { hostOf, type SkippedLine } from "../../../player/workInfoFetch/fetchRules";
 import type { RunFailure } from "../../../player/workInfoFetch/FindStep";
 import { useToast } from "../../../ui/Toast";
 import {
@@ -42,22 +43,55 @@ export interface CandidateId {
 export interface PersonFetched {
   result: PersonPluginFetch;
   plugin: WorkInfoPlugin;
-  /** The chosen search candidate; absent when the server picked the stored ID. */
-  candidate?: CandidateId;
+  /** What the dialog sent: a chosen candidate or a picked or typed link; absent when the server picked the key. */
+  key?: PersonFetchKey;
 }
 
 export interface PersonRunning {
   operation: "search" | "fetch";
-  /** The chosen candidate's key while its fetch runs. */
+  /** The chosen candidate's key, or the picked link, while its fetch runs. */
   key?: string;
+}
+
+/** The reason a typed link was refused, shown under the field until the next edit. */
+export interface LinkRefusal {
+  plugin: WorkInfoPlugin;
+  host: string;
 }
 
 export function candidateKey(candidate: CandidateId): string {
   return `${candidate.source}\u0000${candidate.id}`;
 }
 
-function isMissingId(error: unknown): boolean {
-  return error instanceof RequestFailed && error.code === "person_external_id_missing";
+/**
+ * The link to fetch by when the Name field holds an http or https URL, else undefined. The browser's serialization
+ * is sent because the server's URL parser rejects forms the browser repairs, such as `https:example.com`.
+ */
+export function typedLink(value: string): string | undefined {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether the Name field holds a link to fetch by instead of words to search. */
+export function isLink(value: string): boolean {
+  return typedLink(value) !== undefined;
+}
+
+function failedWith(error: unknown, code: string): error is RequestFailed {
+  return error instanceof RequestFailed && error.code === code;
+}
+
+function runningKey(
+  key: PersonFetchKey | undefined,
+  byName: boolean,
+): string | undefined {
+  if (key === undefined) return undefined;
+  if ("link" in key) return byName ? undefined : key.link;
+  return candidateKey(key);
 }
 
 /** One request at a time; responses after closing are dropped, and closing waits for an apply. */
@@ -84,12 +118,18 @@ export function usePersonFetchFlow({
   const [missingId, setMissingId] = useState(false);
   const [query, setQuery] = useState(person.name);
   const [candidates, setCandidates] = useState<PersonPluginCandidate[] | null>(null);
-  if (plugin?.id !== pluginId) {
-    setPluginId(plugin?.id);
+  // The person's links the plugin handles, after the server answers person_link_ambiguous.
+  const [links, setLinks] = useState<readonly string[] | null>(null);
+  const [linkRefusal, setLinkRefusal] = useState<LinkRefusal | null>(null);
+  const resetPlugin = (id: number | undefined) => {
+    setPluginId(id);
     setByName(false);
     setMissingId(false);
     setCandidates(null);
-  }
+    setLinks(null);
+    setLinkRefusal(null);
+  };
+  if (plugin?.id !== pluginId) resetPlugin(plugin?.id);
   const [running, setRunning] = useState<PersonRunning | null>(null);
   const [failure, setFailure] = useState<RunFailure | null>(null);
   const [step, setStep] = useState<Step>("find");
@@ -138,30 +178,44 @@ export function usePersonFetchFlow({
     }
   };
 
-  const fetchPerson = async (target: WorkInfoPlugin, candidate?: CandidateId) => {
+  /** Answers the server gives before running: no key, several links, or a link the plugin does not handle. */
+  const refused = (error: unknown, target: WorkInfoPlugin, key?: PersonFetchKey) => {
+    if (key === undefined && failedWith(error, "person_external_id_missing")) {
+      setByName(true);
+      setMissingId(true);
+    } else if (key === undefined && failedWith(error, "person_link_ambiguous")) {
+      setLinks(error.links ?? []);
+    } else if (
+      key !== undefined &&
+      "link" in key &&
+      failedWith(error, "person_link_unsupported")
+    ) {
+      setLinkRefusal({ plugin: target, host: hostOf(key.link) });
+    } else return false;
+    setStep("find");
+    return true;
+  };
+
+  const fetchPerson = async (
+    target: WorkInfoPlugin,
+    key: PersonFetchKey | undefined,
+    fromName: boolean,
+  ) => {
     const signal = begin();
-    setRunning({
-      operation: "fetch",
-      key: candidate === undefined ? undefined : candidateKey(candidate),
-    });
+    setRunning({ operation: "fetch", key: runningKey(key, fromName) });
     setFailure(null);
+    setLinkRefusal(null);
     try {
-      const result = await fetchPersonWithPlugin(person.id, target.id, candidate, signal);
+      const result = await fetchPersonWithPlugin(person.id, target.id, key, signal);
       if (signal.aborted) return;
-      setFetched({ result, plugin: target, candidate });
+      setFetched({ result, plugin: target, key });
       setSelection(initialSelection(latestPerson.current, result.person, true));
       setStale(false);
       setApplyFailure(null);
       setStep("compare");
     } catch (error) {
       if (isAborted(error) || signal.aborted) return;
-      if (candidate === undefined && isMissingId(error)) {
-        setByName(true);
-        setMissingId(true);
-        setStep("find");
-        return;
-      }
-      failed(error, "fetch");
+      if (!refused(error, target, key)) failed(error, "fetch");
     } finally {
       if (!signal.aborted) setRunning(null);
     }
@@ -213,7 +267,11 @@ export function usePersonFetchFlow({
       return;
     }
     if (plugin === undefined || running !== null) return;
-    if (!byName) void fetchPerson(plugin);
+    // The link rows are the action while the choice is shown.
+    const link = typedLink(query);
+    if (!byName) {
+      if (links === null) void fetchPerson(plugin, undefined, false);
+    } else if (link !== undefined) void fetchPerson(plugin, { link }, true);
     else if (query.trim() !== "") void search(plugin);
   };
 
@@ -223,6 +281,8 @@ export function usePersonFetchFlow({
     missingId,
     query,
     candidates,
+    links,
+    linkRefusal,
     running,
     failure,
     step,
@@ -235,10 +295,7 @@ export function usePersonFetchFlow({
     skipped,
     submit,
     choosePlugin: (id: number) => {
-      setPluginId(id);
-      setByName(false);
-      setMissingId(false);
-      setCandidates(null);
+      resetPlugin(id);
       setFailure(null);
     },
     searchByName: () => {
@@ -247,20 +304,25 @@ export function usePersonFetchFlow({
       setFailure(null);
       setStep("find");
     },
-    changeQuery: setQuery,
+    changeQuery: (value: string) => {
+      setQuery(value);
+      setLinkRefusal(null);
+    },
     /** Searches for one of the person's names at once. */
     searchFor: (name: string) => {
       if (plugin === undefined || running !== null) return;
       setQuery(name);
+      setLinkRefusal(null);
       void search(plugin, name);
     },
-    choose: (candidate: CandidateId) => {
-      if (plugin !== undefined && running === null) void fetchPerson(plugin, candidate);
+    choose: (key: PersonFetchKey) => {
+      if (plugin !== undefined && running === null) void fetchPerson(plugin, key, false);
     },
     back: () => setStep("find"),
+    /** Resends what the result came from, so a picked or typed link is not asked for again. */
     fetchAgain: () => {
       if (fetched === null || running !== null) return;
-      void fetchPerson(fetched.plugin, fetched.candidate);
+      void fetchPerson(fetched.plugin, fetched.key, byName);
     },
     cancel: () => controller.current?.abort(),
   };
