@@ -68,7 +68,6 @@ keep the virtual key alive as a bundle keeps absorbed keys.
 | Added, created and modified sort | Its creation time |
 | Title sort and search | Its own title and search keys; search scans them instead of the location FTS index |
 | Duration and size sort | Unknown, so it sorts last |
-| Duration range and playable-only filters | Excluded |
 | Folder reads, external API, MCP | Absent, because they read locations |
 | Playlist playback | Continuous play passes over it, and `playableCount` leaves it out; the manual previous and next steps still reach its page |
 
