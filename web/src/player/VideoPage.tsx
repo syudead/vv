@@ -492,6 +492,13 @@ export default function VideoPage() {
           handoff={detailsHandoff}
           thumbnail={thumbnail}
           onDeleted={close}
+          // The virtual video is gone, so the file video takes its place in the history.
+          onMerged={(merged) =>
+            void navigate(`/videos/${String(merged.id)}`, {
+              replace: true,
+              state: { from: backTo, trail },
+            })
+          }
           // Drop group context after membership changes before reloading related results.
           onGroupChanged={() =>
             groupContext.readWithoutGroup(() => {

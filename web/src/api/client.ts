@@ -300,6 +300,8 @@ export interface ListVideosParams
   extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
+  /** Omitted lists every video; file leaves out virtual videos. */
+  kind?: NonNullable<operations["listVideos"]["parameters"]["query"]>["kind"];
 }
 
 /** Match linked people or organizations in any role. */
@@ -372,6 +374,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
+  if (params.kind !== undefined) query.set("kind", params.kind);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -406,7 +409,8 @@ export function toLibraryItems<G>(
   });
 }
 
-export type ListLibraryParams = ListVideosParams;
+/** The library listing has no kind filter. */
+export type ListLibraryParams = Omit<ListVideosParams, "kind">;
 
 export async function listLibrary(
   params: ListLibraryParams = {},
@@ -684,6 +688,24 @@ export async function deleteVideo(
     throw await toRequestFailed(response);
   }
   clearListSnapshot();
+}
+
+export type VirtualVideoMerge = components["schemas"]["VirtualVideoMerge"];
+
+/** Merge a virtual video into a file video and return the file video; detached list snapshots would still show both. */
+export async function mergeVirtualVideo(
+  id: number,
+  body: VirtualVideoMerge,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/virtual-videos/${String(id)}/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  clearListSnapshot();
+  return video;
 }
 
 /** Open the representative file on the server's machine. */

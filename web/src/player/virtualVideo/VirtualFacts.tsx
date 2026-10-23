@@ -3,6 +3,7 @@ import {
   Ellipsis,
   ImageUp,
   LoaderCircle,
+  Merge,
   PencilLine,
   Trash2,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
@@ -39,6 +41,7 @@ import {
 } from "../VideoFacts";
 import WorkInfo from "../WorkInfo";
 import FetchEntry from "../workInfoFetch/FetchEntry";
+import MergeDialog from "./MergeDialog";
 import type { VirtualThumbnail } from "./useVirtualThumbnail";
 
 /** The links and description above already show these. */
@@ -59,6 +62,7 @@ export default function VirtualFacts({
   onStale,
   onFavorite,
   onDeleted,
+  onMerged,
   onEditingChange,
   details,
 }: {
@@ -70,6 +74,8 @@ export default function VirtualFacts({
   onFavorite: (favorite: boolean) => Promise<void>;
   /** Leave the page after the video is deleted. */
   onDeleted: () => void;
+  /** Replace the page with the file video's after a merge. */
+  onMerged: (merged: Video) => void;
   onEditingChange: (open: boolean) => void;
   details: DetailsEntryProps["details"];
 }) {
@@ -130,7 +136,12 @@ export default function VirtualFacts({
                 <ImageUp aria-hidden="true" />
               )}
             </ActionButton>
-            <MoreMenu video={video} onStale={onStale} onDeleted={onDeleted} />
+            <MoreMenu
+              video={video}
+              onStale={onStale}
+              onDeleted={onDeleted}
+              onMerged={onMerged}
+            />
             <ImageFileInput
               inputRef={thumbnail.fileInput}
               onFile={thumbnail.upload.choose}
@@ -150,12 +161,15 @@ function MoreMenu({
   video,
   onStale,
   onDeleted,
+  onMerged,
 }: {
   video: Video;
   onStale: () => void;
   onDeleted: () => void;
+  onMerged: (merged: Video) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [merging, setMerging] = useState(false);
   const toast = useToast();
   const words = t.player.virtual;
   return (
@@ -177,12 +191,28 @@ function MoreMenu({
           <TooltipContent>{t.common.more}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setMerging(true)}>
+            <Merge aria-hidden="true" />
+            {words.merge.entry}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
             <Trash2 aria-hidden="true" />
             {words.delete}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {merging && (
+        <MergeDialog
+          video={video}
+          onClose={() => setMerging(false)}
+          onMerged={onMerged}
+          onReload={() => {
+            setMerging(false);
+            onStale();
+          }}
+        />
+      )}
       {deleting && (
         <GroupConfirmDialog
           request={() => deleteVideo(video.id, video.contentVersion ?? "")}

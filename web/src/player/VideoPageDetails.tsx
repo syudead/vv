@@ -35,6 +35,7 @@ export default function VideoPageDetails({
   onGroupChanged,
   onEditingThumbnail,
   onDeleted,
+  onMerged,
 }: {
   loading: boolean;
   video: Video | undefined;
@@ -52,6 +53,7 @@ export default function VideoPageDetails({
   onGroupChanged: () => void;
   onEditingThumbnail: (editing: boolean) => void;
   onDeleted: () => void;
+  onMerged: (merged: Video) => void;
 }) {
   if (loading)
     return (
@@ -126,6 +128,7 @@ export default function VideoPageDetails({
             onStale={reread}
             onFavorite={setFavorite}
             onDeleted={onDeleted}
+            onMerged={onMerged}
             onEditingChange={onEditingThumbnail}
             details={details}
           />
