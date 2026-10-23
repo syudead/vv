@@ -138,16 +138,18 @@ type WorkInfoPluginManifest struct {
 	Settings    []WorkInfoPluginSetting
 	// Sources lists a person plugin's external-ID sources in manifest order; nil for a work-info plugin.
 	Sources []string
+	// Domains lists the link hosts a person plugin fetches by url, in manifest order; nil when it declares none.
+	Domains []string
 }
 
 func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 	return slices.Contains(m.Operations, op)
 }
 
-// Unknown manifest fields are ignored.
+// Unknown manifest fields are ignored. Sources and domains are read by exact key instead, because encoding/json
+// would also decode a key that differs only in case and reject its value's type.
 type manifestJSON struct {
 	Kind        WorkInfoPluginKind  `json:"kind"`
-	Sources     []string            `json:"sources"`
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
 	Description string              `json:"description"`
@@ -209,6 +211,14 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	if rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
+	sources, hasSources, rejection := exactStrings(top, "sources")
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
+	}
+	domains, hasDomains, rejection := exactStrings(top, "domains")
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
+	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
 		Kind:        WorkInfoPluginKindWork,
@@ -217,7 +227,8 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 		Description: raw.Description,
 		Operations:  raw.Operations,
 		Settings:    settings,
-		Sources:     raw.Sources,
+		Sources:     sources,
+		Domains:     domains,
 	}
 	// A present kind, null included, must name a kind; only an absent one defaults to work.
 	if _, hasKind := top["kind"]; hasKind {
@@ -226,11 +237,23 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	if rejection := checkManifest(m); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
-	_, hasSources := top["sources"]
-	if rejection := checkPluginKind(m, hasSources); rejection != nil {
+	if rejection := checkPluginKind(m, hasSources, hasDomains); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
 	return m, nil
+}
+
+// exactStrings reads key only under its exact spelling, so a key that differs in case stays an ignored unknown field.
+func exactStrings(top map[string]json.RawMessage, key string) ([]string, bool, *WorkInfoPluginManifestError) {
+	value, ok := top[key]
+	if !ok {
+		return nil, false, nil
+	}
+	var values []string
+	if err := json.Unmarshal(value, &values); err != nil {
+		return nil, true, typeRejection(key, err)
+	}
+	return values, true, nil
 }
 
 // Decode array items separately to retain indices missing from UnmarshalTypeError.Field.
@@ -424,6 +447,8 @@ type WorkInfoRunRequest struct {
 	Kind WorkInfoPluginKind
 	// Source is a person plugin fetch's external-ID source, one of Sources; it is sent only for that fetch.
 	Source string
+	// URL replaces Source and ID in a person plugin's fetch by link; it matches one of the plugin's domains.
+	URL string
 	// Sources is a person plugin's declared sources, which its search candidates must use; it is never sent.
 	Sources []string
 }
@@ -444,16 +469,19 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Query     string            `json:"query,omitempty"`
 		Source    string            `json:"source,omitempty"`
 		ID        string            `json:"id,omitempty"`
+		URL       string            `json:"url,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
-	switch r.Operation {
-	case WorkInfoSearch:
+	}{WorkInfoPluginContract, r.Operation, "", "", "", "", settings}
+	switch {
+	case r.Operation == WorkInfoSearch:
 		body.Query = r.Query
-	case WorkInfoFetch:
+	case r.Operation != WorkInfoFetch:
+	case r.Kind == WorkInfoPluginKindPerson && r.URL != "":
+		body.URL = r.URL
+	case r.Kind == WorkInfoPluginKindPerson:
+		body.Source, body.ID = r.Source, r.ID
+	default:
 		body.ID = r.ID
-		if r.Kind == WorkInfoPluginKindPerson {
-			body.Source = r.Source
-		}
 	}
 	return json.Marshal(body)
 }

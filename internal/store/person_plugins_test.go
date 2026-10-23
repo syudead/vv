@@ -15,7 +15,7 @@ func personPluginUpload(name, digest string, sources ...string) domain.WorkInfoP
 	return upload
 }
 
-func TestPersonPluginUploadStoresKindAndSources(t *testing.T) {
+func TestPersonPluginUploadStoresKindSourcesAndDomains(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()
 
@@ -25,17 +25,25 @@ func TestPersonPluginUploadStoresKindAndSources(t *testing.T) {
 		t.Fatalf("List = %+v, %v", listed, err)
 	}
 	if got := listed[0]; got.Kind() != domain.WorkInfoPluginKindPerson ||
-		!slices.Equal(got.Manifest.Sources, []string{"site", "wiki"}) {
-		t.Fatalf("listed = %+v; want a person plugin with its sources", got)
+		!slices.Equal(got.Manifest.Sources, []string{"site", "wiki"}) || got.Manifest.Domains != nil {
+		t.Fatalf("listed = %+v; want a person plugin with its sources and no domains", got)
 	}
 
 	work, replaced := savePlugin(t, s, pluginUpload("people", "d2"))
 	if !replaced || work.Kind() != domain.WorkInfoPluginKindWork || work.Manifest.Sources != nil {
 		t.Fatalf("work replacement = %+v; want the new kind and no sources", work)
 	}
-	person, _ := savePlugin(t, s, personPluginUpload("people", "d3", "wiki"))
-	if person.Kind() != domain.WorkInfoPluginKindPerson || !slices.Equal(person.Manifest.Sources, []string{"wiki"}) {
-		t.Fatalf("person replacement = %+v; want the new sources", person)
+	withDomains := personPluginUpload("people", "d3", "wiki")
+	withDomains.Manifest.Domains = []string{"example.com", "example.org"}
+	savePlugin(t, s, withDomains)
+	listed, err = s.ListWorkInfoPlugins(ctx)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("List = %+v, %v", listed, err)
+	}
+	if person := listed[0]; person.Kind() != domain.WorkInfoPluginKindPerson ||
+		!slices.Equal(person.Manifest.Sources, []string{"wiki"}) ||
+		!slices.Equal(person.Manifest.Domains, []string{"example.com", "example.org"}) {
+		t.Fatalf("person replacement = %+v; want the new sources and domains", person)
 	}
 }
 

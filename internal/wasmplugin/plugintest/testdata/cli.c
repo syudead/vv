@@ -16,6 +16,13 @@ int main(void) {
         quoted(query); printf(",\"name\":"); quoted(query); puts("}]}");
         return 0;
     }
+    const char *link = text(req, "url");
+    if (*link) {
+        // A person plugin's fetch by link names the person by the link.
+        printf("{\"person\":{\"name\":"); quoted(link);
+        puts(",\"externalIds\":[{\"source\":\"other\",\"value\":\"x\"}]}}");
+        return 0;
+    }
     const char *id = text(req, "id");
     const char *source = text(req, "source");
     if (*source) {

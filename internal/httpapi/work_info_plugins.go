@@ -45,9 +45,9 @@ type WorkInfoPlugins interface {
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at
 	// index has no kept image.
 	WorkInfoFetchPersonImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
-	// FetchPersonWithPlugin may return ErrPersonNotFound, ErrPersonExternalIDMissing, ErrWorkInfoRunInvalid, or the
-	// errors workInfoRunError maps.
-	FetchPersonWithPlugin(ctx context.Context, personID, pluginID int64, source, id *string) (domain.PersonPluginFetchResult, error)
+	// FetchPersonWithPlugin may return ErrPersonNotFound, ErrPersonExternalIDMissing, a PersonLinkAmbiguousError,
+	// ErrPersonLinkUnsupported, ErrWorkInfoRunInvalid, or the errors workInfoRunError maps.
+	FetchPersonWithPlugin(ctx context.Context, personID, pluginID int64, key domain.PersonFetchKey) (domain.PersonPluginFetchResult, error)
 	// PersonPluginFetchImage returns ErrNotFound for a missing result and ErrPersonImageNotFound for an index outside
 	// its images.
 	PersonPluginFetchImage(personID int64, fetchID string, index int) (domain.WorkInfoCover, error)
@@ -292,6 +292,7 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		Id:          entry.ID,
 		Kind:        gen.WorkInfoPluginKind(entry.Kind),
 		Sources:     entry.Sources,
+		Domains:     entry.Domains,
 		Name:        optionalString(entry.Name),
 		FileName:    entry.FileName,
 		Version:     optionalString(entry.Version),

@@ -16,6 +16,7 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 		PluginID *int64  `json:"pluginId"`
 		Source   *string `json:"source"`
 		ID       *string `json:"id"`
+		Link     *string `json:"link"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
@@ -27,22 +28,34 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	fetch, err := s.workInfoPlugins.FetchPersonWithPlugin(r.Context(), id, *body.PluginID, body.Source, body.ID)
+	fetch, err := s.workInfoPlugins.FetchPersonWithPlugin(r.Context(), id, *body.PluginID,
+		domain.PersonFetchKey{Source: body.Source, ID: body.ID, Link: body.Link})
+	var ambiguous *domain.PersonLinkAmbiguousError
 	switch {
 	case errors.Is(err, domain.ErrPersonNotFound):
 		s.notFoundReason(w, gen.ErrorReasonPersonNotFound, "The person was not found.")
 	case errors.Is(err, domain.ErrPersonExternalIDMissing):
 		s.writeError(w, http.StatusConflict, codePersonExternalIDMissing,
-			"The person has no external ID the plugin accepts. Search by name instead.")
+			"The person has no external ID or link the plugin accepts. Search by name instead.")
+	case errors.As(err, &ambiguous):
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code: codePersonLinkAmbiguous, Links: &ambiguous.Links,
+			Message: "The person has several links the plugin handles. Choose one in links.",
+		})
+	case errors.Is(err, domain.ErrPersonLinkUnsupported):
+		s.writeError(w, http.StatusBadRequest, codePersonLinkUnsupported,
+			"The link's host matches none of the plugin's domains.")
 	case errors.Is(err, domain.ErrWorkInfoRunInvalid):
-		s.invalidRequest(w, "source and id must come together; source must be one the plugin accepts, "+
-			"and id must be 1 to 200 characters after trimming spaces.")
+		s.invalidRequest(w, "source and id must come together and exclude link; source must be one the plugin "+
+			"accepts, id must be 1 to 200 characters after trimming spaces, and link an http or https URL the plugin "+
+			"handles.")
 	case err != nil:
 		s.workInfoRunError(w, err, "The person plugin was not found.")
 	default:
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusCreated, gen.PersonPluginFetch{
 			FetchId: fetch.ID, ExpiresAt: fetch.ExpiresAt.Unix(), Person: toAPIPluginPerson(fetch.Person, fetch.ImageCount),
+			Link: optionalString(fetch.Link),
 		}, s.logger)
 	}
 }

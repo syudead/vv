@@ -27,6 +27,8 @@ type pluginRunArgs struct {
 	// hasSource tells --source with an empty value apart from no --source.
 	source    string
 	hasSource bool
+	// byURL makes input the link of a person plugin's fetch.
+	byURL bool
 }
 
 func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFailure {
@@ -78,6 +80,10 @@ func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 		if args[i] == "--" {
 			positional = append(positional, args[i+1:]...)
 			break
+		}
+		if args[i] == "--url" {
+			parsed.byURL = true
+			continue
 		}
 		name, value, hasValue := strings.Cut(args[i], "=")
 		if name != "--set" && name != "--proxy" && name != "--source" {
@@ -141,10 +147,10 @@ func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs
 		return req, usageFailure("The plugin does not declare the operation %q; its manifest declares %s.",
 			args.operation, joinOperations(manifest.Operations))
 	}
-	if failure := setRunInput(&req, args.input); failure != nil {
+	if failure := setRunKey(&req, manifest, args); failure != nil {
 		return req, failure
 	}
-	if failure := setRunSource(&req, manifest, args); failure != nil {
+	if failure := setRunInput(&req, args.input); failure != nil {
 		return req, failure
 	}
 	for _, key := range slices.Sorted(maps.Keys(args.values)) {
@@ -180,6 +186,9 @@ func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 		}
 		req.Query = query
 	case domain.WorkInfoFetch:
+		if req.URL != "" {
+			return nil
+		}
 		// Pass URL-shaped inputs through as work IDs.
 		id, err := domain.NormalizeWorkInfoSearchQuery(input)
 		if err != nil {
@@ -197,19 +206,40 @@ func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 	return nil
 }
 
-// A person plugin's fetch needs a declared --source; any other run refuses one.
-func setRunSource(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginManifest, args pluginRunArgs) *accountFailure {
+// A person plugin's fetch needs a declared --source, or --url with a link under its domains; any other run refuses
+// both.
+func setRunKey(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginManifest, args pluginRunArgs) *accountFailure {
 	needed := manifest.Kind == domain.WorkInfoPluginKindPerson && req.Operation == domain.WorkInfoFetch
 	switch {
-	case !needed && args.hasSource:
-		return usageFailure("--source applies only to a person plugin's fetch.")
+	case !needed && (args.hasSource || args.byURL):
+		return usageFailure("--source and --url apply only to a person plugin's fetch.")
 	case !needed:
 		return nil
+	case args.byURL && args.hasSource:
+		return usageFailure("--url and --source cannot be used together.")
+	case args.byURL:
+		return setRunLink(req, manifest, args.input)
 	case !args.hasSource || !manifest.DeclaresSource(args.source):
 		return usageFailure("A person plugin's fetch needs --source with one of its sources: %s.",
 			strings.Join(manifest.Sources, ", "))
 	}
 	req.Source = args.source
+	return nil
+}
+
+// setRunLink checks the link as the server checks a link sent for a person fetch.
+func setRunLink(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginManifest, input string) *accountFailure {
+	link, err := domain.NormalizePersonFetchLink(input)
+	if err != nil {
+		return usageFailure("--url needs an http or https link of at most %d characters.", domain.WorkInfoLimits.URLMaxLength)
+	}
+	if len(manifest.Domains) == 0 {
+		return usageFailure("--url needs a plugin that declares domains; this one declares none.")
+	}
+	if !domain.LinkMatchesDomains(link, manifest.Domains) {
+		return usageFailure("The link's host matches none of the plugin's domains: %s.", strings.Join(manifest.Domains, ", "))
+	}
+	req.URL = link
 	return nil
 }
 

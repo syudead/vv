@@ -146,6 +146,8 @@ export interface RequestFailedDetails {
   pluginMessage?: string;
   host?: string;
   settingKeys?: readonly string[];
+  /** The person's links a plugin handles; only for person_link_ambiguous. */
+  links?: readonly string[];
 }
 
 /** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
@@ -159,6 +161,7 @@ export class RequestFailed extends Error {
   readonly pluginMessage: string | undefined;
   readonly host: string | undefined;
   readonly settingKeys: readonly string[] | undefined;
+  readonly links: readonly string[] | undefined;
 
   constructor(
     status: number,
@@ -177,6 +180,7 @@ export class RequestFailed extends Error {
     this.pluginMessage = details.pluginMessage;
     this.host = details.host;
     this.settingKeys = details.settingKeys;
+    this.links = details.links;
   }
 }
 
@@ -274,6 +278,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
         typeof body.pluginMessage === "string" ? body.pluginMessage : undefined,
       host: typeof body.host === "string" ? body.host : undefined,
       settingKeys: stringArray(body.settingKeys),
+      links: stringArray(body.links),
     },
   );
 }

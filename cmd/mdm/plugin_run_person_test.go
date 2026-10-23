@@ -15,6 +15,9 @@ import (
 const personRunManifest = `{"contract":1,"kind":"person","name":"person-test","version":"0.1.0",` +
 	`"operations":["search","fetch"],"sources":["s"]}`
 
+const linkRunManifest = `{"contract":1,"kind":"person","name":"person-test","version":"0.1.0",` +
+	`"operations":["search","fetch"],"sources":["s"],"domains":["example.com"]}`
+
 func TestPluginRunFetchesAPersonFromTheSource(t *testing.T) {
 	module := runModulePath(t, personRunManifest)
 
@@ -33,11 +36,56 @@ func TestPluginRunFetchesAPersonFromTheSource(t *testing.T) {
 	}
 }
 
+func TestPluginRunFetchesAPersonByALinkWithURL(t *testing.T) {
+	module := runModulePath(t, linkRunManifest)
+
+	got := runPluginCommand(t, wasmplugin.Options{}, module, "fetch", "https://www.example.com/p/1", "--url")
+	wantRun(t, got, exitAccountOK)
+	var body map[string]any
+	if err := json.Unmarshal([]byte(got.stdout), &body); err != nil {
+		t.Fatalf("stdout %q: %v", got.stdout, err)
+	}
+	// The fixture names the person by the url it received and adds no ID for the link.
+	want := map[string]any{"person": map[string]any{"name": "https://www.example.com/p/1", "externalIds": []any{
+		map[string]any{"source": "other", "value": "x"},
+	}}}
+	if !reflect.DeepEqual(body, want) {
+		t.Fatalf("stdout = %s, want %v", got.stdout, want)
+	}
+}
+
+func TestPluginRunRefusesAURLTheRunCannotTake(t *testing.T) {
+	cases := []struct {
+		name     string
+		manifest string
+		args     []string
+	}{
+		{"with --source", linkRunManifest, []string{"fetch", "https://example.com/p/1", "--url", "--source", "s"}},
+		{"work-info plugin", runManifest, []string{"fetch", "https://example.com/p/1", "--url", "--set", "token=t"}},
+		{"link outside the domains", linkRunManifest, []string{"fetch", "https://example.org/p/1", "--url"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			module := runModulePath(t, tc.manifest)
+			wantRun(t, runPluginCommand(t, wasmplugin.Options{}, append([]string{module}, tc.args...)...), exitAccountUsage, "--url")
+		})
+	}
+}
+
 func TestPluginPackPrintsThePersonKindAndSources(t *testing.T) {
 	modulePath, manifestPath := writePackFiles(t, testModule(""), personRunManifest)
 	run := runPack(t, modulePath, manifestPath)
 	if run.code != exitAccountOK || !strings.Contains(run.stderr, "Kind: person") || !strings.Contains(run.stderr, "Sources: s") {
 		t.Fatalf("exit = %d, stderr %q; want the kind and the sources", run.code, run.stderr)
+	}
+}
+
+func TestPluginPackPrintsThePersonDomainsAfterTheSources(t *testing.T) {
+	manifest := strings.TrimSuffix(personRunManifest, "}") + `,"domains":["example.com","example.org"]}`
+	modulePath, manifestPath := writePackFiles(t, testModule(""), manifest)
+	run := runPack(t, modulePath, manifestPath)
+	if run.code != exitAccountOK || !strings.Contains(run.stderr, "Sources: s\nDomains: example.com, example.org\n") {
+		t.Fatalf("exit = %d, stderr %q; want the domains after the sources", run.code, run.stderr)
 	}
 }
 

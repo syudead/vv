@@ -43,17 +43,20 @@ func (f *personPluginFetch) imageBytes() int {
 
 func (f *personPluginFetch) expiry() time.Time { return f.expiresAt }
 
-// FetchPersonWithPlugin runs a person plugin's fetch for a person by source and id, which come together or not at
-// all; without them it uses the person's first stored ID the plugin accepts. A missing person returns
-// ErrPersonNotFound, no accepted ID ErrPersonExternalIDMissing, an undeclared source, an id outside 1-200 characters
-// or only one of the two ErrWorkInfoRunInvalid, all before the run; other errors follow run.
+// FetchPersonWithPlugin runs a person plugin's fetch for a person by the key's source and id, which come together, or
+// by its link. A key without either uses the person's first stored ID the plugin accepts, else the person's only
+// folded link under the plugin's domains. A missing person returns ErrPersonNotFound; no accepted ID and no such link
+// ErrPersonExternalIDMissing; several such links a PersonLinkAmbiguousError; a given link no domain matches
+// ErrPersonLinkUnsupported; an undeclared source, an id outside 1-200 characters, only one of the two, a link that is
+// not an http or https URL or a link with source or id ErrWorkInfoRunInvalid, all before the run; other errors follow
+// run.
 func (p *WorkInfoPlugins) FetchPersonWithPlugin(
-	ctx context.Context, personID, pluginID int64, source, id *string,
+	ctx context.Context, personID, pluginID int64, key domain.PersonFetchKey,
 ) (domain.PersonPluginFetchResult, error) {
 	if p.people == nil {
 		return domain.PersonPluginFetchResult{}, errors.New("person plugin fetches are not configured")
 	}
-	if (source == nil) != (id == nil) {
+	if (key.Source == nil) != (key.ID == nil) || (key.Link != nil && key.Source != nil) {
 		return domain.PersonPluginFetchResult{}, domain.ErrWorkInfoRunInvalid
 	}
 	person, err := p.people.Get(ctx, domain.CreditPerson, personID)
@@ -70,7 +73,7 @@ func (p *WorkInfoPlugins) FetchPersonWithPlugin(
 	if plugin.Kind() != domain.WorkInfoPluginKindPerson {
 		return domain.PersonPluginFetchResult{}, domain.ErrWorkInfoPluginKindMismatch
 	}
-	req, err := personFetchRequest(person, plugin.Manifest, source, id)
+	req, err := personFetchRequest(person, plugin.Manifest, key)
 	if err != nil {
 		return domain.PersonPluginFetchResult{}, err
 	}
@@ -87,32 +90,51 @@ func (p *WorkInfoPlugins) FetchPersonWithPlugin(
 	}
 	return domain.PersonPluginFetchResult{
 		ID: p.fetches.addPerson(fetch, p.now()), ExpiresAt: fetch.expiresAt, Person: fetch.person,
-		ImageCount: len(fetch.images),
+		ImageCount: len(fetch.images), Link: req.URL,
 	}, nil
 }
 
-// personFetchRequest takes the candidate's ID when given, otherwise the stored ID the plugin accepts.
+// personFetchRequest takes the candidate's ID or the given link, otherwise the stored ID the plugin accepts, then the
+// one stored link it handles.
 func personFetchRequest(
-	person domain.Credit, manifest domain.WorkInfoPluginManifest, source, id *string,
+	person domain.Credit, manifest domain.WorkInfoPluginManifest, key domain.PersonFetchKey,
 ) (domain.WorkInfoRunRequest, error) {
 	req := domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch}
-	if source == nil {
-		stored, ok := domain.PersonFetchID(person.ExternalIDs, manifest.Sources)
-		if !ok {
-			return req, domain.ErrPersonExternalIDMissing
+	switch {
+	case key.Link != nil:
+		link, err := domain.NormalizePersonFetchLink(*key.Link)
+		if err != nil {
+			return req, err
 		}
+		if !domain.LinkMatchesDomains(link, manifest.Domains) {
+			return req, domain.ErrPersonLinkUnsupported
+		}
+		req.URL = link
+		return req, nil
+	case key.Source != nil:
+		if !manifest.DeclaresSource(*key.Source) {
+			return req, domain.ErrWorkInfoRunInvalid
+		}
+		normalized, err := domain.NormalizeWorkInfoSearchQuery(*key.ID)
+		if err != nil {
+			return req, err
+		}
+		req.Source, req.ID = *key.Source, normalized
+		return req, nil
+	}
+	if stored, ok := domain.PersonFetchID(person.ExternalIDs, manifest.Sources); ok {
 		req.Source, req.ID = stored.Source, stored.Value
 		return req, nil
 	}
-	if !manifest.DeclaresSource(*source) {
-		return req, domain.ErrWorkInfoRunInvalid
+	switch links := domain.PersonFetchLinks(person.Profile.Links, manifest.Domains); len(links) {
+	case 0:
+		return req, domain.ErrPersonExternalIDMissing
+	case 1:
+		req.URL = links[0]
+		return req, nil
+	default:
+		return req, &domain.PersonLinkAmbiguousError{Links: links}
 	}
-	normalized, err := domain.NormalizeWorkInfoSearchQuery(*id)
-	if err != nil {
-		return req, err
-	}
-	req.Source, req.ID = *source, normalized
-	return req, nil
 }
 
 // PersonPluginFetchImage returns ErrNotFound for an unknown, expired or other person's result and

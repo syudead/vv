@@ -10,9 +10,9 @@ import (
 )
 
 const personPluginManifest = `{"contract":1,"kind":"person","name":"example.people","version":"1.0.0",` +
-	`"operations":["search","fetch"],"sources":["site","wiki"]}`
+	`"operations":["search","fetch"],"sources":["site","wiki"],"domains":["example.com","example.org"]}`
 
-func TestPluginListCarriesKindAndSources(t *testing.T) {
+func TestPluginListCarriesKindSourcesAndDomains(t *testing.T) {
 	e := newPluginEnv(t)
 	work := decodePlugin(t, "work", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
 	person := decodePlugin(t, "person", e.uploadParts([]byte(personPluginManifest), 1, e.owner), http.StatusCreated)
@@ -26,11 +26,13 @@ func TestPluginListCarriesKindAndSources(t *testing.T) {
 	for _, p := range list.Plugins {
 		byID[p.Id] = p
 	}
-	if got := byID[work.Id]; got.Kind != gen.WorkInfoPluginKindWork || got.Sources == nil || len(got.Sources) != 0 {
-		t.Errorf("work-info plugin = %+v; want kind work and empty sources", got)
+	if got := byID[work.Id]; got.Kind != gen.WorkInfoPluginKindWork || got.Sources == nil || len(got.Sources) != 0 ||
+		got.Domains == nil || len(got.Domains) != 0 {
+		t.Errorf("work-info plugin = %+v; want kind work and empty sources and domains", got)
 	}
-	if got := byID[person.Id]; got.Kind != gen.WorkInfoPluginKindPerson || !slices.Equal(got.Sources, []string{"site", "wiki"}) {
-		t.Errorf("person plugin = %+v; want kind person and its sources", got)
+	if got := byID[person.Id]; got.Kind != gen.WorkInfoPluginKindPerson || !slices.Equal(got.Sources, []string{"site", "wiki"}) ||
+		!slices.Equal(got.Domains, []string{"example.com", "example.org"}) {
+		t.Errorf("person plugin = %+v; want kind person with its sources and domains", got)
 	}
 
 	mismatch := wantError{status: http.StatusConflict, code: gen.ErrorCodePluginKindMismatch}

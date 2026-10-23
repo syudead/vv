@@ -275,6 +275,128 @@ describe("PersonPage fetch info", () => {
     });
   });
 
+  it("fetches the one handled link with only the plugin and names it on the source line", async () => {
+    server.handledLinks = ["https://example.com/p/1"];
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    expect(await within(dialog).findByRole("checkbox", { name: "Cup" })).toBeTruthy();
+    expect(
+      within(dialog).getByText("From people · https://example.com/p/1"),
+    ).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches")[0])).toEqual({
+      pluginId: 5,
+    });
+  });
+
+  it("offers the handled links as a choice and fetches the pressed one", async () => {
+    server.handledLinks = ["https://example.com/p/1", "https://example.com/p/2?tab=a"];
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    const list = await within(dialog).findByRole("region", {
+      name: "Links people handles",
+    });
+    expect(within(dialog).getByRole("button", { name: "Fetch" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.click(within(list).getByRole("button", { name: /\/p\/2\?tab=a/ }));
+
+    expect(
+      await within(dialog).findByText("From people · https://example.com/p/2?tab=a"),
+    ).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches")[1])).toEqual({
+      pluginId: 5,
+      link: "https://example.com/p/2?tab=a",
+    });
+    // Back keeps the choice, so another link is one press away.
+    await user.click(within(dialog).getByRole("button", { name: "Back" }));
+    expect(
+      within(dialog).getByRole("region", { name: "Links people handles" }),
+    ).toBeTruthy();
+  });
+
+  it("resends the picked link when the result went out of date", async () => {
+    server.handledLinks = ["https://example.com/p/1", "https://example.com/p/2"];
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    server.staleApply = true;
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await user.click(await within(dialog).findByRole("button", { name: /\/p\/2/ }));
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Apply selected" }),
+    );
+
+    await user.click(await within(dialog).findByRole("button", { name: "Fetch again" }));
+
+    await within(dialog).findByRole("button", { name: "Apply selected" });
+    const fetches = sent("POST", "/api/people/7/plugin-fetches");
+    expect(fetches).toHaveLength(3);
+    expect(sentBody(fetches[2])).toEqual({
+      pluginId: 5,
+      link: "https://example.com/p/2",
+    });
+  });
+
+  it("fetches a link typed into Name instead of searching it", async () => {
+    server.handledLinks = ["https://example.com/p/1"];
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
+    const field = within(dialog).getByRole("textbox", { name: "Name" });
+    await user.clear(field);
+    // The server's URL parser rejects the slash-less form the browser accepts, so the browser's serialization is sent.
+    await user.type(field, "https:example.com/p/1");
+
+    expect(
+      within(dialog).getByText("Fetches the person on this page instead of searching."),
+    ).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    expect(await within(dialog).findByRole("checkbox", { name: "Cup" })).toBeTruthy();
+    expect(sent("POST", "/api/work-info-plugins/5/person-search")).toHaveLength(0);
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches")[0])).toEqual({
+      pluginId: 5,
+      link: "https://example.com/p/1",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Back to the matches" }));
+    expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveProperty(
+      "value",
+      "https:example.com/p/1",
+    );
+  });
+
+  it("keeps a typed link the plugin does not handle and says why, searching nothing", async () => {
+    server.plugins = [{ ...people, domains: ["example.com", "other.example"] }];
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
+    const field = within(dialog).getByRole("textbox", { name: "Name" });
+    await user.clear(field);
+    await user.type(field, "https://elsewhere.test/a");
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    expect(
+      await within(dialog).findByText(
+        "people doesn't handle links on elsewhere.test. It accepts links from example.com, other.example.",
+      ),
+    ).toBeTruthy();
+    expect(field).toHaveProperty("value", "https://elsewhere.test/a");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(sent("POST", "/api/work-info-plugins/5/person-search")).toHaveLength(0);
+
+    await user.type(field, "x");
+    expect(within(dialog).queryByText(/doesn't handle links/)).toBeNull();
+  });
+
   it("lists the values the apply left out", async () => {
     server.person = person(stored);
     server.fetched = {

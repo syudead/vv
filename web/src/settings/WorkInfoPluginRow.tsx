@@ -45,6 +45,8 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
     parts.push({ id: "operations", node: operations.join(" · ") });
   if (plugin.kind === "person" && plugin.sources.length > 0)
     parts.push({ id: "sources", node: text.person.accepts(plugin.sources) });
+  if (plugin.kind === "person" && plugin.domains.length > 0)
+    parts.push({ id: "domains", node: text.person.acceptsLinks(plugin.domains) });
   if (plugin.network)
     parts.push({
       id: "network",

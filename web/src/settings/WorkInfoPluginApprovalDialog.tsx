@@ -8,6 +8,18 @@ import { Badge } from "../ui/shadcn/badge";
 import WorkInfoPluginDialog from "./WorkInfoPluginDialog";
 import { operationTexts, pluginName } from "./workInfoPluginRows";
 
+function BadgeRow({ items, className }: { items: string[]; className?: string }) {
+  return (
+    <span className="flex flex-wrap gap-1">
+      {items.map((item) => (
+        <Badge key={item} variant="secondary" className={className}>
+          {item}
+        </Badge>
+      ))}
+    </span>
+  );
+}
+
 function facts(plugin: WorkInfoPlugin): Fact[] {
   const text = t.settings.workInfoPlugins.approval;
   const list: Fact[] = [];
@@ -29,14 +41,18 @@ function facts(plugin: WorkInfoPlugin): Fact[] {
     list.push({
       id: "sources",
       term: text.sources,
+      value: <BadgeRow items={plugin.sources} />,
+    });
+  // A domain is never clipped: the owner approves exactly the sites it names.
+  if (plugin.kind === "person" && plugin.domains.length > 0)
+    list.push({
+      id: "domains",
+      term: text.domains,
       value: (
-        <span className="flex flex-wrap gap-1">
-          {plugin.sources.map((source) => (
-            <Badge key={source} variant="secondary">
-              {source}
-            </Badge>
-          ))}
-        </span>
+        <BadgeRow
+          items={plugin.domains}
+          className="h-auto min-h-6 max-w-full py-0.5 whitespace-normal break-all"
+        />
       ),
     });
   if (plugin.description !== undefined)

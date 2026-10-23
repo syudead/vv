@@ -2179,7 +2179,7 @@ export interface paths {
         put?: never;
         /**
          * Fetch a person's information with a person plugin
-         * @description Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate, or not at all: then VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares, and returns 409 person_external_id_missing before running when there is none. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source or an id outside 1–200 characters after trimming 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md.
+         * @description Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md.
          */
         post: operations["fetchPersonWithPlugin"];
         delete?: never;
@@ -3686,6 +3686,8 @@ export interface components {
             kind: components["schemas"]["WorkInfoPluginKind"];
             /** @description A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin. */
             sources: string[];
+            /** @description The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none. */
+            domains: string[];
             /** @description Manifest name; absent when the manifest could not be read. */
             name?: string;
             /** @description Uploaded filename. */
@@ -3782,17 +3784,19 @@ export interface components {
         PersonPluginFetchRequest: {
             /** Format: int64 */
             pluginId: number;
-            /** @description A search candidate's source; requires id. */
+            /** @description A search candidate's source; requires id and excludes link. */
             source?: string;
-            /** @description A search candidate's id; requires source. */
+            /** @description A search candidate's id; requires source and excludes link. */
             id?: string;
+            /** @description An http or https link to fetch by, the person's or one the owner typed; excludes source and id. Its host must be one of the plugin's domains or end with a dot and one of them. */
+            link?: string;
         };
         /** @description A person as the plugin returned it, after VV's limits. */
         PersonPluginFetchedPerson: {
             name: string;
             /** @description First 50 distinct names; languages are checked by the apply. */
             aliases: components["schemas"]["Alias"][];
-            /** @description The fetched ID first, then the plugin's other distinct IDs, up to 20. */
+            /** @description The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs. */
             externalIds: components["schemas"]["ExternalId"][];
             /** @description Plugin-provided profile values that pass validation; omitted when none. */
             profile?: components["schemas"]["PersonProfile"];
@@ -3809,6 +3813,8 @@ export interface components {
              */
             expiresAt: number;
             person: components["schemas"]["PersonPluginFetchedPerson"];
+            /** @description The link the fetch ran with; absent for a fetch by external ID. */
+            link?: string;
         };
         /**
          * @description One applicable part of a fetched person; a profile item is one profile property.
@@ -6719,7 +6725,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -6735,6 +6741,8 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
+            /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
+            links?: string[];
         };
         /**
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
