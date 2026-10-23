@@ -848,6 +848,10 @@ whose person still exists, each with its person as a `CreditRef`, the
 person's face `imageRevision`, `hasCrop` and the same joined spans as the
 person's list, ordered by the first span's start and then by appearance id
 ([`video_face_appearances.go`](../../internal/store/video_face_appearances.go)).
+A merged person can own several appearances in one video, so the page shows
+one row per person, not per appearance: it joins that person's spans and
+keeps the person where their first appearance is
+([library-ui.md](library-ui.md#tabs)).
 
 `GET /api/face-appearances/{id}/crop` answers the crop with
 `Cache-Control: private, max-age=86400`: a crop is never rewritten, and a
