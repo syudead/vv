@@ -45,6 +45,7 @@ import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
 import { type PreviewCoordinator, usePreviewChanges } from "./usePreviewCoordination";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
+import { VirtualMark } from "./VirtualMark";
 
 export interface VideoCardProps {
   video: Video;
@@ -166,6 +167,52 @@ function PublicMark() {
       <span className="sr-only">{t.list.card.public}</span>
     </>
   );
+}
+
+/** A virtual video's mark takes the duration's place; a file video's time follows the scrub position. */
+function CardDuration({
+  video,
+  duration,
+  versions,
+  versionsId,
+  virtualId,
+  publicMark,
+  scrubPositionMs,
+}: {
+  video: Video;
+  duration: string;
+  versions: number | null;
+  versionsId: string;
+  virtualId: string;
+  publicMark: boolean;
+  scrubPositionMs: number | null;
+}) {
+  if (versions === null && !publicMark && duration === "" && !video.virtual) return null;
+  return (
+    <VideoThumbnailDuration>
+      {versions !== null && <VersionsMark count={versions} id={versionsId} />}
+      {publicMark && <PublicMark />}
+      {video.virtual && <VirtualMark id={virtualId} />}
+      {duration !== "" && (
+        <span>
+          {scrubPositionMs === null
+            ? duration
+            : t.list.card.scrubTime(formatDuration(scrubPositionMs), duration)}
+        </span>
+      )}
+    </VideoThumbnailDuration>
+  );
+}
+
+/** The link name replaces child text, so the marks' accessible text is referenced as its description. */
+function describedBy(
+  video: Video,
+  versions: number | null,
+  versionsId: string,
+  virtualId: string,
+): string | undefined {
+  if (video.virtual) return virtualId;
+  return versions === null ? undefined : versionsId;
 }
 
 /**
@@ -291,6 +338,7 @@ function VideoCard(props: VideoCardProps) {
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
   const versionsId = useId();
+  const virtualId = useId();
   const owner = useAudience() === "owner";
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const preview = useCardPreview({ video, selectionMode, previewCoordinator });
@@ -343,9 +391,7 @@ function VideoCard(props: VideoCardProps) {
             ? video.title
             : t.list.card.withLocation(video.title, location.label)
         }
-        // The link name replaces child text; reference the versions mark as an accessible description.
-        //
-        aria-describedby={versions === null ? undefined : versionsId}
+        aria-describedby={describedBy(video, versions, versionsId, virtualId)}
         onClick={(event) => {
           previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
@@ -358,22 +404,15 @@ function VideoCard(props: VideoCardProps) {
         <VideoThumbnail selected={selected}>
           <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
-          {(versions !== null || publicMark || duration !== "") && (
-            <VideoThumbnailDuration>
-              {versions !== null && <VersionsMark count={versions} id={versionsId} />}
-              {publicMark && <PublicMark />}
-              {duration !== "" && (
-                <span>
-                  {scrubPosition === null
-                    ? duration
-                    : t.list.card.scrubTime(
-                        formatDuration(scrubPosition.positionMs),
-                        duration,
-                      )}
-                </span>
-              )}
-            </VideoThumbnailDuration>
-          )}
+          <CardDuration
+            video={video}
+            duration={duration}
+            versions={versions}
+            versionsId={versionsId}
+            virtualId={virtualId}
+            publicMark={publicMark}
+            scrubPositionMs={scrubPosition?.positionMs ?? null}
+          />
 
           {ratio !== null && (
             <VideoThumbnailProgress
@@ -546,14 +585,16 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         <span className="inline-flex items-center justify-end gap-1.5">
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}
+          {video.virtual && <VirtualMark />}
           {duration}
         </span>
       </TableCell>
+      {/* A virtual video has no file, so its quality and size cells stay empty. */}
       <TableCell className="hidden w-list-number pr-4 text-right font-semibold uppercase md:table-cell">
-        {quality}
+        {!video.virtual && quality}
       </TableCell>
       <TableCell className="hidden w-list-number-wide pr-4 text-right text-muted-foreground tabular-nums md:table-cell">
-        {formatBytes(video.sizeBytes)}
+        {!video.virtual && formatBytes(video.sizeBytes)}
       </TableCell>
       <TableCell className="hidden w-list-date pr-3 text-right text-muted-foreground tabular-nums lg:table-cell">
         {formatRelative(video.addedAt)}

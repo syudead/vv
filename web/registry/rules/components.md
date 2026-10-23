@@ -399,14 +399,17 @@ Do not use it for forms or details; use `Dialog`.
 Item `video-thumbnail`. The 16:9 thumbnail frame shared by video, group and
 folder cards and list rows. Put the image (or `VideoThumbnailImage`, or a
 hover preview) as children, then the overlays it needs:
-`VideoThumbnailDuration` bottom right (a versions mark and a public mark may come first),
+`VideoThumbnailDuration` bottom right (a versions mark and a public mark may come first;
+a virtual video, which has no file, shows `VirtualMark` there instead of a duration),
 `VideoThumbnailProgress` on the bottom edge for the share watched,
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
 `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
-when the video cannot play. `selected` rings the frame in `primary`.
+when the video cannot play. A virtual video has no progress, notice or hover
+preview. `selected` rings the frame in `primary`.
 
 Do not draw a thumbnail with its own frame, badge or progress bar, and do not
-put text other than the duration and the notice on the image.
+put text other than the duration (or the virtual mark in its place) and the
+notice on the image.
 
 ### FavoriteToggle
 

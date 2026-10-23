@@ -963,6 +963,8 @@ export const en = {
     },
     card: {
       select: (title: string) => `Select "${title}"`,
+      virtual: "Virtual",
+      virtualLabel: "Virtual video, no file",
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
       //
@@ -988,6 +990,17 @@ export const en = {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
       setUp: "Set up library",
+    },
+    newVirtualVideo: {
+      action: "New virtual video",
+      title: "New virtual video",
+      description:
+        "A video without a file. Add links, a description and a thumbnail on its page.",
+      field: "Title",
+      rule: "Enter a title.",
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the virtual video: ${reason}`,
     },
     view: {
       label: "View",

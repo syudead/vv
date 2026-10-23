@@ -56,7 +56,8 @@ export function qualityLabel(video: Pick<Video, "width" | "height">): string {
 }
 
 export function unplayableText(video: Video): UiText | null {
-  if (video.playable) {
+  // A virtual video has no file, which its mark already says; it is not a file that fails to play.
+  if (video.playable || video.virtual) {
     return null;
   }
   if (video.probeState === "failed") {
