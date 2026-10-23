@@ -2,7 +2,13 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { installPersonServer, renderPage, sent } from "../../testing/personPage";
+import {
+  installPersonServer,
+  person,
+  renderPage,
+  sent,
+  server,
+} from "../../testing/personPage";
 import { encodeFaceFrame } from "./faceFrameImage";
 
 vi.mock("./faceFrameImage", () => ({
@@ -13,13 +19,16 @@ vi.mock("./faceFrameImage", () => ({
 
 installPersonServer();
 
+const loaded: string[] = [];
+
 /** jsdom decodes no images, so every picture loads as 1000 by 500 px. */
 class LoadedImage {
   naturalWidth = 1000;
   naturalHeight = 500;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  set src(_: string) {
+  set src(value: string) {
+    loaded.push(value);
     queueMicrotask(() => this.onload?.());
   }
 }
@@ -37,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  loaded.length = 0;
   vi.mocked(encodeFaceFrame).mockClear();
 });
 
@@ -89,5 +99,22 @@ describe("FaceCropDialog", () => {
       expect(screen.queryByRole("dialog", { name: /Frame the face/ })).toBeNull(),
     );
     expect(sent("PUT", "/api/people/7/image")).toHaveLength(0);
+  });
+
+  it("reframes the stored face and saves the cut as the new face", async () => {
+    const user = userEvent.setup();
+    server.person = person({ imageRevision: 2 });
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Change face" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reframe the face…" }));
+
+    const dialog = await framing();
+    expect(loaded).toEqual(["/api/people/7/image?v=2"]);
+    await user.click(within(dialog).getByRole("button", { name: "Set as face" }));
+
+    expect(vi.mocked(encodeFaceFrame)).toHaveBeenCalledTimes(1);
+    const image = await screen.findByRole("img", { name: "Aoi" });
+    expect(image.getAttribute("src")).toBe("/api/people/7/image?v=3");
+    expect(sent("PUT", "/api/people/7/image")).toHaveLength(1);
   });
 });
