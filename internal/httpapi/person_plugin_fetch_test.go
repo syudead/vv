@@ -21,16 +21,16 @@ type scriptedPersonFetches struct {
 	applied    domain.PersonPluginApplied
 	image      *domain.WorkInfoCover
 	calls      int
-	source, id *string
+	key        domain.PersonFetchKey
 	selection  domain.PersonPluginSelection
 	imageIndex int
 }
 
 func (p *scriptedPersonFetches) FetchPersonWithPlugin(
-	_ context.Context, _, _ int64, source, id *string,
+	_ context.Context, _, _ int64, key domain.PersonFetchKey,
 ) (domain.PersonPluginFetchResult, error) {
 	p.calls++
-	p.source, p.id = source, id
+	p.key = key
 	return p.fetch, p.err
 }
 
@@ -82,8 +82,8 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 		len(fetch.Person.ExternalIds) != 1 || fetch.Person.Aliases == nil || fetch.Person.Profile != nil {
 		t.Fatalf("fetch = %d %s", status, body)
 	}
-	if plugins.source == nil || *plugins.source != "wiki" || plugins.id == nil || *plugins.id != "w-1" {
-		t.Fatalf("source, id = %v, %v; want the candidate passed on", plugins.source, plugins.id)
+	if k := plugins.key; k.Source == nil || *k.Source != "wiki" || k.ID == nil || *k.ID != "w-1" || k.Link != nil {
+		t.Fatalf("key = %+v; want the candidate passed on", k)
 	}
 
 	for _, tc := range []struct {
@@ -96,6 +96,8 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 		{"missing plugin", domain.ErrNotFound, wantError{status: 404, code: gen.ErrorCodeNotFound}},
 		{"no accepted ID", domain.ErrPersonExternalIDMissing,
 			wantError{status: 409, code: gen.ErrorCodePersonExternalIdMissing}},
+		{"link outside the domains", domain.ErrPersonLinkUnsupported,
+			wantError{status: 400, code: gen.ErrorCodePersonLinkUnsupported}},
 		{"work-info plugin", domain.ErrWorkInfoPluginKindMismatch, wantError{status: 409, code: gen.ErrorCodePluginKindMismatch}},
 		{"undeclared source", domain.ErrWorkInfoRunInvalid, wantError{status: 400, code: gen.ErrorCodeInvalidRequest}},
 		{"run failure", &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed},
@@ -113,6 +115,35 @@ func TestFetchPersonWithPluginAnswersTheResultOrItsError(t *testing.T) {
 	}
 	assertUnauthenticated(t, "guest fetch",
 		e.serve(authRequest{method: http.MethodPost, target: personFetchPath, body: `{"pluginId":1}`}))
+}
+
+func TestFetchPersonWithPluginByLinkAnswersTheLinkOrTheChoices(t *testing.T) {
+	e, owner, plugins := newPersonFetchRouteEnv(t)
+	post := func(body string) (int, []byte) {
+		rec := e.serve(authRequest{method: http.MethodPost, target: personFetchPath, body: body, cookies: []*http.Cookie{owner}})
+		return rec.Code, rec.Body.Bytes()
+	}
+	link := "https://example.com/p/1"
+	plugins.fetch = domain.PersonPluginFetchResult{
+		ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), Person: domain.FetchedPluginPerson{Name: "Hanako"}, Link: link,
+	}
+	status, body := post(`{"pluginId":1,"link":"https://example.com/p/1"}`)
+	var fetch gen.PersonPluginFetch
+	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.Link == nil || *fetch.Link != link {
+		t.Fatalf("fetch by link = %d %s; want 201 with the link", status, body)
+	}
+	if k := plugins.key; k.Link == nil || *k.Link != link || k.Source != nil || k.ID != nil {
+		t.Fatalf("key = %+v; want the link passed on", k)
+	}
+
+	links := []string{"https://example.com/p/1", "https://m.example.com/p/2"}
+	plugins.err = &domain.PersonLinkAmbiguousError{Links: links}
+	status, body = post(`{"pluginId":1}`)
+	assertErrorBody(t, "several links", status, body, wantError{status: 409, code: gen.ErrorCodePersonLinkAmbiguous})
+	var answer gen.Error
+	if json.Unmarshal(body, &answer) != nil || answer.Links == nil || !reflect.DeepEqual(*answer.Links, links) {
+		t.Fatalf("ambiguous body = %s; want the links to choose from", body)
+	}
 }
 
 func TestPersonPluginFetchImageServesTheKeptImageByIndex(t *testing.T) {

@@ -233,6 +233,9 @@ const errorCodes = {
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
   person_external_id_missing:
     "This person has no ID the plugin accepts. Search by name instead.",
+  person_link_ambiguous:
+    "This person has several links the plugin handles. Choose one first.",
+  person_link_unsupported: "The plugin doesn't handle this link.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",

@@ -106,7 +106,7 @@ type PersonCandidate struct {
 }
 
 // FetchedPluginPerson keeps the plugin's values without the apply's validation; ExternalIDs starts with the
-// request's (source, id).
+// request's (source, id) unless the fetch went by link.
 type FetchedPluginPerson struct {
 	Name        string
 	Aliases     []Alias
@@ -152,7 +152,11 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 		if name == "" {
 			break
 		}
-		ids := appendFetchedExternalIDs([]ExternalID{{Source: req.Source, Value: req.ID}}, raw.Person.ExternalIDs)
+		var ids []ExternalID
+		if req.URL == "" {
+			ids = []ExternalID{{Source: req.Source, Value: req.ID}}
+		}
+		ids = appendFetchedExternalIDs(ids, raw.Person.ExternalIDs)
 		return WorkInfoRunResult{Person: FetchedPluginPerson{
 			Name:        name,
 			Aliases:     parseFetchedAliases(raw.Person.Aliases),

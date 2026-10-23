@@ -511,6 +511,8 @@ const (
 	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
 	ErrorCodePersonExternalIdMissing     ErrorCode = "person_external_id_missing"
+	ErrorCodePersonLinkAmbiguous         ErrorCode = "person_link_ambiguous"
+	ErrorCodePersonLinkUnsupported       ErrorCode = "person_link_unsupported"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
@@ -576,6 +578,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeOverlappingMediaDirectories:
 		return true
 	case ErrorCodePersonExternalIdMissing:
+		return true
+	case ErrorCodePersonLinkAmbiguous:
+		return true
+	case ErrorCodePersonLinkUnsupported:
 		return true
 	case ErrorCodePluginBusy:
 		return true
@@ -3498,6 +3504,9 @@ type Error struct {
 	// Limit Reason limit, included only for reasons whose contract specifies a limit.
 	Limit *int `json:"limit,omitempty"`
 
+	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
+	Links *[]string `json:"links,omitempty"`
+
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
 
@@ -4795,6 +4804,9 @@ type PersonPluginFetch struct {
 	// FetchId Result identifier used when applying it.
 	FetchId string `json:"fetchId"`
 
+	// Link The link the fetch ran with; absent for a fetch by external ID.
+	Link *string `json:"link,omitempty"`
+
 	// Person A person as the plugin returned it, after VV's limits.
 	Person PersonPluginFetchedPerson `json:"person"`
 }
@@ -4810,11 +4822,14 @@ type PersonPluginFetchApplied struct {
 
 // PersonPluginFetchRequest defines model for PersonPluginFetchRequest.
 type PersonPluginFetchRequest struct {
-	// Id A search candidate's id; requires source.
-	Id       *string `json:"id,omitempty"`
+	// Id A search candidate's id; requires source and excludes link.
+	Id *string `json:"id,omitempty"`
+
+	// Link An http or https link to fetch by, the person's or one the owner typed; excludes source and id. Its host must be one of the plugin's domains or end with a dot and one of them.
+	Link     *string `json:"link,omitempty"`
 	PluginId int64   `json:"pluginId"`
 
-	// Source A search candidate's source; requires id.
+	// Source A search candidate's source; requires id and excludes link.
 	Source *string `json:"source,omitempty"`
 }
 
@@ -4823,7 +4838,7 @@ type PersonPluginFetchedPerson struct {
 	// Aliases First 50 distinct names; languages are checked by the apply.
 	Aliases []Alias `json:"aliases"`
 
-	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20.
+	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs.
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// ImageCount How many images VV kept, in the plugin's order; served by index.
