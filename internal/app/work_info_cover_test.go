@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/gif"
 	"image/png"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -222,5 +223,42 @@ func TestApplyCoverIsSkippedWhenTheVideoOrTheApplierIsMissing(t *testing.T) {
 			len(covers.images) != 0 || e.applier.titles[fetchVideo] != "Title" {
 			t.Fatalf("%s: apply = %+v, %v; want the cover skipped and the title written", name, applied, err)
 		}
+	}
+}
+
+type virtualWorkVideo domain.Video
+
+func (v virtualWorkVideo) GetVideo(_ context.Context, _ domain.Audience, id int64) (domain.Video, error) {
+	if id != v.ID {
+		return domain.Video{}, domain.ErrNotFound
+	}
+	return domain.Video(v), nil
+}
+
+// A virtual video has no geometry, so its chosen cover goes through the upload path fitted to 16:9 under its key.
+func TestApplyCoverToVirtualVideoFitsItTo16By9UnderItsKey(t *testing.T) {
+	video := domain.Video{ID: fetchVideo, ContentKey: "virtual:3", UserKey: "virtual:3"}
+	generator := &fakeGenerator{thumbnailDir: t.TempDir()}
+	store := newFakeIngestStore(video)
+	ingest, _ := newTestIngest(store, generator)
+	e := newFetchEnv()
+	e.plugins.videos, e.plugins.covers = virtualWorkVideo(video), ingest
+	cover := pngOf(t, 4, 3)
+	result := e.fetchCover(t, cover)
+
+	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
+		domain.WorkInfoSelection{Fields: []domain.WorkInfoField{domain.WorkInfoFieldCover}, CoverIndex: 0}, false)
+	if err != nil || len(applied.Skipped) != 0 {
+		t.Fatalf("apply = %+v, %v; want the cover applied", applied, err)
+	}
+	// The store refuses the apply when the video under the ID no longer has the key the fetch saw.
+	if len(e.applier.calls) != 1 || e.applier.calls[0].ContentKey != "virtual:3" {
+		t.Fatalf("apply calls = %+v; want one bound to the fetched key virtual:3", e.applier.calls)
+	}
+	if want := []float64{domain.VirtualThumbnailAspect}; !slices.Equal(generator.aspects, want) {
+		t.Fatalf("aspects = %v, want %v", generator.aspects, want)
+	}
+	if row := store.rows["virtual:3"]; !bytes.Equal(row.Image, append([]byte("fitted:"), cover...)) {
+		t.Fatalf("image under the virtual key = %q; want the fitted cover", row.Image)
 	}
 }
