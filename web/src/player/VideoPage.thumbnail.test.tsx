@@ -570,7 +570,7 @@ describe("VideoPage Thumbnail tab", () => {
       });
     });
 
-    it("スプライトのある動画はシートを画像として出すだけで、コマから位置は送らない（フィードバック 3）", async () => {
+    it("スプライトのある動画はシートを小さく出し、押すと大きく見せ、Esc ではダイアログだけ閉じる（フィードバック 3）", async () => {
       server.video = withSprite;
       await openThumbnail();
       const list = await screen.findByRole("list", { name: "Seek preview" });
@@ -584,7 +584,18 @@ describe("VideoPage Thumbnail tab", () => {
           image.getAttribute("alt"),
         ),
       ).toEqual(["Seek preview sheet 1 of 2", "Seek preview sheet 2 of 2"]);
-      expect(within(list).queryByRole("button")).toBeNull();
+      fireEvent.click(
+        within(list).getByRole("button", {
+          name: "Show seek preview sheet 1 of 2 large",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: "Seek preview sheet 1 of 2",
+      });
+      // Escape closes only the dialog; the page's own Escape would leave the video.
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("list", { name: "Seek preview" })).toBeDefined();
       expect(server.position).not.toHaveBeenCalled();
     });
 

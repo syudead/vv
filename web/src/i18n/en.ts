@@ -2228,6 +2228,8 @@ export const en = {
       seekSpriteFailed: "Couldn't load the seek preview",
       seekSpriteSheet: (index: number, count: number) =>
         `Seek preview sheet ${String(index)} of ${String(count)}`,
+      openSeekSpriteSheet: (index: number, count: number) =>
+        `Show seek preview sheet ${String(index)} of ${String(count)} large`,
     },
     //
     thumbnailEdit: {
