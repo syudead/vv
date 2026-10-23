@@ -3686,6 +3686,8 @@ export interface components {
             kind: components["schemas"]["WorkInfoPluginKind"];
             /** @description A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin. */
             sources: string[];
+            /** @description The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none. */
+            domains: string[];
             /** @description Manifest name; absent when the manifest could not be read. */
             name?: string;
             /** @description Uploaded filename. */

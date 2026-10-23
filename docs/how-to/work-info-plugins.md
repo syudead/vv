@@ -232,6 +232,7 @@ before the other fields.
 | `contract` | integer | Yes | `1` |
 | `kind` | string | No | `work` (the default) or `person`; a person plugin follows [Person plugins](#person-plugins) |
 | `sources` | string array | With `"kind": "person"` | See [Person plugins](#person-plugins); not allowed for `work` |
+| `domains` | string array | No | See [Person plugins](#person-plugins); not allowed for `work` |
 | `name` | string | Yes | 1 to 64 characters of `a-z`, `0-9`, `-`, `.`; the plugin's identity, so a module with the same name replaces it |
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
@@ -411,6 +412,7 @@ work-info plugin.
 | --- | --- |
 | `operations` | Exactly `search` and `fetch` |
 | `sources` | 1 to 10 distinct external-ID sources, each 1 to 50 characters without surrounding spaces, as the people API's `source`; the owner sees them before approving |
+| `domains` | Optional: 1 to 10 distinct host names, such as `example.com`, of 1 to 253 characters of `a-z`, `0-9`, `-` and `.`, without scheme, port or path; the hosts whose links the plugin fetches, which the owner sees before approving. A plugin that declares them must accept a link in place of `source` and `id` in its `fetch` request |
 
 | Request | Body |
 | --- | --- |
@@ -442,7 +444,7 @@ mdm plugin run plugin.wasm fetch 1 --source example
 `--source` is required for a person plugin's fetch and must be one of
 `sources`; any other run refuses it with exit code 2. `search` takes the
 person's name. The output is `{"candidates": [...]}` or `{"person": {...}}`
-after VVMDM's limits, and `mdm plugin pack` prints the kind and the sources.
+after VVMDM's limits, and `mdm plugin pack` prints the kind, the sources and any domains.
 
 In VVMDM, a person plugin is listed in the **Person plugins** section of
 **Settings**, under the **Work-info plugins** section. Either section's

@@ -41,6 +41,15 @@ func TestPluginPackPrintsThePersonKindAndSources(t *testing.T) {
 	}
 }
 
+func TestPluginPackPrintsThePersonDomainsAfterTheSources(t *testing.T) {
+	manifest := strings.TrimSuffix(personRunManifest, "}") + `,"domains":["example.com","example.org"]}`
+	modulePath, manifestPath := writePackFiles(t, testModule(""), manifest)
+	run := runPack(t, modulePath, manifestPath)
+	if run.code != exitAccountOK || !strings.Contains(run.stderr, "Sources: s\nDomains: example.com, example.org\n") {
+		t.Fatalf("exit = %d, stderr %q; want the domains after the sources", run.code, run.stderr)
+	}
+}
+
 func TestPluginRunRefusesASourceTheRunCannotTake(t *testing.T) {
 	cases := []struct {
 		name     string

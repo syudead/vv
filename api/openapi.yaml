@@ -6123,7 +6123,7 @@ components:
     WorkInfoPlugin:
       type: object
       required:
-        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources]
+        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains]
       additionalProperties: false
       description: "One work-info or person plugin."
       properties:
@@ -6135,6 +6135,11 @@ components:
         sources:
           type: array
           description: "A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin."
+          items:
+            type: string
+        domains:
+          type: array
+          description: "The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none."
           items:
             type: string
         name:
