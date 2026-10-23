@@ -28,7 +28,7 @@ func (s *OverrideStore) ApplyThumbnailImage(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	key, err := thumbnailKeyOf(ctx, tx, videoID)
+	key, err := writableContentKeyOf(ctx, tx, videoID)
 	if err != nil {
 		return domain.Video{}, err
 	}
@@ -115,8 +115,8 @@ func (s *IngestStore) VirtualThumbnailKeys(ctx context.Context) ([]string, error
 	return keys, nil
 }
 
-// thumbnailKeyOf returns the content key of a registered file video or a virtual video, and "" for any other video.
-func thumbnailKeyOf(ctx context.Context, tx *sql.Tx, videoID int64) (string, error) {
+// writableContentKeyOf returns the content key of a registered file video or a virtual video, and "" for any other video.
+func writableContentKeyOf(ctx context.Context, tx *sql.Tx, videoID int64) (string, error) {
 	var key string
 	err := tx.QueryRowContext(ctx, `select v.content_key from videos v where v.id = ? and v.content_key <> '' and (`+
 		registeredVideoCondition("v")+` or exists (select 1 from virtual_videos vv where vv.user_key = v.content_key))`,

@@ -453,6 +453,18 @@ the apply's result as it is, for the reason the cover gives.
 writes the selected title, tags and work details of a fetched result in one
 transaction.
 
+A held result keeps the content key the video had when it was fetched, and the
+apply answers not found when the video under that ID now has another key. A
+deleted video's row ID can be reused by the next video, so the ID alone would
+let a result land on an unrelated video.
+
+A [virtual video](catalog-organization.md) takes the same apply. Its fetched
+title replaces its own title in `virtual_videos` and never becomes a
+display-name override, because it has no file title to fall back to. The other
+fields go to the work information under its `virtual:<id>` key, and a chosen
+cover goes through the upload path, which fits a virtual video's image to
+16:9.
+
 The diagram shows the order of the steps inside the transaction.
 
 ```mermaid

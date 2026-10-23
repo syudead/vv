@@ -18,7 +18,8 @@ func applyDetails(
 	t.Helper()
 	plugin := approvedPlugin(t, db, "details", "dd")
 	applied, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
-		VideoID: videoID, PluginID: plugin.ID, Digest: "dd", Generation: plugin.Generation,
+		VideoID: videoID, ContentKey: videoContentKey(t, db, videoID),
+		PluginID: plugin.ID, Digest: "dd", Generation: plugin.Generation,
 		Details: fetched, DetailFields: fields,
 	})
 	if err != nil {
@@ -205,7 +206,8 @@ func TestApplyFetchedDetailsPublishesWorkInfoChangedOnlyForDetails(t *testing.T)
 		recorder := &eventRecorder{}
 		db.PublishTo(recorder)
 		if _, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
-			VideoID: alpha, PluginID: plugin.ID, Digest: "dd", Generation: plugin.Generation, Title: &title,
+			VideoID: alpha, ContentKey: videoContentKey(t, db, alpha),
+			PluginID: plugin.ID, Digest: "dd", Generation: plugin.Generation, Title: &title,
 			Details: domain.FetchedWorkInfo{Code: "ABC-1"}, DetailFields: fields,
 		}); err != nil {
 			t.Fatalf("ApplyFetchedWorkInfo: %v", err)

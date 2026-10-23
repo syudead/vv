@@ -204,7 +204,8 @@ func TestWorkInfoFetchAndApplyWriteEntries(t *testing.T) {
 	}
 	title := "Fetched"
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: alpha, PluginID: plugin.ID, Digest: "d1", Title: &title, Tags: []string{"drama"},
+		VideoID: alpha, ContentKey: "key-alpha",
+		PluginID: plugin.ID, Digest: "d1", Title: &title, Tags: []string{"drama"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -219,6 +220,29 @@ func TestWorkInfoFetchAndApplyWriteEntries(t *testing.T) {
 		t.Errorf("失敗した取得 = %s/%s（やり直し %v）, want done/failed でやり直し無し", failed.Status, failed.Outcome,
 			failed.RetryOffered())
 	}
+}
+
+// A virtual video has no override or location, so its entries carry its own title, not an empty label or its key.
+func TestWorkInfoFetchAndApplyOfAVirtualVideoLabelEntriesWithItsTitle(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	virtual := createVirtual(t, db, "Before", fixedTime)
+	plugin := approvedPlugin(t, db, "example", "d1")
+	n := len(ownerEntries(t, db))
+
+	if err := db.Overrides().RecordWorkInfoFetch(ctx, virtual.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	title := "Fetched"
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+		VideoID: virtual.ID, ContentKey: virtual.ContentKey,
+		PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation, Title: &title,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	expectOwnerEntries(t, db, n,
+		ownerEntry{domain.ActivityWorkInfoFetch, virtual.UserKey, "", "Before", ""},
+		ownerEntry{domain.ActivityWorkInfoApply, virtual.UserKey, "", "Fetched", ""})
 }
 
 func TestOrganizeBundleUndoAndReordersWriteEntries(t *testing.T) {
