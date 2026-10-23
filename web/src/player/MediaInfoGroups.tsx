@@ -292,11 +292,22 @@ function audioFact(video: Video): Fact | null {
   };
 }
 
+/** A probed group with nothing in it, read as `None` rather than left out. */
+function noneFact(id: string, term: UiText): Fact {
+  return {
+    id,
+    term,
+    value: <span className="text-muted-foreground">{t.player.tabs.none}</span>,
+  };
+}
+
 function subtitleFact(info: MediaInfo | undefined): Fact | null {
   const m = t.player.mediaInfo;
   const subtitles = info?.subtitleTracks ?? [];
   const closedCaptions = info?.video?.closedCaptions === true;
-  if (subtitles.length === 0 && !closedCaptions) return null;
+  if (subtitles.length === 0 && !closedCaptions) {
+    return info === undefined ? null : noneFact("subtitles", m.subtitles);
+  }
   return {
     id: "subtitles",
     term: m.subtitles,
@@ -312,8 +323,8 @@ function subtitleFact(info: MediaInfo | undefined): Fact | null {
 
 function chapterFact(info: MediaInfo | undefined): Fact | null {
   const count = info?.chapters?.length ?? 0;
-  if (count === 0) return null;
   const text = t.player.tabs;
+  if (count === 0) return info === undefined ? null : noneFact("chapters", text.chapters);
   return { id: "chapters", term: text.chapters, value: text.chapterCount(count) };
 }
 

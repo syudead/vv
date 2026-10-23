@@ -217,7 +217,7 @@ function current() {
 
 async function openPreview() {
   await openThumbnail();
-  fireEvent.click(way("Touch up with ComfyUI"));
+  fireEvent.click(way("Touch up…"));
   return screen.findByRole("dialog", { name: "Preview thumbnail" });
 }
 
@@ -373,6 +373,10 @@ describe("VideoPage Thumbnail tab", () => {
     );
     await openThumbnail();
     expect(within(current()).getByText("Automatic")).toBeDefined();
+    // The row names the way and notes the player's position it will send.
+    const row = within(way("Use this frame").closest("li") as HTMLElement);
+    expect(row.getByText("The frame on screen")).toBeDefined();
+    expect(row.getByText("1:23")).toBeDefined();
 
     fireEvent.click(way("Use this frame"));
     expect(await within(current()).findByText("Frame at 1:23")).toBeDefined();
@@ -390,7 +394,7 @@ describe("VideoPage Thumbnail tab", () => {
     openTab("Thumbnail");
     expect(screen.queryByRole("button", { name: "Use this frame" })).toBeNull();
     expect(way("Upload…")).toBeDefined();
-    expect(way("Touch up with ComfyUI")).toBeDefined();
+    expect(way("Touch up…")).toBeDefined();
   });
 
   it("「Upload…」は PNG・JPEG・WebP に限ったピッカーを開き、選んだファイルで送らずにプレビューを開く", async () => {
@@ -448,7 +452,7 @@ describe("VideoPage Thumbnail tab", () => {
       json({ code: "internal", message: "temporarily unavailable" }, 500),
     );
     await openThumbnail();
-    fireEvent.click(way("Touch up with ComfyUI"));
+    fireEvent.click(way("Touch up…"));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Couldn't start editing the thumbnail:");
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -467,7 +471,7 @@ describe("VideoPage Thumbnail tab", () => {
     const form = server.upload.mock.calls[0]?.[0];
     expect((form?.get("image") as File).type).toBe("image/png");
     expect(form?.get("contentVersion")).toBe("r1");
-    for (const name of ["Use this frame", "Touch up with ComfyUI"]) {
+    for (const name of ["Use this frame", "Touch up…"]) {
       expect(way(name).getAttribute("aria-disabled")).toBe("true");
       fireEvent.click(way(name));
     }
@@ -484,7 +488,7 @@ describe("VideoPage Thumbnail tab", () => {
     expect(within(current()).getByRole("img").getAttribute("src")).toBe(
       "/api/videos/7/thumbnail?v=r1-g3",
     );
-    expect(way("Touch up with ComfyUI").getAttribute("aria-disabled")).toBeNull();
+    expect(way("Touch up…").getAttribute("aria-disabled")).toBeNull();
     expect(posts()).toHaveLength(1);
   });
 

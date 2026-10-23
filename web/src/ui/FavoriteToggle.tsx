@@ -69,11 +69,12 @@ export default function FavoriteToggle({
     return (
       <Toggle
         size="sm"
+        shape="pill"
         pressed={favorite}
         aria-disabled={pending || undefined}
         onClick={press}
         className={cn(
-          "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite aria-pressed:text-favorite",
+          "bg-secondary px-3 text-foreground hover:bg-secondary/80 hover:text-foreground data-[state=on]:bg-favorite-soft data-[state=on]:text-favorite aria-pressed:bg-favorite-soft aria-pressed:text-favorite",
           pending && "cursor-progress",
         )}
       >

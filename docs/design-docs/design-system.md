@@ -183,7 +183,7 @@ with and when not to use it is in
 
 | Component                                                                                                                                         | Item                                  | Replaces                               |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
-| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button`                              | `ui/Button`, `ui/IconButton`           |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`; shapes `default`, `pill`) | `button`                              | `ui/Button`, `ui/IconButton`           |
 | `Input`, `Textarea`, `Label`, `Field`                                                                                                             | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>`         |
 | `Select`, `RadioGroup`                                                                                                                            | `select`, `radio-group`               | Raw `<select>`, the sort radio columns |
 | `Checkbox`, `Switch`                                                                                                                              | `checkbox`, `switch`                  | `ui/Checkbox`                          |
@@ -207,7 +207,7 @@ The components share three behaviours, so a screen never restyles them:
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Keyboard focus       | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
 | Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`)                                                                                                             |
-| Density              | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg`                                                                                                                                          |
+| Density              | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page's player uses `default` and `lg`, and the controls under it `sm`                                                                                                 |
 
 Five changes to upstream keep the checks and the catalog rules: `Checkbox`
 draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
@@ -224,7 +224,9 @@ badge in the narrow-width drawer. `Button`
 also has one variant upstream lacks, `ghost-destructive`: `ghost`'s shape
 with `destructive` text and a `destructive-soft` hover, the button form of the
 menu's destructive item, for one destructive action that stands outside a
-menu and opens a `ConfirmDialog`. `Select`
+menu and opens a `ConfirmDialog`. `Button` and `Toggle` also have a `shape`
+axis upstream lacks, `default` (`rounded-md`) and `pill` (`rounded-full`), so
+a screen that needs a pill never sets a radius itself. `Select`
 and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.

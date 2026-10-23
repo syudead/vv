@@ -7,25 +7,60 @@ import { Button } from "../../ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/shadcn/popover";
 import { factTrigger } from "../factTrigger";
 
-/** A panel's section: a small muted heading over its content. */
+const labelClass = "text-2xs font-medium tracking-wider text-muted-foreground uppercase";
+
+/** A panel's section: a small muted heading over its content, `end` at the heading line's right. */
 export function PanelSection({
   title,
+  end,
   children,
 }: {
   title: UiText;
+  end?: ReactNode;
   children: ReactNode;
 }) {
   const id = useId();
+  const heading = (
+    <h2 id={id} className={labelClass}>
+      {title}
+    </h2>
+  );
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
-      <h2
-        id={id}
-        className="text-xs font-medium tracking-wider text-muted-foreground uppercase"
-      >
-        {title}
-      </h2>
+      {end === undefined ? (
+        heading
+      ) : (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          {heading}
+          {end}
+        </div>
+      )}
       {children}
     </section>
+  );
+}
+
+/** A section label without a section of its own, such as over the right column's one action. */
+export function PanelLabel({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <p id={id} className={labelClass}>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * A panel's two columns from `md`: what is read at the left, the figures or the one action in a
+ * `facts-column` wide column at the right. Below `md` the right column follows, full width.
+ */
+export function PanelColumns({ main, side }: { main?: ReactNode; side: ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-6 md:flex-row md:gap-12">
+      {main !== undefined && (
+        <div className="flex w-full min-w-0 flex-1 flex-col gap-6">{main}</div>
+      )}
+      <div className="flex w-full shrink-0 flex-col gap-6 md:w-facts-column">{side}</div>
+    </div>
   );
 }
 
@@ -52,7 +87,7 @@ export function DateValue({ label, value }: { label: UiText; value: string }) {
           // Set the accessible name explicitly so child whitespace cannot change it.
           aria-label={`${label} ${date}`}
           title={t.player.facts.dateDetail(label, dateTime)}
-          className={cn(factTrigger, "text-base text-foreground tabular-nums")}
+          className={cn(factTrigger, "font-mono text-xs text-foreground tabular-nums")}
         >
           {date}
         </Button>

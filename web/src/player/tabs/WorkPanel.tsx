@@ -1,9 +1,10 @@
-import { CloudDownload } from "lucide-react";
+import { useId } from "react";
 
 import type { WorkInfo as WorkInfoValue } from "../../api/workInfo";
 import { t } from "../../i18n";
 import { Button } from "../../ui/shadcn/button";
 import WorkInfo from "../WorkInfo";
+import { PanelColumns, PanelLabel } from "./panelParts";
 import { hasWorkItems } from "./videoTabs";
 
 /**
@@ -20,22 +21,32 @@ export default function WorkPanel({
   canFetch: boolean;
   onFetch: () => void;
 }) {
+  const labelId = useId();
+  const filled = hasWorkItems(info);
+  const list = filled ? (
+    <WorkInfo info={info} />
+  ) : (
+    <p className="text-sm text-muted-foreground">{t.player.tabs.noWorkDetails}</p>
+  );
+  if (!canFetch) return list;
+  // The action keeps its column whether the list is there or not.
   return (
-    <div className="flex flex-col gap-6">
-      {hasWorkItems(info) ? (
-        <WorkInfo info={info} />
-      ) : (
-        // The action stays in the same place whether the list is there or not.
-        <p className="text-sm text-muted-foreground">{t.player.tabs.noWorkDetails}</p>
-      )}
-      {canFetch && (
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={onFetch}>
-            <CloudDownload aria-hidden="true" />
-            {t.player.workInfoFetch.entry}
+    <PanelColumns
+      main={list}
+      side={
+        <div className="flex flex-col items-start gap-2">
+          <PanelLabel id={labelId}>{t.player.workInfoFetch.entry}</PanelLabel>
+          <Button
+            variant="secondary"
+            size="sm"
+            shape="pill"
+            aria-describedby={labelId}
+            onClick={onFetch}
+          >
+            {filled ? t.player.tabs.fetchAgain : t.player.tabs.fetch}
           </Button>
         </div>
-      )}
-    </div>
+      }
+    />
   );
 }

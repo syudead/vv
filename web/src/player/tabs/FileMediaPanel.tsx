@@ -1,4 +1,3 @@
-import { Copy, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
@@ -11,7 +10,7 @@ import { useToast } from "../../ui/Toast";
 import MediaInfoGroups from "../MediaInfoGroups";
 import RescanVideoButton from "../RescanVideoButton";
 import { useOpenFileRequest } from "../useOpenFile";
-import { DateValue, FailureLine, PanelSection } from "./panelParts";
+import { DateValue, FailureLine, PanelColumns, PanelSection } from "./panelParts";
 
 /** Guest responses omit the location, so a guest sees Media and File only. */
 export default function FileMediaPanel({
@@ -28,42 +27,52 @@ export default function FileMediaPanel({
   const f = t.player.facts;
   return (
     <div className="flex flex-col gap-6">
-      {location !== undefined && (
-        <PanelSection title={text.location}>
-          <p className="font-mono text-sm wrap-anywhere">{location.path}</p>
-          <LocationActions
-            videoId={video.id}
-            path={location.path}
-            openable={location.openable}
-            report={setFailure}
+      <PanelColumns
+        main={
+          <>
+            {location !== undefined && (
+              <PanelSection title={text.location}>
+                <p className="font-mono text-xs leading-relaxed wrap-anywhere text-foreground">
+                  {location.path}
+                </p>
+                <LocationActions
+                  videoId={video.id}
+                  path={location.path}
+                  openable={location.openable}
+                  report={setFailure}
+                />
+              </PanelSection>
+            )}
+            <PanelSection title={text.media}>
+              <MediaInfoGroups video={video} />
+            </PanelSection>
+          </>
+        }
+        side={
+          <FactList
+            variant="divided"
+            aria-label={text.fileSection}
+            facts={[
+              { id: "size", term: f.size, value: formatBytes(video.sizeBytes) },
+              {
+                id: "added",
+                term: f.added,
+                value: <DateValue label={f.added} value={video.addedAt} />,
+              },
+              {
+                id: "edited",
+                term: f.edited,
+                value: <DateValue label={f.edited} value={video.updatedAt} />,
+              },
+              {
+                id: "created",
+                term: text.fileCreated,
+                value: <DateValue label={text.fileCreated} value={video.fileCreatedAt} />,
+              },
+            ]}
           />
-        </PanelSection>
-      )}
-      <PanelSection title={text.media}>
-        <MediaInfoGroups video={video} />
-      </PanelSection>
-      <PanelSection title={text.fileSection}>
-        <FactList
-          facts={[
-            { id: "size", term: f.size, value: formatBytes(video.sizeBytes) },
-            {
-              id: "added",
-              term: f.added,
-              value: <DateValue label={f.added} value={video.addedAt} />,
-            },
-            {
-              id: "edited",
-              term: f.edited,
-              value: <DateValue label={f.edited} value={video.updatedAt} />,
-            },
-            {
-              id: "created",
-              term: f.created,
-              value: <DateValue label={f.created} value={video.fileCreatedAt} />,
-            },
-          ]}
-        />
-      </PanelSection>
+        }
+      />
       <FailureLine failure={failure} />
     </div>
   );
@@ -91,15 +100,13 @@ function LocationActions({
     });
   };
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {openable && (
-        <Button variant="outline" size="sm" onClick={open}>
-          <ExternalLink aria-hidden="true" />
+        <Button variant="secondary" size="sm" shape="pill" onClick={open}>
           {f.openFile}
         </Button>
       )}
-      <Button variant="outline" size="sm" onClick={copyPath}>
-        <Copy aria-hidden="true" />
+      <Button variant="secondary" size="sm" shape="pill" onClick={copyPath}>
         {f.copyPath}
       </Button>
       <RescanVideoButton videoId={videoId} report={report} />

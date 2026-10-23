@@ -53,10 +53,10 @@ export function DetailPage({
           >
             <div
               data-slot="detail-page-content"
-              className={cn("flex flex-col gap-5 lg:mx-auto lg:w-full", contentClassName)}
+              className={cn("flex flex-col gap-4 lg:mx-auto lg:w-full", contentClassName)}
             >
               {media}
-              <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
+              <div className="flex flex-col gap-3 px-4 sm:px-6 lg:px-0">{children}</div>
             </div>
           </div>
           {/*

@@ -2166,9 +2166,13 @@ export const en = {
       lastWatched: "Last watched",
       released: (date: string) => `Released ${date}`,
       noWorkDetails: "No work details yet.",
+      fetch: "Fetch",
+      fetchAgain: "Fetch again",
       location: "Location",
       media: "Media",
       fileSection: "File",
+      fileCreated: "File created",
+      none: "None",
       chapters: "Chapters",
       container: "Container",
       chapterCount: (count: number) =>
@@ -2178,7 +2182,8 @@ export const en = {
         }),
       credits: "Credits",
       seenInVideo: "Seen in this video",
-      seenHint: "Press a bar to play from that moment",
+      seenHint: (length: string, pressable: boolean) =>
+        pressable ? `0:00 — ${length} · press a bar to jump` : `0:00 — ${length}`,
       seenFailed: (reason: string) =>
         `Couldn't load the people seen in this video: ${reason}`,
       seenLoading: "Loading the people seen in this video",
@@ -2190,12 +2195,14 @@ export const en = {
       generatedOrigin: "Generated image",
       automaticOrigin: "Automatic",
       backToAutomatic: "Back to automatic",
+      frameOnScreen: "The frame on screen",
       useThisFrame: "Use this frame",
-      useThisFrameNote: "The frame the player shows now",
+      anImage: "An image",
       uploadImage: "Upload…",
       uploadImageNote: "PNG, JPEG or WebP, up to 64 MB",
       touchUp: "Touch up with ComfyUI",
-      touchUpNote: "Frames the current thumbnail, then runs an instruction",
+      touchUpButton: "Touch up…",
+      touchUpNote: "Frame the image, then run an instruction",
     },
     //
     thumbnailEdit: {
@@ -2323,6 +2330,7 @@ export const en = {
       label: "Versions",
       representative: "Representative",
       nowPlaying: "Now playing",
+      playWord: "Play",
       play: (title: string, details: string) =>
         details === "" ? `Play ${title}` : `Play ${title}, ${details}`,
       makeRepresentative: "Make representative",

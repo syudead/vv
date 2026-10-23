@@ -2092,12 +2092,17 @@ describe("VideoPage", () => {
       return screen.getByRole("switch", { name: "Show to people who aren't signed in" });
     }
 
+    /** The state's word before the track, in the same label. */
+    function word() {
+      return toggle().closest("label")?.textContent;
+    }
+
     it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
       expect(toggle().getAttribute("aria-checked")).toBe("false");
-      expect(toggle().textContent).toBe("Private");
+      expect(word()).toBe("Private");
 
       fireEvent.click(toggle());
       expect(toggle().getAttribute("aria-disabled")).toBe("true");
@@ -2107,7 +2112,7 @@ describe("VideoPage", () => {
 
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
-      expect(toggle().textContent).toBe("Public");
+      expect(word()).toBe("Public");
       expect(toggle().getAttribute("aria-disabled")).toBeNull();
       expect(screen.queryByRole("status")).toBeNull();
     });
@@ -2117,8 +2122,9 @@ describe("VideoPage", () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
-      expect(toggle().textContent).toBe("Public");
-      fireEvent.click(toggle());
+      expect(word()).toBe("Public");
+      // Pressing the word toggles as the track does.
+      fireEvent.click(screen.getByText("Public"));
       expect(bodies).toEqual([{ videoIds: [7], public: false }]);
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("false"));
@@ -2230,8 +2236,13 @@ describe("VideoPage", () => {
       ).toBeTruthy();
       expect(button.textContent).toBe("Favorite");
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      expect(button.className).toContain("text-muted-foreground");
       expect(button.getAttribute("data-state")).toBe("off");
+      // The three title actions are labelled pills, never ghost words.
+      for (const name of ["Favorite", "Add to playlist", "Add to group"]) {
+        expect(screen.getByRole("button", { name }).getAttribute("data-shape")).toBe(
+          "pill",
+        );
+      }
     });
 
     it("所在が無くプレイヤーの出ていない動画でも、付け外しを出す", async () => {
@@ -2263,7 +2274,7 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
       expect(favoriteButton().getAttribute("data-state")).toBe("on");
-      expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
+      expect(favoriteButton().className).toContain("data-[state=on]:bg-favorite-soft");
       expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
@@ -2657,7 +2668,7 @@ describe("VideoPage", () => {
       expect(screen.getByRole("button", { name: /^Edited / }).title).toBe(
         screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
       );
-      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
+      expect(screen.getByRole("button", { name: /^File created / })).toBeDefined();
     });
 
     it("ゲストにも更新日時と作成日時を出す", async () => {
@@ -2666,7 +2677,7 @@ describe("VideoPage", () => {
       renderPage("7", undefined, "guest");
       await showFile();
       expect(edited()).toBe("Edited Sep 1, 2026");
-      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
+      expect(screen.getByRole("button", { name: /^File created / })).toBeDefined();
     });
 
     it("表示名を保存すると応答の更新日時になる（受け入れ条件 1）", async () => {

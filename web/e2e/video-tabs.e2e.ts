@@ -172,7 +172,9 @@ function iconOnlyControls(page: Page): Promise<string[]> {
           // The title's own pencil is part of the title, not an action row.
           control.getAttribute("aria-label") !== "Edit name" &&
           control.checkVisibility() &&
-          control.innerText.trim() === "",
+          control.innerText.trim() === "" &&
+          // A switch's word stands beside it in the label that holds both.
+          (control.closest("label")?.innerText.trim() ?? "") === "",
       )
       .map((control) => control.getAttribute("aria-label") ?? control.outerHTML);
   });

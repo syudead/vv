@@ -12,9 +12,9 @@ export interface VersionDetailValues {
 export function versionDetails(video: Video): VersionDetailValues {
   const specs = [
     formatResolution(video),
-    video.container?.toUpperCase(),
     video.videoCodec === undefined ? undefined : formatCodec(video.videoCodec),
     video.probeState === "done" ? formatBytes(video.sizeBytes) : undefined,
+    video.container?.toUpperCase(),
   ].filter((value): value is string => value !== undefined && value !== "");
   const parts: string[] = [];
   if (video.folder?.rootName !== undefined) parts.push(video.folder.rootName);
@@ -31,12 +31,15 @@ export function versionDetailsText(
   return [...details.specs, place].filter((value) => value !== "").join(separator);
 }
 
+/** `place: false` leaves the place out, for a row that shows its path on a line of its own. */
 export function VersionDetailsLine({
   details,
   title,
+  place = true,
 }: {
   details: VersionDetailValues;
   title: string;
+  place?: boolean;
 }) {
   return (
     <span
@@ -56,7 +59,7 @@ export function VersionDetailsLine({
           {value}
         </span>
       ))}
-      {details.place !== "" && (
+      {place && details.place !== "" && (
         <>
           {details.specs.length > 0 && (
             <span className="shrink-0 text-muted-foreground" aria-hidden="true">

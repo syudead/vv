@@ -1,4 +1,3 @@
-import { Clapperboard } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
@@ -33,14 +32,13 @@ export default function DetailsEntry({ video, owner, details }: DetailsEntryProp
 
   if (!owner || details === undefined) return null;
   return (
-    <Button variant="ghost" size="sm" className="text-muted-foreground" asChild>
+    <Button variant="ghost" size="sm" asChild>
       <Link
         ref={ref}
         to={videoEditPath(video.id)}
         state={{ ...details.linkState, fromPage: true }}
         onClick={() => handVideoToEditor(video)}
       >
-        <Clapperboard aria-hidden="true" />
         {t.player.workInfo.edit}
       </Link>
     </Button>
