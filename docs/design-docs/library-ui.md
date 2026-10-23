@@ -739,7 +739,8 @@ owner's file videos (`GET /api/videos?kind=file`), 20 rows per read and more
 on scroll. Each row shows the thumbnail at `w-list-thumb`, the title on one
 line, and the duration and folder under it. Choosing a row marks it, and only
 it, with the `primary-soft` fill and a `Check`; `Merge` stays disabled until
-then. A popover picker of names was rejected because the thumbnail and the
+then. Changing the search clears the choice, so `Merge` never sends a video
+the new results hide. A popover picker of names was rejected because the thumbnail and the
 folder are what tell similar file videos apart, and merging into the wrong one
 cannot be undone.
 

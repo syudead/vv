@@ -409,7 +409,8 @@ export function toLibraryItems<G>(
   });
 }
 
-export type ListLibraryParams = ListVideosParams;
+/** The library listing has no kind filter. */
+export type ListLibraryParams = Omit<ListVideosParams, "kind">;
 
 export async function listLibrary(
   params: ListLibraryParams = {},

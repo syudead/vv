@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -128,6 +128,36 @@ describe("MergeDialog", () => {
       videoContentVersion: "key22",
     });
     expect(props.onMerged).toHaveBeenCalledWith(expect.objectContaining({ id: 22 }));
+  });
+
+  it("検索語を変えると選択を外し、見えない動画へはマージできない", async () => {
+    server.list.mockImplementation((url) =>
+      url.searchParams.get("query") === "第二"
+        ? json({ items: [second], total: 1 })
+        : json({ items: [first, second], total: 2 }),
+    );
+    renderDialog();
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "Merge into a file video" });
+    await user.click(await within(dialog).findByRole("option", { name: /第一話/ }));
+    const merge = within(dialog).getByRole("button", { name: "Merge" });
+    expect(merge).toHaveProperty("disabled", false);
+
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search file videos" }),
+      "第二",
+    );
+    await waitFor(() => {
+      expect(within(dialog).queryByRole("option", { name: /第一話/ })).toBeNull();
+    });
+    expect(
+      within(dialog)
+        .getAllByRole("option")
+        .filter((row) => row.getAttribute("aria-checked") === "true"),
+    ).toEqual([]);
+    expect(merge).toHaveProperty("disabled", true);
+    await user.click(merge);
+    expect(server.merge).not.toHaveBeenCalled();
   });
 
   it("一致が無ければ No file video matches、読み取りの失敗は Retry で読み直す", async () => {

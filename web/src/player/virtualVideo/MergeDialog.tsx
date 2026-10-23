@@ -75,6 +75,14 @@ export default function MergeDialog({
     search.rows.length,
   );
 
+  // A new search can hide the chosen row, so the choice goes with it: Merge never sends a video
+  // the owner no longer sees.
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    setChosen(null);
+    setFailure(null);
+  };
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (chosen === null || pending) return;
@@ -123,7 +131,7 @@ export default function MergeDialog({
       >
         <CommandInput
           value={query}
-          onValueChange={setQuery}
+          onValueChange={changeQuery}
           placeholder={words.search}
           aria-label={words.search}
           trailing={reading ? <Spinner className="text-muted-foreground" /> : undefined}
