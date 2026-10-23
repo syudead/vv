@@ -160,27 +160,22 @@ func TestListFolderVideosSearchesByTagNameWithStore(t *testing.T) {
 	}
 }
 
-func TestListVideosAppliesQueryWatchAndSort(t *testing.T) {
+func TestListVideosAppliesQueryAndSort(t *testing.T) {
 	f := newListAPIFixture(t)
 	f.add(t, "京都旅行 2024.mp4", "京都旅行 2024", 1_000)
 	f.add(t, "京都旅行 2023.mp4", "京都旅行 2023", 9_000)
 	f.add(t, "sub/京都 散歩.mp4", "京都 散歩", 5_000)
-	_, watchedKey := f.add(t, "京都 夜.mp4", "京都 夜", 7_000)
+	f.add(t, "京都 夜.mp4", "京都 夜", 7_000)
 	f.add(t, "奈良.mp4", "奈良", 8_000)
-	if _, err := f.db.Playback().SaveProgress(f.ctx, watchedKey, domain.Progress{
-		PositionMs: 7_000, DurationMs: 7_000, Completed: true, UpdatedAt: time.Unix(2, 0),
-	}, nil); err != nil {
-		t.Fatal(err)
-	}
 
-	page := f.get(t, "/api/videos?query="+url.QueryEscape("京都 -2023")+"&watch=unwatched&sort=durationDesc")
-	if want := []string{"京都 散歩", "京都旅行 2024"}; !slices.Equal(titles(page), want) {
+	page := f.get(t, "/api/videos?query="+url.QueryEscape("京都 -2023")+"&sort=durationDesc")
+	if want := []string{"京都 夜", "京都 散歩", "京都旅行 2024"}; !slices.Equal(titles(page), want) {
 		t.Errorf("titles = %q, want %q", titles(page), want)
 	}
-	if page.Total != 2 {
-		t.Errorf("total = %d, want 2", page.Total)
+	if page.Total != 3 {
+		t.Errorf("total = %d, want 3", page.Total)
 	}
-	wantFolders := []gen.VideoFolder{{RootId: f.root.ID, Path: "sub"}, {RootId: f.root.ID, Path: ""}}
+	wantFolders := []gen.VideoFolder{{RootId: f.root.ID, Path: ""}, {RootId: f.root.ID, Path: "sub"}, {RootId: f.root.ID, Path: ""}}
 	for i, item := range page.Items {
 		if item.Folder == nil || *item.Folder != wantFolders[i] {
 			t.Errorf("items[%d].folder = %+v, want %+v", i, item.Folder, wantFolders[i])

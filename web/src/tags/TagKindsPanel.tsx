@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
 import { Spinner } from "../ui/shadcn/spinner";
+import { Switch } from "../ui/shadcn/switch";
 import {
   TableBody,
   TableCell,
@@ -31,7 +32,7 @@ import RowNameInput from "./RowNameInput";
 import { RowIconButton, RowMoreMenu } from "./TagRow";
 import type { TagKindsTab } from "./useTagKindsTab";
 
-const kindColumnCount = 3;
+const kindColumnCount = 4;
 
 export default function TagKindsPanel({
   state,
@@ -77,6 +78,9 @@ export default function TagKindsPanel({
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-full">{t.tags.kinds.columns.name}</TableHead>
+                <TableHead className="whitespace-nowrap">
+                  {t.tags.kinds.columns.cardFirst}
+                </TableHead>
                 <TableHead className="text-right">{t.tags.kinds.columns.tags}</TableHead>
                 <TableHead aria-hidden="true" />
               </TableRow>
@@ -166,6 +170,14 @@ function KindRow({
             </Link>
           </span>
         )}
+      </TableCell>
+      <TableCell>
+        <Switch
+          checked={kind.cardFirst}
+          disabled={state.cardFirstPendingId === kind.id}
+          onCheckedChange={(next) => state.setCardFirst(kind, next)}
+          aria-label={t.tags.kinds.cardFirst(kind.name)}
+        />
       </TableCell>
       <TableCell className="text-right text-muted-foreground tabular-nums">
         {t.tags.kinds.tagCount(kind.tagCount)}

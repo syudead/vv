@@ -53,25 +53,6 @@ function items(count: number): string {
   });
 }
 
-/** Round minutes to one decimal, keeping nonzero durations at least 0.1. */
-function minutesText(secondsCount: number): string {
-  const minutes = Math.round((secondsCount / 60) * 10) / 10;
-  return formatNumber(secondsCount > 0 ? Math.max(minutes, 0.1) : minutes);
-}
-
-/** max is inclusive, in seconds. */
-function lengthWords(min: number | undefined, max: number | undefined): string {
-  const upper = max === undefined ? undefined : max + 1;
-  const low = min ?? 0;
-  if (low === 0 && upper === 300) return "Under 5 minutes";
-  if (low === 300 && upper === 1200) return "5 to 20 minutes";
-  if (low === 1200 && upper === 3600) return "20 to 60 minutes";
-  if (low === 3600 && upper === undefined) return "Over an hour";
-  if (upper === undefined) return `Over ${minutesText(low)} minutes`;
-  if (low === 0) return `Under ${minutesText(upper)} minutes`;
-  return `${minutesText(low)} to ${minutesText(upper)} minutes`;
-}
-
 function seconds(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} second`,
@@ -345,6 +326,9 @@ const errorReasons = {
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
   auto_tagging_off:
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
+  version_judging_off:
+    "Duplicate judging is turned off. Turn it on under Settings, Duplicate judging.",
+  version_not_rejudgeable: "This pair is already waiting for the AI or being judged.",
   comfyui_url_invalid: "Enter an http or https URL",
   comfyui_api_key_missing: "Enter the Comfy Cloud API key",
   thumbnail_edit_not_found:
@@ -862,6 +846,14 @@ export const en = {
       placeholder: "Search",
       clear: "Clear search",
     },
+    suggestions: {
+      label: "Search suggestions",
+      searchFor: (text: string) => `Search for “${text}”`,
+      people: "People",
+      tags: "Tags",
+      organizations: "Organizations",
+      kind: (name: string) => `Kind: ${name}`,
+    },
     searchHelp: {
       title: "How to search",
       allWords: {
@@ -894,40 +886,12 @@ export const en = {
       watch: "Watch status",
       watchOptions: {
         all: "All",
-        unwatched: "Unwatched",
         inProgress: "In progress",
         watched: "Watched",
       },
-      playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
-      added: "Added",
-      length: "Length",
-      addedOptions: {
-        any: "Any time",
-        preset: (days: number) => {
-          if (days === 1) return "Last 24 hours";
-          if (days === 365) return "Last year";
-          return `Last ${formatNumber(days)} days`;
-        },
-        // Fallback for day counts outside the preset options.
-        days: (days: number) =>
-          selectPlural(days, {
-            one: `Last ${formatNumber(days)} day`,
-            other: `Last ${formatNumber(days)} days`,
-          }),
-      },
-      lengthOptions: {
-        any: "Any length",
-        under5: "Under 5 minutes",
-        from5to20: "5 to 20 minutes",
-        from20to60: "20 to 60 minutes",
-        overHour: "Over an hour",
-        // The caller supplies formatted minute bounds.
-        between: (min: string, max: string) => `${min} to ${max} minutes`,
-        under: (max: string) => `Under ${max} minutes`,
-        over: (min: string) => `Over ${min} minutes`,
-      },
+      apply: "Apply",
     },
     sort: {
       heading: "Sort by",
@@ -972,6 +936,7 @@ export const en = {
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
       addToGroup: (title: string) => `Add "${title}" to a group`,
+      morePerformers: (count: number) => `+${formatNumber(count)}`,
       watchedRatio: "Watched portion",
       // Position and duration are already formatted with formatDuration.
       //
@@ -1030,9 +995,9 @@ export const en = {
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
-    tagKindFilter: {
-      label: "Tag kind",
-      any: "Any kind",
+    tagFilter: {
+      kindHint: "Tag kind",
+      kindOption: (name: string) => `Tag kind ${name}`,
     },
     tagRow: {
       label: "Tags",
@@ -1396,14 +1361,16 @@ export const en = {
       tab: "Kinds",
       table: "Kinds",
       description:
-        "A tag has one kind or none. Set it from the Tags tab's selection bar. Deleting a kind leaves its tags without one.",
+        "A tag has one kind or none. Set it from the Tags tab's selection bar. Video cards list tags of kinds marked First on cards before the rest. Deleting a kind leaves its tags without one.",
       newKind: "New kind",
       loading: "Loading kinds…",
       columns: {
         name: "Name",
+        cardFirst: "First on cards",
         tags: "Tags",
       },
       tagCount,
+      cardFirst: (name: string) => `List tags of the kind "${name}" first on video cards`,
       open: (name: string) => `Show the tags of the kind "${name}"`,
       create: {
         label: "New kind name",
@@ -1615,6 +1582,8 @@ export const en = {
     ),
     loading: "Loading…",
     unnamedPerson: "Unnamed person",
+    /** A provisional person's label: their id, short and unique where every one would read "Unnamed person". */
+    personNumber: (id: number) => `#${String(id)}`,
     columns: {
       name: "Name",
       videos: "Videos",
@@ -1662,6 +1631,21 @@ export const en = {
       parentsFailed: (reason: string) => `Couldn't load organizations: ${reason}`,
       submit: "Save",
       submitting: "Saving…",
+    },
+    similarPeople: {
+      loading: "Looking for people who look alike…",
+      none: "No one looks alike yet.",
+      failed: "Couldn't look for people who look alike.",
+      likeFaces: "Looks most like these faces",
+      likePerson: (name: string) => `Looks most like ${name}`,
+      meta: (faces: number, firstSeen: string | undefined) => {
+        const count = selectPlural(faces, {
+          one: `${formatNumber(faces)} face`,
+          other: `${formatNumber(faces)} faces`,
+        });
+        return firstSeen === undefined ? count : `${count} · first in ${firstSeen}`;
+      },
+      percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
     },
     mergeDialog: {
       title: (name: string) => `Merge "${name}"`,
@@ -1767,6 +1751,7 @@ export const en = {
         add: "Add a face",
         change: "Change face",
         upload: "Upload an image…",
+        fromVideos: "Choose from videos…",
         remove: "Remove face",
         uploading: "Saving the face…",
         refusedType: "This image can't be used. Choose a PNG, JPEG or still WebP.",
@@ -1776,6 +1761,29 @@ export const en = {
         removeText: "The image is deleted. You can upload another one later.",
         removeSubmit: "Remove",
         removing: "Removing…",
+        picker: {
+          title: "Choose a face",
+          close: "Close",
+          faces: "Faces",
+          facesHint: "The faces most like this person come first.",
+          face: (title: string) => `Face in ${title}`,
+          loading: "Loading faces…",
+          noFaces: "No faces from videos yet. Run face recognition, then come back.",
+          loadFailed: (reason: string) => `Couldn't load the faces: ${reason}`,
+          frame: "Frame",
+          frameLoading: "Loading the frame…",
+          frameFailed: "Couldn't read this frame. Try another moment or face.",
+          moment: (position: string) => `At ${position}`,
+          earlier: "1 second earlier",
+          later: "1 second later",
+          size: "Size",
+          sizeHint: "Drag the frame or use the arrow keys to move it.",
+          area: "Face area",
+          preview: "Preview",
+          save: "Set as face",
+          saving: "Saving…",
+          cancel: "Cancel",
+        },
       },
       videos: "Videos",
       roles: {
@@ -1798,14 +1806,32 @@ export const en = {
         entryLabel: (count: number) =>
           count === 0 ? "Faces" : `Faces, ${formatNumber(count)} to review`,
         back: (name: string) => `Back to ${name}`,
-        candidatesText:
-          "People whose faces look like this person's. Decide each pair here.",
+        tabsLabel: "Face review",
+        candidatesTab: "Same person?",
+        facesTab: "Faces in videos",
+        refresh: "Refresh",
+        refreshHint: "Decided items stay where they are until you refresh.",
       },
       candidates: {
         heading: "Same person?",
         open: (name: string) => `Open ${name}`,
         similarity: (value: number) =>
           `${formatNumber(Math.round(value * 100))}% similar`,
+        pairLabel: (name: string) => `Pair with ${name}`,
+        percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+        similarLabel: "similar",
+        thisPerson: "This person",
+        faceCount: (count: number) =>
+          selectPlural(count, {
+            one: `${formatNumber(count)} face`,
+            other: `${formatNumber(count)} faces`,
+          }),
+        none: "No pairs to decide.",
+        mergedResult: (name: string) => `Merged into ${name}`,
+        dismissedResult: "Not the same",
+        undo: "Undo",
+        undoFor: (name: string) => `Undo for ${name}`,
+        undoFailed: (reason: string) => `Couldn't undo: ${reason}`,
         confirm: "Same person",
         confirmFor: (name: string) => `Same person as ${name}`,
         dismiss: "Not the same",
@@ -1813,6 +1839,7 @@ export const en = {
         merged: (name: string) => `Merged "${name}"`,
         confirmFailed: (reason: string) => `Couldn't merge: ${reason}`,
         dismissFailed: (reason: string) => `Couldn't dismiss: ${reason}`,
+        loadFailed: (reason: string) => `Couldn't load the pairs: ${reason}`,
       },
       faces: {
         heading: "Faces in videos",
@@ -1824,9 +1851,48 @@ export const en = {
         loadingMore: "Loading more faces…",
         notThisPerson: "Not this person",
         notThisPersonFor: (title: string) => `Not this person in ${title}`,
-        split: "Split into a new unnamed person",
-        openSplit: "Open",
+        splitResult: (name: string) => `Split into ${name}`,
+        undoSplitFor: (title: string) => `Undo the split in ${title}`,
+        undoMoveFor: (title: string) => `Undo the move in ${title}`,
         splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
+        undoSplitFailed: (reason: string) => `Couldn't undo the split: ${reason}`,
+        sortLabel: "Order",
+        sortLeastSimilar: "Least like this person first",
+        sortNewest: "Newest video first",
+        similarity: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+        similarityFor: (title: string, value: number) =>
+          `${title}, ${formatNumber(Math.round(value * 100))}% like this person`,
+        select: "Select",
+        selectFace: (title: string) => `Select ${title}`,
+        selected: (count: number) => `${formatNumber(count)} selected`,
+        selectedFull: (count: number) =>
+          `${formatNumber(count)} selected, the most at once`,
+        clearSelection: "Clear selection",
+        splitSelected: "Not this person",
+        moveSelected: "Move to person…",
+        movedResult: (name: string) => `Moved to ${name}`,
+      },
+      moveDialog: {
+        title: (count: number) =>
+          selectPlural(count, {
+            one: "Move 1 face to…",
+            other: `Move ${formatNumber(count)} faces to…`,
+          }),
+        description: "Pick the person these faces belong to.",
+        moving: "Moving",
+        search: "Search by name",
+        searchFailed: (reason: string) => `Couldn't search: ${reason}`,
+        noCandidates: "No people match",
+        summary: (count: number, name: string) =>
+          selectPlural(count, {
+            one: `1 face and its credit move to ${name}.`,
+            other: `${formatNumber(count)} faces and their credits move to ${name}.`,
+          }),
+        submit: "Move",
+        submitting: "Moving…",
+        failed: (reason: string) => `Couldn't move the faces: ${reason}`,
+        facesGone:
+          "Some of these faces are no longer this person's. Refresh and try again.",
       },
       pluginFetch: {
         entry: "Fetch info…",
@@ -2679,6 +2745,115 @@ export const en = {
         description:
           "When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself.",
       },
+      rejudge: "Judge again",
+      rejudgeFor: (first: string, second: string) =>
+        `Judge again, for ${first} and ${second}`,
+      rejudged: "Sent back to duplicate judging",
+      left: "Left in the frames",
+      right: "Right in the frames",
+      noAudio: "No audio",
+      moreAudio: (count: number) => `+${formatNumber(count)} more`,
+      recommended: "Recommended representative",
+      recommendedReason: {
+        playable: "It plays in the browser as is; the other needs converting",
+        audio: "It has audio and the other doesn't",
+        audio_sync: "Its audio runs as long as its video; the other's doesn't",
+        resolution: "It has the higher resolution",
+        bitrate: "Same resolution, with more video data per second",
+        older: "The files don't differ otherwise, so the one added first",
+      },
+      keepsData:
+        "Bundling keeps both videos' tags, favourites, playback position and work information, whichever you choose.",
+      hints: {
+        unplayable: "Needs converting to play in the browser",
+        encrypted: "Encrypted (DRM)",
+        largerNoMorePixels: (times: number) =>
+          `${formatDecimal(times, 1)}× the size without more pixels`,
+        audioShare: (share: number) =>
+          `Audio takes ${formatNumber(Math.round(share * 100))}% of the file`,
+        audioLate: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s after the video`,
+        audioEarly: (ms: number) =>
+          `Audio starts ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioShorter: (ms: number) =>
+          `Audio ends ${formatDecimal(ms / 1000, 1)} s before the video`,
+        audioLonger: (ms: number) =>
+          `Audio runs ${formatDecimal(ms / 1000, 1)} s past the video`,
+      },
+    },
+    judgement: {
+      heading: "Automatic judgement",
+      why: "Why?",
+      whyFor: (first: string, second: string) =>
+        `Why the automatic judgement ended this way, for ${first} and ${second}`,
+      whyTitle: "Why the automatic judgement ended this way",
+      state: {
+        waiting: "Waiting to be judged",
+        running: "Being judged now",
+        undecided: "Left to you: it couldn't tell whether these are the same video",
+        undecidedAi: (percent: string) =>
+          `Left to you: the AI was unsure, ${percent} sure both show the same picture`,
+        undecidedIncomparable: "Left to you: the two videos' frames couldn't be compared",
+        undecidedProperties:
+          "Left to you: the AI says they differ, but the video information says they're the same",
+        undecidedConflict:
+          "Left to you: they look the same, but one is marked as a different video from the other's versions",
+        failed: (detail: string) =>
+          detail === "" ? "The judgement failed" : `The judgement failed: ${detail}`,
+        no_connection: "Needs the AI connection to decide",
+        held: "Left to you, since you changed an earlier automatic decision on this pair",
+      },
+      retryAt: (time: string) => `Tries again at ${time}`,
+      judgingOff: "Duplicate judging is off, so this pair waits for you.",
+      matched: (compared: number, differing: number) =>
+        differing === 0
+          ? `All ${formatNumber(compared)} frames compared by time show the same picture, so the rule judged them the same video without asking the AI.`
+          : `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ, no two in a row and within the 5% allowed, so the rule judged them the same video without asking the AI.`,
+      run: (
+        differing: number,
+        compared: number,
+        run: number,
+        start: string,
+        end: string,
+      ) =>
+        `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ, ${formatNumber(run)} of them in a row from ${start} to ${end}. A section that differs throughout may be a replaced scene, an added intro or a different edit.`,
+      scattered: (differing: number, compared: number) =>
+        `${formatNumber(differing)} of ${formatNumber(compared)} frames compared by time differ here and there, more than the 5% allowed.`,
+      versionMismatch:
+        "The two fingerprints were made by different versions of vv, so the frames couldn't be compared. Rescan either video to compare them.",
+      tooFew: (compared: number) =>
+        `Only ${formatNumber(compared)} frames could be compared by time, fewer than the 3 needed, often because the picture is flat or dark.`,
+      asked: (shown: number) =>
+        selectPlural(shown, {
+          one: `The AI was shown ${formatNumber(shown)} pair of those frames, below, and asked whether both sides show the same picture.`,
+          other: `The AI was shown ${formatNumber(shown)} pairs of those frames, below, and asked whether both sides show the same picture.`,
+        }),
+      answer: (percent: string) =>
+        `It answered ${percent}. At 80% or more the videos are bundled, at 20% or less they are marked different, and anything between is left to you.`,
+      noAnswer: "The AI hasn't answered yet, so these frames are what it will be shown.",
+      conflict:
+        "The judgement found the same video, but one of these is already marked different from a video bundled with the other, so it was left to you.",
+      byProperties:
+        "The video information below settled this. Titled chapters at the same times or an equal recording time decide on their own; an equal embedded title or untitled chapters at the same times only tip an unsure AI answer; and an AI answer of different that they contradict is left to you.",
+      properties: "Video information",
+      propertyKind: {
+        chapters: "Chapters",
+        recorded_at: "Recorded at",
+        embedded_title: "Embedded title",
+        duration: "Length",
+      },
+      propertySame: "Same",
+      propertyDifferent: "Different",
+      propertyChapters: (count: string) =>
+        selectPlural(Number(count), {
+          one: `${formatNumber(Number(count))} chapter`,
+          other: `${formatNumber(Number(count))} chapters`,
+        }),
+      propertyValues: (left: string, right: string) => `Left: ${left} · Right: ${right}`,
+      frames: "Frames shown to the AI",
+      frame: (left: string, right: string) => `Left at ${left}, right at ${right}`,
+      frameAlt: (left: string, right: string) =>
+        `Frame pair: left video at ${left}, right video at ${right}`,
     },
   },
   history: {
@@ -2750,6 +2925,7 @@ export const en = {
       period: "Period",
       all: "All",
       clear: "Clear filters",
+      apply: "Apply",
       several: (first: string, rest: number) => `${first} +${formatNumber(rest)}`,
       count: (count: number) => formatNumber(count),
     },
@@ -2974,6 +3150,7 @@ export const en = {
         tags: "Tags",
         people: "People",
         partOf: "Part of",
+        evidence: "Why",
       },
       fact: {
         status: "Status",
@@ -3118,6 +3295,7 @@ export const en = {
       removeTag: (name: string) => `Remove the condition ${name}`,
       removePerson: (name: string) => `Remove the person ${name}`,
       removeOrganization: (name: string) => `Remove the organization ${name}`,
+      removeKind: (name: string) => `Remove the kind ${name}`,
       removeDeleted: "Remove the deleted condition",
       submit: "Create",
       submitting: "Creating…",
@@ -3129,7 +3307,6 @@ export const en = {
     condition: {
       search: (query: string) => `Search: ${query}`,
       favorite: "Favorites",
-      playable: "Playable",
       kind: (name: string) => `Kind: ${name}`,
       tag: (name: string) => `Tag: ${name}`,
       person: (name: string) => `Person: ${name}`,
@@ -3141,15 +3318,6 @@ export const en = {
           person: "Person: deleted",
           organization: "Organization: deleted",
         })[kind],
-      addedWithin: (days: number) =>
-        days === 1
-          ? "Added in the last 24 hours"
-          : days === 365
-            ? "Added in the last year"
-            : `Added in the last ${formatNumber(days)} days`,
-      // max is inclusive seconds; describe its next second as an exclusive minute limit (299 means Under 5 minutes).
-      length: (minSeconds: number | undefined, maxSeconds: number | undefined) =>
-        lengthWords(minSeconds, maxSeconds),
     },
     detail: {
       edit: "Edit…",

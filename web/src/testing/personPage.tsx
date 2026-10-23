@@ -78,6 +78,20 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** How many reopen requests fail before they succeed again. */
+  reopenFailures: 0,
+  /** The reason a face upload is refused with, or null to accept it. */
+  imageRefusal: null as string | null,
+  /** The people a name search of the move and merge dialogs finds among. */
+  searchable: [] as Person[],
+  /** When set, a move answers that a face is no longer the person's. */
+  moveGone: false,
+  /** How many similar-people reads fail before they succeed again. */
+  similarFailures: 0,
+  /** How many candidate reads fail before they succeed again. */
+  candidateFailures: 0,
+  /** What the merge into the person answers, when not the person with nothing missing. */
+  mergeAnswer: null as { person: Person | null; notFoundIds: number[] } | null,
   /** Whether face recognition is on, as the settings report it. */
   faceRecognition: true,
   /** How many videos the person performs in. */
@@ -127,16 +141,65 @@ function pluginRoute(method: string, url: URL, body: unknown): Response | null {
 
 function faceRoute(method: string, url: URL): Response | null {
   if (url.pathname === "/api/people/7/face-candidates") {
+    if (server.candidateFailures > 0) {
+      server.candidateFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
     return jsonResponse({ items: server.faceCandidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
+    if (!url.searchParams.has("limit")) {
+      const all = [...server.appearances, ...server.laterAppearances];
+      return jsonResponse({ items: all, total: all.length });
+    }
     if (url.searchParams.get("cursor") === "page-2") {
-      return jsonResponse({ items: server.laterAppearances });
+      return jsonResponse({
+        items: server.laterAppearances,
+        total: server.appearances.length + server.laterAppearances.length,
+      });
     }
     return jsonResponse({
       items: server.appearances,
+      total: server.appearances.length + server.laterAppearances.length,
       nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
     });
+  }
+  if (url.pathname === "/api/people/7/similar-people") {
+    if (server.similarFailures > 0) {
+      server.similarFailures -= 1;
+      return jsonResponse({ code: "internal", message: "Down" }, 500);
+    }
+    return jsonResponse({
+      items: [
+        {
+          person: person({ id: 9, name: "Mio" }),
+          similarity: 0.71,
+          faceCount: 6,
+          sampleAppearanceIds: [],
+          firstSeenTitle: "Beach day",
+        },
+      ],
+    });
+  }
+  const move = /^\/api\/people\/(7|9)\/appearances\/move$/.exec(url.pathname);
+  if (move !== null && method === "POST") {
+    if (server.moveGone) {
+      return jsonResponse(
+        { code: "not_found", reason: "face_appearance_not_found", message: "Gone" },
+        404,
+      );
+    }
+    return jsonResponse(
+      move[1] === "7"
+        ? {
+            person: person({ id: 9, name: "Mio" }),
+            restoreCredits: [{ workKey: "work-5", position: 1 }],
+          }
+        : { person: person(), restoreCredits: [] },
+    );
+  }
+  if (url.pathname === "/api/people/7/appearances/split" && method === "POST") {
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
   const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
   if (split !== null && method === "POST") {
@@ -145,15 +208,33 @@ function faceRoute(method: string, url: URL): Response | null {
     );
     return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
-  const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
-    url.pathname,
-  );
+  const pair =
+    /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss|reopen)$/.exec(
+      url.pathname,
+    );
   if (pair !== null && method === "POST") {
+    if (pair[2] === "reopen") {
+      if (server.reopenFailures > 0) {
+        server.reopenFailures -= 1;
+        return jsonResponse({ code: "internal", message: "Down" }, 500);
+      }
+      return new Response(null, { status: 204 });
+    }
     server.faceCandidates = server.faceCandidates.filter(
       (item) => item.person.id !== Number(pair[1]),
     );
     if (pair[2] === "dismiss") return new Response(null, { status: 204 });
-    return jsonResponse(server.mergeTarget);
+    return jsonResponse({ person: server.mergeTarget, undoActivityId: 31 });
+  }
+  if (url.pathname === "/api/activity/31/undo" && method === "POST") {
+    return jsonResponse({ id: 32 });
+  }
+  if (url.pathname === "/api/people/7/merge" && method === "POST") {
+    const merged = server.mergeAnswer ?? { person: server.person, notFoundIds: [] };
+    return jsonResponse(merged);
+  }
+  if (url.pathname === "/api/people/7/image" && method === "DELETE") {
+    return jsonResponse(server.person);
   }
   const target = server.mergeTarget;
   if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {
@@ -171,6 +252,15 @@ function respond(method: string, url: URL, body: unknown): Response {
       ? jsonResponse({ items: ids.map((id) => video(id)), total: ids.length })
       : jsonResponse({ items: [], total: 0 });
   }
+  if (url.pathname === "/api/people" && method === "GET") {
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const items = server.searchable.filter((item) => item.name.toLowerCase().includes(q));
+    return jsonResponse({
+      items,
+      total: items.length,
+      totalAll: server.searchable.length,
+    });
+  }
   if (url.pathname === "/api/settings/face-recognition") {
     return jsonResponse({ enabled: server.faceRecognition });
   }
@@ -182,6 +272,12 @@ function respond(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/people/7" && method === "GET")
     return jsonResponse(server.person);
   if (url.pathname === "/api/people/7/image" && method === "PUT") {
+    if (server.imageRefusal !== null) {
+      return jsonResponse(
+        { code: "invalid_request", reason: server.imageRefusal, message: "Refused" },
+        400,
+      );
+    }
     server.person = { ...server.person, imageRevision: 3 };
     return jsonResponse(server.person);
   }
@@ -213,6 +309,13 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.reopenFailures = 0;
+    server.mergeAnswer = null;
+    server.candidateFailures = 0;
+    server.similarFailures = 0;
+    server.moveGone = false;
+    server.imageRefusal = null;
+    server.searchable = [];
     server.faceRecognition = true;
     server.videoCount = 1;
     vi.stubGlobal(

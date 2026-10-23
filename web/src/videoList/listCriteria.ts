@@ -1,17 +1,9 @@
-import {
-  isVideoSort,
-  MAX_QUERY_LENGTH,
-  videoSorts,
-  type VideoSort,
-  type WatchFilter,
-} from "../api/client";
+import { isVideoSort, MAX_QUERY_LENGTH, videoSorts, type VideoSort } from "../api/client";
 import { t, type UiText } from "../i18n";
 
 export interface ListCriteria {
   /** Trimmed query, capped at 100 code points; empty disables search. */
   query: string;
-  watch: WatchFilter;
-  playable: boolean;
   /** Owner-only; serialized as fav=1. */
   favorite: boolean;
   sort: VideoSort;
@@ -26,8 +18,6 @@ export const MAX_SEED = 2147483647;
 export { isVideoSort, videoSorts };
 
 export const DEFAULT_SORT: VideoSort = "addedDesc";
-
-const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "watched"];
 
 export type SortKind =
   | "added"
@@ -148,7 +138,7 @@ export interface ParsedCriteria {
 
 /**
  * Invalid or omitted sort falls back to stored preferredSort, including API values absent from the
- * menu.
+ * menu. Retired filter parameters (watch, playable) are ignored and dropped on the next write.
  */
 export function parseListCriteria(
   params: URLSearchParams,
@@ -157,17 +147,10 @@ export function parseListCriteria(
   const rawSort = params.get("sort");
   const hasExplicitSort = isListSort(rawSort);
   const sort: VideoSort = hasExplicitSort ? rawSort : preferredSort;
-  const rawWatch = params.get("watch");
-  const watch =
-    rawWatch !== null && (watchValues as readonly string[]).includes(rawWatch)
-      ? (rawWatch as WatchFilter)
-      : "all";
   const seed = sort === "random" ? parseSeed(params.get("seed")) : undefined;
   return {
     criteria: {
       query: normalizeQuery(params.get("q") ?? ""),
-      watch,
-      playable: params.get("playable") === "1",
       favorite: params.get("fav") === "1",
       sort,
       ...(seed === undefined ? {} : { seed }),
@@ -185,8 +168,6 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
   const params = new URLSearchParams();
   const query = normalizeQuery(criteria.query);
   if (query !== "") params.set("q", query);
-  if (criteria.watch !== "all") params.set("watch", criteria.watch);
-  if (criteria.playable) params.set("playable", "1");
   if (criteria.favorite) params.set("fav", "1");
   params.set("sort", criteria.sort);
   if (criteria.sort === "random" && criteria.seed !== undefined) {
@@ -212,29 +193,21 @@ export function ownerOnlySort(sort: VideoSort): boolean {
 
 /** Normalize owner-only conditions for guests; preserve object identity when unchanged. */
 export function guestListCriteria(criteria: ListCriteria): ListCriteria {
-  if (criteria.watch === "all" && !criteria.favorite && !ownerOnlySort(criteria.sort)) {
-    return criteria;
-  }
+  if (!criteria.favorite && !ownerOnlySort(criteria.sort)) return criteria;
   return {
     ...criteria,
-    watch: "all",
     favorite: false,
     sort: ownerOnlySort(criteria.sort) ? DEFAULT_SORT : criteria.sort,
   };
 }
 
 export function hasConditions(criteria: ListCriteria): boolean {
-  return (
-    criteria.query !== "" ||
-    criteria.watch !== "all" ||
-    criteria.playable ||
-    criteria.favorite
-  );
+  return criteria.query !== "" || criteria.favorite;
 }
 
 /** Clear filters while retaining sort and seed. */
 export function clearConditions(criteria: ListCriteria): ListCriteria {
-  return { ...criteria, query: "", watch: "all", playable: false, favorite: false };
+  return { ...criteria, query: "", favorite: false };
 }
 
 export function criteriaKey(criteria: ListCriteria): string {

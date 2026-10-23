@@ -6,7 +6,6 @@ import type { SmartFolderSummary, VideoTag } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { smartFolderKey } from "../api/libraryItems";
 import type { LibrarySmartFolder } from "../api/smartFolders";
-import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import {
@@ -22,13 +21,8 @@ import FavoriteToggle from "../ui/FavoriteToggle";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import {
-  VideoThumbnail,
-  VideoThumbnailImage,
-  VideoThumbnailMark,
-} from "../ui/VideoThumbnail";
+import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
-import { useCardActions } from "../videoList/cardActions";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useSmartFolderCardValue } from "./cardValues";
@@ -148,8 +142,6 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     selectionMode,
     videoPath: (id) => videoInSmartFolderPath(id, folder.id),
   });
-  const owner = useAudience() === "owner";
-  const actions = useCardActions();
   if (gone) return null;
   const empty = values?.videoCount === 0;
   const tags = values?.tags ?? [];
@@ -157,8 +149,6 @@ export const SmartFolderCard = memo(function SmartFolderCard(
   const card = (
     <article
       ref={ref}
-      onPointerEnter={actions.approach}
-      onFocus={actions.approach}
       data-smart-folder-id={folder.id}
       className={cn(
         "group relative flex min-w-0 flex-col gap-2",
@@ -208,12 +198,6 @@ export const SmartFolderCard = memo(function SmartFolderCard(
         />
         <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
       </Link>
-      {owner && (actions.ready || (values ?? folder).favorite === true) && (
-        <VideoThumbnailMark className="z-30">
-          {actions.ready && <SmartFolderAddToPlaylist folder={folder} variant="card" />}
-          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="card" />
-        </VideoThumbnailMark>
-      )}
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}

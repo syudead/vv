@@ -21,7 +21,7 @@ func (s *server) GetGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId
 		trail = *params.Trail
 	}
 	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
 	if !ok {
@@ -67,7 +67,7 @@ func (s *server) ListGroupItems(w http.ResponseWriter, r *http.Request, id gen.G
 		cursor = *params.Cursor
 	}
 	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
 	if !ok {

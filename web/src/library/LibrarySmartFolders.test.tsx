@@ -108,108 +108,12 @@ function install() {
   });
 }
 
-function requests(pathname: string): URL[] {
-  return fetchMock.mock.calls
-    .map((call) => new URL(String(call[0]), "http://localhost"))
-    .filter((url) => url.pathname === pathname);
-}
-
 function location(): string {
   const params = new URLSearchParams(screen.getByTestId("location").textContent);
   if (params.get("sort") === "addedDesc") params.delete("sort");
   const search = params.toString();
   return search === "" ? "" : `?${search}`;
 }
-
-function lastLibrary(): URLSearchParams {
-  const last = requests("/api/library").at(-1);
-  if (last === undefined) throw new Error("no library request");
-  return last.searchParams;
-}
-
-describe("ライブラリの追加日と長さ", () => {
-  beforeEach(() => {
-    __resetTagsForTest();
-    __resetTagKindsForTest();
-    clearListSnapshot();
-    created = [];
-    vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal(
-      "IntersectionObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    Element.prototype.hasPointerCapture ??= () => false;
-    Element.prototype.releasePointerCapture ??= () => undefined;
-    // Sonner actions also use pointer capture.
-    Element.prototype.setPointerCapture ??= () => undefined;
-    Element.prototype.scrollIntoView ??= () => undefined;
-    install();
-  });
-
-  afterEach(() => {
-    cleanup();
-    fetchMock.mockReset();
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
-
-  it("URL の addedWithin・minDuration・maxDuration を保って送り、ポップオーバーが選んだ形で数える", async () => {
-    const user = userEvent.setup();
-    renderAt("/?addedWithin=7&minDuration=300&maxDuration=1199");
-    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(lastLibrary().get("addedWithin")).toBe("7");
-    expect(lastLibrary().get("minDuration")).toBe("300");
-    expect(lastLibrary().get("maxDuration")).toBe("1199");
-
-    await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
-    expect(screen.getByRole("combobox", { name: "Added" }).textContent).toBe(
-      "Last 7 days",
-    );
-    expect(screen.getByRole("combobox", { name: "Length" }).textContent).toBe(
-      "5 to 20 minutes",
-    );
-
-    await user.click(screen.getByRole("combobox", { name: "Length" }));
-    await user.click(await screen.findByRole("option", { name: "Over an hour" }));
-    await waitFor(() => expect(location()).toBe("?addedWithin=7&minDuration=3600"));
-    await waitFor(() => expect(lastLibrary().get("minDuration")).toBe("3600"));
-    expect(lastLibrary().has("maxDuration")).toBe(false);
-    expect(lastLibrary().get("addedWithin")).toBe("7");
-  });
-
-  it("選択肢に無い値は自分の選択肢で出し、Clear filters で外れる", async () => {
-    const user = userEvent.setup();
-    renderAt("/?addedWithin=14&sort=titleAsc");
-    await screen.findByRole("link", { name: "動画 1" });
-
-    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
-    expect(screen.getByRole("combobox", { name: "Added" }).textContent).toBe(
-      "Last 14 days",
-    );
-    await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    await waitFor(() => expect(location()).toBe("?sort=titleAsc"));
-  });
-
-  it("送れない値は要求の前に URL から落とし、400 を受けない", async () => {
-    renderAt("/?addedWithin=0&minDuration=600&maxDuration=60&tag=1");
-    await screen.findByRole("link", { name: "動画 1" });
-    await waitFor(() => expect(location()).toBe("?tag=1"));
-    for (const url of requests("/api/library")) {
-      expect(url.searchParams.has("addedWithin")).toBe(false);
-      expect(url.searchParams.has("minDuration")).toBe(false);
-    }
-  });
-
-  it("ゲストも追加日と長さで絞り込める", async () => {
-    renderAt("/?addedWithin=30&tag=1", "guest");
-    await screen.findByRole("link", { name: "動画 1" });
-    await waitFor(() => expect(location()).toBe("?addedWithin=30"));
-    expect(lastLibrary().get("addedWithin")).toBe("30");
-  });
-});
 
 describe("Save as smart folder", () => {
   beforeEach(() => {
@@ -240,16 +144,16 @@ describe("Save as smart folder", () => {
     vi.unstubAllGlobals();
   });
 
-  it("タグ 猫 と watch=unwatched で保存すると、それらを持つ rule を送る（受け入れ条件 5）", async () => {
+  it("タグ 猫 と fav=1 で保存すると、それらを持つ rule を送る（受け入れ条件 5）", async () => {
     const user = userEvent.setup();
-    renderAt("/?tag=1&watch=unwatched&sort=titleAsc");
+    renderAt("/?tag=1&fav=1&sort=titleAsc");
     await screen.findByRole("link", { name: "動画 1" });
 
     await user.click(screen.getByRole("button", { name: "Save as smart folder" }));
     const dialog = await screen.findByRole("dialog", { name: "New smart folder" });
     expect(
       within(dialog)
-        .getByRole("radio", { name: "Unwatched" })
+        .getByRole("checkbox", { name: "Favorites only" })
         .getAttribute("aria-checked"),
     ).toBe("true");
     expect(await within(dialog).findByText("猫")).toBeDefined();
@@ -264,12 +168,12 @@ describe("Save as smart folder", () => {
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toEqual({
       name: "タグ: 猫",
-      rule: { watch: "unwatched", tags: [1] },
+      rule: { favorite: true, tags: [1] },
       sort: "titleAsc",
     });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(await screen.findByText('Created "タグ: 猫"')).toBeDefined();
-    expect(location()).toBe("?tag=1&watch=unwatched&sort=titleAsc");
+    expect(location()).toBe("?tag=1&fav=1&sort=titleAsc");
 
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(await screen.findByText("Smart folder page")).toBeDefined();
@@ -277,7 +181,7 @@ describe("Save as smart folder", () => {
 
   it("名前が無ければ送らずに名前の規則を出す", async () => {
     const user = userEvent.setup();
-    renderAt("/?playable=1");
+    renderAt("/?fav=1");
     await screen.findByRole("link", { name: "動画 1" });
     await user.click(screen.getByRole("button", { name: "Save as smart folder" }));
     const dialog = await screen.findByRole("dialog", { name: "New smart folder" });
@@ -308,7 +212,7 @@ describe("Save as smart folder", () => {
     expect(screen.queryByRole("button", { name: "Save as smart folder" })).toBeNull();
     cleanup();
 
-    renderAt("/?addedWithin=7", "guest");
+    renderAt("/?fav=1", "guest");
     await screen.findByRole("link", { name: "動画 1" });
     expect(screen.queryByRole("button", { name: "Save as smart folder" })).toBeNull();
   });

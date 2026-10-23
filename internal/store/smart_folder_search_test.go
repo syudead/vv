@@ -56,7 +56,7 @@ func TestSmartFolderSearchNarrowsSavedMembershipAndPages(t *testing.T) {
 	}
 }
 
-func TestSmartFolderSearchPreservesGroupWatchScope(t *testing.T) {
+func TestSmartFolderSearchNarrowsGroupAndKeepsSummary(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	a, b := looseVideo(t, db, "watched"), looseVideo(t, db, "new")
@@ -64,7 +64,7 @@ func TestSmartFolderSearchPreservesGroupWatchScope(t *testing.T) {
 	if _, err := db.Playback().SaveProgress(ctx, "watched", domain.Progress{Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
-	folder := newSmartFolder(t, db, "in progress", domain.SmartRule{Watch: domain.WatchInProgress}, domain.SortTitleAsc, 0)
+	folder := newSmartFolder(t, db, "all", domain.SmartRule{}, domain.SortTitleAsc, 0)
 	page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", 10, domain.VideoQuery{Query: "watched"})
 	if err != nil {
 		t.Fatal(err)

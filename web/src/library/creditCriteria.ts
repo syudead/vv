@@ -18,7 +18,7 @@ export interface CreditFilter {
   tagKind?: number;
 }
 
-function creditParam(kind: CreditKind): string {
+export function creditParam(kind: CreditKind): string {
   return kind === "person" ? PERSON_PARAM : ORGANIZATION_PARAM;
 }
 
@@ -81,6 +81,11 @@ export const withoutTagKind: Readonly<Record<string, string[]>> = {
 
 export function withTagKind(id: number): Record<string, string[]> {
   return { [TAG_KIND_PARAM]: [String(id)] };
+}
+
+/** Each credit filter holds one ID, so picking another replaces it. */
+export function withCredit(kind: CreditKind, id: number): Record<string, string[]> {
+  return { [creditParam(kind)]: [String(id)] };
 }
 
 export const clearedCredits: Readonly<Record<string, string[]>> = {

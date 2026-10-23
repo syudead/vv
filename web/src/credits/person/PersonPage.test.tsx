@@ -131,13 +131,13 @@ describe("PersonPage", () => {
     await screen.findByRole("link", { name: /Video 1/ });
   });
 
-  it("titles a provisional person Unnamed person and offers Name… in place of Edit", async () => {
+  it("titles a provisional person by their number and offers Name… in place of Edit", async () => {
     const user = userEvent.setup();
     server.person = person({ ...profiled, name: "", provisional: true });
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Unnamed person" })).toBeTruthy();
-    expect(document.title).toContain("Unnamed person");
+    expect(await screen.findByRole("heading", { name: "#7" })).toBeTruthy();
+    expect(document.title).toContain("#7");
     expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     await user.click(screen.getByRole("link", { name: "Name…" }));
 
@@ -155,7 +155,7 @@ describe("PersonPage", () => {
     await user.click(await screen.findByRole("link", { name: "Faces, 1 to review" }));
 
     expect(await screen.findByRole("heading", { name: "Faces", level: 1 })).toBeTruthy();
-    expect(await screen.findByText("72% similar")).toBeTruthy();
+    expect(await screen.findByRole("group", { name: "Pair with Alice" })).toBeTruthy();
   });
 
   it("hides Faces while face recognition is off", async () => {

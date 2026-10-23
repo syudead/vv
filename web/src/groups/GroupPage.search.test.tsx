@@ -57,8 +57,7 @@ it("検索条件を初回・次ページに渡し、検索の変更と解除をU
 
   const search = screen.getByRole("searchbox", { name: "Search videos" });
   await user.clear(search);
-  await user.type(search, "missing");
-  await user.tab();
+  await user.type(search, "missing{Enter}");
   await waitFor(() => expect(requests.at(-1)?.searchParams.get("query")).toBe("missing"));
   await screen.findByRole("heading", { name: t.list.noMatches });
   expect(screen.queryByRole("link", { name: "Episode 1" })).toBeNull();

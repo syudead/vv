@@ -82,7 +82,7 @@ describe("smart folders API", () => {
     expect(
       await createSmartFolder({
         name: "猫",
-        rule: { tags: [1], watch: "unwatched" },
+        rule: { tags: [1], favorite: true },
         parentId: 2,
       }),
     ).toEqual(summary);
@@ -104,7 +104,7 @@ describe("smart folders API", () => {
       {
         url: "/api/smart-folders",
         method: "POST",
-        body: { name: "猫", rule: { tags: [1], watch: "unwatched" }, parentId: 2 },
+        body: { name: "猫", rule: { tags: [1], favorite: true }, parentId: 2 },
       },
       { url: "/api/smart-folders/3", method: "PATCH", body: { parentId: 4 } },
       { url: "/api/smart-folders/3", method: "DELETE", body: undefined },

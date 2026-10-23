@@ -257,56 +257,6 @@ afterEach(() => {
 });
 
 describe("ライブラリのお気に入りの付け外し", () => {
-  it("動画のカードで押すと videoIds: [id] を送り、応答のあと同じ場所の印が付き、もう一度押すと外れる", async () => {
-    const server = install([
-      { kind: "video", video: video(1) },
-      { kind: "video", video: video(2) },
-    ]);
-    const user = userEvent.setup();
-    renderLibrary();
-    const toggle = await screen.findByRole("button", { name: 'Favorite "動画 1"' });
-    expect(pressed(toggle)).toBe("false");
-    expect(toggle.className).toContain("opacity-0");
-    expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
-    expect(toggle.className).toContain("size-8");
-    expect(toggle.className).toContain("text-foreground");
-    expect(toggle.className).not.toMatch(/\bbg-/);
-    const heart = toggle.querySelector("svg") as SVGElement;
-    expect(heart.getAttribute("class")).toContain("size-5");
-    expect(heart.getAttribute("class")).toContain("drop-shadow-mark");
-    expect(toggle.parentElement?.getAttribute("data-slot")).toBe("video-thumbnail-mark");
-    expect(toggle.parentElement?.getAttribute("data-corner")).toBe("top-end");
-    const card = toggle.closest("article") as HTMLElement;
-    expect(toggle.closest("a")).toBeNull();
-    const link = within(card).getByRole("link", { name: "動画 1" });
-    expect(
-      link.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-
-    await user.click(toggle);
-    await waitFor(() => expect(pressed(toggle)).toBe("true"));
-    expect(server.favoriteRequests).toEqual([
-      { videoIds: [1], groupIds: [], favorite: true },
-    ]);
-    expect(toggle.className).toContain("text-favorite");
-    expect(toggle.className).not.toContain("text-primary");
-    expect(toggle.className).not.toContain("opacity-0");
-    expect(toggle.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
-    expect(screen.queryByText("再生画面")).toBeNull();
-    expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 2"' }))).toBe(
-      "false",
-    );
-
-    await user.click(toggle);
-    await waitFor(() => expect(pressed(toggle)).toBe("false"));
-    expect(server.favoriteRequests[1]).toEqual({
-      videoIds: [1],
-      groupIds: [],
-      favorite: false,
-    });
-    expect(server.libraryRequests).toBe(1);
-  });
-
   it("送っている間は aria-disabled で、重ねて送らない", async () => {
     install([{ kind: "video", video: video(1) }]);
     const base = fetchMock.getMockImplementation();
@@ -321,6 +271,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
       return base!(input, init);
     });
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite "動画 1"' });
     await user.click(toggle);
@@ -345,6 +296,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
         : base!(input, init),
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite "動画 1"' });
     await user.click(toggle);
@@ -378,7 +330,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
     await waitFor(() => expect(pressed(toggle)).toBe("false"));
   });
 
-  it("グループのカードは groupIds: [id] を送り、取り直して印が変わり、メンバーには影響しない", async () => {
+  it("グループの行は groupIds: [id] を送り、取り直して印が変わり、メンバーには影響しない", async () => {
     const server = install(
       [
         { kind: "video", video: video(101, { title: "ep01" }) },
@@ -387,9 +339,9 @@ describe("ライブラリのお気に入りの付け外し", () => {
       seriesGroup(),
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite group "series"' });
-    expect(toggle.closest("div")?.className).toContain("z-30");
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
     expect(server.favoriteRequests).toEqual([
@@ -405,10 +357,11 @@ describe("ライブラリのお気に入りの付け外し", () => {
     );
   });
 
-  it("フォルダの無い（手で作った）グループのカードも、その id で付け外しできる", async () => {
+  it("フォルダの無い（手で作った）グループの行も、その id で付け外しできる", async () => {
     const { folder: _folder, ...handMade } = seriesGroup({ id: 8, name: "mix" });
     const server = install([{ kind: "group", group: handMade }], handMade);
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite group "mix"' });
     await user.click(toggle);
@@ -421,18 +374,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
     ).toBeDefined();
   });
 
-  it("リスト表示のグループの行でも付け外しできる", async () => {
-    useListView();
-    install([{ kind: "group", group: seriesGroup() }], seriesGroup());
-    const user = userEvent.setup();
-    renderLibrary();
-    const toggle = await screen.findByRole("button", { name: 'Favorite group "series"' });
-    expect(toggle.closest("td")?.className).toContain("w-8");
-    await user.click(toggle);
-    await waitFor(() => expect(pressed(toggle)).toBe("true"));
-  });
-
-  it("appliedGroups が 0 で、取り直しが 404 なら、そのカードを一覧から外す", async () => {
+  it("appliedGroups が 0 で、取り直しが 404 なら、その行を一覧から外す", async () => {
     const server = install(
       [
         { kind: "video", video: video(1) },
@@ -441,6 +383,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
       seriesGroup(),
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite group "series"' });
     server.group = undefined;
@@ -460,6 +403,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
       { kind: "video", video: video(2) },
     ]);
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
@@ -502,6 +446,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
       seriesGroup(),
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(await screen.findByRole("link", { name: "動画 1" }));
     await screen.findByText("再生画面");
@@ -602,6 +547,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
     it("全件に反映された公開の切り替えでは、お気に入りの印は確かにならず、古い控えを戻さない", async () => {
       const server = installPartial();
       const user = userEvent.setup();
+      useListView();
       renderLibrary();
       await screen.findByRole("button", { name: 'Favorite "動画 1"' });
       await partialFavorite();
@@ -616,6 +562,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
     it("全件に反映されたお気に入りの結果が届けば確かになり、控えから戻す", async () => {
       const server = installPartial();
       const user = userEvent.setup();
+      useListView();
       renderLibrary();
       await screen.findByRole("button", { name: 'Favorite "動画 1"' });
       await partialFavorite();
@@ -657,6 +604,7 @@ describe("選択バーの一括のお気に入り", () => {
       group,
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
@@ -748,6 +696,7 @@ describe("選択バーの一括のお気に入り", () => {
       group,
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(
       await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
@@ -780,6 +729,7 @@ describe("選択バーの一括のお気に入り", () => {
         : base!(input, init),
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
     await favoriteSelection(user);

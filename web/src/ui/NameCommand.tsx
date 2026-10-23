@@ -94,6 +94,7 @@ export default function NameCommand({
   onCommitSpelling,
   searching = false,
   locked = false,
+  hideEmptyPanel = false,
 }: {
   rules: NameRules;
   label: UiText;
@@ -130,6 +131,8 @@ export default function NameCommand({
   searching?: boolean;
   /** Block actions without showing a spinner. */
   locked?: boolean;
+  /** Inline only: leave out the list's fixed-height panel while there is nothing to list. */
+  hideEmptyPanel?: boolean;
 }) {
   const reasonId = useId();
   const [reason, setReason] = useState<UiText | null>(null);
@@ -218,6 +221,7 @@ export default function NameCommand({
     <ListNameCommand
       {...shared}
       inline={layout === "inline"}
+      hideEmptyPanel={hideEmptyPanel}
       onEscape={onEscape}
       frameClassName={frameClassName}
       chosenId={chosenId}
@@ -425,6 +429,7 @@ function PopoverChoice({
 function ListNameCommand({
   label,
   inline,
+  hideEmptyPanel = false,
   choices,
   group,
   onSelect,
@@ -445,6 +450,8 @@ function ListNameCommand({
   labelledBy,
 }: SharedProps & {
   inline: boolean;
+  /** Inline only: leave out the list's fixed-height panel while there is nothing to list. */
+  hideEmptyPanel?: boolean;
   onEscape?: () => void;
   frameClassName?: string;
   chosenId?: string;
@@ -650,7 +657,7 @@ function ListNameCommand({
           onChange={() => setOpen(true)}
         />
       </CommandInput>
-      {inline ? (
+      {inline && hideEmptyPanel && rowCount === 0 ? null : inline ? (
         // Keep list height stable so candidates do not overlap dialog buttons.
         <div className="mt-2 h-combobox-panel max-h-combobox-panel-max overflow-y-auto rounded-md border border-border p-1">
           {list}

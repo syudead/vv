@@ -8,7 +8,7 @@ under its user key ([research R-1](research.md#r-1-a-persistent-virtual-video-ta
 
 ## Migration
 
-`00073_virtual_videos.sql` creates `virtual_videos`. It alters no existing
+`00078_virtual_videos.sql` creates `virtual_videos`. It alters no existing
 table.
 
 ## `virtual_videos`

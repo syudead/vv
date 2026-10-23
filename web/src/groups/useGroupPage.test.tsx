@@ -14,14 +14,14 @@ afterEach(() => vi.restoreAllMocks());
 
 it("条件付きの次ページ・再読込を維持し、条件変更前の応答を破棄する", async () => {
   vi.spyOn(events, "subscribeServerEvents").mockReturnValue(() => undefined);
-  const criteria: CollectionCriteria = { watch: "unwatched", sort: "random", seed: 42 };
+  const criteria: CollectionCriteria = { favorite: true, sort: "random", seed: 42 };
   const detail = vi
     .spyOn(groups, "readGroupPage")
     .mockImplementation(async (_id, _trail, _signal, _query, conditions) => ({
       group: group(1, "Group"),
       trail: [],
       items: [first],
-      nextCursor: `${conditions?.watch}-next`,
+      nextCursor: `${conditions?.sort}-next`,
     }));
   const more = vi
     .spyOn(groups, "listGroupItems")
@@ -54,7 +54,7 @@ it("条件付きの次ページ・再読込を維持し、条件変更前の応�
   );
   expect(more).toHaveBeenLastCalledWith(
     1,
-    "unwatched-next",
+    "random-next",
     expect.any(AbortSignal),
     undefined,
     "cat",
@@ -71,12 +71,12 @@ it("条件付きの次ページ・再読込を維持し、条件変更前の応�
   );
   act(() => result.current.loadMore());
   const signal = more.mock.calls.at(-1)?.[2];
-  const nextCriteria: CollectionCriteria = { watch: "watched", sort: "titleDesc" };
+  const nextCriteria: CollectionCriteria = { sort: "titleDesc" };
   rerender({ conditions: nextCriteria });
   await waitFor(() =>
     expect(result.current.state).toMatchObject({
       kind: "ready",
-      data: { items: [first], nextCursor: "watched-next" },
+      data: { items: [first], nextCursor: "titleDesc-next" },
     }),
   );
   expect(detail).toHaveBeenLastCalledWith(
@@ -89,7 +89,7 @@ it("条件付きの次ページ・再読込を維持し、条件変更前の応�
   expect(signal?.aborted).toBe(true);
   await act(async () => finish({ items: [second] }));
   expect(result.current.state).toMatchObject({
-    data: { items: [first], nextCursor: "watched-next" },
+    data: { items: [first], nextCursor: "titleDesc-next" },
   });
   expect(more).toHaveBeenCalledOnce();
 });

@@ -389,13 +389,13 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{top, nested, outside}, Total: 3}}
 	handler := newTestServer(t, Options{Videos: library, Folders: folderFixture()})
 
-	target := "/api/videos?query=" + url.QueryEscape("京都 -2023") + "&watch=unwatched&sort=durationDesc"
+	target := "/api/videos?query=" + url.QueryEscape("京都 -2023") + "&sort=durationDesc"
 	rec := do(t, handler, http.MethodGet, target)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	want := domain.VideoQuery{
-		Query: "京都 -2023", Watch: domain.WatchUnwatched, Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
+		Query: "京都 -2023", Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
 	}
 	if !reflect.DeepEqual(library.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", library.lastQuery, want)
@@ -416,11 +416,11 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 		t.Errorf("outside folder = %+v, want omitted", got)
 	}
 
-	rec = do(t, handler, http.MethodGet, "/api/videos?playable=true&sort=random&seed=0")
+	rec = do(t, handler, http.MethodGet, "/api/videos?sort=random&seed=0")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if q := library.lastQuery; !q.PlayableOnly || q.Sort != domain.SortRandom || q.Seed != 0 || q.Watch != domain.WatchAll {
+	if q := library.lastQuery; q.Sort != domain.SortRandom || q.Seed != 0 {
 		t.Errorf("query = %+v", q)
 	}
 }
@@ -429,7 +429,6 @@ func TestListVideosRejectsUnknownFilters(t *testing.T) {
 	library := &fakeLibrary{}
 	handler := newTestServer(t, Options{Videos: library})
 	for _, target := range []string{
-		"/api/videos?watch=someday",
 		"/api/videos?sort=sideways",
 		"/api/videos?seed=-1",
 		"/api/videos?seed=2147483648",

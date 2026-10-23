@@ -25,7 +25,7 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	solo, x, ep1 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/show/ep1.mp4")]
 	cat := attachNamedTag(t, db, "猫", solo, x)
 	root := newSmartFolder(t, db, "q猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
-	newSmartFolder(t, db, "子", domain.SmartRule{Watch: domain.WatchUnwatched}, domain.SortTitleAsc, root)
+	newSmartFolder(t, db, "子", domain.SmartRule{}, domain.SortTitleAsc, root)
 
 	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: domain.MaxLimit})
 	if got, want := itemNames(items), []string{"group:pair", "folder:q猫", "group:show", "solo", "x", "y"}; !slices.Equal(got, want) {
@@ -53,16 +53,6 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{small}}, domain.SortTitleAsc, 0)
 	if got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeAsc); len(got) != 7 || got[2] != "folder:犬" || got[5] != "folder:q猫" || got[6] != "y" {
 		t.Errorf("大きさの昇順 = %v, want folder:犬 at 2 and folder:q猫 before y", got)
-	}
-}
-
-// Sort aggregates filter individual videos even when watch-state filtering leaves the grouped playback order empty.
-func TestListLibrarySortsSmartFoldersByTheirMatchingVideos(t *testing.T) {
-	db, _ := itemsFixture(t)
-	newSmartFolder(t, db, "未視聴のep", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
-	got := libraryOrder(t, db, domain.AudienceOwner, domain.SortAddedAsc)
-	if len(got) != 6 || got[0] != "folder:未視聴のep" || got[1] != "x" {
-		t.Errorf("追加日時の昇順 = %v, want folder:未視聴のep then x", got)
 	}
 }
 
@@ -94,16 +84,11 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	solo := ids[fixturePath("/media/solo.mp4")]
 	cat := attachNamedTag(t, db, "猫", solo)
 	root := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
-	child := newSmartFolder(t, db, "見た", domain.SmartRule{Watch: domain.WatchWatched}, domain.SortTitleAsc, root)
+	child := newSmartFolder(t, db, "見た", domain.SmartRule{}, domain.SortTitleAsc, root)
 
-	one := 1
 	for _, q := range []domain.VideoQuery{
 		{Query: "solo"},
 		{TagIDs: []int64{cat}},
-		{Watch: domain.WatchWatched},
-		{PlayableOnly: true},
-		{AddedWithinDays: 7},
-		{MinDurationSec: &one},
 	} {
 		q.Limit = domain.MaxLimit
 		for _, item := range libraryPages(t, db, domain.AudienceOwner, q) {
@@ -162,8 +147,6 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	newSmartFolder(t, db, "公開", domain.SmartRule{Tags: []int64{publicTag}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "非公開", domain.SmartRule{Tags: []int64{privateTag}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "空", domain.SmartRule{Q: "どれにも当たらない"}, domain.SortTitleAsc, 0)
-	// The group is in progress even though one member remains unwatched.
-	newSmartFolder(t, db, "混ざる", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
 
 	folders := func(audience domain.Audience) []string {
 		var names []string
@@ -178,7 +161,7 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	if got, want := folders(domain.AudienceGuest), []string{"公開"}; !slices.Equal(got, want) {
 		t.Errorf("ゲストのフォルダ = %v, want %v", got, want)
 	}
-	if got, want := folders(domain.AudienceOwner), []string{"公開", "混ざる", "空", "非公開"}; !slices.Equal(got, want) {
+	if got, want := folders(domain.AudienceOwner), []string{"公開", "空", "非公開"}; !slices.Equal(got, want) {
 		t.Errorf("所有者のフォルダ = %v, want %v", got, want)
 	}
 }

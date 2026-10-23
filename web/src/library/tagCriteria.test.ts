@@ -14,8 +14,6 @@ import {
 function baseCriteria(extra: Partial<ListCriteria> = {}): ListCriteria {
   return {
     query: "",
-    watch: "all",
-    playable: false,
     favorite: false,
     sort: "addedDesc",
     ...extra,
@@ -78,8 +76,7 @@ describe("hasConditions / clearConditions", () => {
     const result = clearConditions(
       baseCriteria({
         query: "abc",
-        watch: "unwatched",
-        playable: true,
+        favorite: true,
         sort: "titleAsc",
       }),
     );

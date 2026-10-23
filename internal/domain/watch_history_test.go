@@ -47,12 +47,10 @@ func TestWatchHistoryCursorRoundTrip(t *testing.T) {
 }
 
 func TestParseWatchHistoryFilter(t *testing.T) {
-	for value, want := range map[string]WatchFilter{
-		"all": WatchAll, "inProgress": WatchInProgress, "watched": WatchWatched,
-	} {
-		filter, err := ParseWatchHistoryFilter(value)
-		if err != nil || filter.WatchFilter() != want {
-			t.Errorf("ParseWatchHistoryFilter(%q) = %q, %v, want %q", value, filter, err, want)
+	for _, want := range []WatchHistoryFilter{WatchHistoryAll, WatchHistoryInProgress, WatchHistoryWatched} {
+		filter, err := ParseWatchHistoryFilter(string(want))
+		if err != nil || filter != want {
+			t.Errorf("ParseWatchHistoryFilter(%q) = %q, %v, want %q", want, filter, err, want)
 		}
 	}
 	for _, value := range []string{"", "unwatched", "Watched", "in_progress"} {

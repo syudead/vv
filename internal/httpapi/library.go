@@ -25,10 +25,9 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	}
 	audience := audienceFrom(r.Context())
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
+		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind,
 	})
 	if !ok {
@@ -93,19 +92,22 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 }
 
 type itemLookup struct {
-	s        *server
-	progress map[string]domain.Progress
-	tags     map[string][]domain.VideoTag
+	s      *server
+	extras videoExtras
 }
 
-// Skip progress/tag reads entirely for guests.
+// Tags cover group members too, for their tag union; progress and credits cover shown videos only. Guests skip every read.
 func (s *server) itemLookups(ctx context.Context, shown, tagged []domain.Video) itemLookup {
-	return itemLookup{s: s, progress: s.progressFor(ctx, shown), tags: s.tagsFor(ctx, tagged)}
+	return itemLookup{s: s, extras: videoExtras{
+		progress: s.progressFor(ctx, shown),
+		tags:     s.tagsFor(ctx, tagged),
+		credits:  s.creditsFor(ctx, shown),
+	}}
 }
 
 func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, video domain.Video) gen.Video {
 	view := l.s.presentVideos(ctx, []domain.Video{video})[0]
-	item := withTags(withProgress(toAPIVideo(view), l.progress, video.UserKey), l.tags, video.UserKey)
+	item := l.extras.item(view)
 	if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 		item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 	}
@@ -119,7 +121,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		ids = append(ids, member.ID)
 	}
 	previews := groupPreviewMembers(group.Members)
-	tags := unionMemberTags(group.Members, l.tags)
+	tags := unionMemberTags(group.Members, l.extras.tags)
 	if group.Card != nil {
 		ids, previews, tags = group.Card.VideoIDs, group.Card.Previews, group.Card.Tags
 	}

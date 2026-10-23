@@ -295,6 +295,7 @@ func run(opts runOptions) error {
 			logger.Warn("could not republish the thumbnails of virtual videos", slog.Any("error", err))
 		}
 	})
+	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
 	workersDone.Go(func() { faces.analysis.Run(backgroundCtx) })
@@ -407,6 +408,7 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
+		VersionReview:     app.NewVersionJudgeReview(db.Versions(), artifactStore, versionJudge),
 		FaceRecognition:   faces.settings,
 		FaceAnalysis:      faces.analysis,
 		Ollama:            ollamaConnection,

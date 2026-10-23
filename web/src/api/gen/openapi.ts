@@ -113,7 +113,7 @@ export interface paths {
         };
         /**
          * List videos
-         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -133,7 +133,7 @@ export interface paths {
         };
         /**
          * List library items (videos and groups)
-         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
@@ -647,6 +647,26 @@ export interface paths {
          * @description Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. For a virtual video, removes the uploaded image without opening a file and returns Video with no thumbnailUrl. Emits a video event after commit.
          */
         delete: operations["revertThumbnailImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a frame of the video
+         * @description Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable.
+         */
+        get: operations["getVideoFrame"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1868,6 +1888,26 @@ export interface paths {
         patch: operations["renameTagKind"];
         trace?: never;
     };
+    "/api/tag-kinds/{id}/card-first": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set whether cards list a kind's tags first
+         * @description Owner-only. Sets TagKind.cardFirst; an unchanged value returns current state. Missing ID returns 404 not_found/tag_kind_not_found. Lists read the new order on their next fetch.
+         */
+        put: operations["setTagKindCardFirst"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people": {
         parameters: {
             query?: never;
@@ -2003,7 +2043,7 @@ export interface paths {
         put?: never;
         /**
          * Merge a face candidate pair
-         * @description Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
+         * @description Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name and holds no external ID, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back; a merged person with an external ID is merged without one, since the undo cannot restore the ID. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
          */
         post: operations["confirmFaceCandidate"];
         delete?: never;
@@ -2032,6 +2072,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/face-candidates/{otherId}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take back the dismissal of a face candidate pair
+         * @description Owner-only; no body. For undoing "Not the same": marks the dismissed pair of id and otherId, in either order, open again, so it is offered as before. No dismissed pair of these two people returns 404 face_candidate_not_found.
+         */
+        post: operations["reopenFaceCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people/{id}/appearances": {
         parameters: {
             query?: never;
@@ -2041,11 +2101,71 @@ export interface paths {
         };
         /**
          * List a person's face appearances
-         * @description Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor.
+         * @description Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order; sort mostSimilar puts the most alike first, with the same tail. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor.
          */
         get: operations["listPersonAppearances"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/similar-people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List people whose faces look like some of a person's faces
+         * @description Owner-only. Ranks the other people by how close their faces are to the mean of the listed appearances of id, or of all of its appearances without appearanceId: each person is compared by the face image's vector and by the mean of their faces in videos, whichever is closer, most similar first. Each item carries the face count, up to four appearances with a crop and the title of the first appearance's video, so unnamed people can be told apart. Appearances id lacks are ignored; with none left the list is empty. Missing person returns 404 person_not_found.
+         */
+        get: operations["listSimilarPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move face appearances to another person
+         * @description Owner-only. For "Move to person": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none.
+         */
+        post: operations["moveFaceAppearances"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split several face appearances into one new person
+         * @description Owner-only. For "Not this person" on a selection: as splitFaceAppearance, with every listed appearance moving to one new provisional person whose face is the first appearance's crop, in one transaction. Returns the new person. Missing person returns 404 person_not_found; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and splits none.
+         */
+        post: operations["splitFaceAppearances"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2620,6 +2740,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-candidates/rejudge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Judge a possible duplicate again
+         * @description Owner-only. Returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its activity record to running, so the duplicate judging worker sends it to the classifier again. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos return 404 video_not_found; a pair that is not a judgeable candidate returns 404 not_found. Judging turned off returns 409 version_judging_off; a waiting or running pair returns 409 version_not_rejudgeable.
+         */
+        post: operations["rejudgeVersionCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/activity": {
         parameters: {
             query?: never;
@@ -2674,6 +2814,26 @@ export interface paths {
          * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off.
          */
         post: operations["retryActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{id}/judgement-frames/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a frame pair a duplicate judgement showed the classifier
+         * @description Owner-only. Returns the image at index in the version_judgement record's evidence frames: the left video's frame on the left and the other's on the right, cut from the two current seek previews as the classifier received them. A missing record, a record without evidence, an index outside its frames or a missing seek preview returns 404 not_found. Uses Cache-Control: no-store.
+         */
+        get: operations["getActivityJudgementFrame"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4115,17 +4275,21 @@ export interface components {
             /** @description Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page. */
             exact?: components["schemas"]["Tag"];
         };
-        /** @description Tag kind ID and name. */
+        /** @description Tag kind ID, name and card order flag. */
         TagKindRef: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description Cards list this kind's tags before other tags; see TagKind.cardFirst. */
+            cardFirst: boolean;
         };
         /** @description One kind-list entry. */
         TagKind: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false. */
+            cardFirst: boolean;
             /** @description Number of tags of this kind, including tentative tags. */
             tagCount: number;
             /**
@@ -4137,6 +4301,9 @@ export interface components {
         TagKindList: {
             /** @description All kinds in ID order; the UI reorders them by natural name. */
             items: components["schemas"]["TagKind"][];
+        };
+        TagKindCardFirstRequest: {
+            cardFirst: boolean;
         };
         TagKindNameRequest: {
             name: string;
@@ -4259,6 +4426,15 @@ export interface components {
              * @example 2024-02-29
              */
             date: string;
+        };
+        /** @description Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards. */
+        VideoCardCredits: {
+            /** @description Product code; omitted when unset. */
+            code?: string;
+            /** @description Performer credits in work-information order; [] when none. */
+            performers: components["schemas"]["WorkPerson"][];
+            /** @description The first label, otherwise the first maker; omitted when the work has neither. */
+            organization?: components["schemas"]["CreditRef"];
         };
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
@@ -4499,8 +4675,18 @@ export interface components {
              */
             similarity: number;
         };
+        FaceCandidateConfirmation: {
+            person: components["schemas"]["Person"];
+            /**
+             * Format: int64
+             * @description The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID.
+             */
+            undoActivityId?: number;
+        };
         FaceAppearanceList: {
             items: components["schemas"]["FaceAppearance"][];
+            /** @description Every appearance of the person that is not dropped, across all pages. */
+            total: number;
             /** @description Next-page cursor, included only when limit is supplied and more results remain. */
             nextCursor?: string;
         };
@@ -4519,6 +4705,63 @@ export interface components {
             spans: components["schemas"]["FaceAppearanceSpan"][];
             /** @description True when getFaceAppearanceCrop has a face to return. */
             hasCrop: boolean;
+            /**
+             * Format: double
+             * @description Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
+             */
+            similarity?: number;
+            /** @description True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise. */
+            unlike?: boolean;
+            focus?: components["schemas"]["FaceFocus"];
+        };
+        SimilarPersonList: {
+            items: components["schemas"]["SimilarPerson"][];
+        };
+        SimilarPerson: {
+            person: components["schemas"]["Person"];
+            /**
+             * Format: double
+             * @description Cosine similarity, from -1 to 1, of the compared faces to the person.
+             */
+            similarity: number;
+            /** @description The person's appearances that are not dropped. */
+            faceCount: number;
+            /** @description Up to four of the person's appearances with a crop, latest first. */
+            sampleAppearanceIds: number[];
+            /** @description The title of the video of the person's first appearance; absent without appearances. */
+            firstSeenTitle?: string;
+        };
+        FaceAppearanceMoveRequest: {
+            appearanceIds: number[];
+            /** Format: int64 */
+            targetId: number;
+            /** @description The restoreCredits of the move this request undoes. */
+            restoreCredits?: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceAppearanceMove: {
+            person: components["schemas"]["Person"];
+            /** @description Works whose performer credit of the moved-from person was removed because the target already held one. */
+            restoreCredits: components["schemas"]["FaceMoveCredit"][];
+        };
+        FaceMoveCredit: {
+            /** @description An opaque key of the work. */
+            workKey: string;
+            /** @description The position the credit had among the work's performers. */
+            position: number;
+        };
+        FaceAppearanceSplitRequest: {
+            appearanceIds: number[];
+        };
+        /** @description Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side. */
+        FaceFocus: {
+            /** Format: double */
+            time: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            w: number;
         };
         FaceAppearanceSpan: {
             /** Format: double */
@@ -4787,12 +5030,6 @@ export interface components {
          */
         VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "favoritedAsc" | "favoritedDesc" | "random";
         /**
-         * @description Watch filter: all, unwatched, inProgress or watched.
-         * @default all
-         * @enum {string}
-         */
-        WatchFilter: "all" | "unwatched" | "inProgress" | "watched";
-        /**
          * @description direct selects immediate locations; subtree includes all descendants
          * @default direct
          * @enum {string}
@@ -4800,7 +5037,7 @@ export interface components {
         FolderScope: "direct" | "subtree";
         VideoPage: {
             items: components["schemas"]["Video"][];
-            /** @description Total after applying query, watch, playable and listFolderVideos scope, independent of pagination. */
+            /** @description Total after applying query, favorite and listFolderVideos scope, independent of pagination. */
             total: number;
             /** @description Next-page cursor; omitted when no more results remain. */
             nextCursor?: string;
@@ -5062,13 +5299,6 @@ export interface components {
         SmartRule: {
             /** @description Search input matched with owner semantics. */
             q?: string;
-            /**
-             * @description Watch state.
-             * @enum {string}
-             */
-            watch?: "unwatched" | "inProgress" | "watched";
-            /** @description Restrict to browser-playable videos. */
-            playable?: boolean;
             /** @description Restrict to favorite videos. */
             favorite?: boolean;
             /** @description Distinct tag IDs that every matching video must carry. */
@@ -5088,12 +5318,6 @@ export interface components {
              * @description Organization IDs linked in any role.
              */
             organization?: number;
-            /** @description Days since addition. */
-            addedWithin?: number;
-            /** @description Inclusive minimum duration in seconds; at most maxDuration. */
-            minDuration?: number;
-            /** @description Inclusive maximum duration in seconds. */
-            maxDuration?: number;
         };
         /** @description Entities referenced by filters that no longer exist. */
         SmartRuleRef: {
@@ -5295,7 +5519,7 @@ export interface components {
             /** @description Registered media folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
-        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo. */
+        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo. */
         Video: {
             /** Format: int64 */
             id: number;
@@ -5399,6 +5623,8 @@ export interface components {
             favorite?: boolean;
             /** @description Work information, only in GET /api/videos/{id} and owner PUT work-info/details responses when a row exists. Guests receive only description and urls, with the other lists empty, and no workInfo when both are empty. Omitted from lists, related videos and library items. */
             workInfo?: components["schemas"]["WorkInfo"];
+            /** @description Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests. */
+            cardCredits?: components["schemas"]["VideoCardCredits"];
             /** @description Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses. */
             mediaInfo?: components["schemas"]["MediaInfo"];
             /**
@@ -5418,6 +5644,7 @@ export interface components {
             broadcast?: components["schemas"]["MediaInfoBroadcast"];
             /** @description Chapters in start order, within video duration. */
             chapters?: components["schemas"]["MediaInfoChapter"][];
+            container?: components["schemas"]["MediaInfoContainer"];
         };
         /** @description Video-stream metadata; hdr is always included when a video stream exists. */
         MediaInfoVideo: {
@@ -5443,6 +5670,70 @@ export interface components {
             stereo3d?: string;
             /** @description True when the video stream carries closed captions. */
             closedCaptions?: boolean;
+            /**
+             * @example High
+             * @example Main 10
+             */
+            profile?: string;
+            /** @description Codec level as ffprobe reports it (H.264 41 is level 4.1). */
+            level?: number;
+            /**
+             * @example yuv420p
+             * @example yuv420p10le
+             */
+            pixelFormat?: string;
+            /**
+             * @example 4:2:0
+             * @example 4:2:2
+             * @example 4:4:4
+             */
+            chromaSubsampling?: string;
+            /** @enum {string} */
+            colorRange?: "limited" | "full";
+            /** @description Container fourcc, such as hvc1 or hev1. */
+            codecTag?: string;
+            /** @description RFC 6381 codecs value, such as avc1.64001f. */
+            codecString?: string;
+            /** @description A header estimate: the average frame rate differs from the base rate by more than 1%. */
+            variableFrameRate?: boolean;
+            /**
+             * Format: int64
+             * @description Frame count the header records.
+             */
+            frameCount?: number;
+            /**
+             * Format: int64
+             * @description Maximum bits per second the header records.
+             */
+            maxBitRate?: number;
+            /**
+             * Format: double
+             * @description bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode.
+             */
+            bitsPerPixel?: number;
+            /** @description The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation. */
+            mirrored?: boolean;
+            crop?: components["schemas"]["MediaInfoCrop"];
+            mastering?: components["schemas"]["MediaInfoMasteringDisplay"];
+            contentLight?: components["schemas"]["MediaInfoContentLight"];
+            /** @description The container carries HDR10+ dynamic metadata. */
+            hdr10Plus?: boolean;
+            dolbyVision?: components["schemas"]["MediaInfoDolbyVision"];
+            /** @description AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown. */
+            filmGrain?: boolean;
+            /** @description The stream has more than one layer, as MV-HEVC stereoscopic video does. */
+            multiLayer?: boolean;
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         MediaInfoAudioTrack: {
             /** @description Stream index within the file. */
@@ -5463,6 +5754,32 @@ export interface components {
             language?: string;
             title?: string;
             default?: boolean;
+            /** @description Samples per second. */
+            sampleRate?: number;
+            bitDepth?: number;
+            /**
+             * @example fltp
+             * @example s16
+             * @example s32
+             */
+            sampleFormat?: string;
+            /** Format: int64 */
+            bitRate?: number;
+            replayGain?: components["schemas"]["MediaInfoReplayGain"];
+            roles?: components["schemas"]["MediaInfoTrackRoles"];
+            /** @enum {string} */
+            serviceType?: "main" | "effects" | "visually_impaired" | "hearing_impaired" | "dialogue" | "commentary" | "emergency" | "voice_over" | "karaoke";
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         MediaInfoSubtitleTrack: {
             /** @description Stream index within the file. */
@@ -5479,6 +5796,18 @@ export interface components {
             default?: boolean;
             forced?: boolean;
             hearingImpaired?: boolean;
+            roles?: components["schemas"]["MediaInfoTrackRoles"];
+            /**
+             * Format: int64
+             * @description The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+             */
+            startMs?: number;
+            /**
+             * Format: int64
+             * @description The stream's own length; one much shorter or longer than the others suggests drifting sync.
+             */
+            durationMs?: number;
+            origin?: components["schemas"]["MediaInfoStreamOrigin"];
         };
         /** @description Tags embedded in the file. */
         MediaInfoEmbedded: {
@@ -5499,6 +5828,31 @@ export interface components {
             location?: components["schemas"]["MediaInfoLocation"];
             /** @description True when the file contains an attached picture. */
             coverArt?: boolean;
+            album?: string;
+            albumArtist?: string;
+            composer?: string;
+            show?: string;
+            episode?: string;
+            season?: string;
+            /** @description Broadcaster or distributor tag. */
+            network?: string;
+            synopsis?: string;
+            copyright?: string;
+            publisher?: string;
+            encodedBy?: string;
+            /** @description Software that wrote the file. */
+            encoder?: string;
+            /** @description Where a download tool fetched the file from. */
+            sourceUrl?: string;
+            keywords?: string;
+            rating?: string;
+            /** @description The phone camera's software version. */
+            captureSoftware?: string;
+            /**
+             * Format: double
+             * @description The phone's capture rate; above the playback rate means slow motion.
+             */
+            captureFrameRate?: number;
         };
         /** @description Capture location in degrees, with altitude in meters. */
         MediaInfoLocation: {
@@ -5513,6 +5867,138 @@ export interface components {
         MediaInfoBroadcast: {
             station?: string;
             program?: string;
+        };
+        /** @description What the writing tool or device recorded on the stream. */
+        MediaInfoStreamOrigin: {
+            encoder?: string;
+            /**
+             * @example VideoHandler
+             * @example Core Media Audio
+             */
+            handler?: string;
+            /** @description Vendor fourcc, such as appl. */
+            vendor?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** @example 01:00:00:00 */
+            timecode?: string;
+        };
+        /** @description Purposes the file flags on the track; only true flags are present. */
+        MediaInfoTrackRoles: {
+            dub?: boolean;
+            original?: boolean;
+            /** @description Commentary. */
+            comment?: boolean;
+            /** @description Audio description for visually impaired viewers. */
+            visualImpaired?: boolean;
+            hearingImpaired?: boolean;
+            karaoke?: boolean;
+            lyrics?: boolean;
+            /** @description Effects only, without dialogue. */
+            cleanEffects?: boolean;
+            captions?: boolean;
+            descriptions?: boolean;
+        };
+        /** @description ReplayGain tags as the file writes them, such as -6.50 dB. */
+        MediaInfoReplayGain: {
+            trackGain?: string;
+            trackPeak?: string;
+            albumGain?: string;
+            albumPeak?: string;
+        };
+        /** @description Cropping the container records, in pixels from each edge. */
+        MediaInfoCrop: {
+            top?: number;
+            bottom?: number;
+            left?: number;
+            right?: number;
+        };
+        /** @description HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m². */
+        MediaInfoMasteringDisplay: {
+            /** Format: double */
+            redX?: number;
+            /** Format: double */
+            redY?: number;
+            /** Format: double */
+            greenX?: number;
+            /** Format: double */
+            greenY?: number;
+            /** Format: double */
+            blueX?: number;
+            /** Format: double */
+            blueY?: number;
+            /** Format: double */
+            whiteX?: number;
+            /** Format: double */
+            whiteY?: number;
+            /** Format: double */
+            minLuminance?: number;
+            /** Format: double */
+            maxLuminance?: number;
+        };
+        /** @description HDR content light levels in cd/m². */
+        MediaInfoContentLight: {
+            /** @description MaxCLL. */
+            maxContent?: number;
+            /** @description MaxFALL. */
+            maxAverage?: number;
+        };
+        MediaInfoDolbyVision: {
+            profile: number;
+            level?: number;
+            /** @description dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG). */
+            compatibility?: number;
+        };
+        /** @description What the container says about the file as a whole. */
+        MediaInfoContainer: {
+            /**
+             * Format: int64
+             * @description The container's start time.
+             */
+            startMs?: number;
+            /**
+             * @example isom
+             * @example qt
+             */
+            majorBrand?: string;
+            compatibleBrands?: string[];
+            /** @description How sure ffprobe is of the format, out of 100. */
+            probeScore?: number;
+            /** @description A stream is encrypted (DRM). */
+            encrypted?: boolean;
+            /** @description Attached files such as fonts, at most 64. */
+            attachments?: components["schemas"]["MediaInfoAttachment"][];
+            /** @description Non-media streams such as GoPro telemetry, at most 64. */
+            dataStreams?: components["schemas"]["MediaInfoDataStream"][];
+            sizes?: components["schemas"]["MediaInfoSizes"];
+        };
+        MediaInfoAttachment: {
+            name?: string;
+            mimeType?: string;
+            /** Format: int64 */
+            bytes?: number;
+        };
+        MediaInfoDataStream: {
+            index: number;
+            /**
+             * @example gpmd
+             * @example tmcd
+             */
+            codec?: string;
+            handler?: string;
+        };
+        /** @description The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are. */
+        MediaInfoSizes: {
+            /** Format: int64 */
+            totalBytes?: number;
+            /** Format: int64 */
+            videoBytes?: number;
+            /** Format: int64 */
+            audioBytes?: number;
+            /** Format: int64 */
+            subtitleBytes?: number;
+            /** Format: int64 */
+            otherBytes?: number;
         };
         MediaInfoChapter: {
             /** Format: int64 */
@@ -5607,12 +6093,119 @@ export interface components {
         };
         /** @description Pair of potentially identical videos. */
         VersionCandidate: {
+            recommendation: components["schemas"]["VersionRepresentativeRecommendation"];
+            judgement: components["schemas"]["VersionCandidateJudgement"];
             /** @description Two videos in ID ascending order, each shaped like GET /api/videos/{id}. */
             videos: components["schemas"]["Video"][];
             /** @description Median Hamming distance between video fingerprints; lower means more similar. */
             distance: number;
         };
+        /** @description The video whose file is the better representative, judged from the files alone. */
+        VersionRepresentativeRecommendation: {
+            /** Format: int64 */
+            videoId: number;
+            /**
+             * @description The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+             * @enum {string}
+             */
+            reason: "playable" | "audio" | "audio_sync" | "resolution" | "bitrate" | "older";
+        };
+        /** @description The automatic judgement of a listed pair. */
+        VersionCandidateJudgement: {
+            /**
+             * @description held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "undecided" | "failed" | "no_connection" | "held";
+            /**
+             * Format: int64
+             * @description The pair's version_judgement record; absent when none was opened, as while judging is off.
+             */
+            activityId?: number;
+            /**
+             * Format: double
+             * @description The classifier's answer for an undecided pair; absent when the rule decided.
+             */
+            probability?: number;
+            /** @description Why the last attempt failed. */
+            error?: string;
+            /**
+             * Format: date-time
+             * @description Next automatic retry of a failed pair.
+             */
+            retryAt?: string;
+            /**
+             * Format: int64
+             * @description The video whose frames are on the left of the evidence images and whose times are evidence's aMs.
+             */
+            leftVideoId: number;
+            evidence?: components["schemas"]["VersionJudgeEvidence"];
+        };
+        /** @description Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md. */
+        VersionJudgeEvidence: {
+            /**
+             * @description frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+             * @enum {string}
+             */
+            rule: "frames_match" | "frames_differ" | "incomparable";
+            /** @description Frame pairs compared by time, flat frames skipped. */
+            compared: number;
+            /** @description Compared pairs whose pictures differ. */
+            differing: number;
+            /** @description Pairs in the longest run of consecutive differing pairs; absent without such a run. */
+            longestRun?: number;
+            /**
+             * Format: int64
+             * @description Start of that run on the left video's timeline.
+             */
+            runStartMs?: number;
+            /**
+             * Format: int64
+             * @description End of that run on the left video's timeline.
+             */
+            runEndMs?: number;
+            /** @description The fingerprints were made by different fingerprint versions, so the frames could not be compared. */
+            versionMismatch?: boolean;
+            /** @description The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided. */
+            conflict?: boolean;
+            /** @description Properties both files have, read at import: chapters, recording time, embedded title and duration. */
+            properties?: components["schemas"]["VersionPropertySignal"][];
+            /** @description The properties decided the result, or held a different answer they contradict for the owner. */
+            byProperties?: boolean;
+            /** @description The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image. */
+            frames?: components["schemas"]["VersionEvidenceFrame"][];
+        };
+        VersionPropertySignal: {
+            /** @enum {string} */
+            kind: "chapters" | "recorded_at" | "embedded_title" | "duration";
+            /** @description The two values agree: matching chapter starts, equal times or titles, or durations within a second. */
+            same: boolean;
+            /** @description Decides a pair on its own: titled chapters at matching starts, or an equal recording time. */
+            strong?: boolean;
+            /** @description Counted towards the verdict; a duration and a disagreeing value are shown only. */
+            counts?: boolean;
+            /** @description The left video's value: a chapter count, a time, a title or milliseconds. */
+            a: string;
+            /** @description The right video's value. */
+            b: string;
+        };
+        VersionEvidenceFrame: {
+            /**
+             * Format: int64
+             * @description Frame time in the left video.
+             */
+            aMs: number;
+            /**
+             * Format: int64
+             * @description Frame time in the right video.
+             */
+            bMs: number;
+            /** @description Hamming distance between the two frames' hashes; over 12 differs. */
+            distance: number;
+        };
         VersionCandidatePage: {
+            /** @description Whether duplicate judging is on, which a rejudge needs. */
+            judging: boolean;
             /** @description Newest first, at most 200 pairs. */
             items: components["schemas"]["VersionCandidate"][];
             /** @description Total candidate count. */
@@ -6024,6 +6617,7 @@ export interface components {
              * @description Next retry timestamp for a failed version_judgement.
              */
             retryAt?: string;
+            evidence?: components["schemas"]["VersionJudgeEvidence"];
             progress?: components["schemas"]["ActivityProgress"];
             undoes?: components["schemas"]["ActivityUndone"];
             /** @description Tags assigned by auto_tag. */
@@ -6214,7 +6808,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls";
     };
     responses: {
         /** @description Resource not found */
@@ -6325,12 +6919,6 @@ export interface components {
         PersonRoleFilter: components["schemas"]["WorkPersonRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
-        /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-        AddedWithinFilter: number;
-        /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-        MinDurationFilter: number;
-        /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-        MaxDurationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
         /** @description Media folder ID */
@@ -6552,10 +7140,6 @@ export interface operations {
             query?: {
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
                 /** @description Sort order */
@@ -6574,12 +7158,6 @@ export interface operations {
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-                addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-                minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-                maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
@@ -6608,10 +7186,6 @@ export interface operations {
             query?: {
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
                 /** @description Sort order */
@@ -6628,12 +7202,6 @@ export interface operations {
                 person?: components["parameters"]["PersonFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-                addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-                minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-                maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
             };
@@ -7561,6 +8129,35 @@ export interface operations {
                     "application/json": components["schemas"]["Video"];
                 };
             };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getVideoFrame: {
+        parameters: {
+            query: {
+                positionMs: number;
+            };
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The frame */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
@@ -9682,6 +10279,36 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    setTagKindCardFirst: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag kind ID */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindCardFirstRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated kind */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listPeople: {
         parameters: {
             query?: {
@@ -10008,7 +10635,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Person"];
+                    "application/json": components["schemas"]["FaceCandidateConfirmation"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
@@ -10041,9 +10668,36 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    reopenFaceCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description ID of the other person of the pair */
+                otherId: components["parameters"]["FaceCandidateOtherId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reopened */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listPersonAppearances: {
         parameters: {
             query?: {
+                /** @description newest (default), leastSimilar or mostSimilar */
+                sort?: "newest" | "leastSimilar" | "mostSimilar";
                 /** @description Opaque nextCursor from the previous response; ignored without limit */
                 cursor?: string;
                 /** @description Page size; omit for all appearances without nextCursor */
@@ -10065,6 +10719,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FaceAppearanceList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSimilarPeople: {
+        parameters: {
+            query?: {
+                /** @description Appearances of the person to compare; repeat for several */
+                appearanceId?: number[];
+                /** @description At most this many people; default 8 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description People, most similar first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarPersonList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    moveFaceAppearances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceAppearanceMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description The person the faces moved to, with the credits only the reverse move can put back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAppearanceMove"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    splitFaceAppearances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceAppearanceSplitRequest"];
+            };
+        };
+        responses: {
+            /** @description The new provisional person */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
@@ -11013,6 +11758,32 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    rejudgeVersionCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionCandidateDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listActivity: {
         parameters: {
             query?: {
@@ -11096,6 +11867,33 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getActivityJudgementFrame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Activity record ID */
+                id: components["parameters"]["ActivityId"];
+                /** @description Position in the record's evidence frames */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     undoActivity: {
@@ -11211,10 +12009,6 @@ export interface operations {
                 scope?: components["schemas"]["FolderScope"];
                 /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description Watch-state filter; `all` disables it */
-                watch?: components["schemas"]["WatchFilter"];
-                /** @description Restrict to videos playable directly in the browser */
-                playable?: boolean;
                 /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
                 /** @description Sort order */
@@ -11306,12 +12100,8 @@ export interface operations {
     getGroup: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -11399,12 +12189,8 @@ export interface operations {
     listGroupItems: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -11636,12 +12422,8 @@ export interface operations {
     getSmartFolder: {
         parameters: {
             query?: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
@@ -11730,12 +12512,8 @@ export interface operations {
     listSmartFolderItems: {
         parameters: {
             query: {
-                /** @description Temporary list watch; omitted sort keeps the saved order. */
-                watch?: components["schemas"]["WatchFilter"];
                 /** @description Temporary list sort; omitted sort keeps the saved order. */
                 sort?: components["schemas"]["VideoSort"];
-                /** @description Temporary playable-only filter; does not change saved settings. */
-                playable?: boolean;
                 /** @description Temporary favorite-only filter; does not change saved settings. */
                 favorite?: boolean;
                 /** @description Stable random-sort seed; continue with the same filters, sort and seed. */

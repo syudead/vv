@@ -12,23 +12,29 @@ import (
 )
 
 type appearanceCall struct {
-	personID int64
-	cursor   string
-	limit    int
+	personID    int64
+	sort        domain.PersonAppearanceSort
+	cursor      string
+	limit       int
+	appearances []int64
+	target      int64
+	restore     []domain.FaceMoveCredit
 }
 
 // faceAppearanceCredits fakes the appearance reads and records their arguments; store tests cover paging and drops.
 type faceAppearanceCredits struct {
 	Credits
-	page   domain.PersonAppearancePage
-	crop   []byte
-	person domain.Credit
-	err    error
-	calls  []appearanceCall
+	page    domain.PersonAppearancePage
+	similar []domain.SimilarPerson
+	crop    []byte
+	person  domain.Credit
+	taken   []domain.FaceMoveCredit
+	err     error
+	calls   []appearanceCall
 }
 
-func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error) {
-	c.calls = append(c.calls, appearanceCall{personID, cursor, limit})
+func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID int64, q domain.PersonAppearanceQuery) (domain.PersonAppearancePage, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, sort: q.Sort, cursor: q.Cursor, limit: q.Limit})
 	return c.page, c.err
 }
 
@@ -37,9 +43,21 @@ func (c *faceAppearanceCredits) FaceAppearanceCrop(_ context.Context, id int64) 
 	return c.crop, c.err
 }
 
-func (c *faceAppearanceCredits) SplitFaceAppearance(_ context.Context, personID, appearanceID int64) (domain.Credit, error) {
-	c.calls = append(c.calls, appearanceCall{personID: personID, limit: int(appearanceID)})
+func (c *faceAppearanceCredits) SplitFaceAppearances(_ context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs})
 	return c.person, c.err
+}
+
+func (c *faceAppearanceCredits) MoveFaceAppearances(
+	_ context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
+) (domain.FaceMove, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs, target: targetID, restore: restore})
+	return domain.FaceMove{Person: c.person, Restore: c.taken}, c.err
+}
+
+func (c *faceAppearanceCredits) SimilarPeople(_ context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, appearances: appearanceIDs, limit: limit})
+	return c.similar, c.err
 }
 
 func newFaceAppearanceFixture(t *testing.T, credits *faceAppearanceCredits) *creditFixture {
@@ -52,34 +70,47 @@ func newFaceAppearanceFixture(t *testing.T, credits *faceAppearanceCredits) *cre
 }
 
 func TestListPersonAppearancesAnswersThePage(t *testing.T) {
+	similarity := 0.25
 	credits := &faceAppearanceCredits{page: domain.PersonAppearancePage{
 		Items: []domain.PersonAppearance{
-			{ID: 7, VideoID: 3, Title: "Beach", Spans: []domain.FaceTimeSpan{{Start: 12, End: 100}}, HasCrop: true},
+			{ID: 7, VideoID: 3, Title: "Beach", Spans: []domain.FaceTimeSpan{{Start: 12, End: 100}}, HasCrop: true,
+				Similarity: &similarity, Unlike: true},
 			{ID: 4, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
 		},
 		NextCursor: "next",
+		Total:      12,
 	}}
 	f := newFaceAppearanceFixture(t, credits)
 
-	rec := f.owned(http.MethodGet, "/api/people/5/appearances?limit=2&cursor=prev", "")
+	rec := f.owned(http.MethodGet, "/api/people/5/appearances?sort=leastSimilar&limit=2&cursor=prev", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	videoID, next := int64(3), "next"
+	videoID, next, unlike := int64(3), "next", true
 	want := gen.FaceAppearanceList{Items: []gen.FaceAppearance{
-		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true},
+		{AppearanceId: 7, VideoId: &videoID, Title: "Beach", Spans: []gen.FaceAppearanceSpan{{Start: 12, End: 100}}, HasCrop: true,
+			Similarity: &similarity, Unlike: &unlike},
 		{AppearanceId: 4, Title: "key-gone", Spans: []gen.FaceAppearanceSpan{{Start: 0, End: 10}}},
-	}, NextCursor: &next}
+	}, NextCursor: &next, Total: 12}
 	if got := decode[gen.FaceAppearanceList](t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("body = %+v, want %+v", got, want)
 	}
-	if want := []appearanceCall{{5, "prev", 2}}; !reflect.DeepEqual(credits.calls, want) {
+	if want := []appearanceCall{{personID: 5, sort: domain.PersonAppearancesLeastSimilar, cursor: "prev", limit: 2}}; !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
 	}
 
 	rec = f.owned(http.MethodGet, "/api/people/5/appearances?limit=201", "")
 	assertErrorBody(t, "limit over 200", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	rec = f.owned(http.MethodGet, "/api/people/5/appearances?sort=random", "")
+	assertErrorBody(t, "unknown sort", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	credits.calls = nil
+	rec = f.owned(http.MethodGet, "/api/people/5/appearances", "")
+	if want := []appearanceCall{{personID: 5, sort: domain.PersonAppearancesNewest}}; rec.Code != http.StatusOK ||
+		!reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("without sort: status %d, calls %+v; want newest", rec.Code, credits.calls)
+	}
 	for _, tc := range []struct {
 		err  error
 		want wantError
@@ -108,7 +139,7 @@ func TestSplitFaceAppearanceAnswersTheNewPerson(t *testing.T) {
 	if got := decode[gen.Person](t, rec); got.Id != 9 || !got.Provisional {
 		t.Errorf("body = %+v, want the new provisional person 9", got)
 	}
-	if want := []appearanceCall{{personID: 5, limit: 7}}; !reflect.DeepEqual(credits.calls, want) {
+	if want := []appearanceCall{{personID: 5, appearances: []int64{7}}}; !reflect.DeepEqual(credits.calls, want) {
 		t.Errorf("store calls = %+v, want person 5 and appearance 7", credits.calls)
 	}
 
@@ -146,4 +177,98 @@ func TestGetFaceAppearanceCropAnswersTheJPEG(t *testing.T) {
 	rec = f.owned(http.MethodGet, "/api/face-appearances/7/crop", "")
 	assertErrorBody(t, "crop of a deleted person's appearance", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
+}
+
+func TestSplitFaceAppearancesSplitsTheListedOnesTogether(t *testing.T) {
+	credits := &faceAppearanceCredits{person: domain.Credit{Kind: domain.CreditPerson, ID: 9, Provisional: true}}
+	f := newFaceAppearanceFixture(t, credits)
+	target := "/api/people/5/appearances/split"
+
+	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3]}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Person](t, rec); got.Id != 9 {
+		t.Errorf("body = %+v, want the new person 9", got)
+	}
+	if want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
+	}
+	for _, body := range []string{`{"appearanceIds":[]}`, `{"appearanceIds":[7,7]}`, `{"appearanceIds":[0]}`} {
+		rec = f.owned(http.MethodPost, target, body)
+		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if len(credits.calls) != 1 {
+		t.Errorf("store calls after invalid bodies = %+v, want only the first", credits.calls)
+	}
+}
+
+func TestMoveFaceAppearancesPassesTheTarget(t *testing.T) {
+	credits := &faceAppearanceCredits{person: domain.Credit{Kind: domain.CreditPerson, ID: 9, Name: "Mio"}}
+	f := newFaceAppearanceFixture(t, credits)
+	target := "/api/people/5/appearances/move"
+
+	credits.taken = []domain.FaceMoveCredit{{UserKey: "work-a", Position: 1}}
+	rec := f.owned(http.MethodPost, target, `{"appearanceIds":[7,3],"targetId":9,"restoreCredits":[{"workKey":"work-b","position":2}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != 9 ||
+		!reflect.DeepEqual(got.RestoreCredits, []gen.FaceMoveCredit{{WorkKey: "work-a", Position: 1}}) {
+		t.Errorf("body = %+v, want the target 9 with the credit to restore", got)
+	}
+	want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}, target: 9,
+		restore: []domain.FaceMoveCredit{{UserKey: "work-b", Position: 2}}}}
+	if !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
+	}
+	credits.err = domain.ErrMergeSameCredit
+	rec = f.owned(http.MethodPost, target, `{"appearanceIds":[7],"targetId":5}`)
+	assertErrorBody(t, "same person", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+
+	// A missing or zero target would read as a new person in the store, and a negative position has no place.
+	credits.calls = nil
+	for _, body := range []string{`{"appearanceIds":[7]}`, `{"appearanceIds":[7],"targetId":0}`,
+		`{"appearanceIds":[7],"targetId":9,"restoreCredits":[{"workKey":"w","position":-1}]}`} {
+		rec = f.owned(http.MethodPost, target, body)
+		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if len(credits.calls) != 0 {
+		t.Errorf("store calls = %+v, want none for an invalid target", credits.calls)
+	}
+}
+
+func TestListSimilarPeopleAnswersEachPersonWithTheirCrops(t *testing.T) {
+	credits := &faceAppearanceCredits{similar: []domain.SimilarPerson{{
+		Person:     domain.Credit{Kind: domain.CreditPerson, ID: 9, Provisional: true},
+		Similarity: 0.7, FaceCount: 6, SampleAppearanceIDs: []int64{12, 11}, FirstSeenTitle: "Beach",
+	}}}
+	f := newFaceAppearanceFixture(t, credits)
+
+	rec := f.owned(http.MethodGet, "/api/people/5/similar-people?appearanceId=7&appearanceId=3&limit=4", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[gen.SimilarPersonList](t, rec)
+	if len(got.Items) != 1 || got.Items[0].Person.Id != 9 || got.Items[0].FaceCount != 6 ||
+		!reflect.DeepEqual(got.Items[0].SampleAppearanceIds, []int64{12, 11}) || got.Items[0].FirstSeenTitle == nil {
+		t.Errorf("body = %+v, want person 9 with six faces, two crops and a first video", got)
+	}
+	if want := []appearanceCall{{personID: 5, appearances: []int64{7, 3}, limit: 4}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("store calls = %+v, want %+v", credits.calls, want)
+	}
+	credits.calls = nil
+	if rec := f.owned(http.MethodGet, "/api/people/5/similar-people", ""); rec.Code != http.StatusOK ||
+		!reflect.DeepEqual(credits.calls, []appearanceCall{{personID: 5, limit: 8}}) {
+		t.Errorf("without parameters: status %d, calls %+v; want every face and 8 people", rec.Code, credits.calls)
+	}
+	rec = f.owned(http.MethodGet, "/api/people/5/similar-people?limit=51", "")
+	assertErrorBody(t, "limit over 50", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	rec = f.owned(http.MethodGet, "/api/people/5/similar-people?appearanceId=0", "")
+	assertErrorBody(t, "appearance id 0", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }

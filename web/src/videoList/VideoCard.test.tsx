@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Profiler } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -12,7 +12,8 @@ import {
 } from "../api/client";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { createPreviewCoordinator } from "./usePreviewCoordination";
-import VideoCard, { VideoRow } from "./VideoCard";
+import { HOVER_OPEN_DELAY_MS } from "../library/useHoverOpen";
+import VideoCard, { type VideoCardProps, VideoRow } from "./VideoCard";
 
 vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
@@ -1050,72 +1051,120 @@ describe("VideoCard のスクラブの帯", () => {
   });
 });
 
-describe("VideoCard の操作ボタン", () => {
-  beforeEach(() => {
-    // A device with hover, where the actions show only on approach.
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query }));
-  });
-
+describe("VideoCard の作品情報と操作", () => {
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
-  function renderOwner(item: Video) {
+  function renderOwner(item: Video, props: Partial<VideoCardProps> = {}) {
     return render(
       <MemoryRouter>
         <AudienceProvider audience="owner">
-          <VideoCard video={item} backTo="/" selected={false} selectionMode={false} />
+          <VideoCard
+            video={item}
+            backTo="/"
+            selected={false}
+            selectionMode={false}
+            {...props}
+          />
         </AudienceProvider>
       </MemoryRouter>,
     );
   }
 
-  it("ポインターが乗るか中にフォーカスが来るまで作らず、来たら作る", () => {
-    renderOwner(video());
-    const playlist = () =>
-      screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' });
-    expect(playlist()).toBeNull();
-    expect(screen.queryByRole("button", { name: 'Favorite "動画 1"' })).toBeNull();
-
-    fireEvent.pointerEnter(screen.getByRole("article"));
-    expect(playlist()).not.toBeNull();
-
-    cleanup();
-    renderOwner(video());
-    fireEvent.focus(screen.getByRole("link", { name: "動画 1" }));
-    expect(playlist()).not.toBeNull();
+  const performer = (id: number, name: string, imageRevision?: number) => ({
+    role: "performer" as const,
+    person: { id, name, provisional: false },
+    provisional: false,
+    ...(imageRevision === undefined ? {} : { imageRevision }),
   });
 
-  it("開いた後に hover のない端末へ変わったら、触れていないカードにも作る", () => {
-    let matches = false;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      get matches() {
-        return matches;
-      },
-      media: query,
-      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
-      removeEventListener: (_: string, listener: () => void) =>
-        listeners.delete(listener),
-    }));
-    renderOwner(video());
+  it("格子のカードには、近づいてもお気に入りやグループ・プレイリストへの追加を出さない", () => {
+    renderOwner(video({ favorite: true }));
+    fireEvent.pointerEnter(screen.getByRole("article"));
+    expect(screen.queryByRole("button", { name: 'Favorite "動画 1"' })).toBeNull();
     expect(
       screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' }),
     ).toBeNull();
-
-    matches = true;
-    act(() => {
-      for (const listener of listeners) listener();
-    });
-    expect(
-      screen.getByRole("button", { name: 'Add "動画 1" to a playlist' }),
-    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: 'Add "動画 1" to a group' })).toBeNull();
   });
 
-  it("お気に入りのハートは触れる前から出す", () => {
-    renderOwner(video({ favorite: true }));
-    expect(screen.getByRole("button", { name: 'Favorite "動画 1"' })).toBeDefined();
-    expect(screen.queryByRole("button", { name: 'Add "動画 1" to a group' })).toBeNull();
+  it("品番を左上に、出演者の顔 3 人までと残りの人数、レーベルを左下に、カードのリンクの外に置く", () => {
+    renderOwner(
+      video({
+        cardCredits: {
+          code: "ABC-123",
+          performers: [
+            performer(1, "出演者A", 5),
+            performer(2, "出演者B"),
+            performer(3, "出演者C"),
+            performer(4, "出演者D"),
+          ],
+          organization: { id: 9, name: "レーベルX", provisional: false },
+        },
+      }),
+    );
+    const code = screen.getByText("ABC-123");
+    expect(code.closest("[data-corner]")?.getAttribute("data-corner")).toBe("top-start");
+    const face = screen.getByRole("link", { name: "出演者A" });
+    expect(face.getAttribute("href")).toBe("/people/1");
+    expect(face.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/people/1/image?v=5",
+    );
+    expect(face.closest("a[aria-label='動画 1']")).toBeNull();
+    expect(screen.getByRole("link", { name: "出演者C" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "出演者D" })).toBeNull();
+    expect(screen.getByText("+1")).toBeDefined();
+    expect(
+      screen.getByText("レーベルX").closest("[data-corner]")?.getAttribute("data-corner"),
+    ).toBe("bottom-start");
+  });
+
+  it("作品情報が無ければ画像の上に何も重ねない", () => {
+    const { container } = renderOwner(video());
+    expect(container.querySelector("[data-slot='video-thumbnail-layer']")).toBeNull();
+  });
+
+  it("選択できるカードの品番は、選択チェックが出ているあいだその右へずれる", () => {
+    const credits = { code: "ABC-123", performers: [] };
+    renderOwner(video({ cardCredits: credits }), {
+      onSelect: vi.fn(),
+      selectionMode: true,
+    });
+    expect(screen.getByText("ABC-123").className).toContain("left-9");
+    cleanup();
+    renderOwner(video({ cardCredits: credits }));
+    expect(screen.getByText("ABC-123").className).not.toContain("left-9");
+  });
+
+  it("顔に乗るとその人だけを大きな顔と名前で出してその人へのリンクにし、選択モードでは顔が押せずフォーカスも受けない", () => {
+    vi.useFakeTimers();
+    const credits = {
+      performers: [performer(1, "出演者A", 5), performer(2, "出演者B")],
+    };
+    renderOwner(video({ cardCredits: credits }));
+    fireEvent.pointerEnter(screen.getByRole("link", { name: "出演者B" }), {
+      pointerType: "mouse",
+    });
+    act(() => {
+      vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS);
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("出演者B")).toBeDefined();
+    expect(within(dialog).queryByText("出演者A")).toBeNull();
+    expect(within(dialog).getByRole("link").getAttribute("href")).toBe("/people/2");
+    expect(
+      dialog.querySelector("[data-slot='person-face']")?.getAttribute("data-shape"),
+    ).toBe("profile");
+    cleanup();
+
+    renderOwner(video({ cardCredits: credits }), {
+      onSelect: vi.fn(),
+      selectionMode: true,
+    });
+    const face = screen.getByRole("link", { name: "出演者A" });
+    expect(face.getAttribute("tabindex")).toBe("-1");
+    expect(face.className).toContain("pointer-events-none");
   });
 });

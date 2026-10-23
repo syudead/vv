@@ -120,15 +120,14 @@ func (s *server) writeVideoVersions(w http.ResponseWriter, r *http.Request, vers
 func (s *server) versionItems(r *http.Request, videos []domain.Video) []gen.Video {
 	ctx := r.Context()
 	audience := audienceFrom(ctx)
-	progress := s.progressFor(ctx, videos)
-	tags := s.tagsFor(ctx, videos)
+	extras := s.extrasFor(ctx, videos)
 	roots := s.registeredRoots(ctx)
 	openable := s.canOpen(r)
 
 	items := make([]gen.Video, 0, len(videos))
 	for _, view := range s.presentVideos(ctx, videos) {
 		video := view.Video
-		item := withTags(withProgress(toAPIVideo(view), progress, video.UserKey), tags, video.UserKey)
+		item := extras.item(view)
 		if !video.Virtual() {
 			item.Location = &gen.VideoLocation{Path: video.Path, Openable: openable}
 			item.Folder = detailFolder(roots, video.Path)

@@ -9,7 +9,7 @@ const (
 	WatchStateWatched    WatchState = "watched"
 )
 
-// ClassifyWatch must stay consistent with storage's watchCondition SQL; nil means no progress.
+// ClassifyWatch must stay consistent with storage's watch-state SQL; nil means no progress.
 func ClassifyWatch(progress *Progress) WatchState {
 	switch {
 	case progress == nil:
@@ -20,33 +20,5 @@ func ClassifyWatch(progress *Progress) WatchState {
 		return WatchStateUnwatched
 	default:
 		return WatchStateInProgress
-	}
-}
-
-// Empty WatchFilter means WatchAll.
-type WatchFilter string
-
-const (
-	WatchAll        WatchFilter = "all"
-	WatchUnwatched  WatchFilter = "unwatched"
-	WatchInProgress WatchFilter = "inProgress"
-	WatchWatched    WatchFilter = "watched"
-)
-
-func (f WatchFilter) Valid() bool {
-	switch f {
-	case WatchAll, WatchUnwatched, WatchInProgress, WatchWatched:
-		return true
-	default:
-		return false
-	}
-}
-
-func (f WatchFilter) Matches(state WatchState) bool {
-	switch f {
-	case "", WatchAll:
-		return true
-	default:
-		return string(f) == string(state)
 	}
 }

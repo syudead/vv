@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"modernc.org/sqlite"
 
@@ -98,8 +97,6 @@ type listSpec struct {
 	withinVideos string
 	scope        locationScope
 	expr         domain.SearchExpr
-	watch        domain.WatchFilter
-	playableOnly bool
 	// Callers resolve tag IDs before building the spec.
 	tagIDs       []int64
 	favoriteOnly bool
@@ -110,12 +107,6 @@ type listSpec struct {
 	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
-	// Zero disables age filtering; nil duration bounds are unbounded.
-	addedWithinDays int
-	minDurationSec  *int
-	maxDurationSec  *int
-	// Capture time once per read so counts and all page queries share the same age boundary.
-	now int64
 	// Stack ancestor filters for library items; ignore each level's scope, ordering, pagination and nested and field.
 	and []listSpec
 	// Smart-folder predicates use owner search semantics even for guests.
@@ -154,15 +145,11 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	return page, nil
 }
 
-var listNow = time.Now
-
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
 	spec := listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
+		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
-		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
-		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 	spec.scope.videoKind = q.Kind
@@ -173,8 +160,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
 	return s.listVideoPage(ctx, listSpec{
 		scope: folderScope(q.Dir, q.Scope, audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, favoriteOnly: q.FavoriteOnly,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+		favoriteOnly: q.FavoriteOnly, sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
 }
 
@@ -256,23 +242,6 @@ func chosenVirtualSelect(scope locationScope, searchAudience domain.Audience, ex
 		where ` + strings.Join(clauses, " and "), args
 }
 
-// Keep watch-state filtering equivalent to domain.ClassifyWatch.
-func watchCondition(filter domain.WatchFilter) string {
-	switch filter {
-	case domain.WatchUnwatched:
-		return `(p.content_key is null or (p.completed = 0 and p.position_ms = 0))`
-	case domain.WatchInProgress:
-		return `(p.content_key is not null and p.completed = 0 and p.position_ms > 0)`
-	case domain.WatchWatched:
-		return `p.completed = 1`
-	default:
-		return ""
-	}
-}
-
-// Keep equivalent to domain.Video.PlayableInBrowser.
-const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
-
 // Column order matches scanVideo; location attributes come from chosen, and path supports folder metadata.
 var listColumns = `videos.id, ` + locationColumns("chosen.path", "loc") + `, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
@@ -289,13 +258,10 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	from += ` left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	var conditions []string
-	if condition := watchCondition(spec.watch); condition != "" {
-		conditions = append(conditions, condition)
-	}
 	if spec.favoriteOnly {
 		conditions = append(conditions, `fav.content_key is not null`)
 	}
-	member, args := memberConditions(spec)
+	member, args := matchConditions(spec)
 	conditions = append(conditions, member...)
 	if len(conditions) > 0 {
 		from += ` where ` + strings.Join(conditions, " and ")

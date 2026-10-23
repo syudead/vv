@@ -246,6 +246,7 @@ func toAPIActivityEntry(entry domain.ActivityEntry) gen.ActivityEntry {
 		Status:      gen.ActivityStatus(entry.Status),
 		Decider:     gen.ActivityDecider(entry.Decider),
 		Probability: entry.Probability,
+		Evidence:    toAPIJudgeEvidence(entry.Evidence),
 		Subject:     toAPIActivitySubject(entry),
 		Candidate:   entry.Candidate,
 		RetryRun:    entry.RetryOffered(),

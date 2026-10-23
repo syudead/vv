@@ -32,8 +32,7 @@ their information before committing. Structural and matching changes refresh
 all affected collection kinds; playback changes target containing groups and
 refresh smart-folder matches. Work is coalesced within the write transaction.
 Startup fills existing collections after rebuilding search and folder indexes.
-An age rule records its next expiry; the next request after that boundary
-refreshes expired folders. A pending-change check also recovers writes made
+A pending-change check also recovers writes made
 outside the store. Unchanged list requests do not rebuild collection values.
 
 `GET /api/library` combines video keys with stored group and smart-folder values

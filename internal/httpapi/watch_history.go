@@ -94,8 +94,7 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 			videos = append(videos, *entry.Video)
 		}
 	}
-	progress := s.progressFor(r.Context(), videos)
-	tags := s.tagsFor(r.Context(), videos)
+	extras := s.extrasFor(r.Context(), videos)
 	views := s.presentVideos(r.Context(), videos)
 	var roots []domain.MediaFolder
 	if len(videos) > 0 {
@@ -109,7 +108,7 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 		if entry.Video != nil {
 			view := views[next]
 			next++
-			video := withTags(withProgress(toAPIVideo(view), progress, view.Video.UserKey), tags, view.Video.UserKey)
+			video := extras.item(view)
 			if folder, ok := domain.LocateVideoFolder(roots, view.Video.Path); ok {
 				video.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 			}

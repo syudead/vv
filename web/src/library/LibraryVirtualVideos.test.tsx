@@ -136,7 +136,7 @@ describe("New virtual video", () => {
   });
 
   it("絞り込み中は Save as smart folder の後に置き、ゲストには出さない", async () => {
-    renderAt("/?playable=1");
+    renderAt("/?fav=1");
     await screen.findByRole("link", { name: "動画 1" });
     const header = screen
       .getByRole("heading", { name: "Search results" })

@@ -93,6 +93,44 @@ function VideoThumbnailMark({
   );
 }
 
+/**
+ * A frame-sized layer laid over a thumbnail from outside its link, so the controls in it are not
+ * nested in the link. The pointer passes through to the link except on controls that set
+ * pointer-events-auto.
+ */
+function VideoThumbnailLayer({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="video-thumbnail-layer"
+      className={cn(
+        "pointer-events-none absolute inset-x-0 top-0 z-10 aspect-video",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Faint credit text and face marks on the image, without a backing panel; drop-shadow-mark keeps it legible. */
+function VideoThumbnailCredit({
+  className,
+  corner,
+  ...props
+}: React.ComponentProps<"div"> & { corner: "top-start" | "bottom-start" }) {
+  return (
+    <div
+      data-slot="video-thumbnail-credit"
+      data-corner={corner}
+      className={cn(
+        "absolute left-2 flex max-w-2/3 min-w-0 items-center gap-1.5 text-2xs text-foreground/80 drop-shadow-mark",
+        "data-[corner=bottom-start]:bottom-2 data-[corner=top-start]:top-2",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function VideoThumbnailNotice({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -108,8 +146,10 @@ function VideoThumbnailNotice({ className, ...props }: React.ComponentProps<"div
 
 export {
   VideoThumbnail,
+  VideoThumbnailCredit,
   VideoThumbnailDuration,
   VideoThumbnailImage,
+  VideoThumbnailLayer,
   VideoThumbnailMark,
   VideoThumbnailNotice,
   VideoThumbnailProgress,

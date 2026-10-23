@@ -256,7 +256,7 @@ export function seed() {
   });
   server.folders.set(5, {
     smartFolder: folderCard(5, "未視聴", { videoCount: 1, openVideoId: 10 }),
-    settings: { rule: { watch: "unwatched" }, sort: "addedDesc", missing: [] },
+    settings: { rule: { favorite: true }, sort: "addedDesc", missing: [] },
     trail: [{ id: 1, name: "タグ: 猫" }],
     items: [{ kind: "video", video: video(10, { title: "Cat 1" }) }],
   });

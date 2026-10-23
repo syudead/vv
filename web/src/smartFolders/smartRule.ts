@@ -1,7 +1,6 @@
-import type { VideoSort, WatchFilter } from "../api/client";
+import type { VideoSort } from "../api/client";
 import type { SmartFolderSummary, SmartRule } from "../api/smartFolders";
 import { compareNatural } from "../api/tagOrder";
-import { type AddedLengthFilter, validAddedLength } from "../library/addedLengthCriteria";
 import type { CreditFilter } from "../library/creditCriteria";
 import { DEFAULT_SORT, type ListCriteria } from "../videoList/listCriteria";
 
@@ -13,48 +12,29 @@ export interface LibraryFilter {
   criteria: ListCriteria;
   tagIds: readonly number[];
   credits: CreditFilter;
-  addedLength: AddedLengthFilter;
 }
 
 export function cleanRule(rule: SmartRule): SmartRule {
   const clean: SmartRule = {};
   if (rule.q !== undefined && rule.q !== "") clean.q = rule.q;
-  if (rule.watch !== undefined) clean.watch = rule.watch;
   if (rule.favorite === true) clean.favorite = true;
-  if (rule.playable === true) clean.playable = true;
   if (rule.tagKind !== undefined) clean.tagKind = rule.tagKind;
   if (rule.tags !== undefined && rule.tags.length > 0) clean.tags = [...rule.tags];
   if (rule.person !== undefined) clean.person = rule.person;
   if (rule.organization !== undefined) clean.organization = rule.organization;
-  if (rule.addedWithin !== undefined) clean.addedWithin = rule.addedWithin;
-  if (rule.minDuration !== undefined) clean.minDuration = rule.minDuration;
-  if (rule.maxDuration !== undefined) clean.maxDuration = rule.maxDuration;
   return clean;
-}
-
-export function ruleWatch(rule: SmartRule): WatchFilter {
-  return rule.watch ?? "all";
-}
-
-export function withWatch(rule: SmartRule, watch: WatchFilter): SmartRule {
-  return { ...rule, watch: watch === "all" ? undefined : watch };
 }
 
 /** Sort is separate from conditions and handled by folderSort. */
 export function ruleFromLibrary(filter: LibraryFilter): SmartRule {
-  const { criteria, tagIds, credits, addedLength } = filter;
+  const { criteria, tagIds, credits } = filter;
   return cleanRule({
     q: criteria.query,
-    watch: criteria.watch === "all" ? undefined : criteria.watch,
     favorite: criteria.favorite,
-    playable: criteria.playable,
     tagKind: credits.tagKind,
     tags: [...tagIds],
     person: credits.person,
     organization: credits.organization,
-    addedWithin: addedLength.addedWithin,
-    minDuration: addedLength.minDuration,
-    maxDuration: addedLength.maxDuration,
   });
 }
 
@@ -77,8 +57,7 @@ export function validRule(rule: SmartRule): boolean {
   const clean = cleanRule(rule);
   if (Array.from(clean.q ?? "").length > SMART_RULE_MAX_QUERY) return false;
   if (!validTags(clean.tags)) return false;
-  if (![clean.tagKind, clean.person, clean.organization].every(positiveId)) return false;
-  return validAddedLength(clean);
+  return [clean.tagKind, clean.person, clean.organization].every(positiveId);
 }
 
 /** Omit empty conditions and stabilize key order for equality. */

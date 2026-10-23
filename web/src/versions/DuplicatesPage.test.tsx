@@ -47,8 +47,21 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function pair(first: Video, second: Video): VersionCandidate {
-  return { videos: [first, second], distance: 3 };
+function pair(
+  first: Video,
+  second: Video,
+  judgement: Partial<VersionCandidate["judgement"]> = {},
+  recommendation: VersionCandidate["recommendation"] = {
+    videoId: first.id,
+    reason: "resolution",
+  },
+): VersionCandidate {
+  return {
+    videos: [first, second],
+    distance: 3,
+    judgement: { state: "waiting", leftVideoId: first.id, ...judgement },
+    recommendation,
+  };
 }
 
 const movieA = video(1, {
@@ -60,6 +73,13 @@ const movieA = video(1, {
   location: { path: "/media/movies/anime/劇場版.mkv", openable: true },
   container: "matroska",
   videoCodec: "hevc",
+  mediaInfo: {
+    video: { hdr: "sdr", frameRate: 23.976, bitRate: 8_000_000 },
+    audioTracks: [
+      { index: 1, codec: "aac", channels: 2 },
+      { index: 2, codec: "ac3", channels: 6 },
+    ],
+  },
 });
 const movieB = video(2, {
   title: "劇場版 720p",
@@ -84,6 +104,8 @@ const server = {
   holdingList: false,
   bundleRequests: [] as { videoIds: number[]; representativeId: number }[],
   videoFetches: 0,
+  judging: true,
+  rejudgeRequests: [] as number[][],
 };
 
 function install() {
@@ -99,6 +121,7 @@ function install() {
         json({
           items: server.candidates,
           total: server.total ?? server.candidates.length,
+          judging: server.judging,
         });
       if (server.holdingList) {
         return new Promise<Response>((resolve) => {
@@ -128,6 +151,19 @@ function install() {
         }).then(respond);
       }
       return Promise.resolve(respond());
+    }
+    if (url === "/api/version-candidates/rejudge" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+      server.rejudgeRequests.push(body.videoIds);
+      server.candidates = server.candidates.map((candidate) =>
+        candidate.videos[0]?.id === body.videoIds[0]
+          ? {
+              ...candidate,
+              judgement: { state: "waiting", leftVideoId: body.videoIds[0] ?? 0 },
+            }
+          : candidate,
+      );
+      return Promise.resolve(new Response(null, { status: 202 }));
     }
     if (url === "/api/video-bundles" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as {
@@ -203,6 +239,8 @@ beforeEach(() => {
   server.holdingList = false;
   server.bundleRequests = [];
   server.videoFetches = 0;
+  server.judging = true;
+  server.rejudgeRequests = [];
   location = undefined;
   installFakeEventSource();
   install();
@@ -245,6 +283,10 @@ describe("DuplicatesPage", () => {
 
     const left = within(item).getByRole("link", { name: "劇場版 1:00" });
     expect(left.getAttribute("href")).toBe("/videos/1");
+    expect(within(left).getByText("劇場版.mkv")).toBeDefined();
+    expect(within(left).getByText("23.98 fps")).toBeDefined();
+    expect(within(left).getByText("8 Mbps")).toBeDefined();
+    expect(within(left).getByText("AAC 2 ch +1 more")).toBeDefined();
     expect(within(left).getByText("1920×1080")).toBeDefined();
     expect(within(left).getByText("MATROSKA")).toBeDefined();
     expect(within(left).getByText("H.265")).toBeDefined();
@@ -254,11 +296,153 @@ describe("DuplicatesPage", () => {
       "/media/movies/anime/劇場版.mkv",
     );
 
+    expect(within(left).getByText("Recommended representative")).toBeDefined();
+    expect(within(left).getByText("It has the higher resolution")).toBeDefined();
+
     const right = within(item).getByRole("link", { name: "劇場版 720p 1:00" });
+    expect(within(right).queryByText("Recommended representative")).toBeNull();
     expect(within(right).getByText("1280×720")).toBeDefined();
     expect(within(right).getByText("1.0 GB")).toBeDefined();
     expect(within(right).getByText("backup / old")).toBeDefined();
     expect(item.textContent).not.toContain("3 ");
+    expect(within(item).getByText("Waiting to be judged")).toBeDefined();
+  });
+
+  it("AI が決めかねた組は見出しに理由を出し、「Why?」で説明と見せたコマを開き、左に映る動画を先に並べる", async () => {
+    const user = userEvent.setup();
+    server.candidates = [
+      pair(movieA, movieB, {
+        state: "undecided",
+        leftVideoId: 2,
+        activityId: 9,
+        probability: 0.55,
+        evidence: {
+          rule: "frames_differ",
+          compared: 40,
+          differing: 6,
+          longestRun: 5,
+          runStartMs: 80_000,
+          runEndMs: 95_000,
+          frames: [
+            { aMs: 81_000, bMs: 81_000, distance: 30 },
+            { aMs: 90_000, bMs: 90_500, distance: 28 },
+          ],
+          properties: [
+            { kind: "chapters", same: false, a: "12", b: "10" },
+            { kind: "duration", same: true, a: "1440000", b: "1440500" },
+          ],
+        },
+      }),
+    ];
+    renderPage();
+    const [item] = await screen.findAllByRole("listitem");
+    const links = within(item!).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/videos/2",
+      "/videos/1",
+    ]);
+    expect(within(links[0]!).getByText("Left in the frames")).toBeDefined();
+    expect(within(links[1]!).getByText("Right in the frames")).toBeDefined();
+
+    const panel = within(item!).getByRole("region", { name: "Automatic judgement" });
+    expect(
+      within(panel).getByText(
+        "Left to you: the AI was unsure, 55% sure both show the same picture",
+      ),
+    ).toBeDefined();
+    // The reasons and frames stay out of the row until the owner asks for them.
+    expect(within(panel).queryByRole("img")).toBeNull();
+    expect(panel.textContent).not.toContain("frames compared by time");
+
+    await user.click(
+      within(panel).getByRole("button", {
+        name: "Why the automatic judgement ended this way, for 劇場版 and 劇場版 720p",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Why the automatic judgement ended this way",
+    });
+    expect(dialog.textContent).toContain(
+      "6 of 40 frames compared by time differ, 5 of them in a row from 1:20 to 1:35.",
+    );
+    expect(dialog.textContent).toContain("It answered 55%.");
+    const images = within(dialog).getAllByRole("img");
+    expect(images.map((image) => image.getAttribute("src"))).toEqual([
+      "/api/activity/9/judgement-frames/0",
+      "/api/activity/9/judgement-frames/1",
+    ]);
+    expect(within(dialog).getByText("Left at 1:30, right at 1:30")).toBeDefined();
+    const properties = within(dialog).getByRole("region", { name: "Video information" });
+    expect(within(properties).getByText("Chapters · Different")).toBeDefined();
+    expect(
+      within(properties).getByText("Left: 12 chapters · Right: 10 chapters"),
+    ).toBeDefined();
+    expect(within(properties).getByText("Left: 24:00 · Right: 24:00")).toBeDefined();
+  });
+
+  it("決めかねた理由が比べられないコマか、別物の記録とのぶつかりかを見出しで言い分ける", async () => {
+    server.candidates = [
+      pair(movieA, movieB, {
+        state: "undecided",
+        evidence: { rule: "incomparable", compared: 2, differing: 0 },
+      }),
+      pair(video(5, { title: "旅行" }), video(6, { title: "旅行 2" }), {
+        state: "undecided",
+        probability: 0.1,
+        evidence: {
+          rule: "frames_differ",
+          compared: 40,
+          differing: 9,
+          byProperties: true,
+        },
+      }),
+      pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" }), {
+        state: "undecided",
+        evidence: { rule: "frames_match", compared: 40, differing: 0, conflict: true },
+      }),
+    ];
+    renderPage();
+    expect(
+      await screen.findByText("Left to you: the two videos' frames couldn't be compared"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "Left to you: they look the same, but one is marked as a different video from the other's versions",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "Left to you: the AI says they differ, but the video information says they're the same",
+      ),
+    ).toBeDefined();
+  });
+
+  it("「Judge again」で判定に戻し、取り直した組は待ちになる", async () => {
+    const user = userEvent.setup();
+    server.candidates = [pair(movieA, movieB, { state: "failed", error: "timeout" })];
+    renderPage();
+    const button = await screen.findByRole("button", {
+      name: "Judge again, for 劇場版 and 劇場版 720p",
+    });
+    expect(screen.getByText("The judgement failed: timeout")).toBeDefined();
+    await user.click(button);
+    expect(server.rejudgeRequests).toEqual([[1, 2]]);
+    expect(await screen.findByText("Sent back to duplicate judging")).toBeDefined();
+    expect(await screen.findByText("Waiting to be judged")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Judge again/ })).toBeNull();
+  });
+
+  it("判定がオフなら「Judge again」を置かず、待っている組はあなたに任されると伝える", async () => {
+    server.judging = false;
+    server.candidates = [
+      pair(movieA, movieB, { state: "undecided" }),
+      pair(video(3, { title: "旅行" }), video(4, { title: "旅行 (1)" })),
+    ];
+    renderPage();
+    expect(
+      await screen.findByText("Duplicate judging is off, so this pair waits for you."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Judge again/ })).toBeNull();
   });
 
   it("動画のリンクは戻り先を候補の画面にして再生画面へ移る", async () => {
@@ -266,6 +450,39 @@ describe("DuplicatesPage", () => {
     renderPage();
     await user.click(await screen.findByRole("link", { name: "劇場版 720p 1:00" }));
     expect(location).toEqual({ pathname: "/videos/2", state: { from: "/duplicates" } });
+  });
+
+  it("選ぶ材料として、画素が増えないのに大きいこと・音声の割合・音声のずれと長さの差を出す", async () => {
+    const bloated = video(3, {
+      title: "大きい版",
+      width: 1280,
+      height: 720,
+      sizeBytes: 3 * 1024 * 1024 * 1024,
+      mediaInfo: {
+        video: { hdr: "sdr", startMs: 0, durationMs: 600_000 },
+        audioTracks: [{ index: 1, codec: "flac", startMs: 1200, durationMs: 580_000 }],
+        container: {
+          sizes: {
+            totalBytes: 3 * 1024 * 1024 * 1024,
+            audioBytes: 1.5 * 1024 * 1024 * 1024,
+          },
+        },
+      },
+    });
+    server.candidates = [
+      pair(movieB, bloated, {}, { videoId: movieB.id, reason: "audio_sync" }),
+    ];
+    renderPage();
+    const bloatedLink = await screen.findByRole("link", { name: "大きい版 1:00" });
+    expect(
+      within(bloatedLink).getByText(
+        "3× the size without more pixels · Audio takes 50% of the file · Audio starts 1.2 s after the video · Audio ends 20 s before the video",
+      ),
+    ).toBeDefined();
+    const kept = screen.getByRole("link", { name: "劇場版 720p 1:00" });
+    expect(
+      within(kept).getByText("Its audio runs as long as its video; the other's doesn't"),
+    ).toBeDefined();
   });
 
   it("「Same video…」で代表を選んで束ねると組が消え、件数が減り、次の組へフォーカスが移る", async () => {
@@ -278,6 +495,12 @@ describe("DuplicatesPage", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    expect(
+      within(dialog)
+        .getByRole("radio", { name: /^劇場版,/ })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(within(dialog).getByText(/keeps both videos' tags/)).toBeDefined();
     const radios = within(dialog).getAllByRole("radio");
     expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([
       expect.stringContaining("劇場版"),

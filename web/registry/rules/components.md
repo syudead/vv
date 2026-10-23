@@ -403,19 +403,28 @@ hover preview) as children, then the overlays it needs:
 a virtual video, which has no file, shows `VirtualMark` there instead of a duration),
 `VideoThumbnailProgress` on the bottom edge for the share watched,
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
-`FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
+a person's `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
 when the video cannot play. A virtual video has no progress, notice or hover
 preview. `selected` rings the frame in `primary`.
 
+A video card's credits sit in a `VideoThumbnailLayer`, a frame-sized layer
+laid over the thumbnail from outside the card's link, so the face links in it
+are not nested in that link; the pointer passes through it except on controls
+that set `pointer-events-auto`. In it, `VideoThumbnailCredit` holds faint text
+without a panel: the product code at `top-start`, moving right of the
+selection check while the check shows, and the performers' `PersonFace`
+`mark`s and the label at `bottom-start`.
+
 Do not draw a thumbnail with its own frame, badge or progress bar, and do not
-put text other than the duration (or the virtual mark in its place) and the
-notice on the image.
+put text other than the duration (or the virtual mark in its place), the
+notice and the credits on the image.
 
 ### FavoriteToggle
 
 Item `favorite-toggle`. The favorite heart, which is both the mark and the
-toggle. `variant="card"` sits in a `VideoThumbnailMark` on a card, `row` in a
-list row and `page` in the video page's action group. The heart is filled in
+toggle. `variant="card"` sits on a person's face card, `row` in a
+list row and `page` in the video page's action group. Video, group and smart
+folder cards carry no heart; their list rows and the selection bar do. The heart is filled in
 `favorite` when on; when off it shows only on hover and focus of its card or
 row. Shown to the owner only.
 
@@ -423,19 +432,21 @@ Do not use the `favorite` colour or a heart for anything else.
 
 ### PersonFace
 
-Item `person-face`. A person's face in one of eight frames, or the placeholder
+Item `person-face`. A person's face in one of nine frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
-| Shape     | Frame                                       | Where                                                                     |
-| --------- | ------------------------------------------- | ------------------------------------------------------------------------- |
-| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                 |
-| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                          |
-| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                   |
-| `token`   | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name         |
-| `option`  | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list               |
-| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison                                          |
-| `judge`   | `size-12`, `rounded-full`                   | A person in a row where the owner decides whether two people are the same |
-| `scene`   | `size-12`, `rounded-md`                     | A face cut from a video; square, so it reads as a frame of the video      |
+| Shape        | Frame                                       | Where                                                                                                             |
+| ------------ | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `card`       | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                                                         |
+| `profile`    | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                                                                  |
+| `chip`       | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                                                           |
+| `token`      | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                                                 |
+| `option`     | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                                       |
+| `compare`    | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                                                  |
+| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                                        |
+| `scene`      | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video                    |
+| `suggestion` | `size-16`, `rounded-full`                   | A person offered as where faces belong, in a ranked list                                                          |
+| `mark`       | `size-5`, `rounded-full`, a faint ring      | A performer on a video card's thumbnail; hovering it pops the same face as `profile`, at most `face-popover` wide |
 
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the

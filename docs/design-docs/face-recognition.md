@@ -727,6 +727,13 @@ is the target person, and it keeps what the merge moved.
 | `activity_entry_person_merges` | The source and target ids, and a JSON snapshot: the source's row, profile, favorite, face and vector, appearance ids, candidate pairs and the smart folders whose rule named it; the target's profile before and after, and the favorite and face revision the merge gave it |
 | `activity_entry_merge_credits` | Each credit the source had, by user key and role, with `target_had` when the target already had it                                                                                                                                                                           |
 
+The faces page's `Undo` of a confirmed pair uses the same entry, so
+`UndoOffered` accepts a `face_merge` decided by the owner as it does an
+automatic one; the page then reopens the pair, which undo marks dismissed. The
+snapshot keeps no external IDs, so a confirmed unnamed person who holds one is
+merged as a named person is, with no entry and no `Undo`, rather than lose the
+ID to the target on undo.
+
 Undo re-creates the source under its old id, which SQLite's `AUTOINCREMENT`
 never hands out again, so links to the person page work again. It then moves
 back only what the owner has not changed since.
@@ -749,12 +756,12 @@ and stays. A name the owner gives the target is never touched. Undo of an entry
 whose target was deleted, or whose source id exists again, records
 `already_reverted` and changes nothing.
 
-| Rejected                             | Why                                                                                                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Keep merged sources as hidden rows   | Every read of people and credits would have to skip them                                                         |
-| Compare the credits at undo          | A credit the owner removed and added again looks unchanged                                                       |
-| Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry                       |
-| Leave the undone pair open           | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again |
+| Rejected                           | Why                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Keep merged sources as hidden rows | Every read of people and credits would have to skip them                                                           |
+| Compare the credits at undo        | A credit the owner removed and added again looks unchanged                                                         |
+| Make every owner merge undoable    | A merge from the people list or the person page has no faces page to undo it from, and owner merges write no entry |
+| Leave the undone pair open         | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again   |
 
 ## Face entries on the activity screen
 
@@ -762,7 +769,7 @@ Both kinds belong to the `face_recognition` feature of the activity filter. A
 `face_merge` entry's subject is the merge target as a `person` subject, whose
 item carries `personId` from the subject key, so the card and the detail page
 open `/people/:id`; its result names the source as `Unnamed person`, since a
-merged source is always provisional. A `face_analysis` entry lists its
+merged source is always provisional and the entry keeps no number for it. A `face_analysis` entry lists its
 `faceLinks` in the list, in the detail and in an import pipeline's member
 summaries, so a pipeline's member reads the same names as its own card
 (`web/src/activity/activityEntry.ts`).
@@ -783,26 +790,45 @@ and the people API names it by its two people in either order
 `GET /api/people/{id}/face-candidates` lists the open pairs a person takes part
 in as the other person of each, highest similarity first.
 
-| Action  | Effect                                                                                                                                                                              |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Confirm | The ordinary merge of the pair's person without a canonical name into the other, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
-| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                    |
+| Action  | Effect                                                                                                                                                                                                                                                                                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirm | The merge of the other person into the person it is confirmed from, in one transaction with the pair lookup; an unnamed source is merged as `MergeProvisional` does and recorded as a `face_merge` entry decided by the owner, whose id the response carries as `undoActivityId`, and a named source by the ordinary merge with no entry |
+| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden                                                                                                                                                                                                                         |
+| Reopen  | Clears `dismissed` on a dismissed pair, for the faces page's `Undo`; the pair is offered again as before                                                                                                                                                                                                                                 |
 
-When both people have a name, or neither has, confirm merges the stored
-provisional side: a name given after the pair was offered does not reverse
-it. Without an open pair, both actions answer `404 face_candidate_not_found`.
+The person confirmed from stays, with their face, whichever side the pair
+stores as provisional; only when that person has no canonical name and the
+other has one does it merge into the other, so a name is never lost. Without
+an open pair, confirm and dismiss answer `404 face_candidate_not_found`, as
+reopen does without a dismissed one.
 
-| Rejected             | Why                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------- |
-| Pairs of appearances | The person page offers people, and one person's many appearances would repeat one choice |
+| Rejected                                       | Why                                                                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Pairs of appearances                           | The person page offers people, and one person's many appearances would repeat one choice                                            |
+| Merging the stored provisional side, as before | Sorting unnamed people, the person on the page was often the one merged away, so the page and its face switched to the other person |
 
 ## The faces page reads a person's appearances
 
 `GET /api/people/{id}/appearances` lists a person's appearances that are not
-dropped, with the admin lists' `limit` and `cursor`
+dropped, with the admin lists' `limit` and `cursor` and the `total` of them all,
+each with its `similarity`: the cosine similarity of its centroid to the
+normalized mean of the person's centroids of the same recognizer, which stands
+for the person without needing a face image; a person with a single
+comparable face gets no similarity, which would compare the face with itself. `sort=leastSimilar` orders by that
+similarity, lowest first, so faces linked by mistake come first; appearances
+that cannot be compared follow in the default order
 ([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
-They come newest video first by the video's added time, then by descending
-appearance id. An appearance whose content key no video has any more is still
+An appearance whose similarity is below the candidate threshold of the
+recognizer that made its centroid, found by the vector's length, is marked
+`unlike`. `sort=mostSimilar` is the reverse with the same tail, for choosing the
+person's face from the faces most like them
+([people.md](people.md#a-face-can-be-framed-from-a-video)). Each appearance also
+carries its `focus`, the middle, mean centre and width of its longest track.
+By default they come newest video first by the video's added time, then by
+descending appearance id. The store reads every appearance of the person and
+orders and pages them in memory, since the similarity needs all centroids; a
+cursor names the last appearance by what its order compares, so a split face
+leaving the list does not shift the next page. An appearance whose content key no video has any more is still
 listed, without `videoId` and after every appearance with a video, so the
 owner sees that the person was found in a file that has left the library.
 Each item's spans are its tracks' times in order, with overlapping tracks
@@ -840,9 +866,34 @@ one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
 owner's own decision, like confirming a candidate.
 
+`POST /api/people/{id}/appearances/move` hands appearances to an existing
+person the owner names instead, as the split does to its new person but
+without dismissing the pair; a target already credited in a work keeps its own
+credit and the old person's row goes, and the positions close up. Moving them
+back is the undo, but a plain reverse move would hand the target's own credit
+to the old person in those works, so the move answers them as
+`restoreCredits` (an opaque work key and the old row's position) and the
+reverse move given them keeps the target's credit and puts the old person's
+back at that position. A list kept by the page avoids an activity entry for a
+decision the owner can only undo from the same page.
+
+`GET /api/people/{id}/similar-people` ranks the other people for picking
+where faces belong ([`face_similar_people.go`](../../internal/store/face_similar_people.go)):
+the mean of the listed appearances' centroids, or of all the person's, is
+compared with each person's face image vector and with the mean of their
+centroids, whichever is closer. The person page's merge dialog uses it for the
+whole person, and the faces page's `Move to person…` for the checked faces.
+Each person carries up to four crops, newest video first as on the faces page,
+with faces whose video is gone last.
+
+`POST /api/people/{id}/appearances/split` does the same for several
+appearances at once, moving them all to one new person whose face is the first
+one's crop; any appearance the person lacks splits none.
+
 | Rejected                                                       | Why                                                                                               |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Removing the old person's credit whenever the appearance moves | Another appearance in the same work may still be that person, and the credit would vanish with it |
+| One new person per face for a selection                        | Faces wrongly linked together are usually one other person, who would then be several             |
 | Copying the centroid into the new person's face-image vector   | A centroid is not the vector of the crop; the face-image job computes the right one               |
 
 ## Tests that cross the worker and the store live in `cmd/mdm`

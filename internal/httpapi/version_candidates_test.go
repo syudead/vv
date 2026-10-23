@@ -142,6 +142,10 @@ func TestVersionCandidatesListAndBundle(t *testing.T) {
 	if item.Distance != 2 {
 		t.Errorf("distance = %d, want 2", item.Distance)
 	}
+	// The fixture's files differ in nothing but their IDs.
+	if got := item.Recommendation; got.VideoId != min(a, b) || got.Reason != gen.Older {
+		t.Errorf("おすすめの代表 = %+v, want 古い %d", got, min(a, b))
+	}
 	for _, video := range item.Videos {
 		if video.Location == nil || video.Folder == nil || video.DurationMs == nil || video.Title == "" {
 			t.Errorf("候補の動画 %d に所在・フォルダ・尺・題名が無い: %+v", video.Id, video)

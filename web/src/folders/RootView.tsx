@@ -32,8 +32,6 @@ export default function RootView() {
     searchField,
     changeSort,
     shuffle,
-    changeWatch,
-    changePlayable,
     changeFavorite,
     commitQuery,
     clearAll,
@@ -98,10 +96,6 @@ export default function RootView() {
             sort={criteria.sort}
             onSortChange={changeSort}
             onShuffle={shuffle}
-            watch={criteria.watch}
-            onWatchChange={changeWatch}
-            playable={criteria.playable}
-            onPlayableChange={changePlayable}
             favorite={criteria.favorite}
             onFavoriteChange={changeFavorite}
             canClear={hasConditions(criteria)}

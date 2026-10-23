@@ -162,27 +162,21 @@ describe("タグの種類での絞り込み", () => {
     vi.unstubAllGlobals();
   });
 
-  it("ポップオーバーで種類を選ぶと、URL に tagKind が付き、一致する動画だけが出て、ボタンが数える", async () => {
+  it("picking a kind in the filter's tag picker sets tagKind, shows the chip and counts it; another kind replaces it", async () => {
     const user = userEvent.setup();
     renderAt("/");
     expect(await screen.findByRole("link", { name: "動画 3" })).toBeDefined();
     expect(requests("/api/tag-kinds")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
-    await user.click(await screen.findByRole("combobox", { name: "Tag kind" }));
-    const options = await screen.findAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual([
-      "Any kind",
-      "Genre",
-      "Place",
-      "Work",
-    ]);
-    await user.click(screen.getByRole("option", { name: "Genre" }));
+    const picker = await screen.findByRole("combobox", { name: "Add tag" });
+    await user.type(picker, "Gen");
+    await user.click(await screen.findByRole("option", { name: "Tag kind Genre" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() => expect(location()).toBe("?tagKind=2"));
     expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
     expect(screen.queryByRole("link", { name: "動画 1" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "動画 3" })).toBeNull();
     expect(requests("/api/library").at(-1)?.searchParams.get("tagKind")).toBe("2");
     expect(
       screen.getByRole("button", { name: 'Remove the filter for the kind "Genre"' })
@@ -190,16 +184,34 @@ describe("タグの種類での絞り込み", () => {
     ).toContain("Kind: Genre");
     expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
     expect(requests("/api/tag-kinds")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    await user.type(await screen.findByRole("combobox", { name: "Add tag" }), "Wor");
+    await user.click(await screen.findByRole("option", { name: "Tag kind Work" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(location()).toBe("?tagKind=1"));
   });
 
-  it("ポップオーバーで「Any kind」を選ぶと tagKind だけが外れる", async () => {
+  it("opening the filter focuses the panel and leaves the tag picker's list closed", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByRole("link", { name: "動画 3" });
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const picker = await screen.findByRole("combobox", { name: "Add tag" });
+    expect(picker.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("dialog", { name: "Filter" }));
+  });
+
+  it("removing the kind chip in the filter popover drops only tagKind", async () => {
     const user = userEvent.setup();
     renderAt("/?tag=2&tagKind=1");
     await screen.findByRole("button", { name: 'Remove the filter for the kind "Work"' });
 
-    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
-    await user.click(await screen.findByRole("combobox", { name: "Tag kind" }));
-    await user.click(await screen.findByRole("option", { name: "Any kind" }));
+    await user.click(screen.getByRole("button", { name: "Filter (2 applied)" }));
+    await user.click(await screen.findByRole("button", { name: "Remove the kind Work" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(location()).toBe("?tag=2"));
   });
 
@@ -319,18 +331,46 @@ describe("タグの種類での絞り込み", () => {
     expect(location()).toBe("?tagKind=3");
   });
 
-  it("ゲストには種類の行を出さず、URL の tagKind は要求の前に外す", async () => {
-    const user = userEvent.setup();
+  it("ゲストには絞り込みのボタンを出さず、URL の tagKind は要求の前に外す", async () => {
     renderAt("/?tagKind=1", "guest");
     await screen.findByRole("link", { name: "動画 3" });
     for (const url of requests("/api/library")) {
       expect(url.searchParams.has("tagKind")).toBe(false);
     }
     await waitFor(() => expect(location()).toBe(""));
-
-    await user.click(screen.getByRole("button", { name: "Filter" }));
-    await screen.findByRole("checkbox", { name: "Playable only" });
-    expect(screen.queryByRole("combobox", { name: "Tag kind" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Filter/ })).toBeNull();
     expect(requests("/api/tag-kinds")).toHaveLength(0);
+  });
+});
+
+describe("retired versions parameter", () => {
+  beforeEach(() => {
+    __resetTagsForTest();
+    __resetTagKindsForTest();
+    clearListSnapshot();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    install([]);
+  });
+
+  afterEach(() => {
+    cleanup();
+    fetchMock.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("an old URL with versions=1 still loads the whole library without hasVersions", async () => {
+    renderAt("/?versions=1");
+    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+    expect(
+      requests("/api/library").every((url) => !url.searchParams.has("hasVersions")),
+    ).toBe(true);
   });
 });

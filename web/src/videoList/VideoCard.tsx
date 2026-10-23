@@ -39,7 +39,7 @@ import {
   VideoThumbnailNotice,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
-import { useCardActions } from "./cardActions";
+import { CardCredits } from "./CardCredits";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
@@ -70,17 +70,8 @@ export interface VideoCardProps {
   tagsRow?: (video: Video) => ReactNode;
   /** Owner library rows supply drag metadata; grid cards use DraggableCard wrappers. */
   drag?: CardDragBinding;
-  /**
-   * 格子のカードが開く再生画面で再生を始める（`state.autoplay`）。ホームの棚のカードが渡す
-   * （docs/design-docs/home.md）。
-   */
+  /** The player a grid card opens starts playing (`state.autoplay`); home shelves pass it (docs/design-docs/home.md). */
   autoplay?: boolean;
-  /**
-   * 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（「Add to group」と
-   * 「Add to playlist」を置かない）。ホームの棚の card-0 のカードが渡す
-   * （docs/design-docs/home.md「Home」）。
-   */
-  favoriteOnly?: boolean;
 }
 
 function useCardState(video: Video) {
@@ -98,65 +89,36 @@ function usePublicMark(video: Video): boolean {
   return useAudience() === "owner" && video.public;
 }
 
-function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "row" }) {
+// Grid cards carry no actions; list rows keep these, and the selection bar and player offer them too.
+function VideoFavorite({ video }: { video: Video }) {
   const favorite = video.favorite === true;
   return (
     <FavoriteToggle
       favorite={favorite}
       label={t.list.card.favorite(video.title)}
       onToggle={() => updateFavorites([video.id], [], !favorite)}
-      variant={variant}
+      variant="row"
     />
   );
 }
 
-function VideoAddToPlaylist({
-  video,
-  variant,
-}: {
-  video: Video;
-  variant: "card" | "row";
-}) {
+function VideoAddToPlaylist({ video }: { video: Video }) {
   return (
     <AddToPlaylistButton
-      variant={variant}
+      variant="row"
       label={t.list.card.addToPlaylist(video.title)}
       videoIds={[video.id]}
     />
   );
 }
 
-function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "row" }) {
+function VideoAddToGroup({ video }: { video: Video }) {
   return (
     <AddToGroupButton
-      variant={variant}
+      variant="row"
       label={t.list.card.addToGroup(video.title)}
       videoIds={[video.id]}
     />
-  );
-}
-
-/** Until the card is approached only a favorite heart, which shows at rest, is created. */
-function CardActions({
-  video,
-  ready,
-  favoriteOnly,
-  onPointerEnter,
-}: {
-  video: Video;
-  ready: boolean;
-  favoriteOnly: boolean;
-  onPointerEnter: () => void;
-}) {
-  if (!ready && video.favorite !== true) return null;
-  const all = ready && !favoriteOnly;
-  return (
-    // Stop previews on entry and never start them from these actions.
-    <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={onPointerEnter}>
-      {all && <VideoAddToGroup video={video} variant="card" />}
-      {all && <VideoAddToPlaylist video={video} variant="card" />}
-      <VideoFavorite video={video} variant="card" />
-    </VideoThumbnailMark>
   );
 }
 
@@ -330,7 +292,6 @@ function VideoCard(props: VideoCardProps) {
     location,
     tagsRow,
     autoplay,
-    favoriteOnly = false,
   } = props;
   const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
   // Keep bottom padding identical with and without tags to avoid inconsistent card spacing.
@@ -339,7 +300,6 @@ function VideoCard(props: VideoCardProps) {
   const versions = shownVersionsCount(video);
   const versionsId = useId();
   const virtualId = useId();
-  const owner = useAudience() === "owner";
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const preview = useCardPreview({ video, selectionMode, previewCoordinator });
   const { startPreview } = preview;
@@ -349,25 +309,14 @@ function VideoCard(props: VideoCardProps) {
     previewCoordinator,
     preview,
   });
-  //
   const scrubPosition = scrub.position;
-  const actions = useCardActions();
-  const { approach } = actions;
-  const enter = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      approach();
-      startPreview(event);
-    },
-    [approach, startPreview],
-  );
 
   return (
     <article
       ref={setArticle}
       data-video-id={video.id}
-      onPointerEnter={enter}
+      onPointerEnter={startPreview}
       onPointerLeave={release}
-      onFocus={approach}
       className={cn(
         "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
@@ -472,15 +421,14 @@ function VideoCard(props: VideoCardProps) {
           )}
         </div>
       </Link>
-      {/* Keep mark actions outside the link in checkbox, link, marks, tags DOM order. */}
-      {owner && (
-        <CardActions
-          video={video}
-          ready={actions.ready}
-          favoriteOnly={favoriteOnly}
-          onPointerEnter={release}
-        />
-      )}
+      {/* Keep the credit links outside the card link, in checkbox, link, credits, tags DOM order. */}
+      <CardCredits
+        video={video}
+        selectable={onSelect !== undefined}
+        selected={selected}
+        selectionMode={selectionMode}
+        onPreviewCancel={release}
+      />
       {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );
@@ -560,17 +508,17 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          <VideoFavorite video={video} variant="row" />
+          <VideoFavorite video={video} />
         </TableCell>
       )}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
-          <VideoAddToPlaylist video={video} variant="row" />
+          <VideoAddToPlaylist video={video} />
         </TableCell>
       )}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
-          <VideoAddToGroup video={video} variant="row" />
+          <VideoAddToGroup video={video} />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right sm:table-cell">

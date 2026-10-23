@@ -21,7 +21,7 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids, listNow().Unix())
+	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (s *SmartFolderStore) ListSmartFolders(ctx context.Context, audience domain
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the smart folders: %w", err)
 	}
-	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids, listNow().Unix())
+	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids)
 	if err != nil {
 		return nil, err
 	}

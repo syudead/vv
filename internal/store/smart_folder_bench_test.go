@@ -12,10 +12,9 @@ import (
 func BenchmarkSmartFolderReads(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
-	thirty := 30 * 60
 	root := benchSmartFolder(b, db, "猫", domain.SmartRule{Tags: []int64{cat}}, 0)
-	child := benchSmartFolder(b, db, "未視聴", domain.SmartRule{Watch: domain.WatchUnwatched}, root)
-	third := benchSmartFolder(b, db, "短い", domain.SmartRule{MaxDuration: &thirty}, child)
+	child := benchSmartFolder(b, db, "season-000", domain.SmartRule{Q: "season-000"}, root)
+	third := benchSmartFolder(b, db, "series-01", domain.SmartRule{Q: "series-01"}, child)
 	for _, read := range []struct {
 		name string
 		id   int64
@@ -45,13 +44,9 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 	b.Run("no folders", read)
 	ids := make([]int64, 0, 50)
 	for i := range 50 {
-		bound := (i%10 + 1) * 6 * 60
-		days := i + 1
 		rules := []domain.SmartRule{
 			{Tags: []int64{cat}},
-			{Watch: domain.WatchUnwatched},
-			{MaxDuration: &bound},
-			{AddedWithin: &days},
+			{Q: fmt.Sprintf("season-%03d", i%10)},
 			{Q: fmt.Sprintf("series-%02d", i%40)},
 		}
 		ids = append(ids, benchSmartFolder(b, db, fmt.Sprintf("folder-%02d", i), rules[i%len(rules)], 0))

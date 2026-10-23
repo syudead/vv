@@ -71,10 +71,7 @@ type FolderVideoQuery struct {
 	Dir   string
 	Scope FolderScope
 	// Query uses VideoQuery syntax but matches only locations within Scope.
-	Query string
-	// An empty Watch means WatchAll.
-	Watch        WatchFilter
-	PlayableOnly bool
+	Query        string
 	Sort         VideoSort
 	Seed         int64
 	Cursor       string

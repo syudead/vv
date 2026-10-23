@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"slices"
+	"time"
 )
 
 // Version bundles own their user-data key for tags, progress, and visibility; storage exposes it as Video.UserKey.
@@ -67,8 +68,21 @@ const MaxVersionCandidates = 200
 
 // Videos is ID-ordered; Distance is the median fingerprint Hamming distance.
 type VersionCandidate struct {
-	Videos   [2]Video
-	Distance int
+	Videos    [2]Video
+	Distance  int
+	Judgement VersionCandidateJudgement
+}
+
+// VersionCandidateJudgement is the automatic judgement's state for a listed pair. An empty State means waiting;
+// LeftVideoID is the video whose frames are on the left of the evidence images.
+type VersionCandidateJudgement struct {
+	State       VersionJudgement
+	ActivityID  int64
+	Probability *float64
+	Error       string
+	RetryAt     time.Time
+	Evidence    *VersionJudgeEvidence
+	LeftVideoID int64
 }
 
 type VersionCandidatePage struct {

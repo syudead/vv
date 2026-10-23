@@ -343,6 +343,7 @@ describe("ライブラリからグループを作る・足す", () => {
     const server = install([{ kind: "group", group: parent }], [child, parent]);
     server.parents.set(8, 7);
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(
       await screen.findByRole("button", { name: 'Add group "B" to a group' }),
@@ -358,20 +359,17 @@ describe("ライブラリからグループを作る・足す", () => {
     expect(server.adds).toEqual([]);
   });
 
-  it("カードの印は「Add to playlist」の左にあり、打った名前に合うグループが無ければ作成の行で作る", async () => {
+  it("行の印から、打った名前に合うグループが無ければ作成の行で作る", async () => {
     const server = install(
       [{ kind: "video", video: video(1) }],
       [group(8, "extras", [201])],
     );
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const trigger = await screen.findByRole("button", {
       name: 'Add "動画 1" to a group',
     });
-    const playlist = screen.getByRole("button", { name: 'Add "動画 1" to a playlist' });
-    expect(trigger.nextElementSibling).toBe(playlist);
-    expect(trigger.className).toContain("opacity-0");
-    expect(trigger.className).toContain("size-8");
 
     await user.click(trigger);
     const field = await screen.findByRole("combobox", {

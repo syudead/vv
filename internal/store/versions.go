@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -32,9 +33,10 @@ type bundleRef struct {
 	id                int64
 	userKey           string
 	representativeKey string
+	byOwner           bool
 }
 
-// Bundle expands existing memberships and copies representative user data to a new key, moving references while preserving absorbed keys' data.
+// Bundle expands existing memberships and merges every side's user data into a new key, moving references while preserving absorbed keys' data.
 func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representativeID int64) (domain.VideoVersions, error) {
 	ids := uniqueIDs(videoIDs)
 	if len(ids) < 2 {
@@ -54,6 +56,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
+	plan.representativeByOwner = true
 	outcome, err := applyBundle(ctx, tx, plan)
 	if err != nil {
 		return domain.VideoVersions{}, err
@@ -74,9 +77,12 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 
 // joined excludes the representative's existing bundle members because their ownership has not changed.
 type bundlePlan struct {
-	members               []string
-	joined                []string
-	absorbedKeys          []string
+	members      []string
+	joined       []string
+	absorbedKeys []string
+	// userKeys are the sides' user-data keys, the representative's first.
+	userKeys              []string
+	representativeByOwner bool
 	absorbedBundles       []int64
 	representativeKey     string
 	representativeUserKey string
@@ -97,11 +103,18 @@ func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID i
 		if err != nil {
 			return bundlePlan{}, err
 		}
+		userKey := key
+		if bundled {
+			userKey = bundle.userKey
+		}
 		if id == representativeID {
-			plan.representativeKey, plan.representativeUserKey = key, key
+			plan.representativeKey, plan.representativeUserKey = key, userKey
 			if bundled {
-				plan.representativeUserKey, representativeBundle = bundle.userKey, bundle.id
+				representativeBundle = bundle.id
 			}
+		}
+		if !slices.Contains(plan.userKeys, userKey) {
+			plan.userKeys = append(plan.userKeys, userKey)
 		}
 		if !bundled {
 			plan.members = append(plan.members, key)
@@ -127,6 +140,9 @@ func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID i
 			plan.joined = append(plan.joined, absorbed[id]...)
 		}
 	}
+	if i := slices.Index(plan.userKeys, plan.representativeUserKey); i > 0 {
+		plan.userKeys = append(append([]string{plan.representativeUserKey}, plan.userKeys[:i]...), plan.userKeys[i+1:]...)
+	}
 	slices.Sort(plan.members)
 	plan.members = slices.Compact(plan.members)
 	slices.Sort(plan.joined)
@@ -146,18 +162,18 @@ func (o bundleOutcome) events() []domain.Event {
 		groupsChangedEvents(o.changedGroups)...)
 }
 
-// Apply the plan in the caller's transaction, moving references, preserving absorbed user data and refreshing folders and changed playlist shapes.
+// Apply the plan in the caller's transaction, merging the sides' user data, moving references, preserving absorbed user data and refreshing folders and changed playlist shapes.
 func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcome, error) {
 	shapes, err := snapshotPlaylistShapes(ctx, tx, plan.absorbedKeys)
 	if err != nil {
 		return bundleOutcome{}, err
 	}
 	now := time.Now().Unix()
-	bundleID, userKey, err := createBundle(ctx, tx, plan.representativeKey, now)
+	bundleID, userKey, err := createBundle(ctx, tx, plan.representativeKey, plan.representativeByOwner, now)
 	if err != nil {
 		return bundleOutcome{}, err
 	}
-	if err := copyUserData(ctx, tx, plan.representativeUserKey, userKey); err != nil {
+	if err := mergeUserData(ctx, tx, plan.userKeys, userKey); err != nil {
 		return bundleOutcome{}, err
 	}
 	var rekeyedGroups []int64
@@ -189,10 +205,9 @@ func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcom
 		changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...)), changedVideos: changed}, nil
 }
 
-func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now int64) (int64, string, error) {
-	result, err := tx.ExecContext(ctx,
-		`insert into video_bundles (user_key, representative_key, created_at, updated_at) values ('bundle:new', ?, ?, ?)`,
-		representativeKey, now, now)
+func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, byOwner bool, now int64) (int64, string, error) {
+	result, err := tx.ExecContext(ctx, `insert into video_bundles (user_key, representative_key, representative_by_owner,
+		created_at, updated_at) values ('bundle:new', ?, ?, ?, ?)`, representativeKey, byOwner, now, now)
 	if err != nil {
 		return 0, "", fmt.Errorf("cannot create the bundle: %w", err)
 	}
@@ -244,7 +259,7 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 		return domain.VideoVersions{}, domain.ErrNotBundled
 	}
 	if _, err := tx.ExecContext(ctx,
-		`update video_bundles set representative_key = ?, updated_at = ? where id = ?`,
+		`update video_bundles set representative_key = ?, representative_by_owner = 1, updated_at = ? where id = ?`,
 		key, time.Now().Unix(), bundle.id); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
@@ -388,7 +403,8 @@ func detachLeavingMembers(
 	if !slices.Contains(leaving, representative) {
 		representative = leaving[0]
 	}
-	bundleID, userKey, err := createBundle(ctx, tx, representative, now)
+	byOwner := bundle.byOwner && representative == bundle.representativeKey
+	bundleID, userKey, err := createBundle(ctx, tx, representative, byOwner, now)
 	if err != nil {
 		return err
 	}
@@ -423,7 +439,7 @@ func settleRemainingMembers(
 			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`update video_bundles set representative_key = ?, updated_at = ? where id = ?`,
+			`update video_bundles set representative_key = ?, representative_by_owner = 0, updated_at = ? where id = ?`,
 			next, now, bundle.id); err != nil {
 			return nil, fmt.Errorf("cannot change the representative: %w", err)
 		}
@@ -606,9 +622,9 @@ func bundlableContentKey(ctx context.Context, tx *sql.Tx, videoID int64) (string
 
 func bundleOf(ctx context.Context, tx *sql.Tx, contentKey string) (bundleRef, bool, error) {
 	var ref bundleRef
-	err := tx.QueryRowContext(ctx, `select b.id, b.user_key, b.representative_key
+	err := tx.QueryRowContext(ctx, `select b.id, b.user_key, b.representative_key, b.representative_by_owner
 		from video_bundle_members m join video_bundles b on b.id = m.bundle_id
-		where m.content_key = ?`, contentKey).Scan(&ref.id, &ref.userKey, &ref.representativeKey)
+		where m.content_key = ?`, contentKey).Scan(&ref.id, &ref.userKey, &ref.representativeKey, &ref.byOwner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return bundleRef{}, false, nil
 	}
@@ -665,13 +681,79 @@ func videoIDsForContentKeys(ctx context.Context, tx *sql.Tx, keys []string) ([]i
 // Copy without overwriting destination rows and preserve auto-tag provenance for undo.
 func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
-		if _, err := tx.ExecContext(ctx,
-			`insert or ignore into `+t.table+` (content_key, `+t.columns+`)
-			 select ?, `+t.columns+` from `+t.table+` where content_key = ?`, to, from); err != nil {
-			return fmt.Errorf("cannot copy the %s values: %w", t.table, err)
+		if err := copyUserTable(ctx, tx, t.table, t.columns, from, to); err != nil {
+			return err
 		}
 	}
 	return copyAutoTagKeys(ctx, tx, from, to)
+}
+
+func copyUserTable(ctx context.Context, tx *sql.Tx, table, columns, from, to string) error {
+	if _, err := tx.ExecContext(ctx, `insert or ignore into `+table+` (content_key, `+columns+`)
+		select ?, `+columns+` from `+table+` where content_key = ?`, to, from); err != nil {
+		return fmt.Errorf("cannot copy the %s values: %w", table, err)
+	}
+	return nil
+}
+
+// mergeUserData gives a new bundle every side's user data, so choosing the representative never loses any: the
+// union of tags, favourites and publication, the latest playback position, and the first side's work information
+// that has any, the representative's first. See docs/design-docs/video-versions.md.
+func mergeUserData(ctx context.Context, tx *sql.Tx, sources []string, to string) error {
+	workCopied := false
+	for _, from := range sources {
+		if err := copyNewAutoTagKeys(ctx, tx, from, to); err != nil {
+			return err
+		}
+		for _, t := range userDataTables {
+			var err error
+			switch {
+			case strings.HasPrefix(t.table, "video_work_"):
+				continue
+			case t.table == "playback_progress":
+				_, err = tx.ExecContext(ctx, `insert into playback_progress (content_key, `+t.columns+`)
+					select ?, `+t.columns+` from playback_progress where content_key = ? and true
+					on conflict (content_key) do update set position_ms = excluded.position_ms,
+					duration_ms = excluded.duration_ms, completed = excluded.completed, updated_at = excluded.updated_at
+					where excluded.updated_at > playback_progress.updated_at`, to, from)
+			default:
+				err = copyUserTable(ctx, tx, t.table, t.columns, from, to)
+			}
+			if err != nil {
+				return fmt.Errorf("cannot merge the %s values: %w", t.table, err)
+			}
+		}
+		if workCopied {
+			continue
+		}
+		var err error
+		if workCopied, err = copyWorkInfo(ctx, tx, from, to); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Work information is one record across its tables; mixing two sides' would describe neither work.
+func copyWorkInfo(ctx context.Context, tx *sql.Tx, from, to string) (bool, error) {
+	var conditions []string
+	for _, t := range userDataTables {
+		if strings.HasPrefix(t.table, "video_work_") {
+			conditions = append(conditions, `exists (select 1 from `+t.table+` where content_key = ?1)`)
+		}
+	}
+	var found bool
+	if err := tx.QueryRowContext(ctx, `select `+strings.Join(conditions, " or "), from).Scan(&found); err != nil || !found {
+		return false, err
+	}
+	for _, t := range userDataTables {
+		if strings.HasPrefix(t.table, "video_work_") {
+			if err := copyUserTable(ctx, tx, t.table, t.columns, from, to); err != nil {
+				return false, err
+			}
+		}
+	}
+	return true, nil
 }
 
 // Replace all destination user data and drop obsolete auto-tag provenance before copying.

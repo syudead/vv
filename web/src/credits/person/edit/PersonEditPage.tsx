@@ -221,7 +221,7 @@ function PersonForm({
             <NamesPanel
               {...panel}
               nameRef={nameRef}
-              namePlaceholder={person.provisional ? t.credits.unnamedPerson : undefined}
+              namePlaceholder={person.provisional ? creditDisplayName(person) : undefined}
             />
           ),
         },

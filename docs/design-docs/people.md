@@ -175,6 +175,41 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 | Fitting through ffmpeg                 | Needs the media adapter for a still image, while `x/image/draw` scales without cgo                 |
 | Keeping the original upload            | An upload may be 64 MiB, and the screens show at most a portrait card                              |
 
+## A face can be framed from a video
+
+The camera menu on the person's face offers `Choose from videos…` beside
+`Upload an image…`, with or without a face. It opens an `EditorDialog`
+([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
+
+| Part    | Shows                                                                                                                                                                            |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Faces   | Up to 48 of the person's crops from `GET /api/people/{id}/appearances?sort=mostSimilar`, most like the person first; a face whose video is gone or that has no track is left out |
+| Stage   | The original frame from `GET /api/videos/{id}/frame?positionMs=`, at the middle of the face's longest track, with a 2:3 portrait outline that drags and takes arrow keys         |
+| Frame   | The moment, with buttons one second earlier and later                                                                                                                            |
+| Size    | A slider for the outline's width, from 5% of the frame's long side to the widest that fits                                                                                       |
+| Preview | The portrait as the profile shows it and the round crop the cards take from it                                                                                                   |
+
+The outline starts at 2.2 times the face's mean width with the face above its
+centre ([`faceFraming.ts`](../../web/src/credits/person/faceFraming.ts)), from
+the appearance's `focus`: the longest track's middle, mean centre and width as
+fractions of the frame's long side, as face recognition samples them.
+The faces are read page by page until 48 can be framed or none are left, so faces
+whose video is gone do not crowd them out. A frame read for another face or
+moment counts as still loading, so `Set as face` waits for the chosen one.
+`Set as face` cuts the outline out of the frame at the frame's own pixels and
+sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
+the same fitting and face check as an upload and the dialog shows their
+refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
+long side with `private, max-age=3600`, and reports a position outside the
+video, an unreadable file and a frame that does not decode as the thumbnail
+position endpoint does.
+
+| Rejected                           | Why                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Choosing a stored crop as the face | A crop is cut from a frame scaled to 1280 px for analysis, so it is coarse, and its framing is fixed |
+| Cutting the face on the server     | The page already holds the frame it shows, and the upload path fits and checks any image             |
+| A free-form crop shape             | Every screen shows the face as a portrait or a circle inside it, so another shape is cut again       |
+
 ## The image revision never repeats
 
 `people.image_revision` increases on every change of the face: an upload, a
@@ -317,32 +352,88 @@ shows only while `GET /api/settings/face-recognition` reports face recognition
 on; while it is off, or the settings cannot be read, the page neither shows it
 nor reads the candidates.
 
-`Same person?` comes first on the faces page, drawn only while that request
-returns a pair, one row per pair with the other person's `PersonFace judge`,
-name and similarity, and `Same person` and `Not the same` under them. A
-confirm from a provisional person's own page opens the merged person's faces
-page, since the shown person no longer exists; one that keeps the page reads
-the candidates and the faces again. A pressed row disables only its own
-buttons.
+The faces page puts its two lists in `line` tabs, `Same person?` and
+`Faces in videos`, each with its count, `Same person?` counting only the pairs
+not yet decided on the page, and keeps the tab in the address
+(`?tab=candidates` or `?tab=faces`); without one it opens `Same person?`
+unless no pair waits at the first read, a choice a later `Refresh` never
+changes. A `Refresh` button after the tabs reads both lists again. Pairs that
+cannot be read say so with `Retry` in place of the rows.
+Nothing else reads them again: a decided pair and a split face stay where they
+are, dimmed with the result and `Undo` where one applies, so the next row never
+moves under the owner's press. Before, every decision read the lists again,
+which put the faces back to their first page and reordered the pairs.
 
-`Faces in videos` follows, from `GET /api/people/{id}/appearances`: a
-`PersonFace scene` crop beside the video's title and its spans, each a link
-that plays the video from that time (`?t=`), and `Show more` for the next
-page; with none it says so. An appearance whose video left the library reads
-`Not in the library` without links.
+`Same person?` is one row per pair: the shown person's `PersonFace judge` and
+the other person's side by side, each over the name, the face count and up to
+four of their crops, with the similarity between them (under them below `sm`),
+then `Not the same` and `Same person`. One face alone is a poor basis for the
+decision, so the crops are the first four with a crop among each person's
+first twelve appearances (`GET /api/people/{id}/appearances?limit=12`). A confirm keeps the shown person
+([The owner settles a candidate pair](face-recognition.md#the-owner-settles-a-candidate-pair))
+and the row reads `Merged into {name}`, with `Undo` when the merged person had
+no name, which takes the merge back, reads the shown person again since the
+undo can take back a face the merge gave them, and offers the pair again; a retry after
+the merge was undone but the pair not reopened only reopens it. Only an unnamed
+person confirmed with a named one is merged away, and the page then opens the
+named person's faces page with a `Merged into "{name}"` toast whose `Undo`
+takes the merge back and returns to the unnamed person's page. A dismissed row reads `Not the same` with `Undo`, which reopens the pair.
+A pressed row disables only its own buttons.
 
-Each row ends with a small `Not this person` button, for a face the analysis
-linked to the wrong person. It splits the face into a new unnamed person with
-no confirmation, since the split is undone by merging the two people: the row
-leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
-action to the new person's page, and the candidates are read again.
-A pressed row disables only its own button, and a failure shows under the row.
+`Faces in videos` is a `CardGrid size="face"` of `PersonFace scene` crops,
+each over the video's title and the start of each span, each a link that plays
+the video from that time (`?t=`); the crop and the title open the video at the
+first span. A select above the grid orders it `Least like this person first`
+(the default) or `Newest video first`, and each crop shows its similarity to
+the person in its `PersonFaceMark` `bottom-end`, in `warning` when the
+appearance is `unlike`: below its recognizer's candidate threshold, where a
+face is as unlike the person as a stranger usually is. The default order puts the faces most likely linked by mistake
+first, so the owner finds them without paging through the person's own
+faces. `Show more` reads the next page; with none it says so. A split or its
+`Undo` rescores the person's other faces, so the cursor no longer marks where
+the shown faces end; the next `Show more` reads the rest whole and adds only
+the faces not yet shown. Changing the order clears the selection, since the
+new order starts from its first page, and keeps the faces split on the page
+first in the grid with their `Undo` until a `Refresh`. An appearance
+whose video left the library reads `Not in the library` without links. A grid
+shows many faces at once, so a face that is not the person stands out, where a
+list of rows led with titles.
 
-| Rejected                                | Why                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| Candidates and faces on the person page | They crowded out the profile and the videos, which the page is for                |
-| A strip of crops alone                  | Reaching a scene would take a second press, and a crop does not say which video   |
-| Confirming in the people list           | A pair is judged with both faces and the similarity in view, one person at a time |
+Each crop carries a `Not this person` icon button in its `PersonFaceMark`
+`top-end`, for a face the analysis linked to the wrong person. It splits the
+face into a new unnamed person with no confirmation: the tile stays, dimmed,
+with `Split into #12` and `Undo`, which merges the new person back into the
+shown one (`POST /api/people/{id}/merge`); a person who had no face is left
+without one, rather than keep the face the merge brings, and an `Undo` whose
+split person is gone reports it and keeps the tile split. `Select` replaces
+each button with a checkbox; with faces checked, a `SelectionBar` offers
+`Not this person`, which splits them all into one new person
+(`POST /api/people/{id}/appearances/split`), since faces wrongly linked together
+are usually one other person, and the `Undo` of any of them takes them all
+back. A selection holds at most 200 faces, what one split or move takes; past
+that the other checkboxes are disabled and the bar says so. `Move to person…`
+in the same bar opens a dialog that picks where the checked faces belong:
+before a name is typed it lists, as a `RadioGroup`, the people whose faces look
+most like them (`GET /api/people/{id}/similar-people`), each with a
+`PersonFace suggestion`, up to four more crops from `sm`, the face count, the
+video they were first seen in and the similarity, so even people without a name
+are told apart; typing searches by name as the merge dialog does. A failed read
+says so with `Retry` rather than look like no one alike. `Move` hands
+the faces and their credits to that person
+(`POST /api/people/{id}/appearances/move`), and the tiles read
+`Moved to {name}` with an `Undo` that moves back the faces of that move alone,
+even when another move went to the same person, and puts back the credits the
+move took where the target was already credited. A pressed tile disables only
+its own button, a second press while it runs sends nothing, and a failure shows
+under the grid.
+
+| Rejected                                   | Why                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| Candidates and faces on the person page    | They crowded out the profile and the videos, which the page is for                |
+| A strip of crops alone                     | Reaching a scene would take a second press, and a crop does not say which video   |
+| Confirming in the people list              | A pair is judged with both faces and the similarity in view, one person at a time |
+| Removing a decided row or a split tile     | The rows after it moved up under the pointer, and a misclick had no way back      |
+| A name search alone to pick where faces go | An unnamed person has no name to search, and a name says nothing about the face   |
 
 ## Faces elsewhere on the screens
 
@@ -373,10 +464,12 @@ all when expanded, so the chips stay the primary content of the row.
 
 A provisional person
 ([A person without a canonical name is provisional](#a-person-without-a-canonical-name-is-provisional))
-is drawn as any person, with `Unnamed person` in `muted-foreground` where the
-name goes: the grid card, the person page's `h1` and document title, the video
-page's cast chip, the details editor's chips and the library's person filter
-chip. The quieter name line alone separates an unnamed card from a named one,
+is drawn as any person, with their id as `#1042` in `muted-foreground` where
+the name goes: the grid card, the person page's `h1` and document title, the
+video page's cast chip, the details editor's chips and the library's person
+filter chip. Every unnamed person read `Unnamed person` before, which a card
+truncated and which told no two of them apart; the id is short, unique and
+does not change when other people are merged or deleted. The quieter name line alone separates an unnamed card from a named one,
 so the faces stay what the eye scans; a badge on every unnamed card was
 rejected for competing with them. The screens map the flag to the words in one
 place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
@@ -385,7 +478,7 @@ place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
 The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
-shows the empty name with the placeholder `Unnamed person`, and `Save` with the
+shows the empty name with the person's number as its placeholder, and `Save` with the
 name still empty sends no `name`, so the person stays provisional.
 
 The `Performers` picker of the details editor lists provisional people under

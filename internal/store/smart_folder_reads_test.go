@@ -139,11 +139,11 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	solo, x, ep2 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/show/ep2.mp4")]
 	cat := attachNamedTag(t, db, "猫", solo, x, ep2)
 	parent := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
-	newSmartFolder(t, db, "未視聴", domain.SmartRule{Watch: domain.WatchUnwatched}, domain.SortTitleAsc, parent)
-	child := newSmartFolder(t, db, "Another", domain.SmartRule{Watch: domain.WatchWatched}, domain.SortTitleAsc, parent)
+	newSmartFolder(t, db, "絞り込み", domain.SmartRule{Q: "ep2 OR x"}, domain.SortTitleAsc, parent)
+	child := newSmartFolder(t, db, "Another", domain.SmartRule{Q: "solo"}, domain.SortTitleAsc, parent)
 
 	first, items := smartFolderPages(t, db, domain.AudienceOwner, parent, 2)
-	if got, want := smartItemNames(items), []string{"folder:Another", "folder:未視聴", "ep2", "solo", "x"}; !slices.Equal(got, want) {
+	if got, want := smartItemNames(items), []string{"folder:Another", "folder:絞り込み", "ep2", "solo", "x"}; !slices.Equal(got, want) {
 		t.Fatalf("親の中身 = %v, want %v", got, want)
 	}
 	if len(first.Items) != 4 || first.NextCursor == "" {
@@ -153,10 +153,10 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 		t.Errorf("Another の要約 = %+v, want %+v", got, want)
 	}
 
-	unwatched := first.Items[1].SmartFolder.ID
-	page, items := smartFolderPages(t, db, domain.AudienceOwner, unwatched, domain.MaxLimit)
+	narrowed := first.Items[1].SmartFolder.ID
+	page, items := smartFolderPages(t, db, domain.AudienceOwner, narrowed, domain.MaxLimit)
 	if got := smartItemNames(items); !slices.Equal(got, []string{"ep2", "x"}) {
-		t.Fatalf("未視聴 の中身 = %v, want [ep2 x]", got)
+		t.Fatalf("絞り込み の中身 = %v, want [ep2 x]", got)
 	}
 	if len(page.Trail) != 1 || page.Trail[0] != (domain.GroupRef{ID: parent, Name: "猫"}) {
 		t.Errorf("trail = %+v", page.Trail)
@@ -173,15 +173,11 @@ func TestSmartFolderEqualsTheFilteredLibrary(t *testing.T) {
 		all = append(all, id)
 	}
 	cat := attachNamedTag(t, db, "猫", all...)
-	five := 5
 	for _, rule := range []domain.SmartRule{
 		{},
 		{Tags: []int64{cat}},
-		{Tags: []int64{cat}, Watch: domain.WatchUnwatched},
-		{Watch: domain.WatchInProgress},
 		{Q: "ep"},
-		{Playable: true},
-		{MaxDuration: &five},
+		{Tags: []int64{cat}, Q: "ep"},
 	} {
 		for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc, domain.SortDurationAsc} {
 			folder := newSmartFolder(t, db, "f", rule, sort, 0)

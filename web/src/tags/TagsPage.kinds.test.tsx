@@ -54,7 +54,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     expect(screen.queryByRole("button", { name: "New tag" })).toBeNull();
     expect(
       screen.getByText(
-        "A tag has one kind or none. Set it from the Tags tab's selection bar. Deleting a kind leaves its tags without one.",
+        "A tag has one kind or none. Set it from the Tags tab's selection bar. Video cards list tags of kinds marked First on cards before the rest. Deleting a kind leaves its tags without one.",
       ),
     ).toBeDefined();
   });
@@ -80,7 +80,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     );
     expect(kindsTab().textContent).toBe("Kinds5");
     const studio = server.tagKinds.find((item) => item.name === "Studio")!;
-    server.tags[0]!.kind = { id: studio.id, name: "Studio" };
+    server.tags[0]!.kind = { id: studio.id, name: "Studio", cardFirst: false };
 
     await user.click(within(kindRow("Studio")).getByRole("button", { name: "Rename" }));
     const input = screen.getByRole("textbox", { name: 'New name for "Studio"' });
@@ -95,7 +95,11 @@ describe("TagsPage「Kinds」のタブ", () => {
         "Work",
       ]),
     );
-    expect(server.tags[0]!.kind).toEqual({ id: studio.id, name: "Anthology" });
+    expect(server.tags[0]!.kind).toEqual({
+      id: studio.id,
+      name: "Anthology",
+      cardFirst: false,
+    });
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(kindRow("Anthology")).getByRole("button", { name: "Rename" }),
@@ -132,6 +136,22 @@ describe("TagsPage「Kinds」のタブ", () => {
     await user.click(tagsTab());
     await waitFor(() => expect(server.getCalls).toBe(before + 1));
     await screen.findByTitle("旅行");
+  });
+
+  it("「First on cards」を切り替えると種類に保存し、スイッチが新しい値を示す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage({ url: "/tags?tab=kinds" });
+    await screen.findByRole("table", { name: "Kinds" });
+    const toggle = within(kindRow("Work")).getByRole("switch", {
+      name: 'List tags of the kind "Work" first on video cards',
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+    expect(server.tagKinds.find((item) => item.name === "Work")?.cardFirst).toBe(true);
   });
 
   it("改名も削除もしていなければ、「Tags」へ戻っても一覧を読み直さない", async () => {
@@ -247,7 +267,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     const user = userEvent.setup();
     server.tags = [
       ...server.tags,
-      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre" } }),
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre", cardFirst: false } }),
     ];
     server.tagKinds = [kind({ id: 1, name: "Genre" })];
     install();
@@ -271,7 +291,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     await getTagKinds();
     server.tags = [
       ...server.tags,
-      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre" } }),
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre", cardFirst: false } }),
     ];
     const before = server.tagKindGets;
     renderPage({ url: "/tags?tab=kinds" });
@@ -326,7 +346,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     const user = userEvent.setup();
     server.tags = [
       ...server.tags,
-      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre" } }),
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre", cardFirst: false } }),
     ];
     install();
     renderPage();

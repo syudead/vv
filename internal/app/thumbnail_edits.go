@@ -279,6 +279,13 @@ func (e *ThumbnailEdits) Get(ctx context.Context, id string) (domain.ThumbnailEd
 	return e.view(session), nil
 }
 
+// VideoFrame returns a bounded PNG of the video file at positionMs without starting a session, as the person page
+// reads a frame to frame a face from; an unreadable frame wraps domain.ErrThumbnailFrameUnavailable.
+func (e *ThumbnailEdits) VideoFrame(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error) {
+	image, err := e.frameAt(ctx, path, positionMs)
+	return image.frame, err
+}
+
 // Frame returns the session source PNG.
 func (e *ThumbnailEdits) Frame(ctx context.Context, id string) ([]byte, error) {
 	session, err := e.acquire(ctx, id)

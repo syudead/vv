@@ -48,7 +48,7 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 		{"団体", domain.VideoQuery{Organization: makerA.ID}, []string{"ep1", "p2"}},
 		{"全メンバーが当たる団体はグループの項目", domain.VideoQuery{Organization: labelB.ID}, []string{"group:show"}},
 		{"人物と団体の AND", domain.VideoQuery{Person: hanako.ID, Organization: makerA.ID}, []string{"ep1"}},
-		{"ほかの絞り込みとの AND", domain.VideoQuery{Person: hanako.ID, Watch: domain.WatchWatched}, []string{"ep1", "solo"}},
+		{"検索語との AND", domain.VideoQuery{Person: hanako.ID, Query: "ep"}, []string{"ep1"}},
 		{"実体の無い id", domain.VideoQuery{Person: hanako.ID + 1000}, []string{}},
 	}
 	for _, tc := range cases {

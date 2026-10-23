@@ -38,33 +38,14 @@ export function conditionChips(
   if (rule.q !== undefined && rule.q !== "") {
     chips.push(textChip("q", t.smartFolders.condition.search(rule.q)));
   }
-  if (rule.watch !== undefined) {
-    chips.push(textChip("watch", t.list.filter.watchOptions[rule.watch]));
-  }
   if (rule.favorite === true) {
     chips.push(textChip("favorite", t.smartFolders.condition.favorite));
-  }
-  if (rule.playable === true) {
-    chips.push(textChip("playable", t.smartFolders.condition.playable));
   }
   if (rule.tagKind !== undefined) chips.push(refChip("tagKind", rule.tagKind, missing));
   for (const id of rule.tags ?? []) chips.push(refChip("tag", id, missing));
   if (rule.person !== undefined) chips.push(refChip("person", rule.person, missing));
   if (rule.organization !== undefined) {
     chips.push(refChip("organization", rule.organization, missing));
-  }
-  if (rule.addedWithin !== undefined) {
-    chips.push(
-      textChip("addedWithin", t.smartFolders.condition.addedWithin(rule.addedWithin)),
-    );
-  }
-  if (rule.minDuration !== undefined || rule.maxDuration !== undefined) {
-    chips.push(
-      textChip(
-        "length",
-        t.smartFolders.condition.length(rule.minDuration, rule.maxDuration),
-      ),
-    );
   }
   return chips;
 }

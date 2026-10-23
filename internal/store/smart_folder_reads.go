@@ -29,12 +29,11 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 	if err != nil {
 		return domain.SmartFolderPage{}, err
 	}
-	now := listNow().Unix()
 	request := &smartFolderPageRequest{cursor: cursor, limit: limit}
 	if hasCollectionConditions(query) {
 		request = nil
 	}
-	view, err := viewSmartFolder(ctx, tx, audience, folder, rules, now, request)
+	view, err := viewSmartFolder(ctx, tx, audience, folder, rules, request)
 	if err != nil {
 		return domain.SmartFolderPage{}, err
 	}
@@ -56,7 +55,7 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 		view.items, page.NextCursor = filtered.Items, filtered.NextCursor
 	}
 	if cursor == "" && !hasCollectionConditions(query) {
-		if page.Items, err = smartFolderChildren(ctx, tx, audience, id, rules, now); err != nil {
+		if page.Items, err = smartFolderChildren(ctx, tx, audience, id, rules); err != nil {
 			return domain.SmartFolderPage{}, err
 		}
 	}
@@ -87,13 +86,13 @@ func (v smartFolderView) shown(audience domain.Audience) bool {
 }
 
 // Use one captured time for every folder and one query for playback order plus the requested page.
-func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64, request *smartFolderPageRequest) (smartFolderView, error) {
+func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, request *smartFolderPageRequest) (smartFolderView, error) {
 	var view smartFolderView
 	var err error
 	if view.missing, err = missingSmartRuleRefs(ctx, tx, rules); err != nil {
 		return smartFolderView{}, err
 	}
-	spec := smartFolderSpec(audience, rules, folder.Sort, now)
+	spec := smartFolderSpec(audience, rules, folder.Sort)
 	if request != nil {
 		spec.cursor, spec.limit = request.cursor, request.limit
 	}
@@ -132,13 +131,11 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 }
 
 // Stack ancestor filters while retaining viewer scope and owner search semantics; resolve every referenced tag first.
-func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort domain.VideoSort, now int64) listSpec {
+func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort domain.VideoSort) listSpec {
 	levels := make([]listSpec, 0, len(rules))
 	for _, rule := range rules {
 		q := rule.Query()
-		level := libraryListSpec(audience, q, q.TagIDs)
-		level.now = now
-		levels = append(levels, level)
+		levels = append(levels, libraryListSpec(audience, q, q.TagIDs))
 	}
 	spec := levels[len(levels)-1]
 	spec.and = levels[:len(levels)-1]
@@ -163,8 +160,6 @@ func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, wit
 	if contents.order.seeded {
 		args = append(args, spec.seed)
 	}
-	where, watchArgs := itemsWhere(spec)
-	args = append(args, watchArgs...)
 	after := `1`
 	if withPage && spec.cursor != "" {
 		clause, cursorArgs, err := contents.order.cursorCondition(spec, spec.cursor)
@@ -175,7 +170,7 @@ func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, wit
 		args = append(args, cursorArgs...)
 	}
 	rows, err := tx.QueryContext(ctx, cte+`, filtered as materialized (select items.*, `+contents.order.value+
-		` as sort_value from items`+where+`)
+		` as sort_value from items)
 		select f.group_id, f.id, f.video_id, f.path, f.sort_value, `+after+`, coalesce(gm.video_id, f.video_id)
 		from filtered f left join gm on gm.group_id = f.group_id
 		order by `+contents.order.orderBy()+`, gm.position`, args...)
@@ -256,7 +251,7 @@ func playOrderMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 }
 
 // Append each child's rule to the parent rules; hide empty child playback orders from guests.
-func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audience, parent int64, parentRules []domain.SmartRule, now int64) ([]domain.LibraryItem, error) {
+func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audience, parent int64, parentRules []domain.SmartRule) ([]domain.LibraryItem, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from smart_folders where parent_id = ? order by title_key, id`, parent)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the child smart folders: %w", err)
@@ -267,7 +262,7 @@ func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audien
 		if err != nil {
 			return nil, err
 		}
-		target, shown, err := smartFolderTargetOf(ctx, tx, audience, child, append(slices.Clone(parentRules), child.Rule), now)
+		target, shown, err := smartFolderTargetOf(ctx, tx, audience, child, append(slices.Clone(parentRules), child.Rule))
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +297,7 @@ func smartFolderTrail(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Group
 	return trail, nil
 }
 
-func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) (domain.LibrarySmartFolder, error) {
+func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64) (domain.LibrarySmartFolder, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
 	if err != nil {
 		return domain.LibrarySmartFolder{}, err
@@ -311,7 +306,7 @@ func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) 
 	if err != nil {
 		return domain.LibrarySmartFolder{}, err
 	}
-	view, err := viewSmartFolder(ctx, tx, domain.AudienceOwner, folder, rules, now, nil)
+	view, err := viewSmartFolder(ctx, tx, domain.AudienceOwner, folder, rules, nil)
 	if err != nil {
 		return domain.LibrarySmartFolder{}, err
 	}
@@ -336,7 +331,7 @@ func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	if err != nil || len(missing) > 0 {
 		return group, err == nil, err
 	}
-	contents, err := readSmartFolderContents(ctx, tx, smartFolderSpec(audience, rules, folder.Sort, listNow().Unix()), false)
+	contents, err := readSmartFolderContents(ctx, tx, smartFolderSpec(audience, rules, folder.Sort), false)
 	if err != nil {
 		return domain.VideoGroup{}, false, err
 	}
@@ -345,7 +340,6 @@ func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audi
 }
 
 // Search within the saved-rule result, preserving its visibility, summary and playback order.
-// In particular, a group watch filter must not be reevaluated against just the search matches.
 func searchSmartFolderPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, card domain.LibrarySmartFolder, sort domain.VideoSort, cursor string, limit int, query domain.VideoQuery) (domain.LibraryPage, error) {
 	ids := make([]int64, 0, len(card.Members))
 	for _, member := range card.Members {

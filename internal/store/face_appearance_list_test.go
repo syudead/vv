@@ -44,34 +44,133 @@ func TestPersonAppearancesPageNewestVideoFirstWithoutDroppedOnes(t *testing.T) {
 	var got []domain.PersonAppearance
 	cursor, pages := "", 0
 	for {
-		page, err := db.Credits().PersonAppearances(ctx, person, cursor, 1)
+		page, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{Cursor: cursor, Limit: 1})
 		if err != nil {
 			t.Fatalf("page %d: %v", pages, err)
 		}
-		got = append(got, page.Items...)
+		for _, item := range page.Items {
+			item.AddedAt = 0
+			got = append(got, item)
+		}
 		pages++
+		// The dropped appearance and another person's are not counted, on every page.
+		if page.Total != 3 {
+			t.Errorf("page %d: total = %d, want 3", pages, page.Total)
+		}
 		if cursor = page.NextCursor; cursor == "" {
 			break
 		}
 	}
+	// The focus is the middle of the longest track, the first of equal ones.
+	focus := func(time float64) *domain.FaceFocus { return &domain.FaceFocus{Time: time, X: 0.5, Y: 0.5, W: 0.1} }
 	want := []domain.PersonAppearance{
-		{ID: newest, VideoID: ids[paths[1]], Title: "New", Spans: []domain.FaceTimeSpan{{Start: 0, End: 12}, {Start: 20, End: 30}}, HasCrop: true},
-		{ID: old, VideoID: ids[paths[0]], Title: "Old", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, HasCrop: true},
-		{ID: gone, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}},
+		{ID: newest, VideoID: ids[paths[1]], Title: "New", Spans: []domain.FaceTimeSpan{{Start: 0, End: 12}, {Start: 20, End: 30}}, HasCrop: true,
+			Focus: focus(25)},
+		{ID: old, VideoID: ids[paths[0]], Title: "Old", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, HasCrop: true, Focus: focus(5)},
+		{ID: gone, Title: "key-gone", Spans: []domain.FaceTimeSpan{{Start: 0, End: 10}}, Focus: focus(5)},
 	}
 	if !reflect.DeepEqual(got, want) || pages != 3 {
 		t.Errorf("appearances over %d pages = %+v, want %+v over 3", pages, got, want)
 	}
 
-	all, err := db.Credits().PersonAppearances(ctx, person, "", 0)
+	all, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{})
+	for i := range all.Items {
+		all.Items[i].AddedAt = 0
+	}
 	if err != nil || !reflect.DeepEqual(all.Items, want) || all.NextCursor != "" {
 		t.Errorf("without a limit = %+v, %v; want every appearance and no cursor", all, err)
 	}
-	if _, err := db.Credits().PersonAppearances(ctx, person+100, "", 1); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Credits().PersonAppearances(ctx, person+100, domain.PersonAppearanceQuery{Limit: 1}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing person: err = %v, want ErrNotFound", err)
 	}
-	if _, err := db.Credits().PersonAppearances(ctx, person, "bad", 1); !errors.Is(err, domain.ErrInvalidCursor) {
+	if _, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{Cursor: "bad", Limit: 1}); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("unreadable cursor: err = %v, want ErrInvalidCursor", err)
+	}
+}
+
+func setAppearanceCentroid(t *testing.T, db *DB, id int64, v []float32) {
+	t.Helper()
+	if _, err := db.sql.Exec(`update face_appearances set centroid = ? where id = ?`,
+		encodeFaceVector(domain.NormalizeFaceVector(v)), id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The face least like the person's others comes first, or last in the reverse order, a face that cannot be compared
+// last in both, and a cursor from one order is refused by the other.
+func TestPersonAppearancesLeastSimilarFirst(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	person := createPerson(t, db, "Hanako").ID
+	const track = `[[0, 10, 0.5, 0.5, 0.1]]`
+	near := insertFaceAppearance(t, db, "key-a", person, false, track, nil)
+	nearer := insertFaceAppearance(t, db, "key-b", person, false, track, nil)
+	stranger := insertFaceAppearance(t, db, "key-c", person, false, track, nil)
+	unscored := insertFaceAppearance(t, db, "key-d", person, false, track, nil)
+	setAppearanceCentroid(t, db, near, []float32{1, 0.2, 0})
+	setAppearanceCentroid(t, db, nearer, []float32{1, 0.05, 0})
+	setAppearanceCentroid(t, db, stranger, []float32{0, 0, 1})
+
+	var got []int64
+	cursor := ""
+	for {
+		page, err := db.Credits().PersonAppearances(ctx, person,
+			domain.PersonAppearanceQuery{Sort: domain.PersonAppearancesLeastSimilar, Cursor: cursor, Limit: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			got = append(got, item.ID)
+			if (item.Similarity == nil) != (item.ID == unscored) {
+				t.Errorf("appearance %d similarity = %v", item.ID, item.Similarity)
+			}
+		}
+		if cursor = page.NextCursor; cursor == "" {
+			break
+		}
+		if _, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{Cursor: cursor, Limit: 1}); !errors.Is(err, domain.ErrInvalidCursor) {
+			t.Errorf("a leastSimilar cursor in the newest order: err = %v, want ErrInvalidCursor", err)
+		}
+	}
+	if want := []int64{stranger, near, nearer, unscored}; !reflect.DeepEqual(got, want) {
+		t.Errorf("order = %v, want %v", got, want)
+	}
+	most, err := db.Credits().PersonAppearances(ctx, person, domain.PersonAppearanceQuery{Sort: domain.PersonAppearancesMostSimilar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = got[:0]
+	for _, item := range most.Items {
+		got = append(got, item.ID)
+	}
+	if want := []int64{nearer, near, stranger, unscored}; !reflect.DeepEqual(got, want) {
+		t.Errorf("mostSimilar order = %v, want %v", got, want)
+	}
+}
+
+// A face below its recognizer's candidate threshold is unlike the person; vectors no recognizer makes never are.
+func TestPersonAppearancesMarkTheUnlikeFaces(t *testing.T) {
+	db := migratedDB(t)
+	person := createPerson(t, db, "Hanako").ID
+	const track = `[[0, 10, 0.5, 0.5, 0.1]]`
+	like := insertFaceAppearance(t, db, "key-a", person, false, track, nil)
+	alike := insertFaceAppearance(t, db, "key-b", person, false, track, nil)
+	stranger := insertFaceAppearance(t, db, "key-c", person, false, track, nil)
+	setAppearanceCentroid(t, db, like, faceBasis(0))
+	setAppearanceCentroid(t, db, alike, faceNear(0, 2, 0.95))
+	for _, key := range []string{"key-d", "key-e"} {
+		setAppearanceCentroid(t, db, insertFaceAppearance(t, db, key, person, false, track, nil), faceBasis(0))
+	}
+	setAppearanceCentroid(t, db, stranger, faceBasis(1))
+
+	page, err := db.Credits().PersonAppearances(context.Background(), person, domain.PersonAppearanceQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range page.Items {
+		if item.Unlike != (item.ID == stranger) {
+			t.Errorf("appearance %d unlike = %v at similarity %v", item.ID, item.Unlike, *item.Similarity)
+		}
 	}
 }
 

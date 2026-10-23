@@ -13,14 +13,14 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
   vi.spyOn(events, "subscribeServerEvents").mockReturnValue(() => undefined);
   const first: api.SmartFolderItem = { kind: "video", video: video(10) };
   const second: api.SmartFolderItem = { kind: "video", video: video(11) };
-  const criteria: CollectionCriteria = { watch: "unwatched", sort: "random", seed: 42 };
+  const criteria: CollectionCriteria = { favorite: true, sort: "random", seed: 42 };
   const read = vi
     .spyOn(api, "readSmartFolderPage")
     .mockImplementation(async (_id, _signal, _limit, query, criteria) => ({
       smartFolder: folderCard(1, "Folder"),
       trail: [],
       items: [first],
-      nextCursor: criteria?.watch === "watched" ? "new-next" : `${query}-next`,
+      nextCursor: criteria?.sort === "titleDesc" ? "new-next" : `${query}-next`,
     }));
   const more = vi
     .spyOn(api, "listSmartFolderItems")
@@ -73,7 +73,7 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
   );
   act(() => result.current.loadMore());
   const signal = more.mock.calls.at(-1)?.[2];
-  rerender({ query: "old", criteria: { watch: "watched", sort: "titleDesc" } });
+  rerender({ query: "old", criteria: { sort: "titleDesc" } });
   await waitFor(() =>
     expect(result.current.state).toMatchObject({
       kind: "ready",
@@ -82,7 +82,6 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
   );
   expect(signal?.aborted).toBe(true);
   expect(read).toHaveBeenLastCalledWith(1, expect.any(AbortSignal), undefined, "old", {
-    watch: "watched",
     sort: "titleDesc",
   });
   await act(async () => finish({ items: [second] }));
@@ -90,7 +89,6 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
     data: { items: [first], nextCursor: "new-next" },
   });
   expect(read).toHaveBeenLastCalledWith(1, expect.any(AbortSignal), undefined, "old", {
-    watch: "watched",
     sort: "titleDesc",
   });
   expect(more).toHaveBeenCalledTimes(3);

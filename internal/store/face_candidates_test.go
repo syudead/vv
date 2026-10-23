@@ -73,7 +73,8 @@ func TestConfirmFaceCandidateMergesTheProvisionalPersonWhicheverIDComesFirst(t *
 			id, other = other, id
 		}
 
-		person, err := f.db.Credits().ConfirmFaceCandidate(ctx, id, other)
+		confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, id, other)
+		person := confirmed.Person
 		if err != nil {
 			t.Fatalf("provisional first %v: %v", provisionalFirst, err)
 		}
@@ -89,6 +90,56 @@ func TestConfirmFaceCandidateMergesTheProvisionalPersonWhicheverIDComesFirst(t *
 		// The provisional person's other pair moved to Near, so Near is now offered with Nearer.
 		if got, want := faceCandidatePairs(t, f.db), [][2]int64{{f.near, f.nearer}}; !slices.Equal(got, want) {
 			t.Errorf("provisional first %v: candidates = %v, want %v", provisionalFirst, got, want)
+		}
+	}
+}
+
+// createFacedProvisionalPerson creates a person without names whose face is the given crop, as an analysis does.
+func createFacedProvisionalPerson(t *testing.T, db *DB, crop string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	id, err := createFacePerson(ctx, tx, domain.PersonImage{JPEG: []byte(crop), Width: 1, Height: 1}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// Between two people without names, the person whose faces page confirms stays with their own face, whichever of
+// them the pair stores as its provisional side.
+func TestConfirmFaceCandidateKeepsTheConfirmingPersonBetweenUnnamedPeople(t *testing.T) {
+	for _, fromStoredSide := range []bool{true, false} {
+		f := newFaceFixture(t)
+		ctx := context.Background()
+		stored := createFacedProvisionalPerson(t, f.db, "crop-stored")
+		other := createFacedProvisionalPerson(t, f.db, "crop-other")
+		offerFaceCandidate(t, f.db, stored, other)
+		from, merged, crop := other, stored, "crop-other"
+		if fromStoredSide {
+			from, merged, crop = stored, other, "crop-stored"
+		}
+
+		confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, from, merged)
+		person := confirmed.Person
+		if err != nil {
+			t.Fatalf("from the stored side %v: %v", fromStoredSide, err)
+		}
+		if person.ID != from {
+			t.Errorf("from the stored side %v: merged into %d, want %d", fromStoredSide, person.ID, from)
+		}
+		if _, err := f.db.Credits().Get(ctx, domain.CreditPerson, merged); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("from the stored side %v: the other person after confirm: err = %v, want ErrNotFound", fromStoredSide, err)
+		}
+		if image, err := f.db.Credits().PersonImage(ctx, from); err != nil || string(image.JPEG) != crop {
+			t.Errorf("from the stored side %v: face = %q, %v; want %s", fromStoredSide, image.JPEG, err, crop)
 		}
 	}
 }
@@ -115,6 +166,28 @@ func TestDismissFaceCandidateHidesThePairForGood(t *testing.T) {
 	}
 	if _, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.provisional, f.near); !errors.Is(err, domain.ErrFaceCandidateNotFound) {
 		t.Errorf("confirm a dismissed pair: err = %v, want ErrFaceCandidateNotFound", err)
+	}
+}
+
+func TestReopenFaceCandidateOffersADismissedPairAgain(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	if err := f.db.Credits().ReopenFaceCandidate(ctx, f.near, f.provisional); !errors.Is(err, domain.ErrFaceCandidateNotFound) {
+		t.Errorf("reopen an open pair: err = %v, want ErrFaceCandidateNotFound", err)
+	}
+	if err := f.db.Credits().DismissFaceCandidate(ctx, f.provisional, f.near); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.db.Credits().ReopenFaceCandidate(ctx, f.near, f.provisional); err != nil {
+		t.Fatal(err)
+	}
+	pairs, err := f.db.Credits().FaceCandidates(ctx, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := facePairPeople(pairs); !slices.Equal(got, []int64{f.nearer, f.near}) {
+		t.Errorf("candidates after reopen = %v, want Nearer %d and Near %d", got, f.nearer, f.near)
 	}
 }
 
@@ -162,4 +235,56 @@ func TestMergingKeepsOneCandidateRowPerPairOfPeople(t *testing.T) {
 			t.Errorf("candidates of the target = %v, want the provisional person %d once", got, f.provisional)
 		}
 	})
+}
+
+// Confirming an unnamed person records a face_merge decided by the owner, whose undo brings the person and their
+// faces back; a merge of a named person records none.
+func TestConfirmFaceCandidateOfAnUnnamedPersonCanBeUndone(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmed.Person.ID != f.near || confirmed.UndoActivityID == 0 {
+		t.Fatalf("confirmed = %+v, want Near with an undo entry", confirmed)
+	}
+	entry := entriesOfKind(t, f.db, domain.ActivityFaceMerge)[0]
+	if entry.ID != confirmed.UndoActivityID || entry.Decider != domain.ActivityByOwner {
+		t.Errorf("entry = %+v, want entry %d decided by the owner", entry, confirmed.UndoActivityID)
+	}
+
+	if undo, err := f.db.Activity().UndoFaceMerge(ctx, confirmed.UndoActivityID); err != nil || undo.Outcome != domain.ActivityCompleted {
+		t.Fatalf("undo = %+v, %v; want completed", undo, err)
+	}
+	if _, err := f.db.Credits().Get(ctx, domain.CreditPerson, f.provisional); err != nil {
+		t.Errorf("the unnamed person after undo: %v, want them back", err)
+	}
+	if got := faceAppearances(t, f.db)[1].personID; got != f.provisional {
+		t.Errorf("their face belongs to %d after undo, want %d", got, f.provisional)
+	}
+
+	offerFaceCandidate(t, f.db, f.near, f.nearer)
+	named, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.nearer)
+	if err != nil || named.UndoActivityID != 0 {
+		t.Errorf("confirm of two named people = %+v, %v; want no undo entry", named, err)
+	}
+}
+
+// The undo snapshot keeps no external IDs, so an unnamed person holding one merges without undo and the ID moves.
+func TestConfirmFaceCandidateOfAnUnnamedPersonWithAnExternalIDCannotBeUndone(t *testing.T) {
+	f := newLinkedFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.sql.Exec(`insert into people_external_ids (person_id, source, value) values (?, 'fanza', 'p-1')`,
+		f.provisional); err != nil {
+		t.Fatal(err)
+	}
+
+	confirmed, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.near, f.provisional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmed.UndoActivityID != 0 || !slices.Equal(confirmed.Person.ExternalIDs, []domain.ExternalID{{Source: "fanza", Value: "p-1"}}) {
+		t.Errorf("confirmed = %+v, want Near holding the ID without an undo entry", confirmed)
+	}
 }

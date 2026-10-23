@@ -21,11 +21,11 @@ func smartBaseCTE(audience domain.Audience) (string, []any) {
 	return cte + `,
 	smart_keys as materialized (
 		select videos.id as id, videos.content_key as content_key, ` + userKeyExpr("videos") + ` as user_key,
-			videos.added_at as added_at, videos.duration_ms as duration_ms, videos.playable as playable,
-			videos.probe_state as probe_state, videos.thumbnail_state as thumbnail_state, chosen.path as path
+			videos.added_at as added_at, videos.duration_ms as duration_ms,
+			videos.thumbnail_state as thumbnail_state, chosen.path as path
 		from chosen join videos on videos.id = chosen.video_id),
 	smart_base as materialized (
-		select k.id, k.content_key, k.user_key, k.added_at, k.duration_ms, k.playable, k.probe_state, k.thumbnail_state,
+		select k.id, k.content_key, k.user_key, k.added_at, k.duration_ms, k.thumbnail_state,
 			` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at,
 			` + locationTitleKeyExpr("loc") + ` as title_key,
 			loc.size_bytes as size_bytes, p.updated_at as played_at, fav.favorited_at as favorited_at,
@@ -46,15 +46,8 @@ type smartMatch struct {
 func smartMatchFor(spec listSpec, name string) smartMatch {
 	spec.userKeyColumn = `videos.user_key`
 	conditions, args := matchConditions(spec)
-	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
-		conditions = append(conditions, playableCondition)
-	}
 	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
 		conditions = append(conditions, `videos.favorited_at is not null`)
-	}
-	if watch, watchArgs := itemWatchConditions(spec); watch != "" {
-		conditions = append(conditions, watch)
-		args = append(args, watchArgs...)
 	}
 	var match smartMatch
 	if slices.ContainsFunc(spec.searchExprs(), func(expr domain.SearchExpr) bool { return !expr.Empty() }) {
@@ -78,11 +71,11 @@ type smartFolderTarget struct {
 }
 
 // Owners see empty folders; guests require at least one playback item.
-func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, bool, error) {
+func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule) (smartFolderTarget, bool, error) {
 	target := smartFolderTarget{
 		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
 		sort:    folder.Sort,
-		spec:    smartFolderSpec(audience, rules, folder.Sort, now),
+		spec:    smartFolderSpec(audience, rules, folder.Sort),
 	}
 	missing, err := missingSmartRuleRefs(ctx, tx, rules)
 	if err != nil {
@@ -103,7 +96,7 @@ func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audien
 	return target, shown, err
 }
 
-func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, now int64) (smartFolderTarget, bool, error) {
+func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (smartFolderTarget, bool, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
 	if errors.Is(err, domain.ErrNotFound) {
 		return smartFolderTarget{}, false, nil
@@ -115,11 +108,11 @@ func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	if err != nil {
 		return smartFolderTarget{}, false, err
 	}
-	return smartFolderTargetOf(ctx, tx, audience, folder, rules, now)
+	return smartFolderTargetOf(ctx, tx, audience, folder, rules)
 }
 
 // Deduplicate and preserve input order while selecting existing audience-visible folders.
-func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64, now int64) ([]smartFolderTarget, error) {
+func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64) ([]smartFolderTarget, error) {
 	targets := make([]smartFolderTarget, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
 	for _, id := range ids {
@@ -127,7 +120,7 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 			continue
 		}
 		seen[id] = true
-		target, shown, err := smartFolderTargetByID(ctx, tx, audience, id, now)
+		target, shown, err := smartFolderTargetByID(ctx, tx, audience, id)
 		if err != nil {
 			return nil, err
 		}
@@ -140,21 +133,11 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 
 func smartFolderHasItems(ctx context.Context, tx *sql.Tx, spec listSpec) (bool, error) {
 	cte, args := libraryItemsCTE(spec)
-	where, watchArgs := itemsWhere(spec)
 	var found bool
-	if err := tx.QueryRowContext(ctx, cte+` select exists (select 1 from items`+where+`)`,
-		append(args, watchArgs...)...).Scan(&found); err != nil {
+	if err := tx.QueryRowContext(ctx, cte+` select exists (select 1 from items)`, args...).Scan(&found); err != nil {
 		return false, fmt.Errorf("cannot read whether the smart folder has items: %w", err)
 	}
 	return found, nil
-}
-
-func itemsWhere(spec listSpec) (string, []any) {
-	clause, args := itemWatchConditions(spec)
-	if clause == "" {
-		return "", nil
-	}
-	return ` where ` + clause, args
 }
 
 type smartFolderQuery struct {

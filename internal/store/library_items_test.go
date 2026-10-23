@@ -219,17 +219,6 @@ func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 	if got := len(memberIDs(*items[0].Group)); got != 3 {
 		t.Errorf("show の検索のグループの本数 = %d, want 3（全メンバー）", got)
 	}
-
-	// Apply playability after group formation so one unplayable member does not split the group.
-	items = libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{PlayableOnly: true, Limit: domain.MaxLimit})
-	names := itemNames(items)
-	slices.Sort(names)
-	if want := []string{"group:show", "solo", "x", "y"}; !slices.Equal(names, want) {
-		t.Errorf("再生できるものだけ = %v, want %v", names, want)
-	}
-	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "ep2", PlayableOnly: true})); len(names) != 0 {
-		t.Errorf("ep2 の検索で再生できるものだけ = %v, want 空", names)
-	}
 }
 
 func TestListLibraryFiltersTagsPerMember(t *testing.T) {
@@ -249,9 +238,6 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	slices.Sort(names)
 	if want := []string{"ep10", "ep2"}; !slices.Equal(names, want) {
 		t.Errorf("タグ two = %v, want %v", names, want)
-	}
-	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})); !slices.Equal(names, []string{"ep2"}) {
-		t.Errorf("タグ two の未視聴 = %v, want [ep2]", names)
 	}
 
 	folder, err := db.Tags().CreateTag(ctx, "show")
@@ -427,10 +413,9 @@ func TestListLibraryRejectsCursorOfOtherSort(t *testing.T) {
 	}
 }
 
-// Compare SQL watch-state filtering with the domain's group/video classification.
-func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
+// Compare SQL group watch state and open member with the domain's classification.
+func TestListLibraryGroupWatchStateMatchesDomain(t *testing.T) {
 	db, ids := itemsFixture(t)
-	ctx := context.Background()
 	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 	show := findGroup(t, items, "show")
 	if show.WatchState != domain.WatchStateInProgress || show.WatchedCount != 1 {
@@ -448,46 +433,13 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, filter := range []domain.WatchFilter{domain.WatchUnwatched, domain.WatchInProgress, domain.WatchWatched} {
-		got := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Watch: filter, Limit: 2})
-		for _, item := range got {
-			var state domain.WatchState
-			if item.Group != nil {
-				state = item.Group.WatchState
-				if filter == domain.WatchWatched && item.Group.OpenVideoID != memberIDs(*item.Group)[0] {
-					t.Errorf("完了した %s の開くメンバー = %d, want 最初", item.Group.Name, item.Group.OpenVideoID)
-				}
-			} else {
-				var progress *domain.Progress
-				if p, err := db.Playback().Progress(ctx, item.Video.ContentKey); err == nil {
-					progress = &p
-				}
-				state = domain.ClassifyWatch(progress)
-			}
-			if !filter.Matches(state) {
-				t.Errorf("%s の一覧に %v（%s）が出た", filter, itemNames([]domain.LibraryItem{item}), state)
-			}
-		}
-		all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
-		want := 0
-		for _, item := range all {
-			var state domain.WatchState
-			if item.Group != nil {
-				state, _ = domain.GroupWatch(groupProgress(t, db, *item.Group))
-			} else {
-				var progress *domain.Progress
-				if p, err := db.Playback().Progress(ctx, item.Video.ContentKey); err == nil {
-					progress = &p
-				}
-				state = domain.ClassifyWatch(progress)
-			}
-			if filter.Matches(state) {
-				want++
-			}
-		}
-		if len(got) != want {
-			t.Errorf("%s = %v（%d 件）, want %d 件", filter, itemNames(got), len(got), want)
-		}
+	items = libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
+	show = findGroup(t, items, "show")
+	if want, _ := domain.GroupWatch(groupProgress(t, db, show)); show.WatchState != want || want != domain.WatchStateWatched {
+		t.Errorf("完了した show = %s, want %s", show.WatchState, want)
+	}
+	if show.OpenVideoID != memberIDs(show)[0] {
+		t.Errorf("完了した show の開くメンバー = %d, want 最初", show.OpenVideoID)
 	}
 }
 

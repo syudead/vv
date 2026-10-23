@@ -142,6 +142,9 @@ func TestPickInterestsRemakesADeletedGenreKind(t *testing.T) {
 	if _, kind, _ := tagRow(t, db, folderTag(t, folders[0])); kind != domain.InterestTagKind {
 		t.Fatalf("kind = %q, want Genre made again", kind)
 	}
+	if kinds, err := db.Tags().ListTagKinds(ctx); err != nil || !kinds[len(kinds)-1].CardFirst {
+		t.Errorf("remade Genre = %+v, %v, want cards to list it first", kinds, err)
+	}
 }
 
 func TestPickingAnInterestTwiceKeepsOneFolder(t *testing.T) {

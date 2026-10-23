@@ -898,7 +898,10 @@ export default function TagsPage() {
   async function submitSetKind(choice: KindChoice) {
     if (bulkPending !== null || selected.size === 0) return;
     const ids = [...selected];
-    const kindRef = choice === "none" ? null : { id: choice.id, name: choice.name };
+    const kindRef =
+      choice === "none"
+        ? null
+        : { id: choice.id, name: choice.name, cardFirst: choice.cardFirst };
     setBulkPending("kind");
     try {
       const result = await batchTags(

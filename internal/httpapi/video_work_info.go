@@ -296,19 +296,27 @@ func toAPIWorkInfo(info *domain.WorkInfo) *gen.WorkInfo {
 		out.Dates = append(out.Dates, gen.WorkDate{Kind: gen.WorkDateKind(date.Kind), Date: date.Date})
 	}
 	for _, person := range info.People {
-		out.People = append(out.People, gen.WorkPerson{
-			Role: gen.WorkPersonRole(person.Role),
-			Person: gen.CreditRef{
-				Id: person.Person.ID, Name: person.Person.Name, Provisional: person.Person.Provisional,
-			},
-			Provisional: person.Person.Provisional, ImageRevision: optionalPositive(person.ImageRevision),
-		})
+		out.People = append(out.People, toAPIWorkPerson(person))
 	}
 	for _, organization := range info.Organizations {
 		out.Organizations = append(out.Organizations, gen.WorkOrganization{
 			Role:         gen.WorkOrganizationRole(organization.Role),
-			Organization: gen.CreditRef{Id: organization.Organization.ID, Name: organization.Organization.Name},
+			Organization: toAPIOrganizationRef(organization.Organization),
 		})
 	}
 	return &out
+}
+
+func toAPIWorkPerson(person domain.WorkPerson) gen.WorkPerson {
+	return gen.WorkPerson{
+		Role: gen.WorkPersonRole(person.Role),
+		Person: gen.CreditRef{
+			Id: person.Person.ID, Name: person.Person.Name, Provisional: person.Person.Provisional,
+		},
+		Provisional: person.Person.Provisional, ImageRevision: optionalPositive(person.ImageRevision),
+	}
+}
+
+func toAPIOrganizationRef(organization domain.CreditRef) gen.CreditRef {
+	return gen.CreditRef{Id: organization.ID, Name: organization.Name}
 }

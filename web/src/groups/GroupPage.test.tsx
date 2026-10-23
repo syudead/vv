@@ -531,7 +531,7 @@ describe("GroupPage", () => {
     expectCatalogTextOnly(document.body, ["Season", "Extras", "Bonus", "1:00"]);
   });
 
-  it("「Add to group」はこのグループへ足したときだけ読み直し、カードのグループ自身はピッカーに出さない", async () => {
+  it("「Add to group」はこのグループへ足したときだけ読み直し、選んだグループ自身はピッカーに出さない", async () => {
     seed();
     const base = globalThis.fetch;
     const adds: { path: string; body: unknown }[] = [];
@@ -557,19 +557,25 @@ describe("GroupPage", () => {
     renderPage("/groups/1");
     await screen.findByRole("heading", { level: 1, name: "Season" });
 
-    await user.click(
-      screen.getByRole("button", { name: 'Add group "Extras" to a group' }),
-    );
-    const list = await screen.findByRole("listbox", { name: "Groups" });
+    // Grid cards carry no actions, so the selection bar adds.
+    const addSelected = async (check: string) => {
+      await user.click(screen.getByRole("checkbox", { name: check }));
+      const bar = screen.getByRole("region", { name: "Selection actions" });
+      await user.click(within(bar).getByRole("button", { name: "Add to group" }));
+      return screen.findByRole("listbox", { name: "Groups" });
+    };
+    const list = await addSelected('Select the group "Extras"');
     expect(within(list).queryByRole("option", { name: "Extras" })).toBeNull();
     await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "Extras"' }));
 
-    await user.click(screen.getByRole("button", { name: 'Add "Episode 1" to a group' }));
+    await addSelected('Select "Episode 1"');
     await user.click(await screen.findByRole("option", { name: "Extras" }));
     expect(await screen.findByText('Added to "Extras"')).toBeDefined();
     expect(server.reads.get(1)).toBe(1);
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 1"' }));
 
-    await user.click(screen.getByRole("button", { name: 'Add "Episode 2" to a group' }));
+    await addSelected('Select "Episode 2"');
     await user.click(await screen.findByRole("option", { name: "Season" }));
     await waitFor(() => expect(server.reads.get(1)).toBe(2));
     expect(adds).toEqual([

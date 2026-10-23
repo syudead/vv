@@ -163,11 +163,6 @@ func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	if a.IsOwner() {
 		return nil
 	}
-	switch q.Watch {
-	case "", WatchAll:
-	default:
-		return ErrGuestQueryNotAllowed
-	}
 	switch q.Sort {
 	case SortPlayedAsc, SortPlayedDesc, SortFavoritedAsc, SortFavoritedDesc:
 		return ErrGuestQueryNotAllowed

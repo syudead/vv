@@ -168,33 +168,26 @@ afterEach(() => {
 });
 
 describe("ライブラリからプレイリストに足す", () => {
-  it("動画のカードでは、ハートの左の印から選ぶとその動画の id を送り、カードは開かない", async () => {
+  it("動画の行の印から選ぶとその動画の id を送り、動画は開かない", async () => {
     const server = install([{ kind: "video", video: video(1) }]);
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     const trigger = await screen.findByRole("button", {
       name: 'Add "動画 1" to a playlist',
     });
-    const heart = screen.getByRole("button", { name: 'Favorite "動画 1"' });
-    expect(trigger.parentElement).toBe(heart.parentElement);
-    expect(trigger.parentElement?.getAttribute("data-corner")).toBe("top-end");
-    expect(trigger.nextElementSibling).toBe(heart);
-    expect(trigger.className).toContain("opacity-0");
-    expect(trigger.className).toContain("[@media(hover:none)]:opacity-100");
-    expect(trigger.className).toContain("size-8");
-    expect(trigger.closest("a")).toBeNull();
 
     await user.click(trigger);
-    expect(trigger.className).not.toContain("opacity-0");
     await choose(user);
     expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
     expect(server.adds).toEqual([{ videoIds: [1], groupIds: [] }]);
     expect(screen.queryByText("再生画面")).toBeNull();
   });
 
-  it("グループのカードからは、そのグループの id を送る", async () => {
+  it("グループの行からは、そのグループの id を送る", async () => {
     const server = install([{ kind: "group", group: seriesGroup() }]);
     const user = userEvent.setup();
+    useListView();
     renderLibrary();
     await user.click(
       await screen.findByRole("button", { name: 'Add group "series" to a playlist' }),

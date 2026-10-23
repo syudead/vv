@@ -352,7 +352,7 @@ func TestGuestFoldersHideFoldersWithoutPublicVideos(t *testing.T) {
 	pairs := [][2]string{
 		{f.folderPath(f.otherID, ""), "/api/folders/9999"},
 		{f.folderPath(f.otherID, "/videos"), "/api/folders/9999/videos"},
-		{f.folderPath(f.otherID, "/videos?scope=subtree&watch=watched"), "/api/folders/9999/videos?scope=subtree&watch=watched"},
+		{f.folderPath(f.otherID, "/videos?scope=subtree&sort=titleAsc"), "/api/folders/9999/videos?scope=subtree&sort=titleAsc"},
 		{f.folderPath(f.rootID, "?path=private"), f.folderPath(f.rootID, "?path=missing")},
 		{f.folderPath(f.rootID, "/videos?path=private"), f.folderPath(f.rootID, "/videos?path=missing")},
 	}
@@ -493,13 +493,9 @@ func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 	env := f.env
 
 	rejected := []string{
-		"/api/videos?watch=watched",
-		"/api/videos?watch=unwatched",
-		"/api/videos?watch=inProgress",
 		"/api/videos?sort=playedAsc",
 		"/api/videos?sort=playedDesc",
 		"/api/videos?tag=" + strconv.FormatInt(f.tagID, 10),
-		f.folderPath(f.rootID, "/videos?watch=watched"),
 		f.folderPath(f.rootID, "/videos?sort=playedAsc"),
 	}
 	for _, target := range rejected {
@@ -511,7 +507,7 @@ func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 			t.Errorf("所有者の %s: status = %d: %s", target, owner.Code, owner.Body)
 		}
 	}
-	for _, target := range []string{"/api/videos?watch=all&sort=addedDesc", "/api/videos?sort=random&seed=3", f.folderPath(f.rootID, "/videos?watch=all")} {
+	for _, target := range []string{"/api/videos?sort=addedDesc", "/api/videos?sort=random&seed=3", f.folderPath(f.rootID, "/videos?sort=addedDesc")} {
 		if rec := env.get(target); rec.Code != http.StatusOK {
 			t.Errorf("ゲストの %s: status = %d: %s", target, rec.Code, rec.Body)
 		}

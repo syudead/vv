@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -34,19 +35,31 @@ func (s *server) ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request, id
 	if !s.creditsConfigured(w) {
 		return
 	}
-	person, err := s.credits.ConfirmFaceCandidate(r.Context(), id, otherID)
+	confirmed, err := s.credits.ConfirmFaceCandidate(r.Context(), id, otherID)
 	if err != nil {
 		s.writeFaceCandidateError(w, err)
 		return
 	}
-	s.writeCreditBody(w, http.StatusOK, toAPIPerson(person))
+	body := gen.FaceCandidateConfirmation{Person: toAPIPerson(confirmed.Person)}
+	if confirmed.UndoActivityID != 0 {
+		body.UndoActivityId = &confirmed.UndoActivityID
+	}
+	s.writeCreditBody(w, http.StatusOK, body)
 }
 
 func (s *server) DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id gen.PersonId, otherID gen.FaceCandidateOtherId) {
+	s.setFaceCandidateDismissed(w, r, func(ctx context.Context) error { return s.credits.DismissFaceCandidate(ctx, id, otherID) })
+}
+
+func (s *server) ReopenFaceCandidate(w http.ResponseWriter, r *http.Request, id gen.PersonId, otherID gen.FaceCandidateOtherId) {
+	s.setFaceCandidateDismissed(w, r, func(ctx context.Context) error { return s.credits.ReopenFaceCandidate(ctx, id, otherID) })
+}
+
+func (s *server) setFaceCandidateDismissed(w http.ResponseWriter, r *http.Request, set func(context.Context) error) {
 	if !s.creditsConfigured(w) {
 		return
 	}
-	if err := s.credits.DismissFaceCandidate(r.Context(), id, otherID); err != nil {
+	if err := set(r.Context()); err != nil {
 		s.writeFaceCandidateError(w, err)
 		return
 	}

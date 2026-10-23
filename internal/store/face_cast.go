@@ -71,7 +71,7 @@ func mergeProvisionalOrRefuse(ctx context.Context, tx *sql.Tx, c *changes, provi
 	if _, err := tx.ExecContext(ctx, `savepoint face_merge`); err != nil {
 		return nil, fmt.Errorf("cannot start the automatic merge: %w", err)
 	}
-	_, events, err := mergeProvisional(ctx, tx, c, provisionalID, personID, now)
+	_, events, _, err := mergeProvisional(ctx, tx, c, provisionalID, personID, domain.ActivityByRule, now)
 	if err != nil {
 		if !mergeRefused(err) {
 			return nil, err

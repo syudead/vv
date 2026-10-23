@@ -95,7 +95,12 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
 export function kind(
   overrides: Partial<TagKind> & { id: number; name: string },
 ): TagKind {
-  return { tagCount: 0, createdAt: "2026-01-01T00:00:00Z", ...overrides };
+  return {
+    cardFirst: false,
+    tagCount: 0,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
 }
 
 export function presetKinds(): TagKind[] {
@@ -191,6 +196,15 @@ function tagKindRoute(
     server.tagKinds.push(created);
     return jsonResponse(created, 201);
   }
+  const cardFirst = /^\/api\/tag-kinds\/(\d+)\/card-first$/.exec(path);
+  if (cardFirst !== null && method === "PUT") {
+    const found = server.tagKinds.find((item) => item.id === Number(cardFirst[1]));
+    if (found === undefined) return notFound();
+    found.cardFirst = (
+      JSON.parse(String(init?.body)) as { cardFirst: boolean }
+    ).cardFirst;
+    return jsonResponse(found);
+  }
   const match = /^\/api\/tag-kinds\/(\d+)$/.exec(path);
   if (match === null) return undefined;
   const id = Number(match[1]);
@@ -204,7 +218,7 @@ function tagKindRoute(
     if (conflict !== undefined) return taken(conflict.name);
     found.name = body.name;
     for (const item of server.tags) {
-      if (item.kind?.id === id) item.kind = { id, name: body.name };
+      if (item.kind?.id === id) item.kind = { ...item.kind, name: body.name };
     }
     return jsonResponse(found);
   }
@@ -235,7 +249,10 @@ function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Re
       404,
     );
   }
-  const ref = target === undefined ? null : { id: target.id, name: target.name };
+  const ref =
+    target === undefined
+      ? null
+      : { id: target.id, name: target.name, cardFirst: target.cardFirst };
   const appliedIds: number[] = [];
   const notFoundIds: number[] = [];
   const notApplicableIds: number[] = [];

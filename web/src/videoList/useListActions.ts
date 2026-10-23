@@ -3,7 +3,6 @@ import { useCallback } from "react";
 import {
   clearConditions,
   type HistoryMode,
-  type ListCriteria,
   type ListCriteriaChange,
   newSeed,
 } from "./listCriteria";
@@ -11,14 +10,6 @@ import {
 export function useListActions(
   update: (next: ListCriteriaChange, mode?: HistoryMode) => void,
 ) {
-  const changeWatch = useCallback(
-    (watch: ListCriteria["watch"]) => update((current) => ({ ...current, watch })),
-    [update],
-  );
-  const changePlayable = useCallback(
-    (playable: boolean) => update((current) => ({ ...current, playable })),
-    [update],
-  );
   const changeFavorite = useCallback(
     (favorite: boolean) => update((current) => ({ ...current, favorite })),
     [update],
@@ -33,5 +24,5 @@ export function useListActions(
     [update],
   );
   const clearAll = useCallback(() => update(clearConditions), [update]);
-  return { changeWatch, changePlayable, changeFavorite, commitQuery, shuffle, clearAll };
+  return { changeFavorite, commitQuery, shuffle, clearAll };
 }

@@ -97,6 +97,19 @@ func copyAutoTagKeys(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return nil
 }
 
+// copyNewAutoTagKeys tracks only the tags from would add to to, so a row another side already put there keeps its
+// own provenance; call it before copying the tag rows.
+func copyNewAutoTagKeys(ctx context.Context, tx *sql.Tx, from, to string) error {
+	if _, err := tx.ExecContext(ctx, `insert or ignore into activity_entry_tag_keys (entry_id, tag_id, user_key)
+		select k.entry_id, k.tag_id, ?2 from activity_entry_tag_keys k
+		where k.user_key = ?1 and exists (select 1 from video_tags vt where vt.content_key = ?1 and vt.tag_id = k.tag_id)
+		and not exists (select 1 from video_tags vt where vt.content_key = ?2 and vt.tag_id = k.tag_id)`,
+		from, to); err != nil {
+		return fmt.Errorf("cannot copy the keys of the auto-tagging tags: %w", err)
+	}
+	return nil
+}
+
 // Drop provenance when replacement removes all tag rows for a key.
 func dropAutoTagKeys(ctx context.Context, tx *sql.Tx, key string) error {
 	if _, err := tx.ExecContext(ctx, `delete from activity_entry_tag_keys where user_key = ?`, key); err != nil {

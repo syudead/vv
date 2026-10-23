@@ -22,7 +22,6 @@ import {
 } from "../ui/VideoThumbnail";
 import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
-import { useCardActions } from "../videoList/cardActions";
 import FolderArt from "../videoList/FolderArt";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useCollectionLink } from "../videoList/useCollectionLink";
@@ -40,10 +39,8 @@ export interface GroupCardProps<G extends LibraryGroup = LibraryGroup> {
   tagsRow?: (group: G) => ReactNode;
   nameField?: ReactNode;
   drag?: CardDragBinding;
-  /** 格子のカードが開く再生画面で再生を始める（VideoCard の autoplay と同じ）。 */
+  /** The player a grid card opens starts playing, as VideoCard's autoplay. */
   autoplay?: boolean;
-  /** 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（VideoCard と同じ）。 */
-  favoriteOnly?: boolean;
 }
 
 export type CollectionValues = Pick<
@@ -273,7 +270,6 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
     tagsRow,
     nameField,
     autoplay,
-    favoriteOnly = false,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
   const { linkProps, onFrontChange } = useCollectionLink({
@@ -285,15 +281,11 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
     autoplay,
     videoPath: (id) => videoInGroupPath(id, group.id),
   });
-  const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && groupHasTags(group);
-  const actions = useCardActions();
 
   return (
     <article
-      onPointerEnter={actions.approach}
-      onFocus={actions.approach}
       data-group-id={group.id}
       data-group-root={group.folder?.rootId}
       data-group-path={group.folder?.path}
@@ -343,17 +335,6 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
         )}
       </Link>
       {nameField}
-      {owner && (actions.ready || group.favorite === true) && (
-        <VideoThumbnailMark className="z-30">
-          {actions.ready && !favoriteOnly && (
-            <GroupAddToGroup group={group} variant="card" />
-          )}
-          {actions.ready && !favoriteOnly && (
-            <GroupAddToPlaylist group={group} variant="card" />
-          )}
-          <GroupFavorite group={group} variant="card" />
-        </VideoThumbnailMark>
-      )}
       {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );

@@ -152,7 +152,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List videos"
-      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
+      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
       parameters:
         - name: query
           in: query
@@ -160,17 +160,6 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
@@ -216,9 +205,6 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
-        - $ref: "#/components/parameters/AddedWithinFilter"
-        - $ref: "#/components/parameters/MinDurationFilter"
-        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
         - name: kind
           in: query
@@ -244,7 +230,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List library items (videos and groups)"
-      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
+      description: "Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`."
       parameters:
         - name: query
           in: query
@@ -252,17 +238,6 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
@@ -307,9 +282,6 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
-        - $ref: "#/components/parameters/AddedWithinFilter"
-        - $ref: "#/components/parameters/MinDurationFilter"
-        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -1133,6 +1105,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Video"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/videos/{id}/frame:
+    get:
+      operationId: getVideoFrame
+      summary: "Return a frame of the video"
+      description: "Owner-only. Extracts positionMs as PNG with the long edge capped at 2048 px, never enlarged, for framing a person's face from a video; the page crops it and sends the result as the person's face. A position outside the video returns 400 thumbnail_position_out_of_range, an unreadable file 404 file_unavailable, and a position without a decodable frame 409 thumbnail_frame_unavailable."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: positionMs
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: "The frame"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -2908,6 +2911,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/tag-kinds/{id}/card-first:
+    put:
+      operationId: setTagKindCardFirst
+      summary: "Set whether cards list a kind's tags first"
+      description: "Owner-only. Sets TagKind.cardFirst; an unchanged value returns current state. Missing ID returns 404 not_found/tag_kind_not_found. Lists read the new order on their next fetch."
+      parameters:
+        - $ref: "#/components/parameters/TagKindId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindCardFirstRequest"
+      responses:
+        "200":
+          description: "Updated kind"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/people:
     get:
       operationId: listPeople
@@ -3144,7 +3174,7 @@ paths:
     post:
       operationId: confirmFaceCandidate
       summary: "Merge a face candidate pair"
-      description: "Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
+      description: "Owner-only; no body. Merges otherId into id through the ordinary merge, or id into otherId when only otherId has a canonical name, and returns the merged person; the pair may be stored in either order. When the merged person had no canonical name and holds no external ID, the merge is recorded as a face_merge entry decided by the owner and undoActivityId names it, so undoActivity takes the merge back; a merged person with an external ID is merged without one, since the undo cannot restore the ID. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/FaceCandidateOtherId"
@@ -3154,7 +3184,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Person"
+                $ref: "#/components/schemas/FaceCandidateConfirmation"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -3178,13 +3208,35 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/face-candidates/{otherId}/reopen:
+    post:
+      operationId: reopenFaceCandidate
+      summary: "Take back the dismissal of a face candidate pair"
+      description: "Owner-only; no body. For undoing \"Not the same\": marks the dismissed pair of id and otherId, in either order, open again, so it is offered as before. No dismissed pair of these two people returns 404 face_candidate_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "204":
+          description: "Reopened"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/people/{id}/appearances:
     get:
       operationId: listPersonAppearances
       summary: "List a person's face appearances"
-      description: "Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor."
+      description: "Owner-only. The person's appearances that are not dropped. sort newest (default) puts the newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. sort leastSimilar puts the appearances least like the person's other faces first, then any that cannot be compared in the newest order; sort mostSimilar puts the most alike first, with the same tail. Each appearance carries its similarity when it can be compared. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor, or one from another sort, returns 400 invalid_request with reason invalid_cursor."
       parameters:
         - $ref: "#/components/parameters/PersonId"
+        - name: sort
+          in: query
+          description: "newest (default), leastSimilar or mostSimilar"
+          schema:
+            type: string
+            enum: [newest, leastSimilar, mostSimilar]
         - name: cursor
           in: query
           description: "Opaque nextCursor from the previous response; ignored without limit"
@@ -3204,6 +3256,100 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FaceAppearanceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/similar-people:
+    get:
+      operationId: listSimilarPeople
+      summary: "List people whose faces look like some of a person's faces"
+      description: "Owner-only. Ranks the other people by how close their faces are to the mean of the listed appearances of id, or of all of its appearances without appearanceId: each person is compared by the face image's vector and by the mean of their faces in videos, whichever is closer, most similar first. Each item carries the face count, up to four appearances with a crop and the title of the first appearance's video, so unnamed people can be told apart. Appearances id lacks are ignored; with none left the list is empty. Missing person returns 404 person_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: appearanceId
+          in: query
+          description: "Appearances of the person to compare; repeat for several"
+          schema:
+            type: array
+            maxItems: 200
+            items:
+              type: integer
+              format: int64
+              minimum: 1
+          style: form
+          explode: true
+        - name: limit
+          in: query
+          description: "At most this many people; default 8"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        "200":
+          description: "People, most similar first"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimilarPersonList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/appearances/move:
+    post:
+      operationId: moveFaceAppearances
+      summary: "Move face appearances to another person"
+      description: "Owner-only. For \"Move to person\": in one transaction moves the listed appearances of id to targetId, with each video's performer credit of id unless another appearance of id in the same work still links it; a target already credited keeps its own credit, and the response's restoreCredits lists those works with the position id's credit had. Passing them back as restoreCredits with the reverse move (Undo) keeps the original target's credit in those works and puts id's back at its position. Returns the target and restoreCredits. Missing person or target returns 404 person_not_found; targetId equal to id returns 400 invalid_request; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and moves none."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaceAppearanceMoveRequest"
+      responses:
+        "200":
+          description: "The person the faces moved to, with the credits only the reverse move can put back"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceAppearanceMove"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/appearances/split:
+    post:
+      operationId: splitFaceAppearances
+      summary: "Split several face appearances into one new person"
+      description: "Owner-only. For \"Not this person\" on a selection: as splitFaceAppearance, with every listed appearance moving to one new provisional person whose face is the first appearance's crop, in one transaction. Returns the new person. Missing person returns 404 person_not_found; any appearance that is dropped or linked to another person returns 404 face_appearance_not_found and splits none."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaceAppearanceSplitRequest"
+      responses:
+        "201":
+          description: "The new provisional person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -4036,6 +4182,29 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/version-candidates/rejudge:
+    post:
+      operationId: rejudgeVersionCandidate
+      summary: "Judge a possible duplicate again"
+      description: "Owner-only. Returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its activity record to running, so the duplicate judging worker sends it to the classifier again. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos return 404 video_not_found; a pair that is not a judgeable candidate returns 404 not_found. Judging turned off returns 409 version_judging_off; a waiting or running pair returns 409 version_not_rejudgeable."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionCandidateDismissRequest"
+      responses:
+        "202":
+          description: "Queued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/activity:
     get:
       operationId: listActivity
@@ -4133,6 +4302,33 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+
+  /api/activity/{id}/judgement-frames/{index}:
+    get:
+      operationId: getActivityJudgementFrame
+      summary: "Return a frame pair a duplicate judgement showed the classifier"
+      description: "Owner-only. Returns the image at index in the version_judgement record's evidence frames: the left video's frame on the left and the other's on the right, cut from the two current seek previews as the classifier received them. A missing record, a record without evidence, an index outside its frames or a missing seek preview returns 404 not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the record's evidence frames"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Image"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/activity/{id}/undo:
     post:
@@ -4246,17 +4442,6 @@ paths:
           schema:
             type: string
             maxLength: 100
-        - name: watch
-          in: query
-          description: "Watch-state filter; `all` disables it"
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          description: "Restrict to videos playable directly in the browser"
-          schema:
-            type: boolean
-            default: false
         - name: favorite
           in: query
           description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
@@ -4372,21 +4557,11 @@ paths:
       description: "Returns LibraryGroup, the still-connected portion of trail and the first 100 matching items. Omitted sort uses saved position order; temporary filters and explicit sort apply before paging and never modify positions. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/GroupId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4477,21 +4652,11 @@ paths:
       description: "Continues getGroup items after nextCursor using the same temporary filters, sort and seed. Omitted sort uses position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup."
       parameters:
         - $ref: "#/components/parameters/GroupId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4718,21 +4883,11 @@ paths:
       description: "Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -4822,21 +4977,11 @@ paths:
       description: "Continues getSmartFolder content after nextCursor; child folders appear only on the first page. Invalid cursors return 400 invalid_cursor. Missing or invisible folders return 404 not_found as in getSmartFolder."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
-        - name: watch
-          in: query
-          description: "Temporary list watch; omitted sort keeps the saved order."
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
         - name: sort
           in: query
           description: "Temporary list sort; omitted sort keeps the saved order."
           schema:
             $ref: "#/components/schemas/VideoSort"
-        - name: playable
-          in: query
-          description: "Temporary playable-only filter; does not change saved settings."
-          schema:
-            type: boolean
         - name: favorite
           in: query
           description: "Temporary favorite-only filter; does not change saved settings."
@@ -5208,30 +5353,6 @@ components:
         type: integer
         format: int64
         minimum: 1
-    AddedWithinFilter:
-      name: addedWithin
-      in: query
-      description: "Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests."
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 36500
-    MinDurationFilter:
-      name: minDuration
-      in: query
-      description: "Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests."
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 360000
-    MaxDurationFilter:
-      name: maxDuration
-      in: query
-      description: "Inclusive maximum duration in seconds; follows minDuration semantics"
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 360000
     TagKindFilter:
       name: tagKind
       in: query
@@ -7168,19 +7289,22 @@ components:
           description: "Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page."
     TagKindRef:
       type: object
-      required: [id, name]
+      required: [id, name, cardFirst]
       additionalProperties: false
-      description: "Tag kind ID and name."
+      description: "Tag kind ID, name and card order flag."
       properties:
         id:
           type: integer
           format: int64
         name:
           type: string
+        cardFirst:
+          type: boolean
+          description: "Cards list this kind's tags before other tags; see TagKind.cardFirst."
 
     TagKind:
       type: object
-      required: [id, name, tagCount, createdAt]
+      required: [id, name, cardFirst, tagCount, createdAt]
       additionalProperties: false
       description: "One kind-list entry."
       properties:
@@ -7189,6 +7313,9 @@ components:
           format: int64
         name:
           type: string
+        cardFirst:
+          type: boolean
+          description: "Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false."
         tagCount:
           type: integer
           description: "Number of tags of this kind, including tentative tags."
@@ -7207,6 +7334,14 @@ components:
           description: "All kinds in ID order; the UI reorders them by natural name."
           items:
             $ref: "#/components/schemas/TagKind"
+
+    TagKindCardFirstRequest:
+      type: object
+      required: [cardFirst]
+      additionalProperties: false
+      properties:
+        cardFirst:
+          type: boolean
 
     TagKindNameRequest:
       type: object
@@ -7447,6 +7582,24 @@ components:
           type: string
           description: "YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid."
           examples: ["2024", "2024-02", "2024-02-29"]
+
+    VideoCardCredits:
+      type: object
+      required: [performers]
+      additionalProperties: false
+      description: "Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards."
+      properties:
+        code:
+          type: string
+          description: "Product code; omitted when unset."
+        performers:
+          type: array
+          description: "Performer credits in work-information order; [] when none."
+          items:
+            $ref: "#/components/schemas/WorkPerson"
+        organization:
+          $ref: "#/components/schemas/CreditRef"
+          description: "The first label, otherwise the first maker; omitted when the work has neither."
 
     WorkPerson:
       type: object
@@ -7899,15 +8052,30 @@ components:
           format: double
           description: "The pair's highest face similarity when last computed, from 0 to 1."
 
+    FaceCandidateConfirmation:
+      type: object
+      required: [person]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        undoActivityId:
+          type: integer
+          format: int64
+          description: "The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID."
+
     FaceAppearanceList:
       type: object
-      required: [items]
+      required: [items, total]
       additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/FaceAppearance"
+        total:
+          type: integer
+          description: "Every appearance of the person that is not dropped, across all pages."
         nextCursor:
           type: string
           description: "Next-page cursor, included only when limit is supplied and more results remain."
@@ -7936,6 +8104,134 @@ components:
         hasCrop:
           type: boolean
           description: "True when getFaceAppearanceCrop has a face to return."
+        similarity:
+          type: number
+          format: double
+          description: "Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared."
+        unlike:
+          type: boolean
+          description: "True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise."
+        focus:
+          $ref: "#/components/schemas/FaceFocus"
+
+    SimilarPersonList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimilarPerson"
+
+    SimilarPerson:
+      type: object
+      required: [person, similarity, faceCount, sampleAppearanceIds]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        similarity:
+          type: number
+          format: double
+          description: "Cosine similarity, from -1 to 1, of the compared faces to the person."
+        faceCount:
+          type: integer
+          description: "The person's appearances that are not dropped."
+        sampleAppearanceIds:
+          type: array
+          description: "Up to four of the person's appearances with a crop, latest first."
+          items:
+            type: integer
+            format: int64
+        firstSeenTitle:
+          type: string
+          description: "The title of the video of the person's first appearance; absent without appearances."
+
+    FaceAppearanceMoveRequest:
+      type: object
+      required: [appearanceIds, targetId]
+      additionalProperties: false
+      properties:
+        appearanceIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+        targetId:
+          type: integer
+          format: int64
+          minimum: 1
+        restoreCredits:
+          type: array
+          maxItems: 200
+          description: "The restoreCredits of the move this request undoes."
+          items:
+            $ref: "#/components/schemas/FaceMoveCredit"
+
+    FaceAppearanceMove:
+      type: object
+      required: [person, restoreCredits]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        restoreCredits:
+          type: array
+          description: "Works whose performer credit of the moved-from person was removed because the target already held one."
+          items:
+            $ref: "#/components/schemas/FaceMoveCredit"
+
+    FaceMoveCredit:
+      type: object
+      required: [workKey, position]
+      additionalProperties: false
+      properties:
+        workKey:
+          type: string
+          description: "An opaque key of the work."
+        position:
+          type: integer
+          minimum: 0
+          description: "The position the credit had among the work's performers."
+
+    FaceAppearanceSplitRequest:
+      type: object
+      required: [appearanceIds]
+      additionalProperties: false
+      properties:
+        appearanceIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+
+    FaceFocus:
+      type: object
+      required: [time, x, y, w]
+      additionalProperties: false
+      description: "Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side."
+      properties:
+        time:
+          type: number
+          format: double
+        x:
+          type: number
+          format: double
+        "y":
+          type: number
+          format: double
+        w:
+          type: number
+          format: double
 
     FaceAppearanceSpan:
       type: object
@@ -8548,11 +8844,6 @@ components:
         - random
       default: addedDesc
       description: "Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md."
-    WatchFilter:
-      type: string
-      enum: [all, unwatched, inProgress, watched]
-      default: all
-      description: "Watch filter: all, unwatched, inProgress or watched."
     FolderScope:
       type: string
       enum: [direct, subtree]
@@ -8570,7 +8861,7 @@ components:
             $ref: "#/components/schemas/Video"
         total:
           type: integer
-          description: "Total after applying query, watch, playable and listFolderVideos scope, independent of pagination."
+          description: "Total after applying query, favorite and listFolderVideos scope, independent of pagination."
         nextCursor:
           type: string
           description: "Next-page cursor; omitted when no more results remain."
@@ -9047,13 +9338,6 @@ components:
           type: string
           maxLength: 500
           description: "Search input matched with owner semantics."
-        watch:
-          type: string
-          enum: [unwatched, inProgress, watched]
-          description: "Watch state."
-        playable:
-          type: boolean
-          description: "Restrict to browser-playable videos."
         favorite:
           type: boolean
           description: "Restrict to favorite videos."
@@ -9077,21 +9361,6 @@ components:
           type: integer
           format: int64
           description: "Organization IDs linked in any role."
-        addedWithin:
-          type: integer
-          minimum: 1
-          maximum: 36500
-          description: "Days since addition."
-        minDuration:
-          type: integer
-          minimum: 0
-          maximum: 360000
-          description: "Inclusive minimum duration in seconds; at most maxDuration."
-        maxDuration:
-          type: integer
-          minimum: 0
-          maximum: 360000
-          description: "Inclusive maximum duration in seconds."
 
     SmartRuleRef:
       type: object
@@ -9434,7 +9703,7 @@ components:
 
     Video:
       type: object
-      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo."
+      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo."
       required:
         [
           id,
@@ -9572,6 +9841,9 @@ components:
         workInfo:
           $ref: "#/components/schemas/WorkInfo"
           description: "Work information, only in GET /api/videos/{id} and owner PUT work-info/details responses when a row exists. Guests receive only description and urls, with the other lists empty, and no workInfo when both are empty. Omitted from lists, related videos and library items."
+        cardCredits:
+          $ref: "#/components/schemas/VideoCardCredits"
+          description: "Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests."
         mediaInfo:
           $ref: "#/components/schemas/MediaInfo"
           description: "Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses."
@@ -9605,6 +9877,8 @@ components:
           description: "Chapters in start order, within video duration."
           items:
             $ref: "#/components/schemas/MediaInfoChapter"
+        container:
+          $ref: "#/components/schemas/MediaInfoContainer"
 
     MediaInfoVideo:
       type: object
@@ -9638,6 +9912,72 @@ components:
         closedCaptions:
           type: boolean
           description: "True when the video stream carries closed captions."
+        profile:
+          type: string
+          examples: [High, "Main 10"]
+        level:
+          type: integer
+          description: "Codec level as ffprobe reports it (H.264 41 is level 4.1)."
+        pixelFormat:
+          type: string
+          examples: [yuv420p, yuv420p10le]
+        chromaSubsampling:
+          type: string
+          examples: ["4:2:0", "4:2:2", "4:4:4"]
+        colorRange:
+          type: string
+          enum: [limited, full]
+        codecTag:
+          type: string
+          description: "Container fourcc, such as hvc1 or hev1."
+        codecString:
+          type: string
+          description: "RFC 6381 codecs value, such as avc1.64001f."
+        variableFrameRate:
+          type: boolean
+          description: "A header estimate: the average frame rate differs from the base rate by more than 1%."
+        frameCount:
+          type: integer
+          format: int64
+          description: "Frame count the header records."
+        maxBitRate:
+          type: integer
+          format: int64
+          description: "Maximum bits per second the header records."
+        bitsPerPixel:
+          type: number
+          format: double
+          description: "bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode."
+        mirrored:
+          type: boolean
+          description: "The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation."
+        crop:
+          $ref: "#/components/schemas/MediaInfoCrop"
+        mastering:
+          $ref: "#/components/schemas/MediaInfoMasteringDisplay"
+        contentLight:
+          $ref: "#/components/schemas/MediaInfoContentLight"
+        hdr10Plus:
+          type: boolean
+          description: "The container carries HDR10+ dynamic metadata."
+        dolbyVision:
+          $ref: "#/components/schemas/MediaInfoDolbyVision"
+        filmGrain:
+          type: boolean
+          description: "AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown."
+        multiLayer:
+          type: boolean
+          description: "The stream has more than one layer, as MV-HEVC stereoscopic video does."
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoAudioTrack:
       type: object
@@ -9663,6 +10003,34 @@ components:
           type: string
         default:
           type: boolean
+        sampleRate:
+          type: integer
+          description: "Samples per second."
+        bitDepth:
+          type: integer
+        sampleFormat:
+          type: string
+          examples: [fltp, s16, s32]
+        bitRate:
+          type: integer
+          format: int64
+        replayGain:
+          $ref: "#/components/schemas/MediaInfoReplayGain"
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        serviceType:
+          type: string
+          enum: [main, effects, visually_impaired, hearing_impaired, dialogue, commentary, emergency, voice_over, karaoke]
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoSubtitleTrack:
       type: object
@@ -9687,6 +10055,18 @@ components:
           type: boolean
         hearingImpaired:
           type: boolean
+        roles:
+          $ref: "#/components/schemas/MediaInfoTrackRoles"
+        startMs:
+          type: integer
+          format: int64
+          description: "The stream's start in the file's timeline; a later audio start than video start means the audio begins late."
+        durationMs:
+          type: integer
+          format: int64
+          description: "The stream's own length; one much shorter or longer than the others suggests drifting sync."
+        origin:
+          $ref: "#/components/schemas/MediaInfoStreamOrigin"
 
     MediaInfoEmbedded:
       type: object
@@ -9718,6 +10098,46 @@ components:
         coverArt:
           type: boolean
           description: "True when the file contains an attached picture."
+        album:
+          type: string
+        albumArtist:
+          type: string
+        composer:
+          type: string
+        show:
+          type: string
+        episode:
+          type: string
+        season:
+          type: string
+        network:
+          type: string
+          description: "Broadcaster or distributor tag."
+        synopsis:
+          type: string
+        copyright:
+          type: string
+        publisher:
+          type: string
+        encodedBy:
+          type: string
+        encoder:
+          type: string
+          description: "Software that wrote the file."
+        sourceUrl:
+          type: string
+          description: "Where a download tool fetched the file from."
+        keywords:
+          type: string
+        rating:
+          type: string
+        captureSoftware:
+          type: string
+          description: "The phone camera's software version."
+        captureFrameRate:
+          type: number
+          format: double
+          description: "The phone's capture rate; above the playback rate means slow motion."
 
     MediaInfoLocation:
       type: object
@@ -9744,6 +10164,205 @@ components:
           type: string
         program:
           type: string
+
+    MediaInfoStreamOrigin:
+      type: object
+      description: "What the writing tool or device recorded on the stream."
+      additionalProperties: false
+      properties:
+        encoder:
+          type: string
+        handler:
+          type: string
+          examples: [VideoHandler, "Core Media Audio"]
+        vendor:
+          type: string
+          description: "Vendor fourcc, such as appl."
+        createdAt:
+          type: string
+          format: date-time
+        timecode:
+          type: string
+          examples: ["01:00:00:00"]
+
+    MediaInfoTrackRoles:
+      type: object
+      description: "Purposes the file flags on the track; only true flags are present."
+      additionalProperties: false
+      properties:
+        dub:
+          type: boolean
+        original:
+          type: boolean
+        comment:
+          type: boolean
+          description: "Commentary."
+        visualImpaired:
+          type: boolean
+          description: "Audio description for visually impaired viewers."
+        hearingImpaired:
+          type: boolean
+        karaoke:
+          type: boolean
+        lyrics:
+          type: boolean
+        cleanEffects:
+          type: boolean
+          description: "Effects only, without dialogue."
+        captions:
+          type: boolean
+        descriptions:
+          type: boolean
+
+    MediaInfoReplayGain:
+      type: object
+      description: "ReplayGain tags as the file writes them, such as -6.50 dB."
+      additionalProperties: false
+      properties:
+        trackGain:
+          type: string
+        trackPeak:
+          type: string
+        albumGain:
+          type: string
+        albumPeak:
+          type: string
+
+    MediaInfoCrop:
+      type: object
+      description: "Cropping the container records, in pixels from each edge."
+      additionalProperties: false
+      properties:
+        top:
+          type: integer
+        bottom:
+          type: integer
+        left:
+          type: integer
+        right:
+          type: integer
+
+    MediaInfoMasteringDisplay:
+      type: object
+      description: "HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m²."
+      additionalProperties: false
+      properties:
+        redX: {type: number, format: double}
+        redY: {type: number, format: double}
+        greenX: {type: number, format: double}
+        greenY: {type: number, format: double}
+        blueX: {type: number, format: double}
+        blueY: {type: number, format: double}
+        whiteX: {type: number, format: double}
+        whiteY: {type: number, format: double}
+        minLuminance: {type: number, format: double}
+        maxLuminance: {type: number, format: double}
+
+    MediaInfoContentLight:
+      type: object
+      description: "HDR content light levels in cd/m²."
+      additionalProperties: false
+      properties:
+        maxContent:
+          type: integer
+          description: "MaxCLL."
+        maxAverage:
+          type: integer
+          description: "MaxFALL."
+
+    MediaInfoDolbyVision:
+      type: object
+      required: [profile]
+      additionalProperties: false
+      properties:
+        profile:
+          type: integer
+        level:
+          type: integer
+        compatibility:
+          type: integer
+          description: "dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG)."
+
+    MediaInfoContainer:
+      type: object
+      description: "What the container says about the file as a whole."
+      additionalProperties: false
+      properties:
+        startMs:
+          type: integer
+          format: int64
+          description: "The container's start time."
+        majorBrand:
+          type: string
+          examples: [isom, qt]
+        compatibleBrands:
+          type: array
+          items:
+            type: string
+        probeScore:
+          type: integer
+          description: "How sure ffprobe is of the format, out of 100."
+        encrypted:
+          type: boolean
+          description: "A stream is encrypted (DRM)."
+        attachments:
+          type: array
+          description: "Attached files such as fonts, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoAttachment"
+        dataStreams:
+          type: array
+          description: "Non-media streams such as GoPro telemetry, at most 64."
+          items:
+            $ref: "#/components/schemas/MediaInfoDataStream"
+        sizes:
+          $ref: "#/components/schemas/MediaInfoSizes"
+
+    MediaInfoAttachment:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        mimeType:
+          type: string
+        bytes:
+          type: integer
+          format: int64
+
+    MediaInfoDataStream:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+        codec:
+          type: string
+          examples: [gpmd, tmcd]
+        handler:
+          type: string
+
+    MediaInfoSizes:
+      type: object
+      description: "The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are."
+      additionalProperties: false
+      properties:
+        totalBytes:
+          type: integer
+          format: int64
+        videoBytes:
+          type: integer
+          format: int64
+        audioBytes:
+          type: integer
+          format: int64
+        subtitleBytes:
+          type: integer
+          format: int64
+        otherBytes:
+          type: integer
+          format: int64
 
     MediaInfoChapter:
       type: object
@@ -9903,10 +10522,14 @@ components:
 
     VersionCandidate:
       type: object
-      required: [videos, distance]
+      required: [videos, distance, judgement, recommendation]
       additionalProperties: false
       description: "Pair of potentially identical videos."
       properties:
+        recommendation:
+          $ref: "#/components/schemas/VersionRepresentativeRecommendation"
+        judgement:
+          $ref: "#/components/schemas/VersionCandidateJudgement"
         videos:
           type: array
           minItems: 2
@@ -9919,11 +10542,153 @@ components:
           minimum: 0
           description: "Median Hamming distance between video fingerprints; lower means more similar."
 
-    VersionCandidatePage:
+    VersionRepresentativeRecommendation:
       type: object
-      required: [items, total]
+      required: [videoId, reason]
+      additionalProperties: false
+      description: "The video whose file is the better representative, judged from the files alone."
+      properties:
+        videoId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          enum: [playable, audio, audio_sync, resolution, bitrate, older]
+          description: "The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen."
+
+    VersionCandidateJudgement:
+      type: object
+      required: [state, leftVideoId]
+      additionalProperties: false
+      description: "The automatic judgement of a listed pair."
+      properties:
+        state:
+          type: string
+          enum: [waiting, running, undecided, failed, no_connection, held]
+          description: "held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge."
+        activityId:
+          type: integer
+          format: int64
+          description: "The pair's version_judgement record; absent when none was opened, as while judging is off."
+        probability:
+          type: number
+          format: double
+          description: "The classifier's answer for an undecided pair; absent when the rule decided."
+        error:
+          type: string
+          description: "Why the last attempt failed."
+        retryAt:
+          type: string
+          format: date-time
+          description: "Next automatic retry of a failed pair."
+        leftVideoId:
+          type: integer
+          format: int64
+          description: "The video whose frames are on the left of the evidence images and whose times are evidence's aMs."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
+
+    VersionJudgeEvidence:
+      type: object
+      required: [rule, compared, differing]
+      additionalProperties: false
+      description: "Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md."
+      properties:
+        rule:
+          type: string
+          enum: [frames_match, frames_differ, incomparable]
+          description: "frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner."
+        compared:
+          type: integer
+          minimum: 0
+          description: "Frame pairs compared by time, flat frames skipped."
+        differing:
+          type: integer
+          minimum: 0
+          description: "Compared pairs whose pictures differ."
+        longestRun:
+          type: integer
+          minimum: 2
+          description: "Pairs in the longest run of consecutive differing pairs; absent without such a run."
+        runStartMs:
+          type: integer
+          format: int64
+          description: "Start of that run on the left video's timeline."
+        runEndMs:
+          type: integer
+          format: int64
+          description: "End of that run on the left video's timeline."
+        versionMismatch:
+          type: boolean
+          description: "The fingerprints were made by different fingerprint versions, so the frames could not be compared."
+        conflict:
+          type: boolean
+          description: "The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided."
+        properties:
+          type: array
+          description: "Properties both files have, read at import: chapters, recording time, embedded title and duration."
+          items:
+            $ref: "#/components/schemas/VersionPropertySignal"
+        byProperties:
+          type: boolean
+          description: "The properties decided the result, or held a different answer they contradict for the owner."
+        frames:
+          type: array
+          maxItems: 4
+          description: "The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image."
+          items:
+            $ref: "#/components/schemas/VersionEvidenceFrame"
+
+    VersionPropertySignal:
+      type: object
+      required: [kind, same, a, b]
       additionalProperties: false
       properties:
+        kind:
+          type: string
+          enum: [chapters, recorded_at, embedded_title, duration]
+        same:
+          type: boolean
+          description: "The two values agree: matching chapter starts, equal times or titles, or durations within a second."
+        strong:
+          type: boolean
+          description: "Decides a pair on its own: titled chapters at matching starts, or an equal recording time."
+        counts:
+          type: boolean
+          description: "Counted towards the verdict; a duration and a disagreeing value are shown only."
+        a:
+          type: string
+          description: "The left video's value: a chapter count, a time, a title or milliseconds."
+        b:
+          type: string
+          description: "The right video's value."
+
+    VersionEvidenceFrame:
+      type: object
+      required: [aMs, bMs, distance]
+      additionalProperties: false
+      properties:
+        aMs:
+          type: integer
+          format: int64
+          description: "Frame time in the left video."
+        bMs:
+          type: integer
+          format: int64
+          description: "Frame time in the right video."
+        distance:
+          type: integer
+          minimum: 0
+          description: "Hamming distance between the two frames' hashes; over 12 differs."
+
+    VersionCandidatePage:
+      type: object
+      required: [items, total, judging]
+      additionalProperties: false
+      properties:
+        judging:
+          type: boolean
+          description: "Whether duplicate judging is on, which a rejudge needs."
         items:
           type: array
           maxItems: 200
@@ -10685,6 +11450,8 @@ components:
           type: string
           format: date-time
           description: "Next retry timestamp for a failed version_judgement."
+        evidence:
+          $ref: "#/components/schemas/VersionJudgeEvidence"
         progress:
           $ref: "#/components/schemas/ActivityProgress"
         undoes:
@@ -11107,6 +11874,8 @@ components:
         - not_bundled
         - listen_failed
         - auto_tagging_off
+        - version_judging_off
+        - version_not_rejudgeable
         - comfyui_url_invalid
         - comfyui_api_key_missing
         - thumbnail_edit_not_found

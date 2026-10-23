@@ -290,7 +290,7 @@ function faceOf(credit: Credit | undefined): { imageRevision?: number } {
 
 function unnamedChoice(person: Person, typed: string): CreditChoice {
   const e = t.player.detailsEditor;
-  const label = t.credits.unnamedPerson;
+  const label = t.credits.personNumber(person.id);
   const hint = typed === "" ? null : e.addAs(typed);
   return {
     id: `${unnamedPrefix}${String(person.id)}`,

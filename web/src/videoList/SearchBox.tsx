@@ -10,6 +10,11 @@ import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Kbd } from "../ui/shadcn/kbd";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
+import {
+  type SearchSuggestions,
+  type SuggestionOption,
+  useSuggestionBox,
+} from "./SearchSuggestions";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
 /** Debounce so each keystroke does not replace the list. */
@@ -30,6 +35,13 @@ export interface SearchBoxProps {
   maxLength?: number;
   disabled?: boolean;
   className?: string;
+  /** Filters offered under the field while typing; picking one clears the typed text. */
+  suggestions?: SearchSuggestions;
+  /**
+   * `enter` searches only on Enter (or clearing), never while typing or on blur, so unconfirmed
+   * IME text and half-typed words do not replace the list.
+   */
+  commitOn?: "typing" | "enter";
 }
 
 /**
@@ -56,7 +68,10 @@ export default function SearchBox({
   maxLength = MAX_QUERY_LENGTH,
   disabled = false,
   className,
+  suggestions,
+  commitOn = "typing",
 }: SearchBoxProps) {
+  const onEnter = commitOn === "enter";
   const [input, setInputState] = useState(query);
   const [composing, setComposing] = useState(false);
   // Keep current input in a ref because blur may run before setInput renders.
@@ -90,12 +105,12 @@ export default function SearchBox({
 
   useEffect(() => {
     // Read the updated ref, not stale render input, after URL synchronization; otherwise changing onCommit identity can restore a cleared query.
-    if (composing) return;
+    if (composing || onEnter) return;
     const next = normalizeQuery(latest.current, maxLength);
     if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), debounceMs);
     return () => clearTimeout(timer);
-  }, [commit, input, debounceMs, maxLength, composing]);
+  }, [commit, input, debounceMs, maxLength, composing, onEnter]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -110,6 +125,22 @@ export default function SearchBox({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [field]);
+
+  const pick = (option: SuggestionOption) => {
+    // The page applies the filter and the cleared query in one history entry.
+    setInput("");
+    committed.current = "";
+    session.current.end();
+    suggestions?.onPick(option);
+  };
+  const box = useSuggestionBox({
+    suggestions,
+    text: normalizeQuery(input, maxLength),
+    composing,
+    debounceMs,
+    onSearch: () => commit(normalizeQuery(latest.current, maxLength)),
+    onPick: pick,
+  });
 
   const clear = () => {
     setInput("");
@@ -126,8 +157,10 @@ export default function SearchBox({
       <Input
         ref={field}
         type="search"
+        {...box.inputProps}
         value={input}
-        onChange={(event) =>
+        onChange={(event) => {
+          box.open();
           setInput(
             limitQueryInput(
               event.target.value,
@@ -135,8 +168,8 @@ export default function SearchBox({
               event.target.selectionEnd ?? undefined,
               maxLength,
             ),
-          )
-        }
+          );
+        }}
         onCompositionStart={() => setComposing(true)}
         onCompositionEnd={(event) => {
           setComposing(false);
@@ -151,13 +184,20 @@ export default function SearchBox({
         }}
         onFocus={() => session.current.start()}
         onBlur={() => {
+          box.close();
           // Flush any pending commit before ending the typing session.
-          if (!composing) commit(normalizeQuery(latest.current, maxLength));
+          if (!composing && !onEnter) commit(normalizeQuery(latest.current, maxLength));
           session.current.end();
         }}
         onKeyDown={(event) => {
           // IME Escape cancels composition, not the query.
           if (isComposingKeyEvent(event)) return;
+          if (box.onKeyDown(event)) return;
+          if (event.key === "Enter" && onEnter) {
+            event.preventDefault();
+            commit(normalizeQuery(latest.current, maxLength));
+            return;
+          }
           if (event.key === "Escape") {
             event.preventDefault();
             setInput("");
@@ -192,6 +232,7 @@ export default function SearchBox({
         {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
         {syntaxHelp && <SearchSyntaxHelp />}
       </div>
+      {box.list}
     </div>
   );
 }

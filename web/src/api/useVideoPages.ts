@@ -148,8 +148,6 @@ export function useVideoPages({
         const current = criteriaRef.current;
         const params = {
           query: current.query,
-          watch: current.watch === "all" ? undefined : current.watch,
-          playable: current.playable,
           favorite: current.favorite,
           sort: current.sort,
           seed: current.sort === "random" ? current.seed : undefined,
@@ -163,9 +161,6 @@ export function useVideoPages({
           personRole: current.personRole,
           organization: current.organization,
           tagKind: current.tagKind,
-          addedWithin: current.addedWithin,
-          minDuration: current.minDuration,
-          maxDuration: current.maxDuration,
         };
         const fetchOne = (cursorFrom: string | undefined) =>
           target !== undefined

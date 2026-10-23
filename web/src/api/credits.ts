@@ -1,5 +1,6 @@
 import { apiFetch, request, RequestFailed, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
 
 // People and organizations share the same route shape; select their prefix by kind.
 //
@@ -101,6 +102,13 @@ export function getCredit(
   return request<Credit>(itemPath(kind, id), { signal });
 }
 
+/** Saved list snapshots show credit names and faces on cards, so a change to them discards the snapshot. */
+export async function afterCreditChange<T>(change: Promise<T>): Promise<T> {
+  const result = await change;
+  clearListSnapshot();
+  return result;
+}
+
 /** Replace only supplied properties, but replace arrays in full; null clears values or removes the parent. */
 export function updateCredit(
   kind: CreditKind,
@@ -108,12 +116,14 @@ export function updateCredit(
   patch: CreditPatch,
   signal?: AbortSignal,
 ): Promise<Credit> {
-  return request<Credit>(itemPath(kind, id), {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
-    signal,
-  });
+  return afterCreditChange(
+    request<Credit>(itemPath(kind, id), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+      signal,
+    }),
+  );
 }
 
 export interface CreditMergeResult {
@@ -138,6 +148,7 @@ export async function mergeCredits(
     body: JSON.stringify({ sourceIds }),
     signal,
   });
+  clearListSnapshot();
   const credit = kind === "person" ? body.person : body.organization;
   if (credit === undefined) throw new RequestFailed(500, "", "");
   return { credit, notFoundIds: body.notFoundIds };
@@ -150,6 +161,7 @@ export async function deleteCredit(
 ): Promise<void> {
   const response = await apiFetch(itemPath(kind, id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+  clearListSnapshot();
 }
 
 /** The face URL; the revision only busts caches, so a changed face is fetched again. */
@@ -177,15 +189,19 @@ export function uploadPersonImage(
 ): Promise<Person> {
   const form = new FormData();
   form.append("image", image, image instanceof File ? image.name : "image");
-  return request<Person>(`${itemPath("person", id)}/image`, {
-    method: "PUT",
-    body: form,
-    signal,
-  });
+  return afterCreditChange(
+    request<Person>(`${itemPath("person", id)}/image`, {
+      method: "PUT",
+      body: form,
+      signal,
+    }),
+  );
 }
 
 export function removePersonImage(id: number, signal?: AbortSignal): Promise<Person> {
-  return request<Person>(`${itemPath("person", id)}/image`, { method: "DELETE", signal });
+  return afterCreditChange(
+    request<Person>(`${itemPath("person", id)}/image`, { method: "DELETE", signal }),
+  );
 }
 
 /** Match missing target entities only; field-qualified missing parents are input errors. */

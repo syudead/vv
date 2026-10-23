@@ -140,17 +140,14 @@ func TestAudienceZeroValueIsGuest(t *testing.T) {
 }
 
 func TestCheckVideoQuery(t *testing.T) {
-	defaults := VideoQuery{Watch: WatchAll, Sort: SortAddedDesc}
+	defaults := VideoQuery{Sort: SortAddedDesc}
 	allowed := []VideoQuery{
 		{},
 		defaults,
-		{Watch: WatchAll, Sort: SortTitleAsc, Query: "cat", PlayableOnly: true},
+		{Sort: SortTitleAsc, Query: "cat"},
 		{Sort: SortRandom, Seed: 5},
 	}
 	denied := []VideoQuery{
-		{Watch: WatchUnwatched},
-		{Watch: WatchInProgress},
-		{Watch: WatchWatched},
 		{Sort: SortPlayedDesc},
 		{Sort: SortPlayedAsc},
 		{TagIDs: []int64{1}},

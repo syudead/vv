@@ -25,13 +25,20 @@ type Credits interface {
 	Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error)
 	Delete(ctx context.Context, kind domain.CreditKind, id int64) error
 	FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error)
-	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error)
+	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.FaceCandidateConfirmation, error)
 	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
+	ReopenFaceCandidate(ctx context.Context, personID, otherID int64) error
 	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.
-	PersonAppearances(ctx context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error)
+	PersonAppearances(ctx context.Context, personID int64, q domain.PersonAppearanceQuery) (domain.PersonAppearancePage, error)
 	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
-	// SplitFaceAppearance returns domain.ErrFaceAppearanceNotFound when the person has no such appearance.
-	SplitFaceAppearance(ctx context.Context, personID, appearanceID int64) (domain.Credit, error)
+	// SplitFaceAppearances returns domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
+	SplitFaceAppearances(ctx context.Context, personID int64, appearanceIDs []int64) (domain.Credit, error)
+	// MoveFaceAppearances returns domain.ErrMergeSameCredit for the same person and
+	// domain.ErrFaceAppearanceNotFound when the person lacks any of the appearances.
+	MoveFaceAppearances(
+		ctx context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
+	) (domain.FaceMove, error)
+	SimilarPeople(ctx context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error)
 }
 
 type creditKindAPI struct {

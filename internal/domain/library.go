@@ -82,10 +82,7 @@ func ShuffleKey(seed, id int64) int64 {
 type VideoQuery struct {
 	// Query uses ParseSearchQuery syntax; no remaining terms means no filtering.
 	Query string
-	// An empty Watch means WatchAll.
-	Watch        WatchFilter
-	PlayableOnly bool
-	Sort         VideoSort
+	Sort  VideoSort
 	// Seed is used only by SortRandom and ranges from zero to MaxShuffleSeed.
 	Seed   int64
 	Cursor string
@@ -100,46 +97,14 @@ type VideoQuery struct {
 	PersonRole PersonRole
 	// TagKindID matches manual or folder-derived tags; zero disables filtering and nonexistent IDs match nothing.
 	TagKindID int64
-	// AddedWithinDays is inclusive; zero disables filtering.
-	AddedWithinDays int
-	// Duration bounds are inclusive seconds; nil leaves a side unbounded and any bound excludes unknown durations.
-	MinDurationSec *int
-	MaxDurationSec *int
 	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.
 	Kind VideoKind
 }
 
 // ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
-	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
-		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil &&
+	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
 		q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
-}
-
-const MaxAddedWithinDays = 36500
-
-const MaxDurationBoundSec = 360000
-
-var (
-	ErrInvalidAddedWithin   = errors.New("added within is out of range")
-	ErrInvalidDurationRange = errors.New("duration range is invalid")
-)
-
-// CheckAddedAndLength shares limits between library queries and smart-folder conditions; nil means unspecified.
-func CheckAddedAndLength(addedWithin, minSec, maxSec *int) error {
-	if addedWithin != nil && (*addedWithin < 1 || *addedWithin > MaxAddedWithinDays) {
-		return ErrInvalidAddedWithin
-	}
-	for _, bound := range []*int{minSec, maxSec} {
-		if bound != nil && (*bound < 0 || *bound > MaxDurationBoundSec) {
-			return ErrInvalidDurationRange
-		}
-	}
-	if minSec != nil && maxSec != nil && *minSec > *maxSec {
-		return ErrInvalidDurationRange
-	}
-	return nil
 }
 
 type VideoPage struct {

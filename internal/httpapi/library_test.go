@@ -214,12 +214,6 @@ func TestListLibraryForOwner(t *testing.T) {
 		t.Errorf("ep10 の検索の項目 = %+v, want ep10 の動画の項目", item)
 	}
 
-	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?watch=inProgress", f.owner))); !slices.Equal(names, []string{"group:show"}) {
-		t.Errorf("途中まで = %v", names)
-	}
-	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?watch=watched", f.owner))); len(names) != 0 {
-		t.Errorf("見終えた = %v, want 空（ep1 だけ完了のグループは watched ではない）", names)
-	}
 	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?tag="+strconv.FormatInt(f.folder, 10), f.owner))); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("タグ show = %v", names)
 	}
@@ -359,7 +353,7 @@ func TestListLibraryForGuest(t *testing.T) {
 		}
 	}
 
-	for _, query := range []string{"watch=watched", "sort=playedAsc", "sort=playedDesc", "tag=" + strconv.FormatInt(f.manual, 10)} {
+	for _, query := range []string{"sort=playedAsc", "sort=playedDesc", "tag=" + strconv.FormatInt(f.manual, 10)} {
 		rec := f.env.get("/api/library?" + query)
 		assertErrorBody(t, "ゲストの "+query, rec.Code, rec.Body.Bytes(),
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonGuestFilterNotAllowed})

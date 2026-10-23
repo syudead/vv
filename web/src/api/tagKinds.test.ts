@@ -25,6 +25,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 const kind = (id: number, name: string, tagCount = 0) => ({
   id,
   name,
+  cardFirst: false,
   tagCount,
   createdAt: "2026-01-01T00:00:00Z",
 });

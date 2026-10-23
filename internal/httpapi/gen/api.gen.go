@@ -714,6 +714,8 @@ const (
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
+	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
+	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
 	ErrorReasonVirtualVideo                  ErrorReason = "virtual_video"
 	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
@@ -907,6 +909,10 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonUsernameLength:
 		return true
+	case ErrorReasonVersionJudgingOff:
+		return true
+	case ErrorReasonVersionNotRejudgeable:
+		return true
 	case ErrorReasonVideoNotFound:
 		return true
 	case ErrorReasonVirtualVideo:
@@ -1070,22 +1076,22 @@ func (e FolderWatchProblem) Valid() bool {
 
 // Defines values for FolderWatchState.
 const (
-	Active   FolderWatchState = "active"
-	Limited  FolderWatchState = "limited"
-	Off      FolderWatchState = "off"
-	Starting FolderWatchState = "starting"
+	FolderWatchStateActive   FolderWatchState = "active"
+	FolderWatchStateLimited  FolderWatchState = "limited"
+	FolderWatchStateOff      FolderWatchState = "off"
+	FolderWatchStateStarting FolderWatchState = "starting"
 )
 
 // Valid indicates whether the value is a known member of the FolderWatchState enum.
 func (e FolderWatchState) Valid() bool {
 	switch e {
-	case Active:
+	case FolderWatchStateActive:
 		return true
-	case Limited:
+	case FolderWatchStateLimited:
 		return true
-	case Off:
+	case FolderWatchStateOff:
 		return true
-	case Starting:
+	case FolderWatchStateStarting:
 		return true
 	default:
 		return false
@@ -1185,6 +1191,63 @@ func (e LibrarySmartFolderWatchState) Valid() bool {
 	case LibrarySmartFolderWatchStateUnwatched:
 		return true
 	case LibrarySmartFolderWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoAudioTrackServiceType.
+const (
+	Commentary       MediaInfoAudioTrackServiceType = "commentary"
+	Dialogue         MediaInfoAudioTrackServiceType = "dialogue"
+	Effects          MediaInfoAudioTrackServiceType = "effects"
+	Emergency        MediaInfoAudioTrackServiceType = "emergency"
+	HearingImpaired  MediaInfoAudioTrackServiceType = "hearing_impaired"
+	Karaoke          MediaInfoAudioTrackServiceType = "karaoke"
+	Main             MediaInfoAudioTrackServiceType = "main"
+	VisuallyImpaired MediaInfoAudioTrackServiceType = "visually_impaired"
+	VoiceOver        MediaInfoAudioTrackServiceType = "voice_over"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoAudioTrackServiceType enum.
+func (e MediaInfoAudioTrackServiceType) Valid() bool {
+	switch e {
+	case Commentary:
+		return true
+	case Dialogue:
+		return true
+	case Effects:
+		return true
+	case Emergency:
+		return true
+	case HearingImpaired:
+		return true
+	case Karaoke:
+		return true
+	case Main:
+		return true
+	case VisuallyImpaired:
+		return true
+	case VoiceOver:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MediaInfoVideoColorRange.
+const (
+	MediaInfoVideoColorRangeFull    MediaInfoVideoColorRange = "full"
+	MediaInfoVideoColorRangeLimited MediaInfoVideoColorRange = "limited"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoVideoColorRange enum.
+func (e MediaInfoVideoColorRange) Valid() bool {
+	switch e {
+	case MediaInfoVideoColorRangeFull:
+		return true
+	case MediaInfoVideoColorRangeLimited:
 		return true
 	default:
 		return false
@@ -1698,27 +1761,6 @@ func (e SmartFolderItemKind) Valid() bool {
 	}
 }
 
-// Defines values for SmartRuleWatch.
-const (
-	SmartRuleWatchInProgress SmartRuleWatch = "inProgress"
-	SmartRuleWatchUnwatched  SmartRuleWatch = "unwatched"
-	SmartRuleWatchWatched    SmartRuleWatch = "watched"
-)
-
-// Valid indicates whether the value is a known member of the SmartRuleWatch enum.
-func (e SmartRuleWatch) Valid() bool {
-	switch e {
-	case SmartRuleWatchInProgress:
-		return true
-	case SmartRuleWatchUnwatched:
-		return true
-	case SmartRuleWatchWatched:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SmartRuleRefKind.
 const (
 	SmartRuleRefKindOrganization SmartRuleRefKind = "organization"
@@ -1953,6 +1995,111 @@ func (e ThumbnailEditState) Valid() bool {
 	case ThumbnailEditStateRunning:
 		return true
 	case ThumbnailEditStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionCandidateJudgementState.
+const (
+	VersionCandidateJudgementStateFailed       VersionCandidateJudgementState = "failed"
+	VersionCandidateJudgementStateHeld         VersionCandidateJudgementState = "held"
+	VersionCandidateJudgementStateNoConnection VersionCandidateJudgementState = "no_connection"
+	VersionCandidateJudgementStateRunning      VersionCandidateJudgementState = "running"
+	VersionCandidateJudgementStateUndecided    VersionCandidateJudgementState = "undecided"
+	VersionCandidateJudgementStateWaiting      VersionCandidateJudgementState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the VersionCandidateJudgementState enum.
+func (e VersionCandidateJudgementState) Valid() bool {
+	switch e {
+	case VersionCandidateJudgementStateFailed:
+		return true
+	case VersionCandidateJudgementStateHeld:
+		return true
+	case VersionCandidateJudgementStateNoConnection:
+		return true
+	case VersionCandidateJudgementStateRunning:
+		return true
+	case VersionCandidateJudgementStateUndecided:
+		return true
+	case VersionCandidateJudgementStateWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionJudgeEvidenceRule.
+const (
+	FramesDiffer VersionJudgeEvidenceRule = "frames_differ"
+	FramesMatch  VersionJudgeEvidenceRule = "frames_match"
+	Incomparable VersionJudgeEvidenceRule = "incomparable"
+)
+
+// Valid indicates whether the value is a known member of the VersionJudgeEvidenceRule enum.
+func (e VersionJudgeEvidenceRule) Valid() bool {
+	switch e {
+	case FramesDiffer:
+		return true
+	case FramesMatch:
+		return true
+	case Incomparable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionPropertySignalKind.
+const (
+	Chapters      VersionPropertySignalKind = "chapters"
+	Duration      VersionPropertySignalKind = "duration"
+	EmbeddedTitle VersionPropertySignalKind = "embedded_title"
+	RecordedAt    VersionPropertySignalKind = "recorded_at"
+)
+
+// Valid indicates whether the value is a known member of the VersionPropertySignalKind enum.
+func (e VersionPropertySignalKind) Valid() bool {
+	switch e {
+	case Chapters:
+		return true
+	case Duration:
+		return true
+	case EmbeddedTitle:
+		return true
+	case RecordedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionRepresentativeRecommendationReason.
+const (
+	Audio      VersionRepresentativeRecommendationReason = "audio"
+	AudioSync  VersionRepresentativeRecommendationReason = "audio_sync"
+	Bitrate    VersionRepresentativeRecommendationReason = "bitrate"
+	Older      VersionRepresentativeRecommendationReason = "older"
+	Playable   VersionRepresentativeRecommendationReason = "playable"
+	Resolution VersionRepresentativeRecommendationReason = "resolution"
+)
+
+// Valid indicates whether the value is a known member of the VersionRepresentativeRecommendationReason enum.
+func (e VersionRepresentativeRecommendationReason) Valid() bool {
+	switch e {
+	case Audio:
+		return true
+	case AudioSync:
+		return true
+	case Bitrate:
+		return true
+	case Older:
+		return true
+	case Playable:
+		return true
+	case Resolution:
 		return true
 	default:
 		return false
@@ -2232,30 +2379,6 @@ func (e VideoTagsAction) Valid() bool {
 	case Add:
 		return true
 	case Remove:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WatchFilter.
-const (
-	WatchFilterAll        WatchFilter = "all"
-	WatchFilterInProgress WatchFilter = "inProgress"
-	WatchFilterUnwatched  WatchFilter = "unwatched"
-	WatchFilterWatched    WatchFilter = "watched"
-)
-
-// Valid indicates whether the value is a known member of the WatchFilter enum.
-func (e WatchFilter) Valid() bool {
-	switch e {
-	case WatchFilterAll:
-		return true
-	case WatchFilterInProgress:
-		return true
-	case WatchFilterUnwatched:
-		return true
-	case WatchFilterWatched:
 		return true
 	default:
 		return false
@@ -2547,6 +2670,27 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
+// Defines values for ListPersonAppearancesParamsSort.
+const (
+	LeastSimilar ListPersonAppearancesParamsSort = "leastSimilar"
+	MostSimilar  ListPersonAppearancesParamsSort = "mostSimilar"
+	Newest       ListPersonAppearancesParamsSort = "newest"
+)
+
+// Valid indicates whether the value is a known member of the ListPersonAppearancesParamsSort enum.
+func (e ListPersonAppearancesParamsSort) Valid() bool {
+	switch e {
+	case LeastSimilar:
+		return true
+	case MostSimilar:
+		return true
+	case Newest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListVideosParamsKind.
 const (
 	ListVideosParamsKindAll     ListVideosParamsKind = "all"
@@ -2645,6 +2789,9 @@ type ActivityDetail struct {
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
 
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
@@ -2725,6 +2872,9 @@ type ActivityEntryFields struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -2825,6 +2975,9 @@ type ActivityListItem struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
 
 	// FaceLinks People a face_analysis record linked to its video as performers.
 	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
@@ -3416,14 +3569,23 @@ type ExternalId struct {
 type FaceAppearance struct {
 	AppearanceId int64 `json:"appearanceId"`
 
+	// Focus Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side.
+	Focus *FaceFocus `json:"focus,omitempty"`
+
 	// HasCrop True when getFaceAppearanceCrop has a face to return.
 	HasCrop bool `json:"hasCrop"`
+
+	// Similarity Cosine similarity, from -1 to 1, to the mean of the person's appearances of the same recognizer; absent when the appearance cannot be compared.
+	Similarity *float64 `json:"similarity,omitempty"`
 
 	// Spans When the person is on screen, in seconds, in order and without overlaps.
 	Spans []FaceAppearanceSpan `json:"spans"`
 
 	// Title The video's title: its override, else its first registered location's title, else the content key.
 	Title string `json:"title"`
+
+	// Unlike True when similarity is below its recognizer's face-candidate threshold, as unlike the person as a stranger usually is; absent otherwise.
+	Unlike *bool `json:"unlike,omitempty"`
 
 	// VideoId The video with the appearance's content key; absent when no video has it any more.
 	VideoId *int64 `json:"videoId,omitempty"`
@@ -3435,12 +3597,38 @@ type FaceAppearanceList struct {
 
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total Every appearance of the person that is not dropped, across all pages.
+	Total int `json:"total"`
+}
+
+// FaceAppearanceMove defines model for FaceAppearanceMove.
+type FaceAppearanceMove struct {
+	// Person One person.
+	Person Person `json:"person"`
+
+	// RestoreCredits Works whose performer credit of the moved-from person was removed because the target already held one.
+	RestoreCredits []FaceMoveCredit `json:"restoreCredits"`
+}
+
+// FaceAppearanceMoveRequest defines model for FaceAppearanceMoveRequest.
+type FaceAppearanceMoveRequest struct {
+	AppearanceIds []int64 `json:"appearanceIds"`
+
+	// RestoreCredits The restoreCredits of the move this request undoes.
+	RestoreCredits *[]FaceMoveCredit `json:"restoreCredits,omitempty"`
+	TargetId       int64             `json:"targetId"`
 }
 
 // FaceAppearanceSpan defines model for FaceAppearanceSpan.
 type FaceAppearanceSpan struct {
 	End   float64 `json:"end"`
 	Start float64 `json:"start"`
+}
+
+// FaceAppearanceSplitRequest defines model for FaceAppearanceSplitRequest.
+type FaceAppearanceSplitRequest struct {
+	AppearanceIds []int64 `json:"appearanceIds"`
 }
 
 // FaceCandidate One open pair, as the other person of it.
@@ -3450,6 +3638,15 @@ type FaceCandidate struct {
 
 	// Similarity The pair's highest face similarity when last computed, from 0 to 1.
 	Similarity float64 `json:"similarity"`
+}
+
+// FaceCandidateConfirmation defines model for FaceCandidateConfirmation.
+type FaceCandidateConfirmation struct {
+	// Person One person.
+	Person Person `json:"person"`
+
+	// UndoActivityId The face_merge entry that undoes the merge; absent when the merged person had a name or an external ID.
+	UndoActivityId *int64 `json:"undoActivityId,omitempty"`
 }
 
 // FaceCandidateList defines model for FaceCandidateList.
@@ -3467,6 +3664,23 @@ type FaceCandidatePerson struct {
 
 	// Provisional True for a person without a canonical name, whose name is then "".
 	Provisional bool `json:"provisional"`
+}
+
+// FaceFocus Where the face is in its longest track: the track's middle in seconds, and its mean centre and width as fractions of the frame side.
+type FaceFocus struct {
+	Time float64 `json:"time"`
+	W    float64 `json:"w"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
+// FaceMoveCredit defines model for FaceMoveCredit.
+type FaceMoveCredit struct {
+	// Position The position the credit had among the work's performers.
+	Position int `json:"position"`
+
+	// WorkKey An opaque key of the work.
+	WorkKey string `json:"workKey"`
 }
 
 // FaceRecognitionCounts Face analysis queue rows (content keys) by state.
@@ -3696,7 +3910,7 @@ type GroupItem struct {
 	Id   int64         `json:"id"`
 	Kind GroupItemKind `json:"kind"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3894,7 +4108,7 @@ type LibraryItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3983,6 +4197,9 @@ type MediaInfo struct {
 	// Chapters Chapters in start order, within video duration.
 	Chapters *[]MediaInfoChapter `json:"chapters,omitempty"`
 
+	// Container What the container says about the file as a whole.
+	Container *MediaInfoContainer `json:"container,omitempty"`
+
 	// Embedded Tags embedded in the file.
 	Embedded *MediaInfoEmbedded `json:"embedded,omitempty"`
 
@@ -3993,8 +4210,18 @@ type MediaInfo struct {
 	Video *MediaInfoVideo `json:"video,omitempty"`
 }
 
+// MediaInfoAttachment defines model for MediaInfoAttachment.
+type MediaInfoAttachment struct {
+	Bytes    *int64  `json:"bytes,omitempty"`
+	MimeType *string `json:"mimeType,omitempty"`
+	Name     *string `json:"name,omitempty"`
+}
+
 // MediaInfoAudioTrack defines model for MediaInfoAudioTrack.
 type MediaInfoAudioTrack struct {
+	BitDepth *int   `json:"bitDepth,omitempty"`
+	BitRate  *int64 `json:"bitRate,omitempty"`
+
 	// ChannelLayout Examples: stereo, 5.1
 	ChannelLayout *string `json:"channelLayout,omitempty"`
 	Channels      *int    `json:"channels,omitempty"`
@@ -4005,13 +4232,38 @@ type MediaInfoAudioTrack struct {
 	Codec   *string `json:"codec,omitempty"`
 	Default *bool   `json:"default,omitempty"`
 
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// ReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+	ReplayGain *MediaInfoReplayGain `json:"replayGain,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// SampleFormat Examples: fltp, s16, s32
+	SampleFormat *string `json:"sampleFormat,omitempty"`
+
+	// SampleRate Samples per second.
+	SampleRate  *int                            `json:"sampleRate,omitempty"`
+	ServiceType *MediaInfoAudioTrackServiceType `json:"serviceType,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
 }
+
+// MediaInfoAudioTrackServiceType defines model for MediaInfoAudioTrack.ServiceType.
+type MediaInfoAudioTrackServiceType string
 
 // MediaInfoBroadcast Broadcaster and program for a TS recording.
 type MediaInfoBroadcast struct {
@@ -4026,10 +4278,78 @@ type MediaInfoChapter struct {
 	Title   *string `json:"title,omitempty"`
 }
 
+// MediaInfoContainer What the container says about the file as a whole.
+type MediaInfoContainer struct {
+	// Attachments Attached files such as fonts, at most 64.
+	Attachments      *[]MediaInfoAttachment `json:"attachments,omitempty"`
+	CompatibleBrands *[]string              `json:"compatibleBrands,omitempty"`
+
+	// DataStreams Non-media streams such as GoPro telemetry, at most 64.
+	DataStreams *[]MediaInfoDataStream `json:"dataStreams,omitempty"`
+
+	// Encrypted A stream is encrypted (DRM).
+	Encrypted *bool `json:"encrypted,omitempty"`
+
+	// MajorBrand Examples: isom, qt
+	MajorBrand *string `json:"majorBrand,omitempty"`
+
+	// ProbeScore How sure ffprobe is of the format, out of 100.
+	ProbeScore *int `json:"probeScore,omitempty"`
+
+	// Sizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+	Sizes *MediaInfoSizes `json:"sizes,omitempty"`
+
+	// StartMs The container's start time.
+	StartMs *int64 `json:"startMs,omitempty"`
+}
+
+// MediaInfoContentLight HDR content light levels in cd/m².
+type MediaInfoContentLight struct {
+	// MaxAverage MaxFALL.
+	MaxAverage *int `json:"maxAverage,omitempty"`
+
+	// MaxContent MaxCLL.
+	MaxContent *int `json:"maxContent,omitempty"`
+}
+
+// MediaInfoCrop Cropping the container records, in pixels from each edge.
+type MediaInfoCrop struct {
+	Bottom *int `json:"bottom,omitempty"`
+	Left   *int `json:"left,omitempty"`
+	Right  *int `json:"right,omitempty"`
+	Top    *int `json:"top,omitempty"`
+}
+
+// MediaInfoDataStream defines model for MediaInfoDataStream.
+type MediaInfoDataStream struct {
+	// Codec Examples: gpmd, tmcd
+	Codec   *string `json:"codec,omitempty"`
+	Handler *string `json:"handler,omitempty"`
+	Index   int     `json:"index"`
+}
+
+// MediaInfoDolbyVision defines model for MediaInfoDolbyVision.
+type MediaInfoDolbyVision struct {
+	// Compatibility dv_bl_signal_compatibility_id: what a player without Dolby Vision shows (1 HDR10, 2 SDR, 4 HLG).
+	Compatibility *int `json:"compatibility,omitempty"`
+	Level         *int `json:"level,omitempty"`
+	Profile       int  `json:"profile"`
+}
+
 // MediaInfoEmbedded Tags embedded in the file.
 type MediaInfoEmbedded struct {
-	Author  *string `json:"author,omitempty"`
-	Comment *string `json:"comment,omitempty"`
+	Album       *string `json:"album,omitempty"`
+	AlbumArtist *string `json:"albumArtist,omitempty"`
+	Author      *string `json:"author,omitempty"`
+
+	// CaptureFrameRate The phone's capture rate; above the playback rate means slow motion.
+	CaptureFrameRate *float64 `json:"captureFrameRate,omitempty"`
+
+	// CaptureSoftware The phone camera's software version.
+	CaptureSoftware *string `json:"captureSoftware,omitempty"`
+	Comment         *string `json:"comment,omitempty"`
+	Composer        *string `json:"composer,omitempty"`
+	Copyright       *string `json:"copyright,omitempty"`
 
 	// CoverArt True when the file contains an attached picture.
 	CoverArt *bool `json:"coverArt,omitempty"`
@@ -4039,15 +4359,32 @@ type MediaInfoEmbedded struct {
 	Description *string `json:"description,omitempty"`
 
 	// Device Manufacturer and model.
-	Device *string `json:"device,omitempty"`
-	Genre  *string `json:"genre,omitempty"`
+	Device    *string `json:"device,omitempty"`
+	EncodedBy *string `json:"encodedBy,omitempty"`
+
+	// Encoder Software that wrote the file.
+	Encoder  *string `json:"encoder,omitempty"`
+	Episode  *string `json:"episode,omitempty"`
+	Genre    *string `json:"genre,omitempty"`
+	Keywords *string `json:"keywords,omitempty"`
 
 	// Location Capture location in degrees, with altitude in meters.
 	Location *MediaInfoLocation `json:"location,omitempty"`
 
+	// Network Broadcaster or distributor tag.
+	Network   *string `json:"network,omitempty"`
+	Publisher *string `json:"publisher,omitempty"`
+	Rating    *string `json:"rating,omitempty"`
+
 	// RecordedAt Capture timestamp, preserving the file's timezone offset when present.
 	RecordedAt *time.Time `json:"recordedAt,omitempty"`
-	Title      *string    `json:"title,omitempty"`
+	Season     *string    `json:"season,omitempty"`
+	Show       *string    `json:"show,omitempty"`
+
+	// SourceUrl Where a download tool fetched the file from.
+	SourceUrl *string `json:"sourceUrl,omitempty"`
+	Synopsis  *string `json:"synopsis,omitempty"`
+	Title     *string `json:"title,omitempty"`
 }
 
 // MediaInfoLocation Capture location in degrees, with altitude in meters.
@@ -4057,22 +4394,100 @@ type MediaInfoLocation struct {
 	Longitude float64  `json:"longitude"`
 }
 
+// MediaInfoMasteringDisplay HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+type MediaInfoMasteringDisplay struct {
+	BlueX        *float64 `json:"blueX,omitempty"`
+	BlueY        *float64 `json:"blueY,omitempty"`
+	GreenX       *float64 `json:"greenX,omitempty"`
+	GreenY       *float64 `json:"greenY,omitempty"`
+	MaxLuminance *float64 `json:"maxLuminance,omitempty"`
+	MinLuminance *float64 `json:"minLuminance,omitempty"`
+	RedX         *float64 `json:"redX,omitempty"`
+	RedY         *float64 `json:"redY,omitempty"`
+	WhiteX       *float64 `json:"whiteX,omitempty"`
+	WhiteY       *float64 `json:"whiteY,omitempty"`
+}
+
+// MediaInfoReplayGain ReplayGain tags as the file writes them, such as -6.50 dB.
+type MediaInfoReplayGain struct {
+	AlbumGain *string `json:"albumGain,omitempty"`
+	AlbumPeak *string `json:"albumPeak,omitempty"`
+	TrackGain *string `json:"trackGain,omitempty"`
+	TrackPeak *string `json:"trackPeak,omitempty"`
+}
+
+// MediaInfoSizes The file's bytes by stream kind, from header bit rates or Matroska statistics tags. A kind is absent unless every stream of it is known; otherBytes (container overhead, attachments, data, cover art) only when video, audio and subtitles all are.
+type MediaInfoSizes struct {
+	AudioBytes    *int64 `json:"audioBytes,omitempty"`
+	OtherBytes    *int64 `json:"otherBytes,omitempty"`
+	SubtitleBytes *int64 `json:"subtitleBytes,omitempty"`
+	TotalBytes    *int64 `json:"totalBytes,omitempty"`
+	VideoBytes    *int64 `json:"videoBytes,omitempty"`
+}
+
+// MediaInfoStreamOrigin What the writing tool or device recorded on the stream.
+type MediaInfoStreamOrigin struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	Encoder   *string    `json:"encoder,omitempty"`
+
+	// Handler Examples: VideoHandler, Core Media Audio
+	Handler *string `json:"handler,omitempty"`
+
+	// Timecode Examples: 01:00:00:00
+	Timecode *string `json:"timecode,omitempty"`
+
+	// Vendor Vendor fourcc, such as appl.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
 // MediaInfoSubtitleTrack defines model for MediaInfoSubtitleTrack.
 type MediaInfoSubtitleTrack struct {
 	// Codec ffprobe codec_name.
 	//
 	// Examples: subrip, arib_caption
-	Codec           *string `json:"codec,omitempty"`
-	Default         *bool   `json:"default,omitempty"`
-	Forced          *bool   `json:"forced,omitempty"`
-	HearingImpaired *bool   `json:"hearingImpaired,omitempty"`
+	Codec   *string `json:"codec,omitempty"`
+	Default *bool   `json:"default,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs      *int64 `json:"durationMs,omitempty"`
+	Forced          *bool  `json:"forced,omitempty"`
+	HearingImpaired *bool  `json:"hearingImpaired,omitempty"`
 
 	// Index Stream index within the file.
 	Index int `json:"index"`
 
 	// Language File language tag; und is omitted.
 	Language *string `json:"language,omitempty"`
-	Title    *string `json:"title,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// Roles Purposes the file flags on the track; only true flags are present.
+	Roles *MediaInfoTrackRoles `json:"roles,omitempty"`
+
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64  `json:"startMs,omitempty"`
+	Title   *string `json:"title,omitempty"`
+}
+
+// MediaInfoTrackRoles Purposes the file flags on the track; only true flags are present.
+type MediaInfoTrackRoles struct {
+	Captions *bool `json:"captions,omitempty"`
+
+	// CleanEffects Effects only, without dialogue.
+	CleanEffects *bool `json:"cleanEffects,omitempty"`
+
+	// Comment Commentary.
+	Comment         *bool `json:"comment,omitempty"`
+	Descriptions    *bool `json:"descriptions,omitempty"`
+	Dub             *bool `json:"dub,omitempty"`
+	HearingImpaired *bool `json:"hearingImpaired,omitempty"`
+	Karaoke         *bool `json:"karaoke,omitempty"`
+	Lyrics          *bool `json:"lyrics,omitempty"`
+	Original        *bool `json:"original,omitempty"`
+
+	// VisualImpaired Audio description for visually impaired viewers.
+	VisualImpaired *bool `json:"visualImpaired,omitempty"`
 }
 
 // MediaInfoVideo Video-stream metadata; hdr is always included when a video stream exists.
@@ -4083,22 +4498,87 @@ type MediaInfoVideo struct {
 	// BitRate Video-stream bits per second.
 	BitRate *int64 `json:"bitRate,omitempty"`
 
+	// BitsPerPixel bitRate per pixel per frame; a higher value at the same codec and resolution means a larger, less compressed encode.
+	BitsPerPixel *float64 `json:"bitsPerPixel,omitempty"`
+
+	// ChromaSubsampling Examples: 4:2:0, 4:2:2, 4:4:4
+	ChromaSubsampling *string `json:"chromaSubsampling,omitempty"`
+
 	// ClosedCaptions True when the video stream carries closed captions.
 	ClosedCaptions *bool `json:"closedCaptions,omitempty"`
+
+	// CodecString RFC 6381 codecs value, such as avc1.64001f.
+	CodecString *string `json:"codecString,omitempty"`
+
+	// CodecTag Container fourcc, such as hvc1 or hev1.
+	CodecTag   *string                   `json:"codecTag,omitempty"`
+	ColorRange *MediaInfoVideoColorRange `json:"colorRange,omitempty"`
+
+	// ContentLight HDR content light levels in cd/m².
+	ContentLight *MediaInfoContentLight `json:"contentLight,omitempty"`
+
+	// Crop Cropping the container records, in pixels from each edge.
+	Crop        *MediaInfoCrop        `json:"crop,omitempty"`
+	DolbyVision *MediaInfoDolbyVision `json:"dolbyVision,omitempty"`
+
+	// DurationMs The stream's own length; one much shorter or longer than the others suggests drifting sync.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// FilmGrain AV1 only: whether the stream asks the player to synthesize film grain; absent when unknown.
+	FilmGrain *bool `json:"filmGrain,omitempty"`
+
+	// FrameCount Frame count the header records.
+	FrameCount *int64 `json:"frameCount,omitempty"`
 
 	// FrameRate Frames per second from avg_frame_rate.
 	FrameRate *float64          `json:"frameRate,omitempty"`
 	Hdr       MediaInfoVideoHdr `json:"hdr"`
 
+	// Hdr10Plus The container carries HDR10+ dynamic metadata.
+	Hdr10Plus *bool `json:"hdr10Plus,omitempty"`
+
 	// Interlaced Included only when the file identifies progressive or interlaced scanning.
 	Interlaced *bool `json:"interlaced,omitempty"`
+
+	// Level Codec level as ffprobe reports it (H.264 41 is level 4.1).
+	Level *int `json:"level,omitempty"`
+
+	// Mastering HDR mastering display: CIE 1931 xy chromaticities and luminance in cd/m².
+	Mastering *MediaInfoMasteringDisplay `json:"mastering,omitempty"`
+
+	// MaxBitRate Maximum bits per second the header records.
+	MaxBitRate *int64 `json:"maxBitRate,omitempty"`
+
+	// Mirrored The display matrix mirrors the picture; a vertical flip is a mirror with a 180-degree rotation.
+	Mirrored *bool `json:"mirrored,omitempty"`
+
+	// MultiLayer The stream has more than one layer, as MV-HEVC stereoscopic video does.
+	MultiLayer *bool `json:"multiLayer,omitempty"`
+
+	// Origin What the writing tool or device recorded on the stream.
+	Origin *MediaInfoStreamOrigin `json:"origin,omitempty"`
+
+	// PixelFormat Examples: yuv420p, yuv420p10le
+	PixelFormat *string `json:"pixelFormat,omitempty"`
+
+	// Profile Examples: High, Main 10
+	Profile *string `json:"profile,omitempty"`
 
 	// Projection 360-degree projection using ffprobe names such as equirectangular or cubemap.
 	Projection *string `json:"projection,omitempty"`
 
+	// StartMs The stream's start in the file's timeline; a later audio start than video start means the audio begins late.
+	StartMs *int64 `json:"startMs,omitempty"`
+
 	// Stereo3d 3D layout using ffprobe names such as side by side or top and bottom.
 	Stereo3d *string `json:"stereo3d,omitempty"`
+
+	// VariableFrameRate A header estimate: the average frame rate differs from the base rate by more than 1%.
+	VariableFrameRate *bool `json:"variableFrameRate,omitempty"`
 }
+
+// MediaInfoVideoColorRange defines model for MediaInfoVideo.ColorRange.
+type MediaInfoVideoColorRange string
 
 // MediaInfoVideoHdr defines model for MediaInfoVideo.Hdr.
 type MediaInfoVideoHdr string
@@ -4527,7 +5007,7 @@ type PlaylistItem struct {
 	// SmartFolder Smart-folder card fields match LibraryGroup semantics. getSmartFolder uses playback order; listSmartFolderCards aggregates matching videos. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	SmartFolder *LibrarySmartFolder `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -4616,7 +5096,7 @@ type PlaylistStep struct {
 	// SmartFolderId Folder ID only for smart-folder items, absent for video/group items; the video page adds smartFolder to the destination URL.
 	SmartFolderId *int64 `json:"smartFolderId,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video Video `json:"video"`
 }
 
@@ -4915,6 +5395,29 @@ type SetupRequest struct {
 	Username string `json:"username"`
 }
 
+// SimilarPerson defines model for SimilarPerson.
+type SimilarPerson struct {
+	// FaceCount The person's appearances that are not dropped.
+	FaceCount int `json:"faceCount"`
+
+	// FirstSeenTitle The title of the video of the person's first appearance; absent without appearances.
+	FirstSeenTitle *string `json:"firstSeenTitle,omitempty"`
+
+	// Person One person.
+	Person Person `json:"person"`
+
+	// SampleAppearanceIds Up to four of the person's appearances with a crop, latest first.
+	SampleAppearanceIds []int64 `json:"sampleAppearanceIds"`
+
+	// Similarity Cosine similarity, from -1 to 1, of the compared faces to the person.
+	Similarity float64 `json:"similarity"`
+}
+
+// SimilarPersonList defines model for SimilarPersonList.
+type SimilarPersonList struct {
+	Items []SimilarPerson `json:"items"`
+}
+
 // SkippedPersonReason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
 type SkippedPersonReason string
 
@@ -5028,7 +5531,7 @@ type SmartFolderItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -5074,26 +5577,14 @@ type SmartFolderSummary struct {
 
 // SmartRule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
 type SmartRule struct {
-	// AddedWithin Days since addition.
-	AddedWithin *int `json:"addedWithin,omitempty"`
-
 	// Favorite Restrict to favorite videos.
 	Favorite *bool `json:"favorite,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds.
-	MaxDuration *int `json:"maxDuration,omitempty"`
-
-	// MinDuration Inclusive minimum duration in seconds; at most maxDuration.
-	MinDuration *int `json:"minDuration,omitempty"`
 
 	// Organization Organization IDs linked in any role.
 	Organization *int64 `json:"organization,omitempty"`
 
 	// Person Person IDs linked in any role.
 	Person *int64 `json:"person,omitempty"`
-
-	// Playable Restrict to browser-playable videos.
-	Playable *bool `json:"playable,omitempty"`
 
 	// Q Search input matched with owner semantics.
 	Q *string `json:"q,omitempty"`
@@ -5103,13 +5594,7 @@ type SmartRule struct {
 
 	// Tags Distinct tag IDs that every matching video must carry.
 	Tags *[]int64 `json:"tags,omitempty"`
-
-	// Watch Watch state.
-	Watch *SmartRuleWatch `json:"watch,omitempty"`
 }
-
-// SmartRuleWatch Watch state.
-type SmartRuleWatch string
 
 // SmartRuleRef Entities referenced by filters that no longer exist.
 type SmartRuleRef struct {
@@ -5254,6 +5739,9 @@ type TagInput struct {
 
 // TagKind One kind-list entry.
 type TagKind struct {
+	// CardFirst Whether video cards list this kind's tags before other tags, in natural kind-name order and then natural tag-name order. New kinds start false.
+	CardFirst bool `json:"cardFirst"`
+
 	// CreatedAt Kind creation timestamp with second precision.
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
@@ -5261,6 +5749,11 @@ type TagKind struct {
 
 	// TagCount Number of tags of this kind, including tentative tags.
 	TagCount int `json:"tagCount"`
+}
+
+// TagKindCardFirstRequest defines model for TagKindCardFirstRequest.
+type TagKindCardFirstRequest struct {
+	CardFirst bool `json:"cardFirst"`
 }
 
 // TagKindList defines model for TagKindList.
@@ -5274,10 +5767,12 @@ type TagKindNameRequest struct {
 	Name string `json:"name"`
 }
 
-// TagKindRef Tag kind ID and name.
+// TagKindRef Tag kind ID, name and card order flag.
 type TagKindRef struct {
-	Id   int64  `json:"id"`
-	Name string `json:"name"`
+	// CardFirst Cards list this kind's tags before other tags; see TagKind.cardFirst.
+	CardFirst bool   `json:"cardFirst"`
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
 }
 
 // TagList defines model for TagList.
@@ -5520,6 +6015,12 @@ type VersionCandidate struct {
 	// Distance Median Hamming distance between video fingerprints; lower means more similar.
 	Distance int `json:"distance"`
 
+	// Judgement The automatic judgement of a listed pair.
+	Judgement VersionCandidateJudgement `json:"judgement"`
+
+	// Recommendation The video whose file is the better representative, judged from the files alone.
+	Recommendation VersionRepresentativeRecommendation `json:"recommendation"`
+
 	// Videos Two videos in ID ascending order, each shaped like GET /api/videos/{id}.
 	Videos []Video `json:"videos"`
 }
@@ -5530,14 +6031,95 @@ type VersionCandidateDismissRequest struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
+// VersionCandidateJudgement The automatic judgement of a listed pair.
+type VersionCandidateJudgement struct {
+	// ActivityId The pair's version_judgement record; absent when none was opened, as while judging is off.
+	ActivityId *int64 `json:"activityId,omitempty"`
+
+	// Error Why the last attempt failed.
+	Error *string `json:"error,omitempty"`
+
+	// Evidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+	Evidence *VersionJudgeEvidence `json:"evidence,omitempty"`
+
+	// LeftVideoId The video whose frames are on the left of the evidence images and whose times are evidence's aMs.
+	LeftVideoId int64 `json:"leftVideoId"`
+
+	// Probability The classifier's answer for an undecided pair; absent when the rule decided.
+	Probability *float64 `json:"probability,omitempty"`
+
+	// RetryAt Next automatic retry of a failed pair.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// State held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+	State VersionCandidateJudgementState `json:"state"`
+}
+
+// VersionCandidateJudgementState held is a pair automatic judging skips because the owner unbundled it or undid its automatic dismissal. undecided, failed and no_connection can be sent back with POST /api/version-candidates/rejudge.
+type VersionCandidateJudgementState string
+
 // VersionCandidatePage defines model for VersionCandidatePage.
 type VersionCandidatePage struct {
 	// Items Newest first, at most 200 pairs.
 	Items []VersionCandidate `json:"items"`
 
+	// Judging Whether duplicate judging is on, which a rejudge needs.
+	Judging bool `json:"judging"`
+
 	// Total Total candidate count.
 	Total int `json:"total"`
 }
+
+// VersionEvidenceFrame defines model for VersionEvidenceFrame.
+type VersionEvidenceFrame struct {
+	// AMs Frame time in the left video.
+	AMs int64 `json:"aMs"`
+
+	// BMs Frame time in the right video.
+	BMs int64 `json:"bMs"`
+
+	// Distance Hamming distance between the two frames' hashes; over 12 differs.
+	Distance int `json:"distance"`
+}
+
+// VersionJudgeEvidence Why the latest automatic judgement reached its result. See docs/design-docs/duplicate-judging.md.
+type VersionJudgeEvidence struct {
+	// ByProperties The properties decided the result, or held a different answer they contradict for the owner.
+	ByProperties *bool `json:"byProperties,omitempty"`
+
+	// Compared Frame pairs compared by time, flat frames skipped.
+	Compared int `json:"compared"`
+
+	// Conflict The judgement found the same video, but a video on one side is marked different from one on the other side, so the pair was left undecided.
+	Conflict *bool `json:"conflict,omitempty"`
+
+	// Differing Compared pairs whose pictures differ.
+	Differing int `json:"differing"`
+
+	// Frames The frame pairs shown to the classifier, in time order; GET /api/activity/{id}/judgement-frames/{index} returns each image.
+	Frames *[]VersionEvidenceFrame `json:"frames,omitempty"`
+
+	// LongestRun Pairs in the longest run of consecutive differing pairs; absent without such a run.
+	LongestRun *int `json:"longestRun,omitempty"`
+
+	// Properties Properties both files have, read at import: chapters, recording time, embedded title and duration.
+	Properties *[]VersionPropertySignal `json:"properties,omitempty"`
+
+	// Rule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+	Rule VersionJudgeEvidenceRule `json:"rule"`
+
+	// RunEndMs End of that run on the left video's timeline.
+	RunEndMs *int64 `json:"runEndMs,omitempty"`
+
+	// RunStartMs Start of that run on the left video's timeline.
+	RunStartMs *int64 `json:"runStartMs,omitempty"`
+
+	// VersionMismatch The fingerprints were made by different fingerprint versions, so the frames could not be compared.
+	VersionMismatch *bool `json:"versionMismatch,omitempty"`
+}
+
+// VersionJudgeEvidenceRule frames_match decided same without the classifier; frames_differ asked the classifier about frames; incomparable left the pair to the owner.
+type VersionJudgeEvidenceRule string
 
 // VersionJudgingSettings Automatic duplicate-judging enablement
 type VersionJudgingSettings struct {
@@ -5545,12 +6127,47 @@ type VersionJudgingSettings struct {
 	Enabled bool `json:"enabled"`
 }
 
-// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+// VersionPropertySignal defines model for VersionPropertySignal.
+type VersionPropertySignal struct {
+	// A The left video's value: a chapter count, a time, a title or milliseconds.
+	A string `json:"a"`
+
+	// B The right video's value.
+	B string `json:"b"`
+
+	// Counts Counted towards the verdict; a duration and a disagreeing value are shown only.
+	Counts *bool                     `json:"counts,omitempty"`
+	Kind   VersionPropertySignalKind `json:"kind"`
+
+	// Same The two values agree: matching chapter starts, equal times or titles, or durations within a second.
+	Same bool `json:"same"`
+
+	// Strong Decides a pair on its own: titled chapters at matching starts, or an equal recording time.
+	Strong *bool `json:"strong,omitempty"`
+}
+
+// VersionPropertySignalKind defines model for VersionPropertySignal.Kind.
+type VersionPropertySignalKind string
+
+// VersionRepresentativeRecommendation The video whose file is the better representative, judged from the files alone.
+type VersionRepresentativeRecommendation struct {
+	// Reason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+	Reason  VersionRepresentativeRecommendationReason `json:"reason"`
+	VideoId int64                                     `json:"videoId"`
+}
+
+// VersionRepresentativeRecommendationReason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
+type VersionRepresentativeRecommendationReason string
+
+// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
 	// AudioCodec Examples: aac, opus
 	AudioCodec *string `json:"audioCodec,omitempty"`
+
+	// CardCredits Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests.
+	CardCredits *VideoCardCredits `json:"cardCredits,omitempty"`
 
 	// Container Examples: mp4, webm, mkv
 	Container *string `json:"container,omitempty"`
@@ -5683,6 +6300,18 @@ type VideoBundleRequest struct {
 
 	// VideoIds Videos to bundle: at least two distinct IDs, with duplicates counted once.
 	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoCardCredits Card subset of WorkInfo; see docs/design-docs/library-ui.md, Cards.
+type VideoCardCredits struct {
+	// Code Product code; omitted when unset.
+	Code *string `json:"code,omitempty"`
+
+	// Organization The first label, otherwise the first maker; omitted when the work has neither.
+	Organization *CreditRef `json:"organization,omitempty"`
+
+	// Performers Performer credits in work-information order; [] when none.
+	Performers []WorkPerson `json:"performers"`
 }
 
 // VideoChanged defines model for VideoChanged.
@@ -5859,7 +6488,7 @@ type VideoPage struct {
 	// NextCursor Next-page cursor; omitted when no more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Total after applying query, watch, playable and listFolderVideos scope, independent of pagination.
+	// Total Total after applying query, favorite and listFolderVideos scope, independent of pagination.
 	Total int `json:"total"`
 }
 
@@ -6018,9 +6647,6 @@ type VirtualVideoMerge struct {
 	VideoId int64 `json:"videoId"`
 }
 
-// WatchFilter Watch filter: all, unwatched, inProgress or watched.
-type WatchFilter string
-
 // WatchHistoryDates defines model for WatchHistoryDates.
 type WatchHistoryDates struct {
 	// Days Days with matching entries, newest first; empty if none.
@@ -6038,7 +6664,7 @@ type WatchHistoryEntry struct {
 	// Title Title snapshot at playback start, possibly empty; displayed when video is absent.
 	Title string `json:"title"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -6154,7 +6780,7 @@ type WorkInfoFetchApplied struct {
 	// SkippedTags Unattached tag names in fetched-result order.
 	SkippedTags []SkippedTag `json:"skippedTags"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video Video `json:"video"`
 }
 
@@ -6417,9 +7043,6 @@ type APITokenId = int64
 // ActivityId defines model for ActivityId.
 type ActivityId = int64
 
-// AddedWithinFilter defines model for AddedWithinFilter.
-type AddedWithinFilter = int
-
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -6453,14 +7076,8 @@ type GroupId = int64
 // GroupItemId defines model for GroupItemId.
 type GroupItemId = int64
 
-// MaxDurationFilter defines model for MaxDurationFilter.
-type MaxDurationFilter = int
-
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
-
-// MinDurationFilter defines model for MinDurationFilter.
-type MinDurationFilter = int
 
 // OrganizationFilter defines model for OrganizationFilter.
 type OrganizationFilter = int64
@@ -6608,12 +7225,6 @@ type ListFolderVideosParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
-
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
@@ -6644,14 +7255,8 @@ type ListGroupsParams struct {
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -6668,14 +7273,8 @@ type GetGroupParams struct {
 
 // ListGroupItemsParams defines parameters for ListGroupItems.
 type ListGroupItemsParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -6697,12 +7296,6 @@ type ListGroupItemsParams struct {
 type ListLibraryParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
-
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -6727,15 +7320,6 @@ type ListLibraryParams struct {
 
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
-
-	// AddedWithin Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests.
-	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
-
-	// MinDuration Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests.
-	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds; follows minDuration semantics
-	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
@@ -6790,6 +7374,9 @@ type ListPeopleParams struct {
 
 // ListPersonAppearancesParams defines parameters for ListPersonAppearances.
 type ListPersonAppearancesParams struct {
+	// Sort newest (default), leastSimilar or mostSimilar
+	Sort *ListPersonAppearancesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
 	// Cursor Opaque nextCursor from the previous response; ignored without limit
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -6797,10 +7384,22 @@ type ListPersonAppearancesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListPersonAppearancesParamsSort defines parameters for ListPersonAppearances.
+type ListPersonAppearancesParamsSort string
+
 // GetPersonImageParams defines parameters for GetPersonImage.
 type GetPersonImageParams struct {
 	// V imageRevision from Person or WorkPerson; ignored by the server
 	V *string `form:"v,omitempty" json:"v,omitempty"`
+}
+
+// ListSimilarPeopleParams defines parameters for ListSimilarPeople.
+type ListSimilarPeopleParams struct {
+	// AppearanceId Appearances of the person to compare; repeat for several
+	AppearanceId *[]int64 `form:"appearanceId,omitempty" json:"appearanceId,omitempty"`
+
+	// Limit At most this many people; default 8
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListPlaylistsParams defines parameters for ListPlaylists.
@@ -6841,14 +7440,8 @@ type ListSmartFolderCardsParams struct {
 
 // GetSmartFolderParams defines parameters for GetSmartFolder.
 type GetSmartFolderParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -6865,14 +7458,8 @@ type GetSmartFolderParams struct {
 
 // ListSmartFolderItemsParams defines parameters for ListSmartFolderItems.
 type ListSmartFolderItemsParams struct {
-	// Watch Temporary list watch; omitted sort keeps the saved order.
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
 	// Sort Temporary list sort; omitted sort keeps the saved order.
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Playable Temporary playable-only filter; does not change saved settings.
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite Temporary favorite-only filter; does not change saved settings.
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
@@ -6940,12 +7527,6 @@ type ListVideosParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
-	// Watch Watch-state filter; `all` disables it
-	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-
-	// Playable Restrict to videos playable directly in the browser
-	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
-
 	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
@@ -6973,15 +7554,6 @@ type ListVideosParams struct {
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 
-	// AddedWithin Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests.
-	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
-
-	// MinDuration Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests.
-	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds; follows minDuration semantics
-	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
-
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 
@@ -7005,6 +7577,11 @@ type GetVideoParams struct {
 
 	// SmartFolder Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored.
 	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
+}
+
+// GetVideoFrameParams defines parameters for GetVideoFrame.
+type GetVideoFrameParams struct {
+	PositionMs int64 `form:"positionMs" json:"positionMs"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -7213,6 +7790,12 @@ type CreatePersonJSONRequestBody = CreditInput
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = CreditPatch
 
+// MoveFaceAppearancesJSONRequestBody defines body for MoveFaceAppearances for application/json ContentType.
+type MoveFaceAppearancesJSONRequestBody = FaceAppearanceMoveRequest
+
+// SplitFaceAppearancesJSONRequestBody defines body for SplitFaceAppearances for application/json ContentType.
+type SplitFaceAppearancesJSONRequestBody = FaceAppearanceSplitRequest
+
 // UploadPersonImageMultipartRequestBody defines body for UploadPersonImage for multipart/form-data ContentType.
 type UploadPersonImageMultipartRequestBody = UploadPersonImageRequest
 
@@ -7282,6 +7865,9 @@ type CreateTagKindJSONRequestBody = TagKindNameRequest
 // RenameTagKindJSONRequestBody defines body for RenameTagKind for application/json ContentType.
 type RenameTagKindJSONRequestBody = TagKindNameRequest
 
+// SetTagKindCardFirstJSONRequestBody defines body for SetTagKindCardFirst for application/json ContentType.
+type SetTagKindCardFirstJSONRequestBody = TagKindCardFirstRequest
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -7305,6 +7891,9 @@ type RunThumbnailEditMultipartRequestBody = RunThumbnailEditRequest
 
 // DismissVersionCandidateJSONRequestBody defines body for DismissVersionCandidate for application/json ContentType.
 type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
+
+// RejudgeVersionCandidateJSONRequestBody defines body for RejudgeVersionCandidate for application/json ContentType.
+type RejudgeVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
@@ -7383,6 +7972,9 @@ type ServerInterface interface {
 	// GetActivity Read one activity record with its details
 	// (GET /api/activity/{id})
 	GetActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
+	// GetActivityJudgementFrame Return a frame pair a duplicate judgement showed the classifier
+	// (GET /api/activity/{id}/judgement-frames/{index})
+	GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request, id ActivityId, index int)
 	// RetryActivity Retry an activity operation
 	// (POST /api/activity/{id}/retry)
 	RetryActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
@@ -7566,6 +8158,12 @@ type ServerInterface interface {
 	// ListPersonAppearances List a person's face appearances
 	// (GET /api/people/{id}/appearances)
 	ListPersonAppearances(w http.ResponseWriter, r *http.Request, id PersonId, params ListPersonAppearancesParams)
+	// MoveFaceAppearances Move face appearances to another person
+	// (POST /api/people/{id}/appearances/move)
+	MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id PersonId)
+	// SplitFaceAppearances Split several face appearances into one new person
+	// (POST /api/people/{id}/appearances/split)
+	SplitFaceAppearances(w http.ResponseWriter, r *http.Request, id PersonId)
 	// SplitFaceAppearance Split a face appearance into a new person
 	// (POST /api/people/{id}/appearances/{appearanceId}/split)
 	SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id PersonId, appearanceId FaceAppearanceId)
@@ -7578,6 +8176,9 @@ type ServerInterface interface {
 	// DismissFaceCandidate Dismiss a face candidate pair
 	// (POST /api/people/{id}/face-candidates/{otherId}/dismiss)
 	DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
+	// ReopenFaceCandidate Take back the dismissal of a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/reopen)
+	ReopenFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
 	// DeletePersonImage Remove a person's face
 	// (DELETE /api/people/{id}/image)
 	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -7599,6 +8200,9 @@ type ServerInterface interface {
 	// GetPersonPluginFetchImage Return one of a person fetch's images
 	// (GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index})
 	GetPersonPluginFetchImage(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId, index int)
+	// ListSimilarPeople List people whose faces look like some of a person's faces
+	// (GET /api/people/{id}/similar-people)
+	ListSimilarPeople(w http.ResponseWriter, r *http.Request, id PersonId, params ListSimilarPeopleParams)
 	// ListPlaylists List playlists by most recently updated
 	// (GET /api/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
@@ -7731,6 +8335,9 @@ type ServerInterface interface {
 	// RenameTagKind Rename a tag kind
 	// (PATCH /api/tag-kinds/{id})
 	RenameTagKind(w http.ResponseWriter, r *http.Request, id TagKindId)
+	// SetTagKindCardFirst Set whether cards list a kind's tags first
+	// (PUT /api/tag-kinds/{id}/card-first)
+	SetTagKindCardFirst(w http.ResponseWriter, r *http.Request, id TagKindId)
 	// ListTags List tags
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
@@ -7800,6 +8407,9 @@ type ServerInterface interface {
 	// DismissVersionCandidate Record two videos as different
 	// (POST /api/version-candidates/dismiss)
 	DismissVersionCandidate(w http.ResponseWriter, r *http.Request)
+	// RejudgeVersionCandidate Judge a possible duplicate again
+	// (POST /api/version-candidates/rejudge)
+	RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request)
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
@@ -7836,6 +8446,9 @@ type ServerInterface interface {
 	// SetVideoDisplayName Set or clear the video display name
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetVideoFrame Return a frame of the video
+	// (GET /api/videos/{id}/frame)
+	GetVideoFrame(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoFrameParams)
 	// ListVideoGroupMembers Return a range of group members
 	// (GET /api/videos/{id}/group-members)
 	ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id VideoId, params ListVideoGroupMembersParams)
@@ -8107,6 +8720,41 @@ func (siw *ServerInterfaceWrapper) GetActivity(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetActivityJudgementFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetActivityJudgementFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetActivityJudgementFrame(w, r, id, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8609,32 +9257,6 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "favorite" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -8828,19 +9450,6 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetGroupParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8850,19 +9459,6 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -8974,19 +9570,6 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListGroupItemsParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8996,19 +9579,6 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -9238,32 +9808,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "favorite" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
@@ -9364,45 +9908,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "addedWithin" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "minDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "maxDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}
@@ -10105,6 +10610,19 @@ func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListPersonAppearancesParams
 
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "cursor" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -10133,6 +10651,58 @@ func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPersonAppearances(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveFaceAppearances operation middleware
+func (siw *ServerInterfaceWrapper) MoveFaceAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveFaceAppearances(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitFaceAppearances operation middleware
+func (siw *ServerInterfaceWrapper) SplitFaceAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitFaceAppearances(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10264,6 +10834,41 @@ func (siw *ServerInterfaceWrapper) DismissFaceCandidate(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DismissFaceCandidate(w, r, id, otherId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReopenFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) ReopenFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReopenFaceCandidate(w, r, id, otherId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10489,6 +11094,61 @@ func (siw *ServerInterfaceWrapper) GetPersonPluginFetchImage(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPersonPluginFetchImage(w, r, id, fetchId, index)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSimilarPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListSimilarPeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSimilarPeopleParams
+
+	// ------------- Optional query parameter "appearanceId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "appearanceId", r.URL.Query(), &params.AppearanceId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "appearanceId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appearanceId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSimilarPeople(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11260,19 +11920,6 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSmartFolderParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -11282,19 +11929,6 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -11406,19 +12040,6 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSmartFolderItemsParams
 
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -11428,19 +12049,6 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -11592,6 +12200,32 @@ func (siw *ServerInterfaceWrapper) RenameTagKind(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameTagKind(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTagKindCardFirst operation middleware
+func (siw *ServerInterfaceWrapper) SetTagKindCardFirst(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagKindId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTagKindCardFirst(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12255,6 +12889,20 @@ func (siw *ServerInterfaceWrapper) DismissVersionCandidate(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// RejudgeVersionCandidate operation middleware
+func (siw *ServerInterfaceWrapper) RejudgeVersionCandidate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejudgeVersionCandidate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BundleVideos operation middleware
 func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -12357,32 +13005,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
 		}
 		return
 	}
@@ -12500,45 +13122,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "addedWithin" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "minDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "maxDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}
@@ -12746,6 +13329,48 @@ func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetVideoDisplayName(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideoFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoFrameParams
+
+	// ------------- Required query parameter "positionMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "positionMs", r.URL.Query(), &params.PositionMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "positionMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "positionMs", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoFrame(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14452,6 +15077,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/frame", wrapper.GetVideoFrame)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits/image", wrapper.StartThumbnailEditFromImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
@@ -14532,6 +15158,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tag-kinds", wrapper.CreateTagKind)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.DeleteTagKind)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.RenameTagKind)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/tag-kinds/{id}/card-first", wrapper.SetTagKindCardFirst)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people", wrapper.ClearPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people", wrapper.ListPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people", wrapper.CreatePerson)
@@ -14545,7 +15172,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/face-candidates", wrapper.ListFaceCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/reopen", wrapper.ReopenFaceCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/similar-people", wrapper.ListSimilarPeople)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/move", wrapper.MoveFaceAppearances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/split", wrapper.SplitFaceAppearances)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches", wrapper.FetchPersonWithPlugin)
@@ -14580,9 +15211,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/rejudge", wrapper.RejudgeVersionCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity", wrapper.ListActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}", wrapper.GetActivity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/retry", wrapper.RetryActivity)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}/judgement-frames/{index}", wrapper.GetActivityJudgementFrame)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/undo", wrapper.UndoActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)

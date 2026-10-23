@@ -67,9 +67,10 @@ type probeChapter struct {
 func parseMediaInfo(parsed probeOutput, durationMs int64) *domain.MediaInfo {
 	info := &domain.MediaInfo{
 		Video:          parseMediaVideo(parsed.Streams),
-		AudioTracks:    domain.LimitMediaTracks(parseAudioTracks(parsed.Streams)),
+		AudioTracks:    domain.LimitMediaTracks(parseAudioTracks(parsed.Streams, parsed.Format.Tags)),
 		SubtitleTracks: domain.LimitMediaTracks(parseSubtitleTracks(parsed.Streams)),
 		Chapters:       domain.NormalizeChapters(parseChapters(parsed.Chapters), durationMs),
+		Container:      parseContainer(parsed, durationMs),
 	}
 	embedded := parseEmbedded(parsed.Format.Tags, parsed.Streams)
 	if !embedded.IsEmpty() {
@@ -80,7 +81,7 @@ func parseMediaInfo(parsed probeOutput, durationMs int64) *domain.MediaInfo {
 
 func parseMediaVideo(streams []probeStream) *domain.MediaVideo {
 	for _, stream := range streams {
-		if stream.CodecType != "video" || stream.Disposition.AttachedPicture != 0 {
+		if stream.CodecType != "video" || stream.Disposition.AttachedPicture {
 			continue
 		}
 		return mediaVideo(stream)
@@ -92,7 +93,7 @@ func mediaVideo(stream probeStream) *domain.MediaVideo {
 	video := &domain.MediaVideo{
 		FrameRate:      parseFrameRate(stream.AverageFrameRate),
 		BitDepth:       domain.VideoBitDepth(parsePositiveInt(stream.BitsPerRawSample), stream.PixelFormat),
-		BitRate:        videoBitRate(stream),
+		BitRate:        streamBitRate(stream),
 		Interlaced:     domain.InterlacedFromFieldOrder(stream.FieldOrder),
 		ClosedCaptions: stream.ClosedCaptions != 0,
 	}
@@ -108,11 +109,12 @@ func mediaVideo(stream probeStream) *domain.MediaVideo {
 		}
 	}
 	video.HDR = domain.ClassifyHDR(stream.ColorTransfer, stream.CodecTag, dolbyVision)
+	addVideoDetails(video, stream)
 	return video
 }
 
 // Fall back from stream.bit_rate to Matroska tags.BPS.
-func videoBitRate(stream probeStream) int64 {
+func streamBitRate(stream probeStream) int64 {
 	for _, value := range []string{stream.BitRate, stream.Tags.get("bps"), stream.Tags.get("bps-eng")} {
 		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && parsed > 0 {
 			return parsed
@@ -121,21 +123,23 @@ func videoBitRate(stream probeStream) int64 {
 	return 0
 }
 
-func parseAudioTracks(streams []probeStream) []domain.MediaAudioTrack {
+func parseAudioTracks(streams []probeStream, format probeTags) []domain.MediaAudioTrack {
 	var tracks []domain.MediaAudioTrack
 	for _, stream := range streams {
 		if stream.CodecType != "audio" {
 			continue
 		}
-		tracks = append(tracks, domain.MediaAudioTrack{
+		track := domain.MediaAudioTrack{
 			Index:         stream.Index,
 			Codec:         domain.CleanMediaText(stream.CodecName),
 			Channels:      max(stream.Channels, 0),
 			ChannelLayout: domain.CleanMediaText(stream.ChannelLayout),
 			Language:      domain.CleanMediaLanguage(stream.Tags.get("language")),
 			Title:         domain.CleanMediaText(stream.Tags.get("title")),
-			Default:       stream.Disposition.Default != 0,
-		})
+			Default:       stream.Disposition.Default,
+		}
+		addAudioDetails(&track, stream, format)
+		tracks = append(tracks, track)
 	}
 	return tracks
 }
@@ -146,21 +150,23 @@ func parseSubtitleTracks(streams []probeStream) []domain.MediaSubtitleTrack {
 		if stream.CodecType != "subtitle" {
 			continue
 		}
-		tracks = append(tracks, domain.MediaSubtitleTrack{
+		track := domain.MediaSubtitleTrack{
 			Index:           stream.Index,
 			Codec:           domain.CleanMediaText(stream.CodecName),
 			Language:        domain.CleanMediaLanguage(stream.Tags.get("language")),
 			Title:           domain.CleanMediaText(stream.Tags.get("title")),
-			Default:         stream.Disposition.Default != 0,
-			Forced:          stream.Disposition.Forced != 0,
-			HearingImpaired: stream.Disposition.HearingImpaired != 0,
-		})
+			Default:         stream.Disposition.Default,
+			Forced:          stream.Disposition.Forced,
+			HearingImpaired: stream.Disposition.HearingImpaired,
+		}
+		addSubtitleDetails(&track, stream)
+		tracks = append(tracks, track)
 	}
 	return tracks
 }
 
 func parseEmbedded(tags probeTags, streams []probeStream) domain.MediaEmbedded {
-	return domain.MediaEmbedded{
+	embedded := domain.MediaEmbedded{
 		Title:       domain.FirstMediaText(tags.get("title")),
 		Comment:     domain.FirstMediaText(tags.get("comment")),
 		Description: domain.FirstMediaText(tags.get("description"), tags.get("synopsis")),
@@ -177,11 +183,13 @@ func parseEmbedded(tags probeTags, streams []probeStream) domain.MediaEmbedded {
 			tags.get("com.apple.quicktime.location.iso6709"), tags.get("location"), tags.get("location-eng")),
 		CoverArt: hasAttachedPicture(streams),
 	}
+	addEmbeddedDetails(&embedded, tags)
+	return embedded
 }
 
 func hasAttachedPicture(streams []probeStream) bool {
 	for _, stream := range streams {
-		if stream.Disposition.AttachedPicture != 0 {
+		if stream.Disposition.AttachedPicture {
 			return true
 		}
 	}

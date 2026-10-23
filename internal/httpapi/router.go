@@ -102,6 +102,7 @@ type Tags interface {
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
 	CreateTagKind(ctx context.Context, name string) (domain.TagKind, error)
 	RenameTagKind(ctx context.Context, id int64, name string) (domain.TagKind, error)
+	SetTagKindCardFirst(ctx context.Context, id int64, cardFirst bool) (domain.TagKind, error)
 	DeleteTagKind(ctx context.Context, id int64) error
 }
 
@@ -148,6 +149,13 @@ type VersionJudging interface {
 	Enabled(ctx context.Context) (bool, error)
 
 	SaveEnabled(ctx context.Context, enabled bool) error
+}
+
+// VersionJudgeReview is app.VersionJudgeReview.
+type VersionJudgeReview interface {
+	Rejudge(ctx context.Context, videoIDs [2]int64) error
+	// JudgementFrame returns a JPEG; a missing entry, frame or seek preview returns ErrNotFound.
+	JudgementFrame(ctx context.Context, entryID int64, index int) ([]byte, error)
 }
 
 type TranscodeProbeWriter interface {
@@ -287,6 +295,7 @@ type Options struct {
 	// Nil FaceAnalysis makes the face analysis runs route fail with 500.
 	FaceAnalysis   FaceAnalysis
 	VersionJudging VersionJudging
+	VersionReview  VersionJudgeReview
 
 	Ollama OllamaConnection
 
@@ -377,6 +386,7 @@ type server struct {
 	faceAnalysis      FaceAnalysis
 	onboarding        Onboarding
 	versionJudging    VersionJudging
+	versionReview     VersionJudgeReview
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
@@ -461,6 +471,7 @@ func NewRouter(opts Options) http.Handler {
 		faceAnalysis:           opts.FaceAnalysis,
 		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
+		versionReview:          opts.VersionReview,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
@@ -592,7 +603,7 @@ func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
 		"/api/video-tags", "/api/video-tags/summary", "/api/video-edits", "/api/video-edits/summary",
-		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/virtual-videos", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/version-candidates/rejudge", "/api/virtual-videos", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
@@ -658,6 +669,10 @@ func requiresPutJSONBody(path string) bool {
 	if suffix, ok := strings.CutPrefix(path, "/api/folders/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "grouping"
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "card-first"
 	}
 	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
 		return id != "" && !strings.Contains(id, "/")
@@ -777,6 +792,9 @@ func requiresCreditJSONBody(method, path string) bool {
 		return method == http.MethodPatch
 	case 2:
 		return method == http.MethodPost && (segments[1] == "merge" || isPersonPluginFetch(path, segments))
+	case 3:
+		return method == http.MethodPost && strings.HasPrefix(path, "/api/people/") &&
+			segments[1] == "appearances" && (segments[2] == "split" || segments[2] == "move")
 	case 4:
 		return method == http.MethodPost && isPersonPluginFetch(path, segments) && segments[2] != "" &&
 			segments[3] == "apply"

@@ -102,12 +102,27 @@ async function asLibraryResponse(response: Response): Promise<Response> {
   );
 }
 
-/** Return empty tag kinds here; LibraryTagKindFilter.test.tsx covers kind filtering. */
+/** Fixtures that answer every path with videos have no tags; keep real tag lists. */
+async function asTagsResponse(response: Response): Promise<Response> {
+  if (!response.ok) return response;
+  const body = (await response.clone().json()) as { items?: { name?: unknown }[] };
+  const tags = Array.isArray(body.items) && body.items.every((item) => "name" in item);
+  return tags ? response : json({ items: [] });
+}
+
+/**
+ * Return empty tag kinds and credit searches here; LibraryTagKindFilter.test.tsx covers kind
+ * filtering and LibrarySearchSuggestions.test.tsx the search suggestions.
+ */
 function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
   return (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
     if (path === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
+    if (path === "/api/people" || path === "/api/organizations") {
+      return Promise.resolve(json({ items: [], total: 0, totalAll: 0 }));
+    }
     const result = fetchMock(input, init);
+    if (path === "/api/tags") return result.then(asTagsResponse);
     return path === "/api/library" ? result.then(asLibraryResponse) : result;
   };
 }
@@ -296,13 +311,16 @@ describe("LibraryPage", () => {
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
 
-    await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "broken");
+    await user.type(
+      screen.getByRole("combobox", { name: "Search videos" }),
+      "broken{Enter}",
+    );
 
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
   });
 
-  it("視聴状態はサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {
+  it("お気に入りのみはサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
@@ -312,11 +330,12 @@ describe("LibraryPage", () => {
           json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }),
         );
       }
-      const watch = new URL(url, "http://localhost").searchParams.get("watch");
+      const favorite =
+        new URL(url, "http://localhost").searchParams.get("favorite") === "true";
       return Promise.resolve(
         json({
-          items: watch === "unwatched" ? [video(1)] : [video(1), video(2)],
-          total: watch === "unwatched" ? 250 : 500,
+          items: favorite ? [video(1)] : [video(1), video(2)],
+          total: favorite ? 250 : 500,
           nextCursor: "cursor-1",
         } satisfies VideoPage),
       );
@@ -326,7 +345,8 @@ describe("LibraryPage", () => {
     await screen.findByRole("link", { name: "動画 2" });
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
-    await user.click(screen.getByRole("radio", { name: "Unwatched" }));
+    await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
@@ -335,21 +355,29 @@ describe("LibraryPage", () => {
       "250 items",
     );
     const requests = listRequests(fetchMock);
-    expect(requests.at(-1)?.searchParams.get("watch")).toBe("unwatched");
+    expect(requests.at(-1)?.searchParams.get("favorite")).toBe("true");
     expect(requests.filter((url) => url.searchParams.has("cursor"))).toHaveLength(0);
-    expect(screen.getByTestId("location").textContent).toBe(
-      "?watch=unwatched&sort=addedDesc",
-    );
+    expect(screen.getByTestId("location").textContent).toBe("?fav=1&sort=addedDesc");
     expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
   });
 
-  it("URL の条件をそのまま一覧の要求に載せる", async () => {
-    renderLibrary("/?q=%E4%BA%AC%E9%83%BD&watch=inProgress&playable=1&sort=durationAsc");
+  it("URL の条件をそのまま一覧の要求に載せ、廃止した watch・playable・versions・追加日・長さは送らない", async () => {
+    renderLibrary(
+      "/?q=%E4%BA%AC%E9%83%BD&watch=inProgress&playable=1&versions=1&addedWithin=7&minDuration=60&fav=1&sort=durationAsc",
+    );
     await screen.findByRole("link", { name: "動画 1" });
     const request = listRequests(fetchMock).at(-1);
     expect(request?.searchParams.get("query")).toBe("京都");
-    expect(request?.searchParams.get("watch")).toBe("inProgress");
-    expect(request?.searchParams.get("playable")).toBe("true");
+    expect(request?.searchParams.get("favorite")).toBe("true");
+    for (const retired of [
+      "watch",
+      "playable",
+      "hasVersions",
+      "addedWithin",
+      "minDuration",
+    ]) {
+      expect(request?.searchParams.has(retired)).toBe(false);
+    }
     expect(request?.searchParams.get("sort")).toBe("durationAsc");
     expect(screen.getByRole("button", { name: "Sort by: Length" })).toBeDefined();
     expect(
@@ -358,10 +386,9 @@ describe("LibraryPage", () => {
       }),
     ).toBeDefined();
     expect(
-      (screen.getByRole("searchbox", { name: "Search videos" }) as HTMLInputElement)
-        .value,
+      (screen.getByRole("combobox", { name: "Search videos" }) as HTMLInputElement).value,
     ).toBe("京都");
-    expect(screen.getByRole("button", { name: "Filter (2 applied)" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
   });
 
   it("random で seed が無ければ作って URL に書き足し、履歴は増やさない", async () => {
@@ -460,11 +487,17 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Filter" }));
       const filter = await screen.findByRole("dialog");
+      expect(
+        within(filter)
+          .getAllByRole("combobox")
+          .map((picker) => picker.getAttribute("aria-label")),
+      ).toEqual(["Add tag", "Person", "Organization"]);
       const checks = within(filter)
         .getAllByRole("checkbox")
         .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
-      expect(checks).toEqual(["Favorites only", "Playable only"]);
+      expect(checks).toEqual(["Favorites only"]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
+      await user.click(within(filter).getByRole("button", { name: "Apply" }));
 
       expect(screen.getByTestId("location").textContent).toBe("?fav=1&sort=titleAsc");
       await waitFor(() =>
@@ -477,6 +510,7 @@ describe("LibraryPage", () => {
           .querySelector('[data-slot="badge"]')?.className,
       ).toContain("bg-primary-soft");
 
+      await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
       await user.click(screen.getByRole("button", { name: "Clear filters" }));
       expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
       await waitFor(() =>
@@ -630,19 +664,35 @@ describe("LibraryPage", () => {
     ).toBeDefined();
   });
 
+  it("検索欄は入力や離れただけでは検索せず、Enter で検索する", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    const box = screen.getByRole("combobox", { name: "Search videos" });
+    await user.type(box, "京都");
+    await user.tab();
+    expect(screen.getByTestId("location").textContent).toBe("");
+
+    await user.type(box, "{Enter}");
+    expect(screen.getByTestId("location").textContent).toBe(
+      `?q=${encodeURIComponent("京都")}&sort=addedDesc`,
+    );
+  });
+
   it("検索語の入力は一続きで履歴を1つだけ増やす", async () => {
     const user = userEvent.setup();
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
 
-    const box = screen.getByRole("searchbox", { name: "Search videos" });
-    await user.type(box, "京");
+    const box = screen.getByRole("combobox", { name: "Search videos" });
+    await user.type(box, "京{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         `?q=${encodeURIComponent("京")}&sort=addedDesc`,
       ),
     );
-    await user.type(box, "都");
+    await user.type(box, "都{Enter}");
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).toBe(
         `?q=${encodeURIComponent("京都")}&sort=addedDesc`,
@@ -660,8 +710,7 @@ describe("LibraryPage", () => {
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       const params = new URL(url, "http://localhost").searchParams;
-      const conditioned =
-        params.has("query") || params.has("watch") || params.has("playable");
+      const conditioned = params.has("query") || params.has("favorite");
       return Promise.resolve(
         json(
           conditioned
@@ -670,17 +719,16 @@ describe("LibraryPage", () => {
         ),
       );
     });
-    renderLibrary("/?q=%E4%BA%AC%E9%83%BD&watch=unwatched&playable=1&sort=titleDesc");
+    renderLibrary("/?q=%E4%BA%AC%E9%83%BD&fav=1&sort=titleDesc");
 
     expect(await screen.findByText("No videos match these conditions")).toBeDefined();
     expect(screen.queryByText("検索語「京都」")).toBeNull();
-    expect(screen.queryByText("Unwatched")).toBeNull();
-    expect(screen.queryByText("Playable only")).toBeNull();
+    expect(screen.queryByText("Favorites only")).toBeNull();
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
     expect(screen.queryByText("No videos yet")).toBeNull();
     await userEvent.setup().click(screen.getByRole("button", { name: "Change search" }));
     expect(document.activeElement).toBe(
-      screen.getByRole("searchbox", { name: "Search videos" }),
+      screen.getByRole("combobox", { name: "Search videos" }),
     );
   });
 
@@ -704,7 +752,7 @@ describe("LibraryPage", () => {
     renderLibrary("/?q=abc&sort=addedDesc");
     await screen.findByRole("link", { name: "動画 1" });
 
-    const box = screen.getByRole("searchbox", { name: "Search videos" });
+    const box = screen.getByRole("combobox", { name: "Search videos" });
     const help = screen.getByRole("button", { name: "How to search" });
     box.focus();
     await user.tab();
@@ -750,16 +798,15 @@ describe("LibraryPage", () => {
 
     expect(document.activeElement).toBe(help);
     expect(
-      (screen.getByRole("searchbox", { name: "Search videos" }) as HTMLInputElement)
-        .value,
+      (screen.getByRole("combobox", { name: "Search videos" }) as HTMLInputElement).value,
     ).toBe("abc");
     expect(screen.getByTestId("location").textContent).toBe("?q=abc&sort=addedDesc");
   });
 
-  it("未視聴で絞った一覧から戻ったとき、再生位置が変わった項目もその場に残す", async () => {
+  it("お気に入りで絞った一覧から戻ったとき、再生位置が変わった項目もその場に残す", async () => {
     const { recordSavedProgress, nextProgressSequence } =
       await import("../api/progressEvents");
-    renderLibrary("/?watch=unwatched");
+    renderLibrary("/?fav=1");
     await screen.findByRole("link", { name: "動画 1" });
     act(() =>
       recordSavedProgress(
@@ -771,7 +818,7 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
   });
 
-  it("未視聴で絞った一覧から動画を開き、見終えて戻っても、控えから同じ並びと件数で戻し読み直さない", async () => {
+  it("お気に入りで絞った一覧から動画を開き、見終えて戻っても、控えから同じ並びと件数で戻し読み直さない", async () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
@@ -780,7 +827,7 @@ describe("LibraryPage", () => {
         json({ items: [video(3), video(2), video(1)], total: 3 } satisfies VideoPage),
       );
     });
-    const view = renderLibrary("/?watch=unwatched&sort=titleDesc");
+    const view = renderLibrary("/?fav=1&sort=titleDesc");
     await screen.findByRole("link", { name: "動画 2" });
     const titles = () =>
       Array.from(document.querySelectorAll("[data-video-id] h3"), (h) => h.textContent);
@@ -798,7 +845,7 @@ describe("LibraryPage", () => {
     );
     view.unmount();
 
-    renderLibrary("/?watch=unwatched&sort=titleDesc");
+    renderLibrary("/?fav=1&sort=titleDesc");
     await screen.findByRole("link", { name: "動画 2" });
     expect(titles()).toEqual(before);
     expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
@@ -939,7 +986,8 @@ describe("LibraryPage", () => {
 
     startFirst();
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    fireEvent.click(screen.getByRole("radio", { name: "Unwatched" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     await act(async () => Promise.resolve());
     expect(document.querySelector("video")).toBeNull();
 
@@ -1182,7 +1230,7 @@ describe("LibraryPage", () => {
         total: 1,
       }));
       const user = userEvent.setup();
-      renderLibrary("/?q=abc&watch=unwatched");
+      renderLibrary("/?q=abc&fav=1");
       await screen.findByRole("link", { name: "動画 1" });
 
       await user.click(screen.getByRole("button", { name: "Filter by 旅行" }));
@@ -1190,11 +1238,11 @@ describe("LibraryPage", () => {
       const location = () => screen.getByTestId("location").textContent ?? "";
       await waitFor(() => expect(location()).toContain("tag=1"));
       expect(location()).toContain("q=abc");
-      expect(location()).toContain("watch=unwatched");
+      expect(location()).toContain("fav=1");
       await waitFor(() => {
         const request = listRequests(fetchMock).at(-1);
         expect(request?.searchParams.get("query")).toBe("abc");
-        expect(request?.searchParams.get("watch")).toBe("unwatched");
+        expect(request?.searchParams.get("favorite")).toBe("true");
         expect(request?.searchParams.getAll("tag")).toEqual(["1"]);
       });
     });
@@ -1391,7 +1439,7 @@ describe("LibraryPage", () => {
         ),
       ).toBeDefined();
 
-      await user.click(screen.getByRole("button", { name: "Filter" }));
+      await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
       await user.click(await screen.findByRole("button", { name: "Clear filters" }));
       await waitFor(() =>
         expect(screen.getByTestId("location").textContent).not.toContain("tag="),
@@ -1678,20 +1726,14 @@ describe("LibraryPage", () => {
       fetchMock.mockImplementation(() => Promise.resolve(json(guestPage())));
     });
 
-    it("選択・選択バー・視聴状態・最近再生した順を出さず、所有者だけの API を呼ばない", async () => {
+    it("選択・選択バー・絞り込み・最近再生した順を出さず、所有者だけの API を呼ばない", async () => {
       const user = userEvent.setup();
       renderLibrary("/", "guest");
       expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
       expect(screen.queryByRole("checkbox")).toBeNull();
 
-      await user.click(screen.getByRole("button", { name: "Filter" }));
-      const filter = await screen.findByRole("dialog");
-      expect(within(filter).queryByText("Watch status")).toBeNull();
-      expect(within(filter).queryByRole("radio")).toBeNull();
-      expect(
-        within(filter).getByRole("checkbox", { name: "Playable only" }),
-      ).toBeDefined();
-      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("button", { name: /^Filter/ })).toBeNull();
+      expect(screen.getByRole("searchbox", { name: "Search videos" })).toBeDefined();
 
       await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
       const menu = await screen.findByRole("menu");
@@ -1730,12 +1772,7 @@ describe("LibraryPage", () => {
       renderLibrary("/", "guest");
       await screen.findByRole("link", { name: "動画 1" });
 
-      await user.click(screen.getByRole("button", { name: "Filter" }));
-      const filter = await screen.findByRole("dialog");
-      expect(
-        within(filter).queryByRole("checkbox", { name: "Favorites only" }),
-      ).toBeNull();
-      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("checkbox", { name: "Favorites only" })).toBeNull();
 
       await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
       const menu = await screen.findByRole("menu");
@@ -2280,7 +2317,10 @@ describe("LibraryPage の英語の画面", () => {
       screen.getByRole("button", { name: "Filter by 京都 (from the folder name)" }),
     ).toBeDefined();
 
-    await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "京都");
+    await user.type(
+      screen.getByRole("combobox", { name: "Search videos" }),
+      "京都{Enter}",
+    );
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
     );

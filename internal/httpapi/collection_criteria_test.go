@@ -38,16 +38,16 @@ func TestCollectionRoutesForwardTemporaryCriteriaAndRejectInvalidInputs(t *testi
 	for _, path := range []string{"/api/groups/1?", "/api/groups/1/items?cursor=next&", "/api/smart-folders/1?", "/api/smart-folders/1/items?cursor=next&"} {
 		library.calls = nil
 		folders.calls = nil
-		rec := jsonRequest(t, handler, http.MethodGet, path+"query=clip&watch=unwatched&favorite=true&playable=true&sort=random&seed=37", "")
+		rec := jsonRequest(t, handler, http.MethodGet, path+"query=clip&favorite=true&sort=random&seed=37", "")
 		calls := append(library.calls, folders.calls...)
 		if rec.Code != http.StatusNotFound || len(calls) != 1 {
 			t.Fatalf("%s: status %d, calls %+v", path, rec.Code, calls)
 		}
 		q := calls[0]
-		if q.Query != "clip" || q.Watch != domain.WatchUnwatched || !q.PlayableOnly || !q.FavoriteOnly || q.Sort != domain.SortRandom || q.Seed != 37 {
+		if q.Query != "clip" || !q.FavoriteOnly || q.Sort != domain.SortRandom || q.Seed != 37 {
 			t.Fatalf("%s: %+v", path, q)
 		}
-		for _, invalid := range []string{"watch=unknown", "sort=unknown", "sort=random&seed=-1"} {
+		for _, invalid := range []string{"sort=unknown", "sort=random&seed=-1"} {
 			library.calls = nil
 			folders.calls = nil
 			rec = jsonRequest(t, handler, http.MethodGet, path+invalid, "")
