@@ -874,6 +874,13 @@ playlist screen and in the panel; its link and every playlist step onto it
 carry `smartFolder` from the item or from the step's `smartFolderId`, and a
 folder with no video is a row without a link.
 
+A virtual video in a playlist is a row with the virtual mark in the duration's
+place. The playlist page's `Play` starts at the first item that is not a
+virtual video and is absent without one; when every item is a virtual video,
+the header's description says there is nothing to play. The panel shows
+`Nothing to play` under its heading when the playback read's `playableCount`
+is `0`.
+
 `matchMedia` reads the `lg` width only to scroll the current member's row into
 view on wide screens; on narrow widths scrolling would move the whole page and
 hide the player.

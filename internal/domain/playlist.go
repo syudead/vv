@@ -126,14 +126,17 @@ type PlaylistStep struct {
 }
 
 // Position is one-based among visible items, or zero for a hidden current item; neighbor steps point to each visible item's starting video.
+// Next, the continuous-playback step, passes over virtual videos; the manual PreviousItem and NextItem do not.
 type PlaylistPlayback struct {
-	Playlist     Playlist
-	ItemID       int64
-	Position     int
-	Count        int
-	Next         *PlaylistStep
-	PreviousItem *PlaylistStep
-	NextItem     *PlaylistStep
+	Playlist Playlist
+	ItemID   int64
+	Position int
+	Count    int
+	// PlayableCount counts visible items whose starting video has a file.
+	PlayableCount int
+	Next          *PlaylistStep
+	PreviousItem  *PlaylistStep
+	NextItem      *PlaylistStep
 }
 
 type PlaylistCurrent struct {
@@ -174,6 +177,14 @@ func (i PlaylistItem) start() *PlaylistStep {
 	return i.step(member)
 }
 
+// playableStart is the item's starting step when that video has a file.
+func (i PlaylistItem) playableStart() *PlaylistStep {
+	if step := i.start(); step != nil && !step.Video.Virtual() {
+		return step
+	}
+	return nil
+}
+
 func (i PlaylistItem) step(video Video) *PlaylistStep {
 	step := &PlaylistStep{ItemID: i.ID, Video: video}
 	if i.SmartFolder != nil {
@@ -204,6 +215,9 @@ func PlaylistPlaybackOf(items []PlaylistItem, current PlaylistCurrent) (Playlist
 		if i == at {
 			playback.Position = playback.Count
 		}
+		if item.playableStart() != nil {
+			playback.PlayableCount++
+		}
 	}
 	for i := at - 1; i >= 0 && playback.PreviousItem == nil; i-- {
 		if items[i].Shown() {
@@ -215,17 +229,29 @@ func PlaylistPlaybackOf(items []PlaylistItem, current PlaylistCurrent) (Playlist
 			playback.NextItem = items[i].start()
 		}
 	}
+	playback.Next = nextPlayable(items, at, current.VideoID)
+	return playback, nil
+}
 
-	playback.Next = playback.NextItem
+// nextPlayable continues with the current group's later members, then the following items' starts, passing over virtual videos.
+func nextPlayable(items []PlaylistItem, at int, videoID int64) *PlaylistStep {
 	if group := items[at].playOrder(); group != nil {
 		for j, member := range group.Members {
-			if member.ID == current.VideoID {
-				if j+1 < len(group.Members) {
-					playback.Next = items[at].step(group.Members[j+1])
-				}
-				break
+			if member.ID != videoID {
+				continue
 			}
+			for _, later := range group.Members[j+1:] {
+				if !later.Virtual() {
+					return items[at].step(later)
+				}
+			}
+			break
 		}
 	}
-	return playback, nil
+	for _, item := range items[at+1:] {
+		if step := item.playableStart(); step != nil {
+			return step
+		}
+	}
+	return nil
 }

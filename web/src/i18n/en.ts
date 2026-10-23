@@ -2078,6 +2078,7 @@ export const en = {
       previous: "Previous item",
       next: "Next item",
       end: "End of playlist",
+      nothingToPlay: "Nothing to play",
       endAnnouncement: (name: string) =>
         `Playback finished. End of the playlist "${name}"`,
       gone: "This video is no longer in the playlist. Playback stops after it.",
@@ -2990,6 +2991,7 @@ export const en = {
         duration === "" ? items(count) : `${items(count)} · ${duration}`,
       play: "Play",
       playFor: (name: string) => `Play "${name}" from the top`,
+      allVirtual: "These are all virtual videos, so there's nothing to play.",
       rename: "Rename…",
       delete: "Delete…",
       table: "Items",

@@ -29,6 +29,7 @@ const lastPlayback: PlaylistPlayback = {
   itemId: 23,
   position: 3,
   count: 3,
+  playableCount: 3,
 };
 
 function readyContext(playback: PlaylistPlayback | undefined): PlaylistContext {

@@ -223,6 +223,22 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 	}
 }
 
+// A virtual video has no registered location, yet the apply reaches it and answers its new title.
+func TestWorkInfoApplyAnswersAVirtualVideo(t *testing.T) {
+	e := newDetailsEnv(t)
+	virtual, err := e.db.VirtualVideos().Create(context.Background(), "Before")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.videoID = virtual.ID
+	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{Title: "Fetched", Description: "Notes"}))
+	applied := e.apply(fetchID, `{"fields":["title","description"]}`)
+	if applied.Video.Id != virtual.ID || applied.Video.Title != "Fetched" || applied.Video.WorkInfo == nil ||
+		applied.Video.WorkInfo.Description == nil || *applied.Video.WorkInfo.Description != "Notes" {
+		t.Fatalf("applied video = %+v; want the virtual video with the fetched title and description", applied.Video)
+	}
+}
+
 func TestWorkInfoDetailRoutesRefuseGuests(t *testing.T) {
 	e := newDetailsEnv(t)
 	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{Code: "ABC-123"}))
