@@ -206,7 +206,7 @@ test.describe.serial("library search", () => {
       await expect(home.link).toHaveAccessibleDescription("Virtual video, no file");
       await expect(home.card.getByText("Virtual", { exact: true })).toBeVisible();
 
-      const field = page.getByRole("searchbox", { name: "Search videos" });
+      const field = page.getByRole("combobox", { name: "Search videos" });
       await field.fill(title);
       await field.press("Enter");
       const results = page.getByRole("region", { name: "Search results", exact: true });

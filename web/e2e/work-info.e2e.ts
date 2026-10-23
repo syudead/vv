@@ -341,7 +341,7 @@ test.describe.serial("work information", () => {
 
       // The tag's name finds the merged video alone: the virtual video is gone.
       await page.goto("/");
-      const field = page.getByRole("searchbox", { name: "Search videos" });
+      const field = page.getByRole("combobox", { name: "Search videos" });
       await field.fill(tagName);
       await field.press("Enter");
       const results = page.getByRole("region", { name: "Search results", exact: true });
