@@ -249,14 +249,14 @@
       "dependencies": ["lucide-react"]
     },
     {
-      "name": "image-drop",
+      "name": "image-upload-dialog",
       "type": "registry:ui",
-      "title": "ImageDrop",
-      "description": "vv component: useImageIntake takes an image pasted or dropped anywhere in the window for a page or an open dialog; ImageDropOverlay marks the window while files are dragged over it.",
-      "docs": "Usage rules: web/registry/rules/components.md#imagedrop (item vv-rules).",
+      "title": "ImageUploadDialog",
+      "description": "vv component: the dialog every image upload opens, with a drop zone that also opens the file picker and paste anywhere in it; the caller refuses a file with a reason the dialog shows. Uses dialog, button and alert.",
+      "docs": "Usage rules: web/registry/rules/components.md#imageuploaddialog (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/ImageDrop.tsx",
+          "path": "src/ui/ImageUploadDialog.tsx",
           "type": "registry:ui"
         }
       ],

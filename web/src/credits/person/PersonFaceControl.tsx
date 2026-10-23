@@ -1,5 +1,5 @@
 import { Camera, Film, ImageUp, Trash2 } from "lucide-react";
-import { type ChangeEvent, useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   isCreditGone,
@@ -17,7 +17,7 @@ import {
 } from "../../player/thumbnailUpload/uploadRules";
 import { DialogError } from "../../tags/DialogError";
 import FavoriteToggle from "../../ui/FavoriteToggle";
-import { ImageDropOverlay, useImageIntake } from "../../ui/ImageDrop";
+import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
@@ -27,7 +27,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
-import { Input } from "../../ui/shadcn/input";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { creditDisplayName } from "../displayName";
 import FaceCropDialog from "./FaceCropDialog";
@@ -43,7 +42,7 @@ function withFaceOf(saved: Person) {
   });
 }
 
-/** The face with its heart and its upload and removal; an image chosen, pasted or dropped on the page opens for framing. A missing person calls onGone. */
+/** The face with its heart and its upload and removal; an image chosen, dropped or pasted in an ImageUploadDialog opens for framing. A missing person calls onGone. */
 export default function PersonFaceControl({
   person,
   onChanged,
@@ -53,42 +52,24 @@ export default function PersonFaceControl({
   onChanged: (next: Person | ((current: Person) => Person)) => void;
   onGone: () => void;
 }) {
-  const fileInput = useRef<HTMLInputElement>(null);
   const [cropping, setCropping] = useState<File | null>(null);
-  const [error, setError] = useState<UiText | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
   const [picking, setPicking] = useState(false);
-  const { dragging } = useImageIntake({
-    enabled: cropping === null,
-    onFile: frame,
-    scope: "page",
-  });
+  const [uploading, setUploading] = useState(false);
 
   function pick() {
-    fileInput.current?.click();
+    setUploading(true);
   }
 
-  function frame(file: File) {
+  function frame(file: File): UiText | null {
     const refusal = uploadRefusal(file);
-    if (refusal !== null) {
-      setError(
-        refusal === "type"
-          ? text.face.refusedType
-          : text.face.tooLarge(formatBytes(UPLOAD_MAX_BYTES)),
-      );
-      return;
-    }
-    setError(null);
+    if (refusal === "type") return text.face.refusedType;
+    if (refusal === "size") return text.face.tooLarge(formatBytes(UPLOAD_MAX_BYTES));
+    setUploading(false);
     setCropping(file);
-  }
-
-  function choose(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    // Clear the value so choosing the same file again still fires change.
-    event.target.value = "";
-    if (file !== undefined) frame(file);
+    return null;
   }
 
   async function remove() {
@@ -172,22 +153,14 @@ export default function PersonFaceControl({
           </PersonFaceMark>
         </PersonFace>
       </div>
-      {error !== null && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Input
-        ref={fileInput}
-        type="file"
+      <ImageUploadDialog
+        open={uploading}
+        onOpenChange={setUploading}
+        title={text.face.uploadTitle}
+        description={text.face.uploadHint}
         accept={UPLOAD_TYPES}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="hidden"
-        data-testid="person-face-input"
-        onChange={choose}
+        onFile={frame}
       />
-      <ImageDropOverlay dragging={dragging} label={text.face.drop} />
       {cropping !== null && (
         <FaceCropDialog
           person={person}
@@ -206,7 +179,6 @@ export default function PersonFaceControl({
           onClose={() => setPicking(false)}
           onSaved={(saved) => {
             setPicking(false);
-            setError(null);
             onChanged(withFaceOf(saved));
           }}
           onGone={onGone}

@@ -1,5 +1,5 @@
 import { FileImage, Film, ImageUp, LoaderCircle } from "lucide-react";
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   discardThumbnailEdit,
@@ -20,8 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
-import { Input } from "../../ui/shadcn/input";
-import { ImageDropOverlay, useImageIntake } from "../../ui/ImageDrop";
+import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import ActionButton from "../ActionButton";
 import type { ThumbnailCapture } from "../VideoFacts";
 import {
@@ -220,7 +219,7 @@ function staleAfter(error: unknown): boolean {
   return error.status === 404 || error.reason === "content_changed";
 }
 
-/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview. An image pasted or dropped on the page opens it too. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
+/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview; an image file is chosen, dropped or pasted in an ImageUploadDialog. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
 export default function ThumbnailEntry({
   sending,
   locked,
@@ -238,16 +237,17 @@ export default function ThumbnailEntry({
 }) {
   const text = t.player.thumbnailUpload;
   const edit = t.player.thumbnailEdit;
-  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [positionMs, setPositionMs] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const disabled = sending || locked;
-  const { dragging } = useImageIntake({ enabled: !disabled, onFile, scope: "page" });
 
-  const choose = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file !== undefined) onFile(file);
+  const take = (file: File) => {
+    const refusal = uploadRefusal(file);
+    if (refusal !== null) return refusal === "type" ? text.refusedType : text.refusedSize;
+    setUploading(false);
+    onFile(file);
+    return null;
   };
 
   return (
@@ -308,7 +308,7 @@ export default function ThumbnailEntry({
           <DropdownMenuItem
             onSelect={() => {
               setOpen(false);
-              fileInput.current?.click();
+              setUploading(true);
             }}
           >
             <FileImage aria-hidden="true" />
@@ -316,17 +316,14 @@ export default function ThumbnailEntry({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Input
-        ref={fileInput}
-        type="file"
+      <ImageUploadDialog
+        open={uploading && !disabled}
+        onOpenChange={setUploading}
+        title={text.uploadTitle}
+        description={text.uploadHint}
         accept={UPLOAD_TYPES}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="hidden"
-        data-testid="thumbnail-upload-input"
-        onChange={choose}
+        onFile={take}
       />
-      <ImageDropOverlay dragging={dragging} label={text.drop} />
     </>
   );
 }

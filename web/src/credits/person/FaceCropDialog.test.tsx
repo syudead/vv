@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,9 +54,10 @@ describe("FaceCropDialog", () => {
   it("frames a chosen image before saving the cut as the face", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("button", { name: "Add a face" });
+    await user.click(await screen.findByRole("button", { name: "Add a face" }));
+    const upload = await screen.findByRole("dialog", { name: "Upload a face" });
 
-    await user.upload(screen.getByTestId("person-face-input"), png());
+    await user.upload(within(upload).getByTestId("image-upload-input"), png());
     const dialog = await framing();
     expect(sent("PUT", "/api/people/7/image")).toHaveLength(0);
     await user.click(within(dialog).getByRole("button", { name: "Set as face" }));
@@ -73,17 +74,13 @@ describe("FaceCropDialog", () => {
     expect(screen.queryByRole("dialog", { name: /Frame the face/ })).toBeNull();
   });
 
-  it("opens an image pasted on the page for framing and sends nothing when cancelled", async () => {
+  it("opens an image pasted in the upload dialog for framing and sends nothing when cancelled", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("button", { name: "Add a face" });
+    await user.click(await screen.findByRole("button", { name: "Add a face" }));
 
-    const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", {
-      value: { types: ["Files"], files: [png()] },
-    });
-    act(() => {
-      document.body.dispatchEvent(paste);
+    fireEvent.paste(await screen.findByRole("dialog", { name: "Upload a face" }), {
+      clipboardData: { files: [png()] },
     });
     const dialog = await framing();
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));

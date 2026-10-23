@@ -176,8 +176,9 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 ## A face is framed before it is saved
 
 The camera menu on the person's face offers `Choose from videos…` beside
-`Upload, paste or drop an image…`, with or without a face. An image chosen,
-pasted or dropped anywhere on the person page opens `Frame the face`
+`Upload an image…`, with or without a face; the placeholder's `Add a face`
+does the same. It opens `Upload a face`, an `ImageUploadDialog`, and the image
+dropped, chosen or pasted there opens `Frame the face`
 ([`FaceCropDialog.tsx`](../../web/src/credits/person/FaceCropDialog.tsx)): the
 same stage, `Size`, `Preview` and `Set as face` as below, on the image, with
 the widest centred portrait to start from. `Choose from videos…` opens an `EditorDialog`

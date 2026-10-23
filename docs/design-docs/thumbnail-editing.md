@@ -77,10 +77,10 @@ the next read fetches again, within the 10-minute limit; an output that is
 missing or does not decode fails the run as `no_output`, so `succeeded` always
 has an image the apply can read.
 
-| Rejected | Why |
-| --- | --- |
-| A job kind in the persistent queue | Its retries and `failed` records would outlive the page and show in the import issues |
-| Progress through `/api/events` | That stream carries committed domain events to every viewer; a run's state is one page's |
+| Rejected                           | Why                                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| A job kind in the persistent queue | Its retries and `failed` records would outlive the page and show in the import issues    |
+| Progress through `/api/events`     | That stream carries committed domain events to every viewer; a run's state is one page's |
 
 ## Edit source
 
@@ -90,11 +90,11 @@ Starting an edit names its `source`: `frame`, the frame at the player's
 a position outside the duration does. For `thumbnail`, the session's image is
 the first of these that exists:
 
-| Case | Image | `positionMs` |
-| --- | --- | --- |
-| An image is applied | The row's `source` decoded to PNG, or `image` in a row without `source` | Absent |
-| A position is recorded | The frame at that position | That position |
-| Neither | The frame at the thumbnail job's automatic position, or the first frame when that position yields none | The automatic position, or `0` |
+| Case                   | Image                                                                                                  | `positionMs`                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| An image is applied    | The row's `source` decoded to PNG, or `image` in a row without `source`                                | Absent                         |
+| A position is recorded | The frame at that position                                                                             | That position                  |
+| Neither                | The frame at the thumbnail job's automatic position, or the first frame when that position yields none | The automatic position, or `0` |
 
 The automatic position and its first-frame fallback come from
 `media.AutoThumbnailPositions`, the one rule the thumbnail job and the edit
@@ -156,11 +156,11 @@ session so the owner can run again.
 An apply writes one `thumbnail_images` row in the transaction that sets
 `thumbnail_state` to `done`:
 
-| Column | Content |
-| --- | --- |
-| `image` | The 640 px JPEG fitted to the video's aspect; the thumbnail file is published from it |
+| Column   | Content                                                                                                                                                        |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `image`  | The 640 px JPEG fitted to the video's aspect; the thumbnail file is published from it                                                                          |
 | `source` | The same crop with its long side at most 2048 px, as a JPEG, for an edit that starts from the current thumbnail; null in rows written before migration `00041` |
-| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage`  |
+| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage`                                         |
 
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
@@ -173,11 +173,11 @@ frame, so the page asks for it with `size=large`.
 640 px thumbnail when there is none. Every publication of the thumbnail
 writes the poster with it, in the same generation lock and stash:
 
-| Thumbnail | Poster |
-| --- | --- |
+| Thumbnail                                                               | Poster                                                                                       |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | A frame (automatic or chosen), at import, a position change or a revert | The same frame from the same ffmpeg decode, its long side at most 2048 px and never enlarged |
-| An applied image, when applied or republished by the thumbnail job | The stored `source` |
-| An applied image whose row predates migration `00041` | None |
+| An applied image, when applied or republished by the thumbnail job      | The stored `source`                                                                          |
+| An applied image whose row predates migration `00041`                   | None                                                                                         |
 
 A publication without a poster removes the previous one, and a restore after a
 failed recording puts the previous poster back, so a poster never outlives the
@@ -211,11 +211,11 @@ client's context, before reading its body.
 
 The check is the edit's image check with a larger pixel cap:
 
-| Limit | Upload | Edit reference |
-| --- | --- | --- |
-| Bytes | 64 MiB for the part; the body may be 1 MiB larger for the multipart framing | 20 MiB |
-| Pixels in the header | 120 million, refused as `thumbnail_upload_too_large` with `limit` | 8192 × 8192, refused as unreadable |
-| Formats | PNG, JPEG, still WebP decoded to the end; an animated WebP is refused by its `VP8X` header | The same |
+| Limit                | Upload                                                                                     | Edit reference                     |
+| -------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------- |
+| Bytes                | 64 MiB for the part; the body may be 1 MiB larger for the multipart framing                | 20 MiB                             |
+| Pixels in the header | 120 million, refused as `thumbnail_upload_too_large` with `limit`                          | 8192 × 8192, refused as unreadable |
+| Formats              | PNG, JPEG, still WebP decoded to the end; an animated WebP is refused by its `VP8X` header | The same                           |
 
 A 120-megapixel PNG decodes to 480 MB, so one process-wide upload gate admits
 one upload at a time to each step that decodes the original. The diagram shows
@@ -259,14 +259,14 @@ The owner places the image freely: one fit holds its centre's offset from the
 frame's centre, its zoom and a quarter turn, and what fills the frame where the
 image does not.
 
-| Control | Effect |
-| --- | --- |
-| Drag, arrow keys | Move the image anywhere, until 10% of the frame's side (or the whole image, when smaller) still overlaps the frame. While dragging, an axis within 1.5% of the long side of the frame's centre or of an edge-to-edge alignment snaps to it |
-| `Zoom`, wheel, `+` and `-` | 0.25× to 16× of the size that shows the whole image, about the frame's centre; up to four times the fill zoom for an image too narrow to fill the frame at 16× |
-| `Whole image` (default) | Centred at 1×. An image within 1 px of the frame's aspect fills it |
-| `Fill frame` | Centred at the zoom that just covers the frame |
-| `Turn left`, `Turn right` | A quarter turn; free angles are not offered, as covers and photos rarely need them |
-| `Empty space` | `Blurred image` (default): black under a blurred copy of the image at half opacity; `Black` |
+| Control                    | Effect                                                                                                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Drag, arrow keys           | Move the image anywhere, until 10% of the frame's side (or the whole image, when smaller) still overlaps the frame. While dragging, an axis within 1.5% of the long side of the frame's centre or of an edge-to-edge alignment snaps to it |
+| `Zoom`, wheel, `+` and `-` | 0.25× to 16× of the size that shows the whole image, about the frame's centre; up to four times the fill zoom for an image too narrow to fill the frame at 16×                                                                             |
+| `Whole image` (default)    | Centred at 1×. An image within 1 px of the frame's aspect fills it                                                                                                                                                                         |
+| `Fill frame`               | Centred at the zoom that just covers the frame                                                                                                                                                                                             |
+| `Turn left`, `Turn right`  | A quarter turn; free angles are not offered, as covers and photos rarely need them                                                                                                                                                         |
+| `Empty space`              | `Blurred image` (default): black under a blurred copy of the image at half opacity; `Black`                                                                                                                                                |
 
 The preview draws the image a second time at a quarter of the resolution on a
 canvas three frames wide and high, faint behind the frame, so the owner sees
@@ -279,14 +279,14 @@ The server's fit then finds an image already at the video's aspect, so the
 centre crop of the fit removes nothing, and the stored source keeps the same
 framing for an edit from the current thumbnail.
 
-| Rejected | Why |
-| --- | --- |
-| Send the original with a crop rectangle and let ffmpeg compose | The preview and the result would come from two drawings; Go and ffmpeg also ignore a JPEG's EXIF orientation, which the browser applies |
-| Keep the image covering the frame whenever it is zoomed in | A jacket scan's front or a small logo could not be placed where the owner wants |
-| Free rotation angles | Covers and photos rarely need them, and a turned rectangle would need its own cover maths |
-| Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect  |
-| A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
-| The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
+| Rejected                                                          | Why                                                                                                                                     |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Send the original with a crop rectangle and let ffmpeg compose    | The preview and the result would come from two drawings; Go and ffmpeg also ignore a JPEG's EXIF orientation, which the browser applies |
+| Keep the image covering the frame whenever it is zoomed in        | A jacket scan's front or a small logo could not be placed where the owner wants                                                         |
+| Free rotation angles                                              | Covers and photos rarely need them, and a turned rectangle would need its own cover maths                                               |
+| Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect                                                        |
+| A margin in the theme's colour                                    | The JPEG has no transparency and the same file serves both themes                                                                       |
+| The original's resolution on the canvas                           | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway                                 |
 
 ### One entry opens the preview from any source
 
@@ -299,10 +299,10 @@ it, so the preview starts from the image a ComfyUI edit would, at up to
 drawing through the upload route, so the result is stored with origin
 `uploaded` whatever its source.
 
-| Rejected | Why |
-| --- | --- |
-| Keep a separate ComfyUI entry that applies through `applyThumbnailEdit` | Two screens for one task, and its result skipped the framing |
-| Draw the frame from the player's `<video>` element | A transcoded or HLS stream is not the original's resolution, and a player-less video has no element |
+| Rejected                                                                | Why                                                                                                 |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Keep a separate ComfyUI entry that applies through `applyThumbnailEdit` | Two screens for one task, and its result skipped the framing                                        |
+| Draw the frame from the player's `<video>` element                      | A transcoded or HLS stream is not the original's resolution, and a player-less video has no element |
 
 ### The preview touches up its framing with ComfyUI
 
@@ -317,16 +317,16 @@ framed whole, so it can be framed or touched up again, and the preview's
 apply sends it as it would the picked file. While a run or an unused result is
 pending, the framing and the apply wait.
 
-| Instruction | Asks the model to |
-| --- | --- |
-| `Enhance quality` | Remove noise and compression artifacts and sharpen detail, keeping the content |
-| `Remove blur` | Make the whole image look in focus |
-| `Remove text` | Remove text, captions, logos and watermarks and fill their areas |
-| `Fill the empty space` | Extend the picture over the blurred or black borders a free placement leaves |
+| Instruction            | Asks the model to                                                              |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `Enhance quality`      | Remove noise and compression artifacts and sharpen detail, keeping the content |
+| `Remove blur`          | Make the whole image look in focus                                             |
+| `Remove text`          | Remove text, captions, logos and watermarks and fill their areas               |
+| `Fill the empty space` | Extend the picture over the blurred or black borders a free placement leaves   |
 
 `Paint or add a reference…` opens the ComfyUI editor, with its painting and
-reference image, on an `image` session of the current framing. An image
-pasted or dropped anywhere in the editor becomes the reference. Its
+reference image, on an `image` session of the current framing. `Add image…`
+takes the reference through an `ImageUploadDialog`. Its
 `Use result` reads the output, discards the session and hands the image back
 to the preview, as `Use result` does for a touch-up; the editor no longer
 applies a thumbnail itself.
@@ -336,10 +336,10 @@ follow English best, and live in
 [`presets.ts`](../../web/src/player/thumbnailEdit/presets.ts); the ComfyUI
 editor offers the same ones under its instructions field.
 
-| Rejected | Why |
-| --- | --- |
-| Apply the session's result through `applyThumbnailEdit` | It would skip the framing and the cover path, whose apply uploads the drawing; the preview's own apply covers both |
-| A dedicated upscaling workflow for `Enhance quality` | The stored thumbnail is 640 px from a 2048 px drawing, so repairing detail matters more than adding pixels, and the configured edit workflow already does that |
+| Rejected                                                | Why                                                                                                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apply the session's result through `applyThumbnailEdit` | It would skip the framing and the cover path, whose apply uploads the drawing; the preview's own apply covers both                                             |
+| A dedicated upscaling workflow for `Enhance quality`    | The stored thumbnail is 640 px from a 2048 px drawing, so repairing detail matters more than adding pixels, and the configured edit workflow already does that |
 
 The server never sees the original, so the page refuses it before the preview
 for the server's reasons: a file whose header is not a PNG, JPEG or WebP one,
