@@ -139,6 +139,50 @@ describe("useThumbnailUpload", () => {
     expect(compose.loadUploadImage).toHaveBeenCalledTimes(2);
   });
 
+  it("送る間に別の動画へ移ると、その動画では選べ、遅れて届いた結果を反映しない", async () => {
+    compose.encodeComposition.mockResolvedValueOnce(new Blob(["png"]));
+    const sending = deferred<Video>();
+    client.uploadThumbnailImage.mockReturnValueOnce(sending.promise);
+    const { result, rerender, report, onChanged, onStale } = setup();
+    act(() => result.current.choose(png()));
+    await waitFor(() => expect(result.current.preview).not.toBeNull());
+    act(() => result.current.apply(WHOLE_IMAGE, null));
+    await waitFor(() => expect(result.current.sending).toBe(true));
+    rerender({ current: { ...video, id: 8 } });
+    expect(result.current.sending).toBe(false);
+    act(() => result.current.choose(png()));
+    expect(compose.loadUploadImage).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.preview?.videoId).toBe(8));
+    report.mockClear();
+    await act(async () => {
+      sending.resolve({ ...video });
+      await sending.promise;
+    });
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(onStale).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+    expect(result.current.preview?.videoId).toBe(8);
+  });
+
+  it("送る絵を作る間に別の動画へ移ると、その動画のプレビューを閉じず、何も送らない", async () => {
+    const composing = deferred<Blob>();
+    compose.encodeComposition.mockReturnValueOnce(composing.promise);
+    const { result, rerender } = setup();
+    act(() => result.current.choose(png()));
+    await waitFor(() => expect(result.current.preview).not.toBeNull());
+    act(() => result.current.apply(WHOLE_IMAGE, null));
+    rerender({ current: { ...video, id: 8 } });
+    expect(result.current.applying).toBe(false);
+    act(() => result.current.choose(png()));
+    await waitFor(() => expect(result.current.preview?.videoId).toBe(8));
+    await act(async () => {
+      composing.resolve(new Blob(["png"]));
+      await composing.promise;
+    });
+    expect(result.current.preview?.videoId).toBe(8);
+    expect(client.uploadThumbnailImage).not.toHaveBeenCalled();
+  });
+
   it("送る絵を作れなければ、閉じて失敗を出し、何も送らない", async () => {
     compose.encodeComposition.mockRejectedValueOnce(new Error("toBlob"));
     const { result, report } = setup();

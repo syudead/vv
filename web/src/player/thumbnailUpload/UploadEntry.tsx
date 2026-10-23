@@ -42,7 +42,7 @@ export interface UploadPreviewState {
   contentVersion: string;
 }
 
-/** Validate and preview before uploading with the captured contentVersion. Uploads continue after leaving, but their responses must not update the departed page. */
+/** Validate and preview before uploading with the captured contentVersion. Uploads continue after leaving the page or the video, but their responses must not update what is shown now. */
 export function useThumbnailUpload(
   video: Video | undefined,
   report: (failure: UiText | null) => void,
@@ -64,24 +64,25 @@ export function useThumbnailUpload(
   const [preview, setPreview] = useState<UploadPreviewState | null>(null);
   // A ref also blocks two clicks within the same render.
   const busy = useRef(false);
-  const live = useRef(true);
-  // Do not open a decoded image for a video that is no longer current.
-  const videoId = useRef(video?.id);
-  videoId.current = video?.id;
+  // Bumped when the page leaves or the video changes, so an earlier read, composition or upload
+  // neither blocks nor updates the video shown now; the page keeps this hook across videos.
+  const generation = useRef(0);
+
+  useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
-    live.current = true;
-    return () => {
-      live.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
+    generation.current += 1;
+    busy.current = false;
+    setSending(false);
+    setPreparing(false);
+    setApplying(false);
     setPreview((current) => {
-      if (current !== null) {
-        current.image.bitmap.close();
-        busy.current = false;
-      }
+      current?.image.bitmap.close();
       return null;
     });
   }, [video?.id]);
@@ -95,6 +96,8 @@ export function useThumbnailUpload(
     load: Promise<LoadResult>,
     failed: (error: unknown) => void,
   ) => {
+    const started = generation.current;
+    const isCurrent = () => generation.current === started;
     busy.current = true;
     report(null);
     setPreparing(true);
@@ -105,9 +108,8 @@ export function useThumbnailUpload(
     };
     load
       .then((loaded) => {
-        if (!live.current || videoId.current !== opened.videoId) {
+        if (!isCurrent()) {
           if ("image" in loaded) loaded.image.bitmap.close();
-          busy.current = false;
           return;
         }
         if ("refusal" in loaded) {
@@ -118,11 +120,12 @@ export function useThumbnailUpload(
         setPreview({ image: loaded.image, name, ...opened });
       })
       .catch((error: unknown) => {
-        if (live.current && !isAborted(error)) failed(error);
+        if (!isCurrent()) return;
+        if (!isAborted(error)) failed(error);
         busy.current = false;
       })
       .finally(() => {
-        if (live.current) setPreparing(false);
+        if (isCurrent()) setPreparing(false);
       });
   };
 
@@ -162,43 +165,47 @@ export function useThumbnailUpload(
   const apply = (fit: Fit, replaced: UploadImage | null) => {
     if (preview === null || applying) return;
     const current = preview;
+    const started = generation.current;
     setApplying(true);
     encodeComposition(replaced ?? current.image, current.aspect, fit)
       .then((composed) => {
         replaced?.bitmap.close();
-        if (!live.current) return;
+        if (generation.current !== started) return;
         close(current);
         send(new File([composed], "thumbnail.png", { type: "image/png" }), current);
       })
       .catch(() => {
         replaced?.bitmap.close();
-        if (!live.current) return;
+        if (generation.current !== started) return;
         close(current);
         busy.current = false;
         report(text.failed(t.errors.unexpected));
       })
       .finally(() => {
-        if (live.current) setApplying(false);
+        if (generation.current === started) setApplying(false);
       });
   };
 
   const send = (image: File, current: UploadPreviewState) => {
     const mark = detailMark();
+    const started = generation.current;
+    const shown = () => generation.current === started;
     setSending(true);
     uploadThumbnailImage(current.videoId, image, current.contentVersion)
       .then(
         (saved) => {
-          if (live.current) onChanged?.(saved, mark);
+          if (shown()) onChanged?.(saved, mark);
         },
         (error: unknown) => {
-          if (isAborted(error) || !live.current) return;
+          if (isAborted(error) || !shown()) return;
           report(text.failed(errorText(error)));
           if (staleAfter(error)) onStale?.();
         },
       )
       .finally(() => {
+        if (!shown()) return;
         busy.current = false;
-        if (live.current) setSending(false);
+        setSending(false);
       });
   };
 
