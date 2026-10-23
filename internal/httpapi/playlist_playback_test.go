@@ -65,7 +65,7 @@ func TestPlaylistPlaybackAnswersThePositionAndTheNextVideo(t *testing.T) {
 	if playback.Playlist.Id != f.id || playback.Playlist.Name != "連続再生" || playback.Playlist.ItemCount != 3 {
 		t.Errorf("playlist = %+v", playback.Playlist)
 	}
-	if playback.ItemId != f.itemA || playback.Position != 1 || playback.Count != 3 || playback.PreviousItem != nil {
+	if playback.ItemId != f.itemA || playback.Position != 1 || playback.Count != 3 || playback.PlayableCount != 3 || playback.PreviousItem != nil {
 		t.Errorf("playback = %+v", playback)
 	}
 	for name, step := range map[string]*gen.PlaylistStep{"next": playback.Next, "nextItem": playback.NextItem} {

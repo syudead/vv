@@ -10348,7 +10348,7 @@ components:
     PlaylistPlayback:
       type: object
       description: "Playlist playback position and next video."
-      required: [playlist, itemId, position, count]
+      required: [playlist, itemId, position, count, playableCount]
       additionalProperties: false
       properties:
         playlist:
@@ -10363,8 +10363,12 @@ components:
         count:
           type: integer
           description: "Visible item count."
+        playableCount:
+          type: integer
+          description: "Visible items whose starting video has a file; zero means the playlist has nothing to play."
         next:
           $ref: "#/components/schemas/PlaylistStep"
+          description: "Continuous-playback step; passes over virtual videos."
         previousItem:
           $ref: "#/components/schemas/PlaylistStep"
         nextItem:

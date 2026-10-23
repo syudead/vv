@@ -165,6 +165,48 @@ func TestPlaylistPlaybackOfSmartFolderSteps(t *testing.T) {
 	}
 }
 
+func TestPlaylistPlaybackOfVirtualVideos(t *testing.T) {
+	virtual := func(id int64) Video { return Video{ID: id, ContentKey: VirtualKeyPrefix + "k"} }
+	virtualItem := func(id int64) PlaylistItem {
+		video := virtual(id)
+		return PlaylistItem{ID: id * 10, Video: &video}
+	}
+	a, x, y, b := playbackVideo(1), virtualItem(5), virtualItem(6), playbackVideo(3)
+	f := playbackSmartFolder(7, "nnn", 71, 72, 73)
+	f.SmartFolder.Members[1] = virtual(72)
+
+	tests := []struct {
+		name     string
+		items    []PlaylistItem
+		item     int64
+		video    int64
+		next     int64 // Zero means absent.
+		nextItem int64
+		playable int
+	}{
+		{name: "continuous play passes over a virtual item between files, the manual step does not",
+			items: []PlaylistItem{a, x, b}, item: 10, video: 1, next: 3, nextItem: 5, playable: 2},
+		{name: "only virtual items after the current one end the playlist",
+			items: []PlaylistItem{a, x, y}, item: 10, video: 1, next: 0, nextItem: 5, playable: 1},
+		{name: "a playlist of only virtual items has nothing to play",
+			items: []PlaylistItem{x, y}, item: 50, video: 5, next: 0, nextItem: 6, playable: 0},
+		{name: "a virtual member of a smart folder is passed over",
+			items: []PlaylistItem{f, b}, item: 70, video: 71, next: 73, nextItem: 3, playable: 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PlaylistPlaybackOf(tc.items, PlaylistCurrent{ItemID: tc.item, VideoID: tc.video})
+			if err != nil {
+				t.Fatalf("PlaylistPlaybackOf: %v", err)
+			}
+			if stepVideo(got.Next) != tc.next || stepVideo(got.NextItem) != tc.nextItem || got.PlayableCount != tc.playable {
+				t.Errorf("next・nextItem・playableCount = %d・%d・%d, want %d・%d・%d",
+					stepVideo(got.Next), stepVideo(got.NextItem), got.PlayableCount, tc.next, tc.nextItem, tc.playable)
+			}
+		})
+	}
+}
+
 func TestPlaylistPlaybackOfMissingItem(t *testing.T) {
 	_, err := PlaylistPlaybackOf([]PlaylistItem{playbackVideo(1)}, PlaylistCurrent{ItemID: 99, VideoID: 1})
 	if !errors.Is(err, ErrPlaylistItemNotFound) {
