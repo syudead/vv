@@ -178,7 +178,8 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 ## A face can be framed from a video
 
 The camera menu on the person's face offers `Choose from videos…` beside
-`Upload an image…`, with or without a face. It opens an `EditorDialog`
+`Upload, paste or drop an image…`, with or without a face; an image pasted
+or dropped anywhere on the person page uploads as the face too. It opens an `EditorDialog`
 ([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
 
 | Part    | Shows                                                                                                                                                                            |

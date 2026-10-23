@@ -238,7 +238,9 @@ describe("VideoPage thumbnail upload", () => {
     expect(input.accept).toBe("image/png,image/jpeg,image/webp");
     const click = vi.spyOn(input, "click");
     fireEvent.keyDown(entry(), { key: "Enter" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Upload, paste or drop an image…" }),
+    );
     expect(click).toHaveBeenCalledTimes(1);
   });
 
@@ -278,6 +280,20 @@ describe("VideoPage thumbnail upload", () => {
     expect(posts()).toHaveLength(0);
     expect(bitmap.close).toHaveBeenCalled();
     await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
+  });
+
+  it("ページに貼り付けた画像やドロップした画像でもプレビューを開く", async () => {
+    await openPage();
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { types: ["Files"], files: [png("pasted.png")] },
+    });
+    act(() => {
+      document.body.dispatchEvent(paste);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
+    expect(within(dialog).getByText("pasted.png")).toBeTruthy();
+    expect(posts()).toEqual([]);
   });
 
   it("読めない画像はプレビューを出さずに、理由の文で失敗の行を出す", async () => {

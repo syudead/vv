@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
 import { Input } from "../../ui/shadcn/input";
+import { ImageDropOverlay, useImageIntake } from "../../ui/ImageDrop";
 import ActionButton from "../ActionButton";
 import type { ThumbnailCapture } from "../VideoFacts";
 import {
@@ -219,7 +220,7 @@ function staleAfter(error: unknown): boolean {
   return error.status === 404 || error.reason === "content_changed";
 }
 
-/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
+/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview. An image pasted or dropped on the page opens it too. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
 export default function ThumbnailEntry({
   sending,
   locked,
@@ -241,6 +242,7 @@ export default function ThumbnailEntry({
   const [positionMs, setPositionMs] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const disabled = sending || locked;
+  const { dragging } = useImageIntake({ enabled: !disabled, onFile, scope: "page" });
 
   const choose = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -324,6 +326,7 @@ export default function ThumbnailEntry({
         data-testid="thumbnail-upload-input"
         onChange={choose}
       />
+      <ImageDropOverlay dragging={dragging} label={text.drop} />
     </>
   );
 }

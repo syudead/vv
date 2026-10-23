@@ -678,9 +678,11 @@ The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
 `Copy path`: icon-only ghost buttons with tooltips. `Change thumbnail` is the
 owner's even when the player is not shown and does not depend on ComfyUI; its
 menu offers the frame on screen (only while a frame is shown), the current
-thumbnail with a small copy of it, and `Upload an image…`, which opens the
-browser's file picker for PNG, JPEG and WebP and refuses another type or a
-file over 64 MB on the failure line before sending anything. The entry spins
+thumbnail with a small copy of it, and `Upload, paste or drop an image…`,
+which opens the browser's file picker for PNG, JPEG and WebP. An image pasted
+or dropped anywhere on the page, the main way in, takes the same path
+([ImageDrop](../../web/registry/rules/components.md#imagedrop)). Another type
+or a file over 64 MB is refused on the failure line before sending anything. The entry spins
 while it reads the chosen source and while it sends. A
 readable source opens `Preview thumbnail`, an `EditorDialog` whose stage shows
 the image in the card's 16:9 thumbnail frame exactly as it will be stored:

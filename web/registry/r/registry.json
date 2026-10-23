@@ -249,6 +249,20 @@
       "dependencies": ["lucide-react"]
     },
     {
+      "name": "image-drop",
+      "type": "registry:ui",
+      "title": "ImageDrop",
+      "description": "vv component: useImageIntake takes an image pasted or dropped anywhere in the window for a page or an open dialog; ImageDropOverlay marks the window while files are dragged over it.",
+      "docs": "Usage rules: web/registry/rules/components.md#imagedrop (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/ImageDrop.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "person-face",
       "type": "registry:ui",
       "title": "PersonFace",

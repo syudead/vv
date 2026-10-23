@@ -325,7 +325,8 @@ pending, the framing and the apply wait.
 | `Fill the empty space` | Extend the picture over the blurred or black borders a free placement leaves |
 
 `Paint or add a reference…` opens the ComfyUI editor, with its painting and
-reference image, on an `image` session of the current framing. Its
+reference image, on an `image` session of the current framing. An image
+pasted or dropped anywhere in the editor becomes the reference. Its
 `Use result` reads the output, discards the session and hands the image back
 to the preview, as `Use result` does for a touch-up; the editor no longer
 applies a thumbnail itself.

@@ -329,7 +329,7 @@ describe("VideoPage thumbnail edit", () => {
     expect(item.querySelector("img")?.getAttribute("src")).toBe(video.thumbnailUrl);
     expect(item.querySelector("img")?.getAttribute("alt")).toBe("");
     expect(
-      within(menu).getByRole("menuitem", { name: "Upload an image…" }),
+      within(menu).getByRole("menuitem", { name: "Upload, paste or drop an image…" }),
     ).toBeDefined();
     fireEvent.click(item);
     const preview = await screen.findByRole("dialog", { name: "Preview thumbnail" });
@@ -444,6 +444,28 @@ describe("VideoPage thumbnail edit", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(server.run).toHaveBeenCalled());
     expect(server.run.mock.calls[0]?.[0].get("prompt")).toBe(PRESETS[2]?.prompt);
+  });
+
+  it("編集中にドロップした画像は参照画像になり、サムネイルのプレビューを開き直さない", async () => {
+    // jsdom has no object URLs; the editor shows the reference through one.
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = () => "blob:ref";
+        static revokeObjectURL = () => undefined;
+      },
+    );
+    const dialog = await openEditor();
+    const reference = new File(["ref"], "reference.png", { type: "image/png" });
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { types: ["Files"], files: [reference] },
+    });
+    act(() => {
+      dialog.dispatchEvent(drop);
+    });
+    expect(within(dialog).getByText("reference.png")).toBeTruthy();
+    expect(compose.loadUploadImage).not.toHaveBeenCalledWith(reference);
   });
 
   it("実行が失敗したら理由の文と提供元の文を出し、入力を残して Compose に戻る", async () => {

@@ -1730,7 +1730,8 @@ export const en = {
       face: {
         add: "Add a face",
         change: "Change face",
-        upload: "Upload an image…",
+        upload: "Upload, paste or drop an image…",
+        drop: "Drop the image to use it as the face",
         fromVideos: "Choose from videos…",
         remove: "Remove face",
         uploading: "Saving the face…",
@@ -2187,7 +2188,8 @@ export const en = {
       instructionsPlaceholder: "For example: remove the caption at the bottom",
       instructionsHint: "Optional when you paint: the painted area is then cleaned up.",
       reference: "Reference image",
-      addReference: "Add image…",
+      addReference: "Add, paste or drop an image…",
+      dropReference: "Drop the image to use it as the reference",
       removeReference: "Remove reference image",
       referenceHint:
         "Its colours and mood are used, and its objects may be copied. PNG, JPEG or WebP, up to 20 MB.",
@@ -2234,7 +2236,8 @@ export const en = {
     //
     thumbnailUpload: {
       entry: "Change thumbnail",
-      chooseFile: "Upload an image…",
+      chooseFile: "Upload, paste or drop an image…",
+      drop: "Drop the image to use it as the thumbnail",
       refusedType: "Choose a PNG, JPEG or WebP image.",
       refusedSize: "Choose an image up to 64 MB.",
       failed: (reason: string) => `Couldn't upload the image: ${reason}`,

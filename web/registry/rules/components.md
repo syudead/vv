@@ -457,6 +457,24 @@ Put marks over the frame, such as the favorite heart, as children in a
 Do not use it for anything but a person: organizations and videos have no
 face.
 
+### ImageDrop
+
+Item `image-drop`. Every control that takes an image file also takes one
+pasted or dropped anywhere in the window, and that is the main way in; the
+file picker stays as the fallback, and its label names all three ("Upload,
+paste or drop an image…"). Call `useImageIntake` with the same handler as the
+picker, so a pasted or dropped file is refused for the same reasons, and
+render `ImageDropOverlay` with what the drop will do ("Drop the image to use
+it as the thumbnail") while `dragging` is true.
+
+Use `scope="page"` on a page: it steps aside while any dialog or popover is
+open. A dialog that takes an image itself uses `scope="dialog"`. Turn
+`enabled` off while the image cannot be taken, such as during an upload. A
+paste into a text field that also carries text stays in the field.
+
+Do not draw a drop zone of your own or take files dropped on only part of the
+screen.
+
 ### TentativeMark
 
 Item `tentative-mark`. The dashed circle after a tentative tag's name, in a

@@ -28,6 +28,24 @@ describe("PersonPage", () => {
     expect(screen.queryByRole("button", { name: "Add a face" })).toBeNull();
   });
 
+  it("uploads an image pasted on the page as the face", async () => {
+    renderPage();
+    await screen.findByRole("button", { name: "Add a face" });
+
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    const file = new File(["face"], "face.png", { type: "image/png" });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { types: ["Files"], files: [file] },
+    });
+    act(() => {
+      document.body.dispatchEvent(paste);
+    });
+
+    await screen.findByRole("img", { name: "Aoi" });
+    const [upload] = sent("PUT", "/api/people/7/image");
+    expect(((upload?.body as FormData).get("image") as File).name).toBe("face.png");
+  });
+
   it("sends the person's favorite and shows it pressed after the response", async () => {
     const user = userEvent.setup();
     renderPage();

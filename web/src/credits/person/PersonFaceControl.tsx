@@ -18,6 +18,7 @@ import {
 } from "../../player/thumbnailUpload/uploadRules";
 import { DialogError } from "../../tags/DialogError";
 import FavoriteToggle from "../../ui/FavoriteToggle";
+import { ImageDropOverlay, useImageIntake } from "../../ui/ImageDrop";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
@@ -43,7 +44,7 @@ function withFaceOf(saved: Person) {
   });
 }
 
-/** The face with its heart and its upload and removal; a missing person calls onGone. */
+/** The face with its heart and its upload and removal; an image pasted or dropped on the page uploads too. A missing person calls onGone. */
 export default function PersonFaceControl({
   person,
   onChanged,
@@ -60,6 +61,11 @@ export default function PersonFaceControl({
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
   const [picking, setPicking] = useState(false);
+  const { dragging } = useImageIntake({
+    enabled: !uploading,
+    onFile: (file) => void upload(file),
+    scope: "page",
+  });
 
   function pick() {
     if (!uploading) fileInput.current?.click();
@@ -199,6 +205,7 @@ export default function PersonFaceControl({
         data-testid="person-face-input"
         onChange={choose}
       />
+      <ImageDropOverlay dragging={dragging} label={text.face.drop} />
       {picking && (
         <FacePickerDialog
           person={person}

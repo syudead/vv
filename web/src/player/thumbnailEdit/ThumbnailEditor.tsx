@@ -35,6 +35,7 @@ import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
 import { Field, FieldDescription, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
+import { ImageDropOverlay, useImageIntake } from "../../ui/ImageDrop";
 import { Progress } from "../../ui/shadcn/progress";
 import { Slider } from "../../ui/shadcn/slider";
 import { Spinner } from "../../ui/shadcn/spinner";
@@ -312,7 +313,10 @@ export default function ThumbnailEditor({
   const chooseReference = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file === undefined) return;
+    if (file !== undefined) takeReference(file);
+  };
+
+  const takeReference = (file: File) => {
     if (!referenceAccepted(file)) {
       setReferenceRefused(true);
       return;
@@ -323,6 +327,11 @@ export default function ThumbnailEditor({
 
   const locked = running || ended || busy !== null || view === "compare";
   const inputsLocked = running || ended || busy !== null || view === "compare";
+  const { dragging } = useImageIntake({
+    enabled: !inputsLocked && !confirming,
+    onFile: takeReference,
+    scope: "dialog",
+  });
   const resultUrl = session.resultUrl;
   const elapsedMs =
     session.elapsedMs === undefined
@@ -620,6 +629,7 @@ export default function ThumbnailEditor({
           close();
         }}
       />
+      <ImageDropOverlay dragging={dragging} label={text.dropReference} />
     </>
   );
 }
