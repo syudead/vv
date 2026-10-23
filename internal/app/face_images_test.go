@@ -302,37 +302,3 @@ func TestFaceRecognizerDoesNotRetryAMergeRefusedForGood(t *testing.T) {
 		}
 	})
 }
-
-func TestUploadChecksTheFaceWhileTheRuntimeIsReady(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		runtime domain.FaceRuntimeState
-		faces   int
-		err     error
-	}{
-		{"no face", domain.FaceRuntimeReady, 0, domain.ErrPersonImageNoFace},
-		{"two faces", domain.FaceRuntimeReady, 2, domain.ErrPersonImageManyFaces},
-		{"one face", domain.FaceRuntimeReady, 1, nil},
-		{"no runtime", domain.FaceRuntimeAbsent, 0, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newFaceWorkerFixture()
-			f.runtime.set(tc.runtime)
-			f.helpers.imageFaces = tc.faces
-			stored := 0
-			images := &PersonImages{uploads: newUploadGate(), faces: f.rec,
-				store: personImageStoreFunc(func(id int64, image domain.PersonImage) (domain.Credit, error) {
-					stored++
-					return domain.Credit{ID: id, ImageRevision: 1}, nil
-				})}
-			_, err := images.UploadPersonImage(context.Background(), 7, testPNG(t, 600, 400))
-			if !errors.Is(err, tc.err) || (stored == 1) != (tc.err == nil) {
-				t.Fatalf("UploadPersonImage = %v with %d stored, want %v", err, stored, tc.err)
-			}
-			created, closed := f.helpers.made()
-			if wantHelpers := tc.runtime == domain.FaceRuntimeReady; (len(created) == 1) != wantHelpers || closed != len(created) {
-				t.Fatalf("helpers made %v, closed %d; want one stopped helper only while the runtime is ready", created, closed)
-			}
-		})
-	}
-}

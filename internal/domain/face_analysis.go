@@ -74,9 +74,9 @@ type PersonImageChanged struct {
 func (PersonImageChanged) event() {}
 
 var (
-	// ErrPersonImageNoFace refuses an owner's upload without a good face while the face runtime is ready.
+	// ErrPersonImageNoFace reports a face image without a good face, which gets no vector.
 	ErrPersonImageNoFace = errors.New("the image shows no usable face")
-	// ErrPersonImageManyFaces refuses an owner's upload with more than one good face while the face runtime is ready.
+	// ErrPersonImageManyFaces reports a face image with more than one good face, which gets no vector.
 	ErrPersonImageManyFaces = errors.New("the image shows more than one face")
 )
 
