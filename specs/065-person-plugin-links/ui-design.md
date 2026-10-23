@@ -103,13 +103,19 @@ The row's facts line ([`FactsLine`](../../web/src/settings/WorkInfoPluginRow.tsx
 gains one part for a person plugin with `domains`, in this order:
 operations, `Accepts IDs from …`, `Accepts links from …`, the network mark,
 the settings summary, the last run. The part is text in the line's
-`text-xs text-muted-foreground`, wrapping with the line; a plugin without
+`text-xs text-muted-foreground`, wrapping with the line; a domain wider than
+the line, up to the contract's 253 characters, breaks inside itself through
+the line's `break-words` instead of widening the row. A plugin without
 `domains` shows no part and no empty words. A work-info plugin's row never
 shows it.
 
 The approval dialog's `FactList` gains the row `Accepts links from` after
 `Accepts IDs from`, each domain a `secondary` `Badge` in a wrapping row of
-`gap-1`, as the sources are. A person plugin with domains and no sources
+`gap-1`, as the sources are. A domain's `Badge` is capped at the row's width
+(`max-w-full`) and, for a domain wider than that, grows in height and wraps
+its label inside itself (`h-auto whitespace-normal break-all`); it is never
+clipped or shortened with an ellipsis, because the owner approves exactly
+the sites it names. A person plugin with domains and no sources
 shows the links row alone. The description and the network alert are
 unchanged: the domains say which sites the plugin reads a person from, and
 the alert already says it can reach any site.
@@ -121,6 +127,7 @@ the alert already says it can reach any site.
 | Person plugin with sources and domains | Row: `Fetch by ID · Search by name · Accepts IDs from a, b · Accepts links from example.com · …`; dialog: the `Accepts IDs from` row, then the `Accepts links from` row of badges |
 | Person plugin with domains only | Row: the operations, then `Accepts links from …`; dialog: the links row without an IDs row |
 | Person plugin without domains | As today, no links part and no links row |
+| Person plugin with a 253-character domain | Row: the domain breaks inside itself within the column; dialog: that domain's badge wraps to several lines within the dialog, the other badges as usual |
 | Work-info plugin | As today |
 | Plugin uploaded before this feature | As a person plugin without domains, until its module is uploaded again ([plan.md, Storage](plan.md#storage)) |
 
@@ -227,6 +234,35 @@ the server picked the key ([plan.md](plan.md#the-result-tells-the-dialog-which-l
 | `Back` from a typed-link comparison | The name search with the link still in the field |
 | Stale after apply, fetched by a picked or typed link | The existing stale alert; `Fetch again` reruns the same link without the choice |
 
+The diagram shows the dialog's states in this feature and what the owner
+does, or the server answers, to move between them; the result and stale
+states after `Apply` are unchanged and left out.
+
+```mermaid
+stateDiagram-v2
+  [*] --> PluginStep
+  PluginStep --> Fetching: Fetch
+  Fetching --> Comparison: ID or one link
+  Fetching --> LinkChoice: several links
+  Fetching --> NameSearch: no ID, no link
+  LinkChoice --> RowFetching: press a row
+  RowFetching --> Comparison: fetched
+  RowFetching --> LinkChoice: run failed, alert
+  LinkChoice --> NameSearch: Search by name
+  NameSearch --> Matches: Search a name
+  NameSearch --> LinkFetching: Fetch a link
+  LinkFetching --> Comparison: fetched
+  LinkFetching --> NameSearch: unhandled link, reason
+  Matches --> Comparison: press a candidate
+  Comparison --> LinkChoice: Back, picked link
+  Comparison --> NameSearch: Back, typed link
+  Comparison --> PluginStep: Back, stored key
+```
+
+`Back, stored key` covers a comparison the server fetched by a stored ID or
+the one handled link. A run that fails for a reason other than an unhandled
+link returns to the state it started from with the existing `FailureAlert`.
+
 ## Responsive behaviour
 
 Breakpoints are Tailwind's defaults only, applied in CSS; `sm` is 640px.
@@ -237,8 +273,8 @@ and 1280px.
 | Width | Layout |
 | --- | --- |
 | 1280px | The dialog at `max-w-2xl`; a link row's path on one line with the host under it and `Open page` at the row's end; the source line on one line for a link of ordinary length. The plugin row's facts line on one or two lines with ` · ` between parts; the approval dialog's badges in one row |
-| 768px | The same dialog width; the facts line wraps at a ` · `, never inside a domain |
-| 390px | The dialog spans the screen with the 16px margin; a long path wraps to its second line and is then clipped, the host under it stays whole or truncates with an ellipsis, and `Open page` stays at the row's end without pushing the text under it; the source line wraps the link across lines inside the dialog, never widening it; the facts line's parts wrap one under another; the approval dialog's badges wrap to two or three rows with `gap-1` |
+| 768px | The same dialog width; the facts line wraps at a ` · `, and inside a domain only when that domain alone is wider than the line |
+| 390px | The dialog spans the screen with the 16px margin; a long path wraps to its second line and is then clipped, the host under it stays whole or truncates with an ellipsis, and `Open page` stays at the row's end without pushing the text under it; the source line wraps the link across lines inside the dialog, never widening it; the facts line's parts wrap one under another; the approval dialog's badges wrap to two or three rows with `gap-1`; a 253-character domain breaks across lines in the facts line and inside its own badge, and neither the row nor the dialog scrolls sideways |
 
 ## Review criteria
 
@@ -247,7 +283,8 @@ Judged by looking at the real screen
 at the widths above, with a person plugin that declares two domains and two
 sources, a person plugin without domains, and a person holding three links on
 the first plugin's domains (two differing only in a trailing slash) and no
-accepted ID, plus a person with one such link. "It exists" alone does not
+accepted ID, plus a person with one such link, and a person plugin that
+declares one 253-character domain. "It exists" alone does not
 satisfy a criterion (Q-4).
 
 1. **Visual hierarchy**: in the comparison the eye goes title → source line →
@@ -291,4 +328,6 @@ satisfy a criterion (Q-4).
    reason; typing a name afterwards searches as today (acceptance 5, 6).
 8. **Settings**: adding a plugin that declares domains shows them on its
    row and in `Review and approve` before the owner approves; a plugin
-   without domains shows no empty words in either place (acceptance 1).
+   without domains shows no empty words in either place (acceptance 1); a
+   253-character domain is shown whole in both places, wraps inside the
+   column and the dialog at 390px, and makes neither scroll sideways.
