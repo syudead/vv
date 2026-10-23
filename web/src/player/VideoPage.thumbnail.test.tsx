@@ -229,8 +229,16 @@ async function openEditor() {
   return screen.findByRole("dialog", { name: "Edit thumbnail" });
 }
 
-function choose(file: File) {
-  const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
+async function uploadDialog() {
+  const open = screen.queryByRole("dialog", { name: "Upload a thumbnail" });
+  if (open !== null) return open;
+  fireEvent.click(way("Upload…"));
+  return screen.findByRole("dialog", { name: "Upload a thumbnail" });
+}
+
+async function choose(file: File) {
+  const dialog = await uploadDialog();
+  const input = within(dialog).getByTestId<HTMLInputElement>("image-upload-input");
   fireEvent.change(input, { target: { files: [file] } });
 }
 
@@ -241,7 +249,7 @@ function png(name = "photo.png") {
 }
 
 async function applyUpload() {
-  choose(png());
+  await choose(png());
   const preview = await screen.findByRole("dialog", { name: "Preview thumbnail" });
   fireEvent.click(within(preview).getByRole("button", { name: "Use as thumbnail" }));
 }
@@ -397,31 +405,43 @@ describe("VideoPage Thumbnail tab", () => {
     expect(way("Touch up…")).toBeDefined();
   });
 
-  it("「Upload…」は PNG・JPEG・WebP に限ったピッカーを開き、選んだファイルで送らずにプレビューを開く", async () => {
+  it("「Upload…」は PNG・JPEG・WebP に限ったアップロードのダイアログを開き、選んだファイルで送らずにプレビューを開く", async () => {
     await openThumbnail();
-    const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
+    const dialog = await uploadDialog();
+    const input = within(dialog).getByTestId<HTMLInputElement>("image-upload-input");
     expect(input.accept).toBe("image/png,image/jpeg,image/webp");
-    const click = vi.spyOn(input, "click");
-    fireEvent.click(way("Upload…"));
-    expect(click).toHaveBeenCalledTimes(1);
 
-    choose(png());
+    await choose(png());
     const preview = await screen.findByRole("dialog", { name: "Preview thumbnail" });
     expect(within(preview).getByText("photo.png")).toBeDefined();
+    expect(screen.queryByRole("dialog", { name: "Upload a thumbnail" })).toBeNull();
     expect(posts()).toHaveLength(0);
   });
 
-  it("別の種類や 64 MB を超える画像は、読まずにパネルの失敗の行で断る", async () => {
+  it("アップロードのダイアログに貼り付けた画像でもプレビューを開く", async () => {
     await openThumbnail();
-    choose(new File(["GIF89a"], "anim.gif", { type: "image/gif" }));
-    expect((await screen.findByRole("alert")).textContent).toBe(
+    fireEvent.paste(await uploadDialog(), {
+      clipboardData: { types: ["Files"], files: [png("pasted.png")] },
+    });
+    const preview = await screen.findByRole("dialog", { name: "Preview thumbnail" });
+    expect(within(preview).getByText("pasted.png")).toBeDefined();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("別の種類や 64 MB を超える画像は、読まずにアップロードのダイアログの中で断る", async () => {
+    await openThumbnail();
+    await choose(new File(["GIF89a"], "anim.gif", { type: "image/gif" }));
+    const dialog = await uploadDialog();
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
       "Choose a PNG, JPEG or WebP image.",
     );
     const large = png("large.png");
     Object.defineProperty(large, "size", { value: 64 * 1024 * 1024 + 1 });
-    choose(large);
+    await choose(large);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toBe("Choose an image up to 64 MB."),
+      expect(within(dialog).getByRole("alert").textContent).toBe(
+        "Choose an image up to 64 MB.",
+      ),
     );
     expect(compose.loadUploadImage).not.toHaveBeenCalled();
   });
@@ -595,6 +615,28 @@ describe("VideoPage Thumbnail tab", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(server.run).toHaveBeenCalled());
     expect(server.run.mock.calls[0]?.[0].get("prompt")).toBe(PRESETS[2]?.prompt);
+  });
+
+  it("「Add image…」のダイアログにドロップした画像は参照画像になる", async () => {
+    // jsdom has no object URLs; the editor shows the reference through one.
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = () => "blob:ref";
+        static revokeObjectURL = () => undefined;
+      },
+    );
+    const dialog = await openEditor();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add image…" }));
+    const upload = await screen.findByRole("dialog", { name: "Add a reference image" });
+    const reference = new File(["ref"], "reference.png", { type: "image/png" });
+    fireEvent.drop(upload, {
+      dataTransfer: { types: ["Files"], files: [reference] },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Add a reference image" })).toBeNull(),
+    );
+    expect(within(dialog).getByText("reference.png")).toBeTruthy();
   });
 
   it("実行が失敗したら理由の文と提供元の文を出し、入力を残して Compose に戻る", async () => {

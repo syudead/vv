@@ -1,14 +1,7 @@
-import { ChevronLeft, ChevronRight, LoaderCircle } from "lucide-react";
-import {
-  type KeyboardEvent,
-  type PointerEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import { isCreditGone, type Person, uploadPersonImage } from "../../api/credits";
-import { cn } from "../../lib/cn";
+import { isCreditGone, type Person } from "../../api/credits";
 import {
   type FaceAppearance,
   faceCropPath,
@@ -17,26 +10,26 @@ import {
 } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
-import FittedBox from "../../player/thumbnailEdit/FittedBox";
 import { EditorDialog } from "../../ui/patterns/editor-dialog";
 import { Button } from "../../ui/shadcn/button";
-import { Slider } from "../../ui/shadcn/slider";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import { creditDisplayName } from "../displayName";
-import { encodeFaceFrame } from "./faceFrameImage";
+import {
+  FacePreview,
+  FaceSaveError,
+  FaceSaveFooter,
+  FrameStage,
+  SizeControl,
+  useFaceSave,
+} from "./FaceFrameParts";
 import {
   clampFaceFrame,
   type FaceFrame,
   faceFrameRect,
   initialFaceFrame,
-  maxFaceWidth,
-  MIN_FACE_WIDTH,
-  moveFaceFrame,
-  type Rect,
   type Size,
 } from "./faceFraming";
-import { faceUploadFailure } from "./faceUploadFailure";
 
 const text = t.credits.personPage.face.picker;
 
@@ -44,9 +37,6 @@ const text = t.credits.personPage.face.picker;
 const FACE_CHOICES = 48;
 
 const STEP_MS = 1000;
-
-/** Arrow keys move the frame by this share of the image's width. */
-const KEY_STEP = 0.01;
 
 type Choosable = FaceAppearance & {
   videoId: number;
@@ -155,8 +145,12 @@ export default function FacePickerDialog({
   const chosen = faces.find((face) => face.appearanceId === chosenId) ?? faces.at(0);
   const [positionMs, setPositionMs] = useState(0);
   const [framing, setFraming] = useState<{ id: number; frame: FaceFrame } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<UiText | null>(null);
+  const {
+    saving,
+    error,
+    clearError,
+    save: saveFace,
+  } = useFaceSave(person, onSaved, onGone);
   const saveButton = useRef<HTMLButtonElement>(null);
 
   // A newly chosen face starts at the middle of its longest track and is framed anew.
@@ -180,18 +174,9 @@ export default function FacePickerDialog({
     if (chosen !== undefined) setFraming({ id: chosen.appearanceId, frame: next });
   };
 
-  async function save() {
-    if (image === null || current === null || size === null || saving) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const blob = await encodeFaceFrame(image, faceFrameRect(size, current));
-      onSaved(await uploadPersonImage(person.id, blob));
-    } catch (failure) {
-      setSaving(false);
-      if (isCreditGone(failure)) onGone();
-      else setError(faceUploadFailure(failure));
-    }
+  function save() {
+    if (image === null || current === null || size === null) return;
+    void saveFace(image, faceFrameRect(size, current));
   }
 
   const ready = frame.state === "ready" && current !== null;
@@ -207,7 +192,7 @@ export default function FacePickerDialog({
       closeDisabled={saving}
       initialFocus={saveButton}
       stage={
-        <FrameStage
+        <PickerStage
           frame={frame}
           size={size}
           current={current}
@@ -222,7 +207,7 @@ export default function FacePickerDialog({
             chosenId={shownId}
             onChoose={(id) => {
               setChosenId(id);
-              setError(null);
+              clearError();
             }}
             disabled={saving}
           />
@@ -231,7 +216,7 @@ export default function FacePickerDialog({
               positionMs={positionMs}
               onPosition={(next) => {
                 setPositionMs(next);
-                setError(null);
+                clearError();
               }}
               disabled={saving}
             />
@@ -251,35 +236,17 @@ export default function FacePickerDialog({
               rect={faceFrameRect(size, current)}
             />
           )}
-          {error !== null && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          <FaceSaveError error={error} />
         </>
       }
       footer={
-        <>
-          <Button
-            ref={saveButton}
-            size="lg"
-            className="w-full"
-            aria-disabled={!ready || saving || undefined}
-            aria-busy={saving || undefined}
-            onClick={() => void save()}
-          >
-            {saving && (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
-              />
-            )}
-            {saving ? text.saving : text.save}
-          </Button>
-          <Button variant="ghost" className="w-full" disabled={saving} onClick={onClose}>
-            {text.cancel}
-          </Button>
-        </>
+        <FaceSaveFooter
+          saveRef={saveButton}
+          ready={ready}
+          saving={saving}
+          onSave={save}
+          onCancel={onClose}
+        />
       }
     />
   );
@@ -396,41 +363,8 @@ function MomentControls({
   );
 }
 
-function SizeControl({
-  size,
-  current,
-  onFrame,
-  disabled,
-}: {
-  size: Size;
-  current: FaceFrame;
-  onFrame: (frame: FaceFrame) => void;
-  disabled: boolean;
-}) {
-  const max = maxFaceWidth(size);
-  return (
-    <section className="flex flex-col gap-2" aria-labelledby="face-picker-size">
-      <h3 id="face-picker-size" className="text-sm font-medium">
-        {text.size}
-      </h3>
-      <Slider
-        aria-label={text.size}
-        min={Math.min(MIN_FACE_WIDTH, max)}
-        max={max}
-        step={max / 200}
-        value={[current.width]}
-        disabled={disabled}
-        onValueChange={([width]) => {
-          if (width !== undefined) onFrame(clampFaceFrame(size, { ...current, width }));
-        }}
-      />
-      <p className="text-sm text-muted-foreground">{text.sizeHint}</p>
-    </section>
-  );
-}
-
-/** The frame with the portrait outlined and the rest dimmed; the outline drags and takes arrow keys. */
-function FrameStage({
+/** The chosen frame once it has loaded, its failure, or a spinner meanwhile. */
+function PickerStage({
   frame,
   size,
   current,
@@ -450,167 +384,12 @@ function FrameStage({
     return <Spinner aria-label={text.frameLoading} />;
   }
   return (
-    <FittedBox aspect={size.width / size.height}>
-      <img src={frame.src} alt="" draggable={false} className="size-full select-none" />
-      <FrameOutline size={size} current={current} onFrame={onFrame} disabled={disabled} />
-    </FittedBox>
-  );
-}
-
-function percent(value: number): string {
-  return `${String(value * 100)}%`;
-}
-
-function FrameOutline({
-  size,
-  current,
-  onFrame,
-  disabled,
-}: {
-  size: Size;
-  current: FaceFrame;
-  onFrame: (frame: FaceFrame) => void;
-  disabled: boolean;
-}) {
-  const drag = useRef<{ x: number; y: number; frame: FaceFrame } | null>(null);
-  const rect = faceFrameRect(size, current);
-  const left = rect.x / size.width;
-  const top = rect.y / size.height;
-  const width = rect.width / size.width;
-  const height = rect.height / size.height;
-
-  function start(event: PointerEvent<HTMLDivElement>) {
-    if (disabled) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, y: event.clientY, frame: current };
-  }
-
-  function move(event: PointerEvent<HTMLDivElement>) {
-    const from = drag.current;
-    const shown = event.currentTarget.parentElement?.clientWidth ?? 0;
-    if (from === null || shown === 0) return;
-    onFrame(
-      moveFaceFrame(
-        size,
-        from.frame,
-        event.clientX - from.x,
-        event.clientY - from.y,
-        shown,
-      ),
-    );
-  }
-
-  function key(event: KeyboardEvent<HTMLDivElement>) {
-    const steps: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    };
-    const step = steps[event.key];
-    if (step === undefined || disabled) return;
-    event.preventDefault();
-    onFrame(moveFaceFrame(size, current, step[0] * KEY_STEP, step[1] * KEY_STEP, 1));
-  }
-
-  return (
-    <>
-      <div
-        className="absolute inset-x-0 top-0 bg-overlay opacity-60"
-        style={{ height: percent(top) }}
-      />
-      <div
-        className="absolute inset-x-0 bottom-0 bg-overlay opacity-60"
-        style={{ height: percent(1 - top - height) }}
-      />
-      <div
-        className="absolute left-0 bg-overlay opacity-60"
-        style={{ top: percent(top), height: percent(height), width: percent(left) }}
-      />
-      <div
-        className="absolute right-0 bg-overlay opacity-60"
-        style={{
-          top: percent(top),
-          height: percent(height),
-          width: percent(1 - left - width),
-        }}
-      />
-      <div
-        role="application"
-        aria-label={text.area}
-        tabIndex={disabled ? -1 : 0}
-        className="absolute cursor-move touch-none rounded-sm border-2 border-primary"
-        style={{
-          left: percent(left),
-          top: percent(top),
-          width: percent(width),
-          height: percent(height),
-        }}
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={() => (drag.current = null)}
-        onPointerCancel={() => (drag.current = null)}
-        onKeyDown={key}
-      />
-    </>
-  );
-}
-
-/** The portrait as the profile shows it, and the round crop the cards take from it. */
-function FacePreview({ src, size, rect }: { src: string; size: Size; rect: Rect }) {
-  // Cards show the portrait's square a third of the way down, as `object-face` places it.
-  const square: Rect = {
-    x: rect.x,
-    y: rect.y + (rect.height - rect.width) / 3,
-    width: rect.width,
-    height: rect.width,
-  };
-  return (
-    <section className="flex flex-col gap-2" aria-labelledby="face-picker-preview">
-      <h3 id="face-picker-preview" className="text-sm font-medium">
-        {text.preview}
-      </h3>
-      <div className="flex items-end gap-4">
-        <PreviewCut
-          src={src}
-          size={size}
-          rect={rect}
-          className="aspect-portrait w-card-face rounded-md"
-        />
-        <PreviewCut
-          src={src}
-          size={size}
-          rect={square}
-          className="size-16 rounded-full"
-        />
-      </div>
-    </section>
-  );
-}
-
-function PreviewCut({
-  src,
-  size,
-  rect,
-  className,
-}: {
-  src: string;
-  size: Size;
-  rect: Rect;
-  className: string;
-}) {
-  return (
-    <div className={cn("relative shrink-0 overflow-hidden bg-muted", className)}>
-      <img
-        src={src}
-        alt=""
-        className="absolute max-w-none"
-        style={{
-          width: percent(size.width / rect.width),
-          left: percent(-rect.x / rect.width),
-          top: percent(-rect.y / rect.height),
-        }}
-      />
-    </div>
+    <FrameStage
+      src={frame.src}
+      size={size}
+      current={current}
+      onFrame={onFrame}
+      disabled={disabled}
+    />
   );
 }

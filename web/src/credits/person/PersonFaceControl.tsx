@@ -1,12 +1,11 @@
 import { Camera, Film, ImageUp, Trash2 } from "lucide-react";
-import { type ChangeEvent, useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   isCreditGone,
   type Person,
   personFaceSrc,
   removePersonImage,
-  uploadPersonImage,
 } from "../../api/credits";
 import { updateFavorites } from "../../api/favorites";
 import { errorText, t, type UiText } from "../../i18n";
@@ -18,6 +17,7 @@ import {
 } from "../../player/thumbnailUpload/uploadRules";
 import { DialogError } from "../../tags/DialogError";
 import FavoriteToggle from "../../ui/FavoriteToggle";
+import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
 import { Button } from "../../ui/shadcn/button";
@@ -27,11 +27,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
-import { Input } from "../../ui/shadcn/input";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { creditDisplayName } from "../displayName";
+import FaceCropDialog from "./FaceCropDialog";
 import FacePickerDialog from "./FacePickerDialog";
-import { faceUploadFailure } from "./faceUploadFailure";
 
 const text = t.credits.personPage;
 
@@ -43,7 +42,7 @@ function withFaceOf(saved: Person) {
   });
 }
 
-/** The face with its heart and its upload and removal; a missing person calls onGone. */
+/** The face with its heart and its upload and removal; an image chosen, dropped or pasted in an ImageUploadDialog opens for framing. A missing person calls onGone. */
 export default function PersonFaceControl({
   person,
   onChanged,
@@ -53,48 +52,24 @@ export default function PersonFaceControl({
   onChanged: (next: Person | ((current: Person) => Person)) => void;
   onGone: () => void;
 }) {
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<UiText | null>(null);
+  const [cropping, setCropping] = useState<File | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
   const [picking, setPicking] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   function pick() {
-    if (!uploading) fileInput.current?.click();
-  }
-
-  async function upload(file: File) {
-    const refusal = uploadRefusal(file);
-    if (refusal !== null) {
-      setError(
-        refusal === "type"
-          ? text.face.refusedType
-          : text.face.tooLarge(formatBytes(UPLOAD_MAX_BYTES)),
-      );
-      return;
-    }
-    setError(null);
     setUploading(true);
-    try {
-      onChanged(withFaceOf(await uploadPersonImage(person.id, file)));
-    } catch (failure) {
-      if (isCreditGone(failure)) {
-        onGone();
-        return;
-      }
-      setError(faceUploadFailure(failure));
-    } finally {
-      setUploading(false);
-    }
   }
 
-  function choose(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    // Clear the value so choosing the same file again still fires change.
-    event.target.value = "";
-    if (file !== undefined) void upload(file);
+  function frame(file: File): UiText | null {
+    const refusal = uploadRefusal(file);
+    if (refusal === "type") return text.face.refusedType;
+    if (refusal === "size") return text.face.tooLarge(formatBytes(UPLOAD_MAX_BYTES));
+    setUploading(false);
+    setCropping(file);
+    return null;
   }
 
   async function remove() {
@@ -147,7 +122,6 @@ export default function PersonFaceControl({
                   variant="ghost"
                   size="icon-sm"
                   aria-label={text.face.change}
-                  disabled={uploading}
                   className="bg-overlay"
                 >
                   <Camera aria-hidden="true" />
@@ -177,35 +151,34 @@ export default function PersonFaceControl({
               </DropdownMenuContent>
             </DropdownMenu>
           </PersonFaceMark>
-          {uploading && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center bg-overlay">
-              <Spinner aria-label={text.face.uploading} />
-            </div>
-          )}
         </PersonFace>
       </div>
-      {error !== null && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Input
-        ref={fileInput}
-        type="file"
+      <ImageUploadDialog
+        open={uploading}
+        onOpenChange={setUploading}
+        title={text.face.uploadTitle}
+        description={text.face.uploadHint}
         accept={UPLOAD_TYPES}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="hidden"
-        data-testid="person-face-input"
-        onChange={choose}
+        onFile={frame}
       />
+      {cropping !== null && (
+        <FaceCropDialog
+          person={person}
+          file={cropping}
+          onClose={() => setCropping(null)}
+          onSaved={(saved) => {
+            setCropping(null);
+            onChanged(withFaceOf(saved));
+          }}
+          onGone={onGone}
+        />
+      )}
       {picking && (
         <FacePickerDialog
           person={person}
           onClose={() => setPicking(false)}
           onSaved={(saved) => {
             setPicking(false);
-            setError(null);
             onChanged(withFaceOf(saved));
           }}
           onGone={onGone}

@@ -1,18 +1,18 @@
 import { LoaderCircle } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { Video } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
+import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { ScrubFrame } from "../../ui/ScrubPreview";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { Button } from "../../ui/shadcn/button";
-import { Input } from "../../ui/shadcn/input";
 import { Separator } from "../../ui/shadcn/separator";
 import type { ThumbnailCapture } from "../playerLayers";
 import type { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
-import { UPLOAD_TYPES } from "../thumbnailUpload/uploadRules";
+import { UPLOAD_TYPES, uploadRefusal } from "../thumbnailUpload/uploadRules";
 import { FailureLine, PanelSection } from "./panelParts";
 import type { useThumbnailPosition } from "./useThumbnailPosition";
 import { useSpriteFrame } from "./useSpriteFrame";
@@ -77,8 +77,8 @@ function originText(video: Video): ReactNode {
 
 /**
  * The current thumbnail with its origin, and the three ways to replace it as rows of preview, title
- * and pill. The requests and the preview belong to the tabs container, so a send started here
- * finishes after a tab switch.
+ * and pill; an image file is chosen, dropped or pasted in an ImageUploadDialog. The requests and
+ * the preview belong to the tabs container, so a send started here finishes after a tab switch.
  */
 export default function ThumbnailPanel({
   video,
@@ -87,7 +87,7 @@ export default function ThumbnailPanel({
   upload,
   failure,
 }: ThumbnailPanelProps) {
-  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
   const sending = sendingWay(position, upload);
   const playerPosition = usePlayerPosition(capture);
   const spriteFrame = useSpriteFrame(video.seekThumbnailUrl, playerPosition);
@@ -105,10 +105,17 @@ export default function ThumbnailPanel({
     },
   });
 
-  const choose = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file !== undefined) upload.choose(file);
+  /** Refuse by type or size inside the dialog; a readable file closes it and opens the preview. */
+  const take = (file: File) => {
+    const refusal = uploadRefusal(file);
+    if (refusal !== null) {
+      return refusal === "type"
+        ? t.player.thumbnailUpload.refusedType
+        : t.player.thumbnailUpload.refusedSize;
+    }
+    setUploading(false);
+    upload.choose(file);
+    return null;
   };
 
   return (
@@ -163,7 +170,7 @@ export default function ThumbnailPanel({
                 title={text.anImage}
                 note={text.uploadImageNote}
                 label={text.uploadImage}
-                {...action("upload", () => fileInput.current?.click())}
+                {...action("upload", () => setUploading(true))}
               />
               <WayRow
                 preview={
@@ -183,15 +190,13 @@ export default function ThumbnailPanel({
                 )}
               />
             </ul>
-            <Input
-              ref={fileInput}
-              type="file"
+            <ImageUploadDialog
+              open={uploading}
+              onOpenChange={setUploading}
+              title={t.player.thumbnailUpload.uploadTitle}
+              description={t.player.thumbnailUpload.uploadHint}
               accept={UPLOAD_TYPES}
-              tabIndex={-1}
-              aria-hidden="true"
-              className="hidden"
-              data-testid="thumbnail-upload-input"
-              onChange={choose}
+              onFile={take}
             />
           </PanelSection>
         </div>

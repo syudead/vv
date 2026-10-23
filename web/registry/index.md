@@ -53,6 +53,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `grouped-list`             | Section       | Rows under headings that stick, such as days                                 |
 | `grouped-list-example`     | Block         | Copy to start a list of rows grouped under headings                          |
 | `form-row`                 | Section       | One setting: label, description, control                                     |
+| `image-upload-dialog`      | vv component  | Bring in an image file: drop, choose or paste, before any framing            |
 | `input`                    | Component     | One line of text                                                             |
 | `jump-list`                | Section       | Jump to a day or month from a side column or a strip of chips                |
 | `kbd`                      | Component     | A key or search operator in text                                             |
