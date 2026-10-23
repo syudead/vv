@@ -461,6 +461,9 @@ and each fetched person with a profile adds one muted line `Fills only empty
 fields: …` under the chips, because the apply never replaces a stored value.
 Three lines show at first and the rest fold behind `+N more`, which shows them
 all when expanded, so the chips stay the primary content of the row.
+The video's unnamed performers follow, each face beside the fetched performer
+the owner says they are, both `PersonFace judge`
+([work-info-plugins.md](work-info-plugins.md#the-owner-matches-unnamed-performers-with-fetched-ones)).
 
 ## Provisional people on the screens
 

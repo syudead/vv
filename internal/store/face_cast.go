@@ -68,25 +68,40 @@ func mergeByCast(ctx context.Context, tx *sql.Tx, c *changes, userKey string, no
 func mergeProvisionalOrRefuse(ctx context.Context, tx *sql.Tx, c *changes, provisionalID, personID int64,
 	now time.Time,
 ) ([]domain.Event, error) {
-	if _, err := tx.ExecContext(ctx, `savepoint face_merge`); err != nil {
-		return nil, fmt.Errorf("cannot start the automatic merge: %w", err)
-	}
-	_, events, _, err := mergeProvisional(ctx, tx, c, provisionalID, personID, domain.ActivityByRule, now)
-	if err != nil {
-		if !mergeRefused(err) {
-			return nil, err
-		}
-		// The refusal comes before the merge touches c, so only the rows need rolling back.
-		if _, rbErr := tx.ExecContext(ctx, `rollback to face_merge`); rbErr != nil {
-			return nil, fmt.Errorf("cannot roll back the automatic merge: %w", rbErr)
-		}
+	var events []domain.Event
+	err := refusableMerge(ctx, tx, func() (err error) {
+		_, events, _, err = mergeProvisional(ctx, tx, c, provisionalID, personID, domain.ActivityByRule, now)
+		return err
+	})
+	if err != nil && mergeRefused(err) {
 		return nil, fmt.Errorf("%w: person %d into person %d: %w", domain.ErrFaceMergeRefused, provisionalID, personID,
 			err)
 	}
-	if _, err := tx.ExecContext(ctx, `release face_merge`); err != nil {
-		return nil, fmt.Errorf("cannot finish the automatic merge: %w", err)
+	return events, err
+}
+
+// refusableMerge runs merge under a savepoint and rolls a refusal of mergeRefused back to before it, so tx stays
+// usable; the refusal comes before a merge touches c, so only the rows need rolling back.
+func refusableMerge(ctx context.Context, tx *sql.Tx, merge func() error) error {
+	if _, err := tx.ExecContext(ctx, `savepoint face_merge`); err != nil {
+		return fmt.Errorf("cannot start the merge: %w", err)
 	}
-	return events, nil
+	if err := merge(); err != nil {
+		if !mergeRefused(err) {
+			return err
+		}
+		if _, rbErr := tx.ExecContext(ctx, `rollback to face_merge`); rbErr != nil {
+			return fmt.Errorf("cannot roll back the merge: %w", rbErr)
+		}
+		if _, rbErr := tx.ExecContext(ctx, `release face_merge`); rbErr != nil {
+			return fmt.Errorf("cannot roll back the merge: %w", rbErr)
+		}
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `release face_merge`); err != nil {
+		return fmt.Errorf("cannot finish the merge: %w", err)
+	}
+	return nil
 }
 
 // mergeRefused reports a refusal of mergeProvisional that does not depend on the database being reachable.

@@ -141,7 +141,7 @@ func TestApplyWorkInfoFetchPassesTheChosenDetailsAndReportsSkipped(t *testing.T)
 	release := domain.DateField(domain.DateRelease)
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{
 		Fields: []domain.WorkInfoField{domain.WorkInfoFieldTitle, release, domain.WorkInfoFieldCode},
-		People: []int{2, 0}, URLs: result.Details.URLs,
+		People: []int{2, 0}, URLs: result.Details.URLs, SamePeople: []domain.SamePerson{{At: 2, PersonID: 5}},
 	}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -158,6 +158,9 @@ func TestApplyWorkInfoFetchPassesTheChosenDetailsAndReportsSkipped(t *testing.T)
 	chosen.Organizations, chosen.ExternalIDs = nil, nil
 	if !reflect.DeepEqual(call.Details, chosen) || call.Title == nil || call.Tags != nil {
 		t.Fatalf("apply = %+v; want the chosen details and the title", call)
+	}
+	if want := []domain.SamePerson{{At: 1, PersonID: 5}}; !slices.Equal(call.SamePeople, want) {
+		t.Fatalf("same people = %v; want %v at the chosen entry's position", call.SamePeople, want)
 	}
 	if !reflect.DeepEqual(applied.Skipped, e.applier.skipped) || applied.SkippedTags == nil ||
 		!slices.Equal(applied.LinkedPeople, []int64{9}) {
@@ -188,6 +191,8 @@ func TestApplyWorkInfoFetchRefusesASelectionTheResultCannotGive(t *testing.T) {
 		"a person past the end":   {Fields: code, People: []int{len(work.People)}},
 		"an organization twice":   {Fields: code, Organizations: []int{0, 0}},
 		"a URL not fetched":       {Fields: code, URLs: []string{"https://example.com/other"}},
+		"a same person not chosen": {Fields: code, People: []int{0},
+			SamePeople: []domain.SamePerson{{At: 1, PersonID: 5}}},
 	} {
 		if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, selection, false); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", name, err)

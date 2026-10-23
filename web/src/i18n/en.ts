@@ -2475,6 +2475,11 @@ export const en = {
       credits: "People and organizations",
       sameNote: "Already the same as the fetched value.",
       onVideoCount: (count: number) => `${formatNumber(count)} already on the video`,
+      samePeople: "Unnamed people",
+      samePeopleNote:
+        "Pick who each face on the video is. Applying merges the unnamed person into them.",
+      samePersonLabel: (name: string) => `Who ${name} is`,
+      keepApart: "Keep apart",
       fillsHint: "On the video; applying fills the person's empty fields",
       linkedTitle: "People linked to the video",
       linkedNote:

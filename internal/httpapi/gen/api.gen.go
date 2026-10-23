@@ -3229,6 +3229,9 @@ type ApplyWorkInfoFetchRequest struct {
 	// People Positions in the result's people to link in their roles, each once.
 	People *[]int `json:"people,omitempty"`
 
+	// SamePeople Unnamed performers of the video matched with chosen fetched performers. Each is merged into the person its entry links, in the same transaction, as confirming a face candidate does. An entry not in people or not a performer, or an entry or person named twice, returns 400 invalid_request. A person who is no longer an unnamed performer of the video, or whose entry is skipped, is left as it is; a merge the people's limits refuse is reported in skipped under the entry.
+	SamePeople *[]WorkInfoSamePerson `json:"samePeople,omitempty"`
+
 	// Tags Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400.
 	Tags *[]string `json:"tags,omitempty"`
 
@@ -6922,6 +6925,15 @@ type WorkInfoPluginSetting struct {
 
 // WorkInfoPluginState Plugin state.
 type WorkInfoPluginState string
+
+// WorkInfoSamePerson defines model for WorkInfoSamePerson.
+type WorkInfoSamePerson struct {
+	// At Position of a fetched performer in the result's people; it must also be in people.
+	At int `json:"at"`
+
+	// PersonId The unnamed performer of the video who is that fetched performer.
+	PersonId int64 `json:"personId"`
+}
 
 // WorkInfoSearchRequest defines model for WorkInfoSearchRequest.
 type WorkInfoSearchRequest struct {

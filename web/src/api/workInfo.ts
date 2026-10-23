@@ -5,6 +5,7 @@ import { clearListSnapshot } from "./listSnapshot";
 export type WorkInfo = components["schemas"]["WorkInfo"];
 export type WorkInfoInput = components["schemas"]["WorkInfoInput"];
 export type WorkDateKind = components["schemas"]["WorkDateKind"];
+export type WorkPerson = components["schemas"]["WorkPerson"];
 export type WorkPersonRole = components["schemas"]["WorkPersonRole"];
 export type WorkOrganizationRole = components["schemas"]["WorkOrganizationRole"];
 export type VideoDetailsInput = components["schemas"]["VideoDetailsInput"];

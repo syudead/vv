@@ -3959,6 +3959,17 @@ export interface components {
             urls?: string[];
             /** @description Fetched external IDs to append. */
             externalIds?: components["schemas"]["ExternalId"][];
+            /** @description Unnamed performers of the video matched with chosen fetched performers. Each is merged into the person its entry links, in the same transaction, as confirming a face candidate does. An entry not in people or not a performer, or an entry or person named twice, returns 400 invalid_request. A person who is no longer an unnamed performer of the video, or whose entry is skipped, is left as it is; a merge the people's limits refuse is reported in skipped under the entry. */
+            samePeople?: components["schemas"]["WorkInfoSamePerson"][];
+        };
+        WorkInfoSamePerson: {
+            /** @description Position of a fetched performer in the result's people; it must also be in people. */
+            at: number;
+            /**
+             * Format: int64
+             * @description The unnamed performer of the video who is that fetched performer.
+             */
+            personId: number;
         };
         /**
          * @description Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.

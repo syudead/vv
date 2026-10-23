@@ -1,5 +1,6 @@
 import type { Video } from "../../api/client";
 import type { ExternalId } from "../../api/credits";
+import type { WorkPerson } from "../../api/workInfo";
 import type {
   WorkInfoApplyChoice,
   WorkInfoFetch,
@@ -28,6 +29,14 @@ export interface WorkSelection {
   organizations: number[];
   urls: string[];
   externalIds: ExternalId[];
+  /** Unnamed performers on the video matched with fetched performers, merged into them on apply. */
+  samePeople: SamePair[];
+}
+
+/** An unnamed performer on the video and the fetched performer at at whom the owner says they are. */
+export interface SamePair {
+  at: number;
+  personId: number;
 }
 
 /** How the apply treats a whole field: fills an empty value, replaces a stored one, or leaves it as it is. */
@@ -131,7 +140,38 @@ export function initialWorkSelection(video: Video, result: WorkInfoFetch): WorkS
     organizations: choosableAt(video, result, "organizations."),
     urls: freshUrls(video, result),
     externalIds: freshIds(video, result),
+    samePeople: [],
   };
+}
+
+/** The video's unnamed performers, each once: the people a fetched performer may turn out to be. */
+export function unnamedPerformers(video: Video): WorkPerson[] {
+  const seen = new Set<number>();
+  return videoWorkInfo(video).people.filter((person) => {
+    if (person.role !== "performer" || !person.provisional || seen.has(person.person.id))
+      return false;
+    seen.add(person.person.id);
+    return true;
+  });
+}
+
+/** The fetched performers the apply adds, which an unnamed performer may be matched with. */
+export function samePersonChoices(video: Video, result: WorkInfoFetch): DetailChip[] {
+  return roleRow("people.performer", video, result).fetched.filter(
+    (chip) => adds(chip) && chip.at !== undefined,
+  );
+}
+
+/** Matches the unnamed person with the entry at at, or keeps them apart when at is null. */
+export function withSamePerson(
+  selection: WorkSelection,
+  personId: number,
+  at: number | null,
+): WorkSelection {
+  const rest = selection.samePeople.filter(
+    (pair) => pair.personId !== personId && pair.at !== at,
+  );
+  return { ...selection, samePeople: at === null ? rest : [...rest, { at, personId }] };
 }
 
 export function workSelectionEmpty(selection: WorkSelection): boolean {
@@ -155,6 +195,9 @@ export function workChoice(selection: WorkSelection): WorkInfoApplyChoice {
     choice.organizations = [...selection.organizations];
   if (selection.urls.length > 0) choice.urls = [...selection.urls];
   if (selection.externalIds.length > 0) choice.externalIds = [...selection.externalIds];
+  // A pair whose fetched performer was cleared has nobody to merge into.
+  const same = selection.samePeople.filter((pair) => selection.people.includes(pair.at));
+  if (same.length > 0) choice.samePeople = same;
   if (selection.tags.length > 0) {
     fields.push("tags");
     choice.tags = [...selection.tags];

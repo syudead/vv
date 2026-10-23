@@ -1,20 +1,29 @@
-import { ArrowLeft, CircleAlert, Crop } from "lucide-react";
+import { ArrowLeft, ArrowRight, CircleAlert, Crop } from "lucide-react";
 import { useLayoutEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
-import type { ExternalId } from "../../api/credits";
+import { type ExternalId, personFaceSrc } from "../../api/credits";
+import type { WorkPerson } from "../../api/workInfo";
 import {
   type WorkInfoFetch,
   workInfoFetchCoverUrl,
   workInfoFetchPersonImageUrl,
   type WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
+import { creditDisplayName } from "../../credits/displayName";
 import { useLocalToday } from "../../credits/person/useLocalToday";
 import { errorText, t } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { isNarrowVideo } from "../../lib/format";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { PersonFace } from "../../ui/PersonFace";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
@@ -50,9 +59,12 @@ import {
   ROLE_FIELDS,
   type RoleField,
   roleRow,
+  samePersonChoices,
+  unnamedPerformers,
   type WholeField,
   type WholeRow,
   wholeRows,
+  withSamePerson,
   type WorkSelection,
 } from "./workSelection";
 
@@ -491,7 +503,111 @@ function CreditsSection({ props }: { props: CompareProps }) {
       {fields.map((field) => (
         <RoleRow key={field} field={field} props={props} />
       ))}
+      <SamePeopleRow props={props} />
     </CompareSection>
+  );
+}
+
+/** Each unnamed performer on the video, matched by face with a fetched performer the apply merges them into. */
+function SamePeopleRow({ props }: { props: CompareProps }) {
+  const unnamed = unnamedPerformers(props.video);
+  const choices = samePersonChoices(props.video, props.result);
+  if (unnamed.length === 0 || choices.length === 0) return null;
+  return (
+    <ValueRow label={<span>{text.samePeople}</span>}>
+      <div className="flex min-w-0 flex-col gap-4">
+        <p className="text-xs text-muted-foreground">{text.samePeopleNote}</p>
+        {unnamed.map((person) => (
+          <SamePersonPick
+            key={person.person.id}
+            person={person}
+            choices={choices}
+            props={props}
+          />
+        ))}
+      </div>
+    </ValueRow>
+  );
+}
+
+const KEEP_APART = "apart";
+
+function SamePersonPick({
+  person,
+  choices,
+  props,
+}: {
+  person: WorkPerson;
+  choices: DetailChip[];
+  props: CompareProps;
+}) {
+  const { selection } = props;
+  const id = person.person.id;
+  const name = creditDisplayName(person.person);
+  const pair = selection.samePeople.find((item) => item.personId === id);
+  const chosen = choices.find((chip) => pair !== undefined && chip.at === pair.at);
+  const taken = new Set(
+    selection.samePeople.filter((item) => item.personId !== id).map((item) => item.at),
+  );
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center gap-3">
+        <PersonFace
+          shape="judge"
+          name={name}
+          src={personFaceSrc({ id, imageRevision: person.imageRevision })}
+        />
+        <ArrowRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground"
+        />
+        <PersonFace
+          shape="judge"
+          name={chosen?.name ?? ""}
+          src={
+            chosen?.faceIndex === undefined
+              ? undefined
+              : workInfoFetchPersonImageUrl(
+                  props.video.id,
+                  props.result.fetchId,
+                  chosen.faceIndex,
+                )
+          }
+        />
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">{name}</span>
+        <Select
+          value={pair === undefined ? KEEP_APART : String(pair.at)}
+          disabled={props.locked}
+          onValueChange={(value) =>
+            props.onChange(
+              withSamePerson(selection, id, value === KEEP_APART ? null : Number(value)),
+            )
+          }
+        >
+          <SelectTrigger size="sm" aria-label={text.samePersonLabel(name)}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={KEEP_APART}>{text.keepApart}</SelectItem>
+            {choices.map((chip) => (
+              <SelectItem
+                key={chip.key}
+                value={String(chip.at)}
+                disabled={
+                  chip.at === undefined ||
+                  taken.has(chip.at) ||
+                  !selection.people.includes(chip.at)
+                }
+              >
+                {chip.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   );
 }
 

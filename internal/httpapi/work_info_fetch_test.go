@@ -318,7 +318,8 @@ func TestWorkInfoApplyPassesTheChosenEntriesAndValues(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	e.plugins.applied = domain.WorkInfoApplied{Video: domain.Video{ID: 7}, LinkedPeople: []int64{4, 2}}
 	status, body := e.post(applyPath, `{"fields":["cover","code"],"coverIndex":2,"people":[3,0],"organizations":[1],
-		"urls":["https://e.test/w"],"externalIds":[{"source":"s","value":"1"}]}`, e.owner)
+		"urls":["https://e.test/w"],"externalIds":[{"source":"s","value":"1"}],"samePeople":[{"at":3,"personId":9}]}`,
+		e.owner)
 	var applied gen.WorkInfoFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || !slices.Equal(applied.LinkedPeople, []int64{4, 2}) {
 		t.Fatalf("apply = %d %s; want the linked people", status, body)
@@ -326,7 +327,7 @@ func TestWorkInfoApplyPassesTheChosenEntriesAndValues(t *testing.T) {
 	want := domain.WorkInfoSelection{
 		Fields: []domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldCode}, CoverIndex: 2,
 		People: []int{3, 0}, Organizations: []int{1}, URLs: []string{"https://e.test/w"},
-		ExternalIDs: []domain.ExternalID{{Source: "s", Value: "1"}},
+		ExternalIDs: []domain.ExternalID{{Source: "s", Value: "1"}}, SamePeople: []domain.SamePerson{{At: 3, PersonID: 9}},
 	}
 	if !reflect.DeepEqual(e.plugins.selection, want) {
 		t.Fatalf("selection = %+v; want %+v", e.plugins.selection, want)
