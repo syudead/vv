@@ -17,6 +17,11 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 	for i := range eleven {
 		eleven[i] = fmt.Sprintf("%q", fmt.Sprintf("s%d", i))
 	}
+	elevenDomains := make([]string, 11)
+	for i := range elevenDomains {
+		elevenDomains[i] = fmt.Sprintf(`"d%d.example"`, i)
+	}
+	const personOps = `"kind":"person","operations":["search","fetch"],"sources":["a"],`
 	cases := []struct {
 		name  string
 		rest  string
@@ -27,6 +32,14 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 		{"person with a repeated source", `"kind":"person","operations":["search","fetch"],"sources":["a","b","a"]}`, "sources[2]"},
 		{"person with only fetch", `"kind":"person","operations":["fetch"],"sources":["a"]}`, "operations"},
 		{"work with sources", `"operations":["fetch"],"sources":["a"]}`, "sources"},
+		{"work with domains", `"operations":["fetch"],"domains":["example.com"]}`, "domains"},
+		{"person with empty domains", personOps + `"domains":[]}`, "domains"},
+		{"person with 11 domains", personOps + `"domains":[` + strings.Join(elevenDomains, ",") + `]}`, "domains"},
+		{"person with an uppercase domain", personOps + `"domains":["Example.com"]}`, "domains[0]"},
+		{"person with a scheme", personOps + `"domains":["example.com","https://example.org"]}`, "domains[1]"},
+		{"person with a port", personOps + `"domains":["example.com:8080"]}`, "domains[0]"},
+		{"person with a path", personOps + `"domains":["example.com/people"]}`, "domains[0]"},
+		{"person with a repeated domain", personOps + `"domains":["a.example","b.example","a.example"]}`, "domains[2]"},
 		{"unknown kind", `"kind":"studio","operations":["fetch"]}`, "kind"},
 		{"null kind", `"kind":null,"operations":["fetch"]}`, "kind"},
 	}
@@ -40,7 +53,7 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 	}
 }
 
-func TestCheckWorkInfoPluginManifestReadsKindAndSources(t *testing.T) {
+func TestCheckWorkInfoPluginManifestReadsKindSourcesAndDomains(t *testing.T) {
 	work, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead + `"operations":["fetch"]}`))
 	if rejection != nil || work.Kind != WorkInfoPluginKindWork || work.Sources != nil {
 		t.Fatalf("manifest without kind = %+v, %v; want kind work without sources", work, rejection)
@@ -49,6 +62,17 @@ func TestCheckWorkInfoPluginManifestReadsKindAndSources(t *testing.T) {
 		`"kind":"person","operations":["fetch","search"],"sources":["fanza","wiki"]}`))
 	if rejection != nil || person.Kind != WorkInfoPluginKindPerson || !reflect.DeepEqual(person.Sources, []string{"fanza", "wiki"}) {
 		t.Fatalf("person manifest = %+v, %v", person, rejection)
+	}
+	tenDomains := make([]string, 10)
+	for i := range tenDomains {
+		tenDomains[i] = fmt.Sprintf("d-%d.example.com", i)
+	}
+	tenDomains[0] = strings.Repeat("a", PersonPluginDomainMaxLength-len(".com")) + ".com"
+	encoded, _ := json.Marshal(tenDomains)
+	withDomains, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead +
+		`"kind":"person","operations":["fetch","search"],"sources":["wiki"],"domains":` + string(encoded) + `}`))
+	if rejection != nil || !slices.Equal(withDomains.Domains, tenDomains) {
+		t.Fatalf("person manifest with domains = %+v, %v; want the domains in order", withDomains, rejection)
 	}
 }
 

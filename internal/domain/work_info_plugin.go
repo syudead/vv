@@ -138,6 +138,8 @@ type WorkInfoPluginManifest struct {
 	Settings    []WorkInfoPluginSetting
 	// Sources lists a person plugin's external-ID sources in manifest order; nil for a work-info plugin.
 	Sources []string
+	// Domains lists the link hosts a person plugin fetches by url, in manifest order; nil when it declares none.
+	Domains []string
 }
 
 func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
@@ -148,6 +150,7 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 type manifestJSON struct {
 	Kind        WorkInfoPluginKind  `json:"kind"`
 	Sources     []string            `json:"sources"`
+	Domains     []string            `json:"domains"`
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
 	Description string              `json:"description"`
@@ -218,6 +221,7 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 		Operations:  raw.Operations,
 		Settings:    settings,
 		Sources:     raw.Sources,
+		Domains:     raw.Domains,
 	}
 	// A present kind, null included, must name a kind; only an absent one defaults to work.
 	if _, hasKind := top["kind"]; hasKind {
@@ -227,7 +231,8 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 		return WorkInfoPluginManifest{}, rejection
 	}
 	_, hasSources := top["sources"]
-	if rejection := checkPluginKind(m, hasSources); rejection != nil {
+	_, hasDomains := top["domains"]
+	if rejection := checkPluginKind(m, hasSources, hasDomains); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
 	return m, nil

@@ -6811,6 +6811,9 @@ type WorkInfoPlugin struct {
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
 	Digest string `json:"digest"`
 
+	// Domains The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none.
+	Domains []string `json:"domains"`
+
 	// FileName Uploaded filename.
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`

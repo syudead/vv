@@ -292,6 +292,7 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		Id:          entry.ID,
 		Kind:        gen.WorkInfoPluginKind(entry.Kind),
 		Sources:     entry.Sources,
+		Domains:     entry.Domains,
 		Name:        optionalString(entry.Name),
 		FileName:    entry.FileName,
 		Version:     optionalString(entry.Version),
