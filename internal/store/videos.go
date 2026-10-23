@@ -17,8 +17,8 @@ import (
 )
 
 // Keep columns aligned with scanVideo; representativeJoin supplies the smallest audience-visible location path.
-const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
-	rep.mtime as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
+var videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
+	` + mtimeNsExpr("rep") + ` as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
 	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
@@ -250,7 +250,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		return domain.Video{}, err
 	}
 
-	video.MTime = time.Unix(mtime, 0)
+	video.MTime = time.Unix(0, mtime)
 	video.FileCreatedAt = time.Unix(fileCreatedAt, 0)
 	video.AddedAt = time.Unix(addedAt, 0)
 	video.IndexedAt = time.Unix(indexedAt, 0)
@@ -298,6 +298,11 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.ThumbnailImageOrigin = domain.ThumbnailImageOrigin(thumbnailImageOrigin.String)
 
 	return video, nil
+}
+
+// The modification time in nanoseconds; rows scanned before mtime_ns existed have whole seconds only.
+func mtimeNsExpr(alias string) string {
+	return `coalesce(` + alias + `.mtime_ns, ` + alias + `.mtime * 1000000000)`
 }
 
 // Use modification time when file creation time is unknown.

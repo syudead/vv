@@ -86,6 +86,7 @@ const video: Video = {
   addedAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z",
   fileCreatedAt: "2026-09-01T00:00:00Z",
+  fileModifiedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -122,7 +123,6 @@ const server = {
   grouping:
     vi.fn<(method: string, url: string, body: unknown) => Response | Promise<Response>>(),
   groupItems: new Map<number, GroupItem[]>(),
-  displayName: vi.fn<(body: unknown) => Response>(),
   thumbnailPosition: vi.fn<(body: unknown) => Response | Promise<Response>>(),
   versions: vi.fn<(method: string, id: number, suffix: string) => Response>(),
   session: "owner" as AuthState,
@@ -238,7 +238,6 @@ describe("VideoPage", () => {
     server.open.mockReset();
     server.grouping.mockReset();
     server.groupItems.clear();
-    server.displayName.mockReset();
     server.thumbnailPosition.mockReset();
     server.versions.mockReset();
     fetchMock.mockReset();
@@ -288,10 +287,6 @@ describe("VideoPage", () => {
         suffix === "/unbundle"
       ) {
         return Promise.resolve(server.versions(method, id, suffix));
-      }
-      if (suffix === "/display-name" && method === "PUT") {
-        const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-        return Promise.resolve(server.displayName(body));
       }
       if (suffix === "/thumbnail-position" && method === "PUT") {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
@@ -1217,27 +1212,6 @@ describe("VideoPage", () => {
       });
       expect(link.getAttribute("href")).toBe("/groups/9");
       expect(await actionsButton()).toBeDefined();
-    });
-
-    it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
-      const user = userEvent.setup();
-      server.displayName.mockReturnValueOnce(
-        json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
-      );
-      await openMember();
-      const members = () => document.getElementById("group-heading")!.closest("section")!;
-      expect(within(members()).getByText("ep02")).toBeDefined();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole("textbox", { name: "Display name" });
-      await user.clear(input);
-      await user.type(input, "第二話{Enter}");
-
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("第二話"),
-      );
-      expect(within(members()).getByText("第二話")).toBeDefined();
-      expect(within(members()).queryByText("ep02")).toBeNull();
     });
 
     it("ゲストにも同じリンクを出し、グループ操作のボタンとグループの項目の読み取りは無い", async () => {
@@ -2536,59 +2510,16 @@ describe("VideoPage", () => {
       displayName: "夏の旅行",
     };
 
-    it("動画ページから移動せずに表示名を保存すると題名が置き換わり、元のファイル名が従の行で見え、解除で戻る（受け入れ条件 1・2・7）", async () => {
-      const user = userEvent.setup();
-      server.videos.set(7, [{ ...video, fileTitle }]);
-      server.displayName
-        .mockReturnValueOnce(json(named))
-        .mockReturnValueOnce(json({ ...video, fileTitle }));
+    it("所有者の題名にも編集のボタンは無く、表示名のある動画は元のファイル名を従の行で見せる（受け入れ条件 7）", async () => {
+      server.videos.set(7, [named]);
       renderPage();
       await ready();
-      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole<HTMLInputElement>("textbox", {
-        name: "Display name",
-      });
-      await user.clear(input);
-      await user.type(input, "夏の旅行{Enter}");
-
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行"),
-      );
-      expect(server.displayName).toHaveBeenCalledWith({ displayName: "夏の旅行" });
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行");
       expect(screen.getByTitle(`File name: ${fileTitle}`).textContent).toBe(
         `File name ${fileTitle}`,
       );
-      await waitFor(() => expect(document.title).toBe("夏の旅行 · VVMDM"));
-      expect(screen.queryByTestId("screen")).toBeNull();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      await user.clear(screen.getByRole("textbox", { name: "Display name" }));
-      await user.keyboard("{Enter}");
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(fileTitle),
-      );
-      expect(server.displayName).toHaveBeenLastCalledWith({ displayName: "" });
-      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
-    });
-
-    it("入力中は再生画面のキー操作が効かず、入力の中の Esc は編集の取り消しで画面を閉じない", async () => {
-      const user = userEvent.setup();
-      renderPage("7", "/?q=abc");
-      await ready();
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      await user.type(
-        screen.getByRole("textbox", { name: "Display name" }),
-        " fm0{Escape}",
-      );
-      const controls = playerMock.controls!;
-      expect(controls.togglePlay).not.toHaveBeenCalled();
-      expect(controls.toggleFullscreen).not.toHaveBeenCalled();
-      expect(controls.toggleMute).not.toHaveBeenCalled();
-      expect(screen.queryByTestId("screen")).toBeNull();
-      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("テスト動画");
-      expect(server.displayName).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Edit details" })).toBeDefined();
     });
 
     it("ゲストの動画ページには編集の入口もファイル名の行も無い（受け入れ条件 9）", async () => {
@@ -2653,22 +2584,29 @@ describe("VideoPage", () => {
       openTab("File & media");
     }
 
-    function edited(): string | null {
-      return screen.getByRole("button", { name: /^Edited / }).getAttribute("aria-label");
+    /** The value of a File fact, by its term. */
+    function fileFact(term: string): string {
+      const label = within(screen.getByLabelText("File")).getByText(term, {
+        selector: "dt",
+      });
+      return label.nextElementSibling?.textContent ?? "";
+    }
+
+    function edited(): string {
+      return fileFact("Edited in vv");
     }
 
     async function expectEditedAfter() {
-      await waitFor(() => expect(edited()).toBe("Edited Sep 28, 2026"));
+      await waitFor(() => expect(edited()).toMatch(/^Sep 28, 2026 /));
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
       await showFile();
-      expect(edited()).toBe("Edited Sep 1, 2026");
-      expect(screen.getByRole("button", { name: /^Edited / }).title).toBe(
-        screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
-      );
-      expect(screen.getByRole("button", { name: /^File created / })).toBeDefined();
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe(fileFact("Added"));
+      expect(fileFact("File created")).not.toBe("");
+      expect(fileFact("File modified")).not.toBe("");
     });
 
     it("ゲストにも更新日時と作成日時を出す", async () => {
@@ -2676,27 +2614,9 @@ describe("VideoPage", () => {
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
       await showFile();
-      expect(edited()).toBe("Edited Sep 1, 2026");
-      expect(screen.getByRole("button", { name: /^File created / })).toBeDefined();
-    });
-
-    it("表示名を保存すると応答の更新日時になる（受け入れ条件 1）", async () => {
-      const user = userEvent.setup();
-      server.displayName.mockImplementation(() =>
-        json({
-          ...current,
-          title: "夏の旅行",
-          displayName: "夏の旅行",
-          updatedAt: after,
-        }),
-      );
-      renderPage();
-      await showFile();
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole("textbox", { name: "Display name" });
-      await user.clear(input);
-      await user.type(input, "夏の旅行{Enter}");
-      await expectEditedAfter();
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(fileFact("File created")).not.toBe("");
+      expect(fileFact("File modified")).not.toBe("");
     });
 
     it("タグを付けると動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
@@ -2755,7 +2675,7 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited()).toBe("Edited Sep 1, 2026");
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });

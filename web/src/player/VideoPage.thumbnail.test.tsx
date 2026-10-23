@@ -75,6 +75,7 @@ const video: Video = {
   addedAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z",
   fileCreatedAt: "2026-09-01T00:00:00Z",
+  fileModifiedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -524,6 +525,154 @@ describe("VideoPage Thumbnail tab", () => {
       "Couldn't upload the image: The video changed in the meantime.",
     );
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
+  });
+
+  describe("スプライトのコマの一覧", () => {
+    const spriteUrl = "/api/videos/7/seek-thumbnails/sprite?v=1";
+    const withSprite: Video = {
+      ...video,
+      seekThumbnailUrl: spriteUrl,
+      seekThumbnailState: "done",
+    };
+    let spriteResponse: () => Response;
+
+    beforeEach(() => {
+      // jsdom has no object URLs; each loaded sheet is shown through one.
+      vi.stubGlobal(
+        "URL",
+        class extends URL {
+          static createObjectURL = () => "blob:sheet";
+          static revokeObjectURL = () => undefined;
+        },
+      );
+      spriteResponse = () =>
+        json({
+          intervalMs: 10_000,
+          frameCount: 3,
+          columns: 2,
+          rows: 1,
+          frameWidth: 160,
+          frameHeight: 90,
+          sheets: ["/sheets/0", "/sheets/1"],
+        });
+      const answered = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === spriteUrl) {
+          server.requests.push(`GET ${url}`);
+          return Promise.resolve(spriteResponse());
+        }
+        if (url.startsWith("/sheets/")) {
+          server.requests.push(`GET ${url}`);
+          return Promise.resolve(new Response("sheet"));
+        }
+        return answered(input, init);
+      });
+    });
+
+    function frames() {
+      return screen.getByRole("list", { name: "A frame from the video" });
+    }
+
+    it("スプライトのある動画はコマを並べ、押したコマの位置を送り、送信中はそのコマが回りほかの入口は aria-disabled になる（フィードバック 3）", async () => {
+      server.video = withSprite;
+      let answer: (response: Response) => void = () => undefined;
+      server.position.mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve;
+        }) as unknown as Response,
+      );
+      await openThumbnail();
+      const list = await screen.findByRole("list", { name: "A frame from the video" });
+      expect(
+        within(list)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual([
+        "Use the frame at 0:00",
+        "Use the frame at 0:10",
+        "Use the frame at 0:20",
+      ]);
+      await waitFor(() =>
+        expect(server.requests).toEqual(
+          expect.arrayContaining(["GET /sheets/0", "GET /sheets/1"]),
+        ),
+      );
+
+      fireEvent.click(
+        within(list).getByRole("button", { name: "Use the frame at 0:20" }),
+      );
+      await waitFor(() =>
+        expect(
+          within(frames())
+            .getByRole("button", { name: "Use the frame at 0:20" })
+            .getAttribute("aria-busy"),
+        ).toBe("true"),
+      );
+      expect(server.position.mock.calls).toEqual([[{ positionMs: 20_000 }]]);
+      const other = within(frames()).getByRole("button", {
+        name: "Use the frame at 0:00",
+      });
+      expect(other.getAttribute("aria-disabled")).toBe("true");
+      expect(way("Use this frame").getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(other);
+      expect(server.position).toHaveBeenCalledTimes(1);
+
+      answer(json({ ...withSprite, thumbnailPositionMs: 20_000 }));
+      expect(await within(current()).findByText("Frame at 0:20")).toBeDefined();
+      const picked = within(frames()).getByRole("button", {
+        name: "Use the frame at 0:20",
+      });
+      expect(picked.getAttribute("aria-busy")).toBeNull();
+      expect(
+        picked
+          .querySelector('[data-slot="video-thumbnail"]')
+          ?.hasAttribute("data-selected"),
+      ).toBe(true);
+    });
+
+    it("位置を送れなかった理由をパネルの失敗の行に出す", async () => {
+      server.video = withSprite;
+      server.position.mockReturnValueOnce(json({ code: "internal", message: "x" }, 500));
+      await openThumbnail();
+      const list = await screen.findByRole("list", { name: "A frame from the video" });
+      fireEvent.click(
+        within(list).getByRole("button", { name: "Use the frame at 0:10" }),
+      );
+      expect((await screen.findByRole("alert")).textContent).toMatch(
+        /^Couldn't change the thumbnail: /,
+      );
+    });
+
+    it("スプライトを読めなければ理由と Retry を出し、Retry で読み直す", async () => {
+      server.video = withSprite;
+      const ok = spriteResponse;
+      spriteResponse = () => json({ code: "internal", message: "x" }, 500);
+      await openThumbnail();
+      expect(await screen.findByText("Couldn't load the frames")).toBeDefined();
+      const reads = () => server.requests.filter((r) => r === `GET ${spriteUrl}`).length;
+      const before = reads();
+      spriteResponse = ok;
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(
+        await screen.findByRole("list", { name: "A frame from the video" }),
+      ).toBeDefined();
+      expect(reads()).toBe(before + 1);
+    });
+
+    it("スプライトの無い動画と作成中の動画にはコマの一覧を出さず、スプライトも読まない", async () => {
+      server.video = { ...withSprite, seekThumbnailState: "pending" };
+      await openThumbnail();
+      expect(way("Upload…")).toBeDefined();
+      expect(screen.queryByRole("list", { name: "A frame from the video" })).toBeNull();
+      cleanup();
+
+      server.video = video;
+      server.requests = [];
+      await openThumbnail();
+      expect(screen.queryByRole("list", { name: "A frame from the video" })).toBeNull();
+      expect(server.requests).not.toContain(`GET ${spriteUrl}`);
+    });
   });
 
   it("ゲストには Thumbnail タブも、ComfyUI への要求も無い", async () => {

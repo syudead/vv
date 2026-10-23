@@ -62,7 +62,7 @@ export function FactList({
             key={fact.id}
             className="flex items-baseline justify-between gap-4 border-b border-border py-2"
           >
-            <dt className="text-xs text-muted-foreground">{fact.term}</dt>
+            <dt className="shrink-0 text-xs text-muted-foreground">{fact.term}</dt>
             <dd className="min-w-0 text-right font-mono text-xs break-words tabular-nums">
               {fact.value}
             </dd>

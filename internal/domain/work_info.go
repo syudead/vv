@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -100,6 +101,14 @@ func normalizeWorkInfoText(field, input string, maxLength int, allowLineFeed boo
 		return "", invalidWorkInfo(field, WorkInfoTooLong, maxLength)
 	}
 	return trimmed, nil
+}
+
+var descriptionBreak = regexp.MustCompile(`(?i)<br\s*/?>`)
+
+// DescriptionLineBreaks turns HTML line breaks, which sites hand over inside descriptions, into
+// the line feeds a description keeps; any other markup stays literal text.
+func DescriptionLineBreaks(input string) string {
+	return descriptionBreak.ReplaceAllString(input, "\n")
 }
 
 func trimWorkInfoText(input string) string {
@@ -275,7 +284,7 @@ func NormalizeWorkInfo(input WorkInfo) (WorkInfo, bool, error) {
 	if out.Code, err = normalizeWorkInfoText("code", input.Code, limits.CodeMaxLength, false); err != nil {
 		return WorkInfo{}, false, err
 	}
-	if out.Description, err = normalizeWorkInfoText("description", input.Description, limits.DescriptionMaxLength, true); err != nil {
+	if out.Description, err = normalizeWorkInfoText("description", DescriptionLineBreaks(input.Description), limits.DescriptionMaxLength, true); err != nil {
 		return WorkInfo{}, false, err
 	}
 	if out.Dates, err = normalizeWorkDates(input.Dates); err != nil {

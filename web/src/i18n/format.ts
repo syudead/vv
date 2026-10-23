@@ -18,6 +18,14 @@ const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
   timeStyle: "short",
 });
 const timeFormat = new Intl.DateTimeFormat(LOCALE, { timeStyle: "short" });
+const secondsFormat = new Intl.DateTimeFormat(LOCALE, { timeStyle: "medium" });
+// timeStyle cannot be combined with fractionalSecondDigits, so the fields are spelled out.
+const millisecondsFormat = new Intl.DateTimeFormat(LOCALE, {
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+});
 const weekdayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: "long" });
 const monthDayFormat = new Intl.DateTimeFormat(LOCALE, {
   month: "short",
@@ -63,6 +71,18 @@ export function formatDate(value: string | Date): UiText {
 export function formatDateTime(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(dateTimeFormat.format(date));
+}
+
+/**
+ * The time of day with seconds, and with milliseconds when the timestamp's fraction of a second has
+ * any; empty for an invalid timestamp.
+ */
+export function formatPreciseTime(value: string): UiText {
+  const date = toDate(value);
+  if (date === null) return empty;
+  const fraction = /\.(\d+)/.exec(value)?.[1] ?? "";
+  const format = /[1-9]/.test(fraction.slice(0, 3)) ? millisecondsFormat : secondsFormat;
+  return decorated(format.format(date));
 }
 
 /** Return empty for invalid times. */

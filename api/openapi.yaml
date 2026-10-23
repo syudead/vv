@@ -9668,6 +9668,7 @@ components:
           addedAt,
           updatedAt,
           fileCreatedAt,
+          fileModifiedAt,
           playable,
           probeState,
           thumbnailState,
@@ -9714,6 +9715,10 @@ components:
           type: string
           format: date-time
           description: "Creation timestamp of the displayed-location file; falls back to its mtime when unavailable."
+        fileModifiedAt:
+          type: string
+          format: date-time
+          description: "Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded."
         durationMs:
           type: integer
           format: int64

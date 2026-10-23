@@ -180,6 +180,8 @@ function FoldedEntries({
           <span
             ref={index === limit ? fold.nextRef : undefined}
             tabIndex={index === limit ? -1 : undefined}
+            // A line is a flex item, which would otherwise grow to its content past the column.
+            className={lines ? "max-w-full" : undefined}
           >
             {entry.node}
           </span>
@@ -199,15 +201,26 @@ function FoldedEntries({
   );
 }
 
+/**
+ * HTML line breaks as line feeds, for text saved before the server turned them into line feeds;
+ * other markup stays literal text.
+ */
+export function withLineBreaks(text: string): string {
+  return text.replace(/<br\s*\/?>/gi, "\n");
+}
+
 /** Measure overflow and remeasure on resize; callers remount for another video to reset expansion. */
 export function Description({
   text,
   tone = "default",
   label,
+  lines = "few",
 }: {
   text: string;
   tone?: "default" | "muted";
   label?: UiText;
+  /** `many` folds only text past eight lines, for a description that is a panel's main reading. */
+  lines?: "few" | "many";
 }) {
   const ref = useRef<HTMLParagraphElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -230,11 +243,11 @@ export function Description({
         className={cn(
           "text-sm leading-relaxed wrap-anywhere whitespace-pre-line",
           tone === "muted" ? "text-muted-foreground" : "text-foreground",
-          !open && "line-clamp-3",
+          !open && (lines === "many" ? "line-clamp-8" : "line-clamp-3"),
         )}
       >
         {label !== undefined && <span className="mr-1.5">{label}</span>}
-        {text}
+        {withLineBreaks(text)}
       </p>
       {(open || overflows) && (
         <Button

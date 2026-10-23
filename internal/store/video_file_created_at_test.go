@@ -153,6 +153,37 @@ func TestUpdateLocationCreatedAt(t *testing.T) {
 	}
 }
 
+func TestVideoReadsCarryMTimeWithNanoseconds(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	precise := fixedTime.Add(123_456_789 * time.Nanosecond)
+	id := upsertCreated(t, db, "/media/precise.mp4", "key-precise", precise, time.Time{})
+	legacyID := upsertCreated(t, db, "/media/legacy.mp4", "key-legacy", precise, time.Time{})
+	// Rows written before mtime_ns existed keep whole seconds only.
+	if _, err := db.sql.Exec(`update video_locations set mtime_ns = null where path = ?`, fixturePath("/media/legacy.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64]time.Time{id: precise, legacyID: fixedTime}
+
+	for videoID, at := range want {
+		if got := ownerVideo(t, db, videoID).MTime; !got.Equal(at) {
+			t.Errorf("GetVideo(%d) の MTime = %v, want %v", videoID, got, at)
+		}
+	}
+	page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != len(want) {
+		t.Fatalf("ListVideos = %d 件, want %d 件", len(page.Items), len(want))
+	}
+	for _, item := range page.Items {
+		if !item.MTime.Equal(want[item.ID]) {
+			t.Errorf("ListVideos の動画 %d の MTime = %v, want %v", item.ID, item.MTime, want[item.ID])
+		}
+	}
+}
+
 func TestMigrationLeavesExistingFileCreatedAtNull(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

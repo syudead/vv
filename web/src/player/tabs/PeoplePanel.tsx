@@ -15,12 +15,11 @@ import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
 import { CardGrid } from "../../ui/patterns/card-grid";
 import { PersonFace } from "../../ui/PersonFace";
-import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import { SpanBar } from "../../ui/SpanBar";
 import type { TimeSpan } from "../../ui/spanPlacement";
 import type { PlayerControls } from "../playerControls";
-import { PanelSection } from "./panelParts";
+import { PanelSection, ReadFailure } from "./panelParts";
 
 /** What a span press needs from the player; null while the player is not shown. */
 export type SpanPlayer = Pick<PlayerControls, "seekTo" | "play"> | null;
@@ -225,17 +224,7 @@ function SeenInVideo({ video, player }: { video: Video; player: SpanPlayer }) {
     );
   }
   if (read.kind === "failed") {
-    return (
-      <p
-        role="alert"
-        className="flex flex-wrap items-center gap-2 text-sm text-destructive"
-      >
-        {text.seenFailed(read.reason)}
-        <Button variant="link" size="sm" className="h-auto px-0" onClick={retry}>
-          {t.common.retry}
-        </Button>
-      </p>
-    );
+    return <ReadFailure text={text.seenFailed(read.reason)} onRetry={retry} />;
   }
   const { analysed, items } = read.list;
   if (!analysed || items.length === 0) return null;

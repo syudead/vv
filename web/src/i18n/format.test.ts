@@ -6,6 +6,7 @@ import {
   formatMonth,
   formatMonthDay,
   formatNumber,
+  formatPreciseTime,
   formatRelative,
   formatTime,
   formatWeekday,
@@ -45,6 +46,17 @@ describe("dates", () => {
     expect(formatTime(new Date(2026, 8, 27, 15, 4))).toMatch(/^3:04\s?PM$/);
   });
 
+  it("formats a precise time with seconds, and milliseconds only when the timestamp has them", () => {
+    const seconds = new Date(2026, 8, 27, 15, 4, 5).toISOString();
+    expect(formatPreciseTime(seconds)).toMatch(/^3:04:05\s?PM$/);
+    const precise = new Date(2026, 8, 27, 15, 4, 5, 120).toISOString();
+    expect(formatPreciseTime(precise)).toMatch(/^3:04:05\.120\s?PM$/);
+    // A fraction below one millisecond reads as whole seconds.
+    expect(formatPreciseTime(precise.replace(".120Z", ".000456789Z"))).toMatch(
+      /^3:04:05\s?PM$/,
+    );
+  });
+
   it("formats the weekday in English", () => {
     expect(formatWeekday(noon)).toBe("Sunday");
   });
@@ -69,6 +81,7 @@ describe("dates", () => {
     expect(formatTime("nope")).toBe("");
     expect(formatDate("nope")).toBe("");
     expect(formatDateTime("nope")).toBe("");
+    expect(formatPreciseTime("nope")).toBe("");
   });
 });
 

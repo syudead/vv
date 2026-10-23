@@ -57,6 +57,7 @@ const plain: Video = {
   addedAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z",
   fileCreatedAt: "2026-09-01T00:00:00Z",
+  fileModifiedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -95,7 +96,6 @@ function person(id: number, name: string) {
 const server = {
   video: withInfo,
   details: vi.fn<(body: unknown) => Response>(),
-  displayName: vi.fn<(body: unknown) => Response>(),
   people: vi.fn<(url: URL) => Response>(),
   createPerson: vi.fn<(body: unknown) => Response>(),
   requests: [] as string[],
@@ -149,7 +149,6 @@ describe("VideoPage work information", () => {
   beforeEach(() => {
     server.video = withInfo;
     server.details.mockReset();
-    server.displayName.mockReset();
     server.people.mockReset();
     server.people.mockImplementation(() => json({ items: [], total: 0, totalAll: 0 }));
     server.createPerson.mockReset();
@@ -168,8 +167,6 @@ describe("VideoPage work information", () => {
         return Promise.resolve(json({ connection: true }));
       if (url === "/api/videos/7/details" && method === "PUT")
         return Promise.resolve(server.details(body));
-      if (url === "/api/videos/7/display-name" && method === "PUT")
-        return Promise.resolve(server.displayName(body));
       if (url.startsWith("/api/people") && method === "GET")
         return Promise.resolve(server.people(new URL(url, "http://localhost")));
       if (url === "/api/people" && method === "POST")
@@ -387,26 +384,6 @@ describe("VideoPage work information", () => {
     ).toBeDefined();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(server.details).not.toHaveBeenCalled();
-  });
-
-  it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品の要約を残す", async () => {
-    // The display-name response omits workInfo by contract.
-    server.displayName.mockImplementation(() =>
-      json({ ...plain, title: "Quick", displayName: "Quick" }),
-    );
-    await openPage();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Edit name" }));
-    const input = screen.getByRole("textbox", { name: "Display name" });
-    await user.clear(input);
-    await user.type(input, "Quick");
-    await user.keyboard("{Enter}");
-    await waitFor(() =>
-      expect(server.displayName).toHaveBeenCalledWith({ displayName: "Quick" }),
-    );
-    expect(await screen.findByRole("heading", { level: 1, name: "Quick" })).toBeDefined();
-    expect(summary("AB-123 · Released 2024-03-01 · Alice")).toBeDefined();
-    expect(puts()).toHaveLength(0);
   });
 
   it("video の知らせでページを読み直し、ほかで書いた値を出す", async () => {

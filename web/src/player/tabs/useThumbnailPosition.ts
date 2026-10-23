@@ -9,7 +9,8 @@ import {
 import { detailMark, type DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
 
-export type ThumbnailSending = "capture" | "clear" | null;
+/** `capture` sends the player's position, `frame` a frame picked from the sprite grid. */
+export type ThumbnailSending = "capture" | "frame" | "clear" | null;
 
 /**
  * Serialize thumbnail position changes; refresh stale videos on 404. A null position clears both
@@ -23,9 +24,12 @@ export function useThumbnailPosition(
   onStale: (() => void) | undefined,
 ): {
   sending: ThumbnailSending;
-  send: (positionMs: number | null) => void;
+  /** The sprite frame being sent while `sending` is `frame`. */
+  sendingFrame: number | null;
+  send: (positionMs: number | null, frame?: number) => void;
 } {
   const [sending, setSending] = useState<ThumbnailSending>(null);
+  const [sendingFrame, setSendingFrame] = useState<number | null>(null);
   // A ref also blocks two clicks within the same render.
   const busy = useRef(false);
   const request = useRef<AbortController | null>(null);
@@ -39,14 +43,15 @@ export function useThumbnailPosition(
     [videoId],
   );
 
-  const send = (positionMs: number | null) => {
+  const send = (positionMs: number | null, frame?: number) => {
     if (busy.current) return;
     busy.current = true;
     const controller = new AbortController();
     request.current = controller;
     const mark = detailMark();
     report(null);
-    setSending(positionMs === null ? "clear" : "capture");
+    setSending(positionMs === null ? "clear" : frame === undefined ? "capture" : "frame");
+    setSendingFrame(frame ?? null);
     setVideoThumbnailPosition(videoId, positionMs, controller.signal)
       .then(
         (video) => {
@@ -67,5 +72,5 @@ export function useThumbnailPosition(
       });
   };
 
-  return { sending, send };
+  return { sending, sendingFrame: sending === "frame" ? sendingFrame : null, send };
 }

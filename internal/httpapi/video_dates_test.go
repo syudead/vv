@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
@@ -40,7 +41,7 @@ func videoIDsOf(videos []gen.Video) []int64 {
 
 func assertVideoDates(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
-	for _, field := range []string{"updatedAt", "fileCreatedAt"} {
+	for _, field := range []string{"updatedAt", "fileCreatedAt", "fileModifiedAt"} {
 		value, ok := video[field]
 		if !ok {
 			t.Errorf("%s: %s が無い", label, field)
@@ -70,6 +71,9 @@ func TestVideoResponsesCarryUpdatedAtAndFileCreatedAt(t *testing.T) {
 	}
 	if !untouched.FileCreatedAt.Equal(base) {
 		t.Errorf("作成日時の無い c の fileCreatedAt = %v, want mtime %v", untouched.FileCreatedAt, base)
+	}
+	if !detail.FileModifiedAt.Equal(base) || !untouched.FileModifiedAt.Equal(base) {
+		t.Errorf("fileModifiedAt = %v, %v, want mtime %v", detail.FileModifiedAt, untouched.FileModifiedAt, base)
 	}
 
 	before := time.Now().Truncate(time.Second)
@@ -128,6 +132,26 @@ func TestVideoResponsesCarryUpdatedAtAndFileCreatedAt(t *testing.T) {
 	if !guest.UpdatedAt.Equal(detail.UpdatedAt) || !guest.FileCreatedAt.Equal(created) {
 		t.Errorf("ゲストの詳細: updatedAt = %v, fileCreatedAt = %v, want %v, %v",
 			guest.UpdatedAt, guest.FileCreatedAt, detail.UpdatedAt, created)
+	}
+}
+
+func TestVideoFileModifiedAtKeepsSubSecondPrecision(t *testing.T) {
+	f := newGuestFixture(t, true)
+	precise := time.Date(2026, 1, 2, 3, 4, 5, 123_456_789, time.UTC)
+	content := strings.Repeat("c", 4096)
+	if _, err := f.env.db.ScanIndex().UpsertVideo(context.Background(), domain.VideoFile{
+		Path: filepath.Join(f.mediaDir, "private", "c.mp4"), Title: "c", ContentKey: "content-key-c",
+		SizeBytes: int64(len(content)), MTime: precise, Container: "mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.env.get(f.videoPath("c", ""), f.owner)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("詳細: %v: %s", err, rec.Body)
+	}
+	if got := string(raw["fileModifiedAt"]); got != `"2026-01-02T03:04:05.123456789Z"` {
+		t.Errorf("fileModifiedAt = %s, want ナノ秒までの mtime", got)
 	}
 }
 

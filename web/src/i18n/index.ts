@@ -7,6 +7,7 @@ export {
   formatMonth,
   formatMonthDay,
   formatNumber,
+  formatPreciseTime,
   formatRelative,
   formatTime,
   formatWeekday,

@@ -152,6 +152,16 @@ func TestNormalizeWorkInfoTrimsClearsAndOrders(t *testing.T) {
 	}
 }
 
+func TestNormalizeWorkInfoTurnsHTMLLineBreaksIntoLineFeeds(t *testing.T) {
+	got, _, err := NormalizeWorkInfo(WorkInfo{Description: "a<br>b<Br/>c<br  />d<p>e</p>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "a\nb\nc\nd<p>e</p>"; got.Description != want {
+		t.Errorf("description = %q, want %q", got.Description, want)
+	}
+}
+
 func TestWorkInfoEqualComparesIDs(t *testing.T) {
 	stored := WorkInfo{Code: "A", People: []WorkPerson{{Role: PersonPerformer, Person: CreditRef{ID: 1, Name: "山田"}}}, URLs: []string{}}
 	written := WorkInfo{Code: "A", People: []WorkPerson{{Role: PersonPerformer, Person: CreditRef{ID: 1}}}}
