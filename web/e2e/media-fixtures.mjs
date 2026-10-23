@@ -377,13 +377,32 @@ export function generateTagsFixtures(root) {
 export const WORK_INFO_VIDEOS = ["作品動画A", "作品動画B", "作品動画C", "作品動画D"];
 
 export function generateWorkInfoFixtures(root) {
+  generateHueClips(root, WORK_INFO_VIDEOS, 10);
+}
+
+/** Three versions of one video, a bare video and a public one; video-tabs.e2e.ts uses the same titles. */
+export const VIDEO_TABS_VIDEOS = [
+  "タブ確認A",
+  "タブ確認B",
+  "タブ確認C",
+  "タブ確認D",
+  "タブ確認E",
+];
+
+export function generateVideoTabsFixtures(root) {
+  // No other fixture uses this frame rate, so no content key matches another suite's video.
+  generateHueClips(root, VIDEO_TABS_VIDEOS, 12);
+}
+
+/** Two-second silent clips, one per title, each in its own hue. */
+function generateHueClips(root, titles, rate) {
   mkdirSync(root, { recursive: true });
-  WORK_INFO_VIDEOS.forEach((title, index) =>
+  titles.forEach((title, index) =>
     ffmpeg([
       "-f",
       "lavfi",
       "-i",
-      "testsrc2=size=320x180:rate=10:duration=2",
+      `testsrc2=size=320x180:rate=${String(rate)}:duration=2`,
       "-vf",
       `hue=h=${String(40 + index * 80)}`,
       ...h264,
