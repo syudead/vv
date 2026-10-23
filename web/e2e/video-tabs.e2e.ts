@@ -6,8 +6,9 @@ import {
   test,
 } from "@playwright/test";
 
-// The tabbed video page with real layout, a real clipboard and a guest session; the tab rules
-// themselves are covered by VideoPage.tabs.test.tsx.
+// The tabbed video page with real layout, a real clipboard and a guest session; the tab rules,
+// including the bare video's tabs and the return to Overview, are covered by VideoPage.tabs.test.tsx
+// and videoTabs.test.ts.
 // The server and database survive a retry, so each attempt removes what the previous one left.
 
 interface MediaFolder {
@@ -229,14 +230,6 @@ test.describe.serial("video page tabs", () => {
     expect(await iconOnlyControls(page)).toEqual([]);
   });
 
-  test("作品情報も出演者も無い1本だけの動画は Overview、Thumbnail、File & media だけを並べる（受け入れ条件 7）", async ({
-    page,
-  }) => {
-    await openVideo(page, bare);
-    await expect(tabs(page)).toHaveText(["Overview", "Thumbnail", "File & media"]);
-    await expect(selectedTab(page)).toHaveText("Overview");
-  });
-
   test("ゲストの公開動画は Overview と File & media だけを並べ、場所・タグ・公開の切り替え・編集の操作を出さない（受け入れ条件 8）", async ({
     browser,
   }) => {
@@ -253,21 +246,6 @@ test.describe.serial("video page tabs", () => {
       await expect(page.getByRole("region", { name: "Location" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Copy path" })).toHaveCount(0);
     });
-  });
-
-  test("Work を開いたまま関連動画から作品情報の無い動画へ移ると Overview を選ぶ（受け入れ条件 9）", async ({
-    page,
-  }) => {
-    await openVideo(page, representative);
-    await tabs(page).filter({ hasText: "Work" }).click();
-    await expect(selectedTab(page)).toHaveText("Work");
-
-    await page
-      .getByRole("region", { name: "Related videos" })
-      .getByRole("link", { name: new RegExp(`^${bare}`) })
-      .click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(bare);
-    await expect(selectedTab(page)).toHaveText("Overview");
   });
 
   test("390px の画面で、ページを横にはみ出さずにタブ列のスクロールで6つのタブすべてにたどり着ける（受け入れ条件 10）", async ({
