@@ -63,14 +63,22 @@ export function candidateKey(candidate: CandidateId): string {
   return `${candidate.source}\u0000${candidate.id}`;
 }
 
-/** Whether the Name field holds a link to fetch by instead of words to search. */
-export function isLink(value: string): boolean {
+/**
+ * The link to fetch by when the Name field holds an http or https URL, else undefined. The browser's serialization
+ * is sent because the server's URL parser rejects forms the browser repairs, such as `https:example.com`.
+ */
+export function typedLink(value: string): string | undefined {
   try {
     const url = new URL(value.trim());
-    return url.protocol === "http:" || url.protocol === "https:";
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/** Whether the Name field holds a link to fetch by instead of words to search. */
+export function isLink(value: string): boolean {
+  return typedLink(value) !== undefined;
 }
 
 function failedWith(error: unknown, code: string): error is RequestFailed {
@@ -260,9 +268,10 @@ export function usePersonFetchFlow({
     }
     if (plugin === undefined || running !== null) return;
     // The link rows are the action while the choice is shown.
+    const link = typedLink(query);
     if (!byName) {
       if (links === null) void fetchPerson(plugin, undefined, false);
-    } else if (isLink(query)) void fetchPerson(plugin, { link: query.trim() }, true);
+    } else if (link !== undefined) void fetchPerson(plugin, { link }, true);
     else if (query.trim() !== "") void search(plugin);
   };
 

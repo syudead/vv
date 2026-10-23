@@ -353,7 +353,8 @@ describe("PersonPage fetch info", () => {
     await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
     const field = within(dialog).getByRole("textbox", { name: "Name" });
     await user.clear(field);
-    await user.type(field, "https://example.com/p/1");
+    // The server's URL parser rejects the slash-less form the browser accepts, so the browser's serialization is sent.
+    await user.type(field, "https:example.com/p/1");
 
     expect(
       within(dialog).getByText("Fetches the person on this page instead of searching."),
@@ -369,7 +370,7 @@ describe("PersonPage fetch info", () => {
     await user.click(within(dialog).getByRole("button", { name: "Back to the matches" }));
     expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveProperty(
       "value",
-      "https://example.com/p/1",
+      "https:example.com/p/1",
     );
   });
 

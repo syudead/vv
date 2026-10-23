@@ -246,7 +246,7 @@ The page holds no link-matching rule; it follows the server's answers:
 | Answer or input | What the dialog does |
 | --- | --- |
 | `409 person_link_ambiguous` | The plugin step lists `links` as candidate rows, each its path over its host; a row press sends that `link`, and the submit button stays disabled while the rows are the action. `Back` from the comparison returns to the rows |
-| A `Name` value that parses as an `http` or `https` URL | The submit button reads `Fetch`, a line under the field says so, and the value is sent as `link` instead of searched |
+| A `Name` value that parses as an `http` or `https` URL | The submit button reads `Fetch`, a line under the field says so, and the browser's serialization of the value is sent as `link` instead of searched, since the server's URL parser rejects forms the browser repairs, such as `https:example.com` |
 | `400 person_link_unsupported` | The field keeps the value; the reason, with the plugin's domains, stands under it until the next edit, and nothing is searched |
 | A result with `link` | The comparison's source line names that link instead of the first external ID |
 
