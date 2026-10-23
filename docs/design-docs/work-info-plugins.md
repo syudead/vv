@@ -337,7 +337,9 @@ entry or person named twice, and maps each `at` to the narrowed details. In the
 apply's transaction, after the work information is written, each unnamed
 person is merged into the person the entry linked, as confirming a face
 candidate does: a face_merge entry decided by the owner, which can be undone,
-and the unnamed person's face for a person without one.
+and the unnamed person's face for a person without one. An unnamed person
+holding external IDs is merged as a named one, without undo, because the undo
+snapshot keeps no external IDs.
 
 | Case | Result |
 | --- | --- |
