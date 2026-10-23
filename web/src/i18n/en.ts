@@ -4081,6 +4081,8 @@ export const en = {
           fetch: "Fetch by ID",
         } satisfies Record<WorkInfoOperation, string>,
         accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
+        acceptsLinks: (domains: readonly string[]) =>
+          `Accepts links from ${domains.join(", ")}`,
       },
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
@@ -4117,6 +4119,7 @@ export const en = {
         personDescription:
           "Approved person plugins can run from a person page, and when fetched work information names a person with an ID they accept.",
         sources: "Accepts IDs from",
+        domains: "Accepts links from",
         version: "Version",
         file: "File",
         can: "Can",
