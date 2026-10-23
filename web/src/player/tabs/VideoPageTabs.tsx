@@ -16,6 +16,7 @@ import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
 import FileMediaPanel from "./FileMediaPanel";
 import OverviewPanel from "./OverviewPanel";
 import PeoplePanel, { type SpanPlayer } from "./PeoplePanel";
+import ThumbnailPanel from "./ThumbnailPanel";
 import { useThumbnailPosition } from "./useThumbnailPosition";
 import VersionsPanel, { type VersionsNavigation } from "./VersionsPanel";
 import { availableTabs, creditedPeopleCount, nextTab, type VideoTab } from "./videoTabs";
@@ -139,7 +140,7 @@ function tabCount(tab: VideoTab, video: Video): number | undefined {
 
 interface PanelContext {
   workPlugin: boolean;
-  openFetch: () => void;
+  operations: ReturnType<typeof useOperations>;
   strip: RefObject<HTMLDivElement | null>;
 }
 
@@ -147,7 +148,7 @@ interface PanelContext {
 function panel(
   tab: VideoTab,
   props: VideoPageTabsProps,
-  { workPlugin, openFetch, strip }: PanelContext,
+  { workPlugin, operations, strip }: PanelContext,
 ): ReactNode {
   const { video, owner, player } = props;
   switch (tab) {
@@ -155,7 +156,11 @@ function panel(
       return <OverviewPanel video={video} owner={owner} />;
     case "work":
       return (
-        <WorkPanel info={video.workInfo} canFetch={workPlugin} onFetch={openFetch} />
+        <WorkPanel
+          info={video.workInfo}
+          canFetch={workPlugin}
+          onFetch={operations.openFetch}
+        />
       );
     case "people":
       return <PeoplePanel video={video} player={player} />;
@@ -168,6 +173,16 @@ function panel(
           onReplace={props.versions.onReplace}
           onRefresh={props.onStale}
           onLeave={() => focusOverview(strip)}
+        />
+      );
+    case "thumbnail":
+      return (
+        <ThumbnailPanel
+          video={video}
+          capture={props.capture}
+          position={operations.thumbnail}
+          upload={operations.upload}
+          failure={operations.failure}
         />
       );
     case "file":
@@ -222,7 +237,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
       <TabsContent value={current} className="pt-4 text-base">
         {panel(current, props, {
           workPlugin: state.workPlugin,
-          openFetch: operations.openFetch,
+          operations,
           strip,
         })}
       </TabsContent>
