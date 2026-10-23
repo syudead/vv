@@ -96,7 +96,8 @@ export function draftFromVideo(video: Video): Draft {
     });
   }
   return {
-    name: video.displayName ?? "",
+    // A virtual video's title is its only name, not an override of a file name.
+    name: video.virtual ? video.title : (video.displayName ?? ""),
     code: info?.code ?? "",
     description: info?.description ?? "",
     dates,

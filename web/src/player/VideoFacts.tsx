@@ -29,7 +29,7 @@ import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
-import { formatBytes, formatDuration, isNarrowVideo } from "../lib/format";
+import { formatBytes, formatDuration } from "../lib/format";
 import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
@@ -39,8 +39,11 @@ import { useToast } from "../ui/Toast";
 import ActionButton from "./ActionButton";
 import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
-import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
-import UploadPreview from "./thumbnailUpload/UploadPreview";
+import UploadEntry, {
+  UploadPreviewDialog,
+  usePreviewEditing,
+  useThumbnailUpload,
+} from "./thumbnailUpload/UploadEntry";
 import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
 import FetchEntry from "./workInfoFetch/FetchEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
@@ -80,7 +83,7 @@ function useOpenFileRequest(
 }
 
 /** Serialize thumbnail mutations; refresh stale videos on 404. Return successful video data with the detail mark captured before submission. */
-function useThumbnailPosition(
+export function useThumbnailPosition(
   videoId: number,
   report: (failure: UiText | null) => void,
   onChanged: ((video: Video, mark: DetailMark) => void) | undefined,
@@ -139,6 +142,21 @@ function useThumbnailPosition(
   return { sending, send };
 }
 
+/** The minimum keeps a date whole; narrower rows wrap the actions below instead of overlapping. */
+export const factsList =
+  "flex min-w-list-date flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground tabular-nums sm:gap-x-5";
+
+/** The one inline error row the facts row's actions share. */
+export function FactsFailure({ failure }: { failure: UiText | null }) {
+  if (failure === null) return null;
+  return (
+    <p role="alert" className="-mt-1 flex items-center gap-2 text-sm text-destructive">
+      <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+      {failure}
+    </p>
+  );
+}
+
 /** Read logical playback milliseconds at click time; pause playback before editing. */
 export interface ThumbnailCapture {
   enabled: boolean;
@@ -164,7 +182,7 @@ function Fact({
   );
 }
 
-function DateFact({
+export function DateFact({
   icon: Icon,
   label,
   value,
@@ -242,7 +260,7 @@ function ThumbnailFacts({
   );
 }
 
-function ListActions({
+export function ListActions({
   video,
   favorite,
   onFavorite,
@@ -311,15 +329,7 @@ export default function VideoFacts({
   const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
   const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
   const uploadBusy = upload.sending || upload.preparing;
-  const previewOpen = upload.preview !== null;
-  const editingChange = useRef(onEditingChange);
-  editingChange.current = onEditingChange;
-  // Page shortcuts wait while the preview is open.
-  useEffect(() => {
-    if (!previewOpen) return;
-    editingChange.current?.(true);
-    return () => editingChange.current?.(false);
-  }, [previewOpen]);
+  usePreviewEditing(upload.preview !== null, onEditingChange);
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -343,11 +353,7 @@ export default function VideoFacts({
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <ul
-          aria-label={f.label}
-          // The minimum keeps a date whole; narrower rows wrap the actions below instead of overlapping.
-          className="flex min-w-list-date flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground tabular-nums sm:gap-x-5"
-        >
+        <ul aria-label={f.label} className={factsList}>
           {duration !== "" && <Fact icon={Clock} label={f.duration} value={duration} />}
           <Fact icon={HardDrive} label={f.size} value={formatBytes(video.sizeBytes)} />
           <DateFact icon={CalendarPlus} label={f.added} value={video.addedAt} />
@@ -420,18 +426,7 @@ export default function VideoFacts({
                 onSource={upload.chooseSource}
               />
             )}
-            {upload.preview !== null && (
-              <UploadPreview
-                videoId={video.id}
-                image={upload.preview.image}
-                name={upload.preview.name}
-                aspect={upload.preview.aspect}
-                narrow={isNarrowVideo(video)}
-                applying={upload.applying}
-                onApply={upload.apply}
-                onCancel={upload.cancel}
-              />
-            )}
+            <UploadPreviewDialog video={video} upload={upload} />
             {location?.openable === true && (
               <ActionButton label={f.openFile} onClick={open}>
                 <ExternalLink aria-hidden="true" />
@@ -446,15 +441,7 @@ export default function VideoFacts({
           </div>
         )}
       </div>
-      {failure !== null && (
-        <p
-          role="alert"
-          className="-mt-1 flex items-center gap-2 text-sm text-destructive"
-        >
-          <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
-          {failure}
-        </p>
-      )}
+      <FactsFailure failure={failure} />
       {}
       <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
@@ -516,17 +503,20 @@ function ThumbnailFact({
 }
 
 /** Uploaded and generated thumbnails have no single frame timestamp. */
-function ImageThumbnailFact({
+export function ImageThumbnailFact({
   origin,
   url,
   reverting,
   locked,
+  revertLabel = t.player.thumbnailEdit.useFrameInstead,
   onRevert,
 }: {
   origin: NonNullable<Video["thumbnailImage"]>;
   url: string | undefined;
   reverting: boolean;
   locked: boolean;
+  /** A virtual video has no frame to return to, so it removes the image instead. */
+  revertLabel?: UiText;
   onRevert: () => void;
 }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
@@ -550,7 +540,7 @@ function ImageThumbnailFact({
       </span>
       <span className="sr-only">{label}</span>
       <ActionButton
-        label={t.player.thumbnailEdit.useFrameInstead}
+        label={revertLabel}
         aria-disabled={reverting || locked || undefined}
         onClick={() => {
           if (!reverting && !locked) onRevert();
