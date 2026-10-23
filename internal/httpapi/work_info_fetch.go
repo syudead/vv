@@ -231,6 +231,9 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		Fields: fields, Tags: tags, CoverIndex: -1, People: listOf(body.People), Organizations: listOf(body.Organizations),
 		URLs: listOf(body.Urls), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
 	}
+	for _, same := range listOf(body.SamePeople) {
+		selection.SamePeople = append(selection.SamePeople, domain.SamePerson{At: same.At, PersonID: same.PersonId})
+	}
 	if body.CoverIndex != nil {
 		selection.CoverIndex = *body.CoverIndex
 	}
@@ -240,7 +243,8 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
 		s.invalidRequest(w, "Select at least one value the result carries. Whole fields need a value; people, "+
-			"organizations, urls and externalIds go in their own lists; cover needs the coverIndex of a cover; "+
+			"organizations, urls and externalIds go in their own lists; samePeople pairs a chosen performer with one person "+
+			"each; cover needs the coverIndex of a cover; "+
 			"tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	case errors.Is(err, domain.ErrNotFound):

@@ -86,16 +86,7 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 	c := &changes{}
 	var result domain.FaceCandidateConfirmation
 	var events []domain.Event
-	// The undo snapshot keeps no external IDs, so a person holding some is merged like a named one, without undo.
-	if source.Provisional && len(source.ExternalIDs) == 0 {
-		result.Person, events, result.UndoActivityID, err = mergeProvisional(ctx, tx, c, sourceID, targetID,
-			domain.ActivityByOwner, time.Now())
-	} else {
-		var outcome domain.CreditMergeOutcome
-		outcome, events, err = mergeCreditsInTx(ctx, tx, creditTablesByKind[domain.CreditPerson], targetID, []int64{sourceID})
-		result.Person = outcome.Credit
-		c.matchesChanged()
-	}
+	result.Person, events, result.UndoActivityID, err = mergeByOwner(ctx, tx, c, source, targetID, time.Now())
 	if err != nil {
 		return domain.FaceCandidateConfirmation{}, err
 	}
@@ -103,6 +94,21 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 		return domain.FaceCandidateConfirmation{}, fmt.Errorf("cannot merge person %d into person %d: %w", sourceID, targetID, err)
 	}
 	return result, nil
+}
+
+// mergeByOwner merges source into the target as the owner decided, and returns the target, the events of a face or
+// name it took, and the face_merge entry that can undo it, 0 for a named source. The undo snapshot keeps no external
+// IDs, so a provisional source holding some is merged like a named one, without undo.
+func mergeByOwner(ctx context.Context, tx *sql.Tx, c *changes, source domain.Credit, targetID int64, now time.Time) (
+	domain.Credit, []domain.Event, int64, error,
+) {
+	if source.Provisional && len(source.ExternalIDs) == 0 {
+		return mergeProvisional(ctx, tx, c, source.ID, targetID, domain.ActivityByOwner, now)
+	}
+	outcome, events, err := mergeCreditsInTx(ctx, tx, creditTablesByKind[domain.CreditPerson], targetID,
+		[]int64{source.ID})
+	c.matchesChanged()
+	return outcome.Credit, events, 0, err
 }
 
 // openFacePairDirection returns the open pair's people as (source, target): the person the owner confirms from stays,

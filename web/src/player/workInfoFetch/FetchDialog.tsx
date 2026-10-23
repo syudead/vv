@@ -56,6 +56,7 @@ const EMPTY_SELECTION: WorkSelection = {
   organizations: [],
   urls: [],
   externalIds: [],
+  samePeople: [],
 };
 
 export function ResultStep({

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,11 +17,15 @@ func applyDetails(
 	t *testing.T, db *DB, videoID int64, fetched domain.FetchedWorkInfo, fields ...domain.WorkInfoField,
 ) domain.FetchedWorkInfoApplied {
 	t.Helper()
+	return applyFetched(t, db, domain.FetchedWorkInfoApply{VideoID: videoID, Details: fetched, DetailFields: fields})
+}
+
+// applyFetched applies apply as a fetch of an approved plugin.
+func applyFetched(t *testing.T, db *DB, apply domain.FetchedWorkInfoApply) domain.FetchedWorkInfoApplied {
+	t.Helper()
 	plugin := approvedPlugin(t, db, "details", "dd")
-	applied, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
-		VideoID: videoID, PluginID: plugin.ID, Digest: "dd", Generation: plugin.Generation,
-		Details: fetched, DetailFields: fields,
-	})
+	apply.PluginID, apply.Digest, apply.Generation = plugin.ID, "dd", plugin.Generation
+	applied, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), apply)
 	if err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
@@ -267,5 +272,71 @@ func TestApplyFetchedDetailsFillsOnlyTheEmptyProfileFieldsOfLinkedPeople(t *test
 	}
 	if !reflect.DeepEqual(applied.Skipped, wantSkipped) {
 		t.Errorf("skipped = %+v, want %+v", applied.Skipped, wantSkipped)
+	}
+}
+
+// applySamePeople applies the fetched performers, the unnamed performer named in same matched with its entry.
+func applySamePeople(
+	t *testing.T, db *DB, videoID int64, fetched []domain.FetchedPerson, same ...domain.SamePerson,
+) domain.FetchedWorkInfoApplied {
+	t.Helper()
+	return applyFetched(t, db, domain.FetchedWorkInfoApply{
+		VideoID: videoID, Details: domain.FetchedWorkInfo{People: fetched},
+		DetailFields: []domain.WorkInfoField{performerField}, SamePeople: same,
+	})
+}
+
+// An unnamed performer the owner matched with a fetched performer is merged into the person the entry links, so the
+// video lists that person once, with the face, and the merge can be undone.
+func TestApplyFetchedDetailsMergesTheUnnamedPerformerTheOwnerMatched(t *testing.T) {
+	f, provisional := newCastFixture(t)
+	other := applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Other")}).PersonIDs[0]
+
+	applied := applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")},
+		domain.SamePerson{At: 0, PersonID: provisional})
+
+	actor := applied.PersonIDs[0]
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{other, actor}) {
+		t.Fatalf("performers = %v, want %d and the fetched %d", got, other, actor)
+	}
+	person, err := f.db.Credits().Get(context.Background(), domain.CreditPerson, actor)
+	if err != nil || person.Name != "Actor" || person.ImageRevision == 0 {
+		t.Fatalf("fetched person = %+v, %v; want Actor with the unnamed person's face", person, err)
+	}
+	entries := entriesOfKind(t, f.db, domain.ActivityFaceMerge)
+	if len(entries) != 1 || entries[0].Decider != domain.ActivityByOwner {
+		t.Fatalf("face_merge entries = %+v, want one by the owner", entries)
+	}
+}
+
+// Fetched again, a performer already listed beside the unnamed face takes it, though the apply links nobody new.
+func TestApplyFetchedDetailsMergesTheUnnamedPerformerIntoOneAlreadyOnTheVideo(t *testing.T) {
+	f, provisional := newCastFixture(t)
+	actor := applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")}).PersonIDs[0]
+
+	applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")},
+		domain.SamePerson{At: 0, PersonID: provisional})
+
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{actor}) {
+		t.Fatalf("performers = %v, want only %d", got, actor)
+	}
+}
+
+// A person who is no unnamed performer of the work is never merged, whatever the request names.
+func TestApplyFetchedDetailsMergesNoPersonOutsideTheWorksUnnamedPerformers(t *testing.T) {
+	f, provisional := newCastFixture(t)
+	stranger := provisionalPerson(t, f.db, faceBasis(4))
+
+	applied := applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")},
+		domain.SamePerson{At: 0, PersonID: stranger})
+
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{provisional, applied.PersonIDs[0]}) {
+		t.Fatalf("performers = %v, want the unnamed %d kept beside the fetched person", got, provisional)
+	}
+	if _, err := f.db.Credits().Get(context.Background(), domain.CreditPerson, stranger); err != nil {
+		t.Fatalf("the stranger = %v, want kept", err)
+	}
+	if entries := entriesOfKind(t, f.db, domain.ActivityFaceMerge); len(entries) != 0 {
+		t.Fatalf("face_merge entries = %+v, want none", entries)
 	}
 }

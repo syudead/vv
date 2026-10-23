@@ -233,6 +233,7 @@ type chosenWork struct {
 	selection    domain.WorkInfoSelection
 	details      domain.FetchedWorkInfo
 	detailFields []domain.WorkInfoField
+	samePeople   []domain.SamePerson
 }
 
 func (p *WorkInfoPlugins) applyFetch(
@@ -251,7 +252,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	fields := chosen.selection.Fields
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Details: chosen.details, DetailFields: chosen.detailFields,
+		Details: chosen.details, DetailFields: chosen.detailFields, SamePeople: chosen.samePeople,
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -471,15 +472,17 @@ func (f *workInfoFetches) cover(id string, videoID int64, index int, now time.Ti
 }
 
 // choose checks a selection against the result and narrows its details; false for an empty selection, a whole field
-// without a value, a tag or cover the result lacks, or an entry or value Select refuses.
+// without a value, a tag or cover the result lacks, or an entry, value or same-person pair Select refuses.
 func (f *workInfoFetch) choose(selection domain.WorkInfoSelection) (chosenWork, bool) {
 	details, fields, ok := f.details.Select(selection)
+	same, okSame := f.details.SelectSamePeople(selection)
+	ok = ok && okSame
 	cover := slices.Contains(selection.Fields, domain.WorkInfoFieldCover)
 	valid := ok && f.validTagSelection(selection.Fields, selection.Tags) &&
 		(!cover || selection.CoverIndex >= 0 && selection.CoverIndex < len(f.covers)) &&
 		!slices.ContainsFunc(selection.Fields, func(field domain.WorkInfoField) bool { return !f.hasValue(field) }) &&
 		(len(selection.Fields) > 0 || len(fields) > 0)
-	return chosenWork{selection: selection, details: details, detailFields: fields}, valid
+	return chosenWork{selection: selection, details: details, detailFields: fields, samePeople: same}, valid
 }
 
 // Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.

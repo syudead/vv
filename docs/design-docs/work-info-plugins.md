@@ -310,6 +310,48 @@ with `?fetch=1`, which opens that page's `Fetch info…`
 | Naming people by name | Two fetched entries in one role may share a name |
 | Starting replacements cleared | The owner fetched to change the video; a dialog that applies nothing by default asks for a click per row |
 
+## The owner matches unnamed performers with fetched ones
+
+Face recognition makes an unnamed person for each face it cannot link
+([face-recognition.md](face-recognition.md)), so a video analysed before its
+work information is fetched lists each performer twice: the unnamed person
+with the face and the fetched person with the name. The cast rule merges only
+one-to-one pairs, and a fetched face merges only a person it is sure of, so the
+owner matches the rest where both are in view.
+
+Under the role rows, `People and organizations` adds an `Unnamed people` row
+when the video has unnamed performers and the fetch has a linked or new
+performer. Each unnamed performer shows their face beside the face of the
+fetched performer chosen for them, both `PersonFace judge`, over a `Select` of
+those performers, which starts at `Keep apart`. A performer already on the
+video is offered too, so fetching a video that is already doubled again
+settles it; the pair then sends that entry in `people` by itself, which also
+fills the person's empty fields as a chosen entry does. A fetched performer
+chosen for another unnamed person, or cleared above, is disabled, and a pair
+whose toggled performer is cleared later is not sent.
+
+The apply takes the pairs as `samePeople`, each the fetched performer's `at`
+and the unnamed person's id. `FetchedWorkInfo.SelectSamePeople` refuses with
+`invalid_request` an entry not chosen in `people` or not a performer, and an
+entry or person named twice, and maps each `at` to the narrowed details. In the
+apply's transaction, after the work information is written, each unnamed
+person is merged into the person the entry linked, as confirming a face
+candidate does: a face_merge entry decided by the owner, which can be undone,
+and the unnamed person's face for a person without one. An unnamed person
+holding external IDs is merged as a named one, without undo, because the undo
+snapshot keeps no external IDs.
+
+| Case | Result |
+| --- | --- |
+| The person is no longer an unnamed performer of the work, or the entry was skipped | Nothing is merged for the pair |
+| The merge is refused for good (the people's limits) | Rolled back alone and reported as skipped under the entry |
+
+| Rejected | Why |
+| --- | --- |
+| Matching on the person's faces page | The fetched person has no face from the video, so the pair is never offered as a candidate there |
+| Linking the entry to the unnamed person and naming them | A second write path beside the merge, and no undo |
+| Lowering the automatic merge thresholds | The automatic merges are already too inaccurate for the owner; a person decides the pairs |
+
 ## VVMDM fetches the covers and applies one as an uploaded image
 
 A plugin returns its covers as URLs in `workInfo.covers`, because a site often
@@ -462,7 +504,8 @@ flowchart LR
   match --> merge[domain.MergeFetchedWorkInfo]
   merge --> create[Create the new entities the merge kept]
   create --> write[Write the work information]
-  write --> commit[Commit, then events]
+  write --> same[Merge the matched unnamed performers]
+  same --> commit[Commit, then events]
 ```
 
 1. The plugin row is read again, as before: a replaced, revoked or deleted
@@ -479,6 +522,8 @@ flowchart LR
    and external IDs, through the same insert as `CreditStore.Create`.
 5. The result is written with 047's replace path, only when it differs from
    the stored value. The edit time of the user key's members then advances.
+6. The unnamed performers the owner matched are merged into the linked
+   people ([above](#the-owner-matches-unnamed-performers-with-fetched-ones)).
 
 After the commit the apply publishes `VideoOverrideChanged` as before and,
 when the work information changed, one `VideoWorkInfoChanged`. A failure at

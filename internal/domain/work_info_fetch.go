@@ -158,6 +158,16 @@ type WorkInfoSelection struct {
 	Organizations []int
 	URLs          []string
 	ExternalIDs   []ExternalID
+	// SamePeople names the unnamed people on the video whom chosen fetched performers are; At is a position in the
+	// fetched details.
+	SamePeople []SamePerson
+}
+
+// SamePerson is an unnamed person the owner matched with the fetched performer at At; the apply merges that person
+// into the one the entry links.
+type SamePerson struct {
+	At       int
+	PersonID int64
 }
 
 // isListField reports a field the selection chooses value by value instead of whole.
@@ -194,6 +204,24 @@ func (f FetchedWorkInfo) Select(sel WorkInfoSelection) (FetchedWorkInfo, []WorkI
 		}
 	}
 	return out, fields, true
+}
+
+// SelectSamePeople maps sel.SamePeople to positions in the people Select keeps, and reports false for an entry not
+// chosen in sel.People or not a performer, a person ID that is not positive, or an entry or person named twice.
+func (f FetchedWorkInfo) SelectSamePeople(sel WorkInfoSelection) ([]SamePerson, bool) {
+	kept := slices.Sorted(slices.Values(sel.People))
+	out := make([]SamePerson, 0, len(sel.SamePeople))
+	people := map[int64]bool{}
+	for _, same := range sel.SamePeople {
+		at := slices.Index(kept, same.At)
+		if at < 0 || same.At >= len(f.People) || f.People[same.At].Role != PersonPerformer || same.PersonID <= 0 ||
+			people[same.PersonID] || slices.ContainsFunc(out, func(s SamePerson) bool { return s.At == at }) {
+			return nil, false
+		}
+		people[same.PersonID] = true
+		out = append(out, SamePerson{At: at, PersonID: same.PersonID})
+	}
+	return out, true
 }
 
 // pickAt keeps the values of all at the selected positions, in all's order, and reports false for a position outside
@@ -286,6 +314,8 @@ type FetchedWorkInfoApply struct {
 	Details FetchedWorkInfo
 	// Empty DetailFields preserves work info.
 	DetailFields []WorkInfoField
+	// SamePeople's positions are in Details.People.
+	SamePeople []SamePerson
 }
 
 // RejectedTags is deduplicated in Tags order; Skipped reports omitted detail values.
