@@ -163,6 +163,13 @@ is one endpoint and the manifest decides the kind, so the toast names the
 other section when the row lands there. The video page's fetch dialog offers
 work-info plugins only.
 
+A person plugin's row and its approval prompt list the link domains it
+declares right after the ID sources it accepts, in manifest order, so the
+owner compares both keys at a glance before approving. A domain is shown
+whole and wraps inside itself rather than being shortened, because the owner
+approves exactly the sites it names; a plugin without domains shows nothing
+for them.
+
 | Rejected | Why |
 | --- | --- |
 | A kind badge on rows in one list | The owner would read every row to find the plugins that fetch people |
