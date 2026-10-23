@@ -113,7 +113,7 @@ The selected tab is page memory, not the address
 | Span tooltip | 0:12–0:30 | The span's start and end |
 | People, read failed | Couldn't load the people seen in this video: {reason} | With `Retry` |
 | Versions marks | Representative · Now playing | Existing words, both visible chips |
-| Versions actions | Play · Make representative · Remove from versions | `Play` is new as a visible word; on every row but the playing one |
+| Versions actions | Play · Make representative · Remove from versions | `Play` is new as a visible word, on every row but the playing one; `Make representative` on every row but the representative; `Remove from versions` on every row |
 | Thumbnail headings | Current · Replace with | |
 | Thumbnail origin | Frame at 0:12 · Uploaded image · Generated image · Automatic | One line under the image |
 | Thumbnail revert | Back to automatic | |
@@ -331,13 +331,15 @@ vertically centred:
 | Title line | The title in `text-sm text-foreground`, plain text on every row, two lines at most; after it the chips `Representative` (`Badge secondary`, with `Star`) on the representative and `Now playing` (`Badge soft`) on the playing version, `gap-2` |
 | Details | Resolution · codec · size · container, `text-xs text-muted-foreground tabular-nums`, in this order |
 | Path | For the owner `location.path`, for a guest the version's place, `text-2xs font-mono text-muted-foreground`, one line truncated from the left so the file name stays |
-| Actions | On every row but the playing one: `Play`, a `secondary` `sm` pill around the link that opens that version as today's title links did; then, owner only, `Make representative` (not on the representative) and `Remove from versions`, `ghost` `sm`; `gap-1`, at the row's end from `sm`, under the path below `sm` |
+| Actions | `Play`, a `secondary` `sm` pill around the link that opens that version as today's title links did, on every row but the playing one; then, owner only, `Make representative` (not on the representative) and `Remove from versions` (on every row, the playing one included), `ghost` `sm`; `gap-1`, at the row's end from `sm`, under the path below `sm` |
 
-The playing row has no action: it is already playing, and the Issue gives
-the three actions to the other versions. A row's pressed action spins and
-that row's other action is `aria-disabled`; `Make representative` moves the
-chip on the response, `Remove from versions` removes the row and shows today's
-toast. The selection then follows
+The playing row has no `Play`, since it is already playing, and the
+representative row has no `Make representative`; the owner can remove every
+version, the playing one included, as the Issue and the first version
+require. A row's pressed action spins and that row's other actions are
+`aria-disabled`; `Make representative` moves the chip on the response,
+`Remove from versions` removes the row and shows today's toast, and removing
+the playing version replaces the page's video as today. The selection then follows
 [R-2](research.md#r-2-the-selected-tab-lives-in-page-memory-not-in-the-address):
 Versions stays selected while the new video still has two or more versions,
 and Overview is selected when one version is left. A per-row `More` menu was
@@ -517,7 +519,8 @@ a video with none of these and one file, and as a guest on a public video.
    shown the blocks are grey and the hint ends at the length (acceptance
    criterion 3).
 10. **Versions**: the playing row is the one with the ringed thumbnail, the
-    `Now playing` chip and no action; `Make representative` moves the chip
+    `Now playing` chip and no `Play`, and offers the owner
+    `Remove from versions`; `Make representative` moves the chip
     without a reload; `Remove from versions` drops the row; `Play` on
     another row opens that version (acceptance criterion 4).
 11. **Thumbnail**: `Current` and `Replace with` stand across one vertical
@@ -578,11 +581,11 @@ files named in [Changes to the design system](#changes-to-the-design-system).
 | `WorkInfo.tsx` | `Description` gains `leading-relaxed`; `linkEntry` text `text-primary`; one link per line; `WorkInfo` passes `columns={2}` |
 | `tabs/WorkPanel.tsx` | `PanelColumns`: left the list or `No work details yet.`, right `PanelLabel` `Fill in from a site` over the pill `Fetch again` / `Fetch` (`secondary` `sm` `shape="pill"`, no icon) |
 | `tabs/PeoplePanel.tsx` | `Credits` tiles: `PersonFace shape="scene"`, `items-start text-left`, name `text-sm`, role `text-2xs`, `gap-1.5`; the `Seen in this video` label line as a flex row with the hint (`0:00 — {length}` + the press part) at the right in `text-2xs`; the name column `sm:w-list-thumb`; `seenHint` reworded |
-| `tabs/VersionsPanel.tsx` | Row: `py-3 border-b border-border` on every row, no `bg-accent`/`ring` on the row; thumbnail `w-list-thumb-cell` with `selected={current}`; title plain text on every row (no `Link`); chips `Representative` (`Badge secondary` + `Star`) and `Now playing` (`Badge soft`, visible, replacing the `sr-only` span); details line without the place; a path line (`text-2xs font-mono text-muted-foreground`, `dir="rtl"` truncation) with `location.path` for the owner and the place for a guest; actions only when `!current`: `Play` (`Button secondary sm shape="pill" asChild` around the `Link` with today's `state` and `aria-label`), then the two ghost actions; `RowActions` `gap-1` |
+| `tabs/VersionsPanel.tsx` | Row: `py-3 border-b border-border` on every row, no `bg-accent`/`ring` on the row; thumbnail `w-list-thumb-cell` with `selected={current}`; title plain text on every row (no `Link`); chips `Representative` (`Badge secondary` + `Star`) and `Now playing` (`Badge soft`, visible, replacing the `sr-only` span); details line without the place; a path line (`text-2xs font-mono text-muted-foreground`, `dir="rtl"` truncation) with `location.path` for the owner and the place for a guest; `Play` only when `!current` (`Button secondary sm shape="pill" asChild` around the `Link` with today's `state` and `aria-label`), then the owner's ghost actions with today's conditions (`Remove from versions` on the playing row too); `RowActions` `gap-1` |
 | `../versions/VersionDetails.tsx` | `versionDetails` specs order: resolution, codec, size, container; `VersionDetailsLine` takes `place` optionally so the versions row can leave it out while other callers keep it |
 | `tabs/ThumbnailPanel.tsx` | Lay out as `Current` column, `Separator orientation="vertical"` (`md`) / horizontal (below), `Replace with` column; `CurrentImage` `max-w-card-0` → `w-card-0`; origin line `text-xs` with the time in `font-mono`; `Back to automatic` `ghost sm -ml-2`; replace `WayRow` with a row of preview (`VideoThumbnail` `w-replace-preview`), title + note, pill (`secondary sm shape="pill"`, no icon); previews: the seek sprite cell at `capture.positionMs()` (reuse `seekSpriteCell`/`spriteCellBackground` from `lib/seekSprite`, fetching the sprite as `seekPreview.ts` does), the dashed empty frame, the current thumbnail at `opacity-50` |
 | `tabs/FileMediaPanel.tsx` | `PanelColumns`: left `Location` (path `text-xs font-mono leading-relaxed`, pills `gap-1.5`) and `Media`; right `FactList variant="divided"` of `Size`, `Added`, `Edited`, `File created` with an `aria-label` `File` |
 | `RescanVideoButton.tsx` | `outline` → `secondary` `shape="pill"`, no icon |
 | `MediaInfoGroups.tsx` | `subtitleFact` and `chapterFact` return a `None` (`text-muted-foreground`) fact when `mediaInfo` is present and empty, instead of `null` |
 | `../i18n/en.ts` | Add `fetch`, `fetchAgain`, `play`, `frameOnScreen`, `anImage`, `touchUpButton` (`Touch up…`), `none`, `fileCreated` (`File created`), `seenRange` (`0:00 — {length}`), `seenPress` (`press a bar to jump`); reword `touchUpNote`; the `thumbnailFrameNote` is no longer needed |
-| Tests and e2e | Rename the queries: the versions title link → `Play` button, the `sr-only` `Now playing` → the visible chip, `Created` → `File created`, `Use current frame` notes → the row titles; add the cases the changed contracts need (the playing row has no action, the `None` rows, the pill shape on the title actions) |
+| Tests and e2e | Rename the queries: the versions title link → `Play` button, the `sr-only` `Now playing` → the visible chip, `Created` → `File created`, `Use current frame` notes → the row titles; add the cases the changed contracts need (the playing row has no `Play` and keeps `Remove from versions`, the `None` rows, the pill shape on the title actions) |

@@ -109,7 +109,31 @@ rejected: it is already 644 lines and holds the hooks every panel shares.
 
 ## Implementation Work
 
-The diagram shows the units and what each one needs merged first.
+The seven units of the first version, from the face appearances API to the
+browser e2e, are done in this feature. The one remaining unit is the layout
+revision below; the diagram and the units after it record the first version.
+
+### Layout revision to the canvas
+
+**Scope**: The changes in
+[ui-design.md, Implementation delta](ui-design.md#implementation-delta), by
+file under `web/src/ui` and `web/src/player`, with the tests, the e2e queries
+and the permanent documents it names. No API or server change.
+
+**Dependencies**: None; every first-version unit is merged.
+
+**Acceptance**: Screenshots of the owner's and a guest's video page at
+1440×900 and 390px, each tab selected, compared with the layout canvas linked
+from the parent Issue against the
+[Review criteria](ui-design.md#review-criteria). The component tests of the
+files the delta touches pass with its renamed queries and its added cases:
+the playing Versions row without `Play` and with `Remove from versions`, the
+`None` rows of File & media, and the pill shape of the title actions.
+`web/e2e/video-tabs.e2e.ts` passes in a manual run of `ci.yml`
+(`Browser E2E`), and `task check-docs` passes.
+
+The diagram shows the first version's units and what each one needed merged
+first.
 
 ```mermaid
 flowchart LR
