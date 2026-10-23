@@ -715,8 +715,10 @@ A section inside a panel has a small muted uppercase heading; facts are a
 `FactList` with the term muted and the value in the body colour, and the
 figures of the right column stand in divided rows. Dates show
 the date only, in the figures' mono type; the time is in the `title` attribute and in a popover opened by
-pressing the date. While one request of a panel runs, the pressed action spins
-and the panel's other actions are `aria-disabled`. A list read when its tab is
+pressing the date. While a request runs, the pressed action spins. In
+Thumbnail the other ways are `aria-disabled` until it ends. In Versions the
+lock covers only the pressed row: that row's other owner actions are
+`aria-disabled`, while its `Play` and every other row stay enabled. A list read when its tab is
 selected (Versions, People's `Seen in this video`) shows two `Skeleton` rows
 while reading and the failure words with `Retry` when the read fails. A
 failure of an action shows one line with `AlertCircle` at the end of
