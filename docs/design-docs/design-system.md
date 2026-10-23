@@ -341,7 +341,7 @@ Skeletons and sections share four behaviours:
 | Behaviour       | How                                                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spacing         | Fixed in the pattern; patterns take no `className`, so a screen cannot override it                                                                            |
-| Density         | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density |
+| Density         | `DetailPage` provides viewing density, under which `PageSection` switches to `p-4` rows and `text-base` and `FactList` to wider row gaps; the video page's tab panel is set in `text-sm`, the library's type; every other skeleton is library density |
 | States in place | A state block goes in the same body slot as the data, so the header and toolbar never move                                                                    |
 | Edges line up   | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges         |
 
