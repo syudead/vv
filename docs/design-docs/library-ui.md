@@ -724,15 +724,32 @@ the main action's place.
 | Media | The player frame holding the uploaded image (`object-contain`), or `SquareDashed` over `No thumbnail yet` and, for the owner, `Upload an image…`; a guest reads `No thumbnail`. No play button, control bar or cursor change |
 | Links and description | Under the title unit: one `outline` `Button` per link, opening in a new tab, then the `Description` component. The work details row leaves both out |
 | Information rows | `Added` and `Edited`, and the thumbnail item with `Remove image` while an image exists; no technical or media information. A guest sees `Added` only |
-| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the file picker directly and a preview with framing only, and `More` (`Ellipsis`) with `Delete…` |
+| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the file picker directly and a preview with framing only, and `More` (`Ellipsis`) with `Merge into a file video…` and, after a separator, `Delete…` |
 
-Saves of the title, the details and deletion send the `contentVersion` the
+Saves of the title, the details, deletion and merging send the `contentVersion` the
 page read. `409 content_changed` shows
 `This video changed in another tab.` with `Reload`, and `404` shows that the
 video is gone without recreating it: the page shows the missing-video layer,
 and the details editor shows `This virtual video was deleted or merged.` with
 `Back to the library`. An empty title is refused with `Enter a title.` before
 sending.
+
+`Merge into a file video…` opens a `FormDialog` whose `Command` searches the
+owner's file videos (`GET /api/videos?kind=file`), 20 rows per read and more
+on scroll. Each row shows the thumbnail at `w-list-thumb`, the title on one
+line, and the duration and folder under it. Choosing a row marks it, and only
+it, with the `primary-soft` fill and a `Check`; `Merge` stays disabled until
+then. A popover picker of names was rejected because the thumbnail and the
+folder are what tell similar file videos apart, and merging into the wrong one
+cannot be undone.
+
+| Result | Screen |
+| --- | --- |
+| `200` | The page replaces itself with the file video's page, keeping the return target, and shows `Merged into "{title}"`; list snapshots are cleared so the library drops the virtual card |
+| `409 description_too_long`, `too_many_urls` | The limit the combined work information would pass, in a `destructive` `Alert`; the dialog and the choice stay |
+| `409 content_changed` | `One of the videos changed in another tab.` with `Reload`, which closes the dialog and re-reads the page |
+| `404` | `One of the videos is no longer in the library.` |
+| Other | `Couldn't merge: {reason}` |
 
 ### Player states
 

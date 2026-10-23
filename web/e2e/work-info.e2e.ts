@@ -7,7 +7,7 @@ import {
 } from "@playwright/test";
 
 // Verify description collapsing and overflow with real layout, links and descriptions across reloads and tabs, and
-// what guests see of virtual videos; lower-level suites cover work-info behavior.
+// what guests see of virtual videos and merging one into a file video; lower-level suites cover work-info behavior.
 // Use per-attempt person names and clear persisted details before each retry because the server and database survive worker replacement.
 
 interface MediaFolder {
@@ -308,6 +308,64 @@ test.describe.serial("work information", () => {
       await context.close();
       await deleteVirtual(request, shown);
       await deleteVirtual(request, hidden);
+    }
+  });
+
+  test("受け入れ条件 5: タグとリンクを付けたバーチャルな動画をマージすると、再生できる 1 件が両方を持つ", async ({
+    page,
+    request,
+  }) => {
+    const d = video("作品動画D");
+    const link = `${origin}/settings?merged=${run}`;
+    const tagName = `作品e2eマージ${run}`;
+    const virtual = await createVirtual(request, `作品e2eマージ元${run}`, [link]);
+    let tagId: number | undefined;
+    try {
+      const tagged = await request.post("/api/video-tags", {
+        headers: mutationHeaders,
+        data: { videoIds: [virtual.id], action: "add", tag: { name: tagName } },
+      });
+      expect(tagged.ok()).toBe(true);
+      tagId = ((await tagged.json()) as { tag: { id: number } }).tag.id;
+
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await openVideo(page, virtual.id, virtual.title);
+      await page.getByRole("button", { name: "More" }).click();
+      await page.getByRole("menuitem", { name: "Merge into a file video…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Merge into a file video" });
+      await dialog.getByRole("combobox", { name: "Search file videos" }).fill(d.title);
+      await dialog.getByRole("option", { name: new RegExp(d.title) }).click();
+      await dialog.getByRole("button", { name: "Merge" }).click();
+      await expect(page).toHaveURL(`/videos/${String(d.id)}`);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(d.title);
+
+      // The tag's name finds the merged video alone: the virtual video is gone.
+      await page.goto("/");
+      const field = page.getByRole("searchbox", { name: "Search videos" });
+      await field.fill(tagName);
+      await field.press("Enter");
+      const results = page.getByRole("region", { name: "Search results", exact: true });
+      await expect(results.locator("article[data-video-id]")).toHaveCount(1);
+      const card = results.locator(`article[data-video-id="${String(d.id)}"]`);
+      await card.getByRole("link", { name: d.title, exact: true }).click();
+
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(d.title);
+      await expect(page.getByText(tagName, { exact: true }).first()).toBeVisible();
+      await expect(
+        page
+          .getByRole("list", { name: "Work details" })
+          .getByRole("link", { name: link.replace(/^http:\/\//, "") }),
+      ).toHaveAttribute("href", link);
+      await page.locator(".vjs-big-play-button").click();
+      await page.waitForFunction(() => {
+        const element = document.querySelector("video");
+        return element !== null && !element.paused && element.currentTime > 0.1;
+      });
+    } finally {
+      await deleteVirtual(request, virtual);
+      await clearDetails(request, d.id);
+      if (tagId !== undefined)
+        await request.delete(`/api/tags/${String(tagId)}`, { headers: mutationHeaders });
     }
   });
 });

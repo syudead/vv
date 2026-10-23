@@ -39,6 +39,17 @@ const virtualVideo: Video = {
   },
 };
 
+// Unplayable keeps the real player out of tests that only land on a file video's page.
+const mergeTarget: Video = {
+  ...virtualVideo,
+  id: 9,
+  virtual: false,
+  title: "ファイルの動画",
+  playable: false,
+  probeState: "done",
+  contentVersion: "abc",
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -105,7 +116,13 @@ describe("VideoPage for a virtual video", () => {
       if (url.startsWith("/api/videos/7?") && method === "DELETE")
         return Promise.resolve(server.remove(new URL(url, "http://localhost")));
       if (url === "/api/videos/7") return Promise.resolve(json(server.video));
-      if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
+      if (url.startsWith("/api/videos?"))
+        return Promise.resolve(json({ items: [mergeTarget], total: 1 }));
+      if (url === "/api/virtual-videos/7/merge" && method === "POST")
+        return Promise.resolve(json(mergeTarget));
+      if (url === "/api/videos/9") return Promise.resolve(json(mergeTarget));
+      if (url === "/api/videos/7/related" || url === "/api/videos/9/related")
+        return Promise.resolve(json({ items: [] }));
       if (url === "/api/videos/7/subtitles")
         return Promise.resolve(json({ subtitles: [] }));
       if (url === "/api/tags") return Promise.resolve(json([]));
@@ -219,6 +236,33 @@ describe("VideoPage for a virtual video", () => {
     expect(server.remove.mock.calls[0]![0].searchParams.get("contentVersion")).toBe(
       "virtual:3",
     );
+  });
+
+  it("More のマージは Delete… の区切りの前にあり、成功すると同じ戻り先でファイルのある動画のページに置き換わる", async () => {
+    await openPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const menu = await screen.findByRole("menu");
+    expect(
+      [...menu.querySelectorAll('[role="menuitem"], [role="separator"]')].map(
+        (item) => item.textContent || item.getAttribute("role"),
+      ),
+    ).toEqual(["Merge into a file video…", "separator", "Delete…"]);
+    await user.click(
+      within(menu).getByRole("menuitem", { name: "Merge into a file video…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Merge into a file video" });
+    await user.click(
+      await within(dialog).findByRole("option", { name: /ファイルの動画/ }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "ファイルの動画" }),
+    ).toBeDefined();
+    expect(screen.getByText('Merged into "ファイルの動画"')).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(await screen.findByText("Library list")).toBeDefined();
   });
 
   it("削除に 409 content_changed が返ると、ダイアログに残して Reload で読み直す", async () => {
