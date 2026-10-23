@@ -6,7 +6,7 @@ import {
   fetchSeekThumbnailSprite,
   type SeekThumbnailSprite,
 } from "../../api/client";
-import SpriteFrameGrid from "./SpriteFrameGrid";
+import SeekSpriteSheets from "./SeekSpriteSheets";
 
 vi.mock("../../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/client")>()),
@@ -25,15 +25,15 @@ const sprite: SeekThumbnailSprite = {
   sheets: ["/sheet/0", "/sheet/1"],
 };
 
-/** The one observer the grid creates; `enter` reports frames as visible. */
+/** The one observer the list creates; `enter` reports a sheet as visible. */
 const observer = {
   callback: undefined as IntersectionObserverCallback | undefined,
   observed: [] as Element[],
   unobserved: [] as Element[],
 };
 
-function enter(label: string) {
-  const item = screen.getByRole("button", { name: label }).closest("li")!;
+function enter(index: number) {
+  const item = screen.getAllByRole("listitem")[index]!;
   act(() =>
     observer.callback?.(
       [{ target: item, isIntersecting: true } as unknown as IntersectionObserverEntry],
@@ -85,40 +85,32 @@ function sheetUrls(): string[] {
   return vi.mocked(fetchSeekThumbnailSheet).mock.calls.map(([url]) => url);
 }
 
-async function renderGrid(onPick = vi.fn()) {
-  render(
-    <SpriteFrameGrid
-      spriteUrl="/sprite"
-      sendingFrame={null}
-      locked={false}
-      currentMs={undefined}
-      onPick={onPick}
-    />,
-  );
-  await screen.findByRole("list", { name: "A frame from the video" });
-  return onPick;
+async function renderSheets() {
+  render(<SeekSpriteSheets spriteUrl="/sprite" />);
+  await screen.findByRole("list", { name: "Seek preview" });
 }
 
-describe("SpriteFrameGrid", () => {
-  it("シートはそのコマが見えてから一度だけ読み、押したコマのコマ番号と位置を渡す", async () => {
-    const onPick = await renderGrid();
-    expect(observer.observed).toHaveLength(8);
+describe("SeekSpriteSheets", () => {
+  it("シートは見えてから一度だけ読み、読めたシートを画像として出す", async () => {
+    await renderSheets();
+    expect(observer.observed).toHaveLength(2);
     expect(sheetUrls()).toEqual([]);
 
-    enter("Use the frame at 0:50");
-    enter("Use the frame at 1:00");
+    enter(1);
+    enter(1);
     expect(sheetUrls()).toEqual(["/sheet/1"]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Use the frame at 0:50" }));
-    expect(onPick).toHaveBeenCalledWith(5, 50_000);
+    const image = await screen.findByRole("img", { name: "Seek preview sheet 2 of 2" });
+    expect(image.getAttribute("src")).toBe("blob:sheet");
+    expect(screen.queryByRole("img", { name: "Seek preview sheet 1 of 2" })).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("読めなかったシートは理由と Retry を出し、Retry でそのシートを読み直す", async () => {
     sheetResult = () => Promise.reject(new Error("network"));
-    await renderGrid();
-    enter("Use the frame at 0:00");
+    await renderSheets();
+    enter(0);
     const failure = await screen.findByRole("alert");
-    expect(failure.textContent).toContain("Couldn't load the frames");
+    expect(failure.textContent).toContain("Couldn't load the seek preview");
 
     sheetResult = () => Promise.resolve(new Blob());
     fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));

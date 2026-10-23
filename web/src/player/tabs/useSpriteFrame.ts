@@ -32,6 +32,8 @@ export interface SpriteSheets {
   failed: boolean;
   /** Some sheet could not be read; `retry` reads the failed sheets again. */
   sheetFailed: boolean;
+  /** A sheet's object URL, or null while it is not loaded. */
+  sheetUrl: (index: number) => string | null;
   /** The cell drawn from its sheet, or null while that sheet is not loaded. */
   frame: (cell: SpriteCell) => ScrubFrameData | null;
   /** Read a sheet once; a failed sheet may be requested again. */
@@ -142,6 +144,7 @@ export function useSpriteSheets(
     sprite: own?.sprite ?? null,
     failed,
     sheetFailed: own !== null && own.failedSheets.size > 0,
+    sheetUrl: (index) => own?.sheets.get(index) ?? null,
     frame: (cell) => {
       const url = own?.sheets.get(cell.sheet);
       return own === null || url === undefined ? null : { url, sprite: own.sprite, cell };

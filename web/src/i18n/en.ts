@@ -2223,11 +2223,11 @@ export const en = {
       touchUp: "Touch up with ComfyUI",
       touchUpButton: "Touch up…",
       touchUpNote: "Frame the image, then run an instruction",
-      frames: "A frame from the video",
-      framesNote: "Press a frame to make it the thumbnail",
-      framesLoading: "Loading the frames",
-      framesFailed: "Couldn't load the frames",
-      useFrameAt: (time: string) => `Use the frame at ${time}`,
+      seekSprite: "Seek preview",
+      seekSpriteLoading: "Loading the seek preview",
+      seekSpriteFailed: "Couldn't load the seek preview",
+      seekSpriteSheet: (index: number, count: number) =>
+        `Seek preview sheet ${String(index)} of ${String(count)}`,
     },
     //
     thumbnailEdit: {
