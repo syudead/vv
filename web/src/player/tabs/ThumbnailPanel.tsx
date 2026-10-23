@@ -14,11 +14,11 @@ import type { ThumbnailCapture } from "../playerLayers";
 import type { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
 import { UPLOAD_TYPES, uploadRefusal } from "../thumbnailUpload/uploadRules";
 import { FailureLine, PanelSection } from "./panelParts";
-import SpriteFrameGrid from "./SpriteFrameGrid";
+import SeekSpriteSheets from "./SeekSpriteSheets";
 import type { useThumbnailPosition } from "./useThumbnailPosition";
 import { useSpriteFrame } from "./useSpriteFrame";
 
-type Way = "frame" | "grid" | "automatic" | "upload" | "touchUp";
+type Way = "frame" | "automatic" | "upload" | "touchUp";
 
 export interface ThumbnailPanelProps {
   video: Video;
@@ -38,7 +38,6 @@ function sendingWay(
   upload: ThumbnailPanelProps["upload"],
 ): Way | null {
   if (position.sending === "capture") return "frame";
-  if (position.sending === "frame") return "grid";
   if (position.sending === "clear") return "automatic";
   if (!upload.sending && !upload.preparing) return null;
   return upload.from === "file" ? "upload" : "touchUp";
@@ -192,24 +191,6 @@ export default function ThumbnailPanel({
                 )}
               />
             </ul>
-            {video.seekThumbnailUrl !== undefined &&
-              video.seekThumbnailState === "done" && (
-                <SpriteFrameGrid
-                  // A new sprite starts a new grid, so its observer and sheets start over.
-                  key={video.seekThumbnailUrl}
-                  spriteUrl={video.seekThumbnailUrl}
-                  sendingFrame={position.sendingFrame}
-                  locked={sending !== null}
-                  currentMs={
-                    video.thumbnailImage === undefined
-                      ? video.thumbnailPositionMs
-                      : undefined
-                  }
-                  onPick={(frame, positionMs) => {
-                    if (sending === null) position.send(positionMs, frame);
-                  }}
-                />
-              )}
             <ImageUploadDialog
               open={uploading}
               onOpenChange={setUploading}
@@ -221,6 +202,13 @@ export default function ThumbnailPanel({
           </PanelSection>
         </div>
       </div>
+      {video.seekThumbnailUrl !== undefined && video.seekThumbnailState === "done" && (
+        // A new sprite starts over, so its observer and sheets are not reused.
+        <SeekSpriteSheets
+          key={video.seekThumbnailUrl}
+          spriteUrl={video.seekThumbnailUrl}
+        />
+      )}
       <FailureLine failure={failure} />
     </div>
   );

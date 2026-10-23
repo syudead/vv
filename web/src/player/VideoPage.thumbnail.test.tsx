@@ -527,7 +527,7 @@ describe("VideoPage Thumbnail tab", () => {
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 
-  describe("スプライトのコマの一覧", () => {
+  describe("シークプレビューのスプライト", () => {
     const spriteUrl = "/api/videos/7/seek-thumbnails/sprite?v=1";
     const withSprite: Video = {
       ...video,
@@ -570,78 +570,22 @@ describe("VideoPage Thumbnail tab", () => {
       });
     });
 
-    function frames() {
-      return screen.getByRole("list", { name: "A frame from the video" });
-    }
-
-    it("スプライトのある動画はコマを並べ、押したコマの位置を送り、送信中はそのコマが回りほかの入口は aria-disabled になる（フィードバック 3）", async () => {
+    it("スプライトのある動画はシートを画像として出すだけで、コマから位置は送らない（フィードバック 3）", async () => {
       server.video = withSprite;
-      let answer: (response: Response) => void = () => undefined;
-      server.position.mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve;
-        }) as unknown as Response,
-      );
       await openThumbnail();
-      const list = await screen.findByRole("list", { name: "A frame from the video" });
-      expect(
-        within(list)
-          .getAllByRole("button")
-          .map((button) => button.getAttribute("aria-label")),
-      ).toEqual([
-        "Use the frame at 0:00",
-        "Use the frame at 0:10",
-        "Use the frame at 0:20",
-      ]);
+      const list = await screen.findByRole("list", { name: "Seek preview" });
       await waitFor(() =>
         expect(server.requests).toEqual(
           expect.arrayContaining(["GET /sheets/0", "GET /sheets/1"]),
         ),
       );
-
-      fireEvent.click(
-        within(list).getByRole("button", { name: "Use the frame at 0:20" }),
-      );
-      await waitFor(() =>
-        expect(
-          within(frames())
-            .getByRole("button", { name: "Use the frame at 0:20" })
-            .getAttribute("aria-busy"),
-        ).toBe("true"),
-      );
-      expect(server.position.mock.calls).toEqual([[{ positionMs: 20_000 }]]);
-      const other = within(frames()).getByRole("button", {
-        name: "Use the frame at 0:00",
-      });
-      expect(other.getAttribute("aria-disabled")).toBe("true");
-      expect(way("Use this frame").getAttribute("aria-disabled")).toBe("true");
-      fireEvent.click(other);
-      expect(server.position).toHaveBeenCalledTimes(1);
-
-      answer(json({ ...withSprite, thumbnailPositionMs: 20_000 }));
-      expect(await within(current()).findByText("Frame at 0:20")).toBeDefined();
-      const picked = within(frames()).getByRole("button", {
-        name: "Use the frame at 0:20",
-      });
-      expect(picked.getAttribute("aria-busy")).toBeNull();
       expect(
-        picked
-          .querySelector('[data-slot="video-thumbnail"]')
-          ?.hasAttribute("data-selected"),
-      ).toBe(true);
-    });
-
-    it("位置を送れなかった理由をパネルの失敗の行に出す", async () => {
-      server.video = withSprite;
-      server.position.mockReturnValueOnce(json({ code: "internal", message: "x" }, 500));
-      await openThumbnail();
-      const list = await screen.findByRole("list", { name: "A frame from the video" });
-      fireEvent.click(
-        within(list).getByRole("button", { name: "Use the frame at 0:10" }),
-      );
-      expect((await screen.findByRole("alert")).textContent).toMatch(
-        /^Couldn't change the thumbnail: /,
-      );
+        (await within(list).findAllByRole("img")).map((image) =>
+          image.getAttribute("alt"),
+        ),
+      ).toEqual(["Seek preview sheet 1 of 2", "Seek preview sheet 2 of 2"]);
+      expect(within(list).queryByRole("button")).toBeNull();
+      expect(server.position).not.toHaveBeenCalled();
     });
 
     it("スプライトを読めなければ理由と Retry を出し、Retry で読み直す", async () => {
@@ -649,28 +593,26 @@ describe("VideoPage Thumbnail tab", () => {
       const ok = spriteResponse;
       spriteResponse = () => json({ code: "internal", message: "x" }, 500);
       await openThumbnail();
-      expect(await screen.findByText("Couldn't load the frames")).toBeDefined();
+      expect(await screen.findByText("Couldn't load the seek preview")).toBeDefined();
       const reads = () => server.requests.filter((r) => r === `GET ${spriteUrl}`).length;
       const before = reads();
       spriteResponse = ok;
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(
-        await screen.findByRole("list", { name: "A frame from the video" }),
-      ).toBeDefined();
+      expect(await screen.findByRole("list", { name: "Seek preview" })).toBeDefined();
       expect(reads()).toBe(before + 1);
     });
 
-    it("スプライトの無い動画と作成中の動画にはコマの一覧を出さず、スプライトも読まない", async () => {
+    it("スプライトの無い動画と作成中の動画にはシートを出さず、スプライトも読まない", async () => {
       server.video = { ...withSprite, seekThumbnailState: "pending" };
       await openThumbnail();
       expect(way("Upload…")).toBeDefined();
-      expect(screen.queryByRole("list", { name: "A frame from the video" })).toBeNull();
+      expect(screen.queryByRole("list", { name: "Seek preview" })).toBeNull();
       cleanup();
 
       server.video = video;
       server.requests = [];
       await openThumbnail();
-      expect(screen.queryByRole("list", { name: "A frame from the video" })).toBeNull();
+      expect(screen.queryByRole("list", { name: "Seek preview" })).toBeNull();
       expect(server.requests).not.toContain(`GET ${spriteUrl}`);
     });
   });
