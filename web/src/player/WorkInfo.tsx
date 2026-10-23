@@ -17,6 +17,7 @@ import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { libraryFilterPath } from "../library/libraryPath";
 import { PersonFace } from "../ui/PersonFace";
+import { type Fact, FactList } from "../ui/patterns/fact-list";
 import { Button } from "../ui/shadcn/button";
 
 const foldLimit = 3;
@@ -45,19 +46,6 @@ function organizationRoleLabel(role: WorkOrganizationRole, count: number): UiTex
 
 export function withoutScheme(url: string): string {
   return url.replace(/^https?:\/\//i, "");
-}
-
-export function hasWorkInfo(info: WorkInfoValue | undefined): info is WorkInfoValue {
-  if (info === undefined) return false;
-  return (
-    info.code !== undefined ||
-    info.description !== undefined ||
-    info.dates.length > 0 ||
-    info.people.length > 0 ||
-    info.organizations.length > 0 ||
-    info.urls.length > 0 ||
-    info.externalIds.length > 0
-  );
 }
 
 export function Item({ label, children }: { label: UiText; children: ReactNode }) {
@@ -168,7 +156,8 @@ export function FoldButton({
   );
 }
 
-function ListItem({
+/** Entries joined by commas, the ones past `limit` folded behind `+{n} more`. */
+function FoldedEntries({
   label,
   entries,
   limit = foldLimit,
@@ -181,31 +170,29 @@ function ListItem({
   const shown = fold.folded ? entries.slice(0, limit) : entries;
 
   return (
-    <Item label={label}>
-      <span className="min-w-0 wrap-anywhere">
-        {shown.map((entry, index) => (
-          <Fragment key={entry.key}>
-            {index > 0 && ", "}
-            <span
-              ref={index === limit ? fold.nextRef : undefined}
-              tabIndex={index === limit ? -1 : undefined}
-            >
-              {entry.node}
-            </span>
-          </Fragment>
-        ))}
-        {fold.foldable && " "}
-        {fold.foldable && (
-          <FoldButton
-            folded={fold.folded}
-            count={entries.length}
-            limit={limit}
-            label={label}
-            onToggle={fold.toggle}
-          />
-        )}
-      </span>
-    </Item>
+    <span className="min-w-0 wrap-anywhere">
+      {shown.map((entry, index) => (
+        <Fragment key={entry.key}>
+          {index > 0 && ", "}
+          <span
+            ref={index === limit ? fold.nextRef : undefined}
+            tabIndex={index === limit ? -1 : undefined}
+          >
+            {entry.node}
+          </span>
+        </Fragment>
+      ))}
+      {fold.foldable && " "}
+      {fold.foldable && (
+        <FoldButton
+          folded={fold.folded}
+          count={entries.length}
+          limit={limit}
+          label={label}
+          onToggle={fold.toggle}
+        />
+      )}
+    </span>
   );
 }
 
@@ -263,103 +250,116 @@ export function Description({
   );
 }
 
-/** Render only populated fields; keep stored date strings unchanged rather than formatting them. */
-export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) {
-  if (!hasWorkInfo(info)) return null;
-  const w = t.player.workInfo;
-  const dates = workDateKinds.flatMap((kind) => {
-    const date = info.dates.find((entry) => entry.kind === kind);
-    return date === undefined ? [] : [date];
-  });
-  const people = workPersonRoles.flatMap((role) => {
-    const names = info.people.filter((entry) => entry.role === role);
-    return names.length === 0 ? [] : [{ role, names }];
-  });
-  const organizations = workOrganizationRoles.flatMap((role) => {
-    const names = info.organizations.filter((entry) => entry.role === role);
-    return names.length === 0 ? [] : [{ role, names }];
-  });
-  const hasRow =
-    info.code !== undefined ||
-    dates.length > 0 ||
-    people.length > 0 ||
-    organizations.length > 0 ||
-    info.urls.length > 0 ||
-    info.externalIds.length > 0;
+interface Entry {
+  key: string;
+  node: ReactNode;
+}
 
-  return (
-    <>
-      {hasRow && (
-        <ul
-          aria-label={w.label}
-          className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm sm:gap-x-5"
-        >
-          {info.code !== undefined && (
-            <Item label={w.code}>
-              <span className="min-w-0 tabular-nums wrap-anywhere">{info.code}</span>
-            </Item>
-          )}
-          {dates.map((date) => (
-            <Item key={date.kind} label={dateLabel(date.kind)}>
-              <span className="tabular-nums">{date.date}</span>
-            </Item>
-          ))}
-          {people.map(({ role, names }) => (
-            <ListItem
-              key={role}
-              label={personRoleLabel(role, names.length)}
-              entries={names.map((entry) => ({
-                key: String(entry.person.id),
-                node: <PersonLink entry={entry} />,
-              }))}
-            />
-          ))}
-          {organizations.map(({ role, names }) => (
-            <ListItem
-              key={role}
-              label={organizationRoleLabel(role, names.length)}
-              entries={names.map((entry) => ({
-                key: String(entry.organization.id),
-                node: <OrganizationLink organization={entry.organization} />,
-              }))}
-            />
-          ))}
-          {info.urls.length > 0 && (
-            <ListItem
-              label={w.links}
-              entries={info.urls.map((url) => ({
-                key: url,
-                node: (
-                  <a
-                    href={url}
-                    title={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex max-w-xs items-center gap-1 align-bottom hover:text-primary"
-                  >
-                    <span className="truncate">{withoutScheme(url)}</span>
-                    <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-                  </a>
-                ),
-              }))}
-            />
-          )}
-          {info.externalIds.length > 0 && (
-            <ListItem
-              label={w.ids}
-              entries={info.externalIds.map((id) => ({
-                key: `${id.source}\u0000${id.value}`,
-                node: (
-                  <span className="tabular-nums">
-                    {w.externalId(id.source, id.value)}
-                  </span>
-                ),
-              }))}
-            />
-          )}
-        </ul>
-      )}
-      {info.description !== undefined && <Description text={info.description} />}
-    </>
-  );
+function listFact(id: string, label: UiText, entries: Entry[]): Fact {
+  return { id, term: label, value: <FoldedEntries label={label} entries={entries} /> };
+}
+
+function peopleFacts(info: WorkInfoValue): Fact[] {
+  // Performers are in Overview's summary and in People.
+  return workPersonRoles.flatMap((role) => {
+    const names = info.people.filter((entry) => entry.role === role);
+    if (role === "performer" || names.length === 0) return [];
+    return [
+      listFact(
+        role,
+        personRoleLabel(role, names.length),
+        names.map((entry) => ({
+          key: String(entry.person.id),
+          node: <PersonLink entry={entry} />,
+        })),
+      ),
+    ];
+  });
+}
+
+function organizationFacts(info: WorkInfoValue): Fact[] {
+  return workOrganizationRoles.flatMap((role) => {
+    const names = info.organizations.filter((entry) => entry.role === role);
+    if (names.length === 0) return [];
+    return [
+      listFact(
+        role,
+        organizationRoleLabel(role, names.length),
+        names.map((entry) => ({
+          key: String(entry.organization.id),
+          node: <OrganizationLink organization={entry.organization} />,
+        })),
+      ),
+    ];
+  });
+}
+
+function linkEntry(url: string): Entry {
+  return {
+    key: url,
+    node: (
+      <a
+        href={url}
+        title={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex max-w-full items-center gap-1 align-bottom hover:text-primary sm:max-w-xs"
+      >
+        <span className="truncate">{withoutScheme(url)}</span>
+        <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+      </a>
+    ),
+  };
+}
+
+function linkFacts(info: WorkInfoValue): Fact[] {
+  const w = t.player.workInfo;
+  const facts: Fact[] = [];
+  if (info.urls.length > 0)
+    facts.push(listFact("links", w.links, info.urls.map(linkEntry)));
+  if (info.externalIds.length > 0) {
+    facts.push(
+      listFact(
+        "ids",
+        w.ids,
+        info.externalIds.map((id) => ({
+          key: `${id.source}\u0000${id.value}`,
+          node: <span className="tabular-nums">{w.externalId(id.source, id.value)}</span>,
+        })),
+      ),
+    );
+  }
+  return facts;
+}
+
+/**
+ * The work's items other than the description and the performers. Dates keep their stored
+ * strings rather than being formatted.
+ */
+export function workFacts(info: WorkInfoValue | undefined): Fact[] {
+  if (info === undefined) return [];
+  const facts: Fact[] = [];
+  if (info.code !== undefined) {
+    facts.push({
+      id: "code",
+      term: t.player.workInfo.code,
+      value: <span className="tabular-nums wrap-anywhere">{info.code}</span>,
+    });
+  }
+  for (const kind of workDateKinds) {
+    const date = info.dates.find((entry) => entry.kind === kind);
+    if (date === undefined) continue;
+    facts.push({
+      id: kind,
+      term: dateLabel(kind),
+      value: <span className="tabular-nums">{date.date}</span>,
+    });
+  }
+  return [...facts, ...peopleFacts(info), ...organizationFacts(info), ...linkFacts(info)];
+}
+
+/** The Work tab's list; nothing when the work has no item to list. */
+export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) {
+  const facts = workFacts(info);
+  return facts.length === 0 ? null : <FactList facts={facts} />;
 }

@@ -2165,6 +2165,7 @@ export const en = {
       resolution: "Resolution",
       lastWatched: "Last watched",
       released: (date: string) => `Released ${date}`,
+      noWorkDetails: "No work details yet.",
       location: "Location",
       media: "Media",
       fileSection: "File",
@@ -2319,17 +2320,11 @@ export const en = {
           one: `${formatNumber(count)} version`,
           other: `${formatNumber(count)} versions`,
         }),
-      show: (count: number) =>
-        selectPlural(count, {
-          one: `${formatNumber(count)} version of this video. Show versions`,
-          other: `${formatNumber(count)} versions of this video. Show versions`,
-        }),
       label: "Versions",
       representative: "Representative",
       nowPlaying: "Now playing",
       play: (title: string, details: string) =>
         details === "" ? `Play ${title}` : `Play ${title}, ${details}`,
-      more: (title: string) => `More actions for ${title}`,
       makeRepresentative: "Make representative",
       remove: "Remove from versions",
       loadFailed: "Couldn't load the versions",
@@ -2348,7 +2343,6 @@ export const en = {
     },
     // Use singular roles for one person and plural for multiple people.
     workInfo: {
-      label: "Work details",
       code: "Code",
       released: "Released",
       recorded: "Recorded",
@@ -2425,7 +2419,7 @@ export const en = {
       program: "Program",
     },
     workInfoFetch: {
-      entry: "Fetch work info from a plugin",
+      entry: "Fill in from a site",
       title: "Fetch work info",
       description: "Nothing changes until you apply.",
       plugin: "Plugin",
