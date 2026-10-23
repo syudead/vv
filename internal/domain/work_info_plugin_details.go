@@ -57,7 +57,7 @@ type fetchedExternalIDJSON struct {
 func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	limits := WorkInfoLimits
 	out.Code = lenientString(raw.Code)
-	out.Description = lenientString(raw.Description)
+	out.Description = trimWorkInfoText(DescriptionLineBreaks(lenientString(raw.Description)))
 	out.Dates = parseFetchedDates(lenientList[fetchedDateJSON](raw.Dates))
 	out.People = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.People), PersonRoles,
 		limits.PeoplePerRoleMaxCount, func(role PersonRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedPerson {

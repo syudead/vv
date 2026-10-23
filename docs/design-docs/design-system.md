@@ -183,7 +183,7 @@ with and when not to use it is in
 
 | Component                                                                                                                                         | Item                                  | Replaces                               |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
-| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button`                              | `ui/Button`, `ui/IconButton`           |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`; shapes `default`, `pill`) | `button`                              | `ui/Button`, `ui/IconButton`           |
 | `Input`, `Textarea`, `Label`, `Field`                                                                                                             | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>`         |
 | `Select`, `RadioGroup`                                                                                                                            | `select`, `radio-group`               | Raw `<select>`, the sort radio columns |
 | `Checkbox`, `Switch`                                                                                                                              | `checkbox`, `switch`                  | `ui/Checkbox`                          |
@@ -207,7 +207,7 @@ The components share three behaviours, so a screen never restyles them:
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Keyboard focus       | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
 | Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`)                                                                                                             |
-| Density              | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg`                                                                                                                                          |
+| Density              | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page's player uses `default` and `lg`, and the controls under it `sm`                                                                                                 |
 
 Five changes to upstream keep the checks and the catalog rules: `Checkbox`
 draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
@@ -224,7 +224,9 @@ badge in the narrow-width drawer. `Button`
 also has one variant upstream lacks, `ghost-destructive`: `ghost`'s shape
 with `destructive` text and a `destructive-soft` hover, the button form of the
 menu's destructive item, for one destructive action that stands outside a
-menu and opens a `ConfirmDialog`. `Select`
+menu and opens a `ConfirmDialog`. `Button` and `Toggle` also have a `shape`
+axis upstream lacks, `default` (`rounded-md`) and `pill` (`rounded-full`), so
+a screen that needs a pill never sets a radius itself. `Select`
 and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.
@@ -280,6 +282,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
 | `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default                                                            |
 | `PersonFace`                                                                                              | —                                                                         | vv component; a person's face or the `UserRound` placeholder in one frame, in the `card`, `profile`, `chip`, `token`, `option`, `compare`, `judge` and `scene` shapes               |
+| `SpanBar` | — | vv component; when something happens in a video, as blocks on a lane the video's length, pressable while the player can play |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -338,7 +341,7 @@ Skeletons and sections share four behaviours:
 | Behaviour       | How                                                                                                                                                           |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spacing         | Fixed in the pattern; patterns take no `className`, so a screen cannot override it                                                                            |
-| Density         | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density |
+| Density         | `DetailPage` provides viewing density, under which `PageSection` switches to `p-4` rows and `text-base` and `FactList` to wider row gaps; the video page's tab panel is set in `text-sm`, the library's type; every other skeleton is library density |
 | States in place | A state block goes in the same body slot as the data, so the header and toolbar never move                                                                    |
 | Edges line up   | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges         |
 

@@ -62,6 +62,18 @@ function release(index: number, ratio: number) {
   fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
 }
 
+/** Drop, then let dnd-kit's post-drop click guard expire so the next click reaches the page. */
+async function releaseAndSettle(index: number, ratio: number) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    release(index, ratio);
+    // dnd-kit suppresses document clicks for 50ms after a drop.
+    await act(() => vi.advanceTimersByTimeAsync(50));
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) => card.querySelector("h3")?.textContent ?? "",
@@ -172,7 +184,7 @@ describe("GroupPage drag", () => {
     await openGrid();
     lift("Episode 2", 2);
     moveTo(0, 0.1);
-    release(0, 0.1);
+    await releaseAndSettle(0, 0.1);
     await screen.findByText('Reordered "Season"');
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -192,7 +204,7 @@ describe("GroupPage drag", () => {
     await openGrid();
     lift("Episode 2", 2);
     moveTo(0, 0.1);
-    release(0, 0.1);
+    await releaseAndSettle(0, 0.1);
     await screen.findByText('Reordered "Season"');
     server.undoAnswer = () =>
       json({ code: "conflict", reason: "undo_conflict", message: "x" }, 409);

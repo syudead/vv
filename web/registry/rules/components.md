@@ -27,8 +27,9 @@ no older component is left.
   the same way (`opacity-50`, the `not-allowed` cursor) but keep their focus
   and their value; the handler still has to ignore the press or the keystroke.
 - **Size by density**: the library uses `sm` (`h-8`) controls and `icon-sm`
-  icon buttons; the video page uses `default` (`h-9`) and `lg` (`h-10`) for its
-  main action. Icon-only buttons in one area share one size.
+  icon buttons; the video page's controls below the player are `sm` too, and
+  `default` (`h-9`) and `lg` (`h-10`) stay the player's. Icon-only buttons in
+  one area share one size.
 - **Names**: an icon-only control has an `aria-label` from the i18n catalog and
   a tooltip with the same text.
 - **Text**: components take their text from the caller through `t`; they hold
@@ -54,6 +55,13 @@ Sizes are `sm`, `default` and `lg`, and `icon-sm` and `icon` for icon-only
 buttons. Combine an icon-only button with `Tooltip`; put a link that looks like
 a button through `asChild` (`<Button asChild><Link /></Button>`), so it stays a
 link.
+
+The `shape` is `default` (`rounded-md`) or `pill` (`rounded-full`); `Toggle`
+takes the same axis, and a screen never sets a radius on a control itself. A
+pill is a labelled action the viewer finds by its place: on the video page,
+the actions beside the title, a section's one action and a row's `Play` are
+`secondary` `sm` pills, while the other actions inside a row stay `ghost`, so
+the one pill in a row is its first action.
 
 Do not use a Button for navigation that is a plain link in text, to show a
 state that stays on (use `Toggle`), or to pick one of several options (use
@@ -101,12 +109,10 @@ Items `checkbox`, `switch`. Turn one thing on or off.
   takes effect with the rest of it. It has an `indeterminate` state for a
   group partly selected. A card's selection mark is a `Checkbox` with an
   `aria-label` that names the item.
-- `Switch` is a setting that takes effect at once, such as a settings row.
-- The video page's visibility control is the one exception: a `secondary`
-  `sm` `Button` with `role="switch"` and `aria-checked` whose text is the
-  current state (`Private`, `Public`) beside a lock or globe icon, with the
-  `primary-soft` fill when public. It keeps the look the video page had before
-  the design system.
+- `Switch` is a setting that takes effect at once, such as a settings row or
+  the video page's visibility, where the current state's word (`Private`,
+  `Public`) stands before the track in `text-xs`, in the `Label` that holds
+  both, so pressing either toggles.
 
 Pair either with a `Label` (`Field orientation="horizontal"`). Do not use a
 `Switch` inside a form that is saved with a button, or a `Checkbox` to run an
@@ -237,7 +243,7 @@ touch screens never show it.
 Item `tabs`. Switches between views of the same content in place, such as the
 tag admin lists. `TabsList` with `variant="default"` is the filled segment;
 `variant="line"` is the underlined row for page-level tabs. A count follows
-the label in `text-muted-foreground`.
+the label in `text-2xs text-muted-foreground`.
 
 Do not use it to change a setting (use `ToggleGroup`) or to move to another
 screen (use links).
@@ -420,7 +426,9 @@ put text other than the duration, the notice and the credits on the image.
 
 Item `favorite-toggle`. The favorite heart, which is both the mark and the
 toggle. `variant="card"` sits on a person's face card, `row` in a
-list row and `page` in the video page's action group. Video, group and smart
+list row and `page`, the heart with its word, in the video page's title row: a `sm`
+pill `Toggle`, on `secondary` when off and on `favorite-soft` with `favorite`
+text when on. Video, group and smart
 folder cards carry no heart; their list rows and the selection bar do. The heart is filled in
 `favorite` when on; when off it shows only on hover and focus of its card or
 row. Shown to the owner only.
@@ -432,18 +440,18 @@ Do not use the `favorite` colour or a heart for anything else.
 Item `person-face`. A person's face in one of nine frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
-| Shape        | Frame                                       | Where                                                                                                             |
-| ------------ | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `card`       | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                                                         |
-| `profile`    | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                                                                  |
-| `chip`       | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                                                           |
-| `token`      | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                                                 |
-| `option`     | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                                       |
-| `compare`    | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                                                  |
-| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                                        |
-| `scene`      | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video                    |
-| `suggestion` | `size-16`, `rounded-full`                   | A person offered as where faces belong, in a ranked list                                                          |
-| `mark`       | `size-5`, `rounded-full`, a faint ring      | A performer on a video card's thumbnail; hovering it pops the same face as `profile`, at most `face-popover` wide |
+| Shape        | Frame                                       | Where                                                                                                                                                   |
+| ------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `card`       | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                                                                                               |
+| `profile`    | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                                                                                                        |
+| `chip`       | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                                                                                                 |
+| `token`      | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name                                                                                       |
+| `option`     | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list                                                                                             |
+| `compare`    | `size-8`, `rounded-full`                    | A fetched person in a comparison                                                                                                                        |
+| `judge`      | `size-card-face`, `rounded-full`            | Each side of a row where the owner decides whether two people are the same                                                                              |
+| `scene`      | Full width, `aspect-square`, `rounded-md`   | A face cut from a video, in a grid or a fixed box; square, so it reads as a frame of the video; a credited person's tile on the video page's People tab |
+| `suggestion` | `size-16`, `rounded-full`                   | A person offered as where faces belong, in a ranked list                                                                                                |
+| `mark`       | `size-5`, `rounded-full`, a faint ring      | A performer on a video card's thumbnail; hovering it pops the same face as `profile`, at most `face-popover` wide                                       |
 
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the
@@ -456,6 +464,21 @@ Put marks over the frame, such as the favorite heart, as children in a
 
 Do not use it for anything but a person: organizations and videos have no
 face.
+
+### SpanBar
+
+Item `span-bar`. One lane the length of a video (`h-3`, `bg-muted`,
+`rounded-full`) with one block per span at the span's place and width, given
+in seconds and clamped to the lane by `spanPlacement`, so a span past the end
+is drawn to the end. A block is at least `min-w-1` wide, so a one-second span
+stays visible. Pass `onPress` while something can play: each block is then a
+`Button` in `primary` with `primary-hover` on hover, the shared focus ring and
+`spanLabel` as its name and tooltip. Without it the blocks are plain
+`muted-foreground`, so they do not look pressable. `label` names the lane,
+such as whose spans it holds.
+
+Do not use it for a progress or a position in the video; those are the
+player's bar and `VideoThumbnailProgress`.
 
 ### ImageUploadDialog
 

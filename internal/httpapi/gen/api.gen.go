@@ -6160,6 +6160,9 @@ type Video struct {
 	// FileCreatedAt Creation timestamp of the displayed-location file; falls back to its mtime when unavailable.
 	FileCreatedAt time.Time `json:"fileCreatedAt"`
 
+	// FileModifiedAt Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded.
+	FileModifiedAt time.Time `json:"fileModifiedAt"`
+
 	// FileTitle Filename without extension; owner responses only.
 	FileTitle *string `json:"fileTitle,omitempty"`
 
@@ -6402,6 +6405,32 @@ type VideoEncoder string
 
 // VideoEncoderChoice Owner-selected live encoder. auto tries available hardware in nvenc, qsv, vaapi, videotoolbox order, falling back to software.
 type VideoEncoderChoice string
+
+// VideoFaceAppearance One main person of the video.
+type VideoFaceAppearance struct {
+	AppearanceId int64 `json:"appearanceId"`
+
+	// HasCrop True when getFaceAppearanceCrop has a face to return.
+	HasCrop bool `json:"hasCrop"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+
+	// Person Reference to one person or organization; name is its current name, "" for a provisional person.
+	Person CreditRef `json:"person"`
+
+	// Spans When the person is on screen, in seconds, in order and without overlaps.
+	Spans []FaceAppearanceSpan `json:"spans"`
+}
+
+// VideoFaceAppearanceList defines model for VideoFaceAppearanceList.
+type VideoFaceAppearanceList struct {
+	// Analysed True when the face analysis of the video's content key is done.
+	Analysed bool `json:"analysed"`
+
+	// Items Empty while analysed is false.
+	Items []VideoFaceAppearance `json:"items"`
+}
 
 // VideoFolder Containing folder for the displayed location in video lists, representative location in GET /api/videos/{id}, problem location in ScanIssue, or active file in ScanActivity; omitted outside registered folders. For automatic LibraryGroup.folder and Video.group.folder, identifies the group folder itself.
 type VideoFolder struct {
@@ -8383,6 +8412,9 @@ type ServerInterface interface {
 	// SetVideoDisplayName Set or clear the video display name
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ListVideoFaceAppearances List the people face recognition found in a video
+	// (GET /api/videos/{id}/face-appearances)
+	ListVideoFaceAppearances(w http.ResponseWriter, r *http.Request, id VideoId)
 	// GetVideoFrame Return a frame of the video
 	// (GET /api/videos/{id}/frame)
 	GetVideoFrame(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoFrameParams)
@@ -13214,6 +13246,32 @@ func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListVideoFaceAppearances operation middleware
+func (siw *ServerInterfaceWrapper) ListVideoFaceAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideoFaceAppearances(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetVideoFrame operation middleware
 func (siw *ServerInterfaceWrapper) GetVideoFrame(w http.ResponseWriter, r *http.Request) {
 
@@ -14914,6 +14972,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits/image", wrapper.StartThumbnailEditFromImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/face-appearances", wrapper.ListVideoFaceAppearances)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)

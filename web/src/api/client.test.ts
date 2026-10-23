@@ -672,6 +672,7 @@ describe("progress API client", () => {
     addedAt: "2026-09-01T00:00:00Z",
     updatedAt: "2026-09-01T00:00:00Z",
     fileCreatedAt: "2026-09-01T00:00:00Z",
+    fileModifiedAt: "2026-09-01T00:00:00Z",
     playable: true,
     probeState: "done" as const,
     thumbnailState: "done" as const,

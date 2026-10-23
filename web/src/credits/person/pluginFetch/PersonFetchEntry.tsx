@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router";
 
 import type { Person } from "../../../api/credits";
 import { t } from "../../../i18n";
-import { useApprovedPlugins } from "../../../player/workInfoFetch/FetchEntry";
+import { useApprovedPlugins } from "../../../player/workInfoFetch/useApprovedPlugins";
 import { approvedPersonPlugins } from "../../../player/workInfoFetch/fetchRules";
 import { Button } from "../../../ui/shadcn/button";
 import PersonFetchDialog from "./PersonFetchDialog";

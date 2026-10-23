@@ -5,7 +5,6 @@ import type { Video } from "../api/client";
 import type { components } from "../api/gen/openapi";
 import { formatDateTime } from "../i18n";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { TooltipProvider } from "../ui/shadcn/tooltip";
 import MediaInfoGroups, {
   audioCodecName,
   audioTrackText,
@@ -13,7 +12,6 @@ import MediaInfoGroups, {
   subtitleTrackText,
   videoItems,
 } from "./MediaInfoGroups";
-import VideoFacts from "./VideoFacts";
 
 type MediaInfo = components["schemas"]["MediaInfo"];
 
@@ -39,8 +37,39 @@ const full: MediaInfo = {
   broadcast: { station: "NHK総合", program: "ニュース" },
 };
 
-function groupItems(name: string): string[] {
-  return within(screen.getByRole("list", { name }))
+const bare: Video = {
+  id: 7,
+  title: "a",
+  sizeBytes: 1,
+  addedAt: "2026-09-20T03:00:00Z",
+  updatedAt: "2026-09-21T03:00:00Z",
+  fileCreatedAt: "2026-09-19T03:00:00Z",
+  fileModifiedAt: "2026-09-19T03:00:00Z",
+  playable: true,
+  probeState: "done",
+  thumbnailState: "done",
+  previewState: "done",
+  tags: [],
+  public: false,
+};
+
+function renderMedia(value: Partial<Video>) {
+  return render(<MediaInfoGroups video={{ ...bare, ...value }} />);
+}
+
+function terms(): string[] {
+  return screen.queryAllByRole("term").map((term) => term.textContent ?? "");
+}
+
+function value(term: string): HTMLElement {
+  const found = screen.getAllByRole("term").find((item) => item.textContent === term);
+  const definition = found?.nextElementSibling;
+  if (!(definition instanceof HTMLElement)) throw new Error(`no ${term}`);
+  return definition;
+}
+
+function items(term: string): string[] {
+  return within(value(term))
     .getAllByRole("listitem")
     .map((item) => item.textContent ?? "");
 }
@@ -103,43 +132,86 @@ describe("MediaInfoGroups の文字", () => {
 });
 
 describe("MediaInfoGroups", () => {
-  it("すべてのまとまりを持つ動画は 5 つを順に出す", () => {
-    render(<MediaInfoGroups info={full} />);
-    expect(
-      screen.getAllByRole("list").map((list) => list.getAttribute("aria-labelledby")),
-    ).toHaveLength(5);
-    expect(groupItems("Video")).toEqual([
-      "HLG",
-      "29.97 fps",
-      "10-bit",
-      "18.2 Mbps",
-      "Interlaced",
+  it("すべてのまとまりを持つ動画は Video・Audio・Subtitles・Chapters・Container・Embedded・Broadcast の順に出す", () => {
+    renderMedia({
+      width: 1920,
+      height: 1080,
+      videoCodec: "h264",
+      container: "mkv",
+      mediaInfo: {
+        ...full,
+        chapters: [
+          { startMs: 0, endMs: 1 },
+          { startMs: 1, endMs: 2 },
+          { startMs: 2, endMs: 3 },
+        ],
+      },
+    });
+    expect(terms()).toEqual([
+      "Video",
+      "Audio",
+      "Subtitles",
+      "Chapters",
+      "Container",
+      "Embedded",
+      "Broadcast",
     ]);
-    expect(groupItems("Audio")).toEqual([
+    expect(value("Video").textContent).toBe(
+      "1920×1080 · H.264 · HLG · 29.97 fps · 10-bit · 18.2 Mbps · Interlaced",
+    );
+    expect(items("Audio")).toEqual([
       "1 · AAC · 5.1 · Japanese · Default",
       "2 · AAC · Stereo · English",
     ]);
-    expect(groupItems("Subtitles")).toEqual(["SRT · Japanese"]);
-    expect(groupItems("Embedded")).toEqual([
+    expect(items("Subtitles")).toEqual(["SRT · Japanese"]);
+    expect(value("Chapters").textContent).toBe("3 chapters");
+    expect(value("Container").textContent).toBe("MKV");
+    expect(items("Embedded")).toEqual([
       `Recorded${formatDateTime("2026-09-27T15:04:00+09:00")}`,
       "DeviceApple iPhone 15",
       "Location35.6895, 139.6917 · 40 m",
       "Cover art",
     ]);
-    expect(groupItems("Broadcast")).toEqual(["StationNHK総合", "Programニュース"]);
+    expect(items("Broadcast")).toEqual(["StationNHK総合", "Programニュース"]);
   });
 
-  it("video だけの動画は Video のまとまり 1 つだけを出す", () => {
-    render(<MediaInfoGroups info={{ video: { hdr: "sdr" } }} />);
-    expect(screen.getAllByRole("list")).toHaveLength(1);
-    expect(groupItems("Video")).toEqual(["SDR"]);
+  it("mediaInfo が無ければ技術情報の解像度とコーデック・音声のコーデック・コンテナから組む", () => {
+    renderMedia({
+      width: 1920,
+      height: 1080,
+      container: "mp4",
+      videoCodec: "hevc",
+      audioCodec: "eac3",
+    });
+    expect(terms()).toEqual(["Video", "Audio", "Container"]);
+    expect(value("Video").textContent).toBe("1920×1080 · H.265");
+    expect(items("Audio")).toEqual(["E-AC-3"]);
+    expect(value("Container").textContent).toBe("MP4");
   });
 
-  it("mediaInfo が無ければ何も描かず、字幕はクローズドキャプションだけでも出る", () => {
-    const { container, rerender } = render(<MediaInfoGroups info={undefined} />);
+  it("何も分からない動画は一覧を描かず、字幕はクローズドキャプションだけでも出る", () => {
+    const { container, unmount } = renderMedia({});
     expect(container.innerHTML).toBe("");
-    rerender(<MediaInfoGroups info={{ video: { hdr: "sdr", closedCaptions: true } }} />);
-    expect(groupItems("Subtitles")).toEqual(["Closed captions"]);
+    unmount();
+    renderMedia({ mediaInfo: { video: { hdr: "sdr", closedCaptions: true } } });
+    expect(items("Subtitles")).toEqual(["Closed captions"]);
+  });
+
+  it("probe 済みで字幕も章も無い動画は、Subtitles と Chapters を None と出す", () => {
+    renderMedia({ container: "mp4", mediaInfo: { video: { hdr: "sdr" } } });
+    expect(terms()).toEqual(["Video", "Subtitles", "Chapters", "Container"]);
+    expect(value("Subtitles").textContent).toBe("None");
+    expect(value("Chapters").textContent).toBe("None");
+  });
+
+  it("読み取り中は読み取り中と出し、失敗なら警告の色で 1 行出す", () => {
+    const view = renderMedia({ probeState: "pending" });
+    expect(screen.getByText("Reading technical details…")).toBeDefined();
+    view.unmount();
+    renderMedia({ probeState: "failed", probeError: "moov atom" });
+    expect(screen.getByText("Couldn't read the technical details").className).toContain(
+      "text-warning",
+    );
   });
 
   it("7 本以上のトラックは 6 本と +{n} more に畳み、開くと 7 本目へフォーカスを移す", () => {
@@ -148,96 +220,38 @@ describe("MediaInfoGroups", () => {
       codec: "aac",
       language: "jpn",
     }));
-    render(<MediaInfoGroups info={{ audioTracks: tracks }} />);
-    expect(groupItems("Audio")).toHaveLength(7);
+    renderMedia({ mediaInfo: { audioTracks: tracks } });
+    expect(items("Audio")).toHaveLength(7);
     fireEvent.click(screen.getByRole("button", { name: "Show all 8 audio tracks" }));
-    const items = groupItems("Audio");
-    expect(items).toHaveLength(9);
-    expect(items[6]).toBe("7 · AAC · Japanese");
+    const shown = items("Audio");
+    expect(shown).toHaveLength(9);
+    expect(shown[6]).toBe("7 · AAC · Japanese");
     expect(document.activeElement?.textContent).toBe("7 · AAC · Japanese");
     fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
-    expect(groupItems("Audio")).toHaveLength(7);
+    expect(items("Audio")).toHaveLength(7);
   });
 
   it("コメントと説明はラベル付きの段落で出す", () => {
-    render(<MediaInfoGroups info={{ embedded: { comment: "撮影メモ", title: "題" } }} />);
-    expect(groupItems("Embedded")).toEqual(["Title題"]);
+    renderMedia({ mediaInfo: { embedded: { comment: "撮影メモ", title: "題" } } });
+    expect(items("Embedded")).toEqual(["Title題"]);
     expect(screen.getByText("撮影メモ").textContent).toBe("Comment撮影メモ");
   });
 
   it("コメントだけの Embedded は空の一覧を描かず、名前と段落を出す", () => {
-    render(<MediaInfoGroups info={{ embedded: { comment: "撮影メモ" } }} />);
-    expect(screen.queryAllByRole("list")).toHaveLength(0);
-    expect(screen.getByText("Embedded")).toBeDefined();
+    renderMedia({ mediaInfo: { embedded: { comment: "撮影メモ" } } });
+    expect(within(value("Embedded")).queryAllByRole("list")).toHaveLength(0);
     expect(screen.getByText("撮影メモ").textContent).toBe("Comment撮影メモ");
   });
 
   it("疑似ロケールではカタログの文言と書式の出力だけを描く", () => {
     enablePseudoLocale();
-    render(
-      <MediaInfoGroups
-        info={{
-          audioTracks: [{ index: 1, codec: "aac", language: "jpn" }],
-          embedded: { comment: "撮影メモ" },
-        }}
-      />,
-    );
+    renderMedia({
+      mediaInfo: {
+        audioTracks: [{ index: 1, codec: "aac", language: "jpn" }],
+        embedded: { comment: "撮影メモ" },
+      },
+    });
     // Codec names are untranslated identifiers, like user content.
     expectCatalogTextOnly(document.body, ["AAC", "撮影メモ"]);
-  });
-});
-
-describe("VideoFacts と mediaInfo", () => {
-  const video: Video = {
-    id: 7,
-    title: "テスト動画",
-    sizeBytes: 84_331_821,
-    addedAt: "2026-09-20T03:00:00Z",
-    updatedAt: "2026-09-21T03:00:00Z",
-    fileCreatedAt: "2026-09-19T03:00:00Z",
-    playable: true,
-    probeState: "done",
-    thumbnailState: "done",
-    previewState: "done",
-    durationMs: 242_000,
-    width: 1920,
-    height: 1080,
-    container: "mkv",
-    videoCodec: "h264",
-    audioCodec: "aac",
-    tags: [],
-    public: false,
-  };
-
-  function facts(value: Video) {
-    const view = render(
-      <TooltipProvider>
-        <VideoFacts video={value} />
-      </TooltipProvider>,
-    );
-    const items = groupItems("File details");
-    const technical = groupItems("Technical details");
-    view.unmount();
-    return { items, technical };
-  }
-
-  it("Length・Size・Added・Edited・Created と技術情報の行は mediaInfo があっても変わらない", () => {
-    const without = facts(video);
-    const withInfo = facts({ ...video, mediaInfo: full });
-    expect(withInfo).toEqual(without);
-    expect(without.items).toHaveLength(5);
-  });
-
-  it("まとまりは技術情報の行の後に出る", () => {
-    render(
-      <TooltipProvider>
-        <VideoFacts video={{ ...video, mediaInfo: full }} />
-      </TooltipProvider>,
-    );
-    const technical = screen.getByRole("list", { name: "Technical details" });
-    const videoGroup = screen.getByRole("list", { name: "Video" });
-    expect(
-      technical.compareDocumentPosition(videoGroup) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
   });
 });

@@ -14,7 +14,7 @@ export default function AddToPlaylistButton({
   smartFolderIds = noIds,
 }: {
   variant: "card" | "row" | "page";
-  /** Also used as the tooltip for page placement. */
+  /** The page form shows it as the button's word. */
   label: UiText;
   videoIds?: readonly number[];
   groupIds?: readonly number[];

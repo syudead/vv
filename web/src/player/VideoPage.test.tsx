@@ -86,6 +86,7 @@ const video: Video = {
   addedAt: "2026-09-01T00:00:00Z",
   updatedAt: "2026-09-01T00:00:00Z",
   fileCreatedAt: "2026-09-01T00:00:00Z",
+  fileModifiedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -122,7 +123,6 @@ const server = {
   grouping:
     vi.fn<(method: string, url: string, body: unknown) => Response | Promise<Response>>(),
   groupItems: new Map<number, GroupItem[]>(),
-  displayName: vi.fn<(body: unknown) => Response>(),
   thumbnailPosition: vi.fn<(body: unknown) => Response | Promise<Response>>(),
   versions: vi.fn<(method: string, id: number, suffix: string) => Response>(),
   session: "owner" as AuthState,
@@ -213,8 +213,9 @@ function player(): PlayerProps {
   return props;
 }
 
-function factList(): HTMLElement {
-  return screen.getByRole("list", { name: "File details" });
+/** Radix tabs select on mouse down, not on click. */
+function openTab(name: string) {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: new RegExp(`^${name}`) }));
 }
 
 describe("VideoPage", () => {
@@ -237,7 +238,6 @@ describe("VideoPage", () => {
     server.open.mockReset();
     server.grouping.mockReset();
     server.groupItems.clear();
-    server.displayName.mockReset();
     server.thumbnailPosition.mockReset();
     server.versions.mockReset();
     fetchMock.mockReset();
@@ -288,10 +288,6 @@ describe("VideoPage", () => {
       ) {
         return Promise.resolve(server.versions(method, id, suffix));
       }
-      if (suffix === "/display-name" && method === "PUT") {
-        const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-        return Promise.resolve(server.displayName(body));
-      }
       if (suffix === "/thumbnail-position" && method === "PUT") {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         return Promise.resolve(server.thumbnailPosition(body));
@@ -316,20 +312,20 @@ describe("VideoPage", () => {
   });
 
   describe("画面の構成", () => {
-    it("題名・ファイルの情報・技術情報・関連動画を出し、廃止した項目を出さない", async () => {
+    it("題名・タブ・ファイルの情報・技術情報・関連動画を出し、廃止した項目を出さない", async () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
       // The title updates in an effect after the heading first renders.
       await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
-      expect(factList()).toBeDefined();
-      expect(screen.getByText("H.264")).toBeDefined();
+      expect(screen.getByRole("tab", { name: "Overview", selected: true })).toBeDefined();
+      openTab("File & media");
+      expect(screen.getByText(/H\.264/)).toBeDefined();
       expect(screen.getByRole("button", { name: "Open file" })).toBeDefined();
       expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
       expect(
         await screen.findByRole("heading", { level: 2, name: "Related videos" }),
       ).toBeDefined();
 
-      expect(screen.queryByRole("tab")).toBeNull();
       expect(screen.queryByRole("link", { name: /ライブラリ|フォルダ/ })).toBeNull();
       const text = document.body.textContent ?? "";
       for (const removed of [
@@ -379,6 +375,7 @@ describe("VideoPage", () => {
       ]);
       renderPage();
       await ready();
+      openTab("File & media");
       expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
       expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
     });
@@ -401,17 +398,18 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
     });
 
-    it("開く要求が file_missing なら情報の行の下に出し、画面の他の部分は変えない", async () => {
+    it("開く要求が file_missing ならパネルの末尾に出し、画面の他の部分は変えない", async () => {
       server.open.mockReturnValue(json({ code: "file_missing", message: "無い" }, 409));
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Related videos" });
+      openTab("File & media");
+      const panel = screen.getByRole("tabpanel");
       const snapshot = () => ({
         header: document.querySelector("header")?.outerHTML,
         frame: document.querySelector("[data-player-frame]")?.outerHTML,
         title: document.querySelector("h1")?.outerHTML,
-        facts: factList().outerHTML,
-        technical: screen.getByRole("list", { name: "Technical details" }).outerHTML,
+        media: within(panel).getByRole("region", { name: "Media" }).outerHTML,
         related: document.querySelector("aside")?.outerHTML,
       });
       const before = snapshot();
@@ -422,8 +420,7 @@ describe("VideoPage", () => {
       );
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
-      const row = factList().parentElement;
-      expect(row?.nextElementSibling).toBe(alert);
+      expect(panel.firstElementChild?.lastElementChild).toBe(alert);
       expect(snapshot()).toEqual(before);
     });
   });
@@ -767,7 +764,6 @@ describe("VideoPage", () => {
       ]);
       expect(screen.getByText("Getting ready to play")).toBeDefined();
       expect(screen.queryByTestId("video-player")).toBeNull();
-      expect(screen.getByText("Reading technical details…")).toBeDefined();
 
       await emitServerEvent("video", { id: 7 });
       await advance(0);
@@ -822,7 +818,6 @@ describe("VideoPage", () => {
       ).toBeDefined();
       expect(within(alert).queryByText(/moov atom/)).toBeNull();
       expect(within(alert).getByRole("button", { name: "Open file" })).toBeDefined();
-      expect(screen.getByText("Couldn't read the technical details")).toBeDefined();
       await advance(10_000);
       expect(
         fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/7"),
@@ -1217,27 +1212,6 @@ describe("VideoPage", () => {
       });
       expect(link.getAttribute("href")).toBe("/groups/9");
       expect(await actionsButton()).toBeDefined();
-    });
-
-    it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
-      const user = userEvent.setup();
-      server.displayName.mockReturnValueOnce(
-        json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
-      );
-      await openMember();
-      const members = () => document.getElementById("group-heading")!.closest("section")!;
-      expect(within(members()).getByText("ep02")).toBeDefined();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole("textbox", { name: "Display name" });
-      await user.clear(input);
-      await user.type(input, "第二話{Enter}");
-
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("第二話"),
-      );
-      expect(within(members()).getByText("第二話")).toBeDefined();
-      expect(within(members()).queryByText("ep02")).toBeNull();
     });
 
     it("ゲストにも同じリンクを出し、グループ操作のボタンとグループの項目の読み取りは無い", async () => {
@@ -2092,12 +2066,17 @@ describe("VideoPage", () => {
       return screen.getByRole("switch", { name: "Show to people who aren't signed in" });
     }
 
+    /** The state's word before the track, in the same label. */
+    function word() {
+      return toggle().closest("label")?.textContent;
+    }
+
     it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
       expect(toggle().getAttribute("aria-checked")).toBe("false");
-      expect(toggle().textContent).toBe("Private");
+      expect(word()).toBe("Private");
 
       fireEvent.click(toggle());
       expect(toggle().getAttribute("aria-disabled")).toBe("true");
@@ -2107,7 +2086,7 @@ describe("VideoPage", () => {
 
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
-      expect(toggle().textContent).toBe("Public");
+      expect(word()).toBe("Public");
       expect(toggle().getAttribute("aria-disabled")).toBeNull();
       expect(screen.queryByRole("status")).toBeNull();
     });
@@ -2117,8 +2096,9 @@ describe("VideoPage", () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
-      expect(toggle().textContent).toBe("Public");
-      fireEvent.click(toggle());
+      expect(word()).toBe("Public");
+      // Pressing the word toggles as the track does.
+      fireEvent.click(screen.getByText("Public"));
       expect(bodies).toEqual([{ videoIds: [7], public: false }]);
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("false"));
@@ -2218,31 +2198,34 @@ describe("VideoPage", () => {
 
     const applied = () => json({ appliedVideos: 1, appliedGroups: 0 });
 
-    it("右端の操作の先頭（撮るボタンの左）に置く", async () => {
+    it("題名の後の最初の操作として文字付きで置く", async () => {
       server.videos.set(7, [owned]);
       renderPage();
       await ready();
       const button = favoriteButton();
-      const capture = screen.getByRole("button", {
-        name: "Use current frame as thumbnail",
-      });
+      const title = screen.getByRole("heading", { level: 1 });
       expect(button.parentElement?.firstElementChild).toBe(button);
       expect(
-        button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
+        title.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      expect(button.textContent).toBe("Favorite");
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      expect(button.className).toContain("text-muted-foreground");
       expect(button.getAttribute("data-state")).toBe("off");
+      // The three title actions are labelled pills, never ghost words.
+      for (const name of ["Favorite", "Add to playlist", "Add to group"]) {
+        expect(screen.getByRole("button", { name }).getAttribute("data-shape")).toBe(
+          "pill",
+        );
+      }
     });
 
-    it("所在が無くプレイヤーの出ていない動画でも、付け外しだけで右端の一群を出す", async () => {
+    it("所在が無くプレイヤーの出ていない動画でも、付け外しを出す", async () => {
       server.videos.set(7, [
         { ...owned, location: undefined, probeState: "failed", playable: false },
       ]);
       renderPage();
       await ready();
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
-      expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
     });
 
     it("押すと videoIds: [id] を 1 回だけ送り、応答の後に取り直して塗りに変わる（受け入れ条件 1）", async () => {
@@ -2265,7 +2248,7 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
       expect(favoriteButton().getAttribute("data-state")).toBe("on");
-      expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
+      expect(favoriteButton().className).toContain("data-[state=on]:bg-favorite-soft");
       expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
@@ -2281,7 +2264,7 @@ describe("VideoPage", () => {
       );
     });
 
-    it("失敗したら状態を変えずに情報の行の直下に理由を出し、次に押すと消える", async () => {
+    it("失敗したら状態を変えずに題名の行の直下に理由を出し、次に押すと消える", async () => {
       server.videos.set(7, [owned]);
       const { answers } = holdFavorites();
       renderPage();
@@ -2324,24 +2307,6 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       expect(favoriteButton().getAttribute("data-active")).toBeNull();
-    });
-
-    it("付け外しに失敗した行は、続けて「パスをコピー」を押すと消える", async () => {
-      const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
-      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-      server.videos.set(7, [owned]);
-      const { answers } = holdFavorites();
-      renderPage();
-      await ready();
-      fireEvent.click(favoriteButton());
-      await act(async () =>
-        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
-      );
-      await screen.findByRole("alert");
-
-      fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
-      expect(screen.queryByRole("alert")).toBeNull();
-      await waitFor(() => expect(writeText).toHaveBeenCalled());
     });
 
     it("別の動画へ移ると失敗の行を持ち越さない", async () => {
@@ -2468,7 +2433,7 @@ describe("VideoPage", () => {
   describe("プレイリストに足す", () => {
     const owned: Video = { ...video, favorite: false };
 
-    it("お気に入りの直後、撮るボタンの前に置き、選ぶとこの動画の id を送る", async () => {
+    it("お気に入りの直後、グループに足すの前に置き、選ぶとこの動画の id を送る", async () => {
       server.videos.set(7, [
         {
           ...owned,
@@ -2514,13 +2479,8 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      const addToGroup = screen.getByRole("button", { name: /to a group$/ });
+      const addToGroup = screen.getByRole("button", { name: "Add to group" });
       expect(add.nextElementSibling).toBe(addToGroup);
-      const details = screen.getByRole("link", { name: "Edit details" });
-      expect(addToGroup.nextElementSibling).toBe(details);
-      expect(details.nextElementSibling).toBe(
-        screen.getByRole("button", { name: "Use current frame as thumbnail" }),
-      );
 
       fireEvent.click(add);
       fireEvent.click(await screen.findByRole("option", { name: "Tonight" }));
@@ -2550,59 +2510,16 @@ describe("VideoPage", () => {
       displayName: "夏の旅行",
     };
 
-    it("動画ページから移動せずに表示名を保存すると題名が置き換わり、元のファイル名が従の行で見え、解除で戻る（受け入れ条件 1・2・7）", async () => {
-      const user = userEvent.setup();
-      server.videos.set(7, [{ ...video, fileTitle }]);
-      server.displayName
-        .mockReturnValueOnce(json(named))
-        .mockReturnValueOnce(json({ ...video, fileTitle }));
+    it("所有者の題名にも編集のボタンは無く、表示名のある動画は元のファイル名を従の行で見せる（受け入れ条件 7）", async () => {
+      server.videos.set(7, [named]);
       renderPage();
       await ready();
-      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole<HTMLInputElement>("textbox", {
-        name: "Display name",
-      });
-      await user.clear(input);
-      await user.type(input, "夏の旅行{Enter}");
-
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行"),
-      );
-      expect(server.displayName).toHaveBeenCalledWith({ displayName: "夏の旅行" });
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行");
       expect(screen.getByTitle(`File name: ${fileTitle}`).textContent).toBe(
         `File name ${fileTitle}`,
       );
-      await waitFor(() => expect(document.title).toBe("夏の旅行 · VVMDM"));
-      expect(screen.queryByTestId("screen")).toBeNull();
-
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      await user.clear(screen.getByRole("textbox", { name: "Display name" }));
-      await user.keyboard("{Enter}");
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(fileTitle),
-      );
-      expect(server.displayName).toHaveBeenLastCalledWith({ displayName: "" });
-      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
-    });
-
-    it("入力中は再生画面のキー操作が効かず、入力の中の Esc は編集の取り消しで画面を閉じない", async () => {
-      const user = userEvent.setup();
-      renderPage("7", "/?q=abc");
-      await ready();
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      await user.type(
-        screen.getByRole("textbox", { name: "Display name" }),
-        " fm0{Escape}",
-      );
-      const controls = playerMock.controls!;
-      expect(controls.togglePlay).not.toHaveBeenCalled();
-      expect(controls.toggleFullscreen).not.toHaveBeenCalled();
-      expect(controls.toggleMute).not.toHaveBeenCalled();
-      expect(screen.queryByTestId("screen")).toBeNull();
-      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("テスト動画");
-      expect(server.displayName).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Edit details" })).toBeDefined();
     });
 
     it("ゲストの動画ページには編集の入口もファイル名の行も無い（受け入れ条件 9）", async () => {
@@ -2614,136 +2531,6 @@ describe("VideoPage", () => {
       expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行");
       expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
       expect(screen.queryByTitle(/^File name/)).toBeNull();
-    });
-  });
-
-  describe("代表サムネイル", () => {
-    const captureName = "Use current frame as thumbnail";
-    const clearName = "Use automatic thumbnail";
-
-    function report(overrides: Partial<PlayerStatus> = {}) {
-      act(() =>
-        player().onStatus({
-          loading: false,
-          reconnecting: false,
-          playing: false,
-          userActive: true,
-          ended: false,
-          stalled: false,
-          positioned: true,
-          ...overrides,
-        }),
-      );
-    }
-
-    function captureButton() {
-      return screen.getByRole("button", { name: captureName });
-    }
-
-    it("最初の読み込みで位置が確定するまでは押せず、一時停止中の位置をミリ秒で送り、応答の動画で項目が出る（受け入れ条件 5）", async () => {
-      const controls = fakeControls();
-      vi.mocked(controls.positionMs).mockReturnValue(83_456.4);
-      playerMock.controls = controls;
-      server.thumbnailPosition.mockReturnValueOnce(
-        json({
-          ...video,
-          thumbnailPositionMs: 83_456,
-          thumbnailUrl: "/api/videos/7/thumbnail?v=2",
-        }),
-      );
-      renderPage();
-      await ready();
-      await screen.findByTestId("video-player");
-      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
-      fireEvent.click(captureButton());
-      expect(server.thumbnailPosition).not.toHaveBeenCalled();
-      expect(screen.queryByRole("button", { name: clearName })).toBeNull();
-
-      report();
-      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
-      fireEvent.click(captureButton());
-
-      const label = `Thumbnail at ${formatDuration(83_456)}`;
-      const image = await screen.findByRole("img", { name: label });
-      expect(image.getAttribute("src")).toBe("/api/videos/7/thumbnail?v=2");
-      expect(server.thumbnailPosition).toHaveBeenCalledTimes(1);
-      expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: 83_456 });
-      expect(controls.togglePlay).not.toHaveBeenCalled();
-      const facts = factList();
-      expect(within(facts).getByTitle(label)).toBeDefined();
-      expect(within(facts).getByRole("button", { name: clearName })).toBeDefined();
-      expect(screen.queryByRole("spinbutton")).toBeNull();
-      expect(screen.queryByRole("textbox")).toBeNull();
-    });
-
-    it("送信中は回転の印で二重に送らず、失敗の理由を 1 行出して前の項目を残す（Edge Case「生成に失敗」）", async () => {
-      const controls = fakeControls();
-      vi.mocked(controls.positionMs).mockReturnValue(5_000);
-      playerMock.controls = controls;
-      const chosen: Video = { ...video, thumbnailPositionMs: 60_000 };
-      server.videos.set(7, [chosen]);
-      let answer: (response: Response) => void = () => undefined;
-      server.thumbnailPosition.mockReturnValueOnce(
-        new Promise<Response>((resolve) => {
-          answer = resolve;
-        }),
-      );
-      renderPage();
-      await ready();
-      await screen.findByTestId("video-player");
-      report({ playing: true });
-
-      fireEvent.click(captureButton());
-      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
-      fireEvent.click(captureButton());
-      expect(server.thumbnailPosition).toHaveBeenCalledTimes(1);
-
-      await act(async () => {
-        answer(json({ code: "conflict", reason: "thumbnail_frame_unavailable" }, 409));
-        await Promise.resolve();
-      });
-      const alert = await screen.findByRole("alert");
-      expect(alert.textContent).toBe(
-        "Couldn't change the thumbnail: No image could be made from this frame.",
-      );
-      expect(screen.getByTitle(`Thumbnail at ${formatDuration(60_000)}`)).toBeDefined();
-      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
-    });
-
-    it("× で解除を送り、応答で項目が消える（受け入れ条件 6）", async () => {
-      server.videos.set(7, [{ ...video, thumbnailPositionMs: 60_000 }]);
-      server.thumbnailPosition.mockReturnValueOnce(json(video));
-      renderPage();
-      await ready();
-      fireEvent.click(await screen.findByRole("button", { name: clearName }));
-      await waitFor(() =>
-        expect(screen.queryByRole("button", { name: clearName })).toBeNull(),
-      );
-      expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: null });
-      expect(screen.queryByTitle(/^Thumbnail at/)).toBeNull();
-    });
-
-    it("再生終了の層・状態の層が映像を覆っている間は押せない", async () => {
-      renderPage();
-      await ready();
-      await screen.findByTestId("video-player");
-      report({ ended: true });
-      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
-      report();
-      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
-      act(() => player().onError(1_000, "decode"));
-      await waitFor(() =>
-        expect(captureButton().getAttribute("aria-disabled")).toBe("true"),
-      );
-    });
-
-    it("ゲストにはボタンも項目も無い（受け入れ条件 9）", async () => {
-      server.session = "guest";
-      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
-      renderPage("7", undefined, "guest");
-      await ready();
-      expect(screen.queryByRole("button", { name: captureName })).toBeNull();
-      expect(screen.queryByRole("button", { name: clearName })).toBeNull();
     });
   });
 
@@ -2791,56 +2578,51 @@ describe("VideoPage", () => {
       });
     });
 
-    function edited(): HTMLElement {
-      return within(factList()).getByRole("button", { name: /^Edited / });
+    /** The panel stays open across the refetches, as the selected tab is kept. */
+    async function showFile() {
+      await ready();
+      openTab("File & media");
+    }
+
+    /** The value of a File fact, by its term. */
+    function fileFact(term: string): string {
+      const label = within(screen.getByLabelText("File")).getByText(term, {
+        selector: "dt",
+      });
+      return label.nextElementSibling?.textContent ?? "";
+    }
+
+    function edited(): string {
+      return fileFact("Edited in vv");
     }
 
     async function expectEditedAfter() {
-      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 28, 2026"));
+      await waitFor(() => expect(edited()).toMatch(/^Sep 28, 2026 /));
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
-      await ready();
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
-      expect(edited().title).toBe(
-        screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
-      );
-      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
+      await showFile();
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe(fileFact("Added"));
+      expect(fileFact("File created")).not.toBe("");
+      expect(fileFact("File modified")).not.toBe("");
     });
 
     it("ゲストにも更新日時と作成日時を出す", async () => {
       server.session = "guest";
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
-      await ready();
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
-      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
-    });
-
-    it("表示名を保存すると応答の更新日時になる（受け入れ条件 1）", async () => {
-      const user = userEvent.setup();
-      server.displayName.mockImplementation(() =>
-        json({
-          ...current,
-          title: "夏の旅行",
-          displayName: "夏の旅行",
-          updatedAt: after,
-        }),
-      );
-      renderPage();
-      await ready();
-      await user.click(screen.getByRole("button", { name: "Edit name" }));
-      const input = screen.getByRole("textbox", { name: "Display name" });
-      await user.clear(input);
-      await user.type(input, "夏の旅行{Enter}");
-      await expectEditedAfter();
+      await showFile();
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(fileFact("File created")).not.toBe("");
+      expect(fileFact("File modified")).not.toBe("");
     });
 
     it("タグを付けると動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
       const user = userEvent.setup();
       renderPage();
-      await ready();
+      await showFile();
       const input = screen.getByRole("combobox", { name: "Add tag" });
       await user.click(input);
       await user.type(input, "旅行{Enter}");
@@ -2850,7 +2632,7 @@ describe("VideoPage", () => {
     it("タグを外すと動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
       current = { ...current, tags: [tag] };
       renderPage();
-      await ready();
+      await showFile();
       fireEvent.click(
         await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
       );
@@ -2859,7 +2641,7 @@ describe("VideoPage", () => {
 
     it("公開を切り替えると動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
       renderPage();
-      await ready();
+      await showFile();
       fireEvent.click(
         screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
       );
@@ -2871,43 +2653,9 @@ describe("VideoPage", () => {
       ).toBe("true");
     });
 
-    it("代表サムネイルを指定・解除すると応答の更新日時になる（受け入れ条件 1）", async () => {
-      const controls = fakeControls();
-      vi.mocked(controls.positionMs).mockReturnValue(5_000);
-      playerMock.controls = controls;
-      server.thumbnailPosition
-        .mockImplementationOnce(() =>
-          json({ ...current, thumbnailPositionMs: 5_000, updatedAt: after }),
-        )
-        .mockImplementationOnce(() =>
-          json({ ...current, thumbnailPositionMs: undefined, updatedAt: before }),
-        );
-      renderPage();
-      await ready();
-      await screen.findByTestId("video-player");
-      act(() =>
-        player().onStatus({
-          loading: false,
-          reconnecting: false,
-          playing: false,
-          userActive: true,
-          ended: false,
-          stalled: false,
-          positioned: true,
-        }),
-      );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Use current frame as thumbnail" }),
-      );
-      await expectEditedAfter();
-
-      fireEvent.click(screen.getByRole("button", { name: "Use automatic thumbnail" }));
-      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 1, 2026"));
-    });
-
     it("取り直しが失敗しても失敗の行を出さず、前の値のまま置く", async () => {
       renderPage();
-      await ready();
+      await showFile();
       failRefetch = true;
       fireEvent.click(
         screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
@@ -2927,411 +2675,8 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(edited()).toMatch(/^Sep 1, 2026 /);
       expect(screen.queryByRole("alert")).toBeNull();
-    });
-  });
-
-  describe("バージョン", () => {
-    const tagX = {
-      id: 1,
-      name: "X",
-      manual: true,
-      fromFolder: false,
-      tentative: false,
-      kind: null,
-    };
-    const tagY = {
-      id: 2,
-      name: "Y",
-      manual: true,
-      fromFolder: false,
-      tentative: false,
-      kind: null,
-    };
-    const folder = { rootId: 1, path: "movies", rootName: "Media" };
-    const versionA: Video = {
-      ...video,
-      title: "A",
-      folder,
-      tags: [tagX],
-      versions: { count: 3, representativeId: 7 },
-    };
-    const versionB: Video = {
-      ...video,
-      id: 20,
-      title: "B",
-      width: 1280,
-      height: 720,
-      container: "mkv",
-      videoCodec: "hevc",
-      sizeBytes: 1_048_576,
-      folder: { rootId: 1, path: "movies/small", rootName: "Media" },
-      location: { path: "/media/movies/small/B.mkv", openable: true },
-      tags: [tagX],
-      versions: { count: 3, representativeId: 7 },
-    };
-    const versionC: Video = {
-      ...video,
-      id: 21,
-      title: "C",
-      folder,
-      tags: [tagX],
-      versions: { count: 3, representativeId: 7 },
-    };
-    const factName = (count: number) =>
-      `${String(count)} versions of this video. Show versions`;
-    const rows = () =>
-      within(screen.getByRole("list", { name: "Versions" })).getAllByRole("listitem");
-
-    function versionsCalls(suffix: string) {
-      return server.versions.mock.calls.filter((call) => call[2] === suffix);
-    }
-
-    function answerVersions(items: Video[], representativeId = 7) {
-      server.versions.mockImplementation((method, _id, suffix) =>
-        method === "GET" && suffix === "/versions"
-          ? json({ representativeId, items })
-          : json({ code: "internal", message: "x" }, 500),
-      );
-    }
-
-    async function openVersions(count = 3) {
-      const user = userEvent.setup();
-      await user.click(await screen.findByRole("button", { name: factName(count) }));
-      await screen.findByRole("list", { name: "Versions" });
-      return user;
-    }
-
-    it("束ねていない動画・見せてよいバージョンが 1 本の動画には項目を出さない", async () => {
-      server.videos.set(7, [
-        { ...versionA, versions: { count: 1, representativeId: 7 } },
-      ]);
-      renderPage("7");
-      await ready();
-      expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
-      server.videos.set(7, [video]);
-    });
-
-    it("情報の行の追加日のあとに本数の項目を出し、開くと各バージョンの違いを代表から並べる", async () => {
-      server.videos.set(7, [versionA]);
-      answerVersions([versionA, versionB, versionC]);
-      renderPage("7", "/?q=abc");
-      await ready();
-      const facts = within(factList())
-        .getAllByRole("listitem")
-        .map((item) => item.textContent);
-      expect(facts.at(-1)).toBe("3 versions");
-      await openVersions();
-      expect(versionsCalls("/versions")).toHaveLength(1);
-
-      const [first, second, third] = rows();
-      expect(first?.getAttribute("aria-current")).toBe("true");
-      expect(first?.textContent).toContain("Now playing");
-      expect(first?.textContent).toContain("Representative");
-      expect(within(first as HTMLElement).queryByRole("link")).toBeNull();
-      expect(second?.textContent).not.toContain("Representative");
-      const link = within(second as HTMLElement).getByRole("link");
-      expect(link.getAttribute("aria-label")).toBe(
-        `Play B, 1280×720 MKV H.265 ${formatBytes(1_048_576)} Media / movies/small`,
-      );
-      expect(
-        second?.querySelector('[title*="/media/movies/small/B.mkv"]'),
-      ).not.toBeNull();
-      expect(
-        within(third as HTMLElement)
-          .getByRole("link")
-          .getAttribute("aria-label"),
-      ).toBe(
-        `Play C, 1920×1080 MP4 H.264 ${formatBytes(video.sizeBytes)} Media / movies`,
-      );
-      await waitFor(() => expect(document.activeElement).toBe(link));
-    });
-
-    it("行を押すとそのバージョンのページへ移ってそのファイルを再生し、再生中なら再生を続ける（受け入れ条件 7）", async () => {
-      server.videos.set(7, [versionA]);
-      server.videos.set(20, [versionB]);
-      answerVersions([versionA, versionB, versionC]);
-      renderPage("7", "/?q=abc");
-      await ready();
-      await waitFor(() => expect(playerMock.props?.video.id).toBe(7));
-      act(() =>
-        player().onStatus({
-          loading: false,
-          reconnecting: false,
-          playing: true,
-          userActive: true,
-          ended: false,
-          stalled: false,
-          positioned: true,
-        }),
-      );
-      const user = await openVersions();
-      await user.click(within(rows()[1] as HTMLElement).getByRole("link"));
-
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("B"),
-      );
-      await waitFor(() => expect(player().video.id).toBe(20));
-      expect(player().autoplay).toBe(true);
-      fireEvent.click(closeButton());
-      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=abc");
-    });
-
-    it("代表に替えると印がその行へ移り、一覧を差し替えて動画を取り直す（受け入れ条件 8）", async () => {
-      server.videos.set(7, [
-        versionA,
-        { ...versionA, versions: { count: 3, representativeId: 20 } },
-      ]);
-      let representative = 7;
-      server.versions.mockImplementation((method, id, suffix) => {
-        if (method === "POST" && suffix === "/make-representative" && id === 20) {
-          representative = 20;
-        }
-        return representative === 20
-          ? json({ representativeId: 20, items: [versionB, versionA, versionC] })
-          : json({ representativeId: 7, items: [versionA, versionB, versionC] });
-      });
-      renderPage("7");
-      await ready();
-      const user = await openVersions();
-      await user.click(
-        within(rows()[1] as HTMLElement).getByRole("button", {
-          name: "More actions for B",
-        }),
-      );
-      const menu = await screen.findByRole("menu");
-      expect(
-        within(menu)
-          .getAllByRole("menuitem")
-          .map((item) => item.textContent),
-      ).toEqual(["Make representative", "Remove from versions"]);
-      await user.click(
-        within(menu).getByRole("menuitem", { name: "Make representative" }),
-      );
-
-      await waitFor(() => expect(rows()[0]?.textContent).toContain("B"));
-      expect(rows()[0]?.textContent).toContain("Representative");
-      expect(rows()[1]?.textContent).not.toContain("Representative");
-      expect(versionsCalls("/make-representative")).toHaveLength(1);
-      await user.click(
-        within(rows()[0] as HTMLElement).getByRole("button", {
-          name: "More actions for B",
-        }),
-      );
-      const representativeMenu = await screen.findByRole("menu");
-      expect(
-        within(representativeMenu)
-          .getAllByRole("menuitem")
-          .map((item) => item.textContent),
-      ).toEqual(["Remove from versions"]);
-      expect(screen.queryByText(/Removed/)).toBeNull();
-    });
-
-    it("別の行を外すと行を消して本数を減らし、残り 1 本なら閉じて動画を取り直す（受け入れ条件 9）", async () => {
-      server.videos.set(7, [versionA, { ...versionA, versions: undefined }]);
-      server.versions.mockImplementation((method, id, suffix) => {
-        if (method === "POST" && suffix === "/unbundle") {
-          const removed = id === 21 ? versionC : versionB;
-          return json({ ...removed, versions: undefined, tags: [tagY] });
-        }
-        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
-      });
-      renderPage("7");
-      await ready();
-      const user = await openVersions();
-      await user.click(
-        within(rows()[2] as HTMLElement).getByRole("button", {
-          name: "More actions for C",
-        }),
-      );
-      await user.click(
-        await screen.findByRole("menuitem", { name: "Remove from versions" }),
-      );
-
-      expect(await screen.findByText('Removed "C" from the versions')).toBeDefined();
-      await waitFor(() => expect(rows()).toHaveLength(2));
-      expect(screen.getByRole("button", { name: factName(2) })).toBeDefined();
-
-      await user.click(
-        within(rows()[1] as HTMLElement).getByRole("button", {
-          name: "More actions for B",
-        }),
-      );
-      await user.click(
-        await screen.findByRole("menuitem", { name: "Remove from versions" }),
-      );
-      expect(await screen.findByText('Removed "B" from the versions')).toBeDefined();
-      await waitFor(() =>
-        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
-      );
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: /versions of this video/ }),
-        ).toBeNull(),
-      );
-    });
-
-    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグと作品情報に戻す（受け入れ条件 9）", async () => {
-      // Unbundle omits workInfo; reload to replace bundle metadata with the video's own metadata.
-      const coded = (code: string) => ({
-        code,
-        dates: [],
-        people: [],
-        organizations: [],
-        urls: [],
-        externalIds: [],
-      });
-      const removed: Video = { ...versionB, versions: undefined, tags: [tagY] };
-      server.videos.set(20, [
-        { ...versionB, workInfo: coded("BUNDLE") },
-        { ...removed, workInfo: coded("OWN") },
-      ]);
-      server.versions.mockImplementation((method, id, suffix) => {
-        if (method === "POST" && suffix === "/unbundle" && id === 20) {
-          return json(removed);
-        }
-        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
-      });
-      renderPage("20");
-      await ready();
-      expect(screen.getByRole("link", { name: /X/ })).toBeDefined();
-      const user = await openVersions();
-      const current = rows()[1] as HTMLElement;
-      expect(current.getAttribute("aria-current")).toBe("true");
-      await user.click(
-        within(current).getByRole("button", { name: "More actions for B" }),
-      );
-      await user.click(
-        await screen.findByRole("menuitem", { name: "Remove from versions" }),
-      );
-
-      expect(await screen.findByText('Removed "B" from the versions')).toBeDefined();
-      await waitFor(() =>
-        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
-      );
-      expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
-      expect(screen.getByRole("link", { name: /Y/ })).toBeDefined();
-      expect(screen.queryByRole("link", { name: /Filter by X/ })).toBeNull();
-      const workDetails = await screen.findByRole("list", { name: "Work details" });
-      expect(await within(workDetails).findByText("OWN")).toBeDefined();
-      expect(within(workDetails).queryByText("BUNDLE")).toBeNull();
-    });
-
-    it("別のタブで先に変わった失敗は一覧の下に 1 行出し、一覧と動画を取り直す", async () => {
-      server.videos.set(7, [versionA]);
-      server.versions.mockImplementation((method, _id, suffix) => {
-        if (method === "POST" && suffix === "/make-representative") {
-          return json(
-            { code: "invalid_request", message: "x", reason: "not_bundled" },
-            400,
-          );
-        }
-        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
-      });
-      renderPage("7");
-      await ready();
-      const user = await openVersions();
-      const before = fetchMock.mock.calls.filter(
-        ([input, init]) =>
-          String(input) === "/api/videos/7" && (init?.method ?? "GET") === "GET",
-      ).length;
-      await user.click(
-        within(rows()[1] as HTMLElement).getByRole("button", {
-          name: "More actions for B",
-        }),
-      );
-      await user.click(
-        await screen.findByRole("menuitem", { name: "Make representative" }),
-      );
-
-      const alert = await screen.findByRole("alert");
-      expect(alert.textContent).toBe(
-        "Couldn't change the versions: This video isn't bundled with others.",
-      );
-      expect(screen.getByRole("list", { name: "Versions" })).toBeDefined();
-      await waitFor(() =>
-        expect(versionsCalls("/versions").length).toBeGreaterThanOrEqual(2),
-      );
-      await waitFor(() =>
-        expect(
-          fetchMock.mock.calls.filter(
-            ([input, init]) =>
-              String(input) === "/api/videos/7" && (init?.method ?? "GET") === "GET",
-          ).length,
-        ).toBeGreaterThan(before),
-      );
-    });
-
-    it("開いて取れた一覧が 1 本だけなら、閉じて動画を取り直し項目を消す", async () => {
-      server.videos.set(7, [versionA, { ...versionA, versions: undefined }]);
-      answerVersions([versionA]);
-      renderPage("7");
-      await ready();
-      const user = userEvent.setup();
-      await user.click(await screen.findByRole("button", { name: factName(3) }));
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: /versions of this video/ }),
-        ).toBeNull(),
-      );
-      expect(screen.queryByRole("list", { name: "Versions" })).toBeNull();
-      expect(screen.queryByText(/1 version/)).toBeNull();
-    });
-
-    it("一覧を取れなければ失敗の 1 行と Retry を出す", async () => {
-      server.videos.set(7, [versionA]);
-      server.versions.mockImplementationOnce(() =>
-        json({ code: "internal", message: "x" }, 500),
-      );
-      renderPage("7");
-      await ready();
-      const user = userEvent.setup();
-      await user.click(await screen.findByRole("button", { name: factName(3) }));
-      expect((await screen.findByRole("alert")).textContent).toBe(
-        "Couldn't load the versions",
-      );
-      server.versions.mockImplementation(() =>
-        json({ representativeId: 7, items: [versionA, versionB, versionC] }),
-      );
-      await user.click(screen.getByRole("button", { name: "Retry" }));
-      expect(await screen.findByRole("list", { name: "Versions" })).toBeDefined();
-    });
-
-    it("開いている間の Esc は浮き出しだけを閉じ、画面は閉じない", async () => {
-      server.videos.set(7, [versionA]);
-      answerVersions([versionA, versionB, versionC]);
-      renderPage("7", "/?q=abc");
-      await ready();
-      const user = await openVersions();
-      await user.keyboard("{Escape}");
-      await waitFor(() =>
-        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
-      );
-      expect(screen.queryByTestId("screen")).toBeNull();
-      expect(document.activeElement).toBe(
-        screen.getByRole("button", { name: factName(3) }),
-      );
-    });
-
-    it("ゲストにも項目と一覧を出し、再生の切り替えはできるが行の操作は無い（受け入れ条件 12）", async () => {
-      const guest = (value: Video): Video => ({
-        ...value,
-        location: undefined,
-        tags: [],
-      });
-      server.videos.set(7, [guest(versionA)]);
-      server.videos.set(20, [guest(versionB)]);
-      answerVersions([guest(versionA), guest(versionB), guest(versionC)]);
-      server.session = "guest";
-      renderPage("7", "/", "guest");
-      await ready();
-      const user = await openVersions();
-      expect(screen.queryByRole("button", { name: /More actions/ })).toBeNull();
-      const link = within(rows()[1] as HTMLElement).getByRole("link");
-      expect(rows()[1]?.querySelector('[title*="/media/"]')).toBeNull();
-      await user.click(link);
-      await waitFor(() => expect(player().video.id).toBe(20));
     });
   });
 
@@ -3345,8 +2690,9 @@ describe("VideoPage", () => {
       server.videos.set(7, [guestVideo()]);
       const { unmount } = renderPage("7", undefined, "guest");
       await ready();
-      expect(factList()).toBeDefined();
-      expect(screen.getByRole("list", { name: "Technical details" })).toBeDefined();
+      openTab("File & media");
+      expect(screen.getByRole("region", { name: "Media" })).toBeDefined();
+      expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
       expect(screen.queryByRole("heading", { name: "Tags" })).toBeNull();
       expect(screen.queryByPlaceholderText("Add tag")).toBeNull();
       expect(screen.queryByRole("button", { name: /Open file/ })).toBeNull();
@@ -3395,6 +2741,7 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       expect(screen.getByRole("heading", { name: "Tags" })).toBeDefined();
+      openTab("File & media");
       expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
     });
 

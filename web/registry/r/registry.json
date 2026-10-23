@@ -128,7 +128,7 @@
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
-      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive, ghost-destructive and link, in sizes sm, default, lg, icon-sm and icon.",
+      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive, ghost-destructive and link, in sizes sm, default, lg, icon-sm and icon, and the shapes default and pill.",
       "docs": "Usage rules: web/registry/rules/components.md#button (item vv-rules).",
       "files": [
         {
@@ -238,7 +238,7 @@
       "name": "favorite-toggle",
       "type": "registry:ui",
       "title": "FavoriteToggle",
-      "description": "vv component: the favorite heart, mark and toggle in one, for cards, rows and the video page. Uses toggle and tooltip.",
+      "description": "vv component: the favorite heart, mark and toggle in one, for cards, rows and the video page, where it is a pill with its word. Uses toggle and tooltip.",
       "docs": "Usage rules: web/registry/rules/components.md#favoritetoggle (item vv-rules).",
       "files": [
         {
@@ -275,6 +275,23 @@
         }
       ],
       "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "span-bar",
+      "type": "registry:ui",
+      "title": "SpanBar",
+      "description": "vv component: one lane the length of a video with a block per span at its place and width, clamped to the lane; the blocks are buttons when the lane is pressable. Uses button and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#spanbar (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/SpanBar.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/spanPlacement.ts",
+          "type": "registry:ui"
+        }
+      ]
     },
     {
       "name": "field",
@@ -615,7 +632,7 @@
       "name": "toggle",
       "type": "registry:ui",
       "title": "Toggle",
-      "description": "A button that stays pressed, such as an applied filter.",
+      "description": "A button that stays pressed, such as an applied filter, in the shapes default and pill.",
       "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
       "files": [
         {
@@ -905,7 +922,7 @@
       "name": "fact-list",
       "type": "registry:ui",
       "title": "FactList",
-      "description": "Section: term and value pairs in two columns.",
+      "description": "Section: term and value pairs in two columns; divided rows for a column of figures, or two lists side by side from md.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {

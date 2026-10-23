@@ -31,6 +31,7 @@ highlighted-row fill, as in shadcn/ui; the cyan brand colour is `primary`.
 | `destructive-strong` / `destructive-foreground` | The fill of a destructive button and its text                          |
 | `*-soft` (`destructive`, `warning`, `success`)  | The fill behind a status message                                       |
 | `favorite`                                      | The favorite heart only                                                |
+| `favorite-soft`                                 | The fill behind the favorite pill when on                              |
 | `overlay`                                       | Behind dialogs and over thumbnails (duration, progress)                |
 
 Cyan (`primary`, `ring`) appears only on actions, selection, focus, progress
@@ -65,9 +66,11 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `c
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
 `profile-aside`, `profile-aside-max`,
-`settings-nav`, `settings-nav-max`, `related-thumb`, `compare-label`, `neighbor-arrow`,
+`settings-nav`, `settings-nav-max`, `related-thumb`, `facts-column` (the
+right column of a two-column video page panel), `replace-preview` (the preview
+of a `Replace with` row), `compare-label`, `neighbor-arrow`,
 `neighbor-arrow-min`, `neighbor-arrow-min-sm`, `control-bar-clearance`,
-`versions-popover`, `playlist-panel`, `visibility-x`, `technical-x`,
+`versions-popover`, `playlist-panel`, `technical-x`,
 `issue-list`, `folder-list`, `run-output`, and the activity screen's
 `activity-card` (a card's minimum height), `activity-time` (its time column)
 and `activity-bar` (its import progress bar). The video page's player frame uses `player-width`,

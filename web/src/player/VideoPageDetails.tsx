@@ -6,12 +6,14 @@ import type { usePageHandoff } from "./detailsEditor/handoff";
 import GroupLine from "./GroupLine";
 import PlaylistLine from "./PlaylistLine";
 import SmartFolderLine from "./SmartFolderLine";
+import type { ThumbnailCapture } from "./playerLayers";
+import type { SpanPlayer } from "./tabs/PeoplePanel";
 import { CreatingLine } from "./StatusOverlays";
 import type { VideoPlaylist } from "./useVideoPlaylist";
-import VideoFacts, { type ThumbnailCapture } from "./VideoFacts";
+import TitleRow from "./TitleRow";
+import VideoPageTabs, { useVideoTabState } from "./tabs/VideoPageTabs";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
-import VisibilitySwitch from "./VisibilitySwitch";
 
 type Detail = ReturnType<typeof useVideoDetail>;
 type Related = ReturnType<typeof useRelatedVideos>;
@@ -25,6 +27,7 @@ export default function VideoPageDetails({
   trail,
   autoplay,
   capture,
+  player,
   detail,
   related,
   handoff,
@@ -37,14 +40,17 @@ export default function VideoPageDetails({
   playlist: VideoPlaylist;
   backTo: string;
   trail: number[];
+  /** Whether a version row continues playback on its page. */
   autoplay: boolean;
   capture: ThumbnailCapture | undefined;
+  player: SpanPlayer;
   detail: Pick<Detail, "refresh" | "replace" | "setFavorite">;
   related: Pick<Related, "rename" | "rethumb">;
   handoff: ReturnType<typeof usePageHandoff>;
   onGroupChanged: () => void;
   onEditingThumbnail: (editing: boolean) => void;
 }) {
+  const tabState = useVideoTabState(video, owner);
   if (loading)
     return (
       <div aria-hidden="true" className="flex flex-col gap-3">
@@ -83,24 +89,19 @@ export default function VideoPageDetails({
             onChanged={onGroupChanged}
           />
         )}
-        <VideoTitle
-          key={`title:${String(video.id)}`}
+        <TitleRow
+          key={`title-row:${String(video.id)}`}
           video={video}
-          owner={owner}
-          onSaved={(saved, mark) => {
-            replace(saved, mark, "keep");
-            related.rename(saved);
-          }}
-          onStale={reread}
+          onFavorite={owner ? setFavorite : undefined}
+          title={<VideoTitle video={video} owner={owner} />}
         />
-        {owner && <OwnerControls video={video} reread={reread} />}
+        {owner && <OwnerTags video={video} reread={reread} />}
       </div>
-      {/* Guest responses omit location, so file actions remain hidden. */}
-      <VideoFacts
-        key={`facts:${String(video.id)}`}
+      <VideoPageTabs
         video={video}
         owner={owner}
         capture={capture}
+        player={player}
         onChanged={(saved, mark) => {
           replace(saved, mark, "keep");
           // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
@@ -114,20 +115,18 @@ export default function VideoPageDetails({
           linkState: { from: backTo, trail },
           focusEntry: handoff.focusEntry(video.id),
         }}
-        //
-        onFavorite={setFavorite}
+        state={tabState}
         versions={{
           navigation: { backTo, autoplay },
-          // Reload after unbundling to replace bundle metadata with the video's own metadata.
+          // Refetch: the removed video's own work info replaces the bundle's.
           onReplace: (removed, mark) => replace(removed, mark, "refetch"),
-          onRefresh: reread,
         }}
       />
     </>
   );
 }
 
-function OwnerControls({ video, reread }: { video: Video; reread: () => void }) {
+function OwnerTags({ video, reread }: { video: Video; reread: () => void }) {
   return (
     <>
       <VideoTags
@@ -140,13 +139,6 @@ function OwnerControls({ video, reread }: { video: Video; reread: () => void }) 
       />
       {}
       <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
-      {/* Key by video ID so errors do not survive navigation. */}
-      <VisibilitySwitch
-        key={`visibility:${String(video.id)}`}
-        videoId={video.id}
-        isPublic={video.public}
-        onChanged={reread}
-      />
     </>
   );
 }

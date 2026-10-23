@@ -1135,6 +1135,25 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/face-appearances:
+    get:
+      operationId: listVideoFaceAppearances
+      summary: "List the people face recognition found in a video"
+      description: "Owner-only. analysed is true once the face analysis of the video's content key is done; while it is queued or running, after a failure, and without an analysis it is false and items is empty. items are the content key's appearances that are not dropped and whose person still exists, in order of their first span's start, then by appearance ID. A missing video returns 404 video_not_found."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: "The video's face appearances"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoFaceAppearanceList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/videos/{id}/make-representative:
     post:
       operationId: makeRepresentativeVersion
@@ -8046,6 +8065,42 @@ components:
         focus:
           $ref: "#/components/schemas/FaceFocus"
 
+    VideoFaceAppearanceList:
+      type: object
+      required: [analysed, items]
+      additionalProperties: false
+      properties:
+        analysed:
+          type: boolean
+          description: "True when the face analysis of the video's content key is done."
+        items:
+          type: array
+          description: "Empty while analysed is false."
+          items:
+            $ref: "#/components/schemas/VideoFaceAppearance"
+
+    VideoFaceAppearance:
+      type: object
+      required: [appearanceId, person, hasCrop, spans]
+      additionalProperties: false
+      description: "One main person of the video."
+      properties:
+        appearanceId:
+          type: integer
+          format: int64
+        person:
+          $ref: "#/components/schemas/CreditRef"
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
+        hasCrop:
+          type: boolean
+          description: "True when getFaceAppearanceCrop has a face to return."
+        spans:
+          type: array
+          description: "When the person is on screen, in seconds, in order and without overlaps."
+          items:
+            $ref: "#/components/schemas/FaceAppearanceSpan"
+
     SimilarPersonList:
       type: object
       required: [items]
@@ -9644,6 +9699,7 @@ components:
           addedAt,
           updatedAt,
           fileCreatedAt,
+          fileModifiedAt,
           playable,
           probeState,
           thumbnailState,
@@ -9690,6 +9746,10 @@ components:
           type: string
           format: date-time
           description: "Creation timestamp of the displayed-location file; falls back to its mtime when unavailable."
+        fileModifiedAt:
+          type: string
+          format: date-time
+          description: "Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded."
         durationMs:
           type: integer
           format: int64

@@ -1,4 +1,3 @@
-import { FileImage, Film, ImageUp, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -13,16 +12,6 @@ import {
 } from "../../api/client";
 import { detailMark, type DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
-import { formatDuration } from "../../lib/format";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../../ui/shadcn/dropdown-menu";
-import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
-import ActionButton from "../ActionButton";
-import type { ThumbnailCapture } from "../VideoFacts";
 import {
   encodeComposition,
   type LoadResult,
@@ -30,7 +19,10 @@ import {
   type UploadImage,
 } from "./composeImage";
 import { type Fit, frameAspect } from "./framing";
-import { UPLOAD_TYPES, uploadRefusal } from "./uploadRules";
+import { uploadRefusal } from "./uploadRules";
+
+/** Which way opened the current preview: a picked file or a stored image read through a session. */
+export type UploadFrom = "file" | "source";
 
 export interface UploadPreviewState {
   image: UploadImage;
@@ -50,6 +42,8 @@ export function useThumbnailUpload(
   sending: boolean;
   preparing: boolean;
   applying: boolean;
+  /** The way that started the last preparation or send, kept until the next one starts. */
+  from: UploadFrom | null;
   preview: UploadPreviewState | null;
   choose: (file: File) => void;
   chooseSource: (start: ThumbnailEditStart, name: string) => void;
@@ -59,6 +53,7 @@ export function useThumbnailUpload(
   const [sending, setSending] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [from, setFrom] = useState<UploadFrom | null>(null);
   const [preview, setPreview] = useState<UploadPreviewState | null>(null);
   // A ref also blocks two clicks within the same render.
   const busy = useRef(false);
@@ -88,11 +83,13 @@ export function useThumbnailUpload(
 
   /** Decode in the background and open the preview unless the page or the video changed meanwhile. */
   const open = (
+    way: UploadFrom,
     name: string,
     load: Promise<LoadResult>,
     failed: (error: unknown) => void,
   ) => {
     busy.current = true;
+    setFrom(way);
     report(null);
     setPreparing(true);
     const opened = {
@@ -130,7 +127,7 @@ export function useThumbnailUpload(
       report(refusal === "type" ? text.refusedType : text.refusedSize);
       return;
     }
-    open(file.name, loadUploadImage(file), () =>
+    open("file", file.name, loadUploadImage(file), () =>
       report(text.failed(t.errors.reason.thumbnail_upload_invalid)),
     );
   };
@@ -138,7 +135,7 @@ export function useThumbnailUpload(
   /** A frame or the current thumbnail, read through a short-lived edit session at its full size. */
   const chooseSource = (start: ThumbnailEditStart, name: string) => {
     if (busy.current) return;
-    open(name, loadSource(video.id, start), (error) => {
+    open("source", name, loadSource(video.id, start), (error) => {
       report(t.player.thumbnailEdit.startFailed(errorText(error)));
       if (staleAfter(error)) onStale?.();
     });
@@ -199,7 +196,17 @@ export function useThumbnailUpload(
       });
   };
 
-  return { sending, preparing, applying, preview, choose, chooseSource, apply, cancel };
+  return {
+    sending,
+    preparing,
+    applying,
+    from,
+    preview,
+    choose,
+    chooseSource,
+    apply,
+    cancel,
+  };
 }
 
 async function loadSource(
@@ -217,137 +224,4 @@ async function loadSource(
 function staleAfter(error: unknown): boolean {
   if (!(error instanceof RequestFailed)) return false;
   return error.status === 404 || error.reason === "content_changed";
-}
-
-/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview; an image file is chosen, dropped or pasted in an ImageUploadDialog. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
-export default function ThumbnailEntry({
-  sending,
-  locked,
-  capture,
-  thumbnailUrl,
-  onFile,
-  onSource,
-}: {
-  sending: boolean;
-  locked: boolean;
-  capture?: ThumbnailCapture;
-  thumbnailUrl: string | undefined;
-  onFile: (file: File) => void;
-  onSource: (start: ThumbnailEditStart, name: string) => void;
-}) {
-  const text = t.player.thumbnailUpload;
-  const edit = t.player.thumbnailEdit;
-  const [uploading, setUploading] = useState(false);
-  const [positionMs, setPositionMs] = useState<number | null>(null);
-  const [open, setOpen] = useState(false);
-  const disabled = sending || locked;
-
-  const take = (file: File) => {
-    const refusal = uploadRefusal(file);
-    if (refusal !== null) return refusal === "type" ? text.refusedType : text.refusedSize;
-    setUploading(false);
-    onFile(file);
-    return null;
-  };
-
-  return (
-    <>
-      <DropdownMenu
-        open={open && !disabled}
-        onOpenChange={(next) => {
-          if (next) setPositionMs(framePosition(capture));
-          setOpen(next);
-        }}
-      >
-        <DropdownMenuTrigger asChild>
-          <ActionButton
-            label={text.entry}
-            aria-disabled={disabled || undefined}
-            aria-busy={sending || undefined}
-            className="aria-disabled:cursor-default data-[state=open]:bg-accent"
-          >
-            {sending ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
-              />
-            ) : (
-              <ImageUp aria-hidden="true" />
-            )}
-          </ActionButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            disabled={positionMs === null}
-            onSelect={() => {
-              if (positionMs === null) return;
-              setOpen(false);
-              capture?.pause();
-              const name = edit.frameAt(formatDuration(positionMs));
-              onSource({ source: "frame", positionMs }, name);
-            }}
-          >
-            <Film aria-hidden="true" />
-            {positionMs === null ? (
-              edit.frameOnScreen
-            ) : (
-              <span className="tabular-nums">
-                {edit.frameAt(formatDuration(positionMs))}
-              </span>
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              setOpen(false);
-              onSource({ source: "thumbnail" }, edit.currentThumbnail);
-            }}
-          >
-            <ThumbnailImage url={thumbnailUrl} />
-            {edit.currentThumbnail}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              setOpen(false);
-              setUploading(true);
-            }}
-          >
-            <FileImage aria-hidden="true" />
-            {text.chooseFile}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ImageUploadDialog
-        open={uploading && !disabled}
-        onOpenChange={setUploading}
-        title={text.uploadTitle}
-        description={text.uploadHint}
-        accept={UPLOAD_TYPES}
-        onFile={take}
-      />
-    </>
-  );
-}
-
-function framePosition(capture: ThumbnailCapture | undefined): number | null {
-  if (capture === undefined || !capture.enabled) return null;
-  const raw = capture.positionMs();
-  if (raw === null || !Number.isFinite(raw)) return null;
-  return Math.max(0, Math.round(raw));
-}
-
-/** Use empty alt because the menu item supplies the name; preserve an empty box while loading. */
-function ThumbnailImage({ url }: { url: string | undefined }) {
-  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
-  return (
-    <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
-      {url !== undefined && url !== brokenUrl && (
-        <img
-          src={url}
-          alt=""
-          onError={() => setBrokenUrl(url)}
-          className="size-full object-cover"
-        />
-      )}
-    </span>
-  );
 }

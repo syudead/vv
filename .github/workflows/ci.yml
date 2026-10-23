@@ -383,7 +383,7 @@ jobs:
           - group: library
             files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
           - group: pages
-            files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/scan-progress.e2e.ts e2e/work-info.e2e.ts
+            files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/scan-progress.e2e.ts e2e/video-tabs.e2e.ts e2e/work-info.e2e.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

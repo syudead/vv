@@ -86,6 +86,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `skeleton`                 | Component     | Shapes of the final layout while loading                                     |
 | `slider`                   | Component     | A value on a range, such as the card size                                    |
 | `sonner`                   | Component     | Short passive notices (`toast()`)                                            |
+| `span-bar`                 | vv component  | When something happens in a video, as blocks on a lane its length            |
 | `spinner`                  | Component     | A short wait with no measure                                                 |
 | `steps-page`               | Page skeleton | Steps taken one at a time outside the shell, such as the first setup         |
 | `steps-page-example`       | Block         | Copy to start a steps page                                                   |
