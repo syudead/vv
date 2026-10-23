@@ -134,14 +134,16 @@ flowchart LR
 
 ### Link variants fold into one choice, the rest is the plugin's
 
-Before the choice, links that differ only in scheme, host case, a trailing
-slash or a fragment count as one, and the first stored one is offered and
-sent. Query strings stay, since some sites carry the ID there, and the plugin
-treats path case and tracking parameters as the how-to tells it to.
+Before the choice, links that differ only in scheme, host case or a
+trailing slash count as one, and the first stored one is offered and sent.
+Query strings and fragments stay, since some sites carry the ID in one of
+them (a hash-routed page names the person after `#`), and the plugin treats
+path case and tracking parameters as the how-to tells it to.
 
 | Rejected | Why |
 | --- | --- |
 | Dropping query strings when folding | A link whose ID is a query parameter would fold into the site's front page |
+| Dropping fragments when folding | Two hash-routed links to different people would fold into one, and the owner could not pick the second |
 | A list of tracking parameters to strip | A list VVMDM maintains for every site, which the plugin knows better |
 
 ### A typed link is sent as a link, and the server says when the plugin cannot handle it
@@ -150,8 +152,8 @@ The dialog sends a `Name` field value that parses as an `http` or `https` URL
 as `link` instead of running a search; the server answers
 `400 person_link_unsupported` when no declared domain matches, and the dialog
 shows that with the plugin's domains and keeps the field, so the owner can
-edit it or search it as a name. A value that is not a URL is searched as a
-name, as now.
+edit it into a handled link or a name. A URL-shaped value is never searched
+as a name; a value that is not a URL is searched as a name, as now.
 
 | Rejected | Why |
 | --- | --- |
@@ -170,6 +172,11 @@ replacement no longer declares them.
 | Rejected | Why |
 | --- | --- |
 | The dialog remembers the link it sent | It never knows the link the server picked |
+
+`Fetch again` after a stale apply resends the request the result came from:
+the link the owner picked or typed when the dialog sent one, so a person with
+several matching links is not asked to choose again, and only `pluginId` when
+the server picked the key.
 
 ### Storage
 
@@ -250,8 +257,8 @@ the codes `person_link_ambiguous` with `links` and `person_link_unsupported`,
 manifest
 
 **Acceptance**: domain unit cases prove the suffix match, the `http`-only
-rule and the folding of scheme, host case, trailing slash and fragment while
-a query string is kept; a run case with a small WASM module
+rule and the folding of scheme, host case and trailing slash while a query
+string and a fragment are kept; a run case with a small WASM module
 (`internal/wasmplugin`) shows the `url` request reaching the module and the
 response's `externalIds` without a prepended ID; app cases with the fake
 plugin store show, in order, a stored accepted ID winning over a matching
@@ -287,7 +294,8 @@ a visual review of the row and the dialog at the widths `ui-design.md` names;
 after `person_link_ambiguous`, sending a URL-shaped `Name` value as `link`,
 the `person_link_unsupported` message with the plugin's domains, the source
 line showing the result's `link`, and `Back` from a link comparison to the
-plugin step with the choice kept, following `ui-design.md`; the dialog
+plugin step with the choice kept, and `Fetch again` resending the picked or
+typed link, following `ui-design.md`; the dialog
 strings in `web/src/i18n/en.ts`.
 
 **Dependencies**: Fetch a person by a link the plugin handles
@@ -297,6 +305,8 @@ fake server, `Fetch` with only `pluginId` reaching the comparison with the
 result's link on the source line (acceptance 2), a `409 person_link_ambiguous`
 answer rendering the links as a choice whose pick sends `link` (acceptance
 4), a URL typed into `Name` sent as `link` instead of a search (acceptance 6),
-a `400 person_link_unsupported` answer shown with the field kept, and the
+a `400 person_link_unsupported` answer shown with the field kept and no
+search sent, `Fetch again` after `work_info_fetch_stale` on a picked link
+sending that `link` again, and the
 existing `person_external_id_missing` path unchanged (acceptance 5); a visual
 review of the choice and the source line; `task check SCOPE=web` passes.

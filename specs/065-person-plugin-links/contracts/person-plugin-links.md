@@ -43,8 +43,9 @@ ends with `.` and the domain.
 | `Error` | `links`: the folded matching links, in stored order; only for `person_link_ambiguous` |
 | Error codes | `person_link_ambiguous` (409), `person_link_unsupported` (400) |
 
-Folding treats links that differ only in scheme, host case, a trailing slash
-or a fragment as one and keeps the first stored one; query strings are kept.
+Folding treats links that differ only in scheme, host case or a trailing
+slash as one and keeps the first stored one; query strings and fragments are
+kept.
 
 ## CLI
 
