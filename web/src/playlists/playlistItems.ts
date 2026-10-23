@@ -1,6 +1,10 @@
 import type { PlaylistItem } from "../api/playlists";
 import { formatDuration } from "../lib/format";
-import { orderedItemDurationMs, orderedItemTitle } from "../videoList/ItemRowCells";
+import {
+  isVirtualItem,
+  orderedItemDurationMs,
+  orderedItemTitle,
+} from "../videoList/ItemRowCells";
 import { itemStepPath } from "./playlistPlayback";
 
 export function playlistPath(id: number): string {
@@ -37,15 +41,22 @@ export function playTarget(playlistId: number, item: PlaylistItem): PlayTarget |
   return { to, state: { from: playlistPath(playlistId), autoplay: true } };
 }
 
+/** Pass over virtual videos, which have nothing to play, as the server's continuous play does. */
 export function firstPlayTarget(
   playlistId: number,
   items: readonly PlaylistItem[],
 ): PlayTarget | null {
   for (const item of items) {
+    if (isVirtualItem(item)) continue;
     const target = playTarget(playlistId, item);
     if (target !== null) return target;
   }
   return null;
+}
+
+/** True for a nonempty playlist of only virtual videos; other unplayable mixes are not explained. */
+export function allVirtual(items: readonly PlaylistItem[]): boolean {
+  return items.length > 0 && items.every(isVirtualItem);
 }
 
 /** Match server move semantics; return the original order if either item is missing. */

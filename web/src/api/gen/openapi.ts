@@ -5885,6 +5885,9 @@ export interface components {
             position: number;
             /** @description Visible item count. */
             count: number;
+            /** @description Visible items whose starting video has a file; zero means the playlist has nothing to play. */
+            playableCount: number;
+            /** @description Continuous-playback step; passes over virtual videos. */
             next?: components["schemas"]["PlaylistStep"];
             previousItem?: components["schemas"]["PlaylistStep"];
             nextItem?: components["schemas"]["PlaylistStep"];

@@ -4590,11 +4590,14 @@ type PlaylistPlayback struct {
 	// ItemId Currently playing item.
 	ItemId int64 `json:"itemId"`
 
-	// Next One continuous-playback video and its containing item.
+	// Next Continuous-playback step; passes over virtual videos.
 	Next *PlaylistStep `json:"next,omitempty"`
 
 	// NextItem One continuous-playback video and its containing item.
 	NextItem *PlaylistStep `json:"nextItem,omitempty"`
+
+	// PlayableCount Visible items whose starting video has a file; zero means the playlist has nothing to play.
+	PlayableCount int `json:"playableCount"`
 
 	// Playlist One playlist summary.
 	Playlist PlaylistSummary `json:"playlist"`

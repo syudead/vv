@@ -114,6 +114,7 @@ function playbackFor(itemId: number, updatedAt = early): PlaylistPlayback {
     itemId,
     position: index + 1,
     count: order.length,
+    playableCount: order.length,
     next: order[index + 1],
     previousItem: order[index - 1],
     nextItem: order[index + 1],
@@ -500,6 +501,7 @@ describe("VideoPage のプレイリストの文脈", () => {
         .getAttribute("href"),
     ).toBe("/playlists/5");
     expect(within(panel()).getByText("2 / 3")).toBeDefined();
+    expect(within(panel()).queryByText("Nothing to play")).toBeNull();
     const aside = document.querySelector('[data-slot="detail-page-aside"]');
     expect(aside?.firstElementChild?.firstElementChild).toBe(panel());
     const rows = panelRows();
@@ -514,6 +516,39 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(third.getAttribute("href")).toBe("/videos/13?playlist=5&item=23");
     fireEvent.click(third);
     expect(location()).toBe("/videos/13?playlist=5&item=23");
+  });
+
+  it("playableCount が 0 ならパネルの見出しの下に Nothing to play を出し、バーチャルな行は長さの代わりに印を出す", async () => {
+    const virtual: Video = {
+      ...videoOf(13, "third"),
+      virtual: true,
+      playable: false,
+      durationMs: undefined,
+    };
+    server.playback.mockImplementation((item) =>
+      json({ ...playbackFor(item), playableCount: 0 }),
+    );
+    server.playlist.mockImplementation(() =>
+      json(
+        playlistOf([
+          [21, first],
+          [22, second],
+          [23, virtual],
+        ]),
+      ),
+    );
+    renderPage();
+    await line();
+    expect(await within(panel()).findByText("Nothing to play")).toBeDefined();
+    const link = within(panelRows()[2]!).getByRole("link", { name: "Play from third" });
+    expect(within(link).getByText("Virtual")).toBeDefined();
+    const described = document.getElementById(
+      link.getAttribute("aria-describedby") ?? "",
+    );
+    expect(described?.textContent).toBe("Virtual video, no file");
+    expect(
+      within(link).queryByText("Missing information needed for playback"),
+    ).toBeNull();
   });
 
   it("グループの項目の中では、Up next のメンバーの行がプレイリストの文脈を保って開く", async () => {

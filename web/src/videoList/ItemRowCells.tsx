@@ -19,6 +19,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
+import { VirtualMark } from "./VirtualMark";
 
 /** Smart-folder items occur only in playlists but share the collection row shape. */
 export interface OrderedItem {
@@ -108,6 +109,10 @@ export function orderedItemTitle(item: OrderedItem): string {
   return orderedItemCollection(item)?.name ?? "";
 }
 
+export function isVirtualItem(item: OrderedItem): boolean {
+  return item.kind === "video" && item.video?.virtual === true;
+}
+
 export function orderedItemDurationMs(item: OrderedItem): number | undefined {
   if (item.kind === "video") return item.video?.durationMs;
   return orderedItemCollection(item)?.durationMs;
@@ -121,6 +126,7 @@ export function ItemThumbnailCell({
   facts: RowFacts;
 }) {
   const duration = formatDuration(orderedItemDurationMs(item));
+  const virtual = isVirtualItem(item);
   const versions =
     item.kind === "video" && item.video !== undefined
       ? shownVersionsCount(item.video)
@@ -134,9 +140,10 @@ export function ItemThumbnailCell({
         {facts.thumbnailUrl !== undefined && (
           <VideoThumbnailImage src={facts.thumbnailUrl} />
         )}
-        {(versions !== null || duration !== "") && (
+        {(versions !== null || duration !== "" || virtual) && (
           <VideoThumbnailDuration>
             {versions !== null && <VersionsMark count={versions} />}
+            {virtual && <VirtualMark />}
             {duration !== "" && <span>{duration}</span>}
           </VideoThumbnailDuration>
         )}
@@ -202,7 +209,14 @@ export function ItemWatchedAndDurationCells({
         {facts.groupProgress}
       </TableCell>
       <TableCell className="hidden w-0 pr-2 text-right tabular-nums sm:table-cell">
-        {formatDuration(orderedItemDurationMs(item))}
+        {isVirtualItem(item) ? (
+          // The thumbnail's mark already carries the accessible text.
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <VirtualMark announce={false} />
+          </span>
+        ) : (
+          formatDuration(orderedItemDurationMs(item))
+        )}
       </TableCell>
     </>
   );
