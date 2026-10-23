@@ -320,12 +320,15 @@ one-to-one pairs, and a fetched face merges only a person it is sure of, so the
 owner matches the rest where both are in view.
 
 Under the role rows, `People and organizations` adds an `Unnamed people` row
-when the video has unnamed performers and the apply adds a fetched performer.
-Each unnamed performer shows their face beside the face of the fetched
-performer chosen for them, both `PersonFace judge`, over a `Select` of the
-fetched performers the apply adds, which starts at `Keep apart`. A fetched
-performer chosen for another unnamed person, or cleared above, is disabled. A
-pair whose fetched performer is cleared later is not sent.
+when the video has unnamed performers and the fetch has a linked or new
+performer. Each unnamed performer shows their face beside the face of the
+fetched performer chosen for them, both `PersonFace judge`, over a `Select` of
+those performers, which starts at `Keep apart`. A performer already on the
+video is offered too, so fetching a video that is already doubled again
+settles it; the pair then sends that entry in `people` by itself, which also
+fills the person's empty fields as a chosen entry does. A fetched performer
+chosen for another unnamed person, or cleared above, is disabled, and a pair
+whose toggled performer is cleared later is not sent.
 
 The apply takes the pairs as `samePeople`, each the fetched performer's `at`
 and the unnamed person's id. `FetchedWorkInfo.SelectSamePeople` refuses with

@@ -37,6 +37,8 @@ export interface WorkSelection {
 export interface SamePair {
   at: number;
   personId: number;
+  /** The fetched performer is on the video without a toggle, so the pair alone sends their position. */
+  linked: boolean;
 }
 
 /** How the apply treats a whole field: fills an empty value, replaces a stored one, or leaves it as it is. */
@@ -155,23 +157,38 @@ export function unnamedPerformers(video: Video): WorkPerson[] {
   });
 }
 
-/** The fetched performers the apply adds, which an unnamed performer may be matched with. */
+/**
+ * The fetched performers an unnamed performer may be matched with: those the apply adds, and those already on
+ * the video, which a video analysed before an earlier fetch lists beside their unnamed face.
+ */
 export function samePersonChoices(video: Video, result: WorkInfoFetch): DetailChip[] {
   return roleRow("people.performer", video, result).fetched.filter(
-    (chip) => adds(chip) && chip.at !== undefined,
+    (chip) => chip.at !== undefined && (adds(chip) || chip.mark === "onVideo"),
   );
 }
 
-/** Matches the unnamed person with the entry at at, or keeps them apart when at is null. */
+/** Matches the unnamed person with the fetched performer, or keeps them apart when chip is null. */
 export function withSamePerson(
   selection: WorkSelection,
   personId: number,
-  at: number | null,
+  chip: DetailChip | null,
 ): WorkSelection {
+  const at = chip?.at;
   const rest = selection.samePeople.filter(
     (pair) => pair.personId !== personId && pair.at !== at,
   );
-  return { ...selection, samePeople: at === null ? rest : [...rest, { at, personId }] };
+  if (chip === null || at === undefined) return { ...selection, samePeople: rest };
+  return {
+    ...selection,
+    samePeople: [...rest, { at, personId, linked: !choosable(chip) }],
+  };
+}
+
+/** The pairs the apply sends: a pair whose toggled performer was cleared has nobody to merge into. */
+function sentPairs(selection: WorkSelection): SamePair[] {
+  return selection.samePeople.filter(
+    (pair) => pair.linked || selection.people.includes(pair.at),
+  );
 }
 
 export function workSelectionEmpty(selection: WorkSelection): boolean {
@@ -182,7 +199,8 @@ export function workSelectionEmpty(selection: WorkSelection): boolean {
     selection.people.length === 0 &&
     selection.organizations.length === 0 &&
     selection.urls.length === 0 &&
-    selection.externalIds.length === 0
+    selection.externalIds.length === 0 &&
+    sentPairs(selection).length === 0
   );
 }
 
@@ -190,14 +208,18 @@ export function workSelectionEmpty(selection: WorkSelection): boolean {
 export function workChoice(selection: WorkSelection): WorkInfoApplyChoice {
   const fields: WorkInfoField[] = [...selection.fields];
   const choice: WorkInfoApplyChoice = { fields };
-  if (selection.people.length > 0) choice.people = [...selection.people];
+  const same = sentPairs(selection);
+  const people = [
+    ...selection.people,
+    ...same.filter((pair) => pair.linked).map((pair) => pair.at),
+  ];
+  if (people.length > 0) choice.people = people;
   if (selection.organizations.length > 0)
     choice.organizations = [...selection.organizations];
   if (selection.urls.length > 0) choice.urls = [...selection.urls];
   if (selection.externalIds.length > 0) choice.externalIds = [...selection.externalIds];
-  // A pair whose fetched performer was cleared has nobody to merge into.
-  const same = selection.samePeople.filter((pair) => selection.people.includes(pair.at));
-  if (same.length > 0) choice.samePeople = same;
+  if (same.length > 0)
+    choice.samePeople = same.map(({ at, personId }) => ({ at, personId }));
   if (selection.tags.length > 0) {
     fields.push("tags");
     choice.tags = [...selection.tags];

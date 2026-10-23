@@ -235,6 +235,42 @@ describe("VideoPage work-info fetch details", () => {
     expect(server.apply).toHaveBeenCalledWith({ fields: [], people: [0] });
   });
 
+  it("既に二重の動画では、動画にある出演者を名前の無い出演者に選べ、その組だけで反映できる", async () => {
+    const doubled = withUnnamedPerformer();
+    server.video = {
+      ...doubled,
+      workInfo: info({
+        people: [
+          ...doubled.workInfo!.people,
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+        ],
+      }),
+    };
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          tags: [],
+          people: [performer("既存の人", { state: "existing", id: 9, name: "既存の人" })],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("combobox", { name: "Who #42 is" }));
+    await user.click(await screen.findByRole("option", { name: "既存の人" }));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({
+      fields: [],
+      people: [0],
+      samePeople: [{ at: 0, personId: 42 }],
+    });
+  });
+
   it("リンクと ID の切り替えを外すと、その値を送らない", async () => {
     server.fetch.mockImplementation(() =>
       json(

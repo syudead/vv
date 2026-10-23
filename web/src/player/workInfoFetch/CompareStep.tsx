@@ -481,7 +481,7 @@ function CreditsSection({ props }: { props: CompareProps }) {
       (chip) => choosable(chip) || chip.mark === "notLinked",
     ),
   );
-  if (!shown) return null;
+  if (!shown && !samePeopleShown(props)) return null;
   const { selection } = props;
   return (
     <CompareSection
@@ -509,10 +509,17 @@ function CreditsSection({ props }: { props: CompareProps }) {
 }
 
 /** Each unnamed performer on the video, matched by face with a fetched performer the apply merges them into. */
+function samePeopleShown(props: CompareProps): boolean {
+  return (
+    unnamedPerformers(props.video).length > 0 &&
+    samePersonChoices(props.video, props.result).length > 0
+  );
+}
+
 function SamePeopleRow({ props }: { props: CompareProps }) {
+  if (!samePeopleShown(props)) return null;
   const unnamed = unnamedPerformers(props.video);
   const choices = samePersonChoices(props.video, props.result);
-  if (unnamed.length === 0 || choices.length === 0) return null;
   return (
     <ValueRow label={<span>{text.samePeople}</span>}>
       <div className="flex min-w-0 flex-col gap-4">
@@ -582,7 +589,11 @@ function SamePersonPick({
           disabled={props.locked}
           onValueChange={(value) =>
             props.onChange(
-              withSamePerson(selection, id, value === KEEP_APART ? null : Number(value)),
+              withSamePerson(
+                selection,
+                id,
+                choices.find((chip) => String(chip.at) === value) ?? null,
+              ),
             )
           }
         >
@@ -598,7 +609,7 @@ function SamePersonPick({
                 disabled={
                   chip.at === undefined ||
                   taken.has(chip.at) ||
-                  !selection.people.includes(chip.at)
+                  (choosable(chip) && !selection.people.includes(chip.at))
                 }
               >
                 {chip.name}

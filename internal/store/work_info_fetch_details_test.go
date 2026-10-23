@@ -309,6 +309,19 @@ func TestApplyFetchedDetailsMergesTheUnnamedPerformerTheOwnerMatched(t *testing.
 	}
 }
 
+// Fetched again, a performer already listed beside the unnamed face takes it, though the apply links nobody new.
+func TestApplyFetchedDetailsMergesTheUnnamedPerformerIntoOneAlreadyOnTheVideo(t *testing.T) {
+	f, provisional := newCastFixture(t)
+	actor := applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")}).PersonIDs[0]
+
+	applySamePeople(t, f.db, f.videoID, []domain.FetchedPerson{fetchedPerformer("Actor")},
+		domain.SamePerson{At: 0, PersonID: provisional})
+
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{actor}) {
+		t.Fatalf("performers = %v, want only %d", got, actor)
+	}
+}
+
 // A person who is no unnamed performer of the work is never merged, whatever the request names.
 func TestApplyFetchedDetailsMergesNoPersonOutsideTheWorksUnnamedPerformers(t *testing.T) {
 	f, provisional := newCastFixture(t)
