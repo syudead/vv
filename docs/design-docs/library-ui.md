@@ -676,14 +676,18 @@ Actions are labelled pills in three fixed places: what the viewer does with the
 video beside the title, what changes the record (visibility, `Edit details`)
 at the strip's end, and what changes one kind of information in that kind's
 panel. A filled pill was chosen over `ghost` words, which read as captions
-beside the title.
+beside the title. Actions inside a list row stay `ghost` words, so a row's one
+pill is its first action, `Play`. A per-row `More` menu was rejected because it
+hides two actions behind an icon, and an empty-state block on Work was rejected
+because it would move the fetch action into the block, so the action's place
+would change with the list.
 
 | Tab | Listed when | Panel |
 | --- | --- | --- |
 | Overview | Always | At the left, for the owner, the description (folded to three lines) and under it the one-line work summary, `KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太`, in `text-xs` muted; at the right, `Length`, `Resolution`, `Added` and `Last watched` (the progress row's time, owner only) as a divided `FactList`, which stands alone when there is no description or summary |
 | Work | Owner, and the work has an item other than the description and the performers, or an approved work-info plugin exists | At the left, a `FactList` split into two lists from `md` of `Code`, the dates as stored, the people of roles other than performer (a face chip and the name, each a link to the person page), the makers and labels (links to the filtered library), `Links` (one per line, in `primary`) and `IDs`; a row with more than three entries shows three and `+{n} more`. With no item, `No work details yet.` in its place. At the right, while an approved work-info plugin exists, the label `Fill in from a site` over the pill `Fetch again` (`Fetch` with no item), which pauses the player and opens the fetch dialog |
 | People | Owner, and the work credits a person; the count is the distinct credited people | `Credits`: the credited people as a face grid, one left-aligned tile per person (a square `scene` face, the name, its roles in `text-2xs`), each a link to the person page. `Seen in this video`, only once face recognition is done and found someone: the label with `0:00 — {length}` at the line's right end, then ` · press a bar to jump` while the bars can play; one row per person with the face, the name (`#1042` when unnamed) and a `SpanBar` of when the person is on screen, scaled to the video's length and absent while the length is unknown. While the player is shown, pressing a block seeks it to the span's start and plays in place; otherwise the blocks are plain. The list is read when the tab opens and again when the video response is replaced |
-| Versions | Two or more visible versions; the count is the number of versions | The list, read each time the tab is selected, one divided row per version with the representative first: a `list-thumb-cell` thumbnail, ringed in `primary` on the playing version; the title in plain text with the chips `Representative` and `Now playing`; resolution · codec · size · container; the owner's path (a guest's place) in `text-2xs` mono, truncated from the left. `Play`, a pill that opens that version, on every row but the playing one; for the owner, `Make representative` on every row but the representative and `Remove from versions` on every row, as `ghost` `sm` buttons with words; a guest's rows only play. Removing the playing version replaces the page's video with the removed one, which leaves Versions and selects Overview |
+| Versions | Two or more visible versions; the count is the number of versions | The list, read each time the tab is selected, one divided row per version with the representative first: a `list-thumb-cell` thumbnail, ringed in `primary` on the playing version; the title in plain text with the visible chips `Representative` (`Badge secondary` with a star) and `Now playing` (`Badge soft`); resolution · codec · size · container; the owner's path (a guest's place) in `text-2xs` mono, truncated from the left. `Play`, a pill that opens that version, on every row but the playing one; for the owner, `Make representative` on every row but the representative and `Remove from versions` on every row, as `ghost` `sm` buttons with words; a guest's rows only play. Removing the playing version replaces the page's video with the removed one, which leaves Versions and selects Overview |
 | Thumbnail | Owner | `Current` and `Replace with` across a vertical line from `md`. `Current`: the stored thumbnail at the card width, its origin (`Frame at 0:12`, `Uploaded image`, `Generated image` or `Automatic`) and, unless automatic, `Back to automatic`. `Replace with`: three divided rows, each a small preview, a title with its note and a pill at the end: `The frame on screen` (the seek sprite's cell at the player's position, only while the player shows a frame) with `Use this frame`, `An image` (a dashed empty frame) with `Upload…`, and `Touch up with ComfyUI` (the current thumbnail, faded) with `Touch up…` ([thumbnail-editing.md](thumbnail-editing.md#the-thumbnail-tab-offers-three-ways-to-replace-the-thumbnail)) |
 | File & media | Always | At the left, `Location` (owner only, with a location): the path in `text-xs` mono and `Open file` (only when the file can be opened from this browser), `Copy path` and `Rescan` as pills; `Media`: `Video`, `Audio`, `Subtitles`, `Chapters`, `Container`, `Embedded` and `Broadcast` rows, each only with content, except that a probed video with no subtitle or chapter reads `None`. At the right, the divided figures `Size`, `Added`, `Edited` and `File created`, named `File` for screen readers |
 
@@ -711,17 +715,30 @@ A section inside a panel has a small muted uppercase heading; facts are a
 `FactList` with the term muted and the value in the body colour, and the
 figures of the right column stand in divided rows. Dates show
 the date only, in the figures' mono type; the time is in the `title` attribute and in a popover opened by
-pressing the date. A failure shows one line with `AlertCircle` at the end of
+pressing the date. While a request runs, the pressed action spins. In
+Thumbnail the other ways are `aria-disabled` until it ends. In Versions the
+lock covers only the pressed row: that row's other owner actions are
+`aria-disabled`, while its `Play` and every other row stay enabled. A list read when its tab is
+selected (Versions, People's `Seen in this video`) shows two `Skeleton` rows
+while reading and the failure words with `Retry` when the read fails. A
+failure of an action shows one line with `AlertCircle` at the end of
 the panel and clears on the next action. While the probe is pending the
 `Media` section says `Reading technical details…`, after a failed probe
 `Couldn't read the technical details` in `warning`, and Overview leaves out
 `Length` and `Resolution`. No path appears under the title, because the
 breadcrumb already shows the location.
 
-| Width | Strip |
+The strip has no line above it, and the selected tab's `primary` underline lies
+on its bottom border. A tab is the word in `text-sm font-medium`, with the
+count after it in `text-2xs` muted. The two controls at its end stand `gap-1`
+apart; `Edit details` is a `ghost` `sm` link with the word alone. The tabs
+never wrap: selecting a tab scrolls it into view inside the strip.
+
+| Width | Strip and panels |
 | --- | --- |
-| `sm` and above | One line: the tabs, then the visibility toggle and `Edit details` at its right end |
-| Below `sm` | The two controls on a line of their own above the strip, right-aligned; the tabs scroll sideways inside the strip, so the page never scrolls sideways |
+| `md` and above | One strip line, the tabs then the two controls; each panel in its two columns, Thumbnail's `Current` and `Replace with` across a vertical line |
+| `sm` to `md` | One strip line; each panel in one column, the right column after the left, and Thumbnail's `Current`, a horizontal line, then the rows |
+| Below `sm` | The two controls on a line of their own above the strip, right-aligned; the tabs scroll sideways inside the strip, so the page never scrolls sideways; a Versions row's actions under its path, and a `Replace with` row's pill under its title and note |
 
 The owner's favorite toggle is the first control after the title
 (`FavoriteToggle` `page` form: a `sm` pill `Toggle` with the heart and the word,
