@@ -212,6 +212,9 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	if rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
+	// encoding/json also fills a field from a key that differs only in case, which the kind checks would miss.
+	sources, hasSources := exactStrings(top, "sources")
+	domains, hasDomains := exactStrings(top, "domains")
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
 		Kind:        WorkInfoPluginKindWork,
@@ -220,8 +223,8 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 		Description: raw.Description,
 		Operations:  raw.Operations,
 		Settings:    settings,
-		Sources:     raw.Sources,
-		Domains:     raw.Domains,
+		Sources:     sources,
+		Domains:     domains,
 	}
 	// A present kind, null included, must name a kind; only an absent one defaults to work.
 	if _, hasKind := top["kind"]; hasKind {
@@ -230,12 +233,21 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	if rejection := checkManifest(m); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
-	_, hasSources := top["sources"]
-	_, hasDomains := top["domains"]
 	if rejection := checkPluginKind(m, hasSources, hasDomains); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
 	return m, nil
+}
+
+// exactStrings reads key only under its exact spelling; the whole-manifest decode has already checked its type.
+func exactStrings(top map[string]json.RawMessage, key string) ([]string, bool) {
+	value, ok := top[key]
+	if !ok {
+		return nil, false
+	}
+	var values []string
+	_ = json.Unmarshal(value, &values)
+	return values, true
 }
 
 // Decode array items separately to retain indices missing from UnmarshalTypeError.Field.

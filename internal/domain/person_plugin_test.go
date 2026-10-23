@@ -76,6 +76,20 @@ func TestCheckWorkInfoPluginManifestReadsKindSourcesAndDomains(t *testing.T) {
 	}
 }
 
+// Only the exact keys carry sources and domains; a key that differs in case must not bypass their checks.
+func TestCheckWorkInfoPluginManifestIgnoresMiscasedSourcesAndDomains(t *testing.T) {
+	person, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead +
+		`"kind":"person","operations":["search","fetch"],"sources":["s"],"Domains":["HTTPS://example.com/path"]}`))
+	if rejection != nil || person.Domains != nil {
+		t.Fatalf("person manifest with Domains = %+v, %v; want accepted without domains", person, rejection)
+	}
+	work, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead +
+		`"operations":["fetch"],"Sources":["a"],"DOMAINS":["example.com"]}`))
+	if rejection != nil || work.Sources != nil || work.Domains != nil {
+		t.Fatalf("work manifest with Sources and DOMAINS = %+v, %v; want accepted without either", work, rejection)
+	}
+}
+
 func TestPersonFetchRequestJSONCarriesTheSource(t *testing.T) {
 	req := WorkInfoRunRequest{Operation: WorkInfoFetch, Kind: WorkInfoPluginKindPerson, Source: "s", ID: "1", Sources: []string{"s"}}
 	b, err := json.Marshal(req)
