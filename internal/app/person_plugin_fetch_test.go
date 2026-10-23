@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,11 +11,13 @@ import (
 )
 
 const (
-	fetchPerson = int64(3)
-	otherPerson = int64(4)
+	fetchPerson  = int64(3)
+	otherPerson  = int64(4)
+	linkedPerson = int64(5)
 )
 
-// fakePluginPeople rechecks the plugin like the store's transaction; a person absent from people does not exist.
+// fakePluginPeople rechecks the plugin like the store's transaction and adds the applied external IDs; a person absent
+// from people does not exist.
 type fakePluginPeople struct {
 	plugins *runPluginStore
 	people  map[int64]domain.Credit
@@ -42,6 +45,8 @@ func (f *fakePluginPeople) ApplyPersonPluginFetch(
 	if !ok {
 		return domain.PersonPluginApplied{}, domain.ErrNotFound
 	}
+	person.ExternalIDs = append(slices.Clone(person.ExternalIDs), apply.Fetched.ExternalIDs...)
+	f.people[apply.PersonID] = person
 	return domain.PersonPluginApplied{Person: person, Skipped: []domain.SkippedPersonValue{}}, nil
 }
 
@@ -69,16 +74,21 @@ type personFetchEnv struct {
 	faces  *recordingFaces
 }
 
-// Plugin 1 is a person plugin accepting site and wiki; fetchPerson stores an unaccepted ID before a wiki and a site ID.
+// Plugin 1 is a person plugin accepting site and wiki and handling example.com links; fetchPerson stores an unaccepted
+// ID before a wiki and a site ID and a handled link, linkedPerson only links.
 func newPersonFetchEnv() *personFetchEnv {
 	e := &personFetchEnv{fetchEnv: newFetchEnv(), faces: &recordingFaces{}}
 	e.usePersonPlugin()
+	e.store.plugins[1].Manifest.Domains = []string{"example.com"}
 	e.people = &fakePluginPeople{plugins: e.store, people: map[int64]domain.Credit{
 		fetchPerson: {ID: fetchPerson, Name: "Hanako", ExternalIDs: []domain.ExternalID{
 			{Source: "other", Value: "o-1"}, {Source: "wiki", Value: "w-1"}, {Source: "wiki", Value: "w-2"},
 			{Source: "site", Value: "s-1"},
-		}},
-		otherPerson: {ID: otherPerson, Name: "Taro", ExternalIDs: []domain.ExternalID{{Source: "other", Value: "o-2"}}},
+		}, Profile: domain.PersonProfile{Links: []string{"https://example.com/p/1"}}},
+		otherPerson: {ID: otherPerson, Name: "Taro", ExternalIDs: []domain.ExternalID{{Source: "other", Value: "o-2"}},
+			Profile: domain.PersonProfile{Links: []string{"https://example.org/p/2"}}},
+		linkedPerson: {ID: linkedPerson, Name: "Jiro", ExternalIDs: []domain.ExternalID{{Source: "other", Value: "o-3"}},
+			Profile: domain.PersonProfile{Links: []string{"https://example.org/p/3", "https://www.example.com/p/3"}}},
 	}}
 	e.plugins = NewWorkInfoPlugins(WorkInfoPluginsOptions{
 		Store: e.store, Runtime: e.runtime, People: e.people, PersonImages: e.faces, Now: func() time.Time { return e.now },
@@ -92,27 +102,109 @@ func (e *personFetchEnv) fetch(t *testing.T, images ...[]byte) domain.PersonPlug
 		Person:             domain.FetchedPluginPerson{Name: "Hanako", Profile: domain.PersonProfile{Birthplace: "Tokyo"}},
 		PersonPluginImages: images,
 	}
-	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, domain.PersonFetchKey{})
 	if err != nil {
 		t.Fatalf("FetchPersonWithPlugin: %v", err)
 	}
 	return result
 }
 
-func TestFetchPersonWithPluginSendsTheFirstAcceptedStoredID(t *testing.T) {
+func TestFetchPersonWithPluginSendsTheFirstAcceptedStoredIDBeforeALink(t *testing.T) {
 	e := newPersonFetchEnv()
-	e.fetch(t)
+	result := e.fetch(t)
 	req := e.runtime.requests[0]
 	if req.Operation != domain.WorkInfoFetch || req.Kind != domain.WorkInfoPluginKindPerson || req.Source != "wiki" ||
-		req.ID != "w-1" {
-		t.Fatalf("request = %+v; want a person fetch of the first stored ID the plugin accepts, wiki w-1", req)
+		req.ID != "w-1" || req.URL != "" || result.Link != "" {
+		t.Fatalf("request = %+v, link %q; want a person fetch of the first stored ID the plugin accepts, wiki w-1, "+
+			"over the handled link", req, result.Link)
+	}
+}
+
+func TestFetchPersonWithPluginSendsTheOnlyHandledLink(t *testing.T) {
+	e := newPersonFetchEnv()
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), linkedPerson, 1, domain.PersonFetchKey{})
+	if err != nil {
+		t.Fatalf("FetchPersonWithPlugin: %v", err)
+	}
+	want := "https://www.example.com/p/3"
+	if len(e.runtime.requests) != 1 || e.runtime.requests[0].URL != want || e.runtime.requests[0].Source != "" ||
+		result.Link != want {
+		t.Fatalf("requests = %+v, link %q; want one fetch by the handled link", e.runtime.requests, result.Link)
+	}
+}
+
+func TestFetchPersonWithPluginAsksForAChoiceAmongHandledLinks(t *testing.T) {
+	e := newPersonFetchEnv()
+	person := e.people.people[linkedPerson]
+	person.Profile.Links = []string{
+		"http://Example.com/p/3/", "https://example.org/p/3", "https://example.com/p/3", "https://m.example.com/p/4",
+	}
+	e.people.people[linkedPerson] = person
+
+	_, err := e.plugins.FetchPersonWithPlugin(context.Background(), linkedPerson, 1, domain.PersonFetchKey{})
+	var ambiguous *domain.PersonLinkAmbiguousError
+	if !errors.As(err, &ambiguous) || !errors.Is(err, domain.ErrPersonLinkAmbiguous) ||
+		!slices.Equal(ambiguous.Links, []string{"http://Example.com/p/3/", "https://m.example.com/p/4"}) {
+		t.Fatalf("err = %v; want ErrPersonLinkAmbiguous with the folded links in stored order", err)
+	}
+	if len(e.runtime.requests) != 0 {
+		t.Fatal("the module ran before the choice")
+	}
+}
+
+func TestFetchPersonWithPluginSendsTheGivenLink(t *testing.T) {
+	e := newPersonFetchEnv()
+	link := "  https://example.com/p/9#bio  "
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, domain.PersonFetchKey{Link: &link})
+	if err != nil {
+		t.Fatalf("FetchPersonWithPlugin: %v", err)
+	}
+	if req := e.runtime.requests[0]; req.URL != "https://example.com/p/9#bio" || req.Source != "" ||
+		result.Link != req.URL {
+		t.Fatalf("request = %+v, link %q; want the trimmed given link over the stored ID", req, result.Link)
+	}
+}
+
+func TestFetchPersonWithPluginRefusesALinkTheReplacedPluginDropped(t *testing.T) {
+	e := newPersonFetchEnv()
+	e.store.beforeModule = func() { e.store.plugins[1].Manifest.Domains = nil }
+
+	_, err := e.plugins.FetchPersonWithPlugin(context.Background(), linkedPerson, 1, domain.PersonFetchKey{})
+	if !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
+		t.Fatalf("err = %v; want ErrWorkInfoRunInvalid for the link the replaced plugin no longer handles", err)
+	}
+	if len(e.runtime.requests) != 0 {
+		t.Fatal("the module ran with a link outside its domains")
+	}
+}
+
+func TestFetchPersonWithPluginGoesByTheIDAppliedFromALinkFetch(t *testing.T) {
+	e := newPersonFetchEnv()
+	gained := domain.ExternalID{Source: "site", Value: "s-3"}
+	e.runtime.result = domain.WorkInfoRunResult{Person: domain.FetchedPluginPerson{
+		Name: "Jiro", ExternalIDs: []domain.ExternalID{gained},
+	}}
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), linkedPerson, 1, domain.PersonFetchKey{})
+	if err != nil {
+		t.Fatalf("FetchPersonWithPlugin: %v", err)
+	}
+	if _, err := e.plugins.ApplyPersonPluginFetch(context.Background(), linkedPerson, result.ID,
+		domain.PersonPluginSelection{ExternalIDs: []domain.ExternalID{gained}}, -1); err != nil {
+		t.Fatalf("ApplyPersonPluginFetch: %v", err)
+	}
+
+	if _, err := e.plugins.FetchPersonWithPlugin(context.Background(), linkedPerson, 1, domain.PersonFetchKey{}); err != nil {
+		t.Fatalf("second FetchPersonWithPlugin: %v", err)
+	}
+	if req := e.runtime.requests[1]; req.Source != "site" || req.ID != "s-3" || req.URL != "" {
+		t.Fatalf("second request = %+v; want the fetch by the applied site ID", req)
 	}
 }
 
 func TestFetchPersonWithPluginSendsTheCandidatesID(t *testing.T) {
 	e := newPersonFetchEnv()
 	source, id := "site", "  s-9  "
-	if _, err := e.plugins.FetchPersonWithPlugin(context.Background(), otherPerson, 1, &source, &id); err != nil {
+	if _, err := e.plugins.FetchPersonWithPlugin(context.Background(), otherPerson, 1, domain.PersonFetchKey{Source: &source, ID: &id}); err != nil {
 		t.Fatalf("FetchPersonWithPlugin: %v", err)
 	}
 	if req := e.runtime.requests[0]; req.Source != "site" || req.ID != "s-9" {
@@ -122,20 +214,25 @@ func TestFetchPersonWithPluginSendsTheCandidatesID(t *testing.T) {
 
 func TestFetchPersonWithPluginRefusesBeforeTheRun(t *testing.T) {
 	site, wrong, id := "site", "other", "s-1"
+	outside, name, link := "https://example.org/p/1", "Hanako", "https://example.com/p/1"
 	for _, tc := range []struct {
-		name       string
-		personID   int64
-		source, id *string
-		want       error
+		name     string
+		personID int64
+		key      domain.PersonFetchKey
+		want     error
 	}{
-		{"no accepted stored ID", otherPerson, nil, nil, domain.ErrPersonExternalIDMissing},
-		{"missing person", 99, nil, nil, domain.ErrPersonNotFound},
-		{"undeclared source", fetchPerson, &wrong, &id, domain.ErrWorkInfoRunInvalid},
-		{"source without id", fetchPerson, &site, nil, domain.ErrWorkInfoRunInvalid},
+		{"no accepted stored ID or link", otherPerson, domain.PersonFetchKey{}, domain.ErrPersonExternalIDMissing},
+		{"missing person", 99, domain.PersonFetchKey{}, domain.ErrPersonNotFound},
+		{"undeclared source", fetchPerson, domain.PersonFetchKey{Source: &wrong, ID: &id}, domain.ErrWorkInfoRunInvalid},
+		{"source without id", fetchPerson, domain.PersonFetchKey{Source: &site}, domain.ErrWorkInfoRunInvalid},
+		{"link outside the domains", otherPerson, domain.PersonFetchKey{Link: &outside}, domain.ErrPersonLinkUnsupported},
+		{"link that is not a URL", otherPerson, domain.PersonFetchKey{Link: &name}, domain.ErrWorkInfoRunInvalid},
+		{"link with source and id", otherPerson, domain.PersonFetchKey{Source: &site, ID: &id, Link: &link},
+			domain.ErrWorkInfoRunInvalid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newPersonFetchEnv()
-			_, err := e.plugins.FetchPersonWithPlugin(context.Background(), tc.personID, 1, tc.source, tc.id)
+			_, err := e.plugins.FetchPersonWithPlugin(context.Background(), tc.personID, 1, tc.key)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v; want %v", err, tc.want)
 			}
@@ -150,7 +247,7 @@ func TestFetchPersonWithPluginRefusesASourceTheReplacedPluginDropped(t *testing.
 	e := newPersonFetchEnv()
 	e.store.beforeModule = func() { e.store.plugins[1].Manifest.Sources = []string{"site"} }
 
-	_, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
+	_, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, domain.PersonFetchKey{})
 	if !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
 		t.Fatalf("err = %v; want ErrWorkInfoRunInvalid for the wiki ID the replaced plugin no longer declares", err)
 	}
@@ -164,7 +261,7 @@ func TestApplyPersonPluginFetchRefusesAProfileValueTheResultHid(t *testing.T) {
 	e.runtime.result = domain.WorkInfoRunResult{Person: domain.FetchedPluginPerson{
 		Name: "Hanako", Profile: domain.PersonProfile{BirthDate: "2000", DeathDate: "1990"},
 	}}
-	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, domain.PersonFetchKey{})
 	if err != nil {
 		t.Fatalf("FetchPersonWithPlugin: %v", err)
 	}

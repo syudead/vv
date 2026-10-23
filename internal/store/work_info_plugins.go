@@ -16,7 +16,7 @@ import (
 
 // Metadata reads omit module bytes and include the optional latest-run completion time.
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources,
+	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, domains,
 	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
 
 // ListWorkInfoPlugins sorts by name then filename, placing unreadable names last.
@@ -76,7 +76,7 @@ func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64
 }
 
 // SaveWorkInfoPlugin replaces same-name uploads and always revokes approval, retaining only declared settings unless the
-// new manifest is unreadable; a replacement takes the new kind and sources.
+// new manifest is unreadable; a replacement takes the new kind, sources and domains.
 func (s *WorkInfoPluginStore) SaveWorkInfoPlugin(
 	ctx context.Context, upload domain.WorkInfoPluginUpload, now time.Time,
 ) (domain.WorkInfoPlugin, bool, error) {
@@ -119,7 +119,7 @@ type uploadColumns struct {
 	contract             sql.NullInt64
 	operations, settings sql.NullString
 	kind                 domain.WorkInfoPluginKind
-	sources              sql.NullString
+	sources, domains     sql.NullString
 	module               []byte
 	problem              sql.NullString
 	declared             []string
@@ -143,6 +143,9 @@ func workInfoPluginUploadColumns(upload domain.WorkInfoPluginUpload) (uploadColu
 			return uploadColumns{}, fmt.Errorf("cannot encode the person plugin sources: %w", err)
 		}
 		cols.kind, cols.sources = m.Kind, sql.NullString{String: string(encoded), Valid: true}
+		if cols.domains, err = encodeDomains(m.Domains); err != nil {
+			return uploadColumns{}, err
+		}
 	}
 	if upload.Problem != "" {
 		cols.problem = nullString(string(upload.Problem))
@@ -173,6 +176,18 @@ func workInfoPluginUploadColumns(upload domain.WorkInfoPluginUpload) (uploadColu
 	return cols, nil
 }
 
+// encodeDomains stores nil, a manifest without domains, as null.
+func encodeDomains(domains []string) (sql.NullString, error) {
+	if domains == nil {
+		return sql.NullString{}, nil
+	}
+	encoded, err := json.Marshal(domains)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("cannot encode the person plugin domains: %w", err)
+	}
+	return sql.NullString{String: string(encoded), Valid: true}, nil
+}
+
 func nullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
 }
@@ -197,10 +212,10 @@ func insertWorkInfoPlugin(
 ) (int64, error) {
 	result, err := tx.ExecContext(ctx, `insert into work_info_plugins
 		(name, file_name, version, description, contract, operations, settings, module, digest, problem,
-		 approved_digest, added_at, updated_at, kind, sources)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?)`,
+		 approved_digest, added_at, updated_at, kind, sources, domains)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?, ?)`,
 		cols.name, upload.FileName, cols.version, cols.description, cols.contract, cols.operations,
-		cols.settings, cols.module, upload.Digest, cols.problem, now.Unix(), now.Unix(), cols.kind, cols.sources)
+		cols.settings, cols.module, upload.Digest, cols.problem, now.Unix(), now.Unix(), cols.kind, cols.sources, cols.domains)
 	if err != nil {
 		return 0, fmt.Errorf("cannot add the work-info plugin: %w", err)
 	}
@@ -213,10 +228,10 @@ func replaceWorkInfoPlugin(
 	if _, err := tx.ExecContext(ctx, `update work_info_plugins set
 		file_name = ?, version = ?, description = ?, contract = ?, operations = ?, settings = ?, module = ?,
 		digest = ?, problem = ?, approved_digest = null, updated_at = ?, generation = generation + 1,
-		kind = ?, sources = ?
+		kind = ?, sources = ?, domains = ?
 		where id = ?`,
 		upload.FileName, cols.version, cols.description, cols.contract, cols.operations, cols.settings,
-		cols.module, upload.Digest, cols.problem, now.Unix(), cols.kind, cols.sources, id); err != nil {
+		cols.module, upload.Digest, cols.problem, now.Unix(), cols.kind, cols.sources, cols.domains, id); err != nil {
 		return fmt.Errorf("cannot replace the work-info plugin: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from work_info_plugin_runs where plugin_id = ?`, id); err != nil {
@@ -394,14 +409,14 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	var (
 		plugin                                           domain.WorkInfoPlugin
 		name, version, description, operations, settings sql.NullString
-		problem, approved, sources                       sql.NullString
+		problem, approved, sources, domains              sql.NullString
 		contract, lastRunAt                              sql.NullInt64
 		addedAt, updatedAt                               int64
 		kind                                             string
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
 		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation,
-		&kind, &sources, &lastRunAt)
+		&kind, &sources, &domains, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}
@@ -418,6 +433,11 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	if sources.Valid {
 		if err := json.Unmarshal([]byte(sources.String), &plugin.Manifest.Sources); err != nil {
 			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the person plugin sources: %w", err)
+		}
+	}
+	if domains.Valid {
+		if err := json.Unmarshal([]byte(domains.String), &plugin.Manifest.Domains); err != nil {
+			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the person plugin domains: %w", err)
 		}
 	}
 	if operations.String != "" {

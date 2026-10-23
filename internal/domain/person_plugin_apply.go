@@ -285,6 +285,14 @@ type PersonPluginFetchResult struct {
 	Person    FetchedPluginPerson
 	// ImageCount is how many images VVMDM kept, served by index in the plugin's order.
 	ImageCount int
+	// Link is the link the fetch ran with; empty for a fetch by ID.
+	Link string
+}
+
+// PersonFetchKey names what a person page fetch runs with: a candidate's Source and ID together, a Link, or nothing,
+// when VVMDM picks the person's stored ID or link.
+type PersonFetchKey struct {
+	Source, ID, Link *string
 }
 
 // PersonPluginApply carries a kept person fetch to the store, which rechecks the plugin in its transaction.

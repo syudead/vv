@@ -76,6 +76,8 @@ type WorkInfoPluginEntry struct {
 	Kind      WorkInfoPluginKind
 	// Sources is empty for a work-info plugin.
 	Sources []string
+	// Domains is empty for a work-info plugin and for a person plugin that declares none.
+	Domains []string
 }
 
 // Entry preserves declaration order and removes secret values.
@@ -97,9 +99,12 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		operations = []WorkInfoOperation{}
 	}
 	kind := p.Kind()
-	sources := []string{}
+	sources, domains := []string{}, []string{}
 	if kind == WorkInfoPluginKindPerson && p.Manifest.Sources != nil {
 		sources = p.Manifest.Sources
+	}
+	if kind == WorkInfoPluginKindPerson && p.Manifest.Domains != nil {
+		domains = p.Manifest.Domains
 	}
 	return WorkInfoPluginEntry{
 		ID:          p.ID,
@@ -116,6 +121,7 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		LastRunAt:   p.LastRunAt,
 		Kind:        kind,
 		Sources:     sources,
+		Domains:     domains,
 	}
 }
 

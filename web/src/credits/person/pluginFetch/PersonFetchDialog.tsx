@@ -24,6 +24,8 @@ import PersonCompare from "./PersonCompare";
 import { selectionEmpty } from "./personCompareRows";
 import {
   candidateKey,
+  isLink,
+  type LinkRefusal,
   type PersonFetchFlow,
   usePersonFetchFlow,
 } from "./usePersonFetchFlow";
@@ -43,6 +45,20 @@ function candidateView(candidate: PersonPluginCandidate): CandidateView {
         : text.candidateDetail(candidate.detail, sourceId),
     url: candidate.url,
   };
+}
+
+/** A link row reads as the path, query and fragment as stored, over the host the list draws. */
+function linkView(link: string): CandidateView {
+  const rest = link.replace(/^[a-z][a-z\d+.-]*:\/\/[^/?#]*/i, "");
+  return { key: link, title: rest === "" ? "/" : rest, url: link };
+}
+
+function refusalText(refusal: LinkRefusal): string {
+  const label = pluginLabel(refusal.plugin);
+  const domains = refusal.plugin.domains;
+  return domains.length === 0
+    ? text.noLinkFetch(label)
+    : text.linkUnsupported(label, refusal.host, domains);
 }
 
 /** The person's other names, one press from a search, since a site may list the person under any. */
@@ -85,6 +101,8 @@ function NameSearch({ flow, person }: { flow: PersonFetchFlow; person: Person })
         value={flow.query}
         busy={busy}
         autoFocus
+        description={isLink(flow.query) ? text.linkTyped : undefined}
+        error={flow.linkRefusal === null ? undefined : refusalText(flow.linkRefusal)}
         onChange={flow.changeQuery}
       />
       <OtherNames flow={flow} person={person} />
@@ -104,6 +122,30 @@ function NameSearch({ flow, person }: { flow: PersonFetchFlow; person: Person })
             }}
           />
         ))}
+    </>
+  );
+}
+
+/** The person's links the plugin handles, after the server found several; pressing one fetches it. */
+function LinkChoice({
+  flow,
+  links,
+}: {
+  flow: PersonFetchFlow;
+  links: readonly string[];
+}) {
+  const label = flow.plugin === undefined ? "" : pluginLabel(flow.plugin);
+  return (
+    <>
+      <p className="text-sm text-muted-foreground">{text.chooseLink(label)}</p>
+      <CandidateList
+        candidates={links.map(linkView)}
+        heading={text.handledLinks(label)}
+        choosable
+        chosenKey={flow.running?.key}
+        busy={flow.running !== null}
+        onChoose={(link) => flow.choose({ link })}
+      />
     </>
   );
 }
@@ -143,7 +185,10 @@ function FindStep({
       {flow.byName ? (
         <NameSearch flow={flow} person={person} />
       ) : (
-        <SearchByName flow={flow} />
+        <>
+          {flow.links !== null && <LinkChoice flow={flow} links={flow.links} />}
+          <SearchByName flow={flow} />
+        </>
       )}
       {flow.failure !== null && (
         <FailureAlert failure={flow.failure} settingsPath={PERSON_PLUGIN_SETTINGS} />
@@ -156,14 +201,14 @@ function CompareStep({ flow, person }: { flow: PersonFetchFlow; person: Person }
   const fetched = flow.fetched;
   if (fetched === null) return null;
   const first = fetched.result.person.externalIds[0];
+  const label = pluginLabel(fetched.plugin);
+  const link = fetched.result.link;
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs break-words text-muted-foreground">
-        {text.source(
-          pluginLabel(fetched.plugin),
-          first?.source ?? "",
-          first?.value ?? "",
-        )}
+        {link === undefined || link === ""
+          ? text.source(label, first?.source ?? "", first?.value ?? "")
+          : text.sourceLink(label, link)}
       </p>
       {/* Back reaches the plugin and the candidates, so another plugin or person is a step away. */}
       <div className="flex flex-wrap gap-1">
@@ -208,7 +253,7 @@ function submitLabel(flow: PersonFetchFlow): ReactNode {
     return busyLabel(
       flow.running.operation === "search" ? words.searching : words.fetching,
     );
-  return flow.byName ? words.search : words.fetch;
+  return flow.byName && !isLink(flow.query) ? words.search : words.fetch;
 }
 
 function submitDisabled(flow: PersonFetchFlow): boolean {
@@ -216,7 +261,7 @@ function submitDisabled(flow: PersonFetchFlow): boolean {
   if (flow.step === "compare")
     return selectionEmpty(flow.selection) || flow.stale || flow.running !== null;
   if (flow.plugin === undefined || flow.running !== null) return true;
-  return flow.byName && flow.query.trim() === "";
+  return flow.byName ? flow.query.trim() === "" : flow.links !== null;
 }
 
 /** Fetch info…: a person plugin's result compared with the person, applied item by item. */

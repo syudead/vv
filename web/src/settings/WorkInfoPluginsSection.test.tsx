@@ -23,6 +23,7 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
   return {
     kind: "work",
     sources: [],
+    domains: [],
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",
@@ -775,7 +776,11 @@ describe("WorkInfoPluginsSection", () => {
 
   it("人物プラグインは人物の節だけに、作品情報プラグインは作品情報の節だけに出る", async () => {
     fetchMock.mockImplementation(
-      server([plugin({ id: 1 }), person({ id: 2, state: "approved" })]).handler,
+      server([
+        plugin({ id: 1 }),
+        person({ id: 2, state: "approved", domains: ["example.com", "other.example"] }),
+        person({ id: 3, name: "plain.people", fileName: "plain.wasm" }),
+      ]).handler,
     );
     renderSection();
 
@@ -786,9 +791,12 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(list()).queryByText("example.people")).toBeNull();
     expect(
       within(rowOf("example.people", "Added person plugins")).getByText(
-        /Search by name · Fetch by ID · Accepts IDs from example\.people, other\.people/,
+        /Search by name · Fetch by ID · Accepts IDs from example\.people, other\.people · Accepts links from example\.com, other\.example/,
       ),
     ).toBeDefined();
+    expect(
+      within(rowOf("plain.people", "Added person plugins")).queryByText(/Accepts links/),
+    ).toBeNull();
     expect(document.getElementById("person-plugins")).not.toBeNull();
   });
 
@@ -810,8 +818,10 @@ describe("WorkInfoPluginsSection", () => {
     expect(screen.getByText("No person plugins yet")).toBeDefined();
   });
 
-  it("人物プラグインの承認の画面は受け付ける外部 ID の種類を並べる", async () => {
-    fetchMock.mockImplementation(server([person({ id: 2 })]).handler);
+  it("人物プラグインの承認の画面は受け付ける外部 ID の種類とリンクのドメインを並べる", async () => {
+    fetchMock.mockImplementation(
+      server([person({ id: 2, domains: ["example.com", "other.example"] })]).handler,
+    );
     const user = userEvent.setup();
     renderSection();
 
@@ -827,6 +837,26 @@ describe("WorkInfoPluginsSection", () => {
         (badge) => badge.textContent,
       ),
     ).toEqual(["example.people", "other.people"]);
+    const domainsTerm = within(dialog).getByText("Accepts links from");
+    expect(domainsTerm.parentElement?.previousElementSibling).toBe(term.parentElement);
+    expect(
+      Array.from(
+        (domainsTerm.nextElementSibling as HTMLElement).querySelectorAll(
+          '[data-slot="badge"]',
+        ),
+      ).map((badge) => badge.textContent),
+    ).toEqual(["example.com", "other.example"]);
+  });
+
+  it("リンクのドメインを持たない人物プラグインの承認の画面はリンクの行を出さない", async () => {
+    fetchMock.mockImplementation(server([person({ id: 2 })]).handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(await screen.findByRole("button", { name: "Review and approve" }));
+    const dialog = screen.getByRole("dialog", { name: "Approve example.people?" });
+    expect(within(dialog).getByText("Accepts IDs from")).toBeDefined();
+    expect(within(dialog).queryByText("Accepts links from")).toBeNull();
   });
 
   it("画面の文言はカタログか利用者のデータだけである", async () => {

@@ -233,6 +233,9 @@ const errorCodes = {
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
   person_external_id_missing:
     "This person has no ID the plugin accepts. Search by name instead.",
+  person_link_ambiguous:
+    "This person has several links the plugin handles. Choose one first.",
+  person_link_unsupported: "The plugin doesn't handle this link.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",
@@ -1891,6 +1894,15 @@ export const en = {
         candidateDetail: (detail: string, sourceId: string) => `${detail} · ${sourceId}`,
         source: (plugin: string, source: string, id: string) =>
           `From ${plugin} · ${source} ${id}`,
+        sourceLink: (plugin: string, link: string) => `From ${plugin} · ${link}`,
+        chooseLink: (plugin: string) =>
+          `${plugin} has no ID for this person. Choose the link to fetch from.`,
+        handledLinks: (plugin: string) => `Links ${plugin} handles`,
+        linkTyped: "Fetches the person on this page instead of searching.",
+        linkUnsupported: (plugin: string, host: string, domains: readonly string[]) =>
+          `${plugin} doesn't handle links on ${host}. It accepts links from ${domains.join(", ")}.`,
+        noLinkFetch: (plugin: string) =>
+          `${plugin} doesn't fetch by link. Search by name instead.`,
         applied: (name: string) => `Applied to ${name}.`,
         gone: "This person no longer exists.",
         items: {
@@ -4123,6 +4135,8 @@ export const en = {
           fetch: "Fetch by ID",
         } satisfies Record<WorkInfoOperation, string>,
         accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
+        acceptsLinks: (domains: readonly string[]) =>
+          `Accepts links from ${domains.join(", ")}`,
       },
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
@@ -4159,6 +4173,7 @@ export const en = {
         personDescription:
           "Approved person plugins can run from a person page, and when fetched work information names a person with an ID they accept.",
         sources: "Accepts IDs from",
+        domains: "Accepts links from",
         version: "Version",
         file: "File",
         can: "Can",
