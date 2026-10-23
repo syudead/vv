@@ -635,7 +635,7 @@ flowchart LR
 | Header band | Logo (home), breadcrumb to the folder, the only × |
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Title row | The title and its pencil, then `Favorite`, `Add to playlist` and `Add to group`, each an icon and its word, `ghost` `sm`; beside the title from `sm`, on a row of their own below it |
-| Tags | Right below the title as one unit  |
+| Tags | Right below the title as one unit |
 | Tab strip | Under the tags; the tabs, then the visibility toggle and `Edit details` at its end ([Tabs](#tabs)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, at the end of the tab strip |
 | Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
@@ -719,11 +719,6 @@ flowchart LR
 ```
 
 Updating the cached list means the library card has changed on return.
-
-### Information rows
-
-The rows of facts and icon-only actions that sat under the title are replaced
-by the [tabs](#tabs) and the labelled actions of the title row and the strip.
 
 ### Details editor
 

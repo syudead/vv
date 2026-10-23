@@ -89,8 +89,8 @@ async function clearDetails(request: APIRequestContext, id: number): Promise<Vid
   return (await response.json()) as Video;
 }
 
-function infoArea(page: Page) {
-  return page.getByRole("list", { name: "File details" }).locator("xpath=../..");
+function overview(page: Page) {
+  return page.getByRole("tabpanel", { name: "Overview" });
 }
 
 async function openVideo(page: Page, id: number, title: string) {
@@ -158,7 +158,7 @@ test.describe.serial("work information", () => {
 
     await page.setViewportSize({ width: 360, height: 800 });
     await openVideo(page, b.id, b.title);
-    const text = infoArea(page).locator("p").filter({ hasText: "長い説明の一文です。" });
+    const text = overview(page).locator("p").filter({ hasText: "長い説明の一文です。" });
     await expect(text).toBeVisible();
     await expect(page.getByRole("button", { name: "Show more" })).toBeVisible();
     expect(await text.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(
