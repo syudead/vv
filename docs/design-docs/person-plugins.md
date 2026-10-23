@@ -37,6 +37,7 @@ An older VVMDM ignores `kind` and fails the run on the `person` response with
 | Contract `2` for person plugins | Contract `2` would also have to describe work-info plugins, which do not change |
 | Sources or domains returned by a `describe` operation | The approval would show values that unapproved code produced |
 | URL patterns instead of domains | The owner could not read at approval which links the plugin receives, and the plugin parses the link itself anyway |
+| Accepting `domains` on work-info plugins now | The list would show a declaration that no work-info fetch acts on; a `kind: work` manifest with `domains` is `manifest_invalid` until one does |
 
 ## A person plugin declares both operations
 
@@ -75,13 +76,16 @@ at the 4 MiB limit fit the fetch budget below on their own.
 ## Person plugins share the work-info plugin registry
 
 A person plugin is a `work_info_plugins` row whose `kind` column is `person`,
-with its `sources` stored as a JSON array; upload, approval, settings, last
+with its `sources` and `domains` stored as JSON arrays in columns of the row
+(`domains` is null when the manifest declares none); upload, approval, settings, last
 run and deletion stay the same, and the list tells the kinds apart by `kind`.
 The manifest name stays the identity across both kinds, so a module named like
 an existing plugin replaces it whatever its kind and takes the new kind and
 sources. Rows uploaded before person plugins keep `kind` `work`: the migration
 does not inspect stored modules again, so a person module uploaded to an older
-VVMDM runs as a work-info plugin until the owner uploads it again.
+VVMDM runs as a work-info plugin until the owner uploads it again. Likewise,
+a person plugin uploaded before `domains` existed has none until the owner
+uploads it again.
 
 A work-info search or fetch with a person plugin, and a person search with a
 work-info plugin, answer `409 plugin_kind_mismatch` before the module runs.
@@ -89,6 +93,7 @@ work-info plugin, answer `409 plugin_kind_mismatch` before the module runs.
 | Rejected | Why |
 | --- | --- |
 | A `person_plugins` table with its own endpoints | It would copy the registry's store, approval, settings and last-run code |
+| A separate table for the domains | A join for a list of at most 10 strings that is read with the row and never queried alone |
 | Renaming `WorkInfoPlugin*` to `Plugin*` now | It touches every plugin file, the API and the SPA without changing behaviour |
 | Refusing a replacement of another kind | The owner would have to delete the plugin first, and a replacement already revokes approval |
 
