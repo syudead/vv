@@ -3019,7 +3019,7 @@ paths:
     put:
       operationId: uploadPersonImage
       summary: "Set a person's face from an uploaded image"
-      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. While face recognition is on and its runtime is ready, an image without a usable face returns 400 person_image_no_face and one with several returns 400 person_image_many_faces; without the runtime the face is not checked. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit."
+      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. The image is stored whatever face recognition finds in it. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -11796,8 +11796,6 @@ components:
         - person_image_not_found
         - person_image_invalid
         - person_image_too_large
-        - person_image_no_face
-        - person_image_many_faces
         - merge_same_organization
         - external_id_taken
         - blocked_address

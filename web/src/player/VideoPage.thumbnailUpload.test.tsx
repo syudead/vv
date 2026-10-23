@@ -150,8 +150,17 @@ function entry() {
   return screen.getByRole("button", { name: "Change thumbnail" });
 }
 
-function choose(file: File) {
-  const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
+async function uploadDialog() {
+  const open = screen.queryByRole("dialog", { name: "Upload a thumbnail" });
+  if (open !== null) return open;
+  fireEvent.keyDown(entry(), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
+  return screen.findByRole("dialog", { name: "Upload a thumbnail" });
+}
+
+async function choose(file: File) {
+  const dialog = await uploadDialog();
+  const input = within(dialog).getByTestId<HTMLInputElement>("image-upload-input");
   fireEvent.change(input, { target: { files: [file] } });
 }
 
@@ -162,7 +171,7 @@ function png(name = "photo.png") {
 }
 
 async function chooseAndApply(file = png()) {
-  choose(file);
+  await choose(file);
   const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Use as thumbnail" }));
 }
@@ -228,30 +237,27 @@ describe("VideoPage thumbnail upload", () => {
     server.video = uploaded;
     await openPage("guest");
     expect(screen.queryByRole("button", { name: "Change thumbnail" })).toBeNull();
-    expect(screen.queryByTestId("thumbnail-upload-input")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Upload a thumbnail" })).toBeNull();
     expect(within(facts()).queryByRole("img", { name: "Uploaded thumbnail" })).toBeNull();
   });
 
-  it("入口のメニューの「画像をアップロード」は PNG・JPEG・WebP に限ったピッカーを開く", async () => {
+  it("入口のメニューの「画像をアップロード」は PNG・JPEG・WebP に限ったアップロードのダイアログを開く", async () => {
     await openPage();
-    const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
+    const dialog = await uploadDialog();
+    const input = within(dialog).getByTestId<HTMLInputElement>("image-upload-input");
     expect(input.accept).toBe("image/png,image/jpeg,image/webp");
-    const click = vi.spyOn(input, "click");
-    fireEvent.keyDown(entry(), { key: "Enter" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
-    expect(click).toHaveBeenCalledTimes(1);
   });
 
-  it("別の種類や 64 MB を超える画像は、要求を送らずに失敗の行で断る", async () => {
+  it("別の種類や 64 MB を超える画像は、要求を送らずにアップロードのダイアログで断る", async () => {
     await openPage();
-    choose(new File(["GIF89a"], "anim.gif", { type: "image/gif" }));
+    await choose(new File(["GIF89a"], "anim.gif", { type: "image/gif" }));
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Choose a PNG, JPEG or WebP image.",
     );
 
     const large = png("large.png");
     Object.defineProperty(large, "size", { value: 64 * 1024 * 1024 + 1 });
-    choose(large);
+    await choose(large);
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe("Choose an image up to 64 MB."),
     );
@@ -261,7 +267,7 @@ describe("VideoPage thumbnail upload", () => {
 
   it("画像を選ぶとすぐには送らず、全体を収めたプレビューを開き、やめると何も送らない", async () => {
     await openPage();
-    choose(png());
+    await choose(png());
     const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
     expect(within(dialog).getByText("photo.png")).toBeDefined();
     expect(compose.drawComposition).toHaveBeenLastCalledWith(
@@ -280,12 +286,22 @@ describe("VideoPage thumbnail upload", () => {
     await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
   });
 
+  it("アップロードのダイアログに貼り付けた画像でもプレビューを開く", async () => {
+    await openPage();
+    fireEvent.paste(await uploadDialog(), {
+      clipboardData: { types: ["Files"], files: [png("pasted.png")] },
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
+    expect(within(dialog).getByText("pasted.png")).toBeTruthy();
+    expect(posts()).toEqual([]);
+  });
+
   it("読めない画像はプレビューを出さずに、理由の文で失敗の行を出す", async () => {
     compose.loadUploadImage.mockResolvedValueOnce({
       refusal: "thumbnail_upload_too_large",
     });
     await openPage();
-    choose(png());
+    await choose(png());
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Couldn't upload the image: The image is too large: up to 64 MB and 120 megapixels.",
     );
@@ -296,7 +312,7 @@ describe("VideoPage thumbnail upload", () => {
   it("枠を埋めて拡大し動かしてから適用すると、その形で描いた画像を送る", async () => {
     server.upload.mockReturnValueOnce(json(uploaded));
     await openPage();
-    choose(png());
+    await choose(png());
     const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Fill frame" }));
     const stage = within(dialog).getByRole("img", { name: /Drag or use the arrow keys/ });
@@ -338,11 +354,9 @@ describe("VideoPage thumbnail upload", () => {
     expect(form?.get("contentVersion")).toBe("r1");
     expect(compose.encodeComposition.mock.calls[0]?.[2]).toEqual(WHOLE_IMAGE);
 
-    const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
-    const click = vi.spyOn(input, "click");
     fireEvent.click(entry());
     fireEvent.click(capture);
-    expect(click).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).toBeNull();
     expect(server.requests.some((r) => r.includes("thumbnail-position"))).toBe(false);
 
     answer(json(uploaded));

@@ -88,7 +88,7 @@ describe("FacePickerDialog", () => {
     const user = userEvent.setup();
     server.person = person({ imageRevision: 2 });
     server.appearances = [beach];
-    server.imageRefusal = "person_image_no_face";
+    server.imageRefusal = "person_image_invalid";
     renderPage();
     const dialog = await openPicker(user);
     await waitFor(() =>
@@ -99,7 +99,7 @@ describe("FacePickerDialog", () => {
 
     expect(
       await within(dialog).findByText(
-        "No face was found in this image. Choose a photo where the face is clear.",
+        "This image can't be used. Choose a PNG, JPEG or still WebP.",
       ),
     ).toBeTruthy();
     expect(screen.getByRole("dialog", { name: /Choose a face/ })).toBeTruthy();

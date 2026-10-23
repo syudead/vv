@@ -8,7 +8,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  type ChangeEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -34,7 +33,7 @@ import { EditorDialog } from "../../ui/patterns/editor-dialog";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
 import { Field, FieldDescription, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
-import { Input } from "../../ui/shadcn/input";
+import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { Progress } from "../../ui/shadcn/progress";
 import { Slider } from "../../ui/shadcn/slider";
 import { Spinner } from "../../ui/shadcn/spinner";
@@ -199,7 +198,7 @@ export default function ThumbnailEditor({
   const [mode, setMode] = useState<Stroke["mode"]>("paint");
   const [brushStep, setBrushStep] = useState(1);
   const [reference, setReference] = useState<{ file: File; url: string } | null>(null);
-  const [referenceRefused, setReferenceRefused] = useState(false);
+  const [addingReference, setAddingReference] = useState(false);
   const [busy, setBusy] = useState<"generate" | "cancel" | "apply" | null>(null);
   const [applyFailure, setApplyFailure] = useState<UiText | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -208,7 +207,6 @@ export default function ThumbnailEditor({
     differs: boolean;
   } | null>(null);
   const instructions = useRef<HTMLTextAreaElement | null>(null);
-  const fileInput = useRef<HTMLInputElement | null>(null);
   const now = useNow(running && !ended);
 
   useEffect(
@@ -309,16 +307,11 @@ export default function ThumbnailEditor({
     }
   };
 
-  const chooseReference = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file === undefined) return;
-    if (!referenceAccepted(file)) {
-      setReferenceRefused(true);
-      return;
-    }
-    setReferenceRefused(false);
+  const takeReference = (file: File) => {
+    if (!referenceAccepted(file)) return text.referenceRefused;
+    setAddingReference(false);
     setReference({ file, url: URL.createObjectURL(file) });
+    return null;
   };
 
   const locked = running || ended || busy !== null || view === "compare";
@@ -445,21 +438,12 @@ export default function ThumbnailEditor({
       </Field>
       <Field>
         <FieldTitle>{text.reference}</FieldTitle>
-        <Input
-          ref={fileInput}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          tabIndex={-1}
-          aria-hidden="true"
-          className="hidden"
-          onChange={chooseReference}
-        />
         {reference === null ? (
           <Button
             variant="outline"
             className="w-fit"
             disabled={inputsLocked}
-            onClick={() => fileInput.current?.click()}
+            onClick={() => setAddingReference(true)}
           >
             <ImagePlus aria-hidden="true" />
             {text.addReference}
@@ -481,11 +465,6 @@ export default function ThumbnailEditor({
               <X aria-hidden="true" />
             </ToolButton>
           </div>
-        )}
-        {referenceRefused && (
-          <Alert variant="destructive">
-            <AlertTitle>{text.referenceRefused}</AlertTitle>
-          </Alert>
         )}
         <FieldDescription>{text.referenceHint}</FieldDescription>
       </Field>
@@ -619,6 +598,14 @@ export default function ThumbnailEditor({
           setConfirming(false);
           close();
         }}
+      />
+      <ImageUploadDialog
+        open={addingReference && !inputsLocked}
+        onOpenChange={setAddingReference}
+        title={text.addReferenceTitle}
+        description={text.referenceHint}
+        accept="image/png,image/jpeg,image/webp"
+        onFile={takeReference}
       />
     </>
   );

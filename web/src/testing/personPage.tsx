@@ -65,8 +65,6 @@ export interface Sent {
 export const server = {
   person: null as Person | null,
   sent: [] as Sent[],
-  /** When set, the face upload answers only once this settles. */
-  uploadGate: null as Promise<void> | null,
   plugins: [] as WorkInfoPlugin[],
   candidates: [] as PersonPluginCandidate[],
   fetched: { name: "Aoi", aliases: [], externalIds: [] } as PersonPluginFetchedPerson,
@@ -105,16 +103,6 @@ export const server = {
 
 export function sentBody(request: Sent | undefined): unknown {
   return JSON.parse(String(request?.body));
-}
-
-async function respondLater(method: string, url: URL, body: unknown): Promise<Response> {
-  if (url.pathname === "/api/people/7/image" && method === "PUT" && server.uploadGate) {
-    // Answer with the person as it was when the upload was sent.
-    const saved = { ...server.person, imageRevision: 3 } as Person;
-    await server.uploadGate;
-    return jsonResponse(saved);
-  }
-  return respond(method, url, body);
 }
 
 function fetchedBy(link?: string): Response {
@@ -323,7 +311,6 @@ export function installPersonServer() {
   beforeEach(() => {
     server.person = person();
     server.sent = [];
-    server.uploadGate = null;
     server.plugins = [];
     server.candidates = [];
     server.fetched = { name: "Aoi", aliases: [], externalIds: [] };
@@ -352,7 +339,7 @@ export function installPersonServer() {
         server.sent.push({ method, url, body: init?.body });
         const body: unknown =
           typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-        return respondLater(method, url, body);
+        return Promise.resolve(respond(method, url, body));
       }),
     );
     vi.stubGlobal("IntersectionObserver", IdleIntersectionObserver);

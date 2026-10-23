@@ -13,21 +13,6 @@ import {
 installPersonServer();
 
 describe("PersonPage", () => {
-  it("shows the uploaded face in place of the placeholder", async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByRole("button", { name: "Add a face" });
-
-    const file = new File(["face"], "face.png", { type: "image/png" });
-    await user.upload(screen.getByTestId("person-face-input"), file);
-
-    const image = await screen.findByRole("img", { name: "Aoi" });
-    expect(image.getAttribute("src")).toBe("/api/people/7/image?v=3");
-    const [upload] = sent("PUT", "/api/people/7/image");
-    expect((upload?.body as FormData).get("image")).toBeInstanceOf(File);
-    expect(screen.queryByRole("button", { name: "Add a face" })).toBeNull();
-  });
-
   it("sends the person's favorite and shows it pressed after the response", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -42,30 +27,6 @@ describe("PersonPage", () => {
       personIds: [7],
       favorite: true,
     });
-  });
-
-  it("keeps a heart pressed during an upload when the older upload response arrives", async () => {
-    let finishUpload = () => {};
-    server.uploadGate = new Promise((resolve) => {
-      finishUpload = resolve;
-    });
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByRole("button", { name: "Add a face" });
-
-    const file = new File(["face"], "face.png", { type: "image/png" });
-    await user.upload(screen.getByTestId("person-face-input"), file);
-    await user.click(screen.getByRole("button", { name: "Add to favorites" }));
-    await screen.findByRole("button", { name: "Remove from favorites" });
-    finishUpload();
-
-    const image = await screen.findByRole("img", { name: "Aoi" });
-    expect(image.getAttribute("src")).toBe("/api/people/7/image?v=3");
-    expect(
-      screen
-        .getByRole("button", { name: "Remove from favorites" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
   });
 
   it("renews the age when the viewer's local date passes midnight", async () => {

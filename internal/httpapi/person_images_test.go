@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"image"
 	"image/png"
 	"io"
@@ -20,21 +19,11 @@ import (
 
 func newPersonImageFixture(t *testing.T) *creditFixture {
 	t.Helper()
-	return newPersonImageFixtureChecking(t, nil)
-}
-
-func newPersonImageFixtureChecking(t *testing.T, faces app.FaceImageCheck) *creditFixture {
-	t.Helper()
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
-		return Options{Credits: db.Credits(), PersonImages: app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}), faces)}
+		return Options{Credits: db.Credits(), PersonImages: app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))}
 	})
 	return &creditFixture{env: env, owner: env.setup()}
 }
-
-// refusingFaceCheck refuses every upload with its error, as the face check does for a face it cannot use.
-type refusingFaceCheck struct{ err error }
-
-func (c refusingFaceCheck) CheckFaceImage(context.Context, domain.PersonImage) error { return c.err }
 
 func (f *creditFixture) putPersonImage(t *testing.T, id int64) *httptest.ResponseRecorder {
 	t.Helper()
@@ -124,27 +113,6 @@ func TestPersonImageErrors(t *testing.T) {
 		cookies: []*http.Cookie{f.owner}, header: map[string]string{"Content-Type": "multipart/form-data; boundary=b"}})
 	assertErrorBody(t, "画像でない", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonPersonImageInvalid})
-}
-
-func TestRefusedFacesAnswer400AndStoreNothing(t *testing.T) {
-	for _, tc := range []struct {
-		err    error
-		reason gen.ErrorReason
-	}{
-		{domain.ErrPersonImageNoFace, gen.ErrorReasonPersonImageNoFace},
-		{domain.ErrPersonImageManyFaces, gen.ErrorReasonPersonImageManyFaces},
-	} {
-		t.Run(string(tc.reason), func(t *testing.T) {
-			f := newPersonImageFixtureChecking(t, refusingFaceCheck{tc.err})
-			person := f.createPerson(t, map[string]any{"name": "山田"})
-			rec := f.putPersonImage(t, person.Id)
-			assertErrorBody(t, "PUT", rec.Code, rec.Body.Bytes(),
-				wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: tc.reason})
-			rec = f.env.get(creditPath("/api/people", person.Id, "/image"), f.owner)
-			assertErrorBody(t, "GET", rec.Code, rec.Body.Bytes(),
-				wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonImageNotFound})
-		})
-	}
 }
 
 func TestPersonImageBodyLimitIs413WithTheLimit(t *testing.T) {

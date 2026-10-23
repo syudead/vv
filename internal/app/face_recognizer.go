@@ -120,9 +120,6 @@ type FaceRecognizer struct {
 	// pending holds people whose face changed or was named since; the worker applies their face before the next video.
 	pending map[int64]bool
 
-	// checking lets one upload check run a helper at a time.
-	checking sync.Mutex
-
 	// helper is used by the worker goroutine only.
 	helper           FaceHelper
 	helperRecognizer domain.FaceRecognizer

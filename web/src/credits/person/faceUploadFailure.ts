@@ -9,12 +9,6 @@ const text = t.credits.personPage.face;
 export function faceUploadFailure(failure: unknown): UiText {
   if (failure instanceof RequestFailed) {
     if (failure.reason === "person_image_invalid") return text.refusedType;
-    if (
-      failure.reason === "person_image_no_face" ||
-      failure.reason === "person_image_many_faces"
-    ) {
-      return errorText(failure);
-    }
     if (failure.reason === "person_image_too_large") {
       return text.tooLarge(formatBytes(failure.limit ?? UPLOAD_MAX_BYTES));
     }
