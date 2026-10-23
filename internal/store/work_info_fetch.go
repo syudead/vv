@@ -44,7 +44,8 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	if contentKey == "" || len(userKeys) == 0 {
+	// A different key means the fetched video was deleted and its ID reused.
+	if contentKey == "" || contentKey != apply.ContentKey || len(userKeys) == 0 {
 		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
 	}
 

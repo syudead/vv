@@ -274,9 +274,11 @@ type SkippedTag struct {
 
 // Apply rechecks plugin existence, approval, digest, and generation inside the same write transaction.
 type FetchedWorkInfoApply struct {
-	VideoID  int64
-	PluginID int64
-	Digest   string
+	VideoID int64
+	// ContentKey is the video's key when it was fetched; a reused VideoID with another key is not the fetched video.
+	ContentKey string
+	PluginID   int64
+	Digest     string
 	// Generation detects replacement/revocation, including reapproval of an identical digest.
 	Generation int64
 	// Nil Title preserves the display name.

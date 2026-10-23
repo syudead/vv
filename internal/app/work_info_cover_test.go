@@ -251,6 +251,10 @@ func TestApplyCoverToVirtualVideoFitsItTo16By9UnderItsKey(t *testing.T) {
 	if err != nil || len(applied.Skipped) != 0 {
 		t.Fatalf("apply = %+v, %v; want the cover applied", applied, err)
 	}
+	// The store refuses the apply when the video under the ID no longer has the key the fetch saw.
+	if len(e.applier.calls) != 1 || e.applier.calls[0].ContentKey != "virtual:3" {
+		t.Fatalf("apply calls = %+v; want one bound to the fetched key virtual:3", e.applier.calls)
+	}
 	if want := []float64{domain.VirtualThumbnailAspect}; !slices.Equal(generator.aspects, want) {
 		t.Fatalf("aspects = %v, want %v", generator.aspects, want)
 	}
