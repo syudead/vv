@@ -1,6 +1,13 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  type Browser,
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 
-// Verify description collapsing and overflow with real layout; lower-level suites cover work-info behavior.
+// Verify description collapsing and overflow with real layout, links and descriptions across reloads and tabs, and
+// what guests see of virtual videos; lower-level suites cover work-info behavior.
 // Use per-attempt person names and clear persisted details before each retry because the server and database survive worker replacement.
 
 interface MediaFolder {
@@ -93,6 +100,53 @@ function infoArea(page: Page) {
   return page.getByRole("list", { name: "File details" }).locator("xpath=../..");
 }
 
+interface VirtualVideo extends Video {
+  contentVersion: string;
+}
+
+/** Create a virtual video with links, saved through the details endpoint as the editor saves them. */
+async function createVirtual(
+  request: APIRequestContext,
+  title: string,
+  urls: string[],
+): Promise<VirtualVideo> {
+  const created = await request.post("/api/virtual-videos", {
+    headers: mutationHeaders,
+    data: { title },
+  });
+  expect(created.status()).toBe(201);
+  const video = (await created.json()) as VirtualVideo;
+  const saved = await request.put(`/api/videos/${String(video.id)}/details`, {
+    headers: mutationHeaders,
+    data: {
+      displayName: title,
+      workInfo: { urls },
+      contentVersion: video.contentVersion,
+    },
+  });
+  expect(saved.ok()).toBe(true);
+  return (await saved.json()) as VirtualVideo;
+}
+
+async function deleteVirtual(request: APIRequestContext, video: VirtualVideo) {
+  await request.delete(
+    `/api/videos/${String(video.id)}?contentVersion=${encodeURIComponent(video.contentVersion)}`,
+    { headers: mutationHeaders },
+  );
+}
+
+async function setPublic(request: APIRequestContext, video: Video, shown: boolean) {
+  const response = await request.put("/api/video-visibility", {
+    headers: mutationHeaders,
+    data: { videoIds: [video.id], public: shown },
+  });
+  expect(response.ok()).toBe(true);
+}
+
+function guestPage(browser: Browser) {
+  return browser.newContext({ storageState: { cookies: [], origins: [] } });
+}
+
 async function openVideo(page: Page, id: number, title: string) {
   await page.goto(`/videos/${String(id)}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
@@ -113,7 +167,8 @@ test.describe.serial("work information", () => {
     folder = (await created.json()) as MediaFolder;
     await runScan(request);
 
-    const list = await request.get("/api/videos?limit=200");
+    // Virtual videos have no folder, so a run that stopped before deleting one must not change this count.
+    const list = await request.get("/api/videos?limit=200&kind=file");
     const page = (await list.json()) as { items: Video[] };
     expect(page.items).toHaveLength(4);
     for (const item of page.items) {
@@ -178,5 +233,81 @@ test.describe.serial("work information", () => {
     ).toBe(true);
     await page.getByRole("button", { name: "Show less" }).click();
     await expect(page.getByRole("button", { name: "Show more" })).toBeVisible();
+  });
+
+  test("受け入れ条件 3: ファイルのある動画で保存した説明とリンクは、再読み込みの後も出る", async ({
+    page,
+    request,
+  }) => {
+    const c = video("作品動画C");
+    const link = `${origin}/settings?from=${run}`;
+    try {
+      await openVideo(page, c.id, c.title);
+      await page.getByRole("link", { name: "Edit details" }).click();
+      await page.getByRole("textbox", { name: "Description" }).fill(`説明${run}`);
+      await page.getByRole("button", { name: "Add link" }).click();
+      await page.getByRole("textbox", { name: "Link" }).fill(link);
+      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.title);
+
+      await page.reload();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.title);
+      await expect(infoArea(page).getByText(`説明${run}`)).toBeVisible();
+      const row = page.getByRole("list", { name: "Work details" });
+      await expect(
+        row.getByRole("link", { name: link.replace(/^http:\/\//, "") }),
+      ).toHaveAttribute("href", link);
+    } finally {
+      await clearDetails(request, c.id);
+    }
+  });
+
+  test("受け入れ条件 2: バーチャルな動画のページのリンクは新しいタブで開く", async ({
+    page,
+    request,
+  }) => {
+    const link = `${origin}/settings?virtual=${run}`;
+    const virtual = await createVirtual(request, `作品e2eバーチャル${run}`, [link]);
+    try {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await openVideo(page, virtual.id, virtual.title);
+      await expect(page.getByText("Virtual video", { exact: true })).toBeVisible();
+      const button = page
+        .getByRole("list", { name: "Links" })
+        .getByRole("link", { name: link.replace(/^http:\/\//, "") });
+      const opened = page.context().waitForEvent("page");
+      await button.click();
+      const tab = await opened;
+      await expect(tab).toHaveURL(link);
+      // The virtual video page stays where it was.
+      await expect(page).toHaveURL(`/videos/${String(virtual.id)}`);
+      await tab.close();
+    } finally {
+      await deleteVirtual(request, virtual);
+    }
+  });
+
+  test("受け入れ条件 7: ゲストには公開のバーチャルな動画が見え、非公開のものは見えない", async ({
+    browser,
+    request,
+  }) => {
+    const shown = await createVirtual(request, `作品e2e公開${run}`, []);
+    const hidden = await createVirtual(request, `作品e2e非公開${run}`, []);
+    const context = await guestPage(browser);
+    try {
+      await setPublic(request, shown, true);
+      const page = await context.newPage();
+      await openVideo(page, shown.id, shown.title);
+      await expect(page.getByText("No thumbnail", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
+
+      await page.goto(`/videos/${String(hidden.id)}`);
+      await expect(page.getByText("This video can't be opened")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
+    } finally {
+      await context.close();
+      await deleteVirtual(request, shown);
+      await deleteVirtual(request, hidden);
+    }
   });
 });

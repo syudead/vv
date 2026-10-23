@@ -607,7 +607,7 @@ flowchart LR
 | Tags | Right below the title as one unit  |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
 | Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path`  |
+| Guests | No tags, visibility toggle, `Edit details`, `Open file` or `Copy path`; of the work details, only the description and `Links`  |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
@@ -629,7 +629,7 @@ The rows under the title, above which a divider runs, carry no frames.
 | Row | Content |
 | --- | --- |
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
-| Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
+| Work details | Only when the video has work information; a guest sees only the description and `Links`. It shows the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
 | Technical | Resolution, container, codec separated by thin rules; smallest and most subdued |
 | Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more`  |
 
@@ -711,6 +711,28 @@ under that control. `Cancel`, `Back to the video` and the browser's Back ask
 starts from the page's video and returns along the history, so the page's `×`
 still leads to the list; opened by its URL, it reads the video first, and a
 guest is sent to sign in.
+
+### Virtual video page
+
+A virtual video has no file, so its page keeps the `DetailPage` layout and
+replaces only what a file provides. Nothing on it plays, and its links take
+the main action's place.
+
+| Part | Rule |
+| --- | --- |
+| Header band | `Virtual video` with `SquareDashed`, muted and not a link, in the breadcrumb's place |
+| Media | The player frame holding the uploaded image (`object-contain`), or `SquareDashed` over `No thumbnail yet` and, for the owner, `Upload an image…`; a guest reads `No thumbnail`. No play button, control bar or cursor change |
+| Links and description | Under the title unit: one `outline` `Button` per link, opening in a new tab, then the `Description` component. The work details row leaves both out |
+| Information rows | `Added` and `Edited`, and the thumbnail item with `Remove image` while an image exists; no technical or media information. A guest sees `Added` only |
+| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the file picker directly and a preview with framing only, and `More` (`Ellipsis`) with `Delete…` |
+
+Saves of the title, the details and deletion send the `contentVersion` the
+page read. `409 content_changed` shows
+`This video changed in another tab.` with `Reload`, and `404` shows that the
+video is gone without recreating it: the page shows the missing-video layer,
+and the details editor shows `This virtual video was deleted or merged.` with
+`Back to the library`. An empty title is refused with `Enter a title.` before
+sending.
 
 ### Player states
 

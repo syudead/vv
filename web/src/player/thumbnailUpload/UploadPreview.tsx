@@ -66,6 +66,7 @@ export default function UploadPreview({
   applying,
   initialFit = WHOLE_IMAGE,
   applyLabel,
+  framingOnly = false,
   onApply,
   onCancel,
 }: {
@@ -78,6 +79,8 @@ export default function UploadPreview({
   initialFit?: Fit;
   /** Replaces "Use as thumbnail" when applying only keeps the framing. */
   applyLabel?: string;
+  /** Leave out the AI touch-up and the advanced edit, for a video that cannot start a thumbnail edit. */
+  framingOnly?: boolean;
   /** replaced is a touch-up result now standing for image; the caller takes over its bitmap. */
   onApply: (fit: Fit, replaced: UploadImage | null) => void;
   onCancel: () => void;
@@ -152,8 +155,8 @@ export default function UploadPreview({
               disabled={busy}
               onFit={update}
             />
-            {touchUp.ready === false && <AiSetupHint />}
-            {touchUp.ready === true && (
+            {!framingOnly && touchUp.ready === false && <AiSetupHint />}
+            {!framingOnly && touchUp.ready === true && (
               <AiTouchUpSection
                 state={touchUp.state}
                 after={touchUp.after}

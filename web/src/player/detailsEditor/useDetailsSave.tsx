@@ -4,6 +4,7 @@ import { isAborted, RequestFailed, type Video } from "../../api/client";
 import { createCredit, updateCredit } from "../../api/credits";
 import { setVideoDetails } from "../../api/workInfo";
 import { errorText, t } from "../../i18n";
+import { Button } from "../../ui/shadcn/button";
 import {
   type Draft,
   namings,
@@ -62,23 +63,31 @@ export function useEditorSave(run: (signal: AbortSignal) => Promise<void>): Edit
 
 /** Name chosen provisional people, then create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
 export function useDetailsSave({
-  videoId,
+  video,
   draftRef,
   setDraft,
   onSaved,
   onGone,
+  onReload,
 }: {
-  videoId: number;
+  video: Pick<Video, "id" | "virtual" | "contentVersion">;
   draftRef: RefObject<Draft>;
   setDraft: (draft: Draft) => void;
   onSaved: (video: Video) => void;
   onGone: () => void;
+  /** Re-read a video that changed in another tab, keeping the editor open. */
+  onReload: () => void;
 }): EditorSave {
   const { saving, failure, problem, save, setFailure, setProblem } = useEditorSave(run);
 
   async function run(signal: AbortSignal): Promise<void> {
     const e = t.player.detailsEditor;
     let draft = draftRef.current;
+    // A virtual video's title is its only name; refuse an empty one before anything is written.
+    if (video.virtual && draft.name.trim() === "") {
+      setProblem({ control: "name", text: t.errors.reason.invalid_title });
+      return;
+    }
     let created = 0;
     // Names go before every other write, so a refused name stops the save before the video changes.
     for (const naming of namings(draft)) {
@@ -105,13 +114,21 @@ export function useDetailsSave({
       }
     }
     const { body, targets } = toDetailsInput(draft);
-    let video: Video;
+    let saved: Video;
     try {
-      video = await setVideoDetails(videoId, body, signal);
+      saved = await setVideoDetails(
+        video.id,
+        { ...body, contentVersion: video.contentVersion },
+        signal,
+      );
     } catch (error) {
       if (signal.aborted || isAborted(error)) return;
       if (error instanceof RequestFailed && error.reason === "video_not_found") {
         onGone();
+        return;
+      }
+      if (error instanceof RequestFailed && error.reason === "content_changed") {
+        setFailure({ text: <ChangedNotice onReload={onReload} /> });
         return;
       }
       const reason = errorText(error);
@@ -130,8 +147,24 @@ export function useDetailsSave({
       });
       return;
     }
-    onSaved(video);
+    onSaved(saved);
   }
 
   return { saving, failure, problem, save };
+}
+
+function ChangedNotice({ onReload }: { onReload: () => void }) {
+  return (
+    <>
+      {t.player.virtual.changed}{" "}
+      <Button
+        variant="link"
+        size="sm"
+        className="h-auto px-0 py-0 align-baseline"
+        onClick={onReload}
+      >
+        {t.common.reload}
+      </Button>
+    </>
+  );
 }

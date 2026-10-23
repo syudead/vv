@@ -54,6 +54,8 @@ import VideoPageAside from "./VideoPageAside";
 import VideoPageDetails from "./VideoPageDetails";
 import VideoPlayer, { initialPlayerStatus, type PlayerStatus } from "./VideoPlayer";
 import { useProgressSaving } from "./useProgressSaving";
+import { useVirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
+import VirtualMedia from "./virtualVideo/VirtualMedia";
 
 const noSubtitles: readonly SubtitleTrack[] = [];
 
@@ -65,10 +67,7 @@ interface Attempt {
 }
 
 export default function VideoPage() {
-  const params = useParams();
-  // Normalize invalid IDs to zero because NaN cannot compare equal to itself.
-  const parsedId = Number(params.id);
-  const id = Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : 0;
+  const id = videoIdParam(useParams().id);
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
@@ -111,10 +110,17 @@ export default function VideoPage() {
     rename: renameRelated,
     rethumb: rethumbRelated,
   } = useRelatedVideos(id, groupContext.group, groupContext.smartFolder);
-  const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
-  const related =
-    relatedState.id === id ? relatedState : { kind: "loading" as const, id };
+  const detail = currentFor(detailState, id);
+  const related = currentFor(relatedState, id);
   const video = detail.kind === "ready" ? detail.video : undefined;
+  const thumbnail = useVirtualThumbnail(
+    video,
+    (saved, mark) => {
+      replace(saved, mark, "keep");
+      rethumbRelated(saved);
+    },
+    () => void refresh(),
+  );
 
   // Reset page and main-column scrolling on navigation; LibraryPage restores its own scroll position.
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -381,7 +387,13 @@ export default function VideoPage() {
         // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="lg:max-w-player-width-lg"
-        header={<VideoHeader folder={video?.folder} onClose={close} />}
+        header={
+          <VideoHeader
+            folder={video?.folder}
+            virtual={thumbnail.video !== undefined}
+            onClose={close}
+          />
+        }
         media={
           <div
             ref={frameRef}
@@ -397,12 +409,17 @@ export default function VideoPage() {
               aria-hidden="true"
               className="col-start-1 row-start-1 aspect-player max-h-player-height lg:max-h-player-height-lg [:fullscreen>&]:hidden"
             />
-            <div
-              data-overlay-layer=""
-              className="pointer-events-none relative z-10 col-start-1 row-start-1 flex min-w-0"
-            >
-              {layer}
-            </div>
+            {/* A virtual video has no player and no processing to report. */}
+            {thumbnail.video !== undefined ? (
+              <VirtualMedia video={thumbnail.video} owner={owner} thumbnail={thumbnail} />
+            ) : (
+              <div
+                data-overlay-layer=""
+                className="pointer-events-none relative z-10 col-start-1 row-start-1 flex min-w-0"
+              >
+                {layer}
+              </div>
+            )}
             {stallWarningShown({
               showPlayer,
               status,
@@ -473,6 +490,8 @@ export default function VideoPage() {
           detail={{ refresh, replace, setFavorite }}
           related={{ rename: renameRelated, rethumb: rethumbRelated }}
           handoff={detailsHandoff}
+          thumbnail={thumbnail}
+          onDeleted={close}
           // Drop group context after membership changes before reloading related results.
           onGroupChanged={() =>
             groupContext.readWithoutGroup(() => {
@@ -485,6 +504,20 @@ export default function VideoPage() {
       </DetailPage>
     </div>
   );
+}
+
+/** Normalize invalid IDs to zero because NaN cannot compare equal to itself. */
+function videoIdParam(raw: string | undefined): number {
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** A read for a previous ID shows as loading until this ID's read settles. */
+function currentFor<S extends { id: number }>(
+  state: S,
+  id: number,
+): S | { kind: "loading"; id: number } {
+  return state.id === id ? state : { kind: "loading", id };
 }
 
 function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSProperties {
