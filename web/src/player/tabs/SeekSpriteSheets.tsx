@@ -86,10 +86,14 @@ function Sheets({
                 aria-label={text.openSeekSpriteSheet(index + 1, count)}
                 disabled={url === null}
                 onClick={() => setOpen(index)}
-                className="block h-auto w-replace-preview overflow-hidden rounded-md bg-muted p-0 hover:ring-2 hover:ring-ring"
-                style={{ aspectRatio }}
+                className="h-auto p-1"
               >
-                {url !== null && <img src={url} alt={name} className="size-full" />}
+                <span
+                  className="block w-replace-preview overflow-hidden rounded-sm bg-muted"
+                  style={{ aspectRatio }}
+                >
+                  {url !== null && <img src={url} alt={name} className="size-full" />}
+                </span>
               </Button>
             </li>
           );
@@ -104,7 +108,7 @@ function Sheets({
           if (!next) setOpen(null);
         }}
       >
-        <DialogContent className="max-w-5xl">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {open === null ? text.seekSprite : text.seekSpriteSheet(open + 1, count)}
