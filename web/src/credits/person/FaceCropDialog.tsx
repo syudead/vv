@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Person } from "../../api/credits";
 import { t } from "../../i18n";
+import { encodeReferenceURL } from "../../player/thumbnailEdit/editRules";
 import { EditorDialog } from "../../ui/patterns/editor-dialog";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { creditDisplayName } from "../displayName";
@@ -31,7 +32,9 @@ type Picture =
 function usePicture(file: File): Picture {
   const [picture, setPicture] = useState<Picture>({ state: "loading" });
   useEffect(() => {
-    const src = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    // Escape it as the thumbnail editor's reference is, so the URL never reads as markup.
+    const src = encodeReferenceURL(url);
     const image = new Image();
     let current = true;
     image.onload = () => {
@@ -43,7 +46,7 @@ function usePicture(file: File): Picture {
     image.src = src;
     return () => {
       current = false;
-      URL.revokeObjectURL(src);
+      URL.revokeObjectURL(url);
     };
   }, [file]);
   return picture;
