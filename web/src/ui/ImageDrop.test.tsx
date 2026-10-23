@@ -87,6 +87,15 @@ describe("useImageIntake", () => {
     expect(dialog.onFile).toHaveBeenCalledWith(file);
   });
 
+  it("keeps a drop from opening the file while the page steps aside for a popover", () => {
+    const { onFile } = setup("page");
+    document.body.appendChild(document.createElement("div")).dataset.slot =
+      "popover-content";
+    const drop = fire("drop", { types: ["Files"], files: [png()] });
+    expect(drop.defaultPrevented).toBe(true);
+    expect(onFile).not.toHaveBeenCalled();
+  });
+
   it("takes nothing while disabled", () => {
     const { result, onFile } = setup("page", false);
     fire("dragenter", { types: ["Files"], files: [png()] });

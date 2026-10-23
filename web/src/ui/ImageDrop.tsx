@@ -24,15 +24,14 @@ export function useImageIntake({ enabled, onFile, scope }: ImageIntakeOptions): 
     if (!enabled) return;
     // enter and leave fire for every element crossed, so count them to know when the drag leaves the window.
     let depth = 0;
-    const accepts = (event: Event) =>
-      !event.defaultPrevented && (scope === "dialog" || !dialogOpen());
+    const yields = () => scope === "page" && overlayOpen();
     const reset = () => {
       depth = 0;
       setDragging(false);
     };
 
     const onPaste = (event: ClipboardEvent) => {
-      if (!accepts(event) || event.clipboardData === null) return;
+      if (event.defaultPrevented || yields() || event.clipboardData === null) return;
       // Text copied with a picture, as from a web page, belongs in the field being typed in.
       if (editable(event.target) && event.clipboardData.types.includes("text/plain"))
         return;
@@ -42,15 +41,17 @@ export function useImageIntake({ enabled, onFile, scope }: ImageIntakeOptions): 
       take.current(file);
     };
     const onDragEnter = (event: DragEvent) => {
-      if (!carriesFiles(event) || !accepts(event)) return;
+      if (!carriesFiles(event) || yields()) return;
       event.preventDefault();
       depth += 1;
       setDragging(true);
     };
+    // A yielding page still cancels file drags, or a drop on a dialog that takes no image would leave the app to open the file.
     const onDragOver = (event: DragEvent) => {
-      if (!carriesFiles(event) || !accepts(event)) return;
+      if (!carriesFiles(event)) return;
       event.preventDefault();
-      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
+      if (!yields() && event.dataTransfer !== null)
+        event.dataTransfer.dropEffect = "copy";
     };
     const onDragLeave = (event: DragEvent) => {
       if (!carriesFiles(event) || depth === 0) return;
@@ -60,9 +61,8 @@ export function useImageIntake({ enabled, onFile, scope }: ImageIntakeOptions): 
     const onDrop = (event: DragEvent) => {
       if (!carriesFiles(event)) return;
       reset();
-      if (!accepts(event) || event.dataTransfer === null) return;
-      // Without this the browser leaves the app to open the file.
       event.preventDefault();
+      if (yields() || event.dataTransfer === null) return;
       const file = pickFile(event.dataTransfer.files);
       if (file !== null) take.current(file);
     };
@@ -119,8 +119,12 @@ function carriesFiles(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes("Files") ?? false;
 }
 
-function dialogOpen(): boolean {
-  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+function overlayOpen(): boolean {
+  return (
+    document.querySelector(
+      '[role="dialog"], [role="alertdialog"], [data-slot="popover-content"]',
+    ) !== null
+  );
 }
 
 function editable(target: EventTarget | null): boolean {

@@ -468,7 +468,7 @@ render `ImageDropOverlay` with what the drop will do ("Drop the image to use
 it as the thumbnail") while `dragging` is true.
 
 Use `scope="page"` on a page: it steps aside while any dialog or popover is
-open. A dialog that takes an image itself uses `scope="dialog"`. Turn
+open, but still keeps a file dropped there from opening in the browser. A dialog that takes an image itself uses `scope="dialog"`. Turn
 `enabled` off while the image cannot be taken, such as during an upload. A
 paste into a text field that also carries text stays in the field.
 
