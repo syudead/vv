@@ -59,6 +59,16 @@ export function tabFromSearch(search: string): VideoTab | null {
   return videoTabs.find((tab) => tab === value) ?? null;
 }
 
+/** Whether the address has a `tab` at all, known or not. */
+export function hasTabParam(search: string): boolean {
+  return new URLSearchParams(search).has(tabQuery);
+}
+
+/** Whether the address's `tab` already reads as `searchWithTab` would write it for this tab. */
+export function searchShowsTab(search: string, tab: VideoTab): boolean {
+  return new URLSearchParams(search).get(tabQuery) === (tab === "overview" ? null : tab);
+}
+
 /** The search with `tab` naming the selected tab; Overview, the default, leaves it out. */
 export function searchWithTab(search: string, tab: VideoTab): string {
   const params = new URLSearchParams(search);

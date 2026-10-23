@@ -722,7 +722,9 @@ steps and leaving the page and coming back with Back, or reloading, reopens the
 tab. A navigation whose address names a tab selects it; one without, such as a
 link to another video, keeps the selected tab under the rule above and writes
 it into the new address. A name the page does not know, or a tab this video
-does not list (Work without items, any owner tab for a guest), opens Overview.
+does not list (Work without items, any owner tab for a guest), opens Overview
+and drops `tab` from the address, so the next video does not reopen it. Only
+Work named on opening waits for the work-info plugin list, which may add it.
 Keeping the tab in page memory alone was rejected on review: every return to
 the video opened Overview. Only the selected panel is mounted. The thumbnail sends, the
 thumbnail preview and the work-info fetch dialog belong to the strip's

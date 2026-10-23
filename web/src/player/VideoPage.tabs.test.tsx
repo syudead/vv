@@ -96,6 +96,17 @@ const server = {
   videos: new Map<number, Video>(),
 };
 
+const approvedWorkPlugin = {
+  id: 1,
+  kind: "work",
+  sources: [],
+  fileName: "a.js",
+  operations: ["search"],
+  digest: "d",
+  state: "approved",
+  settings: [],
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -177,6 +188,19 @@ describe("VideoPage tabs", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
+
+  /** Hold the work-info plugin list; the returned function answers it. */
+  function holdPlugins() {
+    let answer: (response: Response) => void = () => undefined;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url !== "/api/work-info-plugins") return Promise.resolve(respond(url));
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    });
+    return (plugins: unknown[]) => answer(json({ plugins }));
+  }
 
   it("コード・出演者・3 本のバージョンがある所有者の動画は 6 つのタブを並べて Overview を選び、題名まわりの操作はすべて文字付き（受け入れ条件 1）", async () => {
     await openPage();
@@ -301,7 +325,9 @@ describe("VideoPage tabs", () => {
             <MemoryRouter initialEntries={["/", entry]} initialIndex={1}>
               <AudienceProvider audience="owner">
                 <Link to="/">Library</Link>
+                <Link to="/videos/7">First video</Link>
                 <Link to="/videos/8">Next video</Link>
+                <Link to="/videos/8?tab=nope">Next video with an unknown tab</Link>
                 <Back />
                 <Address />
                 <Routes>
@@ -347,10 +373,11 @@ describe("VideoPage tabs", () => {
       await waitFor(() => expect(address()).toBe("/videos/8?tab=file"));
     });
 
-    it("知らないタブ名や、この動画に無いタブを名指すアドレスでは Overview を開く", async () => {
+    it("知らないタブ名や、この動画に無いタブを名指すアドレスでは Overview を開いてアドレスから外し、次の動画でもそのタブを開かない", async () => {
       const { unmount } = renderAt("/videos/7?tab=nope");
       await screen.findByRole("heading", { level: 1, name: "テスト動画" });
       expect(selectedTab()).toBe("Overview");
+      await waitFor(() => expect(address()).toBe("/videos/7"));
       unmount();
 
       server.videos.set(8, { ...owned, id: 8, title: "後続の動画", workInfo: undefined });
@@ -358,6 +385,53 @@ describe("VideoPage tabs", () => {
       await screen.findByRole("heading", { level: 1, name: "後続の動画" });
       expect(tabNames()).not.toContain("People");
       expect(selectedTab()).toBe("Overview");
+      await waitFor(() => expect(address()).toBe("/videos/8"));
+
+      fireEvent.click(screen.getByRole("link", { name: "First video" }));
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      expect(tabNames()).toContain("People2");
+      expect(selectedTab()).toBe("Overview");
+      expect(address()).toBe("/videos/7");
+    });
+
+    it("知らないタブ名を名指すリンクで移ると、前のタブではなく Overview を開いてアドレスから外す", async () => {
+      server.videos.set(8, { ...owned, id: 8, title: "後続の動画" });
+      renderAt("/videos/7?tab=people");
+      await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+      expect(selectedTab()).toBe("People2");
+
+      fireEvent.click(
+        screen.getByRole("link", { name: "Next video with an unknown tab" }),
+      );
+      await screen.findByRole("heading", { level: 1, name: "後続の動画" });
+      expect(selectedTab()).toBe("Overview");
+      await waitFor(() => expect(address()).toBe("/videos/8"));
+    });
+
+    describe("作品情報プラグインの一覧を待つ Work", () => {
+      it("開いたアドレスの Work は、承認済みのプラグインが届くと選ぶ", async () => {
+        const answer = holdPlugins();
+        server.videos.set(7, { ...owned, workInfo: undefined });
+        renderAt("/videos/7?tab=work");
+        await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+        expect(address()).toBe("/videos/7?tab=work");
+
+        answer([approvedWorkPlugin]);
+        await waitFor(() => expect(selectedTab()).toBe("Work"));
+        expect(address()).toBe("/videos/7?tab=work");
+      });
+
+      it("開いたアドレスの Work は、承認済みのプラグインが無いと Overview にしてアドレスから外す", async () => {
+        const answer = holdPlugins();
+        server.videos.set(7, { ...owned, workInfo: undefined });
+        renderAt("/videos/7?tab=work");
+        await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+
+        answer([]);
+        await waitFor(() => expect(address()).toBe("/videos/7"));
+        expect(tabNames()).not.toContain("Work");
+        expect(selectedTab()).toBe("Overview");
+      });
     });
   });
 
@@ -372,35 +446,13 @@ describe("VideoPage tabs", () => {
   });
 
   it("承認済みの作品情報プラグインが届くと、選んだタブを変えずに空の作品へ Work を足す", async () => {
-    let answer: (response: Response) => void = () => undefined;
-    fetchMock.mockImplementation((input) => {
-      const url = String(input);
-      if (url !== "/api/work-info-plugins") return Promise.resolve(respond(url));
-      return new Promise<Response>((resolve) => {
-        answer = resolve;
-      });
-    });
+    const answer = holdPlugins();
     server.videos.set(7, { ...owned, workInfo: undefined });
     await openPage();
     openTab("File & media");
     expect(tabNames()).not.toContain("Work");
 
-    answer(
-      json({
-        plugins: [
-          {
-            id: 1,
-            kind: "work",
-            sources: [],
-            fileName: "a.js",
-            operations: ["search"],
-            digest: "d",
-            state: "approved",
-            settings: [],
-          },
-        ],
-      }),
-    );
+    answer([approvedWorkPlugin]);
     await waitFor(() => expect(tabNames()).toContain("Work"));
     expect(tabNames()).toEqual([
       "Overview",

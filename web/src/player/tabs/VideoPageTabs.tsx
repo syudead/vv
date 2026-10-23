@@ -23,7 +23,9 @@ import VersionsPanel, { type VersionsNavigation } from "./VersionsPanel";
 import {
   availableTabs,
   creditedPeopleCount,
+  hasTabParam,
   nextTab,
+  searchShowsTab,
   searchWithTab,
   tabFromSearch,
   type VideoTab,
@@ -52,39 +54,40 @@ export interface VideoPageTabsProps {
 
 /**
  * The tab memory of the page: the work-info plugin list, read once for the owner, and the selected
- * tab, kept while each new video response has it and otherwise Overview. It lives above the
- * loading state, so it survives the moment between two videos. The plugin list only adds Work, so
- * its arrival never changes the selection.
+ * tab, kept while each video response has it and otherwise Overview. It lives above the loading
+ * state, so it survives the moment between two videos.
  *
  * The address's `tab` mirrors the selection, replaced in place, so leaving the page and coming
- * back reopens the tab. A navigation whose address names a tab selects it; one without, such as
- * a link to another video, keeps the remembered tab and writes it into the address.
+ * back reopens the tab. A navigation whose address has a `tab` selects it, or Overview for an
+ * unknown name; one without, such as a link to another video, keeps the remembered tab and writes
+ * it into the address. Only Work named by the first response's address waits for the plugin list,
+ * which may add it.
  */
 export function useVideoTabState(video: Video | undefined, owner: boolean) {
-  const { plugins, reload } = useApprovedPlugins(approvedWorkPlugins, owner);
+  const { plugins, loaded, reload } = useApprovedPlugins(approvedWorkPlugins, owner);
   const workPlugin = plugins.length > 0;
   const location = useLocation();
   const navigate = useNavigate();
   const addressTab = tabFromSearch(location.search);
   const [selected, setSelected] = useState<VideoTab>(addressTab ?? "overview");
   const [locationKey, setLocationKey] = useState(location.key);
-  const [shown, setShown] = useState(video);
+  const [checked, setChecked] = useState<{ video?: Video; loaded: boolean }>({ loaded });
   let next = selected;
   if (locationKey !== location.key) {
     setLocationKey(location.key);
-    if (addressTab !== null) next = addressTab;
+    if (hasTabParam(location.search)) next = addressTab ?? "overview";
   }
-  if (video !== undefined && shown !== video) {
-    setShown(video);
-    // The first response keeps the address's tab: Work may join the list once the plugins are read.
-    if (shown !== undefined)
-      next = nextTab(next, availableTabs(video, owner, workPlugin));
+  if (video !== undefined && (checked.video !== video || checked.loaded !== loaded)) {
+    setChecked({ video, loaded });
+    const awaitingWork =
+      next === "work" && owner && !loaded && checked.video === undefined;
+    if (!awaitingWork) next = nextTab(next, availableTabs(video, owner, workPlugin));
   }
   if (next !== selected) setSelected(next);
 
   const { pathname, search, hash, state } = location;
   useEffect(() => {
-    if ((tabFromSearch(search) ?? "overview") === selected) return;
+    if (searchShowsTab(search, selected)) return;
     void navigate(
       { pathname, search: searchWithTab(search, selected), hash },
       { replace: true, state: state as unknown, preventScrollReset: true },
