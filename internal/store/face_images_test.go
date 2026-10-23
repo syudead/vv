@@ -87,6 +87,29 @@ func TestAFaceMergesTheOnlyProvisionalPersonItReaches(t *testing.T) {
 	}
 }
 
+// Fetched performers whose faces are embedded only after the analysis stored its new people merge them as the
+// analysis would have linked them: by the appearances' centroids, though each crop's face stays under Merge.
+func TestAFaceEmbeddedAfterTheAnalysisMergesWhomTheAnalysisWouldHaveLinked(t *testing.T) {
+	f := newFaceFixture(t)
+	ctx := context.Background()
+	first, second := facePerson(0.25, 0, faceBasis(0), "crop-a"), facePerson(0.75, 0, faceBasis(1), "crop-b")
+	first.FaceVector, second.FaceVector = faceNear(0, 2, 0.5), faceNear(1, 3, 0.5)
+	f.analyse(t, first, second)
+	applied := applyDetails(t, f.db, f.videoID, domain.FetchedWorkInfo{People: []domain.FetchedPerson{
+		fetchedPerformer("Actor A"), fetchedPerformer("Actor B"),
+	}}, performerField)
+
+	for i, person := range applied.PersonIDs {
+		decision, err := f.db.Faces().StoreFaceImageVector(ctx, setFace(t, f.db, person), faceBasis(i))
+		if err != nil || decision.MergeID == 0 {
+			t.Fatalf("StoreFaceImageVector of person %d = %+v, %v; want a merge", person, decision, err)
+		}
+	}
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, applied.PersonIDs) {
+		t.Fatalf("performers = %v, want only the fetched %v", got, applied.PersonIDs)
+	}
+}
+
 func TestAFaceMergeRefusedForGoodStoresTheVectorWithoutIt(t *testing.T) {
 	f := newMergeFixture(t, false)
 	ctx := context.Background()

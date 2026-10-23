@@ -157,7 +157,8 @@ func applyFaceImage(ctx context.Context, tx *sql.Tx, c *changes, spec domain.Fac
 }
 
 // provisionalFaceVectors reads the vectors of provisional people other than the person, leaving out those whose pair
-// with the person the owner dismissed.
+// with the person the owner dismissed. Their appearances' centroids count beside their faces, because an analysis
+// that ended before the face was embedded would have compared those centroids with it.
 func provisionalFaceVectors(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer, personID int64) (
 	[]domain.FacePersonVector, error,
 ) {
@@ -177,11 +178,41 @@ func provisionalFaceVectors(ctx context.Context, tx *sql.Tx, recognizer domain.F
 	if err != nil {
 		return nil, err
 	}
+	centroids, err := appearanceCentroids(ctx, tx, recognizer)
+	if err != nil {
+		return nil, err
+	}
 	var out []domain.FacePersonVector
-	for _, v := range vectors {
+	for _, v := range append(vectors, centroids...) {
 		if open[v.PersonID] {
 			out = append(out, v)
 		}
+	}
+	return out, nil
+}
+
+// appearanceCentroids reads the centroid of every linked appearance of the recognizer that is not dropped.
+func appearanceCentroids(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer) (
+	[]domain.FacePersonVector, error,
+) {
+	rows, err := tx.QueryContext(ctx, `select person_id, centroid from face_appearances
+		where person_id is not null and dropped = 0 and centroid is not null and recognizer = ?`, string(recognizer))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the face appearance centroids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []domain.FacePersonVector
+	for rows.Next() {
+		var v domain.FacePersonVector
+		var blob []byte
+		if err := rows.Scan(&v.PersonID, &blob); err != nil {
+			return nil, fmt.Errorf("cannot read the face appearance centroids: %w", err)
+		}
+		v.Vector = decodeFaceVector(blob)
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the face appearance centroids: %w", err)
 	}
 	return out, nil
 }

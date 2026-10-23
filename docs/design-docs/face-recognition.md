@@ -415,6 +415,21 @@ person's own face merges nobody, so provisional people never merge into each
 other on their own. A provisional person whose pair with the named person the
 owner dismissed is neither merged nor counted.
 
+A provisional person is compared by their face and by the centroid of each
+appearance linked to them that is not dropped
+([`provisionalFaceVectors`](../../internal/store/face_images.go)). When work
+information is fetched during an analysis, the fetched people's faces are
+embedded only after the analysis has stored its new people, and the analysis
+would have linked those people by their centroids. A crop's single face is
+further from a portrait than the centroid of the whole video, so without the
+centroids most such people stayed under `Merge` and each performer was listed
+twice.
+
+| Rejected                                                   | Why                                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Comparing a provisional person by their face alone         | The result depends on whether the face was embedded before or after the analysis                        |
+| Comparing named people's appearance centroids here as well | A named person seen in many videos would reach more faces, as the analysis's own matching rejects below |
+
 The face worker embeds faces between videos
 ([`face_images.go`](../../internal/app/face_images.go)). A face's vector is the
 vector of its only good face, by the quality gate of video faces; a face with
