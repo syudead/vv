@@ -389,6 +389,35 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/virtual-videos/{id}/merge:
+    post:
+      operationId: mergeVirtualVideo
+      summary: "Merge a virtual video into a file video"
+      description: "Owner-only. Moves the virtual video's user data to the file video's user key (its bundle key when bundled) and deletes the virtual video in one transaction. Tags, people, organizations and external ids are unioned; the video is a favorite when either was; playlist items move in place, keeping the file video's item where a playlist holds both; the file video keeps its title, thumbnail and public flag and its code and dates, which the virtual video's fill only when empty; descriptions join with a blank line, file video first; links append the virtual video's missing ones. A missing or hidden video returns 404 video_not_found; a version other than the screen read returns 409 content_changed; an id with a file returns 409 not_virtual; a videoId without a file returns 409 virtual_video; a combined description over 10,000 characters returns 409 description_too_long and more than 20 combined links 409 too_many_urls. Errors change nothing, and a merge cannot be undone. Returns the file video's GET detail shape with its work information. Emits a video deletion event for the virtual video after commit."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualVideoMerge"
+      responses:
+        "200":
+          description: "The file video after the merge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/videos/{id}/related:
     get:
       operationId: getRelatedVideos
@@ -10014,6 +10043,22 @@ components:
           type: string
           description: "Title; follows the display-name rules and must not be empty after trimming."
 
+    VirtualVideoMerge:
+      type: object
+      required: [contentVersion, videoId, videoContentVersion]
+      additionalProperties: false
+      properties:
+        contentVersion:
+          type: string
+          description: "The virtual video's contentVersion the screen read."
+        videoId:
+          type: integer
+          format: int64
+          description: "The file video to merge into."
+        videoContentVersion:
+          type: string
+          description: "The file video's contentVersion the screen read."
+
     ThumbnailPositionUpdate:
       type: object
       required: [positionMs]
@@ -11112,3 +11157,5 @@ components:
         - invalid_title
         - not_virtual
         - virtual_video
+        - description_too_long
+        - too_many_urls
