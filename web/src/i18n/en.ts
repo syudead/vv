@@ -375,10 +375,6 @@ const errorReasons = {
   person_image_invalid:
     "The file isn't a PNG, JPEG or still WebP up to 120 megapixels, or it can't be read.",
   person_image_too_large: "The image is too large: up to 64 MB.",
-  person_image_no_face:
-    "No face was found in this image. Choose a photo where the face is clear.",
-  person_image_many_faces:
-    "This image shows more than one face. Choose one with a single face.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
   blocked_address: ({ host }) =>
@@ -1734,7 +1730,6 @@ export const en = {
         drop: "Drop the image to use it as the face",
         fromVideos: "Choose from videos…",
         remove: "Remove face",
-        uploading: "Saving the face…",
         refusedType: "This image can't be used. Choose a PNG, JPEG or still WebP.",
         tooLarge: (limit: string) => `This image is over ${limit}.`,
         failed: (reason: string) => `Couldn't save the face: ${reason}`,
@@ -1742,6 +1737,10 @@ export const en = {
         removeText: "The image is deleted. You can upload another one later.",
         removeSubmit: "Remove",
         removing: "Removing…",
+        crop: {
+          title: "Frame the face",
+          loading: "Reading the image…",
+        },
         picker: {
           title: "Choose a face",
           close: "Close",

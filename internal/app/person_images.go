@@ -21,37 +21,26 @@ type PersonImageStore interface {
 	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
 }
 
-// FaceImageCheck refuses an owner's upload without a good face or with several while face recognition can tell.
-type FaceImageCheck interface {
-	CheckFaceImage(ctx context.Context, image domain.PersonImage) error
-}
-
 // PersonImages fits uploaded faces under the thumbnail uploads' gate, so the two kinds of upload never decode at once.
 type PersonImages struct {
 	store   PersonImageStore
 	uploads uploadGate
-	faces   FaceImageCheck
 }
 
-// NewPersonImages shares ingest's upload gate; a nil faces stores uploads unchecked.
-func NewPersonImages(store PersonImageStore, ingest *Ingest, faces FaceImageCheck) *PersonImages {
-	return &PersonImages{store: store, uploads: ingest.uploads, faces: faces}
+// NewPersonImages shares ingest's upload gate.
+func NewPersonImages(store PersonImageStore, ingest *Ingest) *PersonImages {
+	return &PersonImages{store: store, uploads: ingest.uploads}
 }
 
 const personImageJPEGQuality = 85
 
-// UploadPersonImage decodes, fits, checks and stores a face. A body over the byte limit returns
-// ThumbnailUploadTooLargeError, any other unreadable image ErrPersonImageInvalid, and a refused face
-// ErrPersonImageNoFace or ErrPersonImageManyFaces; nothing is written on error.
+// UploadPersonImage decodes, fits and stores a face whatever face recognition finds in it. A body over the byte
+// limit returns ThumbnailUploadTooLargeError and any other unreadable image ErrPersonImageInvalid; nothing is written
+// on error.
 func (p *PersonImages) UploadPersonImage(ctx context.Context, id int64, data []byte) (domain.Credit, error) {
 	fitted, err := p.fit(ctx, data)
 	if err != nil {
 		return domain.Credit{}, err
-	}
-	if p.faces != nil {
-		if err := p.faces.CheckFaceImage(ctx, fitted); err != nil {
-			return domain.Credit{}, err
-		}
 	}
 	return p.store.SetPersonImage(ctx, id, fitted)
 }

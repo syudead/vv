@@ -150,33 +150,3 @@ func faceImageRequest(data []byte) (faceproto.DetectRequest, error) {
 	}
 	return faceproto.DetectRequest{Width: bounds.Dx(), Height: bounds.Dy(), Pix: pix}, nil
 }
-
-// CheckFaceImage refuses a fitted upload without a good face, ErrPersonImageNoFace, or with several,
-// ErrPersonImageManyFaces, while the feature is on and its runtime is ready. Without the runtime, or when the helper
-// cannot answer, the upload is not checked. One check at a time runs its own helper, so the worker's video goes on.
-func (f *FaceRecognizer) CheckFaceImage(ctx context.Context, img domain.PersonImage) error {
-	settings, err := f.settings.FaceSettings(ctx)
-	if err != nil {
-		return err
-	}
-	if !settings.Enabled || f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
-		return nil
-	}
-	f.checking.Lock()
-	defer f.checking.Unlock()
-	helper := f.newHelper(settings.Recognizer)
-	defer func() {
-		if err := helper.Close(); err != nil {
-			f.logger.Warn("the face helper did not stop cleanly", slog.Any("error", err))
-		}
-	}()
-	_, err = faceImageVector(ctx, helper, img.JPEG)
-	switch {
-	case err == nil, errors.Is(err, domain.ErrPersonImageNoFace), errors.Is(err, domain.ErrPersonImageManyFaces):
-		return err
-	case ctx.Err() != nil:
-		return ctx.Err()
-	}
-	f.logger.Warn("cannot check the faces of an uploaded image; storing it unchecked", slog.Any("error", err))
-	return nil
-}

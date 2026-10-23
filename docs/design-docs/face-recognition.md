@@ -438,19 +438,16 @@ recognizer, so a lost event or a recognizer switch still leads to a vector.
 | A database error                                                                       | The worker tries again after 5 seconds                                                             |
 | The merge is refused for good                                                          | The vector and candidates are stored without the merge, and the worker logs the person and goes on |
 
-While the feature is on and its runtime is `ready`, `PUT /api/people/{id}/image`
-detects the faces of the fitted image before storing it, and refuses an image
-without a good face with `400 person_image_no_face` and one with several with
-`400 person_image_many_faces`. The check starts its own helper, one check at a
-time, so a running video goes on; when the helper cannot answer, the face is
-stored unchecked. Plugin faces are not checked.
+`PUT /api/people/{id}/image` stores the owner's face whatever face
+recognition finds in it, as it stores plugin faces: a face without one good
+face gets a null vector and merges nobody. The owner frames the portrait
+before saving it ([people.md](people.md#a-face-is-framed-before-it-is-saved)).
 
-| Rejected                                          | Why                                                                                                                                              |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Embedding inside the upload request               | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video                                             |
-| Embedding only the faces named by events          | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
-| Sharing the worker's helper with the upload check | The worker stops its helper when idle, and a request from another goroutine would start a process nobody stops                                   |
-| Checking plugin faces on upload too               | Only the owner's upload is checked; a plugin face without one good face gets a null vector and merges nobody                                     |
+| Rejected                                         | Why                                                                                                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Embedding inside the upload request              | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video                                             |
+| Embedding only the faces named by events         | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
+| Refusing an upload without exactly one good face | Detection misses drawn, side-on and small faces the owner still wants to show, and a null vector already keeps such a face out of merges         |
 
 ## The cast rule merges only one-to-one pairs
 
@@ -822,7 +819,7 @@ An appearance whose similarity is below the candidate threshold of the
 recognizer that made its centroid, found by the vector's length, is marked
 `unlike`. `sort=mostSimilar` is the reverse with the same tail, for choosing the
 person's face from the faces most like them
-([people.md](people.md#a-face-can-be-framed-from-a-video)). Each appearance also
+([people.md](people.md#a-face-is-framed-before-it-is-saved)). Each appearance also
 carries its `focus`, the middle, mean centre and width of its longest track.
 By default they come newest video first by the video's added time, then by
 descending appearance id. The store reads every appearance of the person and

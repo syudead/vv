@@ -6,7 +6,6 @@ import {
   type Person,
   personFaceSrc,
   removePersonImage,
-  uploadPersonImage,
 } from "../../api/credits";
 import { updateFavorites } from "../../api/favorites";
 import { errorText, t, type UiText } from "../../i18n";
@@ -31,8 +30,8 @@ import {
 import { Input } from "../../ui/shadcn/input";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { creditDisplayName } from "../displayName";
+import FaceCropDialog from "./FaceCropDialog";
 import FacePickerDialog from "./FacePickerDialog";
-import { faceUploadFailure } from "./faceUploadFailure";
 
 const text = t.credits.personPage;
 
@@ -44,7 +43,7 @@ function withFaceOf(saved: Person) {
   });
 }
 
-/** The face with its heart and its upload and removal; an image pasted or dropped on the page uploads too. A missing person calls onGone. */
+/** The face with its heart and its upload and removal; an image chosen, pasted or dropped on the page opens for framing. A missing person calls onGone. */
 export default function PersonFaceControl({
   person,
   onChanged,
@@ -55,23 +54,23 @@ export default function PersonFaceControl({
   onGone: () => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [cropping, setCropping] = useState<File | null>(null);
   const [error, setError] = useState<UiText | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
   const [picking, setPicking] = useState(false);
   const { dragging } = useImageIntake({
-    enabled: !uploading,
-    onFile: (file) => void upload(file),
+    enabled: cropping === null,
+    onFile: frame,
     scope: "page",
   });
 
   function pick() {
-    if (!uploading) fileInput.current?.click();
+    fileInput.current?.click();
   }
 
-  async function upload(file: File) {
+  function frame(file: File) {
     const refusal = uploadRefusal(file);
     if (refusal !== null) {
       setError(
@@ -82,25 +81,14 @@ export default function PersonFaceControl({
       return;
     }
     setError(null);
-    setUploading(true);
-    try {
-      onChanged(withFaceOf(await uploadPersonImage(person.id, file)));
-    } catch (failure) {
-      if (isCreditGone(failure)) {
-        onGone();
-        return;
-      }
-      setError(faceUploadFailure(failure));
-    } finally {
-      setUploading(false);
-    }
+    setCropping(file);
   }
 
   function choose(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     // Clear the value so choosing the same file again still fires change.
     event.target.value = "";
-    if (file !== undefined) void upload(file);
+    if (file !== undefined) frame(file);
   }
 
   async function remove() {
@@ -153,7 +141,6 @@ export default function PersonFaceControl({
                   variant="ghost"
                   size="icon-sm"
                   aria-label={text.face.change}
-                  disabled={uploading}
                   className="bg-overlay"
                 >
                   <Camera aria-hidden="true" />
@@ -183,11 +170,6 @@ export default function PersonFaceControl({
               </DropdownMenuContent>
             </DropdownMenu>
           </PersonFaceMark>
-          {uploading && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center bg-overlay">
-              <Spinner aria-label={text.face.uploading} />
-            </div>
-          )}
         </PersonFace>
       </div>
       {error !== null && (
@@ -206,6 +188,18 @@ export default function PersonFaceControl({
         onChange={choose}
       />
       <ImageDropOverlay dragging={dragging} label={text.face.drop} />
+      {cropping !== null && (
+        <FaceCropDialog
+          person={person}
+          file={cropping}
+          onClose={() => setCropping(null)}
+          onSaved={(saved) => {
+            setCropping(null);
+            onChanged(withFaceOf(saved));
+          }}
+          onGone={onGone}
+        />
+      )}
       {picking && (
         <FacePickerDialog
           person={person}
