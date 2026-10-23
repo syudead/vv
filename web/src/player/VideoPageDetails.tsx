@@ -1,5 +1,5 @@
 import type { Video } from "../api/client";
-import type { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
+import type { DetailMark, useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import AutoTagButton from "./AutoTagButton";
 import type { usePageHandoff } from "./detailsEditor/handoff";
@@ -11,6 +11,9 @@ import type { VideoPlaylist } from "./useVideoPlaylist";
 import VideoFacts, { type ThumbnailCapture } from "./VideoFacts";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
+import type { VirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
+import VirtualFacts from "./virtualVideo/VirtualFacts";
+import VirtualLinks from "./virtualVideo/VirtualLinks";
 import VisibilitySwitch from "./VisibilitySwitch";
 
 type Detail = ReturnType<typeof useVideoDetail>;
@@ -28,8 +31,11 @@ export default function VideoPageDetails({
   detail,
   related,
   handoff,
+  thumbnail,
   onGroupChanged,
   onEditingThumbnail,
+  onDeleted,
+  onMerged,
 }: {
   loading: boolean;
   video: Video | undefined;
@@ -42,8 +48,12 @@ export default function VideoPageDetails({
   detail: Pick<Detail, "refresh" | "replace" | "setFavorite">;
   related: Pick<Related, "rename" | "rethumb">;
   handoff: ReturnType<typeof usePageHandoff>;
+  /** Upload state a virtual video's facts row shares with its media frame. */
+  thumbnail: VirtualThumbnail;
   onGroupChanged: () => void;
   onEditingThumbnail: (editing: boolean) => void;
+  onDeleted: () => void;
+  onMerged: (merged: Video) => void;
 }) {
   if (loading)
     return (
@@ -56,6 +66,17 @@ export default function VideoPageDetails({
   const { refresh, replace, setFavorite } = detail;
   // Preserve the previous value while refreshing or after failure.
   const reread = () => void refresh();
+  const changed = (saved: Video, mark: DetailMark) => {
+    replace(saved, mark, "keep");
+    // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
+    related.rethumb(saved);
+    related.rename(saved);
+  };
+  // Preserve navigation history and restore focus to the metadata editor's entry point.
+  const details = {
+    linkState: { from: backTo, trail },
+    focusEntry: handoff.focusEntry(video.id),
+  };
   const { playback } = playlist;
   return (
     <>
@@ -95,34 +116,43 @@ export default function VideoPageDetails({
         />
         {owner && <OwnerControls video={video} reread={reread} />}
       </div>
-      {/* Guest responses omit location, so file actions remain hidden. */}
-      <VideoFacts
-        key={`facts:${String(video.id)}`}
-        video={video}
-        owner={owner}
-        capture={capture}
-        onChanged={(saved, mark) => {
-          replace(saved, mark, "keep");
-          // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
-          related.rethumb(saved);
-          related.rename(saved);
-        }}
-        onStale={reread}
-        onEditingChange={onEditingThumbnail}
-        // Preserve navigation history and restore focus to the metadata editor's entry point.
-        details={{
-          linkState: { from: backTo, trail },
-          focusEntry: handoff.focusEntry(video.id),
-        }}
-        //
-        onFavorite={setFavorite}
-        versions={{
-          navigation: { backTo, autoplay },
-          // Reload after unbundling to replace bundle metadata with the video's own metadata.
-          onReplace: (removed, mark) => replace(removed, mark, "refetch"),
-          onRefresh: reread,
-        }}
-      />
+      {video.virtual ? (
+        <>
+          <VirtualLinks videoId={video.id} info={video.workInfo} />
+          <VirtualFacts
+            key={`facts:${String(video.id)}`}
+            video={video}
+            owner={owner}
+            thumbnail={thumbnail}
+            onChanged={changed}
+            onStale={reread}
+            onFavorite={setFavorite}
+            onDeleted={onDeleted}
+            onMerged={onMerged}
+            onEditingChange={onEditingThumbnail}
+            details={details}
+          />
+        </>
+      ) : (
+        // Guest responses omit location, so file actions remain hidden.
+        <VideoFacts
+          key={`facts:${String(video.id)}`}
+          video={video}
+          owner={owner}
+          capture={capture}
+          onChanged={changed}
+          onStale={reread}
+          onEditingChange={onEditingThumbnail}
+          details={details}
+          onFavorite={setFavorite}
+          versions={{
+            navigation: { backTo, autoplay },
+            // Reload after unbundling to replace bundle metadata with the video's own metadata.
+            onReplace: (removed, mark) => replace(removed, mark, "refetch"),
+            onRefresh: reread,
+          }}
+        />
+      )}
     </>
   );
 }

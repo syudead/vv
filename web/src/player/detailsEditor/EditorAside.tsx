@@ -1,4 +1,4 @@
-import { ArrowLeft, Film } from "lucide-react";
+import { ArrowLeft, Film, SquareDashed } from "lucide-react";
 import { type MouseEvent, type Ref, useState } from "react";
 import { Link } from "react-router";
 
@@ -59,7 +59,11 @@ export default function EditorAside({
         />
       ) : (
         <div className="flex aspect-video w-full max-w-form-page-aside items-center justify-center rounded-md bg-card text-muted-foreground">
-          <Film className="size-6" aria-hidden="true" />
+          {video.virtual ? (
+            <SquareDashed className="size-6" aria-hidden="true" />
+          ) : (
+            <Film className="size-6" aria-hidden="true" />
+          )}
         </div>
       )}
       {video === undefined ? (
@@ -67,6 +71,12 @@ export default function EditorAside({
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-1/2" />
         </>
+      ) : video.virtual ? (
+        // A virtual video has no file name, length, size, resolution or folder.
+        <p className="flex items-center gap-1.5 font-medium">
+          <SquareDashed className="size-4 shrink-0" aria-hidden="true" />
+          {t.player.virtual.band}
+        </p>
       ) : (
         <>
           <p className="font-medium wrap-anywhere">{fileName(video)}</p>

@@ -11,6 +11,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 const titleType = "text-xl leading-snug font-semibold sm:text-video-title";
 
+/** reload offers to re-read a video that changed in another tab. */
+interface TitleFailure {
+  text: UiText;
+  reload?: boolean;
+}
+
+function saveFailure(error: unknown): TitleFailure {
+  if (error instanceof RequestFailed && error.reason === "content_changed")
+    return { text: t.player.virtual.changed, reload: true };
+  return { text: t.player.title.saveFailed(errorText(error)) };
+}
+
 /** Return saved data with its pre-submit detail mark; refresh on 404. Callers key by video ID to reset editing on navigation. */
 export default function VideoTitle({
   video,
@@ -26,7 +38,7 @@ export default function VideoTitle({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
+  const [failure, setFailure] = useState<TitleFailure | null>(null);
   const editButton = useRef<HTMLButtonElement | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
   // Responses after cancellation may update video data but must not change the current editing state.
@@ -72,6 +84,11 @@ export default function VideoTitle({
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (sending) return;
+    // A virtual video's title is its only name, so an empty one is refused before sending.
+    if (video.virtual && draft.trim() === "") {
+      setFailure({ text: t.errors.reason.invalid_title });
+      return;
+    }
     // Avoid creating a display name when unchanged; the server would trim whitespace from the original filename.
     if (
       video.displayName === undefined &&
@@ -87,7 +104,7 @@ export default function VideoTitle({
     request.current = controller;
     setFailure(null);
     setSending(true);
-    setVideoDisplayName(video.id, draft, controller.signal).then(
+    setVideoDisplayName(video.id, draft, controller.signal, video.contentVersion).then(
       (saved) => {
         onSaved(saved, mark);
         if (session.current === mine) finish();
@@ -96,7 +113,7 @@ export default function VideoTitle({
         if (isAborted(error) || controller.signal.aborted) return;
         if (session.current === mine) {
           setSending(false);
-          setFailure(t.player.title.saveFailed(errorText(error)));
+          setFailure(saveFailure(error));
         }
         if (error instanceof RequestFailed && error.status === 404) onStale();
       },
@@ -152,7 +169,20 @@ export default function VideoTitle({
               className="flex items-center gap-1.5 text-sm text-destructive"
             >
               <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-              {failure}
+              {failure.text}
+              {failure.reload === true && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-0 py-0"
+                  onClick={() => {
+                    finish();
+                    onStale();
+                  }}
+                >
+                  {t.common.reload}
+                </Button>
+              )}
             </p>
           )}
         </form>

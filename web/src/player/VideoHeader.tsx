@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { SquareDashed, X } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
@@ -42,9 +42,12 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
 /** DetailPage owns header layout; CSS collapses intermediate breadcrumbs below md. */
 export default function VideoHeader({
   folder,
+  virtual = false,
   onClose,
 }: {
   folder: VideoFolder | undefined;
+  /** A virtual video has no folder; the band names what it is instead, not as a link. */
+  virtual?: boolean;
   onClose: () => void;
 }) {
   const crumbs = folderCrumbs(folder);
@@ -53,6 +56,13 @@ export default function VideoHeader({
   return (
     <header className="flex min-w-0 flex-1 items-center gap-1">
       <BrandHomeLink />
+
+      {virtual && (
+        <p className="flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground">
+          <SquareDashed className="size-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">{t.player.virtual.band}</span>
+        </p>
+      )}
 
       {crumbs.length > 0 && (
         <Breadcrumb

@@ -42,7 +42,10 @@ export function frameAspect(video: {
   displayAspectRatio?: number;
   width?: number;
   height?: number;
+  virtual?: boolean;
 }): number | null {
+  // The server fits a virtual video's image to 16:9, the card frame.
+  if (video.virtual === true) return 16 / 9;
   if (video.displayAspectRatio !== undefined && video.displayAspectRatio > 0)
     return video.displayAspectRatio;
   if (

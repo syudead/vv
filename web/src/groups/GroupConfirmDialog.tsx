@@ -4,8 +4,15 @@ import { type ReactNode, useState } from "react";
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
-import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
+import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
+
+/** reload marks a content_changed failure the caller can answer by re-reading. */
+interface Failure {
+  text: UiText;
+  reload: boolean;
+}
 
 /**
  * Mount only while open and block closing during requests; callers own success navigation and
@@ -23,6 +30,7 @@ export default function GroupConfirmDialog<T>({
   failed,
   actionDisabled,
   notice,
+  changed,
 }: {
   request: () => Promise<T>;
   onDone: (result: T) => void;
@@ -37,9 +45,11 @@ export default function GroupConfirmDialog<T>({
   actionDisabled?: boolean;
   /** Content between the description and submission errors, such as impact-loading failures. */
   notice?: ReactNode;
+  /** Text and Reload for 409 content_changed, when the request carries the version the screen read. */
+  changed?: { text: UiText; onReload: () => void };
 }) {
   const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
 
   const confirm = () => {
     if (pending) return;
@@ -56,7 +66,15 @@ export default function GroupConfirmDialog<T>({
           onGone();
           return;
         }
-        setFailure(failed(errorText(error)));
+        if (
+          changed !== undefined &&
+          error instanceof RequestFailed &&
+          error.reason === "content_changed"
+        ) {
+          setFailure({ text: changed.text, reload: true });
+          return;
+        }
+        setFailure({ text: failed(errorText(error)), reload: false });
       },
     );
   };
@@ -84,7 +102,19 @@ export default function GroupConfirmDialog<T>({
       {failure !== null && (
         <Alert variant="destructive">
           <CircleAlert aria-hidden="true" />
-          <AlertTitle>{failure}</AlertTitle>
+          <AlertTitle>{failure.text}</AlertTitle>
+          {failure.reload && changed !== undefined && (
+            <AlertAction>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={changed.onReload}
+              >
+                {t.common.reload}
+              </Button>
+            </AlertAction>
+          )}
         </Alert>
       )}
     </ConfirmDialog>

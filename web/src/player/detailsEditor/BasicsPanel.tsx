@@ -42,9 +42,11 @@ export default function BasicsPanel({
   saving,
   problem,
   save,
+  nameLabel,
   namePlaceholder,
   nameRef,
 }: PanelProps & {
+  nameLabel: UiText;
   namePlaceholder: string;
   nameRef: Ref<HTMLInputElement>;
 }) {
@@ -53,7 +55,7 @@ export default function BasicsPanel({
   return (
     <>
       <NameField
-        label={e.name}
+        label={nameLabel}
         value={draft.name}
         onChange={(name) => update((current) => ({ ...current, name }))}
         placeholder={namePlaceholder}
