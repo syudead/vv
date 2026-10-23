@@ -570,7 +570,7 @@ describe("VideoPage Thumbnail tab", () => {
       });
     });
 
-    it("スプライトのある動画はシートを画像として出すだけで、コマから位置は送らない（フィードバック 3）", async () => {
+    it("スプライトのある動画はシートを小さく出し、押すと大きく見せるだけで位置は送らない（フィードバック 3）", async () => {
       server.video = withSprite;
       await openThumbnail();
       const list = await screen.findByRole("list", { name: "Seek preview" });
@@ -584,7 +584,14 @@ describe("VideoPage Thumbnail tab", () => {
           image.getAttribute("alt"),
         ),
       ).toEqual(["Seek preview sheet 1 of 2", "Seek preview sheet 2 of 2"]);
-      expect(within(list).queryByRole("button")).toBeNull();
+      fireEvent.click(
+        within(list).getByRole("button", {
+          name: "Show seek preview sheet 1 of 2 large",
+        }),
+      );
+      expect(
+        await screen.findByRole("dialog", { name: "Seek preview sheet 1 of 2" }),
+      ).toBeDefined();
       expect(server.position).not.toHaveBeenCalled();
     });
 

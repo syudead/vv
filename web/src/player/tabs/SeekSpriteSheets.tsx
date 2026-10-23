@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SeekThumbnailSprite } from "../../api/client";
 import { t } from "../../i18n";
+import { Button } from "../../ui/shadcn/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/shadcn/dialog";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import { PanelSection, ReadFailure } from "./panelParts";
 import { type SpriteSheets, useSpriteSheets } from "./useSpriteFrame";
@@ -34,7 +36,10 @@ function useSheetObserver(requestSheet: (index: number) => void) {
   );
 }
 
-/** The seek sprite's sheets as they are, for viewing; a sheet is read as it comes into view. */
+/**
+ * The seek sprite's sheets as small previews; pressing one shows it large in a dialog. A sheet is
+ * read as it comes into view.
+ */
 export default function SeekSpriteSheets({ spriteUrl }: { spriteUrl: string }) {
   const sheets = useSpriteSheets(spriteUrl, true);
   const text = t.player.tabs;
@@ -46,7 +51,7 @@ export default function SeekSpriteSheets({ spriteUrl }: { spriteUrl: string }) {
         <Skeleton
           role="status"
           aria-label={text.seekSpriteLoading}
-          className="aspect-video w-full"
+          className="aspect-video w-replace-preview"
         />
       ) : (
         <Sheets sheets={sheets} sprite={sheets.sprite} />
@@ -63,34 +68,58 @@ function Sheets({
   sprite: SeekThumbnailSprite;
 }) {
   const observe = useSheetObserver(sheets.requestSheet);
+  const [open, setOpen] = useState<number | null>(null);
+  const text = t.player.tabs;
+  const count = sprite.sheets.length;
   const aspectRatio = `${String(sprite.columns * sprite.frameWidth)} / ${String(sprite.rows * sprite.frameHeight)}`;
+  const openUrl = open === null ? null : sheets.sheetUrl(open);
   return (
     <>
-      <ul aria-label={t.player.tabs.seekSprite} className="flex flex-col gap-2">
+      <ul aria-label={text.seekSprite} className="flex flex-wrap gap-2">
         {sprite.sheets.map((_, index) => {
           const url = sheets.sheetUrl(index);
+          const name = text.seekSpriteSheet(index + 1, count);
           return (
-            <li
-              key={index}
-              ref={observe}
-              data-sheet={index}
-              className="overflow-hidden rounded-md bg-muted"
-              style={{ aspectRatio }}
-            >
-              {url !== null && (
-                <img
-                  src={url}
-                  alt={t.player.tabs.seekSpriteSheet(index + 1, sprite.sheets.length)}
-                  className="size-full"
-                />
-              )}
+            <li key={index} ref={observe} data-sheet={index}>
+              <Button
+                variant="ghost"
+                aria-label={text.openSeekSpriteSheet(index + 1, count)}
+                disabled={url === null}
+                onClick={() => setOpen(index)}
+                className="block h-auto w-replace-preview overflow-hidden rounded-md bg-muted p-0 hover:ring-2 hover:ring-ring"
+                style={{ aspectRatio }}
+              >
+                {url !== null && <img src={url} alt={name} className="size-full" />}
+              </Button>
             </li>
           );
         })}
       </ul>
       {sheets.sheetFailed && (
-        <ReadFailure text={t.player.tabs.seekSpriteFailed} onRetry={sheets.retry} />
+        <ReadFailure text={text.seekSpriteFailed} onRetry={sheets.retry} />
       )}
+      <Dialog
+        open={open !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpen(null);
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>
+              {open === null ? text.seekSprite : text.seekSpriteSheet(open + 1, count)}
+            </DialogTitle>
+          </DialogHeader>
+          {openUrl !== null && open !== null && (
+            <img
+              src={openUrl}
+              alt={text.seekSpriteSheet(open + 1, count)}
+              className="w-full rounded-md"
+              style={{ aspectRatio }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

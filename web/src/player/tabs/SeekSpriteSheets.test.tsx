@@ -91,7 +91,7 @@ async function renderSheets() {
 }
 
 describe("SeekSpriteSheets", () => {
-  it("シートは見えてから一度だけ読み、読めたシートを画像として出す", async () => {
+  it("シートは見えてから一度だけ読んで小さく出し、押すとそのシートをダイアログで大きく出す", async () => {
     await renderSheets();
     expect(observer.observed).toHaveLength(2);
     expect(sheetUrls()).toEqual([]);
@@ -102,7 +102,23 @@ describe("SeekSpriteSheets", () => {
     const image = await screen.findByRole("img", { name: "Seek preview sheet 2 of 2" });
     expect(image.getAttribute("src")).toBe("blob:sheet");
     expect(screen.queryByRole("img", { name: "Seek preview sheet 1 of 2" })).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Show seek preview sheet 1 of 2 large" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show seek preview sheet 2 of 2 large" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Seek preview sheet 2 of 2",
+    });
+    expect(
+      within(dialog)
+        .getByRole("img", { name: "Seek preview sheet 2 of 2" })
+        .getAttribute("src"),
+    ).toBe("blob:sheet");
   });
 
   it("読めなかったシートは理由と Retry を出し、Retry でそのシートを読み直す", async () => {
