@@ -202,7 +202,7 @@ test.describe.serial("home", () => {
   test("search filters the single home list", async ({ page }) => {
     await page.goto("/");
     await expect(folderCard(page)).toBeVisible();
-    const field = page.getByRole("searchbox", { name: "Search videos" });
+    const field = page.getByRole("combobox", { name: "Search videos" });
     await field.fill(query);
     await field.press("Enter");
     await expect(page).toHaveURL(

@@ -460,6 +460,9 @@ dismissed the pair
 The performer has no face to compare with, so the rule relies on the
 one-to-one pairing; in the POC, five candidates from a cast list named 0.5% of
 unknown faces wrongly at 0.363, and one candidate is stricter still.
+A work with more performers leaves each of them beside an unnamed person; the
+owner matches those in the comparison of a work-info fetch
+([work-info-plugins.md](work-info-plugins.md#the-owner-matches-unnamed-performers-with-fetched-ones)).
 
 The rule reads a work's performers, their appearances in every video sharing
 the work, and the dismissed pairs in the transaction that merges

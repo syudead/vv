@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
 import type { WorkInfo } from "../api/workInfo";
@@ -57,6 +57,23 @@ function performer(
   return { role: "performer", name, externalIds: [], match };
 }
 
+/** The video with one unnamed performer, #42, who has a face. */
+function withUnnamedPerformer(): Video {
+  return {
+    ...video,
+    workInfo: info({
+      people: [
+        {
+          role: "performer",
+          person: { id: 42, name: "", provisional: true },
+          provisional: true,
+          imageRevision: 3,
+        },
+      ],
+    }),
+  };
+}
+
 function chip(dialog: HTMLElement, name: string) {
   const found = within(dialog)
     .getAllByTitle(name)
@@ -71,6 +88,14 @@ function checkbox(dialog: HTMLElement, name: string) {
 function toggle(dialog: HTMLElement, name: RegExp) {
   return within(dialog).getByRole("button", { name });
 }
+
+// Radix Select reads pointer capture and scrolls its options, which jsdom lacks.
+beforeEach(() => {
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.setPointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
+});
 
 describe("VideoPage work-info fetch details", () => {
   useFetchServer();
@@ -151,6 +176,99 @@ describe("VideoPage work-info fetch details", () => {
     await user.click(toggle(dialog, /^二人目/));
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     expect(server.apply).toHaveBeenCalledWith({ fields: [], people: [0, 2] });
+  });
+
+  it("名前の無い出演者に取得した出演者を選ぶと、両方の顔を並べ、その組を送る", async () => {
+    server.video = withUnnamedPerformer();
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          tags: [],
+          people: [
+            performer("一人目", { state: "new" }),
+            { ...performer("二人目", { state: "new" }), hasImage: true },
+          ],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    const pick = within(dialog).getByRole("combobox", { name: "Who #42 is" });
+    expect(pick.textContent).toBe("Keep apart");
+    await user.click(pick);
+    await user.click(await screen.findByRole("option", { name: "二人目" }));
+    expect(dialog.querySelector('img[src="/api/people/42/image?v=3"]')).not.toBeNull();
+    expect(
+      dialog.querySelectorAll(
+        'img[src="/api/videos/7/work-info-fetches/F1/people/1/image"]',
+      ),
+    ).toHaveLength(2);
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({
+      fields: [],
+      people: [0, 1],
+      samePeople: [{ at: 1, personId: 42 }],
+    });
+  });
+
+  it("名前の無い出演者に選んだ出演者の切り替えを外すと、組を送らない", async () => {
+    server.video = withUnnamedPerformer();
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          tags: [],
+          people: [
+            performer("一人目", { state: "new" }),
+            performer("二人目", { state: "new" }),
+          ],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("combobox", { name: "Who #42 is" }));
+    await user.click(await screen.findByRole("option", { name: "二人目" }));
+    await user.click(toggle(dialog, /^二人目/));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({ fields: [], people: [0] });
+  });
+
+  it("既に二重の動画では、動画にある出演者を名前の無い出演者に選べ、その組だけで反映できる", async () => {
+    const doubled = withUnnamedPerformer();
+    server.video = {
+      ...doubled,
+      workInfo: info({
+        people: [
+          ...doubled.workInfo!.people,
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+        ],
+      }),
+    };
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          tags: [],
+          people: [performer("既存の人", { state: "existing", id: 9, name: "既存の人" })],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("combobox", { name: "Who #42 is" }));
+    await user.click(await screen.findByRole("option", { name: "既存の人" }));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({
+      fields: [],
+      people: [0],
+      samePeople: [{ at: 0, personId: 42 }],
+    });
   });
 
   it("リンクと ID の切り替えを外すと、その値を送らない", async () => {

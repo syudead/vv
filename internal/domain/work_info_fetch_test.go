@@ -142,3 +142,40 @@ func TestFetchedWorkInfoSelectRefusesASelectionTheResultCannotGive(t *testing.T)
 		}
 	}
 }
+
+func TestSelectSamePeopleMapsEntriesToTheKeptPeople(t *testing.T) {
+	got, ok := selectableWorkInfo().SelectSamePeople(WorkInfoSelection{
+		People: []int{2, 1, 0}, SamePeople: []SamePerson{{At: 2, PersonID: 7}, {At: 0, PersonID: 9}},
+	})
+	if want := []SamePerson{{At: 2, PersonID: 7}, {At: 0, PersonID: 9}}; !ok || !slices.Equal(got, want) {
+		t.Fatalf("SelectSamePeople = %v, %v; want %v", got, ok, want)
+	}
+	got, ok = selectableWorkInfo().SelectSamePeople(WorkInfoSelection{
+		People: []int{2}, SamePeople: []SamePerson{{At: 2, PersonID: 7}},
+	})
+	if want := []SamePerson{{At: 0, PersonID: 7}}; !ok || !slices.Equal(got, want) {
+		t.Fatalf("SelectSamePeople with one kept = %v, %v; want %v", got, ok, want)
+	}
+}
+
+func TestSelectSamePeopleRefusesAPairTheApplyCannotMerge(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		same []SamePerson
+	}{
+		{"an entry not chosen", []SamePerson{{At: 2, PersonID: 7}}},
+		{"an entry past the end", []SamePerson{{At: 3, PersonID: 7}}},
+		{"an entry not a performer", []SamePerson{{At: 1, PersonID: 7}}},
+		{"no person", []SamePerson{{At: 0, PersonID: 0}}},
+		{"an entry twice", []SamePerson{{At: 0, PersonID: 7}, {At: 0, PersonID: 8}}},
+		{"a person twice", []SamePerson{{At: 0, PersonID: 7}, {At: 2, PersonID: 7}}},
+	} {
+		people := []int{0, 1}
+		if tc.name != "an entry not chosen" {
+			people = append(people, 2)
+		}
+		if _, ok := selectableWorkInfo().SelectSamePeople(WorkInfoSelection{People: people, SamePeople: tc.same}); ok {
+			t.Errorf("%s: SelectSamePeople accepted %+v", tc.name, tc.same)
+		}
+	}
+}

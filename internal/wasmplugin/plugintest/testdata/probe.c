@@ -56,6 +56,13 @@ static void sandbox(const char *mode) {
 
 int main(void) {
     const char *req = request();
+    const char *url = text(req, "url");
+    if (*url) {
+        // A person plugin's fetch by link: name the person by the link and give one ID of its own.
+        printf("{\"person\":{\"name\":"); quoted(url);
+        puts(",\"externalIds\":[{\"source\":\"s\",\"value\":\"from-link\"}]}}");
+        return 0;
+    }
     const char *mode = text(req, !strcmp(text(req, "operation"), "search") ? "query" : "id");
     const char *settings = field(req, "settings");
     if (!strcmp(mode, "grow")) {

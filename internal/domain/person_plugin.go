@@ -16,19 +16,28 @@ const (
 	WorkInfoPluginKindPerson WorkInfoPluginKind = "person"
 )
 
-const PersonPluginMaxSources = 10
+const (
+	PersonPluginMaxSources = 10
+	PersonPluginMaxDomains = 10
+	// PersonPluginDomainMaxLength is the longest DNS host name.
+	PersonPluginDomainMaxLength = 253
+)
 
 // DeclaresSource reports whether a person plugin's manifest lists source.
 func (m WorkInfoPluginManifest) DeclaresSource(source string) bool {
 	return slices.Contains(m.Sources, source)
 }
 
-// checkPluginKind runs after the shared checks; hasSources tells an explicit sources field apart from an absent one.
-func checkPluginKind(m WorkInfoPluginManifest, hasSources bool) *WorkInfoPluginManifestError {
+// checkPluginKind runs after the shared checks; hasSources and hasDomains tell an explicit field, null included,
+// apart from an absent one.
+func checkPluginKind(m WorkInfoPluginManifest, hasSources, hasDomains bool) *WorkInfoPluginManifestError {
 	switch m.Kind {
 	case WorkInfoPluginKindWork:
 		if hasSources {
 			return manifestInvalid("sources", "is allowed only when kind is person")
+		}
+		if hasDomains {
+			return manifestInvalid("domains", "is allowed only when kind is person")
 		}
 		return nil
 	case WorkInfoPluginKindPerson:
@@ -52,7 +61,39 @@ func checkPluginKind(m WorkInfoPluginManifest, hasSources bool) *WorkInfoPluginM
 			return manifestInvalid(fmt.Sprintf("sources[%d]", i), "must differ from the other sources")
 		}
 	}
+	if hasDomains {
+		return checkPersonPluginDomains(m.Domains)
+	}
 	return nil
+}
+
+// checkPersonPluginDomains accepts bare lowercase host names, so a scheme, port or path never passes.
+func checkPersonPluginDomains(domains []string) *WorkInfoPluginManifestError {
+	if len(domains) == 0 || len(domains) > PersonPluginMaxDomains {
+		return manifestInvalid("domains", fmt.Sprintf("must list 1 to %d domains", PersonPluginMaxDomains))
+	}
+	for i, domain := range domains {
+		if !isPluginDomain(domain) {
+			return manifestInvalid(fmt.Sprintf("domains[%d]", i), fmt.Sprintf(
+				"must be a host name of 1 to %d characters of a-z, 0-9, - and .", PersonPluginDomainMaxLength))
+		}
+		if slices.Index(domains, domain) != i {
+			return manifestInvalid(fmt.Sprintf("domains[%d]", i), "must differ from the other domains")
+		}
+	}
+	return nil
+}
+
+func isPluginDomain(s string) bool {
+	if s == "" || len(s) > PersonPluginDomainMaxLength {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 // PersonCandidate is a person plugin's search result: an external ID with a name; URL is a display link only.
@@ -65,7 +106,7 @@ type PersonCandidate struct {
 }
 
 // FetchedPluginPerson keeps the plugin's values without the apply's validation; ExternalIDs starts with the
-// request's (source, id).
+// request's (source, id) unless the fetch went by link.
 type FetchedPluginPerson struct {
 	Name        string
 	Aliases     []Alias
@@ -111,7 +152,11 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 		if name == "" {
 			break
 		}
-		ids := appendFetchedExternalIDs([]ExternalID{{Source: req.Source, Value: req.ID}}, raw.Person.ExternalIDs)
+		var ids []ExternalID
+		if req.URL == "" {
+			ids = []ExternalID{{Source: req.Source, Value: req.ID}}
+		}
+		ids = appendFetchedExternalIDs(ids, raw.Person.ExternalIDs)
 		return WorkInfoRunResult{Person: FetchedPluginPerson{
 			Name:        name,
 			Aliases:     parseFetchedAliases(raw.Person.Aliases),

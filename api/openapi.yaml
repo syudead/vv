@@ -3406,7 +3406,7 @@ paths:
     post:
       operationId: fetchPersonWithPlugin
       summary: "Fetch a person's information with a person plugin"
-      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate, or not at all: then VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares, and returns 409 person_external_id_missing before running when there is none. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source or an id outside 1–200 characters after trimming 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
+      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -6219,7 +6219,7 @@ components:
     WorkInfoPlugin:
       type: object
       required:
-        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources]
+        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains]
       additionalProperties: false
       description: "One work-info or person plugin."
       properties:
@@ -6231,6 +6231,11 @@ components:
         sources:
           type: array
           description: "A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin."
+          items:
+            type: string
+        domains:
+          type: array
+          description: "The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none."
           items:
             type: string
         name:
@@ -6410,10 +6415,13 @@ components:
           format: int64
         source:
           type: string
-          description: "A search candidate's source; requires id."
+          description: "A search candidate's source; requires id and excludes link."
         id:
           type: string
-          description: "A search candidate's id; requires source."
+          description: "A search candidate's id; requires source and excludes link."
+        link:
+          type: string
+          description: "An http or https link to fetch by, the person's or one the owner typed; excludes source and id. Its host must be one of the plugin's domains or end with a dot and one of them."
 
     PersonPluginFetchedPerson:
       type: object
@@ -6430,7 +6438,7 @@ components:
             $ref: "#/components/schemas/Alias"
         externalIds:
           type: array
-          description: "The fetched ID first, then the plugin's other distinct IDs, up to 20."
+          description: "The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs."
           items:
             $ref: "#/components/schemas/ExternalId"
         profile:
@@ -6456,6 +6464,9 @@ components:
           description: "Result expiration timestamp in Unix seconds."
         person:
           $ref: "#/components/schemas/PersonPluginFetchedPerson"
+        link:
+          type: string
+          description: "The link the fetch ran with; absent for a fetch by external ID."
 
     PersonPluginItem:
       type: string
@@ -6781,6 +6792,26 @@ components:
           description: "Fetched external IDs to append."
           items:
             $ref: "#/components/schemas/ExternalId"
+        samePeople:
+          type: array
+          description: "Unnamed performers of the video matched with chosen fetched performers. Each is merged into the person its entry links, in the same transaction, as confirming a face candidate does. An entry not in people or not a performer, or an entry or person named twice, returns 400 invalid_request. A person who is no longer an unnamed performer of the video, or whose entry is skipped, is left as it is; a merge the people's limits refuse is reported in skipped under the entry."
+          items:
+            $ref: "#/components/schemas/WorkInfoSamePerson"
+
+    WorkInfoSamePerson:
+      type: object
+      required: [at, personId]
+      additionalProperties: false
+      properties:
+        at:
+          type: integer
+          minimum: 0
+          description: "Position of a fetched performer in the result's people; it must also be in people."
+        personId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "The unnamed performer of the video who is that fetched performer."
 
     SkippedTagReason:
       type: string
@@ -11796,6 +11827,8 @@ components:
             - operation_unsupported
             - work_info_fetch_stale
             - person_external_id_missing
+            - person_link_ambiguous
+            - person_link_unsupported
             - invalid_smart_rule
             - smart_folder_not_found
             - smart_folder_cycle
@@ -11824,6 +11857,11 @@ components:
         settingKeys:
           type: array
           description: "Required setting keys without values, in declaration order; only for plugin_settings_missing."
+          items:
+            type: string
+        links:
+          type: array
+          description: "The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous."
           items:
             type: string
     ErrorReason:

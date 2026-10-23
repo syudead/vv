@@ -878,6 +878,8 @@ const (
 	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
 	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
 	codePersonExternalIDMissing     = gen.ErrorCodePersonExternalIdMissing
+	codePersonLinkAmbiguous         = gen.ErrorCodePersonLinkAmbiguous
+	codePersonLinkUnsupported       = gen.ErrorCodePersonLinkUnsupported
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
 )

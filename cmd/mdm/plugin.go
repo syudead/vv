@@ -203,6 +203,9 @@ func writePackedManifest(w io.Writer, modulePath string, m domain.WorkInfoPlugin
 	if m.Kind == domain.WorkInfoPluginKindPerson {
 		lines = append(lines, "Sources: "+strings.Join(m.Sources, ", "))
 	}
+	if len(m.Domains) > 0 {
+		lines = append(lines, "Domains: "+strings.Join(m.Domains, ", "))
+	}
 	if len(m.Settings) == 0 {
 		lines = append(lines, "Settings: none")
 	} else {

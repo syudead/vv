@@ -511,6 +511,8 @@ const (
 	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
 	ErrorCodePersonExternalIdMissing     ErrorCode = "person_external_id_missing"
+	ErrorCodePersonLinkAmbiguous         ErrorCode = "person_link_ambiguous"
+	ErrorCodePersonLinkUnsupported       ErrorCode = "person_link_unsupported"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
@@ -576,6 +578,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeOverlappingMediaDirectories:
 		return true
 	case ErrorCodePersonExternalIdMissing:
+		return true
+	case ErrorCodePersonLinkAmbiguous:
+		return true
+	case ErrorCodePersonLinkUnsupported:
 		return true
 	case ErrorCodePluginBusy:
 		return true
@@ -3259,6 +3265,9 @@ type ApplyWorkInfoFetchRequest struct {
 	// People Positions in the result's people to link in their roles, each once.
 	People *[]int `json:"people,omitempty"`
 
+	// SamePeople Unnamed performers of the video matched with chosen fetched performers. Each is merged into the person its entry links, in the same transaction, as confirming a face candidate does. An entry not in people or not a performer, or an entry or person named twice, returns 400 invalid_request. A person who is no longer an unnamed performer of the video, or whose entry is skipped, is left as it is; a merge the people's limits refuse is reported in skipped under the entry.
+	SamePeople *[]WorkInfoSamePerson `json:"samePeople,omitempty"`
+
 	// Tags Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400.
 	Tags *[]string `json:"tags,omitempty"`
 
@@ -3530,6 +3539,9 @@ type Error struct {
 
 	// Limit Reason limit, included only for reasons whose contract specifies a limit.
 	Limit *int `json:"limit,omitempty"`
+
+	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
+	Links *[]string `json:"links,omitempty"`
 
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
@@ -4828,6 +4840,9 @@ type PersonPluginFetch struct {
 	// FetchId Result identifier used when applying it.
 	FetchId string `json:"fetchId"`
 
+	// Link The link the fetch ran with; absent for a fetch by external ID.
+	Link *string `json:"link,omitempty"`
+
 	// Person A person as the plugin returned it, after VV's limits.
 	Person PersonPluginFetchedPerson `json:"person"`
 }
@@ -4843,11 +4858,14 @@ type PersonPluginFetchApplied struct {
 
 // PersonPluginFetchRequest defines model for PersonPluginFetchRequest.
 type PersonPluginFetchRequest struct {
-	// Id A search candidate's id; requires source.
-	Id       *string `json:"id,omitempty"`
+	// Id A search candidate's id; requires source and excludes link.
+	Id *string `json:"id,omitempty"`
+
+	// Link An http or https link to fetch by, the person's or one the owner typed; excludes source and id. Its host must be one of the plugin's domains or end with a dot and one of them.
+	Link     *string `json:"link,omitempty"`
 	PluginId int64   `json:"pluginId"`
 
-	// Source A search candidate's source; requires id.
+	// Source A search candidate's source; requires id and excludes link.
 	Source *string `json:"source,omitempty"`
 }
 
@@ -4856,7 +4874,7 @@ type PersonPluginFetchedPerson struct {
 	// Aliases First 50 distinct names; languages are checked by the apply.
 	Aliases []Alias `json:"aliases"`
 
-	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20.
+	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20; a fetch by link has only the plugin's IDs.
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// ImageCount How many images VV kept, in the plugin's order; served by index.
@@ -6871,6 +6889,9 @@ type WorkInfoPlugin struct {
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
 	Digest string `json:"digest"`
 
+	// Domains The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none.
+	Domains []string `json:"domains"`
+
 	// FileName Uploaded filename.
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`
@@ -6970,6 +6991,15 @@ type WorkInfoPluginSetting struct {
 
 // WorkInfoPluginState Plugin state.
 type WorkInfoPluginState string
+
+// WorkInfoSamePerson defines model for WorkInfoSamePerson.
+type WorkInfoSamePerson struct {
+	// At Position of a fetched performer in the result's people; it must also be in people.
+	At int `json:"at"`
+
+	// PersonId The unnamed performer of the video who is that fetched performer.
+	PersonId int64 `json:"personId"`
+}
 
 // WorkInfoSearchRequest defines model for WorkInfoSearchRequest.
 type WorkInfoSearchRequest struct {

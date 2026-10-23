@@ -30,12 +30,12 @@ const accountUsage = `Usage:
   mdm account set-password            reset the password (read from standard input)
   mdm plugin pack <module.wasm> <manifest.json>
                                       check a work-info plugin manifest and write it into the module
-  mdm plugin run <module.wasm> <operation> <input> [--set KEY=VALUE]... [--proxy URL] [--source SOURCE]
+  mdm plugin run <module.wasm> <operation> <input> [--set KEY=VALUE]... [--proxy URL] [--source SOURCE] [--url]
                                       run a work-info or person plugin once as VVMDM would; <operation>
                                       is search (input: the words or the person's name) or fetch
                                       (input: the work's or the person's ID; a person plugin's fetch
-                                      needs --source); after --, every argument is positional, so
-                                      words may start with --
+                                      needs --source, or --url to take the input as a link); after --,
+                                      every argument is positional, so words may start with --
 
 Account settings are read only from MDM_DATA_DIR; plugin commands do not read it. The password is never taken from arguments or environment variables.
 If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`

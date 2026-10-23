@@ -181,7 +181,10 @@ does the same. It opens `Upload a face`, an `ImageUploadDialog`, and the image
 dropped, chosen or pasted there opens `Frame the face`
 ([`FaceCropDialog.tsx`](../../web/src/credits/person/FaceCropDialog.tsx)): the
 same stage, `Size`, `Preview` and `Set as face` as below, on the image, with
-the widest centred portrait to start from. `Choose from videos…` opens an `EditorDialog`
+the widest centred portrait to start from. With a face, the menu also offers
+`Reframe the face…`, which opens `Frame the face` on the stored face, so a
+whole photo applied from a person plugin or a work-info fetch can be cut down
+to the portrait. `Choose from videos…` opens an `EditorDialog`
 ([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
 
 | Part    | Shows                                                                                                                                                                            |
@@ -461,6 +464,9 @@ and each fetched person with a profile adds one muted line `Fills only empty
 fields: …` under the chips, because the apply never replaces a stored value.
 Three lines show at first and the rest fold behind `+N more`, which shows them
 all when expanded, so the chips stay the primary content of the row.
+The video's unnamed performers follow, each face beside the fetched performer
+the owner says they are, both `PersonFace judge`
+([work-info-plugins.md](work-info-plugins.md#the-owner-matches-unnamed-performers-with-fetched-ones)).
 
 ## Provisional people on the screens
 

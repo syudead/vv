@@ -232,6 +232,7 @@ before the other fields.
 | `contract` | integer | Yes | `1` |
 | `kind` | string | No | `work` (the default) or `person`; a person plugin follows [Person plugins](#person-plugins) |
 | `sources` | string array | With `"kind": "person"` | See [Person plugins](#person-plugins); not allowed for `work` |
+| `domains` | string array | No | See [Person plugins](#person-plugins); not allowed for `work` |
 | `name` | string | Yes | 1 to 64 characters of `a-z`, `0-9`, `-`, `.`; the plugin's identity, so a module with the same name replaces it |
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
@@ -411,11 +412,13 @@ work-info plugin.
 | --- | --- |
 | `operations` | Exactly `search` and `fetch` |
 | `sources` | 1 to 10 distinct external-ID sources, each 1 to 50 characters without surrounding spaces, as the people API's `source`; the owner sees them before approving |
+| `domains` | Optional: 1 to 10 distinct host names, such as `example.com`, of 1 to 253 characters of `a-z`, `0-9`, `-` and `.`, without scheme, port or path; the hosts whose links the plugin fetches, which the owner sees before approving. A plugin that declares them must accept a link in place of `source` and `id` in its `fetch` request |
 
 | Request | Body |
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<the person's name, 1 to 200 characters>", "settings": {...}}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "source": "<one of sources>", "id": "<1 to 200 characters>", "settings": {...}}` |
+| `fetch` by link | `{"contract": 1, "operation": "fetch", "url": "<an http or https link under one of domains>", "settings": {...}}`, without `source` and `id`; sent only to a plugin that declares `domains` |
 
 | Response | Body |
 | --- | --- |
@@ -423,10 +426,21 @@ work-info plugin.
 | `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "profile": {...}}}`: `name` required, the rest optional |
 | Failure | As for a work-info plugin |
 
+A link matches a domain when its host, lowercased, is the domain or ends with
+`.` and the domain, so `www.example.com` and `m.example.com` match
+`example.com`. VVMDM sends the link as the person stores it or the owner typed
+it, with its query string and fragment. It counts links that differ only in
+scheme, host case or a trailing slash as one, and nothing else, so the plugin
+treats path case and tracking parameters as its site does. When the page is
+missing, private or does not answer, return an `error`; the run fails and
+nothing is applied.
+
 VVMDM keeps the first 50 aliases with a name, each name once. It puts the
 request's `source` and `id` first in `externalIds` and keeps the plugin's
 other distinct IDs after it, up to 20 in all, so the ID a person was fetched
-by always survives the limit. Each URL in `images` and `profile` follow
+by always survives the limit. A fetch by link has no request ID, so VVMDM
+keeps only the plugin's distinct IDs; return the site's ID for the person, so
+the owner can apply it and the next fetch goes by that ID. Each URL in `images` and `profile` follow
 [People's images and profiles](#peoples-images-and-profiles). VVMDM drops
 invalid and repeated URLs, fetches the first 10 after the run, one after
 another, the way it fetches the [covers](#cover-images), and the owner picks one
@@ -440,9 +454,17 @@ mdm plugin run plugin.wasm fetch 1 --source example
 ```
 
 `--source` is required for a person plugin's fetch and must be one of
-`sources`; any other run refuses it with exit code 2. `search` takes the
+`sources`; any other run refuses it with exit code 2. Run a fetch by link
+with `--url`, which takes the input as the link:
+
+```bash
+mdm plugin run plugin.wasm fetch https://www.example.com/people/1 --url
+```
+
+`--url` with `--source`, on a work-info plugin, or with a link whose host
+matches none of `domains` exits with code 2. `search` takes the
 person's name. The output is `{"candidates": [...]}` or `{"person": {...}}`
-after VVMDM's limits, and `mdm plugin pack` prints the kind and the sources.
+after VVMDM's limits, and `mdm plugin pack` prints the kind, the sources and any domains.
 
 In VVMDM, a person plugin is listed in the **Person plugins** section of
 **Settings**, under the **Work-info plugins** section. Either section's

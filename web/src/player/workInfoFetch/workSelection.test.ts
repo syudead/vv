@@ -57,6 +57,7 @@ const none: WorkSelection = {
   organizations: [],
   urls: [],
   externalIds: [],
+  samePeople: [],
 };
 
 describe("wholeRows", () => {
@@ -130,6 +131,7 @@ describe("initialWorkSelection", () => {
       organizations: [],
       urls: ["https://b.example/2"],
       externalIds: [{ source: "x", value: "2" }],
+      samePeople: [],
     });
   });
 

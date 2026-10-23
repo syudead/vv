@@ -77,6 +77,16 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	edited := details.edited
 	out.Skipped = append(out.Skipped, details.skipped...)
 	out.PersonIDs = details.personIDs
+	c := &changes{}
+	same, err := mergeSamePeople(ctx, tx, c, userKeys[0], apply, details.personIDs, now)
+	if err != nil {
+		return domain.FetchedWorkInfoApplied{}, err
+	}
+	out.Skipped = append(out.Skipped, same.skipped...)
+	if same.merged && !slices.Contains(edited, userKeys[0]) {
+		// The merge changed the work's performers even when the apply wrote nothing.
+		edited = append(edited, userKeys[0])
+	}
 	members, err := contentKeysForUserKeys(ctx, tx, edited)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
@@ -93,13 +103,13 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	c := &changes{}
 	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityWorkInfoApply,
 		ownerVideoChanges([]string{contentKey}, ""), now); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	c.matchesChanged()
 	events := append(appliedWorkInfoEvents(apply.VideoID, changed), workInfoEvents...)
+	events = append(events, same.events...)
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
@@ -200,6 +210,65 @@ func mergeFetchedDetails(
 		return domain.WorkInfoMerge{}, err
 	}
 	return merge, nil
+}
+
+type mergedSamePeople struct {
+	merged  bool
+	events  []domain.Event
+	skipped []domain.SkippedWorkInfoValue
+}
+
+// mergeSamePeople merges each unnamed person the owner matched with a fetched performer into the person that entry
+// linked, as confirming a face candidate does. A person no longer an unnamed performer of the work, or an entry the
+// apply skipped, merges nothing; a merge refused for good is rolled back alone and reported as skipped.
+func mergeSamePeople(
+	ctx context.Context, tx *sql.Tx, c *changes, userKey string, apply domain.FetchedWorkInfoApply, personIDs []int64,
+	now time.Time,
+) (mergedSamePeople, error) {
+	var out mergedSamePeople
+	for _, same := range apply.SamePeople {
+		if same.At >= len(personIDs) || personIDs[same.At] == 0 || personIDs[same.At] == same.PersonID {
+			continue
+		}
+		source, err := unnamedPerformer(ctx, tx, userKey, same.PersonID)
+		if err != nil || source == nil {
+			return out, err
+		}
+		err = refusableMerge(ctx, tx, func() error {
+			_, events, _, err := mergeByOwner(ctx, tx, c, *source, personIDs[same.At], now)
+			out.events = append(out.events, events...)
+			return err
+		})
+		if err != nil && !mergeRefused(err) {
+			return out, err
+		}
+		out.merged = out.merged || err == nil
+		if err != nil {
+			fetched := apply.Details.People[same.At]
+			out.skipped = append(out.skipped, domain.SkippedWorkInfoValue{
+				Field: domain.PersonField(fetched.Role), Value: fetched.Name, Reason: domain.SkippedWorkInfoInvalid,
+			})
+		}
+	}
+	return out, nil
+}
+
+// unnamedPerformer reads the person when they are a provisional performer of the work, or returns nil.
+func unnamedPerformer(ctx context.Context, tx *sql.Tx, userKey string, personID int64) (*domain.Credit, error) {
+	var performs bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_work_people
+		where content_key = ? and person_id = ? and role = ?)`, userKey, personID, string(domain.PersonPerformer)).
+		Scan(&performs); err != nil {
+		return nil, fmt.Errorf("cannot read the performers of %s: %w", userKey, err)
+	}
+	if !performs {
+		return nil, nil
+	}
+	person, err := creditByID(ctx, tx, creditTablesByKind[domain.CreditPerson], personID)
+	if err != nil || !person.Provisional {
+		return nil, err
+	}
+	return &person, nil
 }
 
 // fillFetchedPersonProfiles fills each linked person's empty profile fields in fetched order, so a person named twice

@@ -45,6 +45,7 @@ export const people: WorkInfoPlugin = {
   id: 5,
   kind: "person",
   sources: ["fanza"],
+  domains: [],
   name: "people",
   fileName: "people.wasm",
   operations: ["search", "fetch"],
@@ -64,10 +65,13 @@ export interface Sent {
 export const server = {
   person: null as Person | null,
   sent: [] as Sent[],
-  /** When set, the face upload answers only once this settles. */
   plugins: [] as WorkInfoPlugin[],
   candidates: [] as PersonPluginCandidate[],
   fetched: { name: "Aoi", aliases: [], externalIds: [] } as PersonPluginFetchedPerson,
+  /** Links the plugin handles; with only the plugin sent, the server picks from these when no ID is stored. */
+  handledLinks: [] as string[],
+  /** When set, the next apply answers that the result is out of date. */
+  staleApply: false,
   /** The person the apply answers with, and the values it leaves out. */
   applied: null as Person | null,
   skipped: [] as SkippedPersonValue[],
@@ -101,16 +105,31 @@ export function sentBody(request: Sent | undefined): unknown {
   return JSON.parse(String(request?.body));
 }
 
-/** Without a candidate, the stored ID whose source the plugin accepts, as the server picks it. */
-function pluginFetch(current: Person, body: unknown): Response {
-  const request = body as { pluginId: number; source?: string };
-  const accepted = current.externalIds.some((id) => people.sources.includes(id.source));
-  if (request.source === undefined && !accepted)
-    return jsonResponse({ code: "person_external_id_missing", message: "x" }, 409);
+function fetchedBy(link?: string): Response {
   return jsonResponse(
-    { fetchId: "f1", expiresAt: 1_900_000_000, person: server.fetched },
+    { fetchId: "f1", expiresAt: 1_900_000_000, person: server.fetched, link },
     201,
   );
+}
+
+/** With only the plugin, the stored ID whose source it accepts, else the handled links, as the server picks them. */
+function pluginFetch(current: Person, body: unknown): Response {
+  const request = body as { pluginId: number; source?: string; link?: string };
+  const handled = server.handledLinks;
+  if (request.link !== undefined) {
+    return handled.includes(request.link)
+      ? fetchedBy(request.link)
+      : jsonResponse({ code: "person_link_unsupported", message: "x" }, 400);
+  }
+  const accepted = current.externalIds.some((id) => people.sources.includes(id.source));
+  if (request.source !== undefined || accepted) return fetchedBy();
+  if (handled.length === 1) return fetchedBy(handled[0]);
+  if (handled.length > 1)
+    return jsonResponse(
+      { code: "person_link_ambiguous", message: "x", links: handled },
+      409,
+    );
+  return jsonResponse({ code: "person_external_id_missing", message: "x" }, 409);
 }
 
 function pluginRoute(method: string, url: URL, body: unknown): Response | null {
@@ -122,6 +141,10 @@ function pluginRoute(method: string, url: URL, body: unknown): Response | null {
   if (url.pathname === "/api/people/7/plugin-fetches")
     return pluginFetch(server.person, body);
   if (url.pathname === "/api/people/7/plugin-fetches/f1/apply") {
+    if (server.staleApply) {
+      server.staleApply = false;
+      return jsonResponse({ code: "work_info_fetch_stale", message: "x" }, 409);
+    }
     server.person = server.applied ?? server.person;
     return jsonResponse({ person: server.person, skipped: server.skipped });
   }
@@ -291,6 +314,8 @@ export function installPersonServer() {
     server.plugins = [];
     server.candidates = [];
     server.fetched = { name: "Aoi", aliases: [], externalIds: [] };
+    server.handledLinks = [];
+    server.staleApply = false;
     server.applied = null;
     server.skipped = [];
     server.faceCandidates = [];

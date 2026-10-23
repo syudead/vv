@@ -157,7 +157,7 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source or a link outside the domains, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -168,8 +168,10 @@ func (p *WorkInfoPlugins) run(
 	if plugin.Kind() != kind {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginKindMismatch
 	}
-	// Recheck the source on the snapshot that runs, since the plugin may have been replaced since the caller chose it.
-	if req.Source != "" && !plugin.Manifest.DeclaresSource(req.Source) {
+	// Recheck the source and the link on the snapshot that runs, since the plugin may have been replaced since the
+	// caller chose them.
+	if (req.Source != "" && !plugin.Manifest.DeclaresSource(req.Source)) ||
+		(req.URL != "" && !domain.LinkMatchesDomains(req.URL, plugin.Manifest.Domains)) {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoRunInvalid
 	}
 	req.Kind, req.Sources = kind, plugin.Manifest.Sources
@@ -232,6 +234,7 @@ type chosenWork struct {
 	selection    domain.WorkInfoSelection
 	details      domain.FetchedWorkInfo
 	detailFields []domain.WorkInfoField
+	samePeople   []domain.SamePerson
 }
 
 func (p *WorkInfoPlugins) applyFetch(
@@ -251,6 +254,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, ContentKey: fetch.contentKey, PluginID: fetch.pluginID, Digest: fetch.digest,
 		Generation: fetch.generation, Details: chosen.details, DetailFields: chosen.detailFields,
+		SamePeople: chosen.samePeople,
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -471,15 +475,17 @@ func (f *workInfoFetches) cover(id string, videoID int64, index int, now time.Ti
 }
 
 // choose checks a selection against the result and narrows its details; false for an empty selection, a whole field
-// without a value, a tag or cover the result lacks, or an entry or value Select refuses.
+// without a value, a tag or cover the result lacks, or an entry, value or same-person pair Select refuses.
 func (f *workInfoFetch) choose(selection domain.WorkInfoSelection) (chosenWork, bool) {
 	details, fields, ok := f.details.Select(selection)
+	same, okSame := f.details.SelectSamePeople(selection)
+	ok = ok && okSame
 	cover := slices.Contains(selection.Fields, domain.WorkInfoFieldCover)
 	valid := ok && f.validTagSelection(selection.Fields, selection.Tags) &&
 		(!cover || selection.CoverIndex >= 0 && selection.CoverIndex < len(f.covers)) &&
 		!slices.ContainsFunc(selection.Fields, func(field domain.WorkInfoField) bool { return !f.hasValue(field) }) &&
 		(len(selection.Fields) > 0 || len(fields) > 0)
-	return chosenWork{selection: selection, details: details, detailFields: fields}, valid
+	return chosenWork{selection: selection, details: details, detailFields: fields, samePeople: same}, valid
 }
 
 // Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.

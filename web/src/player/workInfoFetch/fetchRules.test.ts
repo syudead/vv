@@ -18,6 +18,7 @@ function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
     id: 1,
     kind: "work",
     sources: [],
+    domains: [],
     name: "works",
     fileName: "works.wasm",
     operations: ["search", "fetch"],
