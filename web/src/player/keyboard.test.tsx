@@ -217,6 +217,25 @@ describe("useKeyboardShortcuts", () => {
     }
   });
 
+  it("開いているダイアログ（シートの拡大表示など）があれば Esc でも再生の操作でも何もしない", () => {
+    const controls = fakeControls();
+    const { onClose } = setup(controls);
+    const content = document.createElement("div");
+    content.setAttribute("data-slot", "dialog-content");
+    content.setAttribute("role", "dialog");
+    document.body.append(content);
+    try {
+      fireEvent.keyDown(content, { key: "Escape" });
+      fireEvent.keyDown(content, { key: "m" });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(controls.toggleMute).not.toHaveBeenCalled();
+    } finally {
+      content.remove();
+    }
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("開いているメニュー（Group line のまとめ方など）の Esc では閉じない", () => {
     const { onClose } = setup(null);
     const wrapper = document.createElement("div");

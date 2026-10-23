@@ -63,6 +63,16 @@ function isPopoverOpen(): boolean {
   );
 }
 
+/** An open modal dialog owns every key, so neither Escape nor the player keys reach the page under it. */
+function isModalOpen(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    document.querySelector(
+      '[data-slot="dialog-content"], [data-slot="alert-dialog-content"]',
+    ) !== null
+  );
+}
+
 /** Fullscreen and open menus own Escape; without a player only Escape works. Suspension leaves all keys to the editor. */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,
@@ -77,7 +87,7 @@ export function useKeyboardShortcuts(
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || latest.current.suspended) return;
+      if (event.defaultPrevented || latest.current.suspended || isModalOpen()) return;
       const action = shortcutFor(event);
       if (action === null) return;
       const { controls: player, onClose: close } = latest.current;

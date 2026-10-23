@@ -570,7 +570,7 @@ describe("VideoPage Thumbnail tab", () => {
       });
     });
 
-    it("スプライトのある動画はシートを小さく出し、押すと大きく見せるだけで位置は送らない（フィードバック 3）", async () => {
+    it("スプライトのある動画はシートを小さく出し、押すと大きく見せ、Esc ではダイアログだけ閉じる（フィードバック 3）", async () => {
       server.video = withSprite;
       await openThumbnail();
       const list = await screen.findByRole("list", { name: "Seek preview" });
@@ -589,9 +589,13 @@ describe("VideoPage Thumbnail tab", () => {
           name: "Show seek preview sheet 1 of 2 large",
         }),
       );
-      expect(
-        await screen.findByRole("dialog", { name: "Seek preview sheet 1 of 2" }),
-      ).toBeDefined();
+      const dialog = await screen.findByRole("dialog", {
+        name: "Seek preview sheet 1 of 2",
+      });
+      // Escape closes only the dialog; the page's own Escape would leave the video.
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("list", { name: "Seek preview" })).toBeDefined();
       expect(server.position).not.toHaveBeenCalled();
     });
 

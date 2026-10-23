@@ -917,7 +917,9 @@ propagation, so keys are caught in the capture phase on `window`, passing
 through only keys that operate the focused button or slider. Space, F, M, C
 (subtitles), 0 and Esc are handled. Keys pressed inside an open popover or
 menu, such as the playlist picker, belong to it: only Esc reaches the page,
-and it closes the popover, not the page.
+and it closes the popover, not the page. While a `Dialog` or `AlertDialog` is
+open, such as a seek preview sheet shown large, it owns every key, and Esc
+closes only the dialog.
 
 ### Group members
 
