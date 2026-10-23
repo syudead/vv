@@ -286,6 +286,10 @@ On folder, group and smart-folder pages the filter popover holds only
 | `Person` | One person | `person=<id>` |
 | `Organization` | One organization | `organization=<id>` |
 
+The `Person` and `Organization` pickers list the 20 with the most videos before
+any typing, so a person without a name, shown as `#<id>` with their face, can
+be picked; typing matches names and aliases, and `#<id>` finds that one.
+
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
 leaves the URL with a toast.

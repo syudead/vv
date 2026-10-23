@@ -1,10 +1,11 @@
 import { Building2, Plus, Shapes, Tag as TagIcon, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 
-import { isAborted } from "../api/client";
-import { type Credit, type CreditKind, listCredits } from "../api/credits";
+import { isAborted, RequestFailed } from "../api/client";
+import { type Credit, type CreditKind, getCredit, listCredits } from "../api/credits";
 import type { TagKind } from "../api/tagKinds";
 import { creditFace } from "../credits/creditFace";
+import { creditDisplayName } from "../credits/displayName";
 import { t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import { Badge } from "../ui/shadcn/badge";
@@ -319,6 +320,33 @@ function CreditChip({
   );
 }
 
+const browseLimit = 20;
+
+/**
+ * Empty text browses the credits with the most videos, so people without a name, shown as `#<id>`
+ * with their face, can be picked too; `#<id>` picks that one credit directly.
+ */
+async function loadCreditCandidates(
+  kind: CreditKind,
+  text: string,
+  signal: AbortSignal,
+): Promise<Credit[]> {
+  const byId = /^#(\d+)$/.exec(text);
+  if (byId !== null) {
+    try {
+      return [await getCredit(kind, Number(byId[1]), signal)];
+    } catch (error) {
+      if (error instanceof RequestFailed && error.status === 404) return [];
+      throw error;
+    }
+  }
+  const query =
+    text === ""
+      ? { sort: "countDesc" as const, limit: browseLimit }
+      : { q: text, limit: creditCandidateLimit };
+  return (await listCredits(kind, query, signal)).items;
+}
+
 /** Abort obsolete candidate requests and omit creation options. */
 function CreditPicker({
   kind,
@@ -336,14 +364,10 @@ function CreditPicker({
   const trimmed = value.trim();
 
   useEffect(() => {
-    if (trimmed === "") {
-      setSearching(false);
-      return;
-    }
     const controller = new AbortController();
     setSearching(true);
-    listCredits(kind, { q: trimmed, limit: creditCandidateLimit }, controller.signal)
-      .then((page) => setFound({ q: trimmed, items: page.items }))
+    loadCreditCandidates(kind, trimmed, controller.signal)
+      .then((items) => setFound({ q: trimmed, items }))
       .catch((error: unknown) => {
         if (!isAborted(error)) setFound({ q: trimmed, items: [] });
       })
@@ -354,14 +378,16 @@ function CreditPicker({
   }, [kind, trimmed]);
 
   // Hide old-query candidates until the current response arrives to prevent selecting the wrong credit.
-  const items = trimmed === "" || found.q !== trimmed ? [] : found.items;
+  const items = found.q !== trimmed ? [] : found.items;
   const choices: CreditChoice[] = items.map((credit) => ({
     id: String(credit.id),
-    label: credit.name,
+    label: creditDisplayName(credit),
     leading: creditFace(kind, credit, "option"),
   }));
   const folded = foldForMatch(trimmed);
-  const exact = items.find((credit) => foldForMatch(credit.name) === folded);
+  const exact = items.find(
+    (credit) => foldForMatch(creditDisplayName(credit)) === folded,
+  );
   const pick = (id: number) => {
     setValue("");
     onPick(id);
@@ -375,7 +401,9 @@ function CreditPicker({
       onValueChange={setValue}
       choices={choices}
       exactChoice={
-        exact === undefined ? null : { id: String(exact.id), label: exact.name }
+        exact === undefined
+          ? null
+          : { id: String(exact.id), label: creditDisplayName(exact) }
       }
       onSelect={(choice) => pick(Number(choice.id))}
       icon={addIcon}
