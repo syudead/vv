@@ -589,7 +589,6 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           {duration}
         </span>
       </TableCell>
-      {/* A virtual video has no file, so its quality and size cells stay empty. */}
       <TableCell className="hidden w-list-number pr-4 text-right font-semibold uppercase md:table-cell">
         {!video.virtual && quality}
       </TableCell>

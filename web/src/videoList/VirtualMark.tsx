@@ -3,9 +3,8 @@ import { SquareDashed } from "lucide-react";
 import { t } from "../i18n";
 
 /**
- * Noninteractive mark in a virtual video's duration place. The visible word is hidden from screen
- * readers; a card link references the sr-only text through aria-describedby. A copy that repeats
- * a mark already announced elsewhere in the same row passes `announce={false}`.
+ * Mark in a virtual video's duration place; screen readers get only the sr-only text, which a card
+ * link references through aria-describedby. Pass `announce={false}` when the row already announces it.
  */
 export function VirtualMark({
   id,

@@ -22,13 +22,19 @@ test("タイトルだけでバーチャルな動画を作り、ライブラリ�
     await page.getByRole("button", { name: "New virtual video" }).click();
     const dialog = page.getByRole("dialog", { name: "New virtual video" });
     await dialog.getByRole("textbox", { name: "Title" }).fill(title);
+    const response = page.waitForResponse(
+      (answer) =>
+        answer.url().endsWith("/api/virtual-videos") &&
+        answer.request().method() === "POST",
+    );
     await dialog.getByRole("button", { name: "Create" }).click();
+    const answer = await response;
+    expect(answer.status()).toBe(201);
+    // Keep the cleanup identity as soon as the video exists, before any later step can fail.
+    created = (await answer.json()) as { id: number; contentVersion: string };
+    const id = created.id;
 
-    await expect(page).toHaveURL(/\/videos\/\d+$/);
-    const id = Number(new URL(page.url()).pathname.split("/").at(-1));
-    const read = await request.get(`/api/videos/${String(id)}`);
-    expect(read.ok()).toBe(true);
-    created = (await read.json()) as { id: number; contentVersion: string };
+    await expect(page).toHaveURL(new RegExp(`/videos/${String(id)}$`));
 
     await page.goto("/");
     const home = virtualCard(page, id, title);
