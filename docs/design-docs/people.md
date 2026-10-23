@@ -181,7 +181,10 @@ does the same. It opens `Upload a face`, an `ImageUploadDialog`, and the image
 dropped, chosen or pasted there opens `Frame the face`
 ([`FaceCropDialog.tsx`](../../web/src/credits/person/FaceCropDialog.tsx)): the
 same stage, `Size`, `Preview` and `Set as face` as below, on the image, with
-the widest centred portrait to start from. `Choose from videos…` opens an `EditorDialog`
+the widest centred portrait to start from. With a face, the menu also offers
+`Reframe the face…`, which opens `Frame the face` on the stored face, so a
+whole photo applied from a person plugin or a work-info fetch can be cut down
+to the portrait. `Choose from videos…` opens an `EditorDialog`
 ([`FacePickerDialog.tsx`](../../web/src/credits/person/FacePickerDialog.tsx)):
 
 | Part    | Shows                                                                                                                                                                            |

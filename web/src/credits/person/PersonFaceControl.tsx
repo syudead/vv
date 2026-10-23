@@ -1,4 +1,4 @@
-import { Camera, Film, ImageUp, Trash2 } from "lucide-react";
+import { Camera, Crop, Film, ImageUp, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -42,7 +42,10 @@ function withFaceOf(saved: Person) {
   });
 }
 
-/** The face with its heart and its upload and removal; an image chosen, dropped or pasted in an ImageUploadDialog opens for framing. A missing person calls onGone. */
+/**
+ * The face with its heart, upload, reframing and removal; an image chosen, dropped or pasted in an ImageUploadDialog,
+ * or the stored face, opens for framing. A missing person calls onGone.
+ */
 export default function PersonFaceControl({
   person,
   onChanged,
@@ -52,7 +55,7 @@ export default function PersonFaceControl({
   onChanged: (next: Person | ((current: Person) => Person)) => void;
   onGone: () => void;
 }) {
-  const [cropping, setCropping] = useState<File | null>(null);
+  const [cropping, setCropping] = useState<File | string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<UiText | null>(null);
@@ -137,6 +140,12 @@ export default function PersonFaceControl({
                   {text.face.upload}
                 </DropdownMenuItem>
                 {src !== undefined && (
+                  <DropdownMenuItem onSelect={() => setCropping(src)}>
+                    <Crop aria-hidden="true" />
+                    {text.face.reframe}
+                  </DropdownMenuItem>
+                )}
+                {src !== undefined && (
                   <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => {
@@ -164,7 +173,7 @@ export default function PersonFaceControl({
       {cropping !== null && (
         <FaceCropDialog
           person={person}
-          file={cropping}
+          source={cropping}
           onClose={() => setCropping(null)}
           onSaved={(saved) => {
             setCropping(null);

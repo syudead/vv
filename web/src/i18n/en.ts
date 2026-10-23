@@ -1738,6 +1738,7 @@ export const en = {
         uploadHint:
           "PNG, JPEG or still WebP, up to 64 MB. You frame it before it is saved.",
         fromVideos: "Choose from videos…",
+        reframe: "Reframe the face…",
         remove: "Remove face",
         refusedType: "This image can't be used. Choose a PNG, JPEG or still WebP.",
         tooLarge: (limit: string) => `This image is over ${limit}.`,

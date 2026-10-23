@@ -28,11 +28,12 @@ type Picture =
   | { state: "failed" }
   | { state: "ready"; image: HTMLImageElement; src: string };
 
-/** The file decoded through an object URL that lives as long as the dialog. */
-function usePicture(file: File): Picture {
+/** A file decoded through an object URL that lives as long as the dialog, or a same-origin image URL. */
+function usePicture(source: File | string): Picture {
   const [picture, setPicture] = useState<Picture>({ state: "loading" });
   useEffect(() => {
-    const url = URL.createObjectURL(file);
+    const owned = typeof source !== "string";
+    const url = owned ? URL.createObjectURL(source) : source;
     // Escape it as the thumbnail editor's reference is, so the URL never reads as markup.
     const src = encodeReferenceURL(url);
     const image = new Image();
@@ -46,27 +47,27 @@ function usePicture(file: File): Picture {
     image.src = src;
     return () => {
       current = false;
-      URL.revokeObjectURL(url);
+      if (owned) URL.revokeObjectURL(url);
     };
-  }, [file]);
+  }, [source]);
   return picture;
 }
 
-/** Frames a portrait in an uploaded, pasted or dropped image and saves it as the person's face. */
+/** Frames a portrait in an uploaded, pasted or dropped image, or in the stored face, and saves it as the person's face. */
 export default function FaceCropDialog({
   person,
-  file,
+  source,
   onClose,
   onSaved,
   onGone,
 }: {
   person: Person;
-  file: File;
+  source: File | string;
   onClose: () => void;
   onSaved: (saved: Person) => void;
   onGone: () => void;
 }) {
-  const picture = usePicture(file);
+  const picture = usePicture(source);
   const [framing, setFraming] = useState<FaceFrame | null>(null);
   const { saving, error, save: saveFace } = useFaceSave(person, onSaved, onGone);
   const saveButton = useRef<HTMLButtonElement>(null);
