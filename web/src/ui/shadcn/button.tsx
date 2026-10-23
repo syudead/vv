@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 // Adapted from shadcn/ui Radix using shared tokens and the global focus ring.
 // See web/registry/rules/components.md, Button.
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-busy:cursor-progress aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-busy:cursor-progress aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -32,10 +32,16 @@ const buttonVariants = cva(
         icon: "size-9",
         "icon-sm": "size-8",
       },
+      // A pill is a labelled action beside a heading, at a section's end or first in a row.
+      shape: {
+        default: "rounded-md",
+        pill: "rounded-full",
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      shape: "default",
     },
   },
 );
@@ -44,6 +50,7 @@ function Button({
   className,
   variant,
   size,
+  shape,
   asChild = false,
   type,
   ...props
@@ -58,9 +65,10 @@ function Button({
       data-slot="button"
       data-variant={variant ?? "default"}
       data-size={size ?? "default"}
+      data-shape={shape ?? "default"}
       // Default to type=button to prevent accidental form submission.
       type={asChild ? type : (type ?? "button")}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, shape, className }))}
       {...props}
     />
   );

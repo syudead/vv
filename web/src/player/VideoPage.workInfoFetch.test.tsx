@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useEffect, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,6 +15,7 @@ import {
   json,
   openDialog,
   openPage,
+  openWorkTab,
   server,
   useFetchServer,
   video,
@@ -52,14 +54,16 @@ const coded: Video["workInfo"] = {
   externalIds: [],
 };
 
+function workPanel() {
+  return within(screen.getByRole("tabpanel", { name: "Work" }));
+}
+
 describe("VideoPage work-info fetch", () => {
   useFetchServer();
 
   it("ゲストには取得の入口が無く、プラグインの一覧も読まない", async () => {
     await openPage("guest");
-    expect(
-      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
     expect(server.requests).not.toContain("GET /api/work-info-plugins");
   });
 
@@ -69,11 +73,12 @@ describe("VideoPage work-info fetch", () => {
       { ...works, id: 4, state: "invalid" },
       { ...works, id: 5, name: "people", kind: "person", sources: ["example.people"] },
     ];
+    server.video = { ...video, workInfo: coded };
     await openPage();
+    await openWorkTab(userEvent.setup());
     await waitFor(() => expect(server.requests).toContain("GET /api/work-info-plugins"));
-    expect(
-      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
-    ).toBeNull();
+    expect(workPanel().getByText("ABC-123")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
   });
 
   it("取得のダイアログは人物プラグインを並べない", async () => {
@@ -86,17 +91,27 @@ describe("VideoPage work-info fetch", () => {
     expect(within(dialog).queryByText("people")).toBeNull();
   });
 
-  it("入口は Edit details の後、サムネイルの操作の前にある", async () => {
+  it("作品情報の無い動画でも Work に No work details yet. と入口だけを出す", async () => {
     await openPage();
-    const fetchEntry = await entry();
-    const details = screen.getByRole("link", { name: "Edit details" });
-    expect(
-      details.compareDocumentPosition(fetchEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    const edit = screen.getByRole("button", { name: "Change thumbnail" });
-    expect(
-      fetchEntry.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    await openWorkTab(userEvent.setup());
+    expect(workPanel().getByText("No work details yet.")).toBeDefined();
+    expect(workPanel().queryByRole("term")).toBeNull();
+    expect(await entry()).toBeDefined();
+  });
+
+  it("取得のダイアログは Overview に切り替えても開いたままで、Work に戻ると反映した作品情報が出る", async () => {
+    server.apply.mockImplementation(() =>
+      json(appliedResult({ ...video, workInfo: coded })),
+    );
+    const { user, dialog } = await fetchById();
+    // The modal makes the strip inert to pointer events; press the tab as Radix listens for it.
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Overview", hidden: true }));
+    expect(screen.getByRole("dialog", { name: "Fetch work info" })).toBe(dialog);
+    expect(screen.queryByRole("tabpanel", { name: "Work", hidden: true })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await openWorkTab(user);
+    expect(workPanel().getByText("ABC-123")).toBeDefined();
   });
 
   it("語で検索し、候補を選び、題名とタグを反映すると、ページが応答の動画を示してトーストを出す", async () => {
@@ -145,7 +160,7 @@ describe("VideoPage work-info fetch", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole("button", {
-          name: "Fetch work info from a plugin",
+          name: /^Fetch( again)?$/,
         }),
       ),
     );
@@ -309,9 +324,7 @@ describe("VideoPage work-info fetch", () => {
     );
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(
-      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fetch( again)?$/ })).toBeNull();
   });
 
   it("取得しかできないプラグインは動画の品番を最初の値にし、ID で取得して比較の段に ID を出す", async () => {

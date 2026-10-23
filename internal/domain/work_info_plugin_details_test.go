@@ -52,6 +52,13 @@ func TestParseWorkInfoResponseReadsEveryWorkDetailInOrder(t *testing.T) {
 	}
 }
 
+func TestParseWorkInfoResponseTurnsHTMLLineBreaksIntoLineFeeds(t *testing.T) {
+	got := parseFetched(t, `{"description": "<br>line 1<br>line 2<BR/>line 3<br />line 4 <b>bold</b><br>"}`)
+	if want := "line 1\nline 2\nline 3\nline 4 <b>bold</b>"; got.Description != want {
+		t.Errorf("description = %q, want %q", got.Description, want)
+	}
+}
+
 func TestParseWorkInfoResponseDropsUnknownAndEmptyEntries(t *testing.T) {
 	got := parseFetched(t, `{
 		"code": "  ",

@@ -59,6 +59,7 @@
   --color-success-soft: #204334;
 
   --color-favorite: #ff6f9c;
+  --color-favorite-soft: #3d1f2b;
 
   /* The only translucent color, for backdrops and thumbnail overlays. */
   --color-overlay: rgb(0 0 0 / 0.88);
@@ -156,6 +157,9 @@
   --spacing-settings-nav: 10rem;
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
   --spacing-related-thumb: 10rem;
+  /* The right column of a two-column video page panel, and the preview of a Replace with row. */
+  --spacing-facts-column: 15rem;
+  --spacing-replace-preview: 6rem;
   /* Label column of a fetched person's comparison; fits "Career start" beside its checkbox. */
   --spacing-compare-label: 9rem;
   --spacing-neighbor-arrow: 1.75rem;
@@ -168,7 +172,6 @@
    * lists remain reachable.
    */
   --spacing-playlist-panel: min(28rem, 45dvh);
-  --spacing-visibility-x: 0.625rem;
   --spacing-technical-x: 0.625rem;
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;

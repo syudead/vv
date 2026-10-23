@@ -1,6 +1,6 @@
 import { FolderPlus } from "lucide-react";
 
-import { t, type UiText } from "../i18n";
+import type { UiText } from "../i18n";
 import PickerButton from "../library/PickerButton";
 import GroupPicker from "./GroupPicker";
 
@@ -21,7 +21,6 @@ export default function AddToGroupButton({
     <PickerButton
       variant={variant}
       label={label}
-      tooltip={t.groups.add.label}
       icon={FolderPlus}
       picker={(open, onOpenChange) => (
         <GroupPicker

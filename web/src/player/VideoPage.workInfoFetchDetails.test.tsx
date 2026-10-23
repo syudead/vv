@@ -435,7 +435,7 @@ describe("VideoPage work-info fetch details", () => {
     ]);
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    const row = screen.getByRole("list", { name: "Work details" });
-    expect(row.textContent).toContain("ABC-123");
+    const work = screen.getByRole("tabpanel", { name: "Work" });
+    expect(within(work).getByText("ABC-123")).toBeDefined();
   });
 });

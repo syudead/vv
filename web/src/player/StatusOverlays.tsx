@@ -17,7 +17,7 @@ import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import { Button } from "../ui/shadcn/button";
 import type { PlaybackFailureKind } from "./playbackRecovery";
-import { useOpenFile } from "./VideoFacts";
+import { useOpenFile } from "./useOpenFile";
 import { creatingLine, processingStages, type StageState } from "./processing";
 
 /** Keep status text on an opaque panel within the player. */

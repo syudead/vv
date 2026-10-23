@@ -732,6 +732,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/face-appearances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the people face recognition found in a video
+         * @description Owner-only. analysed is true once the face analysis of the video's content key is done; while it is queued or running, after a failure, and without an analysis it is false and items is empty. items are the content key's appearances that are not dropped and whose person still exists, in order of their first span's start, then by appearance ID. A missing video returns 404 video_not_found.
+         */
+        get: operations["listVideoFaceAppearances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/make-representative": {
         parameters: {
             query?: never;
@@ -4731,6 +4751,23 @@ export interface components {
             unlike?: boolean;
             focus?: components["schemas"]["FaceFocus"];
         };
+        VideoFaceAppearanceList: {
+            /** @description True when the face analysis of the video's content key is done. */
+            analysed: boolean;
+            /** @description Empty while analysed is false. */
+            items: components["schemas"]["VideoFaceAppearance"][];
+        };
+        /** @description One main person of the video. */
+        VideoFaceAppearance: {
+            /** Format: int64 */
+            appearanceId: number;
+            person: components["schemas"]["CreditRef"];
+            imageRevision?: components["schemas"]["PersonImageRevision"];
+            /** @description True when getFaceAppearanceCrop has a face to return. */
+            hasCrop: boolean;
+            /** @description When the person is on screen, in seconds, in order and without overlaps. */
+            spans: components["schemas"]["FaceAppearanceSpan"][];
+        };
         SimilarPersonList: {
             items: components["schemas"]["SimilarPerson"][];
         };
@@ -5574,6 +5611,11 @@ export interface components {
              * @description Creation timestamp of the displayed-location file; falls back to its mtime when unavailable. A virtual video's creation time.
              */
             fileCreatedAt: string;
+            /**
+             * Format: date-time
+             * @description Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded. A virtual video's creation time.
+             */
+            fileModifiedAt: string;
             /**
              * Format: int64
              * @description Duration; omitted before probing or when unavailable.
@@ -8265,6 +8307,31 @@ export interface operations {
                     "application/json": components["schemas"]["VideoVersions"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVideoFaceAppearances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video's face appearances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoFaceAppearanceList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

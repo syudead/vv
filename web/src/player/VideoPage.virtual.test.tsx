@@ -26,6 +26,7 @@ const virtualVideo: Video = {
   probeState: "pending",
   thumbnailState: "pending",
   previewState: "pending",
+  fileModifiedAt: "2026-09-01T00:00:00Z",
   contentVersion: "virtual:3",
   favorite: false,
   tags: [],
@@ -148,50 +149,85 @@ describe("VideoPage for a virtual video", () => {
     expect(anchor.getAttribute("href")).toBe(link);
     expect(anchor.getAttribute("target")).toBe("_blank");
     expect(anchor.getAttribute("rel")).toBe("noreferrer");
-    expect(screen.getByText("配信の告知")).toBeDefined();
-    // The work details row does not repeat what the links and description show.
-    expect(screen.queryByRole("list", { name: "Work details" })).toBeNull();
-    const facts = within(screen.getByRole("list", { name: "File details" }));
-    expect(facts.queryByText("Size")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Use current frame as thumbnail" }),
-    ).toBeNull();
+    // The description is under the links, once: Overview does not repeat it.
+    expect(screen.getAllByText("配信の告知")).toHaveLength(1);
+    // No file: no Versions or File & media tab, and no size or length among the facts.
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Work",
+      "Thumbnail",
+    ]);
+    const overview = within(screen.getByRole("tabpanel", { name: "Overview" }));
+    expect(overview.queryByText("Size")).toBeNull();
+    expect(overview.queryByText("Length")).toBeNull();
+    expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
+    expect(overview.getByRole("button", { name: /^Edited / })).toBeDefined();
   });
 
-  it("ゲストには作成、編集、マージ、削除の操作が無く、事実の行は Added だけ", async () => {
+  it("ゲストには作成、編集、マージ、削除の操作が無く、事実は Added だけ", async () => {
     await openPage("guest");
     expect(screen.getByText("No thumbnail")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Upload an image…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Change thumbnail" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
-    const facts = screen.getByRole("list", { name: "File details" });
-    expect(within(facts).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(facts).getByRole("button", { name: /^Added / })).toBeDefined();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+    ]);
+    const overview = within(screen.getByRole("tabpanel", { name: "Overview" }));
+    expect(overview.getAllByRole("button")).toHaveLength(1);
+    expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
     expect(
       within(screen.getByRole("list", { name: "Links" })).getAllByRole("link"),
     ).toHaveLength(1);
   });
 
-  it("Change thumbnail はメニューを開かずに画像のアップロードダイアログを開く", async () => {
+  it("Thumbnail タブの Upload… と枠の Upload an image… は、メニューを開かずに同じアップロードダイアログを開く", async () => {
     await openPage();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Change thumbnail" }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Upload an image…" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    const dialog = screen.getByRole("dialog", { name: "Upload a thumbnail" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Thumbnail" }));
+    const panel = within(screen.getByRole("tabpanel", { name: "Thumbnail" }));
+    expect(panel.getByText("No thumbnail yet")).toBeDefined();
+    expect(panel.queryByRole("button", { name: "Remove image" })).toBeNull();
+    expect(panel.queryByRole("button", { name: "Touch up…" })).toBeNull();
+    await user.click(panel.getByRole("button", { name: "Upload…" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.getByRole("dialog", { name: "Upload a thumbnail" })).toBeDefined();
   });
 
-  it("空の題名は送らずに Enter a title. を出す", async () => {
+  it("Thumbnail タブの Remove image は画像だけを外す", async () => {
+    server.video = {
+      ...virtualVideo,
+      thumbnailImage: "uploaded",
+      thumbnailUrl: "/api/videos/7/thumbnail?v=1",
+    };
+    const reverted = vi.fn<(url: string, method: string) => void>();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/api/videos/7/thumbnail-image" && method === "DELETE") {
+        reverted(url, method);
+        return Promise.resolve(json({ ...virtualVideo }));
+      }
+      if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
+      if (url === "/api/videos/7") return Promise.resolve(json(server.video));
+      if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
+      return Promise.resolve(json({}));
+    });
     await openPage();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Edit name" }));
-    await user.clear(screen.getByRole("textbox", { name: "Display name" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByRole("alert").textContent).toContain("Enter a title.");
-    expect(server.requests).not.toContain("PUT /api/videos/7/display-name");
+    await user.click(screen.getByRole("tab", { name: "Thumbnail" }));
+    const panel = within(screen.getByRole("tabpanel", { name: "Thumbnail" }));
+    expect(panel.getByText("Uploaded image")).toBeDefined();
+    await user.click(panel.getByRole("button", { name: "Remove image" }));
+    expect(await panel.findByText("No thumbnail yet")).toBeDefined();
+    expect(reverted).toHaveBeenCalledTimes(1);
   });
 
   it("詳細編集の保存に 404 が返ると、作り直さずに動画が無くなったことを伝える", async () => {
@@ -280,47 +316,5 @@ describe("VideoPage for a virtual video", () => {
     expect(server.requests.filter((r) => r === "GET /api/videos/7").length).toBe(
       reads + 1,
     );
-  });
-});
-
-describe("VideoPage for a file video, as a guest", () => {
-  beforeEach(() => {
-    installFakeEventSource();
-    forgetAudience(null);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("作品情報の行に説明とリンクを出す", async () => {
-    const fileVideo: Video = {
-      ...virtualVideo,
-      virtual: false,
-      title: "ファイルの動画",
-      // Unplayable keeps the real player out of this test; the details below are the subject.
-      playable: false,
-      probeState: "done",
-      contentVersion: undefined,
-      favorite: undefined,
-    };
-    server.video = fileVideo;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>((input) => {
-        const url = String(input);
-        if (url === "/api/videos/7") return Promise.resolve(json(fileVideo));
-        if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
-        return Promise.resolve(json({}));
-      }),
-    );
-    await openPage("guest");
-    const row = screen.getByRole("list", { name: "Work details" });
-    expect(
-      within(row)
-        .getByRole("link", { name: /example\.com/ })
-        .getAttribute("target"),
-    ).toBe("_blank");
-    expect(screen.getByText("配信の告知")).toBeDefined();
   });
 });

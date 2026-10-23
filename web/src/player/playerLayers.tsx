@@ -20,7 +20,6 @@ import {
   Unplayable,
 } from "./StatusOverlays";
 import type { VideoPlaylist } from "./useVideoPlaylist";
-import type { ThumbnailCapture } from "./VideoFacts";
 import { canStartPlayback, type PlayerStatus } from "./VideoPlayer";
 
 // Status and ended overlays share one container; display at most one.
@@ -232,6 +231,13 @@ export function stallWarningShown({
 }
 
 /** Enable owner-only capture after positioning, with no status, ended, or autoplay overlay obscuring the frame. */
+/** Read logical playback milliseconds at click time; pause playback before editing. */
+export interface ThumbnailCapture {
+  enabled: boolean;
+  positionMs: () => number | null;
+  pause: () => void;
+}
+
 export function thumbnailCapture({
   shown,
   controls,

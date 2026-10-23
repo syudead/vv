@@ -1,9 +1,11 @@
-import { type ReactNode, useId } from "react";
+import type { ReactNode } from "react";
 
+import type { Video } from "../api/client";
 import type { components } from "../api/gen/openapi";
 import { formatDateTime, formatLanguage, t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
-import { formatCodec } from "./properties";
+import { formatResolution } from "../lib/format";
+import { type Fact, FactList } from "../ui/patterns/fact-list";
+import { formatCodec, technicalSummary } from "./properties";
 import { Description, FoldButton, Item, useFold } from "./WorkInfo";
 
 type MediaInfo = components["schemas"]["MediaInfo"];
@@ -113,23 +115,6 @@ export function videoItems(video: MediaInfoVideo): string[] {
   ].filter((item): item is UiText => item !== undefined);
 }
 
-const groupNameClass = "text-xs tracking-wider uppercase";
-
-function Group({ name, children }: { name: UiText; children: ReactNode }) {
-  const id = useId();
-  return (
-    <ul
-      aria-labelledby={id}
-      className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm text-muted-foreground sm:gap-x-5"
-    >
-      <li id={id} lang="en" aria-hidden="true" className={groupNameClass}>
-        {name}
-      </li>
-      {children}
-    </ul>
-  );
-}
-
 function WordItem({ children }: { children: ReactNode }) {
   return <li className="whitespace-nowrap tabular-nums">{children}</li>;
 }
@@ -143,12 +128,20 @@ function LabelledItem({ label, value }: { label: UiText; value: string | undefin
   );
 }
 
-/** Show six tracks when collapsed; expanding focuses the seventh. */
-function TrackItems({ texts, label }: { texts: readonly string[]; label: UiText }) {
+/** One track per line; more than six fold to six, and expanding focuses the seventh. */
+function TrackList({
+  texts,
+  label,
+  extra,
+}: {
+  texts: readonly string[];
+  label: UiText;
+  extra?: ReactNode;
+}) {
   const fold = useFold<HTMLLIElement>(texts.length, trackFoldLimit);
   const shown = fold.folded ? texts.slice(0, trackFoldLimit) : texts;
   return (
-    <>
+    <ul className="flex flex-col items-start gap-1">
       {shown.map((text, index) => (
         <li
           // Track labels may repeat; their stable order makes indices suitable keys.
@@ -171,7 +164,8 @@ function TrackItems({ texts, label }: { texts: readonly string[]; label: UiText 
           />
         </li>
       )}
-    </>
+      {extra}
+    </ul>
   );
 }
 
@@ -209,24 +203,22 @@ function embeddedItems(embedded: Embedded): [UiText, string][] {
   return items.filter((item): item is [UiText, string] => (item[1] ?? "") !== "");
 }
 
+const itemRow = "flex flex-wrap items-baseline gap-x-4 gap-y-1";
+
 /** Avoid an empty list when only a comment or description is present. */
-function EmbeddedGroup({ embedded }: { embedded: Embedded }) {
+function EmbeddedValue({ embedded }: { embedded: Embedded }) {
   const m = t.player.mediaInfo;
   const items = embeddedItems(embedded);
   const coverArt = embedded.coverArt === true;
   return (
-    <>
-      {items.length > 0 || coverArt ? (
-        <Group name={m.embedded}>
+    <div className="flex flex-col gap-1">
+      {(items.length > 0 || coverArt) && (
+        <ul className={itemRow}>
           {items.map(([label, value]) => (
             <LabelledItem key={label} label={label} value={value} />
           ))}
           {coverArt && <WordItem>{m.coverArt}</WordItem>}
-        </Group>
-      ) : (
-        <p lang="en" className={cn(groupNameClass, "text-muted-foreground")}>
-          {m.embedded}
-        </p>
+        </ul>
       )}
       {embedded.comment !== undefined && (
         <Description text={embedded.comment} tone="muted" label={m.comment} />
@@ -234,53 +226,140 @@ function EmbeddedGroup({ embedded }: { embedded: Embedded }) {
       {embedded.description !== undefined && (
         <Description text={embedded.description} tone="muted" label={m.description} />
       )}
-    </>
+    </div>
   );
 }
 
-function BroadcastGroup({ broadcast }: { broadcast: Broadcast }) {
-  const m = t.player.mediaInfo;
-  if (broadcast.station === undefined && broadcast.program === undefined) return null;
-  return (
-    <Group name={m.broadcast}>
-      <LabelledItem label={m.station} value={broadcast.station} />
-      <LabelledItem label={m.program} value={broadcast.program} />
-    </Group>
-  );
+function embeddedFact(embedded: Embedded | undefined): Fact | null {
+  if (embedded === undefined) return null;
+  const empty =
+    embeddedItems(embedded).length === 0 &&
+    embedded.coverArt !== true &&
+    embedded.comment === undefined &&
+    embedded.description === undefined;
+  if (empty) return null;
+  return {
+    id: "embedded",
+    term: t.player.mediaInfo.embedded,
+    value: <EmbeddedValue embedded={embedded} />,
+  };
 }
 
-/** Render populated media groups; chapters belong to the player. */
-export default function MediaInfoGroups({ info }: { info: MediaInfo | undefined }) {
-  if (info === undefined) return null;
+function broadcastFact(broadcast: Broadcast | undefined): Fact | null {
+  if (broadcast?.station === undefined && broadcast?.program === undefined) return null;
   const m = t.player.mediaInfo;
-  const audio = info.audioTracks ?? [];
-  const subtitles = info.subtitleTracks ?? [];
-  const closedCaptions = info.video?.closedCaptions === true;
-  return (
-    <>
-      {info.video !== undefined && (
-        <Group name={m.video}>
-          {videoItems(info.video).map((item) => (
-            <WordItem key={item}>{item}</WordItem>
-          ))}
-        </Group>
-      )}
-      {audio.length > 0 && (
-        <Group name={m.audio}>
-          <TrackItems texts={numbered(audio, audioTrackText)} label={m.audioTracks} />
-        </Group>
-      )}
-      {(subtitles.length > 0 || closedCaptions) && (
-        <Group name={m.subtitles}>
-          <TrackItems
-            texts={numbered(subtitles, subtitleTrackText)}
-            label={m.subtitleTracks}
-          />
-          {closedCaptions && <WordItem>{m.closedCaptions}</WordItem>}
-        </Group>
-      )}
-      {info.embedded !== undefined && <EmbeddedGroup embedded={info.embedded} />}
-      {info.broadcast !== undefined && <BroadcastGroup broadcast={info.broadcast} />}
-    </>
-  );
+  return {
+    id: "broadcast",
+    term: m.broadcast,
+    value: (
+      <ul className={itemRow}>
+        <LabelledItem label={m.station} value={broadcast.station} />
+        <LabelledItem label={m.program} value={broadcast.program} />
+      </ul>
+    ),
+  };
+}
+
+/** The probe's resolution and codec, then the media information's marks. */
+function videoFact(video: Video): Fact | null {
+  const info = video.mediaInfo?.video;
+  const text = present([
+    formatResolution(video),
+    video.videoCodec === undefined ? undefined : formatCodec(video.videoCodec),
+    ...(info === undefined ? [] : videoItems(info)),
+  ]);
+  if (text === "") return null;
+  return {
+    id: "video",
+    term: t.player.mediaInfo.video,
+    value: <span className="tabular-nums">{text}</span>,
+  };
+}
+
+/** Without media information the probe's codec stands for the audio. */
+function audioFact(video: Video): Fact | null {
+  const m = t.player.mediaInfo;
+  const info = video.mediaInfo;
+  const fallback =
+    video.audioCodec === undefined ? [] : [audioCodecName(video.audioCodec)];
+  const texts =
+    info === undefined ? fallback : numbered(info.audioTracks ?? [], audioTrackText);
+  if (texts.length === 0) return null;
+  return {
+    id: "audio",
+    term: m.audio,
+    value: <TrackList texts={texts} label={m.audioTracks} />,
+  };
+}
+
+/** A probed group with nothing in it, read as `None` rather than left out. */
+function noneFact(id: string, term: UiText): Fact {
+  return {
+    id,
+    term,
+    value: <span className="text-muted-foreground">{t.player.tabs.none}</span>,
+  };
+}
+
+function subtitleFact(info: MediaInfo | undefined): Fact | null {
+  const m = t.player.mediaInfo;
+  const subtitles = info?.subtitleTracks ?? [];
+  const closedCaptions = info?.video?.closedCaptions === true;
+  if (subtitles.length === 0 && !closedCaptions) {
+    return info === undefined ? null : noneFact("subtitles", m.subtitles);
+  }
+  return {
+    id: "subtitles",
+    term: m.subtitles,
+    value: (
+      <TrackList
+        texts={numbered(subtitles, subtitleTrackText)}
+        label={m.subtitleTracks}
+        extra={closedCaptions && <WordItem>{m.closedCaptions}</WordItem>}
+      />
+    ),
+  };
+}
+
+function chapterFact(info: MediaInfo | undefined): Fact | null {
+  const count = info?.chapters?.length ?? 0;
+  const text = t.player.tabs;
+  if (count === 0) return info === undefined ? null : noneFact("chapters", text.chapters);
+  return { id: "chapters", term: text.chapters, value: text.chapterCount(count) };
+}
+
+function containerFact(video: Video): Fact | null {
+  const container = video.container?.toUpperCase() ?? "";
+  if (container === "") return null;
+  return { id: "container", term: t.player.tabs.container, value: container };
+}
+
+/** The media facts in the panel's order; a group without content is left out. */
+export function mediaFacts(video: Video): Fact[] {
+  const info = video.mediaInfo;
+  return [
+    videoFact(video),
+    audioFact(video),
+    subtitleFact(info),
+    chapterFact(info),
+    containerFact(video),
+    embeddedFact(info?.embedded),
+    broadcastFact(info?.broadcast),
+  ].filter((fact): fact is Fact => fact !== null);
+}
+
+/** The Media section's content: the facts once the probe is done, otherwise why there are none. */
+export default function MediaInfoGroups({ video }: { video: Video }) {
+  const summary = technicalSummary(video);
+  if (summary.kind === "pending") {
+    return (
+      <p className="text-sm text-muted-foreground">{t.player.facts.technicalPending}</p>
+    );
+  }
+  if (summary.kind === "failed") {
+    return <p className="text-sm text-warning">{t.player.facts.technicalFailed}</p>;
+  }
+  const facts = mediaFacts(video);
+  if (facts.length === 0) return null;
+  return <FactList facts={facts} />;
 }

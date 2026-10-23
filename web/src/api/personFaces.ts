@@ -164,6 +164,20 @@ export function listPersonAppearances(
   );
 }
 
+export type VideoFaceAppearance = components["schemas"]["VideoFaceAppearance"];
+export type VideoFaceAppearanceList = components["schemas"]["VideoFaceAppearanceList"];
+
+/** The people face recognition found in the video; items is empty until its analysis is done. */
+export function listVideoFaceAppearances(
+  videoId: number,
+  signal?: AbortSignal,
+): Promise<VideoFaceAppearanceList> {
+  return request<VideoFaceAppearanceList>(
+    `/api/videos/${String(videoId)}/face-appearances`,
+    { signal },
+  );
+}
+
 /** A frame of the video at positionMs, as a PNG at most 2048 px on its long side. */
 export function videoFramePath(videoId: number, positionMs: number): string {
   return `/api/videos/${String(videoId)}/frame?positionMs=${String(positionMs)}`;

@@ -34,15 +34,15 @@ wazero's compiled module shows neither tables nor non-function imports, so
 [`binary.go`](../../internal/wasmplugin/binary.go) reads the import and table
 sections from the bytes.
 
-| Checked | Problem when it fails |
-| --- | --- |
-| The bytes compile as a WebAssembly module whose memory starts at 128 MiB or less | `not_wasm` |
-| A `vv.plugin` section exists | `manifest_missing` |
-| The manifest is a JSON object that follows the Manifest rules | `manifest_invalid` |
-| `contract` is `1`, checked before the other fields | `contract_unsupported` |
-| Every import is a `wasi_snapshot_preview1` or `vv` function with the same signature as vv's | `import_unsupported` |
-| `_start` takes and returns nothing, and `memory` is exported | `export_invalid` |
-| Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less, and so is the sum over all tables of each table's declared maximum, or 100,000 for a table without one | `table_too_large` |
+| Checked                                                                                                                                                                                              | Problem when it fails  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| The bytes compile as a WebAssembly module whose memory starts at 128 MiB or less                                                                                                                     | `not_wasm`             |
+| A `vv.plugin` section exists                                                                                                                                                                         | `manifest_missing`     |
+| The manifest is a JSON object that follows the Manifest rules                                                                                                                                        | `manifest_invalid`     |
+| `contract` is `1`, checked before the other fields                                                                                                                                                   | `contract_unsupported` |
+| Every import is a `wasi_snapshot_preview1` or `vv` function with the same signature as vv's                                                                                                          | `import_unsupported`   |
+| `_start` takes and returns nothing, and `memory` is exported                                                                                                                                         | `export_invalid`       |
+| Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less, and so is the sum over all tables of each table's declared maximum, or 100,000 for a table without one | `table_too_large`      |
 
 ## Tables get a maximum before compiling
 
@@ -66,14 +66,14 @@ random source, and no preopened directory, environment variable or argument.
 Its only way to the network is the `vv` host functions, described in
 [Plugins reach only public internet addresses](#plugins-reach-only-public-internet-addresses).
 
-| Limit | Value | When it is reached |
-| --- | --- | --- |
-| Module size | 16 MiB | `Inspect` returns `domain.ErrWorkInfoPluginTooLarge` |
-| Linear memory | 128 MiB (2048 pages) | `memory.grow` returns `-1`, the module is closed and the run fails with `memory_exceeded`, even when the plugin goes on to exit successfully |
-| Run time | 30 s from taking the run slot, compiling and HTTP included | The compile or the module is stopped and the run fails with `timed_out` |
-| Standard output | 1 MiB | The run is stopped with `output_too_large` |
-| Standard error | 64 KiB kept, the rest discarded | Written to the server log and kept as the plugin's last run ([The last run's standard error is kept per plugin](#the-last-runs-standard-error-is-kept-per-plugin)) |
-| Runs at the same time | 1; a second run waits up to 10 s | The second run fails with `busy` |
+| Limit                 | Value                                                      | When it is reached                                                                                                                                                 |
+| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Module size           | 16 MiB                                                     | `Inspect` returns `domain.ErrWorkInfoPluginTooLarge`                                                                                                               |
+| Linear memory         | 128 MiB (2048 pages)                                       | `memory.grow` returns `-1`, the module is closed and the run fails with `memory_exceeded`, even when the plugin goes on to exit successfully                       |
+| Run time              | 30 s from taking the run slot, compiling and HTTP included | The compile or the module is stopped and the run fails with `timed_out`                                                                                            |
+| Standard output       | 1 MiB                                                      | The run is stopped with `output_too_large`                                                                                                                         |
+| Standard error        | 64 KiB kept, the rest discarded                            | Written to the server log and kept as the plugin's last run ([The last run's standard error is kept per plugin](#the-last-runs-standard-error-is-kept-per-plugin)) |
+| Runs at the same time | 1; a second run waits up to 10 s                           | The second run fails with `busy`                                                                                                                                   |
 
 The memory cap is enforced by vv's memory allocator rather than by wazero's
 page limit, because wazero refuses a `memory.grow` past its limit before the
@@ -86,11 +86,11 @@ The run time starts when the run takes the slot, so compiling a module that is
 not cached yet counts toward it. wazero checks the context between functions
 only when it compiles with more than one worker, so a run compiles with two.
 
-| Rejected | Why |
-| --- | --- |
-| A separate process per run | The container and the Windows app would need different OS sandboxes |
-| Running a `describe` operation at upload | The name and version shown for approval would come from unapproved code |
-| Several runs at the same time | Each run may use 128 MiB, and one at a time bounds the plugins' memory to one module's |
+| Rejected                                 | Why                                                                                    |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| A separate process per run               | The container and the Windows app would need different OS sandboxes                    |
+| Running a `describe` operation at upload | The name and version shown for approval would come from unapproved code                |
+| Several runs at the same time            | Each run may use 128 MiB, and one at a time bounds the plugins' memory to one module's |
 
 ## The last run's standard error is kept per plugin
 
@@ -116,13 +116,13 @@ sequenceDiagram
   Rt-->>App: result, run log, error
 ```
 
-| Rule | Where | Why |
-| --- | --- | --- |
-| `Run` returns the run log on success and on failure, and calls `record` only when the module started and ended in success or a run failure | [`run.go`](../../internal/wasmplugin/run.go) | A `busy` refusal, a module that failed to compile or ran out of time while compiling, and a cancelled request ran nothing worth replacing the last output with |
-| The row is written inside `record`, before the run slot is released | `internal/app`, `internal/wasmplugin` | Rows are written in the order the runs end, so an older run never overwrites a newer one |
-| Each secret value the run received is replaced wherever it occurs, and overlapping matches become one `[secret]`; in a truncated output, a tail that is the start of a secret value is replaced too | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | A value cut at 64 KiB leaves no part in clear; a value the plugin encodes first is not found |
-| The row is written only while `work_info_plugins` has the row with the generation that ran, in one statement | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | A run of a replaced (even with the same bytes), revoked or deleted plugin writes nothing |
-| A replacing upload deletes the row in its transaction; deleting the plugin cascades | `internal/store` | The screen shows only output of the current module |
+| Rule                                                                                                                                                                                                | Where                                                                              | Why                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Run` returns the run log on success and on failure, and calls `record` only when the module started and ended in success or a run failure                                                          | [`run.go`](../../internal/wasmplugin/run.go)                                       | A `busy` refusal, a module that failed to compile or ran out of time while compiling, and a cancelled request ran nothing worth replacing the last output with |
+| The row is written inside `record`, before the run slot is released                                                                                                                                 | `internal/app`, `internal/wasmplugin`                                              | Rows are written in the order the runs end, so an older run never overwrites a newer one                                                                       |
+| Each secret value the run received is replaced wherever it occurs, and overlapping matches become one `[secret]`; in a truncated output, a tail that is the start of a secret value is replaced too | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | A value cut at 64 KiB leaves no part in clear; a value the plugin encodes first is not found                                                                   |
+| The row is written only while `work_info_plugins` has the row with the generation that ran, in one statement                                                                                        | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go)        | A run of a replaced (even with the same bytes), revoked or deleted plugin writes nothing                                                                       |
+| A replacing upload deletes the row in its transaction; deleting the plugin cascades                                                                                                                 | `internal/store`                                                                   | The screen shows only output of the current module                                                                                                             |
 
 A failure to save the row is written to the server log and does not change
 the run's result.
@@ -172,13 +172,13 @@ request that fails to connect answers `-3`; when the plugin then fails, the
 run fails with `network_error` and the first host that could not be reached,
 because the owner can act on the host and not on the plugin's message alone.
 
-| Limit | Value | When it is reached |
-| --- | --- | --- |
-| Requests | 16 per run, `GET` and `POST`, `http` and `https` | A 17th request answers `-5`; another method or scheme answers `-1` |
-| Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |
-| Time | 10 s per request, from sending to the last byte of the body | The request answers `-4` |
-| Response headers | 1 MiB | The request answers `-3` |
-| Response body | 4 MiB | The request answers `-6` |
+| Limit            | Value                                                       | When it is reached                                                 |
+| ---------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| Requests         | 16 per run, `GET` and `POST`, `http` and `https`            | A 17th request answers `-5`; another method or scheme answers `-1` |
+| Redirects        | 5 per request                                               | The sixth redirect response is handed to the plugin as it is       |
+| Time             | 10 s per request, from sending to the last byte of the body | The request answers `-4`                                           |
+| Response headers | 1 MiB                                                       | The request answers `-3`                                           |
+| Response body    | 4 MiB                                                       | The request answers `-6`                                           |
 
 The client ignores `HTTP_PROXY` and the other proxy variables, because a
 proxy would make the dial check see only the proxy's address. It drops `Host`
@@ -193,12 +193,12 @@ The address check and the proxy support below live only in this adapter.
 The ComfyUI and Ollama clients keep reaching the LAN, where those services
 run, and never use the plugins' proxy.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                                                              | Why                                                                                               |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Resolving and checking the host name before a request without a proxy | The connection resolves the name again and may get another answer, and a redirect skips the check |
-| A host-name allowlist per plugin | A public name can resolve to a LAN address |
-| Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
-| Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |
+| A host-name allowlist per plugin                                      | A public name can resolve to a LAN address                                                        |
+| Returning the refusal to the plugin only                              | The plugin could ignore it, and the owner would not see that it tried                             |
+| Separate connect, TLS and header timeouts                             | A slow site could then answer `-3` instead of `-4` before the 10 s request limit                  |
 
 ### A run can go through the operator's proxy
 
@@ -252,11 +252,11 @@ the proxy's: VVMDM checks the address it resolved, and the proxy connects to
 the address it resolves itself. A proxy that refuses private destinations
 closes that gap; VVMDM cannot.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                                      | Why                                                                                                      |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Trusting the proxy to refuse LAN destinations | It holds only when the operator configured the proxy so, and VVMDM must refuse those destinations itself |
-| Keeping the dial-time check through a proxy | It would see only the proxy, whose LAN address would fail every request |
-| Honouring `HTTP_PROXY` | The operator could not set a proxy for plugins alone, and the Windows app has no environment to edit |
+| Keeping the dial-time check through a proxy   | It would see only the proxy, whose LAN address would fail every request                                  |
+| Honouring `HTTP_PROXY`                        | The operator could not set a proxy for plugins alone, and the Windows app has no environment to edit     |
 
 ## The fetch keeps the work details and their matches
 
@@ -267,6 +267,12 @@ then matches the people and organizations through `CreditStore.Match`. The
 details and the matches stay in the in-memory result with the title and the
 tags, for the same 10 minutes. A
 result without people or organizations does not read the store.
+
+Sites hand descriptions over as HTML fragments, so the parse turns `<br>`,
+`<br/>` and `<br />` (any case) into line feeds and keeps any other markup as
+literal text; the page shows a description's line feeds as line breaks and
+never renders HTML. Every work-info save applies the same conversion, and the
+page converts once more on display for descriptions saved before it.
 
 The matches are only shown: the screen marks each entry as linked, `New` or
 `Not linked` from them.
@@ -304,11 +310,11 @@ are any, the dialog ends on a result step with a link to each person's page
 with `?fetch=1`, which opens that page's `Fetch info…`
 ([person-plugins.md](person-plugins.md#work-info-fetches-do-not-look-people-up)).
 
-| Rejected | Why |
-| --- | --- |
-| A whole-row checkbox for a list | The owner could not drop one wrong person or URL without dropping the rest |
-| Naming people by name | Two fetched entries in one role may share a name |
-| Starting replacements cleared | The owner fetched to change the video; a dialog that applies nothing by default asks for a click per row |
+| Rejected                        | Why                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| A whole-row checkbox for a list | The owner could not drop one wrong person or URL without dropping the rest                               |
+| Naming people by name           | Two fetched entries in one role may share a name                                                         |
+| Starting replacements cleared   | The owner fetched to change the video; a dialog that applies nothing by default asks for a click per row |
 
 ## The owner matches unnamed performers with fetched ones
 
@@ -438,17 +444,17 @@ server's report for a cover it could not apply. A cover the page cannot
 decode stays an `<img>` without `Adjust framing`, and the apply sends `cover`
 so the server fits it as above.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                                               | Why                                                                                             |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | Send the fit with the apply and let the server compose | The preview and the result would come from two drawings, the reason uploads compose in the page |
-| Apply the cover the server fitted | A centre crop drops the part of a cover the owner wants, such as the front of a jacket scan |
+| Apply the cover the server fitted                      | A centre crop drops the part of a cover the owner wants, such as the front of a jacket scan     |
 
-| Rejected | Why |
-| --- | --- |
-| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
-| The browser loads the cover from the site | The site would see the viewer's address |
-| Fetching the cover again for each view or at the apply | The site could answer another image than the one the owner compared |
-| Keeping `cover` beside `covers` | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
+| Rejected                                                      | Why                                                                                                           |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third                                       |
+| The browser loads the cover from the site                     | The site would see the viewer's address                                                                       |
+| Fetching the cover again for each view or at the apply        | The site could answer another image than the one the owner compared                                           |
+| Keeping `cover` beside `covers`                               | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
 
 ## People's images are fetched like the cover and become faces after the commit
 
@@ -482,11 +488,11 @@ client can address the face without reading the video again. An image that does
 not decode, a person deleted since, or a write error drops that face and leaves
 the apply's result as it is, for the reason the cover gives.
 
-| Rejected | Why |
-| --- | --- |
-| Fetch every person's image | 100 people per role at 4 MiB exceed the result budget and the 30 s deadline |
-| Store the face inside the apply transaction | Decoding and fitting an image would hold the write transaction |
-| Replace a face the person has | The owner's face would be lost to a plugin's choice |
+| Rejected                                    | Why                                                                         |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| Fetch every person's image                  | 100 people per role at 4 MiB exceed the result budget and the 30 s deadline |
+| Store the face inside the apply transaction | Decoding and fitting an image would hold the write transaction              |
+| Replace a face the person has               | The owner's face would be lost to a plugin's choice                         |
 
 ## The apply merges the selected fields in one transaction
 
@@ -542,11 +548,11 @@ when the work information changed, one `VideoWorkInfoChanged`. A failure at
 any step rolls back the title, the tags, the work information and the new
 entities together.
 
-| Field | Merge rule |
-| --- | --- |
-| `code`, `description`, a date kind | Replaces the stored value |
-| A person or organization role | Appends the entities not linked in that role yet, in fetched order |
-| `urls`, `externalIds` | Appends the values not stored yet, in fetched order |
+| Field                              | Merge rule                                                         |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `code`, `description`, a date kind | Replaces the stored value                                          |
+| A person or organization role      | Appends the entities not linked in that role yet, in fetched order |
+| `urls`, `externalIds`              | Appends the values not stored yet, in fetched order                |
 
 The merge also returns, for each fetched person, the position of the link it
 resolved to. After the new entities are created, the apply fills each linked
@@ -559,11 +565,11 @@ person's role field with the value `name: property value`.
 A value the merge leaves out is returned as skipped with its field, the text
 the comparison showed and a reason. The rest of the row is still applied.
 
-| Reason | When |
-| --- | --- |
-| `invalid` | The value breaks a field rule of `NormalizeWorkInfo`, or a new entity's name or external IDs break `NormalizeCredit` |
-| `too_many` | The entry is over the field's limit, counted after the stored entries, or a new entity would carry more external IDs than its limit |
-| `ambiguous` | The match found several entities, or an external ID of a new entry already belongs to another new entity |
+| Reason      | When                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid`   | The value breaks a field rule of `NormalizeWorkInfo`, or a new entity's name or external IDs break `NormalizeCredit`                |
+| `too_many`  | The entry is over the field's limit, counted after the stored entries, or a new entity would carry more external IDs than its limit |
+| `ambiguous` | The match found several entities, or an external ID of a new entry already belongs to another new entity                            |
 
 The merge decides the skips before anything is created, so a skipped entry
 leaves no entity linked to no video. New entries in one result that share an

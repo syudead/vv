@@ -1,10 +1,10 @@
-import { AlertCircle, Globe, LoaderCircle, Lock } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
-import { Button } from "../ui/shadcn/button";
+import { Label } from "../ui/shadcn/label";
+import { Switch } from "../ui/shadcn/switch";
 
 /** Apply visibility only after success; aria-disabled preserves keyboard focus while blocking duplicate submissions. Callers key by video ID to reset errors. */
 export default function VisibilitySwitch({
@@ -30,30 +30,19 @@ export default function VisibilitySwitch({
       .finally(() => setSending(false));
   }
 
-  const Icon = sending ? LoaderCircle : isPublic ? Globe : Lock;
-
   return (
-    <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
-      <Button
-        variant="secondary"
-        size="sm"
-        role="switch"
-        aria-checked={isPublic}
-        aria-label={t.player.visibility.label}
-        aria-disabled={sending || undefined}
-        onClick={toggle}
-        className={cn(
-          "px-visibility-x text-xs has-[>svg]:px-visibility-x aria-disabled:cursor-default aria-disabled:opacity-50",
-          isPublic &&
-            "bg-primary-soft text-primary hover:bg-primary-soft hover:text-foreground",
-        )}
-      >
-        <Icon
-          aria-hidden="true"
-          className={cn(sending && "animate-spin motion-reduce:animate-none")}
-        />
+    <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
+      {/* The word and the track are one control: pressing either toggles. */}
+      <Label className="h-8 cursor-pointer px-1 text-xs font-normal text-foreground">
         {isPublic ? t.player.visibility.public : t.player.visibility.private}
-      </Button>
+        <Switch
+          checked={isPublic}
+          aria-label={t.player.visibility.label}
+          aria-disabled={sending || undefined}
+          aria-busy={sending || undefined}
+          onCheckedChange={toggle}
+        />
+      </Label>
       {failure !== null && (
         <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
           <AlertCircle aria-hidden="true" className="size-4 shrink-0" />

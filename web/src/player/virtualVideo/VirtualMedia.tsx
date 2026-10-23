@@ -51,7 +51,7 @@ export default function VirtualMedia({
               className="animate-spin motion-reduce:animate-none"
             />
           )}
-          {t.player.thumbnailUpload.chooseFile}
+          {words.uploadImage}
         </Button>
       )}
     </div>

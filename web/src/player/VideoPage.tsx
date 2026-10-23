@@ -487,6 +487,7 @@ export default function VideoPage() {
             status,
             statusShown: shownStatus !== null,
           })}
+          player={showPlayer ? controls : null}
           detail={{ refresh, replace, setFavorite }}
           related={{ rename: renameRelated, rethumb: rethumbRelated }}
           handoff={detailsHandoff}

@@ -96,8 +96,16 @@ async function clearDetails(request: APIRequestContext, id: number): Promise<Vid
   return (await response.json()) as Video;
 }
 
-function infoArea(page: Page) {
-  return page.getByRole("list", { name: "File details" }).locator("xpath=../..");
+function overview(page: Page) {
+  return page.getByRole("tabpanel", { name: "Overview" });
+}
+
+/** The Work tab's link to `link`, after selecting the tab. */
+async function workLink(page: Page, link: string) {
+  await page.getByRole("tab", { name: "Work" }).click();
+  return page
+    .getByRole("tabpanel", { name: "Work" })
+    .getByRole("link", { name: link.replace(/^http:\/\//, "") });
 }
 
 interface VirtualVideo extends Video {
@@ -213,7 +221,7 @@ test.describe.serial("work information", () => {
 
     await page.setViewportSize({ width: 360, height: 800 });
     await openVideo(page, b.id, b.title);
-    const text = infoArea(page).locator("p").filter({ hasText: "長い説明の一文です。" });
+    const text = overview(page).locator("p").filter({ hasText: "長い説明の一文です。" });
     await expect(text).toBeVisible();
     await expect(page.getByRole("button", { name: "Show more" })).toBeVisible();
     expect(await text.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(
@@ -252,11 +260,8 @@ test.describe.serial("work information", () => {
 
       await page.reload();
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(c.title);
-      await expect(infoArea(page).getByText(`説明${run}`)).toBeVisible();
-      const row = page.getByRole("list", { name: "Work details" });
-      await expect(
-        row.getByRole("link", { name: link.replace(/^http:\/\//, "") }),
-      ).toHaveAttribute("href", link);
+      await expect(overview(page).getByText(`説明${run}`)).toBeVisible();
+      await expect(await workLink(page, link)).toHaveAttribute("href", link);
     } finally {
       await clearDetails(request, c.id);
     }
@@ -351,11 +356,7 @@ test.describe.serial("work information", () => {
 
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(d.title);
       await expect(page.getByText(tagName, { exact: true }).first()).toBeVisible();
-      await expect(
-        page
-          .getByRole("list", { name: "Work details" })
-          .getByRole("link", { name: link.replace(/^http:\/\//, "") }),
-      ).toHaveAttribute("href", link);
+      await expect(await workLink(page, link)).toHaveAttribute("href", link);
       await page.locator(".vjs-big-play-button").click();
       await page.waitForFunction(() => {
         const element = document.querySelector("video");

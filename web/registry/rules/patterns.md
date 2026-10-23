@@ -46,7 +46,8 @@ example block and a section here.
 - **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `CenteredForm`,
   `StepsPage` and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
   `DetailPage` is viewing density: its sections switch to `p-4` rows and
-  `text-base` by themselves, and its controls use `default` and `lg`.
+  `text-base` by themselves, and the player's controls use `default` and `lg`;
+  the controls under the media are `sm`.
 - **Text**: patterns hold no text. Every title, label, count and message comes
   from the caller through `t`.
 - **One primary action per area**: the header's `actions`, a dialog footer, an
@@ -213,7 +214,10 @@ divided by a vertical border. The aside is `detail-aside` wide
 (`detail-aside-wide` from `xl`); the columns sit `gap-6` apart inside `px-6`.
 Below `lg` everything stacks: the media runs edge to edge under the band, and
 the content below it and the aside keep `px-4` (`px-6` from `sm`) side
-padding, with a border above the aside.
+padding, with a border above the aside. The media and the children stack
+`gap-4` apart, and the children `gap-3` apart. The children end with `pb-10`
+(`pb-16` from `lg`, where the main column scrolls on its own), so the last of
+them is not read against the window's edge.
 
 From `lg`, a screen that keeps the page at the viewport's height (it puts
 `DetailPage` in a `lg:h-dvh` flex column) gets a main column that scrolls on its
@@ -221,12 +225,12 @@ own and an aside that is a flex column, so a list in it can scroll under its
 heading while the header band and the media stay in view. Otherwise the page
 scrolls as one under the sticky band.
 
-| Slot     | Put in it                                                                       | Never                   |
-| -------- | ------------------------------------------------------------------------------- | ----------------------- |
-| `header` | The band's content: the brand or a ghost `Back` button, the location, a close × | A page title block      |
-| `media`  | The player or image                                                             | Text or controls        |
-| children | The title, tags and controls about the item, then its facts as one icon row     | A card around the facts |
-| `aside`  | A small heading and a plain list of related items                               | Main actions; long text |
+| Slot     | Put in it                                                                                                                                                                           | Never                   |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `header` | The band's content: the brand or a ghost `Back` button, the location, a close ×                                                                                                     | A page title block      |
+| `media`  | The player or image                                                                                                                                                                 | Text or controls        |
+| children | The title, tags and controls about the item, then a `line` tab strip and its panel; the tab panel is set in `text-sm`, the library's type, under the page's viewing-density spacing | A card around a panel   |
+| `aside`  | A small heading and a plain list of related items                                                                                                                                   | Main actions; long text |
 
 ## Centered form
 
@@ -400,7 +404,7 @@ must be taken in order and the screen is nothing else; one form is a
 | `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control; `searchPlacement="end"` puts the search after the filters at the row's end                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `FactList`     | `fact-list`     | Term and value pairs in two columns. `variant="divided"` is a column of figures: one row per fact, the term at the left in `text-xs` muted on one line, the value at the right end in `text-xs font-mono tabular-nums`, `py-2` with a hairline under every row. `columns={2}` splits a long `grid` list into two equal lists side by side from `md`, the first half left, `gap-x-10` apart                                                                                                                                                                                                                                                                                                                                     |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, or `card-face` for face cards, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `Shelf`        | `shelf`         | A `PageHeader` (`h2`) with a count over a `CardGrid` of every item of one kind, which wraps and loads more with a `LoadMoreRow`; use it for a few kinds of items on one page, one after another                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                                                                                                                                                                                                                                                                |

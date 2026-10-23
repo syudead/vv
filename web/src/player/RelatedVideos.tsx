@@ -54,11 +54,14 @@ export function VideoThumbnail({
   scrub,
   marks,
   markId,
+  selected,
 }: {
   video: Video;
   className?: string;
   /** Id of the virtual mark's accessible text, for the enclosing link's aria-describedby. */
   markId?: string;
+  /** The `primary` ring of the one playing item in a list. */
+  selected?: boolean;
   /** Position badge supplied by continuous-play and playlist cards. */
   marks?: ReactNode;
   preview?: HoverPreview;
@@ -68,7 +71,7 @@ export function VideoThumbnail({
   const ratio = watchedRatio(video);
   const scrubPosition = scrub?.position ?? null;
   return (
-    <Thumbnail className={cn("shrink-0", className)}>
+    <Thumbnail selected={selected} className={cn("shrink-0", className)}>
       {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
         <ThumbnailBackdrop src={video.thumbnailUrl} />
       )}

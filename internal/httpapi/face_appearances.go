@@ -44,13 +44,9 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 		body.NextCursor = &page.NextCursor
 	}
 	for _, a := range page.Items {
-		spans := make([]gen.FaceAppearanceSpan, 0, len(a.Spans))
-		for _, span := range a.Spans {
-			spans = append(spans, gen.FaceAppearanceSpan{Start: span.Start, End: span.End})
-		}
 		body.Items = append(body.Items, gen.FaceAppearance{
-			AppearanceId: a.ID, VideoId: optionalPositive(a.VideoID), Title: a.Title, Spans: spans, HasCrop: a.HasCrop,
-			Similarity: a.Similarity, Focus: apiFaceFocus(a.Focus),
+			AppearanceId: a.ID, VideoId: optionalPositive(a.VideoID), Title: a.Title, Spans: toAPIFaceTimeSpans(a.Spans),
+			HasCrop: a.HasCrop, Similarity: a.Similarity, Focus: apiFaceFocus(a.Focus),
 		})
 		if a.Unlike {
 			body.Items[len(body.Items)-1].Unlike = &a.Unlike
@@ -204,6 +200,14 @@ func (s *server) GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, i
 	if _, err := w.Write(crop); err != nil {
 		s.logger.Debug("could not write the face crop", slog.Int64("appearance", id), slog.Any("error", err))
 	}
+}
+
+func toAPIFaceTimeSpans(spans []domain.FaceTimeSpan) []gen.FaceAppearanceSpan {
+	out := make([]gen.FaceAppearanceSpan, 0, len(spans))
+	for _, span := range spans {
+		out = append(out, gen.FaceAppearanceSpan{Start: span.Start, End: span.End})
+	}
+	return out
 }
 
 func apiFaceFocus(f *domain.FaceFocus) *gen.FaceFocus {

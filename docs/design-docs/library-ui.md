@@ -644,9 +644,9 @@ The diagram shows its parts.
 ```mermaid
 flowchart LR
   band[Header band] --> player[Player]
-  player --> title[Title and tags]
-  title --> vis[Visibility toggle]
-  vis --> info[Information rows]
+  player --> title[Title row and tags]
+  title --> strip[Tab strip]
+  strip --> panel[Selected panel]
   band --> related[Up next and related videos]
 ```
 
@@ -654,102 +654,156 @@ flowchart LR
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Header band       | Logo (home), breadcrumb to the folder, the only ×                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Return target     | The list before the page opened, kept through related videos and `Play next`                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Title row         | The title, with no edit control of its own (the name is edited in [Details editor](#details-editor)), then `Favorite`, `Add to playlist` and `Add to group`, each an icon and its word, `secondary` `sm` pills `gap-2` apart; beside the title from `sm`, bottom-aligned with its last line, on a row of their own below it                                                                                                                                                                     |
 | Tags              | Right below the title as one unit                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows                                                                                                                                                                                                                                                                                                                                                              |
+| Tab strip         | Under the tags; the tabs, then the visibility toggle and `Edit details` at its end ([Tabs](#tabs))                                                                                                                                                                                                                                                                                                                                                                                              |
+| Visibility toggle | `Private` or `Public` in `text-xs`, then a `Switch` checked when public, both in one `Label`, at the end of the tab strip                                                                                                                                                                                                                                                                                                                                                                       |
 | Right column      | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests            | No tags, visibility toggle, `Edit details`, `Open file` or `Copy path`; of the work details, only the description and `Links`                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Guests            | No title row actions, tags, visibility toggle, `Edit details`, work information or location; the tabs Overview, Versions (with two or more versions) and File & media                                                                                                                                                                                                                                                                                                                           |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
 
-| Width          | Layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lg` and above | The page keeps the viewport's height and the left column scrolls on its own. The right column is `detail-aside` wide (the card width plus its padding) and reaches the window's right edge, so its scrollbar sits at the edge. The playlist panel, `Up next` and related videos scroll in one container, and each section's heading stays at the top only while its section is in view. The player's height leaves room for one line of the title, so a landscape video fills the column's width. Its width also stops at the video's own display width (never below 60rem) and at 100rem, so a large window does not stretch a small video; when a limit stops it first, the player, title and information take the player's width and sit in the middle of the column. The tags and information rows are reached by scrolling the column |
-| Below `lg`     | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Below `md`     | The breadcrumb shows only its last segment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Width          | Layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lg` and above | The page keeps the viewport's height and the left column scrolls on its own. The right column is `detail-aside` wide (the card width plus its padding) and reaches the window's right edge, so its scrollbar sits at the edge. The playlist panel, `Up next` and related videos scroll in one container, and each section's heading stays at the top only while its section is in view. The player's height leaves room for one line of the title, so a landscape video fills the column's width. Its width also stops at the video's own display width (never below 60rem) and at 100rem, so a large window does not stretch a small video; when a limit stops it first, the player, title and tabs take the player's width and sit in the middle of the column. The tags, the tab strip and the panel are reached by scrolling the column |
+| Below `lg`     | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Below `md`     | The breadcrumb shows only its last segment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+The column ends with `pb-16` (`pb-10` below `lg`) under its last panel, on
+every tab, so the last lines of a panel are not read against the window's edge
+or the right column's border; `DetailPage` owns this padding
+([patterns.md, Detail page](../../web/registry/rules/patterns.md#detail-page)).
 
 The player frame takes its size from the named steps `player-width`,
 `player-height` and their `-lg` forms in `tokens.css`, which read the video's
 aspect ratio from the frame at run time.
 
-### Information rows
+### Tabs
 
-The rows under the title, above which a divider runs, carry no frames.
+What is under the tags sits behind one strip of `Tabs` `variant="line"`, so
+the column shows one kind of information at a time instead of stacking every
+kind. The strip's bottom border is the one divider between the title unit and
+the panel; panels carry no frame.
 
-| Row               | Content                                                                                                                                                                                                                                                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| First             | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end                                                              |
-| Work details      | Only when the video has work information; a guest sees only the description and `Links`. It shows the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them                |
-| Technical         | Resolution, container, codec separated by thin rules; smallest and most subdued                                                                                                                                                                                                                                                    |
-| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more` |
+A panel is set in the library's type, `text-sm`, so it reads quieter than the
+title and the tags: figures, dates, paths and details are `text-xs`, labels,
+counts, roles and notes `text-2xs`. From `md` a panel has two columns, what is
+read at the left and the figures or the one action in a `facts-column` wide
+column at the right, `gap-12` apart; below `md` the right column follows the
+left one. A single column of `text-base` facts was rejected on review: at the
+player's width it left most of the panel empty and read as large as the title.
+Actions are labelled pills in three fixed places: what the viewer does with the
+video beside the title, what changes the record (visibility, `Edit details`)
+at the strip's end, and what changes one kind of information in that kind's
+panel. A filled pill was chosen over `ghost` words, which read as captions
+beside the title. Actions inside a list row stay `ghost` words, so a row's one
+pill is its first action, `Play`. A per-row `More` menu was rejected because it
+hides two actions behind an icon, and an empty-state block on Work was rejected
+because it would move the fetch action into the block, so the action's place
+would change with the list; Work's header row keeps it in one place instead.
 
-The work details row takes words as labels, muted, and the values in the body
-colour. A role, `Links` or `IDs` with more than three entries shows three and
-`+{n} more`, which opens that item in place; a description longer than three
-lines shows `Show more`. A video without work information shows the rows as
-before, and the row adds no prompt to fill it in.
+| Tab          | Listed when                                                                                                           | Panel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Overview     | Always                                                                                                                | At the left, for the owner, two headed sections: `Description`, the whole description with its line breaks, folded behind `Show more` only past eight lines, and `Work`, the work summary `KYT-002 · Released 2024-03-15 · 山田 花子, 佐藤 健太` in `text-xs` muted; each section only with content. At the right, `Length`, `Resolution`, `Added` and `Last watched` (the progress row's time, owner only) as a divided `FactList`, which stands alone when there is no description or summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Work         | Owner, and the work has an item other than the description and the performers, or an approved work-info plugin exists | While an approved work-info plugin exists, a header row above the list with a bottom border: `Fill in from a site` in `text-sm` muted at the left and a default-size `secondary` pill with a globe, `Fetch again` (`Fetch` with no item), at the right; it pauses the player and opens the fetch dialog. Under it, across the panel's whole width, a `FactList` split into two lists from `md` of `Code`, the dates as stored, the people of roles other than performer (a face chip and the name, each a link to the person page), the makers and labels (links to the filtered library), `Links` (one per line, in `primary`) and `IDs`; a row with more than three entries shows three and `+{n} more`. With no item, `No work details yet.` in its place. Every value wraps or truncates inside its own column: a link truncates with its full address in `title`, other values break anywhere. The fetch action was first a small pill in a right column, which reviewers found hard to press and which left the list too narrow, so long values ran into it                                                                                                                                                                          |
+| People       | Owner, and the work credits a person; the count is the distinct credited people                                       | `Credits`: the credited people as a face grid, one left-aligned tile per person (a square `scene` face, the name, its roles in `text-2xs`), each a link to the person page. `Seen in this video`, only once face recognition is done and found someone: the label with `0:00 — {length}` at the line's right end, then ` · press a bar to jump` while the bars can play; one row per person with the face, the name (`#1042` when unnamed) and a `SpanBar` of when the person is on screen, scaled to the video's length and absent while the length is unknown. While the player is shown, pressing a block seeks it to the span's start and plays in place; otherwise the blocks are plain. The list is read when the tab opens and again when the video response is replaced                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Versions     | Two or more visible versions; the count is the number of versions                                                     | The list, read each time the tab is selected, one divided row per version with the representative first: a `list-thumb-cell` thumbnail, ringed in `primary` on the playing version; the title in plain text with the visible chips `Representative` (`Badge secondary` with a star) and `Now playing` (`Badge soft`); resolution · codec · size · container; the owner's path (a guest's place) in `text-2xs` mono, truncated from the left. `Play`, a pill that opens that version, on every row but the playing one; for the owner, `Make representative` on every row but the representative and `Remove from versions` on every row, as `ghost` `sm` buttons with words; a guest's rows only play. Removing the playing version replaces the page's video with the removed one, which leaves Versions and selects Overview                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Thumbnail    | Owner                                                                                                                 | `Current` and `Replace with` across a vertical line from `md`. `Current`: the stored thumbnail at the card width, its origin (`Frame at 0:12`, `Uploaded image`, `Generated image` or `Automatic`) and, unless automatic, `Back to automatic`. `Replace with`: three divided rows, each a small preview, a title with its note and a pill at the end: `The frame on screen` (the seek sprite's cell at the player's position, only while the player shows a frame) with `Use this frame`, `An image` (a dashed empty frame) with `Upload…`, which opens the `Upload a thumbnail` [ImageUploadDialog](../../web/registry/rules/components.md#imageuploaddialog), and `Touch up with ComfyUI` (the current thumbnail, faded) with `Touch up…` ([thumbnail-editing.md](thumbnail-editing.md#the-thumbnail-tab-offers-three-ways-to-replace-the-thumbnail)). Below both, while the seek sprite is done, `Seek preview`: each sprite sheet as a small preview (`replace-preview` wide), wrapping in a row; pressing one shows that sheet at the `Dialog`'s full width, for viewing only; a sheet is read when it nears the viewport |
+| File & media | Always                                                                                                                | At the left, `Location` (owner only, with a location): the path in `text-xs` mono and `Open file` (only when the file can be opened from this browser), `Copy path` and `Rescan` as pills; `Media`: `Video`, `Audio`, `Subtitles`, `Chapters`, `Container`, `Embedded` and `Broadcast` rows, each only with content, except that a probed video with no subtitle or chapter reads `None`. At the right, the divided figures `Size`, `Added`, `Edited in vv` (the latest vv edit, `updatedAt`), `File created` and `File modified` (the file's mtime), named `File` for screen readers; each date is the full date and the time with seconds, with milliseconds when the value has them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
-The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
-`Use current frame as thumbnail`, `Change thumbnail`, `Open file` and
-`Copy path`: icon-only ghost buttons with tooltips. `Change thumbnail` is the
-owner's even when the player is not shown and does not depend on ComfyUI; its
-menu offers the frame on screen (only while a frame is shown), the current
-thumbnail with a small copy of it, and `Upload an image…`, which opens
-`Upload a thumbnail`, an
-[ImageUploadDialog](../../web/registry/rules/components.md#imageuploaddialog)
-where a PNG, JPEG or WebP is dropped, chosen or pasted. Another type or a file
-over 64 MB is refused in the dialog before sending anything. The entry spins
-while it reads the chosen source and while it sends. A
-readable source opens `Preview thumbnail`, an `EditorDialog` whose stage shows
-the image in the card's 16:9 thumbnail frame exactly as it will be stored:
-the owner drags the image anywhere (or moves it with the arrow keys), zooms it
-with `Zoom`, the wheel, `+` and `-`, turns it a quarter at a time, picks what
-fills the empty space, and returns to `Whole image` or `Fill frame` with one
-button, while the part outside the frame shows faintly around it. With ComfyUI set up, `Touch up with ComfyUI` runs one of four fixed
-instructions or the owner's own on the framing, shows `Before` and `After`,
-and `Use result` makes the result the image; `Paint or add a reference…`
-opens the ComfyUI editor on the framing and its result comes back the same
-way. Without ComfyUI the section says to save a connection, with
-`Open Settings`.
-`Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
-nothing
-([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
-While an uploaded image is the thumbnail,
-the thumbnail item shows it with an `ImageUp` icon, the label
-`Uploaded thumbnail` and `Use the frame instead`. One thumbnail
-action sends at a time: while the capture, a `×` or the upload sends, the
-others are `aria-disabled`. Dates show the date only;
-the time is in the `title` attribute and in a popover opened by pressing the
-date. No path appears under the title, because the breadcrumb already shows
-the location.
+One pure rule over the video response and the plugin list decides which tabs
+are listed; a strip never holds a disabled tab. The plugin list is read once
+per page for the owner, and until it arrives Work is listed only for a work
+with items; its arrival adds Work in its place without changing the selection.
 
-The owner's favorite toggle opens the right-hand action group, left of
-`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `Toggle` `sm`,
-`aria-pressed`). It is the group's only control with state, so the eye lands on
-it first; even so, it is no more prominent than the title: on is a small
-`bg-primary-soft` fill with the pink heart. It is absent on group rows and for
-guests.
-`Add to playlist` and then `Add to group` follow it, under the same
-conditions.
+The diagram shows what opening the page, a change of video or a refresh does
+to the selection.
+
+```mermaid
+flowchart LR
+  open[Page opened] --> named{Address names a tab?}
+  named -->|no or unknown| overview[Overview]
+  named -->|yes| listed{Video has that tab?}
+  listed -->|yes| keep
+  listed -->|no| overview
+  change[Video response replaced] --> has{New tab list has the selected tab?}
+  has -->|yes| keep[Same tab]
+  has -->|no| overview
+```
+
+The selected tab is in the address as `tab` (`?tab=people`; Overview leaves it
+out), written by replacing the history entry, so switching tabs adds no Back
+steps and leaving the page and coming back with Back, or reloading, reopens the
+tab. A navigation whose address names a tab selects it; one without, such as a
+link to another video, keeps the selected tab under the rule above and writes
+it into the new address. A name the page does not know, or a tab this video
+does not list (Work without items, any owner tab for a guest), opens Overview
+and drops `tab` from the address, so the next video does not reopen it. Only
+Work named on opening waits for the work-info plugin list, which may add it.
+Keeping the tab in page memory alone was rejected on review: every return to
+the video opened Overview. Only the selected panel is mounted. The thumbnail sends, the
+thumbnail preview and the work-info fetch dialog belong to the strip's
+container, so they keep running and stay open across a switch.
+
+A section inside a panel has a small muted uppercase heading; facts are a
+`FactList` with the term muted and the value in the body colour, and the
+figures of the right column stand in divided rows. Overview's dates show
+the date only, in the figures' mono type; the time is in the `title` attribute and in a popover opened by
+pressing the date. File & media's dates are the record itself, so they show the
+date and the time in full, the date and the time each kept on one line. While
+a request runs, the pressed action spins. In Thumbnail the other ways are
+`aria-disabled` until it ends; a sprite that cannot be read shows
+`Couldn't load the seek preview` with `Retry`, as does a sheet that cannot be
+read. In Versions the
+lock covers only the pressed row: that row's other owner actions are
+`aria-disabled`, while its `Play` and every other row stay enabled. A list read when its tab is
+selected (Versions, People's `Seen in this video`) shows two `Skeleton` rows
+while reading and the failure words with `Retry` when the read fails. A
+failure of an action shows one line with `AlertCircle` at the end of
+the panel and clears on the next action. While the probe is pending the
+`Media` section says `Reading technical details…`, after a failed probe
+`Couldn't read the technical details` in `warning`, and Overview leaves out
+`Length` and `Resolution`. No path appears under the title, because the
+breadcrumb already shows the location.
+
+The strip has no line above it, and the selected tab's `primary` underline lies
+on its bottom border. A tab is the word in `text-sm font-medium`, with the
+count after it in `text-2xs` muted. The two controls at its end stand `gap-1`
+apart; `Edit details` is a `ghost` `sm` link with the word alone. The tabs
+never wrap: selecting a tab scrolls it into view inside the strip.
+
+| Width          | Strip and panels                                                                                                                                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `md` and above | One strip line, the tabs then the two controls; each panel in its two columns, Thumbnail's `Current` and `Replace with` across a vertical line                                                                                                           |
+| `sm` to `md`   | One strip line; each panel in one column, the right column after the left, and Thumbnail's `Current`, a horizontal line, then the rows                                                                                                                   |
+| Below `sm`     | The two controls on a line of their own above the strip, right-aligned; the tabs scroll sideways inside the strip, so the page never scrolls sideways; a Versions row's actions under its path, and a `Replace with` row's pill under its title and note |
+
+The owner's favorite toggle is the first control after the title
+(`FavoriteToggle` `page` form: a `sm` pill `Toggle` with the heart and the word,
+`aria-pressed`). Off is the `secondary` fill; on is the `favorite-soft` fill
+with the heart filled and the word in `favorite`; it is no more prominent than
+the title.
 
 ```mermaid
 flowchart LR
   press[Toggle pressed] --> put[PUT /api/favorites]
   put -->|ok| refetch[Refetch the video]
   refetch --> cache[Update cached list]
-  put -->|error| line[One-line failure below]
+  put -->|error| line[One-line failure below the title row]
 ```
 
-Updating the cached list means the library card has changed on return. The
-failure line sits directly below the first information row, like open,
-capture and upload failures, with no toast.
+Updating the cached list means the library card has changed on return.
 
 ### Details editor
 
-`Edit details` (lucide `Clapperboard`, the owner's only) is a link to
+`Edit details` (the word alone, `ghost` `sm`, the owner's only, at the
+end of the tab strip) is a link to
 `/videos/:id/edit`, a full-screen `FormPage` outside the shell and the player
-that edits the display name and every work information item together; the
-title's pencil stays as the quick way to rename. The band holds `Cancel` and
+that edits the display name and every work information item together; it is
+the one place to rename, so the title carries no pencil of its own. A title
+pencil beside `Edit details` was rejected on review: two entries that both
+change the name read as two different features. The band holds `Cancel` and
 `Save`; the left column, the skeleton's `aside`, names the video (thumbnail,
 file name, duration, size and resolution, folder) and holds
 `Back to the video`; `Basics` holds the name, the code and the dates
@@ -774,9 +828,10 @@ the main action's place.
 | --- | --- |
 | Header band | `Virtual video` with `SquareDashed`, muted and not a link, in the breadcrumb's place |
 | Media | The player frame holding the uploaded image (`object-contain`), or `SquareDashed` over `No thumbnail yet` and, for the owner, `Upload an image…`; a guest reads `No thumbnail`. No play button, control bar or cursor change |
-| Links and description | Under the title unit: one `outline` `Button` per link, opening in a new tab, then the `Description` component. The work details row leaves both out |
-| Information rows | `Added` and `Edited`, and the thumbnail item with `Remove image` while an image exists; no technical or media information. A guest sees `Added` only |
-| Actions | Favorite, `Add to playlist`, `Add to group`, `Edit details`, the work-info fetch, `Change thumbnail`, which opens the `ImageUploadDialog` directly and then a preview with framing only, and `More` (`Ellipsis`) with `Merge into a file video…` and, after a separator, `Delete…` |
+| Links and description | Between the tags and the tab strip, for guests too: one `outline` `Button` per link, opening in a new tab, then the `Description` component. Overview leaves the description out, so it is read once |
+| Tabs | Overview, Work, People and Thumbnail under [the tab rules](#tabs); no Versions or File & media, since there is no file. Overview's facts are `Added` and, for the owner, `Edited`; no length or resolution. A guest sees Overview alone |
+| Thumbnail tab | `Current`: the uploaded image, or the empty frame over `No thumbnail yet`, with `Remove image` while an image exists. `Replace with`: `An image` alone, whose `Upload…` and the frame's `Upload an image…` open the one `ImageUploadDialog` and then a preview with framing only |
+| Actions | Favorite, `Add to playlist` and `Add to group` beside the title; the visibility toggle, `Edit details` and `More` (`Ellipsis`) at the strip's end, with `Merge into a file video…` and, after a separator, `Delete…`; the work-info fetch on the Work tab |
 
 Saves of the title, the details, deletion and merging send the `contentVersion` the
 page read. `409 content_changed` shows
@@ -919,7 +974,9 @@ propagation, so keys are caught in the capture phase on `window`, passing
 through only keys that operate the focused button or slider. Space, F, M, C
 (subtitles), 0 and Esc are handled. Keys pressed inside an open popover or
 menu, such as the playlist picker, belong to it: only Esc reaches the page,
-and it closes the popover, not the page.
+and it closes the popover, not the page. While a `Dialog` or `AlertDialog` is
+open, such as a seek preview sheet shown large, it owns every key, and Esc
+closes only the dialog.
 
 ### Group members
 

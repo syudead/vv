@@ -250,7 +250,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		return domain.Video{}, err
 	}
 
-	video.MTime = time.Unix(mtime, 0)
+	video.MTime = time.Unix(0, mtime)
 	video.FileCreatedAt = time.Unix(fileCreatedAt, 0)
 	video.AddedAt = time.Unix(addedAt, 0)
 	video.IndexedAt = time.Unix(indexedAt, 0)
@@ -300,6 +300,11 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	return video, nil
 }
 
+// The modification time in nanoseconds; rows scanned before mtime_ns existed have whole seconds only.
+func mtimeNsExpr(alias string) string {
+	return `coalesce(` + alias + `.mtime_ns, ` + alias + `.mtime * 1000000000)`
+}
+
 // Use modification time when file creation time is unknown.
 func fileCreatedAtExpr(alias string) string {
 	return `coalesce(` + alias + `.file_created_at, ` + alias + `.mtime)`
@@ -320,6 +325,11 @@ func locationMTimeExpr(loc string) string {
 	return `coalesce(` + loc + `.mtime, vv.created_at)`
 }
 
+// The scanned modification time in nanoseconds; a virtual video reports its creation time.
+func locationMTimeNsExpr(loc string) string {
+	return `coalesce(` + mtimeNsExpr(loc) + `, vv.created_at * 1000000000)`
+}
+
 func locationCreatedAtExpr(loc string) string {
 	return `coalesce(` + fileCreatedAtExpr(loc) + `, vv.created_at)`
 }
@@ -331,7 +341,7 @@ func locationTitleKeyExpr(loc string) string {
 // Columns in scanVideo order from path to file creation time; a virtual video has an empty path and size 0.
 func locationColumns(path, loc string) string {
 	return `coalesce(` + path + `, '') as path, coalesce(` + loc + `.title, vv.title) as title, ` +
-		`coalesce(` + loc + `.size_bytes, 0) as size_bytes, ` + locationMTimeExpr(loc) + ` as mtime, ` +
+		`coalesce(` + loc + `.size_bytes, 0) as size_bytes, ` + locationMTimeNsExpr(loc) + ` as mtime, ` +
 		locationCreatedAtExpr(loc) + ` as file_created_at`
 }
 
