@@ -366,6 +366,20 @@ Video card behaviour:
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
+A virtual video, which has no file, is a video card of the same size whose
+duration pill holds `VirtualMark` (the `SquareDashed` icon and `Virtual`), after
+a public mark when there is one. Its sr-only `Virtual video, no file` is the
+card link's `aria-describedby`. The card has no progress, unplayable notice,
+hover preview or scrub band, and without an uploaded image its frame shows the
+placeholder of a file video whose thumbnail is not made yet.
+
+The owner's `New virtual video` (`outline`, `sm`) sits at the right end of the
+library header's actions, after `Save as smart folder` while filters apply,
+and stays there on an empty library. It opens a `NameDialog` with one `Title`
+field that refuses a blank title before sending; `POST /api/virtual-videos`
+then opens the new video's page with the list as its return target. Header
+actions wrap onto more lines when they do not fit beside the title.
+
 Folder, group and smart folder cards show the name on up to two lines with the
 full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
@@ -465,7 +479,9 @@ add to group (owner, from `sm`; below it the card and the selection bar offer
 them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
-title, `3 / 12` watched, total duration and size, empty quality.
+title, `3 / 12` watched, total duration and size, empty quality. A virtual
+video's row shows the virtual mark in the duration cell, empty quality and size
+cells and its creation time as the date added.
 
 Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on

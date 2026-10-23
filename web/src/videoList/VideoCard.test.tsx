@@ -660,6 +660,87 @@ describe("VideoCard のバージョンの印", () => {
   });
 });
 
+describe("VideoCard のバーチャルの印", () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  // The fields the server leaves out of a video with no file (contracts/screen-api.md).
+  const virtualVideo = video({
+    virtual: true,
+    public: true,
+    playable: false,
+    sizeBytes: 0,
+    thumbnailState: "pending",
+    thumbnailUrl: undefined,
+    durationMs: undefined,
+    width: undefined,
+    height: undefined,
+    videoCodec: undefined,
+    previewState: "pending",
+    previewUrl: undefined,
+  });
+
+  it("時間の場所に印を置き、長さ・進捗・再生不可の通知・ホバーのプレビューを出さない", () => {
+    vi.useFakeTimers();
+    const { previewCoordinator, start } = coordinator();
+    const { container } = render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <VideoCard
+            video={virtualVideo}
+            backTo="/"
+            selected={false}
+            selectionMode={false}
+            previewCoordinator={previewCoordinator}
+          />
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+    const label = screen.getByText("Virtual video, no file");
+    expect(label.className).toContain("sr-only");
+    const face = label.parentElement!;
+    expect(face.textContent).toBe("PublicVirtualVirtual video, no file");
+    expect(face.querySelector(".lucide-square-dashed")).not.toBeNull();
+    expect(
+      screen.getByRole("link", { name: "動画 1" }).getAttribute("aria-describedby"),
+    ).toBe(label.id);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(container.querySelector(".lucide-triangle-alert")).toBeNull();
+    expect(screen.queryByText("Missing information needed for playback")).toBeNull();
+
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(500));
+    expect(start).not.toHaveBeenCalled();
+    expect(container.querySelector("video")).toBeNull();
+  });
+
+  it("リスト表示の行では時間のセルに印を置き、画質とサイズのセルを空にする", () => {
+    render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <table>
+            <tbody>
+              <VideoRow
+                video={{ ...virtualVideo, public: false }}
+                backTo="/"
+                selected={false}
+                selectionMode={false}
+              />
+            </tbody>
+          </table>
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+    const cells = Array.from(
+      screen.getByText("Virtual video, no file").closest("tr")!.querySelectorAll("td"),
+    ).map((cell) => cell.textContent);
+    expect(cells.slice(-4, -1)).toEqual(["VirtualVirtual video, no file", "", ""]);
+    expect(screen.queryByText("Missing information needed for playback")).toBeNull();
+  });
+});
+
 describe("VideoCard の表示（issue 308）", () => {
   afterEach(() => cleanup());
 

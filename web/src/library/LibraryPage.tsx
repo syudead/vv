@@ -95,6 +95,7 @@ import {
 } from "./creditCriteria";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
+import NewVirtualVideoButton from "./NewVirtualVideoButton";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
   DraggableGroupRow,
@@ -162,15 +163,25 @@ function libraryConditioned(filter: LibraryFilter): boolean {
   );
 }
 
-function saveSmartFolderAction(
+/**
+ * The owner's header actions. With filters the results header holds them, saving the filter
+ * first, and the home header has none.
+ */
+function libraryActions(
+  header: "home" | "results",
   owner: boolean,
   conditioned: boolean,
   filter: LibraryFilter,
   sort: VideoSort,
+  backTo: string,
 ): ReactNode {
-  return owner && conditioned ? (
-    <SaveSmartFolderButton filter={filter} sort={sort} />
-  ) : undefined;
+  if (!owner || conditioned !== (header === "results")) return undefined;
+  return (
+    <>
+      {conditioned && <SaveSmartFolderButton filter={filter} sort={sort} />}
+      <NewVirtualVideoButton backTo={backTo} />
+    </>
+  );
 }
 
 const libraryParams = [
@@ -797,7 +808,20 @@ export default function LibraryPage() {
     // Group mutations can remove top-level items; refresh the list in place.
     <GroupChangedContext value={refreshInPlace}>
       <ListPage
-        header={<PageHeader title={t.home.title} titleHidden />}
+        header={
+          <PageHeader
+            title={t.home.title}
+            titleHidden
+            actions={libraryActions(
+              "home",
+              owner,
+              conditioned,
+              smartFolderFilter,
+              sort,
+              listUrl,
+            )}
+          />
+        }
         toolbar={
           <TopBarPortal>
             <LibraryToolbar
@@ -878,7 +902,14 @@ export default function LibraryPage() {
             <PageHeader
               title={t.library.resultsLabel}
               headingLevel={2}
-              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
+              actions={libraryActions(
+                "results",
+                owner,
+                conditioned,
+                smartFolderFilter,
+                sort,
+                listUrl,
+              )}
               count={
                 initialLoadFailed ? undefined : (
                   <span
