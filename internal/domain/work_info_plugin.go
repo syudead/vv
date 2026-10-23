@@ -146,11 +146,10 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 	return slices.Contains(m.Operations, op)
 }
 
-// Unknown manifest fields are ignored.
+// Unknown manifest fields are ignored. Sources and domains are read by exact key instead, because encoding/json
+// would also decode a key that differs only in case and reject its value's type.
 type manifestJSON struct {
 	Kind        WorkInfoPluginKind  `json:"kind"`
-	Sources     []string            `json:"sources"`
-	Domains     []string            `json:"domains"`
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
 	Description string              `json:"description"`
@@ -212,9 +211,14 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	if rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
-	// encoding/json also fills a field from a key that differs only in case, which the kind checks would miss.
-	sources, hasSources := exactStrings(top, "sources")
-	domains, hasDomains := exactStrings(top, "domains")
+	sources, hasSources, rejection := exactStrings(top, "sources")
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
+	}
+	domains, hasDomains, rejection := exactStrings(top, "domains")
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
+	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
 		Kind:        WorkInfoPluginKindWork,
@@ -239,15 +243,17 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	return m, nil
 }
 
-// exactStrings reads key only under its exact spelling; the whole-manifest decode has already checked its type.
-func exactStrings(top map[string]json.RawMessage, key string) ([]string, bool) {
+// exactStrings reads key only under its exact spelling, so a key that differs in case stays an ignored unknown field.
+func exactStrings(top map[string]json.RawMessage, key string) ([]string, bool, *WorkInfoPluginManifestError) {
 	value, ok := top[key]
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 	var values []string
-	_ = json.Unmarshal(value, &values)
-	return values, true
+	if err := json.Unmarshal(value, &values); err != nil {
+		return nil, true, typeRejection(key, err)
+	}
+	return values, true, nil
 }
 
 // Decode array items separately to retain indices missing from UnmarshalTypeError.Field.

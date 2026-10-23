@@ -39,6 +39,8 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 		{"person with a scheme", personOps + `"domains":["example.com","https://example.org"]}`, "domains[1]"},
 		{"person with a port", personOps + `"domains":["example.com:8080"]}`, "domains[0]"},
 		{"person with a path", personOps + `"domains":["example.com/people"]}`, "domains[0]"},
+		{"person with string domains", personOps + `"domains":"example.com"}`, "domains"},
+		{"person with a non-string source", `"kind":"person","operations":["search","fetch"],"sources":["a",1]}`, "sources.1"},
 		{"person with a repeated domain", personOps + `"domains":["a.example","b.example","a.example"]}`, "domains[2]"},
 		{"unknown kind", `"kind":"studio","operations":["fetch"]}`, "kind"},
 		{"null kind", `"kind":null,"operations":["fetch"]}`, "kind"},
@@ -87,6 +89,11 @@ func TestCheckWorkInfoPluginManifestIgnoresMiscasedSourcesAndDomains(t *testing.
 		`"operations":["fetch"],"Sources":["a"],"DOMAINS":["example.com"]}`))
 	if rejection != nil || work.Sources != nil || work.Domains != nil {
 		t.Fatalf("work manifest with Sources and DOMAINS = %+v, %v; want accepted without either", work, rejection)
+	}
+	typed, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead +
+		`"kind":"person","operations":["search","fetch"],"sources":["s"],"domains":["example.com"],"Domains":123,"SOURCES":{}}`))
+	if rejection != nil || !slices.Equal(typed.Domains, []string{"example.com"}) || !slices.Equal(typed.Sources, []string{"s"}) {
+		t.Fatalf("person manifest with non-array Domains and SOURCES = %+v, %v; want the exact keys' values", typed, rejection)
 	}
 }
 
