@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -178,7 +179,7 @@ func provisionalFaceVectors(ctx context.Context, tx *sql.Tx, recognizer domain.F
 	if err != nil {
 		return nil, err
 	}
-	centroids, err := appearanceCentroids(ctx, tx, recognizer)
+	centroids, err := appearanceCentroids(ctx, tx, recognizer, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -191,12 +192,20 @@ func provisionalFaceVectors(ctx context.Context, tx *sql.Tx, recognizer domain.F
 	return out, nil
 }
 
-// appearanceCentroids reads the centroid of every linked appearance of the recognizer that is not dropped.
-func appearanceCentroids(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer) (
+// appearanceCentroids reads the centroids of the people's appearances of the recognizer that are not dropped.
+func appearanceCentroids(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer, personIDs []int64) (
 	[]domain.FacePersonVector, error,
 ) {
+	if len(personIDs) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(personIDs)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build person ids: %w", err)
+	}
 	rows, err := tx.QueryContext(ctx, `select person_id, centroid from face_appearances
-		where person_id is not null and dropped = 0 and centroid is not null and recognizer = ?`, string(recognizer))
+		where person_id in (select value from json_each(?)) and dropped = 0 and centroid is not null
+		  and recognizer = ?`, string(encoded), string(recognizer))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the face appearance centroids: %w", err)
 	}
