@@ -144,22 +144,19 @@ describe("VideoPage for a virtual video", () => {
     vi.restoreAllMocks();
   });
 
-  it("プレーヤーの枠にリンクを新しいタブで開くボタンとして置き、説明は枠の外に一度だけ出す", async () => {
+  it("ファイルのある動画と同じく、枠にはサムネイルの場所だけを置き、リンクは Work、説明は Overview に出す", async () => {
     const { container } = renderPage();
     await screen.findByRole("heading", { level: 1, name: virtualVideo.title });
     expect(screen.getByText("Virtual video")).toBeDefined();
     expect(screen.queryByText("Getting ready to play")).toBeNull();
     const frame = container.querySelector<HTMLElement>("[data-player-frame]")!;
-    const links = within(frame).getByRole("list", { name: "Links" });
-    const anchor = within(links).getByRole("link", { name: "example.com/watch?v=1" });
-    expect(anchor.getAttribute("href")).toBe(link);
-    expect(anchor.getAttribute("target")).toBe("_blank");
-    expect(anchor.getAttribute("rel")).toBe("noreferrer");
-    // The links take the placeholder's place and are not repeated below the title.
-    expect(within(frame).queryByText("No thumbnail yet")).toBeNull();
-    expect(screen.getAllByRole("list", { name: "Links" })).toHaveLength(1);
-    // The description stays outside the frame, once: Overview does not repeat it.
-    expect(within(frame).queryByText("配信の告知")).toBeNull();
+    expect(within(frame).getByText("No thumbnail")).toBeDefined();
+    expect(within(frame).queryByRole("link")).toBeNull();
+    expect(within(frame).queryByRole("button")).toBeNull();
+    // The description is read once, in Overview, as for a file video.
+    expect(
+      within(screen.getByRole("tabpanel", { name: "Overview" })).getByText("配信の告知"),
+    ).toBeDefined();
     expect(screen.getAllByText("配信の告知")).toHaveLength(1);
     // No file: no Versions or File & media tab, and no size or length among the facts.
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -172,6 +169,15 @@ describe("VideoPage for a virtual video", () => {
     expect(overview.queryByText("Length")).toBeNull();
     expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
     expect(overview.getByRole("button", { name: /^Edited / })).toBeDefined();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Work" }));
+    const anchor = within(screen.getByRole("tabpanel", { name: "Work" })).getByRole(
+      "link",
+      {
+        name: "example.com/watch?v=1",
+      },
+    );
+    expect(anchor.getAttribute("href")).toBe(link);
   });
 
   it("リンクからの取得中はそれを伝え、終わりの知らせで読み直して失敗の理由と次の手を出す", async () => {
@@ -200,7 +206,6 @@ describe("VideoPage for a virtual video", () => {
     server.video = withoutLinks;
     await openPage("guest");
     expect(screen.getByText("No thumbnail")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Upload an image…" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
@@ -212,25 +217,10 @@ describe("VideoPage for a virtual video", () => {
     expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
   });
 
-  it("ゲストにも枠のリンクを見せる", async () => {
-    await openPage("guest");
-    expect(
-      within(screen.getByRole("list", { name: "Links" })).getByRole("link", {
-        name: "example.com/watch?v=1",
-      }),
-    ).toBeDefined();
-  });
-
-  it("Thumbnail タブの Upload… とリンクの無い枠の Upload an image… は、メニューを開かずに同じアップロードダイアログを開く", async () => {
+  it("Thumbnail タブの Upload… はメニューを開かずにアップロードダイアログを開く", async () => {
     server.video = withoutLinks;
     await openPage();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Upload an image…" }));
-    expect(screen.queryByRole("menu")).toBeNull();
-    const dialog = screen.getByRole("dialog", { name: "Upload a thumbnail" });
-    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-
     await user.click(screen.getByRole("tab", { name: "Thumbnail" }));
     const panel = within(screen.getByRole("tabpanel", { name: "Thumbnail" }));
     expect(panel.getByText("No thumbnail yet")).toBeDefined();

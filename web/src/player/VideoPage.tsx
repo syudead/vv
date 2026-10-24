@@ -411,7 +411,7 @@ export default function VideoPage() {
             />
             {/* A virtual video has no player and no processing to report. */}
             {thumbnail.video !== undefined ? (
-              <VirtualMedia video={thumbnail.video} owner={owner} thumbnail={thumbnail} />
+              <VirtualMedia video={thumbnail.video} />
             ) : (
               <div
                 data-overlay-layer=""
