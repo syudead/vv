@@ -79,7 +79,7 @@ export default function FavoriteToggle({
         )}
       >
         {icon}
-        {label}
+        <span className="max-sm:sr-only">{label}</span>
       </Toggle>
     );
   }

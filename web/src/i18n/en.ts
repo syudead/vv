@@ -2169,6 +2169,8 @@ export const en = {
       //
       favorite: "Favorite",
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
+      playlist: "Playlist",
+      group: "Group",
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
@@ -2224,13 +2226,12 @@ export const en = {
       touchUp: "Touch up with ComfyUI",
       touchUpButton: "Touch up…",
       touchUpNote: "Frame the image, then run an instruction",
-      seekSprite: "Seek preview",
-      seekSpriteLoading: "Loading the seek preview",
-      seekSpriteFailed: "Couldn't load the seek preview",
+      seekSprite: "Seek sprite",
+      viewSeekSprite: "View seek sprite",
+      seekSpriteLoading: "Loading the seek sprite",
+      seekSpriteFailed: "Couldn't load the seek sprite",
       seekSpriteSheet: (index: number, count: number) =>
-        `Seek preview sheet ${String(index)} of ${String(count)}`,
-      openSeekSpriteSheet: (index: number, count: number) =>
-        `Show seek preview sheet ${String(index)} of ${String(count)} large`,
+        `Seek sprite sheet ${String(index)} of ${String(count)}`,
     },
     //
     thumbnailEdit: {
@@ -2403,7 +2404,7 @@ export const en = {
       showFewer: "Show fewer",
       showMore: "Show more",
       showLess: "Show less",
-      edit: "Edit details",
+      edit: "Edit",
     },
     mediaInfo: {
       video: "Video",
@@ -3218,7 +3219,7 @@ export const en = {
       empty: {
         title: "No items yet",
         description:
-          "Add videos and groups with Add to playlist on a card, on the video page, or in the selection bar.",
+          "Add videos and groups with Add to playlist on a card or in the selection bar, or with Playlist on the video page.",
         action: "Open library",
       },
       gone: {

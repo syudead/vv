@@ -570,32 +570,20 @@ describe("VideoPage Thumbnail tab", () => {
       });
     });
 
-    it("スプライトのある動画はシートを小さく出し、押すと大きく見せ、Esc ではダイアログだけ閉じる（フィードバック 3）", async () => {
+    it("スプライトのある動画は「View seek sprite」で全シートを大きく見せ、Esc ではダイアログだけ閉じる（フィードバック 3）", async () => {
       server.video = withSprite;
       await openThumbnail();
-      const list = await screen.findByRole("list", { name: "Seek preview" });
-      await waitFor(() =>
-        expect(server.requests).toEqual(
-          expect.arrayContaining(["GET /sheets/0", "GET /sheets/1"]),
-        ),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "View seek sprite" }));
+      const dialog = await screen.findByRole("dialog", { name: "Seek sprite" });
       expect(
-        (await within(list).findAllByRole("img")).map((image) =>
+        (await within(dialog).findAllByRole("img")).map((image) =>
           image.getAttribute("alt"),
         ),
-      ).toEqual(["Seek preview sheet 1 of 2", "Seek preview sheet 2 of 2"]);
-      fireEvent.click(
-        within(list).getByRole("button", {
-          name: "Show seek preview sheet 1 of 2 large",
-        }),
-      );
-      const dialog = await screen.findByRole("dialog", {
-        name: "Seek preview sheet 1 of 2",
-      });
+      ).toEqual(["Seek sprite sheet 1 of 2", "Seek sprite sheet 2 of 2"]);
       // Escape closes only the dialog; the page's own Escape would leave the video.
       fireEvent.keyDown(dialog, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      expect(screen.getByRole("list", { name: "Seek preview" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "View seek sprite" })).toBeDefined();
       expect(server.position).not.toHaveBeenCalled();
     });
 
@@ -604,26 +592,30 @@ describe("VideoPage Thumbnail tab", () => {
       const ok = spriteResponse;
       spriteResponse = () => json({ code: "internal", message: "x" }, 500);
       await openThumbnail();
-      expect(await screen.findByText("Couldn't load the seek preview")).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "View seek sprite" }));
+      const dialog = await screen.findByRole("dialog", { name: "Seek sprite" });
+      expect(
+        await within(dialog).findByText("Couldn't load the seek sprite"),
+      ).toBeDefined();
       const reads = () => server.requests.filter((r) => r === `GET ${spriteUrl}`).length;
       const before = reads();
       spriteResponse = ok;
-      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(await screen.findByRole("list", { name: "Seek preview" })).toBeDefined();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+      expect(await within(dialog).findAllByRole("img")).toHaveLength(2);
       expect(reads()).toBe(before + 1);
     });
 
-    it("スプライトの無い動画と作成中の動画にはシートを出さず、スプライトも読まない", async () => {
+    it("スプライトの無い動画と作成中の動画には「View seek sprite」を出さず、スプライトも読まない", async () => {
       server.video = { ...withSprite, seekThumbnailState: "pending" };
       await openThumbnail();
       expect(way("Upload…")).toBeDefined();
-      expect(screen.queryByRole("list", { name: "Seek preview" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "View seek sprite" })).toBeNull();
       cleanup();
 
       server.video = video;
       server.requests = [];
       await openThumbnail();
-      expect(screen.queryByRole("list", { name: "Seek preview" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "View seek sprite" })).toBeNull();
       expect(server.requests).not.toContain(`GET ${spriteUrl}`);
     });
   });

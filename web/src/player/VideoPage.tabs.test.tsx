@@ -215,9 +215,9 @@ describe("VideoPage tabs", () => {
     expect(selectedTab()).toBe("Overview");
     for (const control of [
       screen.getByRole("button", { name: "Favorite" }),
-      screen.getByRole("button", { name: "Add to playlist" }),
-      screen.getByRole("button", { name: "Add to group" }),
-      screen.getByRole("link", { name: "Edit details" }),
+      screen.getByRole("button", { name: "Playlist" }),
+      screen.getByRole("button", { name: "Group" }),
+      screen.getByRole("link", { name: "Edit" }),
     ]) {
       expect(control.textContent).not.toBe("");
     }
@@ -258,7 +258,7 @@ describe("VideoPage tabs", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("/media/a/b.mkv"));
   });
 
-  it("ゲストの公開動画は Overview と File & media、2 本なら Versions を並べ、所在・タグ・公開の切り替え・Edit details を出さない（受け入れ条件 8）", async () => {
+  it("ゲストの公開動画は Overview と File & media、2 本なら Versions を並べ、所在・タグ・公開の切り替え・Edit を出さない（受け入れ条件 8）", async () => {
     // Guest responses omit the location, the progress, the work information and the tags.
     server.videos.set(7, {
       ...owned,
@@ -272,7 +272,7 @@ describe("VideoPage tabs", () => {
     await openPage("guest");
     expect(tabNames()).toEqual(["Overview", "Versions2", "File & media"]);
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
     expect(facts().map(([term]) => term)).toEqual(["Length", "Resolution", "Added"]);

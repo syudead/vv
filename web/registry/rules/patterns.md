@@ -215,7 +215,7 @@ divided by a vertical border. The aside is `detail-aside` wide
 Below `lg` everything stacks: the media runs edge to edge under the band, and
 the content below it and the aside keep `px-4` (`px-6` from `sm`) side
 padding, with a border above the aside. The media and the children stack
-`gap-4` apart, and the children `gap-3` apart. The children end with `pb-10`
+`gap-6` apart, and the children `gap-3` apart. The children end with `pb-10`
 (`pb-16` from `lg`, where the main column scrolls on its own), so the last of
 them is not read against the window's edge.
 

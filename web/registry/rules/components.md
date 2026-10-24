@@ -59,7 +59,7 @@ link.
 The `shape` is `default` (`rounded-md`) or `pill` (`rounded-full`); `Toggle`
 takes the same axis, and a screen never sets a radius on a control itself. A
 pill is a labelled action the viewer finds by its place: on the video page,
-the actions beside the title, a section's one action and a row's `Play` are
+the actions under the title, a section's one action and a row's `Play` are
 `secondary` `sm` pills, while the other actions inside a row stay `ghost`, so
 the one pill in a row is its first action.
 
@@ -426,7 +426,8 @@ put text other than the duration, the notice and the credits on the image.
 
 Item `favorite-toggle`. The favorite heart, which is both the mark and the
 toggle. `variant="card"` sits on a person's face card, `row` in a
-list row and `page`, the heart with its word, in the video page's title row: a `sm`
+list row and `page`, the heart with its word (below `sm` the word is only its accessible
+name), in the video page's title row: a `sm`
 pill `Toggle`, on `secondary` when off and on `favorite-soft` with `favorite`
 text when on. Video, group and smart
 folder cards carry no heart; their list rows and the selection bar do. The heart is filled in

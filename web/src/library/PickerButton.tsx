@@ -28,7 +28,7 @@ export default function PickerButton({
         <PopoverTrigger asChild>
           <Button variant="secondary" size="sm" shape="pill" className="text-foreground">
             <Icon aria-hidden="true" />
-            {label}
+            <span className="max-sm:sr-only">{label}</span>
           </Button>
         </PopoverTrigger>
         {content}

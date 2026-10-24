@@ -2212,7 +2212,7 @@ describe("VideoPage", () => {
       expect(button.getAttribute("aria-pressed")).toBe("false");
       expect(button.getAttribute("data-state")).toBe("off");
       // The three title actions are labelled pills, never ghost words.
-      for (const name of ["Favorite", "Add to playlist", "Add to group"]) {
+      for (const name of ["Favorite", "Playlist", "Group"]) {
         expect(screen.getByRole("button", { name }).getAttribute("data-shape")).toBe(
           "pill",
         );
@@ -2474,12 +2474,12 @@ describe("VideoPage", () => {
       });
       renderPage();
       await ready();
-      const buttons = screen.getAllByRole("button", { name: "Add to playlist" });
+      const buttons = screen.getAllByRole("button", { name: "Playlist" });
       expect(buttons).toHaveLength(1);
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      const addToGroup = screen.getByRole("button", { name: "Add to group" });
+      const addToGroup = screen.getByRole("button", { name: "Group" });
       expect(add.nextElementSibling).toBe(addToGroup);
 
       fireEvent.click(add);
@@ -2492,7 +2492,7 @@ describe("VideoPage", () => {
       server.videos.set(7, [{ ...video, location: undefined, public: true }]);
       renderPage("7", undefined, "guest");
       await ready();
-      expect(screen.queryByRole("button", { name: "Add to playlist" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Playlist" })).toBeNull();
       expect(
         fetchMock.mock.calls.some(([input]) =>
           String(input).startsWith("/api/playlists"),
@@ -2519,7 +2519,7 @@ describe("VideoPage", () => {
         `File name ${fileTitle}`,
       );
       expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
-      expect(screen.getByRole("link", { name: "Edit details" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Edit" })).toBeDefined();
     });
 
     it("ゲストの動画ページには編集の入口もファイル名の行も無い（受け入れ条件 9）", async () => {
@@ -2597,13 +2597,13 @@ describe("VideoPage", () => {
     }
 
     async function expectEditedAfter() {
-      await waitFor(() => expect(edited()).toMatch(/^Sep 28, 2026 /));
+      await waitFor(() => expect(edited()).toBe("Sep 28, 2026"));
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
       await showFile();
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(edited()).toBe(fileFact("Added"));
       expect(fileFact("File created")).not.toBe("");
       expect(fileFact("File modified")).not.toBe("");
@@ -2614,7 +2614,7 @@ describe("VideoPage", () => {
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
       await showFile();
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(fileFact("File created")).not.toBe("");
       expect(fileFact("File modified")).not.toBe("");
     });
@@ -2675,7 +2675,7 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });

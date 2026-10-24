@@ -139,6 +139,14 @@ export default function ThumbnailPanel({
                 {...action("automatic", () => position.send(null))}
               />
             )}
+            {video.seekThumbnailUrl !== undefined &&
+              video.seekThumbnailState === "done" && (
+                // A new sprite starts over, so its sheets are not reused.
+                <SeekSpriteSheets
+                  key={video.seekThumbnailUrl}
+                  spriteUrl={video.seekThumbnailUrl}
+                />
+              )}
           </div>
         </PanelSection>
         <Separator className="md:hidden" />
@@ -202,13 +210,6 @@ export default function ThumbnailPanel({
           </PanelSection>
         </div>
       </div>
-      {video.seekThumbnailUrl !== undefined && video.seekThumbnailState === "done" && (
-        // A new sprite starts over, so its observer and sheets are not reused.
-        <SeekSpriteSheets
-          key={video.seekThumbnailUrl}
-          spriteUrl={video.seekThumbnailUrl}
-        />
-      )}
       <FailureLine failure={failure} />
     </div>
   );
