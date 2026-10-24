@@ -1,6 +1,7 @@
 import { type FormEvent, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
-import { RequestFailed, type Video } from "../api/client";
+import { RequestFailed } from "../api/client";
 import { createVirtualVideo } from "../api/virtualVideos";
 import { errorText, t, type UiText } from "../i18n";
 import { typedLink } from "../lib/typedLink";
@@ -10,15 +11,16 @@ const words = t.library.newVirtualVideo;
 
 /**
  * Creates from a title, a link or both; a link alone is enough, and its fetch fills the rest after the dialog closes.
- * Mount only while open so drafts reset on close.
+ * Mount while open so drafts reset on close; a created video opens on its page with `backTo` as its return target.
  */
 export default function NewVirtualVideoDialog({
+  backTo,
   onClose,
-  onDone,
 }: {
+  backTo: string;
   onClose: () => void;
-  onDone: (video: Video) => void;
 }) {
+  const navigate = useNavigate();
   const titleInput = useRef<HTMLInputElement>(null);
   const linkInput = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -48,7 +50,8 @@ export default function NewVirtualVideoDialog({
     createVirtualVideo({ title: typedTitle, url: typedUrl }).then(
       (video) => {
         setPending(false);
-        onDone(video);
+        onClose();
+        void navigate(`/videos/${String(video.id)}`, { state: { from: backTo } });
       },
       (error: unknown) => {
         setPending(false);

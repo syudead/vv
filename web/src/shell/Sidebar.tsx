@@ -1,4 +1,4 @@
-import { LogIn, LogOut, Settings } from "lucide-react";
+import { LogIn, LogOut, Settings, SquareDashed } from "lucide-react";
 import { useState } from "react";
 import { matchPath, NavLink, useLocation } from "react-router";
 
@@ -8,6 +8,7 @@ import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import NewVirtualVideoDialog from "../library/NewVirtualVideoDialog";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -115,6 +116,24 @@ function AccountEntries() {
   );
 }
 
+/** A rarely used owner action, kept at the bottom of the upper area rather than in a page header. */
+function NewVirtualVideoEntry({ onOpen }: { onOpen: () => void }) {
+  const closeDrawer = useCloseDrawer();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={() => {
+          closeDrawer();
+          onOpen();
+        }}
+      >
+        <SquareDashed aria-hidden="true" />
+        <span>{t.library.newVirtualVideo.action}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 const railPadding = "group-data-[collapsible=icon]:px-1.5";
 const railItems = "group-data-[collapsible=icon]:items-center";
 
@@ -124,40 +143,61 @@ export default function Sidebar() {
   const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
   // Only owners fetch attention counts; activity events refresh them on every page.
   const totals = useActivityTotals(audience === "owner");
+  const location = useLocation();
+  // Held outside the drawer, which unmounts its content when it closes.
+  const [creatingFrom, setCreatingFrom] = useState<string | null>(null);
 
   return (
-    // Keep both drawer and backdrop below the full-width top bar; match Sheet's data-side specificity for narrow and wide layouts.
-    <SidebarRoot
-      collapsible="icon"
-      className="data-[side=left]:top-navbar data-[side=left]:h-auto"
-      overlayClassName="top-navbar"
-    >
-      <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
-        <SidebarContent>
-          <SidebarGroup className={railPadding}>
-            <nav>
-              <SidebarMenu className={railItems}>
-                {entries.map((entry) => (
-                  <Entry
-                    key={entry.id}
-                    entry={entry}
-                    {...(entry.attentionCount === true && totals !== null
-                      ? { count: totals.attention }
-                      : {})}
+    <>
+      {/* Keep both drawer and backdrop below the full-width top bar; match Sheet's data-side specificity for narrow and wide layouts. */}
+      <SidebarRoot
+        collapsible="icon"
+        className="data-[side=left]:top-navbar data-[side=left]:h-auto"
+        overlayClassName="top-navbar"
+      >
+        <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
+          {/* Upstream clips the icon rail; scroll it so the bottom action stays reachable on short screens. */}
+          <SidebarContent className="group-data-[collapsible=icon]:overflow-auto">
+            <SidebarGroup className={railPadding}>
+              <nav>
+                <SidebarMenu className={railItems}>
+                  {entries.map((entry) => (
+                    <Entry
+                      key={entry.id}
+                      entry={entry}
+                      {...(entry.attentionCount === true && totals !== null
+                        ? { count: totals.attention }
+                        : {})}
+                    />
+                  ))}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroup>
+            {audience === "owner" && (
+              <SidebarGroup className={cn("mt-auto", railPadding)}>
+                <SidebarMenu className={railItems}>
+                  <NewVirtualVideoEntry
+                    onOpen={() => setCreatingFrom(currentPath(location))}
                   />
-                ))}
+                </SidebarMenu>
+              </SidebarGroup>
+            )}
+          </SidebarContent>
+          <SidebarFooter className={cn("border-t border-border", railPadding)}>
+            <nav aria-label={t.shell.nav.account}>
+              <SidebarMenu className={railItems}>
+                <AccountEntries />
               </SidebarMenu>
             </nav>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className={cn("border-t border-border", railPadding)}>
-          <nav aria-label={t.shell.nav.account}>
-            <SidebarMenu className={railItems}>
-              <AccountEntries />
-            </SidebarMenu>
-          </nav>
-        </SidebarFooter>
-      </aside>
-    </SidebarRoot>
+          </SidebarFooter>
+        </aside>
+      </SidebarRoot>
+      {creatingFrom !== null && (
+        <NewVirtualVideoDialog
+          backTo={creatingFrom}
+          onClose={() => setCreatingFrom(null)}
+        />
+      )}
+    </>
   );
 }

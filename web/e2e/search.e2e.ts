@@ -184,7 +184,10 @@ test.describe.serial("library search", () => {
     try {
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/");
-      await page.getByRole("button", { name: "New virtual video" }).click();
+      await page
+        .getByRole("complementary", { name: "Main navigation" })
+        .getByRole("button", { name: "New virtual video" })
+        .click();
       const dialog = page.getByRole("dialog", { name: "New virtual video" });
       await dialog.getByRole("textbox", { name: "Title" }).fill(title);
       const response = page.waitForResponse(
