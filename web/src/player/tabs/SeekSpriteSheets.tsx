@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
 import type { SeekThumbnailSprite } from "../../api/client";
-import { t } from "../../i18n";
+import { t, type UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
+import { formatDuration } from "../../lib/format";
+import {
+  seekSpriteCell,
+  type SpriteCell,
+  spriteCellBackground,
+} from "../../lib/seekSprite";
 import { Button } from "../../ui/shadcn/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/shadcn/dialog";
 import { Skeleton } from "../../ui/shadcn/skeleton";
@@ -37,8 +44,8 @@ function useSheetObserver(requestSheet: (index: number) => void) {
 }
 
 /**
- * The seek sprite's sheets as small previews; pressing one shows it large in a dialog. A sheet is
- * read as it comes into view.
+ * The seek sprite's frames in time order, without the empty cells that pad a sheet; pressing one
+ * shows it large in a dialog. A frame's sheet is read as the frame comes into view.
  */
 export default function SeekSpriteSheets({ spriteUrl }: { spriteUrl: string }) {
   const sheets = useSpriteSheets(spriteUrl, true);
@@ -54,13 +61,54 @@ export default function SeekSpriteSheets({ spriteUrl }: { spriteUrl: string }) {
           className="aspect-video w-replace-preview"
         />
       ) : (
-        <Sheets sheets={sheets} sprite={sheets.sprite} />
+        <Frames sheets={sheets} sprite={sheets.sprite} />
       )}
     </PanelSection>
   );
 }
 
-function Sheets({
+function frameCell(sprite: SeekThumbnailSprite, frame: number): SpriteCell {
+  return seekSpriteCell(sprite, frame * sprite.intervalMs);
+}
+
+/** One frame drawn from its loaded sheet, or the muted frame while the sheet is not loaded. */
+function FrameImage({
+  sheets,
+  sprite,
+  cell,
+  label,
+  className,
+}: {
+  sheets: SpriteSheets;
+  sprite: SeekThumbnailSprite;
+  cell: SpriteCell;
+  label: UiText;
+  className: string;
+}) {
+  const url = sheets.sheetUrl(cell.sheet);
+  const style: CSSProperties = {
+    aspectRatio: `${String(sprite.frameWidth)} / ${String(sprite.frameHeight)}`,
+  };
+  if (url !== null) {
+    const background = spriteCellBackground(cell, sprite);
+    Object.assign(style, {
+      backgroundImage: `url("${url}")`,
+      backgroundRepeat: "no-repeat",
+      backgroundSize: background.backgroundSize,
+      backgroundPosition: background.backgroundPosition,
+    });
+  }
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      className={cn("block bg-muted", className)}
+      style={style}
+    />
+  );
+}
+
+function Frames({
   sheets,
   sprite,
 }: {
@@ -70,30 +118,33 @@ function Sheets({
   const observe = useSheetObserver(sheets.requestSheet);
   const [open, setOpen] = useState<number | null>(null);
   const text = t.player.tabs;
-  const count = sprite.sheets.length;
-  const aspectRatio = `${String(sprite.columns * sprite.frameWidth)} / ${String(sprite.rows * sprite.frameHeight)}`;
-  const openUrl = open === null ? null : sheets.sheetUrl(open);
+  const time = (frame: number) => formatDuration(frame * sprite.intervalMs);
   return (
     <>
-      <ul aria-label={text.seekSprite} className="flex flex-wrap gap-2">
-        {sprite.sheets.map((_, index) => {
-          const url = sheets.sheetUrl(index);
-          const name = text.seekSpriteSheet(index + 1, count);
+      <ul
+        aria-label={text.seekSprite}
+        className="grid grid-cols-4 gap-1 sm:grid-cols-6 md:grid-cols-9"
+      >
+        {Array.from({ length: sprite.frameCount }, (_, frame) => {
+          const cell = frameCell(sprite, frame);
+          const loaded = sheets.sheetUrl(cell.sheet) !== null;
           return (
-            <li key={index} ref={observe} data-sheet={index}>
+            <li key={frame} ref={observe} data-sheet={cell.sheet}>
               <Button
                 variant="ghost"
-                aria-label={text.openSeekSpriteSheet(index + 1, count)}
-                disabled={url === null}
-                onClick={() => setOpen(index)}
-                className="h-auto p-1"
+                aria-label={text.openSeekSpriteFrame(time(frame))}
+                title={time(frame)}
+                disabled={!loaded}
+                onClick={() => setOpen(frame)}
+                className="block h-auto w-full overflow-hidden rounded-sm p-0 transition-opacity hover:opacity-80"
               >
-                <span
-                  className="block w-replace-preview overflow-hidden rounded-sm bg-muted"
-                  style={{ aspectRatio }}
-                >
-                  {url !== null && <img src={url} alt={name} className="size-full" />}
-                </span>
+                <FrameImage
+                  sheets={sheets}
+                  sprite={sprite}
+                  cell={cell}
+                  label={text.seekSpriteFrame(time(frame))}
+                  className="w-full"
+                />
               </Button>
             </li>
           );
@@ -111,15 +162,16 @@ function Sheets({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {open === null ? text.seekSprite : text.seekSpriteSheet(open + 1, count)}
+              {open === null ? text.seekSprite : text.seekSpriteFrame(time(open))}
             </DialogTitle>
           </DialogHeader>
-          {openUrl !== null && open !== null && (
-            <img
-              src={openUrl}
-              alt={text.seekSpriteSheet(open + 1, count)}
+          {open !== null && (
+            <FrameImage
+              sheets={sheets}
+              sprite={sprite}
+              cell={frameCell(sprite, open)}
+              label={text.seekSpriteFrame(time(open))}
               className="w-full rounded-md"
-              style={{ aspectRatio }}
             />
           )}
         </DialogContent>

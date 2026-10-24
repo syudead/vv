@@ -2229,10 +2229,8 @@ export const en = {
       seekSprite: "Seek preview",
       seekSpriteLoading: "Loading the seek preview",
       seekSpriteFailed: "Couldn't load the seek preview",
-      seekSpriteSheet: (index: number, count: number) =>
-        `Seek preview sheet ${String(index)} of ${String(count)}`,
-      openSeekSpriteSheet: (index: number, count: number) =>
-        `Show seek preview sheet ${String(index)} of ${String(count)} large`,
+      seekSpriteFrame: (time: string) => `Frame at ${time}`,
+      openSeekSpriteFrame: (time: string) => `Show the frame at ${time} large`,
     },
     //
     thumbnailEdit: {

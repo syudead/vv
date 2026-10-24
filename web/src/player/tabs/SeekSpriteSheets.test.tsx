@@ -14,10 +14,10 @@ vi.mock("../../api/client", async (importOriginal) => ({
   fetchSeekThumbnailSheet: vi.fn(),
 }));
 
-/** Two sheets of four 10 s frames each. */
+/** Seven 10 s frames on two sheets of four. */
 const sprite: SeekThumbnailSprite = {
   intervalMs: 10_000,
-  frameCount: 8,
+  frameCount: 7,
   columns: 2,
   rows: 2,
   frameWidth: 320,
@@ -91,34 +91,29 @@ async function renderSheets() {
 }
 
 describe("SeekSpriteSheets", () => {
-  it("シートは見えてから一度だけ読んで小さく出し、押すとそのシートをダイアログで大きく出す", async () => {
+  it("空きコマを除いたコマを時刻順に並べ、シートは見えてから一度だけ読み、押すとそのコマをダイアログで大きく出す", async () => {
     await renderSheets();
-    expect(observer.observed).toHaveLength(2);
+    // Seven frames on two sheets of four: the sheet's last cell is padding.
+    expect(screen.getAllByRole("listitem")).toHaveLength(7);
     expect(sheetUrls()).toEqual([]);
 
-    enter(1);
-    enter(1);
+    enter(5);
+    enter(6);
     expect(sheetUrls()).toEqual(["/sheet/1"]);
-    const image = await screen.findByRole("img", { name: "Seek preview sheet 2 of 2" });
-    expect(image.getAttribute("src")).toBe("blob:sheet");
-    expect(screen.queryByRole("img", { name: "Seek preview sheet 1 of 2" })).toBeNull();
+    const frame = screen.getByRole("button", { name: "Show the frame at 0:50 large" });
+    await vi.waitFor(() => expect(frame.hasAttribute("disabled")).toBe(false));
     expect(
       screen
-        .getByRole("button", { name: "Show seek preview sheet 1 of 2 large" })
+        .getByRole("button", { name: "Show the frame at 0:00 large" })
         .hasAttribute("disabled"),
     ).toBe(true);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show seek preview sheet 2 of 2 large" }),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Seek preview sheet 2 of 2",
-    });
-    expect(
-      within(dialog)
-        .getByRole("img", { name: "Seek preview sheet 2 of 2" })
-        .getAttribute("src"),
-    ).toBe("blob:sheet");
+    fireEvent.click(frame);
+    const dialog = await screen.findByRole("dialog", { name: "Frame at 0:50" });
+    const image = within(dialog).getByRole("img", { name: "Frame at 0:50" });
+    expect(image.style.backgroundImage).toBe('url("blob:sheet")');
+    // Frame 5 is the second cell of sheet 2's first row.
+    expect(image.style.backgroundPosition).toBe("100% 0%");
   });
 
   it("読めなかったシートは理由と Retry を出し、Retry でそのシートを読み直す", async () => {
