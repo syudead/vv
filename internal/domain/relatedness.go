@@ -65,7 +65,8 @@ func (ContentRelatedness) For(self RelatedCandidate) func(RelatedCandidate) Rela
 			relatedTagPoints*jaccard(selfTags, uniqueIDs(other.TagIDs)) +
 			relatedTitlePoints*jaccard(selfWords, titleWords(other.Title, other.Path)) +
 			relatedDatePoints*dateCloseness(self.AddedAt, other.AddedAt)
-		if filepath.Dir(other.Path) == selfDir {
+		// A virtual video has no path, so it shares no folder.
+		if self.Path != "" && filepath.Dir(other.Path) == selfDir {
 			points += relatedFolderPoints
 		}
 		return RelatedScore(math.Round(points * float64(RelatedScoreUnit)))

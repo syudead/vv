@@ -206,6 +206,13 @@ paths:
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - name: kind
+          in: query
+          description: "Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both."
+          schema:
+            type: string
+            enum: [all, file, virtual]
+            default: all
       responses:
         "200":
           description: "List"
@@ -307,6 +314,81 @@ paths:
                 $ref: "#/components/schemas/Video"
         "404":
           $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteVideo
+      summary: "Delete a virtual video"
+      description: "Owner-only. Deletes a virtual video with its tags, favorite, public flag, playlist items and work information in one transaction. A missing video, including one already deleted or merged, returns 404 video_not_found; a contentVersion other than the video's returns 409 content_changed; a video with a file returns 409 not_virtual. Errors change nothing. Emits a video deletion event after commit."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: contentVersion
+          in: query
+          required: true
+          description: "The contentVersion the screen read."
+          schema:
+            type: string
+      responses:
+        "204":
+          description: "Deleted"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/virtual-videos:
+    post:
+      operationId: createVirtualVideo
+      summary: "Create a virtual video"
+      description: "Owner-only. Creates a video with no file from a title, a link or both. The title follows the display-name rules; without a url it must not be empty after trimming, and an empty or whitespace-only title returns 400 invalid_title. A url must be an http or https URL of at most 2048 characters, or 400 invalid_request with field url; the video then holds it as its link, takes it as its title when none is given, and starts a fetch by link that fills the empty fields after the response (linkFetch running). Returns the GET detail shape with virtual=true. Emits a library change after commit, and a video event when the fetch ends."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualVideoCreate"
+      responses:
+        "201":
+          description: "Created video"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/virtual-videos/{id}/merge:
+    post:
+      operationId: mergeVirtualVideo
+      summary: "Merge a virtual video into a file video"
+      description: "Owner-only. Moves the virtual video's user data to the file video's user key (its bundle key when bundled) and deletes the virtual video in one transaction. Tags, people, organizations and external ids are unioned; the video is a favorite when either was; playlist items move in place, keeping the file video's item where a playlist holds both; the file video keeps its title, thumbnail and public flag and its code and dates, which the virtual video's fill only when empty; descriptions join with a blank line, file video first; links append the virtual video's missing ones. A missing or hidden video returns 404 video_not_found; a version other than the screen read returns 409 content_changed; an id with a file returns 409 not_virtual; a videoId without a file returns 409 virtual_video; a combined description over 10,000 characters returns 409 description_too_long and more than 20 combined links 409 too_many_urls. Errors change nothing, and a merge cannot be undone. Returns the file video's GET detail shape with its work information. Emits a video deletion event for the virtual video after commit."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualVideoMerge"
+      responses:
+        "200":
+          description: "The file video after the merge"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/videos/{id}/related:
     get:
@@ -872,7 +954,7 @@ paths:
     put:
       operationId: setVideoDisplayName
       summary: "Set or clear the video display name"
-      description: "Owner-only. Trims surrounding whitespace; an empty name clears the override. Rejects control characters and names over 200 code points. Duplicate display names are allowed; concurrent edits are last-write-wins. Returns the same Video shape as GET details, including updated title, fileTitle and displayName. Emits a `video` event after commit."
+      description: "Owner-only. Trims surrounding whitespace; an empty name clears the override. Rejects control characters and names over 200 code points. Duplicate display names are allowed; concurrent edits are last-write-wins. Returns the same Video shape as GET details, including updated title, fileTitle and displayName. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed. Emits a `video` event after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -894,6 +976,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/videos/{id}/work-info:
     put:
@@ -926,7 +1010,7 @@ paths:
     put:
       operationId: setVideoDetails
       summary: "Save display name and work information atomically"
-      description: "Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details."
+      description: "Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -948,12 +1032,14 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/videos/{id}/thumbnail-position:
     put:
       operationId: setVideoThumbnailPosition
       summary: "Set or clear the representative thumbnail position"
-      description: "Owner-only. Generates and publishes a thumbnail at positionMs, then saves the position; null restores automatic selection. Waits for generation and returns Video with thumbnailState=done, a new thumbnailUrl and the explicit position when set. Unknown duration returns 409 duration_unknown; a negative position or position at/after duration returns 400 thumbnail_position_out_of_range with duration in limit. Generation failure returns 409 thumbnail_frame_unavailable, preserving the old image and position; inaccessible locations return 404 file_unavailable. Concurrent changes for one video serialize, leaving the last saved position. Clears any applied image atomically and emits a video event after commit."
+      description: "Owner-only. Generates and publishes a thumbnail at positionMs, then saves the position; null restores automatic selection. Waits for generation and returns Video with thumbnailState=done, a new thumbnailUrl and the explicit position when set. Unknown duration returns 409 duration_unknown; a negative position or position at/after duration returns 400 thumbnail_position_out_of_range with duration in limit. Generation failure returns 409 thumbnail_frame_unavailable, preserving the old image and position; inaccessible locations return 404 file_unavailable. A virtual video, which has no frames, returns 409 virtual_video. Concurrent changes for one video serialize, leaving the last saved position. Clears any applied image atomically and emits a video event after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -982,7 +1068,7 @@ paths:
     post:
       operationId: uploadThumbnailImage
       summary: "Use an uploaded image as the video thumbnail"
-      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP), up to 64 MiB and 120 million pixels, with 1 MiB additional multipart overhead. Fully decodes in memory and fits the video aspect ratio using the generated-image application path. Waits for publication, returning Video with thumbnailImage=uploaded and a new thumbnailUrl; preserves the saved frame position. Oversized data or dimensions return 400 thumbnail_upload_too_large with limit. Unsupported, animated or unreadable images return 400 thumbnail_upload_invalid. Missing video returns 404 video_not_found; deletion, changed content or stale contentVersion since request start returns 409 content_changed; failed fitting returns 409 thumbnail_image_invalid. Errors write nothing. After upload completes, validation/application continues despite disconnect, with a five-minute limit. Emits a video event after commit."
+      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP), up to 64 MiB and 120 million pixels, with 1 MiB additional multipart overhead. Fully decodes in memory and fits the video aspect ratio, 16:9 for a virtual video, using the generated-image application path. Waits for publication, returning Video with thumbnailImage=uploaded and a new thumbnailUrl; preserves the saved frame position. Oversized data or dimensions return 400 thumbnail_upload_too_large with limit. Unsupported, animated or unreadable images return 400 thumbnail_upload_invalid. Missing video returns 404 video_not_found; deletion, changed content or stale contentVersion since request start returns 409 content_changed; failed fitting returns 409 thumbnail_image_invalid. Errors write nothing. After upload completes, validation/application continues despite disconnect, with a five-minute limit. Emits a video event after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1009,7 +1095,7 @@ paths:
     delete:
       operationId: revertThumbnailImage
       summary: "Remove an applied thumbnail image"
-      description: "Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. Emits a video event after commit."
+      description: "Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. For a virtual video, removes the uploaded image without opening a file and returns Video with no thumbnailUrl. Emits a video event after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1061,7 +1147,7 @@ paths:
     post:
       operationId: startThumbnailEdit
       summary: "Start thumbnail editing from a frame or the current thumbnail"
-      description: "Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events."
+      description: "Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. A virtual video returns 409 virtual_video. Sessions are memory-only and emit no events."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1090,7 +1176,7 @@ paths:
     post:
       operationId: startThumbnailEditFromImage
       summary: "Start thumbnail editing from an image the page sends"
-      description: "Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Runs need a ComfyUI configuration."
+      description: "Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. A virtual video returns 409 virtual_video. Runs need a ComfyUI configuration."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1158,7 +1244,7 @@ paths:
     post:
       operationId: makeRepresentativeVersion
       summary: "Make this video the bundle representative"
-      description: "Owner-only; no body. Selects the listed representative and returns all versions, including when already selected. Preserves bundle tags, playback position and visibility. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for all members after commit."
+      description: "Owner-only; no body. Selects the listed representative and returns all versions, including when already selected. Preserves bundle tags, playback position and visibility. Returns 400 not_bundled, 404 video_not_found when missing or without a registered-folder location, or 409 virtual_video for a virtual video. Emits video events for all members after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1174,12 +1260,14 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/videos/{id}/unbundle:
     post:
       operationId: unbundleVideo
       summary: "Remove this video from its version bundle"
-      description: "Owner-only; no body. Returns the removed Video with its pre-bundle tags, progress and public state, without versions. A remaining singleton dissolves the bundle and inherits bundle values. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for every former member after commit."
+      description: "Owner-only; no body. Returns the removed Video with its pre-bundle tags, progress and public state, without versions. A remaining singleton dissolves the bundle and inherits bundle values. Returns 400 not_bundled, 404 video_not_found when missing or without a registered-folder location, or 409 virtual_video for a virtual video. Emits video events for every former member after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1195,6 +1283,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/scans:
     post:
@@ -2087,7 +2177,7 @@ paths:
     post:
       operationId: uploadWorkInfoPlugin
       summary: "Add a work-info plugin or replace one with the same name"
-      description: "Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200, whatever either kind; otherwise creates with 201. Replacement resets approval, takes kind and sources from the new manifest and preserves values only for keys declared by the new manifest. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing."
+      description: "Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200, whatever either kind; otherwise creates with 201. Replacement resets approval, takes kind, sources and domains from the new manifest and preserves values only for keys declared by the new manifest. A work-info plugin new to the link order is placed just before the bundled plugin, and a replacement keeps its place. A manifest named vv.link returns 409 plugin_builtin without writes. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing."
       requestBody:
         required: true
         content:
@@ -2111,6 +2201,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "413":
           $ref: "#/components/responses/PluginTooLarge"
 
@@ -2118,7 +2210,7 @@ paths:
     delete:
       operationId: deleteWorkInfoPlugin
       summary: "Delete a work-info plugin"
-      description: "Owner-only; also deletes settings. Missing plugins return 404 not_found."
+      description: "Owner-only; also deletes settings. Missing plugins return 404 not_found; the bundled plugin returns 409 plugin_builtin."
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       responses:
@@ -2130,6 +2222,33 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/work-info-plugins/link-order:
+    put:
+      operationId: setWorkInfoPluginLinkOrder
+      summary: "Set the order in which plugins are tried for a link"
+      description: "Owner-only. pluginIds names every work-info plugin that declares domains, the bundled one included, once each, first tried first; otherwise 409 link_order_changed without writes. Returns the plugin list."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoPluginLinkOrder"
+      responses:
+        "200":
+          description: "Plugin list"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoPluginList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/work-info-plugins/{id}/approval:
     put:
@@ -2301,7 +2420,7 @@ paths:
     post:
       operationId: fetchWorkInfo
       summary: "Fetch video work information with a plugin"
-      description: "Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md."
+      description: "Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input, or with a link. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. A link must be an http or https URL (else 400 invalid_request) that one of the plugin's domains matches (else 400 work_info_link_unsupported), checked before the plugin runs; both or neither of id and link is 400 invalid_request. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -4050,7 +4169,7 @@ paths:
     post:
       operationId: bundleVideos
       summary: "Bundle videos as versions of the same video"
-      description: "Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found. Errors change nothing. Emits video events for all members after commit."
+      description: "Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit."
       requestBody:
         required: true
         content:
@@ -4070,6 +4189,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/version-candidates:
     get:
@@ -4090,7 +4211,7 @@ paths:
     post:
       operationId: dismissVersionCandidate
       summary: "Record two videos as different"
-      description: "Owner-only. Dismisses the pair and removes its candidate, even if no candidate exists; the pair is excluded thereafter. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos or registered-folder locations return 404 video_not_found without changes. To mark them the same, use POST /api/video-bundles with both videos and a representative."
+      description: "Owner-only. Dismisses the pair and removes its candidate, even if no candidate exists; the pair is excluded thereafter. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos or registered-folder locations return 404 video_not_found and a virtual video returns 409 virtual_video, without changes. To mark them the same, use POST /api/video-bundles with both videos and a representative."
       requestBody:
         required: true
         content:
@@ -4106,6 +4227,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/version-candidates/rejudge:
     post:
@@ -5060,7 +5183,7 @@ paths:
     post:
       operationId: organizeBundle
       summary: "Bundle dragged videos with the drop target as representative"
-      description: "Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found. Errors write nothing."
+      description: "Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing."
       requestBody:
         required: true
         content:
@@ -5080,6 +5203,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/organize/undo:
     post:
@@ -6142,7 +6267,7 @@ components:
     WorkInfoPlugin:
       type: object
       required:
-        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains]
+        [id, kind, fileName, operations, digest, state, settings, network, updatedAt, sources, domains, builtin]
       additionalProperties: false
       description: "One work-info or person plugin."
       properties:
@@ -6158,9 +6283,15 @@ components:
             type: string
         domains:
           type: array
-          description: "The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none."
+          description: "The link hosts the plugin fetches by url, in manifest order; empty when it declares none. The bundled plugin's only domain is *, which stands for every link."
           items:
             type: string
+        builtin:
+          type: boolean
+          description: "True for the plugin VVMDM bundles, which cannot be replaced or deleted."
+        linkRank:
+          type: integer
+          description: "1-based place of a work-info plugin that declares domains in the order plugins are tried for a link; absent otherwise."
         name:
           type: string
           description: "Manifest name; absent when the manifest could not be read."
@@ -6199,6 +6330,17 @@ components:
           type: integer
           format: int64
           description: "Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains."
+    WorkInfoPluginLinkOrder:
+      type: object
+      required: [pluginIds]
+      additionalProperties: false
+      properties:
+        pluginIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
     WorkInfoPluginRunFailure:
       type: string
       description: "Run failure kind; busy is not retained because runs without an execution slot never start the module."
@@ -6490,8 +6632,9 @@ components:
 
     WorkInfoFetchRequest:
       type: object
-      required: [pluginId, id]
+      required: [pluginId]
       additionalProperties: false
+      description: "Exactly one of id and link."
       properties:
         pluginId:
           type: integer
@@ -6500,6 +6643,9 @@ components:
         id:
           type: string
           description: "Work ID, such as a product code: 1-200 characters after trimming. Even URL-shaped values pass unchanged as IDs; the plugin builds request URLs."
+        link:
+          type: string
+          description: "An http or https link one of the plugin's domains matches; the plugin fetches by url."
 
     WorkInfoFetch:
       type: object
@@ -7688,13 +7834,16 @@ components:
       type: object
       required: [displayName, workInfo]
       additionalProperties: false
-      description: "Fullscreen editor save body; both fields are required."
+      description: "Fullscreen editor save body; displayName and workInfo are required."
       properties:
         displayName:
           type: string
-          description: "New display name; whitespace-only after trimming clears it."
+          description: "New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty."
         workInfo:
           $ref: "#/components/schemas/WorkInfoInput"
+        contentVersion:
+          type: string
+          description: "The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored."
 
     Person:
       type: object
@@ -9690,10 +9839,11 @@ components:
 
     Video:
       type: object
-      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags."
+      description: "Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo."
       required:
         [
           id,
+          virtual,
           title,
           sizeBytes,
           addedAt,
@@ -9712,9 +9862,14 @@ components:
         id:
           type: integer
           format: int64
+        virtual:
+          type: boolean
+          description: "True for a virtual video, which has no file and is never playable."
+        linkFetch:
+          $ref: "#/components/schemas/VirtualLinkFetch"
         title:
           type: string
-          description: "Effective title: display name when set, otherwise filename without extension."
+          description: "Effective title: display name when set, otherwise filename without extension; a virtual video's own title."
         fileTitle:
           type: string
           description: "Filename without extension; owner responses only."
@@ -9727,7 +9882,7 @@ components:
           description: "Thumbnail frame position in milliseconds; included only when set and for owners."
         contentVersion:
           type: string
-          description: "Content version: first 12 content-key characters, matching the thumbnailUrl version prefix; owner responses only. Submit with image uploads to reject changes since the preview opened; see Uploaded images in docs/design-docs/thumbnail-editing.md."
+          description: "Content version: first 12 content-key characters, matching the thumbnailUrl version prefix, or the whole user key for a virtual video; owner responses only. Submit with image uploads to reject changes since the preview opened (see Uploaded images in docs/design-docs/thumbnail-editing.md), and with saves and deletion of a virtual video."
         thumbnailImage:
           type: string
           enum: [generated, uploaded]
@@ -9745,11 +9900,11 @@ components:
         fileCreatedAt:
           type: string
           format: date-time
-          description: "Creation timestamp of the displayed-location file; falls back to its mtime when unavailable."
+          description: "Creation timestamp of the displayed-location file; falls back to its mtime when unavailable. A virtual video's creation time."
         fileModifiedAt:
           type: string
           format: date-time
-          description: "Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded."
+          description: "Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded. A virtual video's creation time."
         durationMs:
           type: integer
           format: int64
@@ -9775,7 +9930,7 @@ components:
           examples: [aac, opus]
         playable:
           type: boolean
-          description: "Whether the video is judged directly playable in the browser."
+          description: "Whether the video is judged directly playable in the browser; always false, without unplayableReason, for a virtual video."
         unplayableReason:
           type: string
           enum: [container, video_codec, audio_codec]
@@ -9828,7 +9983,7 @@ components:
           description: "Whether the owner favorited the video; owner responses only."
         workInfo:
           $ref: "#/components/schemas/WorkInfo"
-          description: "Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items."
+          description: "Work information, only in GET /api/videos/{id} and owner PUT work-info/details responses when a row exists. Guests receive only description and urls, with the other lists empty, and no workInfo when both are empty. Omitted from lists, related videos and library items."
         cardCredits:
           $ref: "#/components/schemas/VideoCardCredits"
           description: "Credits a card shows, in owner list items (video lists, library, group, playlist and smart-folder pages, related videos, versions and watch history) and in GET /api/videos/{id} with workInfo, since lists refresh a changed item from it. Present only when the video has a code, a performer or an organization; omitted for guests."
@@ -10782,7 +10937,54 @@ components:
       properties:
         displayName:
           type: string
-          description: "New display name; whitespace-only after trimming clears it."
+          description: "New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty."
+        contentVersion:
+          type: string
+          description: "The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored."
+
+    VirtualVideoCreate:
+      type: object
+      additionalProperties: false
+      description: "A title, a url or both; the title is required without a url."
+      properties:
+        title:
+          type: string
+          description: "Title; follows the display-name rules and must not be empty after trimming unless url is set."
+        url:
+          type: string
+          description: "The video's link, http or https, at most 2048 characters; its fetch fills the empty fields."
+
+    VirtualLinkFetch:
+      type: object
+      required: [state]
+      additionalProperties: false
+      description: "The fetch started when a virtual video was created from a link; owner-only."
+      properties:
+        state:
+          type: string
+          enum: [running, failed, done]
+        failure:
+          type: string
+          description: "Why a failed fetch failed, for the owner to read."
+        plugin:
+          type: string
+          description: "Name of the plugin that ran last; absent when no plugin handled the link."
+
+    VirtualVideoMerge:
+      type: object
+      required: [contentVersion, videoId, videoContentVersion]
+      additionalProperties: false
+      properties:
+        contentVersion:
+          type: string
+          description: "The virtual video's contentVersion the screen read."
+        videoId:
+          type: integer
+          format: int64
+          description: "The file video to merge into."
+        videoContentVersion:
+          type: string
+          description: "The file video's contentVersion the screen read."
 
     ThumbnailPositionUpdate:
       type: object
@@ -11073,7 +11275,7 @@ components:
     PlaylistPlayback:
       type: object
       description: "Playlist playback position and next video."
-      required: [playlist, itemId, position, count]
+      required: [playlist, itemId, position, count, playableCount]
       additionalProperties: false
       properties:
         playlist:
@@ -11088,8 +11290,12 @@ components:
         count:
           type: integer
           description: "Visible item count."
+        playableCount:
+          type: integer
+          description: "Visible items whose starting video has a file; zero means the playlist has nothing to play."
         next:
           $ref: "#/components/schemas/PlaylistStep"
+          description: "Continuous-playback step; passes over virtual videos."
         previousItem:
           $ref: "#/components/schemas/PlaylistStep"
         nextItem:
@@ -11754,6 +11960,9 @@ components:
             - person_external_id_missing
             - person_link_ambiguous
             - person_link_unsupported
+            - work_info_link_unsupported
+            - plugin_builtin
+            - link_order_changed
             - invalid_smart_rule
             - smart_folder_not_found
             - smart_folder_cycle
@@ -11888,3 +12097,8 @@ components:
         - face_appearance_not_found
         - face_recognition_off
         - face_recognition_unsupported
+        - invalid_title
+        - not_virtual
+        - virtual_video
+        - description_too_long
+        - too_many_urls

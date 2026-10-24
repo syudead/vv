@@ -94,7 +94,7 @@ func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex
 	return folders, nil
 }
 
-// Exclude missing IDs and unidentified content; registeredOnly also requires a registered location.
+// Exclude missing IDs and unidentified content; registeredOnly also requires a registered location or a virtual video.
 func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredOnly bool) (map[int64]string, error) {
 	keys := make(map[int64]string, len(ids))
 	if len(ids) == 0 {
@@ -106,7 +106,7 @@ func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredO
 	}
 	condition := "1 = 1"
 	if registeredOnly {
-		condition = registeredVideoCondition("v")
+		condition = libraryVideoCondition("v")
 	}
 	rows, err := tx.QueryContext(ctx, `select v.id, `+userKeyExpr("v")+` from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+condition, string(encoded))

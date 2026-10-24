@@ -26,10 +26,11 @@ func smartBaseCTE(audience domain.Audience) (string, []any) {
 		from chosen join videos on videos.id = chosen.video_id),
 	smart_base as materialized (
 		select k.id, k.content_key, k.user_key, k.added_at, k.duration_ms, k.thumbnail_state,
-			loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at, loc.title_key as title_key,
+			` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at,
+			` + locationTitleKeyExpr("loc") + ` as title_key,
 			loc.size_bytes as size_bytes, p.updated_at as played_at, fav.favorited_at as favorited_at,
 			` + videoWatchStateExpr + ` as watch_state
-		from smart_keys k join video_locations loc on loc.path = k.path
+		from smart_keys k` + chosenLocationJoin("k.path", "k") + `
 		left join playback_progress p on p.content_key = k.user_key and k.content_key <> ''
 		left join video_favorites fav on fav.content_key = k.user_key and k.content_key <> '')`, args
 }

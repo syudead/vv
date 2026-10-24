@@ -304,6 +304,8 @@ export const MAX_TAG_FILTER_COUNT = 16;
 export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
+  /** Omitted lists every video; file leaves out virtual videos. */
+  kind?: NonNullable<operations["listVideos"]["parameters"]["query"]>["kind"];
 }
 
 /** Match linked people or organizations in any role. */
@@ -351,6 +353,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  if (params.kind !== undefined) query.set("kind", params.kind);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -385,7 +388,8 @@ export function toLibraryItems<G>(
   });
 }
 
-export type ListLibraryParams = ListVideosParams;
+/** The library listing has no kind filter. */
+export type ListLibraryParams = Omit<ListVideosParams, "kind">;
 
 export async function listLibrary(
   params: ListLibraryParams = {},
@@ -473,16 +477,17 @@ export function getVideo(
   });
 }
 
-/** Clear whitespace-only names and invalidate snapshots because detached lists cannot observe title/search/order changes. */
+/** Clear whitespace-only names and invalidate snapshots because detached lists cannot observe title/search/order changes. contentVersion, required for a virtual video, makes a stale screen fail with content_changed. */
 export async function setVideoDisplayName(
   id: number,
   displayName: string,
   signal?: AbortSignal,
+  contentVersion?: string,
 ): Promise<Video> {
   const video = await request<Video>(`/api/videos/${String(id)}/display-name`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ displayName }),
+    body: JSON.stringify({ displayName, contentVersion }),
     signal,
   });
   clearListSnapshot();
@@ -665,6 +670,41 @@ export async function rejudgeVersionCandidate(
 /** The side-by-side image the classifier saw for one evidence frame of a version_judgement entry. */
 export function judgementFrameUrl(activityId: number, index: number): string {
   return `/api/activity/${String(activityId)}/judgement-frames/${String(index)}`;
+}
+
+/** Delete a virtual video read at contentVersion; detached list snapshots would still show it. */
+export async function deleteVideo(
+  id: number,
+  contentVersion: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const query = new URLSearchParams({ contentVersion });
+  const response = await apiFetch(`/api/videos/${String(id)}?${query.toString()}`, {
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
+  clearListSnapshot();
+}
+
+export type VirtualVideoMerge = components["schemas"]["VirtualVideoMerge"];
+
+/** Merge a virtual video into a file video and return the file video; detached list snapshots would still show both. */
+export async function mergeVirtualVideo(
+  id: number,
+  body: VirtualVideoMerge,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/virtual-videos/${String(id)}/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  clearListSnapshot();
+  return video;
 }
 
 /** Open the representative file on the server's machine. */

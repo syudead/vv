@@ -236,6 +236,9 @@ const errorCodes = {
   person_link_ambiguous:
     "This person has several links the plugin handles. Choose one first.",
   person_link_unsupported: "The plugin doesn't handle this link.",
+  work_info_link_unsupported: "The plugin doesn't handle this link.",
+  plugin_builtin: "The built-in plugin can't be deleted or replaced.",
+  link_order_changed: "The plugins changed meanwhile. Check the order and try again.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",
@@ -400,6 +403,13 @@ const errorReasons = {
   face_recognition_off:
     "Face recognition is turned off. Turn it on under Settings, Face recognition.",
   face_recognition_unsupported: "vv has no face runtime for this platform.",
+  invalid_title: "Enter a title.",
+  not_virtual: "This video has a file, so it can't be deleted here.",
+  virtual_video: "A video without a file can't be used here.",
+  description_too_long:
+    "The two descriptions together are too long. Shorten one and try again.",
+  too_many_urls:
+    "The two videos have more than 20 links together. Remove some and try again.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -923,6 +933,8 @@ export const en = {
     },
     card: {
       select: (title: string) => `Select "${title}"`,
+      virtual: "Virtual",
+      virtualLabel: "Virtual video, no file",
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
       //
@@ -949,6 +961,21 @@ export const en = {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
       setUp: "Set up library",
+    },
+    newVirtualVideo: {
+      action: "New virtual video",
+      title: "New virtual video",
+      description:
+        "A video without a file. Give a title, a link or both; the rest goes on its page.",
+      field: "Title",
+      rule: "Enter a title or a link.",
+      linkField: "Link",
+      linkHint:
+        "VVMDM fills the empty title, description, date and thumbnail from the link after creating.",
+      linkRule: "Enter a link that starts with http:// or https://.",
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the virtual video: ${reason}`,
     },
     view: {
       label: "View",
@@ -2100,6 +2127,51 @@ export const en = {
       title: "This video can't be opened",
       description: "It was removed from the library, or its file is gone.",
     },
+    virtual: {
+      band: "Virtual video",
+      linkFetch: {
+        running:
+          "Reading the link… Empty fields fill in when it finishes; you can edit meanwhile.",
+        failed: "Couldn't read the link.",
+        failedNext: "Fill in the details yourself, or try Fetch info… on the Work tab.",
+      },
+      noThumbnailYet: "No thumbnail yet",
+      noThumbnail: "No thumbnail",
+      openLink: (host: string) => `Open on ${host}`,
+      removeImage: "Remove image",
+      delete: "Delete…",
+      deleteTitle: (title: string) => `Delete "${title}"?`,
+      deleteDescription:
+        "The virtual video is removed with its tags, favorite, links, description and playlist entries. This can't be undone.",
+      deleteAction: "Delete",
+      deleting: "Deleting…",
+      deleteChanged: "This video changed in another tab. Reload and try again.",
+      deleteFailed: (reason: string) => `Couldn't delete: ${reason}`,
+      deleted: (title: string) => `Deleted "${title}"`,
+      alreadyRemoved: (title: string) => `"${title}" was already removed`,
+      merge: {
+        entry: "Merge into a file video…",
+        title: "Merge into a file video",
+        description:
+          "Tags, favorite, playlists and work details (description, links, dates, code, people, organizations and IDs) move to the file video, filling or adding to its own. The file video keeps its title, thumbnail and visibility, so a public virtual video's page is gone for guests. This can't be undone.",
+        search: "Search file videos",
+        list: "File videos",
+        none: "No file video matches",
+        loadFailed: "Couldn't load file videos",
+        submit: "Merge",
+        submitting: "Merging…",
+        tooLong: "The two descriptions together are too long. Shorten one and try again.",
+        tooManyUrls:
+          "The two videos have more than 20 links together. Remove some and try again.",
+        changed: "One of the videos changed in another tab. Reload and try again.",
+        gone: "One of the videos is no longer in the library.",
+        failed: (reason: string) => `Couldn't merge: ${reason}`,
+        merged: (title: string) => `Merged into "${title}"`,
+      },
+      changed: "This video changed in another tab. Reload it to keep editing.",
+      gone: "This virtual video was deleted or merged. Nothing was saved.",
+      backToLibrary: "Back to the library",
+    },
     loadFailed: "Couldn't load this video",
     unplayable: {
       title: "This video can't be played",
@@ -2143,6 +2215,7 @@ export const en = {
       previous: "Previous item",
       next: "Next item",
       end: "End of playlist",
+      nothingToPlay: "Nothing to play",
       endAnnouncement: (name: string) =>
         `Playback finished. End of the playlist "${name}"`,
       gone: "This video is no longer in the playlist. Playback stops after it.",
@@ -2460,6 +2533,9 @@ export const en = {
       plugin: "Plugin",
       querySearch: "Search words",
       queryFetch: "The work's ID",
+      queryFetchOrLink: "The work's ID or link",
+      queryLink: "Link",
+      linkTyped: "Fetched by this link.",
       findBy: "Find by",
       findByOptions: {
         words: "Words",
@@ -2600,6 +2676,7 @@ export const en = {
       people: "People",
       organizations: "Organizations",
       name: "Name",
+      titleField: "Title",
       code: "Code",
       description: "Description",
       released: "Released",
@@ -3213,6 +3290,7 @@ export const en = {
         duration === "" ? items(count) : `${items(count)} · ${duration}`,
       play: "Play",
       playFor: (name: string) => `Play "${name}" from the top`,
+      allVirtual: "These are all virtual videos, so there's nothing to play.",
       rename: "Rename…",
       delete: "Delete…",
       table: "Items",
@@ -4144,9 +4222,18 @@ export const en = {
           fetch: "Fetch by ID",
         } satisfies Record<WorkInfoOperation, string>,
         accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
-        acceptsLinks: (domains: readonly string[]) =>
-          `Accepts links from ${domains.join(", ")}`,
       },
+      acceptsLinks: (domains: readonly string[]) =>
+        `Accepts links from ${domains.join(", ")}`,
+      acceptsAnyLink: "Accepts links from any site",
+      anySite: "Any site",
+      linkRank: (rank: number) => `Link order ${formatNumber(rank)}`,
+      linkRankHint:
+        "When several plugins accept a link, the lower link order is tried first.",
+      builtin: "Built in",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      moving: "Saving the order…",
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,

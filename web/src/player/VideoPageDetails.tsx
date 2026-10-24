@@ -15,6 +15,9 @@ import TitleRow from "./TitleRow";
 import VideoPageTabs, { useVideoTabState } from "./tabs/VideoPageTabs";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
+import type { VirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
+import LinkFetchLine from "./virtualVideo/LinkFetchLine";
+import VirtualMoreMenu from "./virtualVideo/VirtualMoreMenu";
 import VisibilitySwitch from "./VisibilitySwitch";
 
 type Detail = ReturnType<typeof useVideoDetail>;
@@ -33,8 +36,11 @@ export default function VideoPageDetails({
   detail,
   related,
   handoff,
+  thumbnail,
   onGroupChanged,
   onEditingThumbnail,
+  onDeleted,
+  onMerged,
 }: {
   loading: boolean;
   video: Video | undefined;
@@ -49,8 +55,12 @@ export default function VideoPageDetails({
   detail: Pick<Detail, "refresh" | "replace" | "setFavorite">;
   related: Pick<Related, "rename" | "rethumb">;
   handoff: ReturnType<typeof usePageHandoff>;
+  /** Upload state a virtual video's Thumbnail tab shares with its media frame. */
+  thumbnail: VirtualThumbnail;
   onGroupChanged: () => void;
   onEditingThumbnail: (editing: boolean) => void;
+  onDeleted: () => void;
+  onMerged: (merged: Video) => void;
 }) {
   const tabState = useVideoTabState(video, owner);
   if (loading)
@@ -109,6 +119,14 @@ export default function VideoPageDetails({
                     focusEntry: handoff.focusEntry(video.id),
                   }}
                 />
+                {video.virtual && (
+                  <VirtualMoreMenu
+                    video={video}
+                    onStale={reread}
+                    onDeleted={onDeleted}
+                    onMerged={onMerged}
+                  />
+                )}
                 <div className="ml-auto">
                   <VisibilitySwitch
                     // Key by video ID so errors do not survive navigation.
@@ -122,6 +140,7 @@ export default function VideoPageDetails({
             }
           />
           {owner && <OwnerTags video={video} reread={reread} />}
+          {owner && <LinkFetchLine video={video} />}
         </div>
         <VideoPageTabs
           video={video}
@@ -142,6 +161,7 @@ export default function VideoPageDetails({
             // Refetch: the removed video's own work info replaces the bundle's.
             onReplace: (removed, mark) => replace(removed, mark, "refetch"),
           }}
+          thumbnail={thumbnail}
         />
       </div>
     </>

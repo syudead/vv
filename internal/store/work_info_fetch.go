@@ -33,25 +33,14 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
-		return domain.FetchedWorkInfoApplied{}, err
-	}
-	contentKeys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
+	contentKey, userKeys, apply, err := fetchedApplyTarget(ctx, tx, apply)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	userKeys, err := userKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
-	if err != nil {
-		return domain.FetchedWorkInfoApplied{}, err
-	}
-	if len(contentKeys) == 0 || len(userKeys) == 0 {
-		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
-	}
-
 	now := time.Now()
 	var touched []string
 	if apply.Title != nil {
-		if touched, _, err = writeChangedDisplayName(ctx, tx, contentKeys[0], title, now); err != nil {
+		if touched, err = writeFetchedTitle(ctx, tx, contentKey, title, now); err != nil {
 			return domain.FetchedWorkInfoApplied{}, err
 		}
 	}
@@ -103,7 +92,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityWorkInfoApply,
-		ownerVideoChanges(contentKeys[:1], ""), now); err != nil {
+		ownerVideoChanges([]string{contentKey}, ""), now); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	c.matchesChanged()
@@ -113,6 +102,75 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
 	return out, nil
+}
+
+// fetchedApplyTarget rechecks the plugin and the fetched video and returns its content and user keys, with a fill
+// narrowed to the empty fields.
+func fetchedApplyTarget(
+	ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply,
+) (string, []string, domain.FetchedWorkInfoApply, error) {
+	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
+		return "", nil, apply, err
+	}
+	contentKey, err := writableContentKeyOf(ctx, tx, apply.VideoID)
+	if err != nil {
+		return "", nil, apply, err
+	}
+	userKeys, err := userKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
+	if err != nil {
+		return "", nil, apply, err
+	}
+	// A different key means the fetched video was deleted and its ID reused.
+	if contentKey == "" || contentKey != apply.ContentKey || len(userKeys) == 0 {
+		return "", nil, apply, domain.ErrNotFound
+	}
+	if apply.FillEmpty {
+		apply, err = emptyFieldsOnly(ctx, tx, contentKey, userKeys[0], apply)
+	}
+	return contentKey, userKeys, apply, err
+}
+
+// emptyFieldsOnly narrows a fill to the title, tags and detail fields the video has no value for, read inside the
+// apply's transaction so an owner's edit made during the fetch is never overwritten.
+func emptyFieldsOnly(
+	ctx context.Context, tx *sql.Tx, contentKey, userKey string, apply domain.FetchedWorkInfoApply,
+) (domain.FetchedWorkInfoApply, error) {
+	var titleFromLink, hasTags bool
+	if err := tx.QueryRowContext(ctx, `select
+		exists (select 1 from virtual_videos where user_key = ? and title_from_link = 1),
+		exists (select 1 from video_tags where content_key = ?)`, contentKey, userKey).Scan(&titleFromLink, &hasTags); err != nil {
+		return apply, fmt.Errorf("cannot read the video's values: %w", err)
+	}
+	if !titleFromLink {
+		apply.Title = nil
+	}
+	if hasTags {
+		apply.Tags = nil
+	}
+	stored, err := workInfoByUserKeys(ctx, tx, []string{userKey})
+	if err != nil {
+		return apply, err
+	}
+	apply.DetailFields = domain.EmptyWorkInfoFields(stored[userKey], apply.DetailFields)
+	return apply, nil
+}
+
+// writeFetchedTitle writes a virtual video's own title, or a file video's display name, and returns the touched keys.
+func writeFetchedTitle(ctx context.Context, tx *sql.Tx, key, title string, now time.Time) ([]string, error) {
+	if !domain.IsVirtualKey(key) {
+		touched, _, err := writeChangedDisplayName(ctx, tx, key, title, now)
+		return touched, err
+	}
+	// A virtual video has no file title to fall back to, so a fetched title never clears it.
+	title, err := domain.NormalizeVirtualTitle(title)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := writeVirtualTitle(ctx, tx, key, title, now)
+	if err != nil || !changed {
+		return nil, err
+	}
+	return []string{key}, nil
 }
 
 type appliedDetails struct {

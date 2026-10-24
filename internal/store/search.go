@@ -18,6 +18,31 @@ func termUsesMatch(text string) bool {
 
 // Use MATCH for long terms and literal instr for short terms; guests search locations only to avoid leaking private tags or work information.
 func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
+	return searchExprConditionWith(expr, alias, audience, locationTermCondition)
+}
+
+// Virtual videos are few and made by hand, so their title keys are scanned with instr instead of a second FTS table.
+func virtualSearchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
+	return searchExprConditionWith(expr, alias, audience, instrTermCondition)
+}
+
+// termCondition matches one normalized term against the row's own search key.
+type termCondition func(alias, text string) (string, []any)
+
+func locationTermCondition(alias, text string) (string, []any) {
+	if termUsesMatch(text) {
+		return alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`,
+			[]any{quoteMatchPhrase(text)}
+	}
+	return instrTermCondition(alias, text)
+}
+
+func instrTermCondition(alias, text string) (string, []any) {
+	return `instr(` + alias + `.search_key, ?) > 0`, []any{text}
+}
+
+// The alias exposes search_key and video_id, so locations and virtual videos share the owner-fact conditions.
+func searchExprConditionWith(expr domain.SearchExpr, alias string, audience domain.Audience, own termCondition) (string, []any) {
 	if expr.Empty() {
 		return "", nil
 	}
@@ -28,14 +53,8 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 		for _, term := range clause.Terms {
 			// Normalize phrase newlines to spaces so a term cannot cross the search key's title/path boundary.
 			text := strings.ReplaceAll(term.Text, "\n", " ")
-			var locationCondition string
-			if termUsesMatch(text) {
-				locationCondition = alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`
-				args = append(args, quoteMatchPhrase(text))
-			} else {
-				locationCondition = `instr(` + alias + `.search_key, ?) > 0`
-				args = append(args, text)
-			}
+			locationCondition, termArgs := own(alias, text)
+			args = append(args, termArgs...)
 			condition := `(` + locationCondition + `)`
 			if audience.IsOwner() {
 				condition = `(` + locationCondition + ` or ` + ownerFactsMatchCondition(alias) + `)`

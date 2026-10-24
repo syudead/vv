@@ -35,10 +35,11 @@ func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.Video
   case when gi.content_key is not null then ` + shownVideoForKeyExpr("gi.content_key", audience) + ` end as video_id
   from group_items gi where gi.group_id = ?),
  items as (
-  select e.*, v.added_at, loc.mtime, ` + fileCreatedAtExpr("loc") + ` as created_at, loc.title_key,
+  select e.*, v.added_at, ` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at, ` +
+		locationTitleKeyExpr("loc") + ` as title_key,
    v.duration_ms, loc.size_bytes, p.updated_at as played_at, fav.favorited_at
   from entries e join videos v on v.id = e.video_id
-  join chosen on chosen.video_id = v.id join video_locations loc on loc.path = chosen.path
+  join chosen on chosen.video_id = v.id` + chosenLocationJoin("chosen.path", "v") + `
   left join playback_progress p on p.content_key = ` + userKeyExpr("v") + ` and v.content_key <> ''
   left join video_favorites fav on fav.content_key = ` + userKeyExpr("v") + ` and v.content_key <> ''
   where e.video_id in (select id from matched)

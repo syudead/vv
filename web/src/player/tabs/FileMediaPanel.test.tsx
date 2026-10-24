@@ -23,6 +23,7 @@ const modified = new Date(2026, 6, 4, 8, 15, 30, 250).toISOString();
 
 const video: Video = {
   id: 7,
+  virtual: false,
   title: "テスト動画",
   sizeBytes: 84_331_821,
   addedAt: added,

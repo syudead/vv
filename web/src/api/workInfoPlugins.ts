@@ -96,6 +96,20 @@ export function setWorkInfoPluginSettings(
   });
 }
 
+/** pluginIds names every plugin with a linkRank, first tried first; a stale set fails with 409 link_order_changed. */
+export async function setWorkInfoPluginLinkOrder(
+  pluginIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<WorkInfoPlugin[]> {
+  const list = await request<WorkInfoPluginList>("/api/work-info-plugins/link-order", {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ pluginIds }),
+    signal,
+  });
+  return list.plugins;
+}
+
 export async function deleteWorkInfoPlugin(
   id: number,
   signal?: AbortSignal,
@@ -139,6 +153,24 @@ export function fetchWorkInfo(
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ pluginId, id }),
+    signal,
+  });
+}
+
+/**
+ * Fetches by a link instead of an ID, for a plugin that declares domains; a link none of them matches answers 400
+ * work_info_link_unsupported before the plugin runs.
+ */
+export function fetchWorkInfoByLink(
+  videoId: number,
+  pluginId: number,
+  link: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoFetch> {
+  return request<WorkInfoFetch>(`/api/videos/${String(videoId)}/work-info-fetches`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ pluginId, link }),
     signal,
   });
 }

@@ -7,6 +7,7 @@ import OverviewPanel, { workSummary } from "./OverviewPanel";
 
 const video: Video = {
   id: 7,
+  virtual: false,
   title: "a",
   sizeBytes: 1,
   addedAt: "2026-09-20T12:00:00Z",

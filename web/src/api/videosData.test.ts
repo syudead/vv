@@ -7,6 +7,7 @@ import { type VideosData, videosDataReducer } from "./videosData";
 function video(id: number): Video {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: false,
     sizeBytes: 1024,

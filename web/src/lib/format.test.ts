@@ -13,6 +13,7 @@ import {
 
 const base: Video = {
   id: 1,
+  virtual: false,
   title: "t",
   public: false,
   sizeBytes: 1,

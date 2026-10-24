@@ -503,6 +503,7 @@ const (
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
 	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
 	ErrorCodeInvalidSmartRule            ErrorCode = "invalid_smart_rule"
+	ErrorCodeLinkOrderChanged            ErrorCode = "link_order_changed"
 	ErrorCodeLoginThrottled              ErrorCode = "login_throttled"
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
@@ -513,6 +514,7 @@ const (
 	ErrorCodePersonExternalIdMissing     ErrorCode = "person_external_id_missing"
 	ErrorCodePersonLinkAmbiguous         ErrorCode = "person_link_ambiguous"
 	ErrorCodePersonLinkUnsupported       ErrorCode = "person_link_unsupported"
+	ErrorCodePluginBuiltin               ErrorCode = "plugin_builtin"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
@@ -534,6 +536,7 @@ const (
 	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 	ErrorCodeWorkInfoFetchStale          ErrorCode = "work_info_fetch_stale"
+	ErrorCodeWorkInfoLinkUnsupported     ErrorCode = "work_info_link_unsupported"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -563,6 +566,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeInvalidSmartRule:
 		return true
+	case ErrorCodeLinkOrderChanged:
+		return true
 	case ErrorCodeLoginThrottled:
 		return true
 	case ErrorCodeMediaFolderNotFound:
@@ -582,6 +587,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePersonLinkAmbiguous:
 		return true
 	case ErrorCodePersonLinkUnsupported:
+		return true
+	case ErrorCodePluginBuiltin:
 		return true
 	case ErrorCodePluginBusy:
 		return true
@@ -625,6 +632,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeWorkInfoFetchStale:
 		return true
+	case ErrorCodeWorkInfoLinkUnsupported:
+		return true
 	default:
 		return false
 	}
@@ -641,6 +650,7 @@ const (
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
+	ErrorReasonDescriptionTooLong            ErrorReason = "description_too_long"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
 	ErrorReasonDisplayNameTooLong            ErrorReason = "display_name_too_long"
@@ -659,6 +669,7 @@ const (
 	ErrorReasonInsufficientCredits           ErrorReason = "insufficient_credits"
 	ErrorReasonInvalidCursor                 ErrorReason = "invalid_cursor"
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
+	ErrorReasonInvalidTitle                  ErrorReason = "invalid_title"
 	ErrorReasonListenFailed                  ErrorReason = "listen_failed"
 	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
 	ErrorReasonMemoryExceeded                ErrorReason = "memory_exceeded"
@@ -672,6 +683,7 @@ const (
 	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
+	ErrorReasonNotVirtual                    ErrorReason = "not_virtual"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
@@ -707,6 +719,7 @@ const (
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
+	ErrorReasonTooManyUrls                   ErrorReason = "too_many_urls"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
 	ErrorReasonUnauthorized                  ErrorReason = "unauthorized"
@@ -717,6 +730,7 @@ const (
 	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
 	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
+	ErrorReasonVirtualVideo                  ErrorReason = "virtual_video"
 	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
 	ErrorReasonWorkInfoDuplicate             ErrorReason = "work_info_duplicate"
 	ErrorReasonWorkInfoEmpty                 ErrorReason = "work_info_empty"
@@ -749,6 +763,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonContentChanged:
 		return true
 	case ErrorReasonCrossOrigin:
+		return true
+	case ErrorReasonDescriptionTooLong:
 		return true
 	case ErrorReasonDirectoryNotFound:
 		return true
@@ -786,6 +802,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonInvalidFolderPath:
 		return true
+	case ErrorReasonInvalidTitle:
+		return true
 	case ErrorReasonListenFailed:
 		return true
 	case ErrorReasonMediaFoldersChanged:
@@ -811,6 +829,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonNoScan:
 		return true
 	case ErrorReasonNotBundled:
+		return true
+	case ErrorReasonNotVirtual:
 		return true
 	case ErrorReasonOpenNotLocal:
 		return true
@@ -882,6 +902,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonTooManyTags:
 		return true
+	case ErrorReasonTooManyUrls:
+		return true
 	case ErrorReasonTooManyVideos:
 		return true
 	case ErrorReasonTranscodeUnavailable:
@@ -901,6 +923,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonVersionNotRejudgeable:
 		return true
 	case ErrorReasonVideoNotFound:
+		return true
+	case ErrorReasonVirtualVideo:
 		return true
 	case ErrorReasonWorkInfoControlCharacters:
 		return true
@@ -2370,6 +2394,27 @@ func (e VideoTagsAction) Valid() bool {
 	}
 }
 
+// Defines values for VirtualLinkFetchState.
+const (
+	VirtualLinkFetchStateDone    VirtualLinkFetchState = "done"
+	VirtualLinkFetchStateFailed  VirtualLinkFetchState = "failed"
+	VirtualLinkFetchStateRunning VirtualLinkFetchState = "running"
+)
+
+// Valid indicates whether the value is a known member of the VirtualLinkFetchState enum.
+func (e VirtualLinkFetchState) Valid() bool {
+	switch e {
+	case VirtualLinkFetchStateDone:
+		return true
+	case VirtualLinkFetchStateFailed:
+		return true
+	case VirtualLinkFetchStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WatchHistoryFilter.
 const (
 	WatchHistoryFilterAll        WatchHistoryFilter = "all"
@@ -2670,6 +2715,27 @@ func (e ListPersonAppearancesParamsSort) Valid() bool {
 	case MostSimilar:
 		return true
 	case Newest:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListVideosParamsKind.
+const (
+	ListVideosParamsKindAll     ListVideosParamsKind = "all"
+	ListVideosParamsKindFile    ListVideosParamsKind = "file"
+	ListVideosParamsKindVirtual ListVideosParamsKind = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the ListVideosParamsKind enum.
+func (e ListVideosParamsKind) Valid() bool {
+	switch e {
+	case ListVideosParamsKindAll:
+		return true
+	case ListVideosParamsKindFile:
+		return true
+	case ListVideosParamsKindVirtual:
 		return true
 	default:
 		return false
@@ -3464,7 +3530,10 @@ type DirectoryListing struct {
 
 // DisplayNameUpdate defines model for DisplayNameUpdate.
 type DisplayNameUpdate struct {
-	// DisplayName New display name; whitespace-only after trimming clears it.
+	// ContentVersion The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
+	ContentVersion *string `json:"contentVersion,omitempty"`
+
+	// DisplayName New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty.
 	DisplayName string `json:"displayName"`
 }
 
@@ -3877,7 +3946,7 @@ type GroupItem struct {
 	Id   int64         `json:"id"`
 	Kind GroupItemKind `json:"kind"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -4075,7 +4144,7 @@ type LibraryItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -4980,7 +5049,7 @@ type PlaylistItem struct {
 	// SmartFolder Smart-folder card fields match LibraryGroup semantics. getSmartFolder uses playback order; listSmartFolderCards aggregates matching videos. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	SmartFolder *LibrarySmartFolder `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -5043,11 +5112,14 @@ type PlaylistPlayback struct {
 	// ItemId Currently playing item.
 	ItemId int64 `json:"itemId"`
 
-	// Next One continuous-playback video and its containing item.
+	// Next Continuous-playback step; passes over virtual videos.
 	Next *PlaylistStep `json:"next,omitempty"`
 
 	// NextItem One continuous-playback video and its containing item.
 	NextItem *PlaylistStep `json:"nextItem,omitempty"`
+
+	// PlayableCount Visible items whose starting video has a file; zero means the playlist has nothing to play.
+	PlayableCount int `json:"playableCount"`
 
 	// Playlist One playlist summary.
 	Playlist PlaylistSummary `json:"playlist"`
@@ -5066,7 +5138,7 @@ type PlaylistStep struct {
 	// SmartFolderId Folder ID only for smart-folder items, absent for video/group items; the video page adds smartFolder to the destination URL.
 	SmartFolderId *int64 `json:"smartFolderId,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video Video `json:"video"`
 }
 
@@ -5501,7 +5573,7 @@ type SmartFolderItem struct {
 	// SmartFolder Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards.
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -6129,7 +6201,7 @@ type VersionRepresentativeRecommendation struct {
 // VersionRepresentativeRecommendationReason The first file property that told the videos apart: plays in the browser, has audio, audio as long as the video, more pixels, higher video bit rate, or lower ID when nothing else differs. Bundling keeps both sides' user data whichever is chosen.
 type VersionRepresentativeRecommendationReason string
 
-// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
@@ -6142,7 +6214,7 @@ type Video struct {
 	// Container Examples: mp4, webm, mkv
 	Container *string `json:"container,omitempty"`
 
-	// ContentVersion Content version: first 12 content-key characters, matching the thumbnailUrl version prefix; owner responses only. Submit with image uploads to reject changes since the preview opened; see Uploaded images in docs/design-docs/thumbnail-editing.md.
+	// ContentVersion Content version: first 12 content-key characters, matching the thumbnailUrl version prefix, or the whole user key for a virtual video; owner responses only. Submit with image uploads to reject changes since the preview opened (see Uploaded images in docs/design-docs/thumbnail-editing.md), and with saves and deletion of a virtual video.
 	ContentVersion *string `json:"contentVersion,omitempty"`
 
 	// DisplayAspectRatio Displayed width/height ratio, including rotation and sample aspect ratio; portrait videos are below one. Omitted before probing or when unavailable.
@@ -6157,10 +6229,10 @@ type Video struct {
 	// Favorite Whether the owner favorited the video; owner responses only.
 	Favorite *bool `json:"favorite,omitempty"`
 
-	// FileCreatedAt Creation timestamp of the displayed-location file; falls back to its mtime when unavailable.
+	// FileCreatedAt Creation timestamp of the displayed-location file; falls back to its mtime when unavailable. A virtual video's creation time.
 	FileCreatedAt time.Time `json:"fileCreatedAt"`
 
-	// FileModifiedAt Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded.
+	// FileModifiedAt Modification time (mtime) of the displayed-location file, with the sub-second precision the scan recorded. A virtual video's creation time.
 	FileModifiedAt time.Time `json:"fileModifiedAt"`
 
 	// FileTitle Filename without extension; owner responses only.
@@ -6176,13 +6248,16 @@ type Video struct {
 	Height *int  `json:"height,omitempty"`
 	Id     int64 `json:"id"`
 
+	// LinkFetch The fetch started when a virtual video was created from a link; owner-only.
+	LinkFetch *VirtualLinkFetch `json:"linkFetch,omitempty"`
+
 	// Location Representative location, only in GET /api/videos/{id}.
 	Location *VideoLocation `json:"location,omitempty"`
 
 	// MediaInfo Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses.
 	MediaInfo *MediaInfo `json:"mediaInfo,omitempty"`
 
-	// Playable Whether the video is judged directly playable in the browser.
+	// Playable Whether the video is judged directly playable in the browser; always false, without unplayableReason, for a virtual video.
 	Playable     bool              `json:"playable"`
 	PreviewState VideoPreviewState `json:"previewState"`
 
@@ -6223,7 +6298,7 @@ type Video struct {
 	// ThumbnailUrl Included only when thumbnailState=done. The content-key prefix forms the version, with -r<revision> for a selected position or -g<revision> for an applied image; guests receive the same URL.
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
 
-	// Title Effective title: display name when set, otherwise filename without extension.
+	// Title Effective title: display name when set, otherwise filename without extension; a virtual video's own title.
 	Title string `json:"title"`
 
 	// UnplayableReason Reason for playable=false; omitted before classification.
@@ -6238,10 +6313,13 @@ type Video struct {
 	// VideoCodec Examples: h264, vp9
 	VideoCodec *string `json:"videoCodec,omitempty"`
 
+	// Virtual True for a virtual video, which has no file and is never playable.
+	Virtual bool `json:"virtual"`
+
 	// Width Display-oriented width, including rotation metadata.
 	Width *int `json:"width,omitempty"`
 
-	// WorkInfo Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items.
+	// WorkInfo Work information, only in GET /api/videos/{id} and owner PUT work-info/details responses when a row exists. Guests receive only description and urls, with the other lists empty, and no workInfo when both are empty. Omitted from lists, related videos and library items.
 	WorkInfo *WorkInfo `json:"workInfo,omitempty"`
 }
 
@@ -6313,9 +6391,12 @@ type VideoDateEdit struct {
 	Kind WorkDateKind `json:"kind"`
 }
 
-// VideoDetailsInput Fullscreen editor save body; both fields are required.
+// VideoDetailsInput Fullscreen editor save body; displayName and workInfo are required.
 type VideoDetailsInput struct {
-	// DisplayName New display name; whitespace-only after trimming clears it.
+	// ContentVersion The contentVersion the editor read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
+	ContentVersion *string `json:"contentVersion,omitempty"`
+
+	// DisplayName New display name; whitespace-only after trimming clears it. For a virtual video it is the title and must not be empty.
 	DisplayName string `json:"displayName"`
 
 	// WorkInfo Full work-info replacement with the seven WorkInfo properties; each may be omitted or null, either of which clears it.
@@ -6622,6 +6703,40 @@ type VideoVisibilityResponse struct {
 	Applied int `json:"applied"`
 }
 
+// VirtualLinkFetch The fetch started when a virtual video was created from a link; owner-only.
+type VirtualLinkFetch struct {
+	// Failure Why a failed fetch failed, for the owner to read.
+	Failure *string `json:"failure,omitempty"`
+
+	// Plugin Name of the plugin that ran last; absent when no plugin handled the link.
+	Plugin *string               `json:"plugin,omitempty"`
+	State  VirtualLinkFetchState `json:"state"`
+}
+
+// VirtualLinkFetchState defines model for VirtualLinkFetch.State.
+type VirtualLinkFetchState string
+
+// VirtualVideoCreate A title, a url or both; the title is required without a url.
+type VirtualVideoCreate struct {
+	// Title Title; follows the display-name rules and must not be empty after trimming unless url is set.
+	Title *string `json:"title,omitempty"`
+
+	// Url The video's link, http or https, at most 2048 characters; its fetch fills the empty fields.
+	Url *string `json:"url,omitempty"`
+}
+
+// VirtualVideoMerge defines model for VirtualVideoMerge.
+type VirtualVideoMerge struct {
+	// ContentVersion The virtual video's contentVersion the screen read.
+	ContentVersion string `json:"contentVersion"`
+
+	// VideoContentVersion The file video's contentVersion the screen read.
+	VideoContentVersion string `json:"videoContentVersion"`
+
+	// VideoId The file video to merge into.
+	VideoId int64 `json:"videoId"`
+}
+
 // WatchHistoryDates defines model for WatchHistoryDates.
 type WatchHistoryDates struct {
 	// Days Days with matching entries, newest first; empty if none.
@@ -6639,7 +6754,7 @@ type WatchHistoryEntry struct {
 	// Title Title snapshot at playback start, possibly empty; displayed when video is absent.
 	Title string `json:"title"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -6755,14 +6870,17 @@ type WorkInfoFetchApplied struct {
 	// SkippedTags Unattached tag names in fetched-result order.
 	SkippedTags []SkippedTag `json:"skippedTags"`
 
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, workInfo and cardCredits, and return empty tags.
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
 	Video Video `json:"video"`
 }
 
-// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
+// WorkInfoFetchRequest Exactly one of id and link.
 type WorkInfoFetchRequest struct {
 	// Id Work ID, such as a product code: 1-200 characters after trimming. Even URL-shaped values pass unchanged as IDs; the plugin builds request URLs.
-	Id string `json:"id"`
+	Id *string `json:"id,omitempty"`
+
+	// Link An http or https link one of the plugin's domains matches; the plugin fetches by url.
+	Link *string `json:"link,omitempty"`
 
 	// PluginId Approved plugin.
 	PluginId int64 `json:"pluginId"`
@@ -6847,12 +6965,14 @@ type WorkInfoOperation string
 
 // WorkInfoPlugin One work-info or person plugin.
 type WorkInfoPlugin struct {
+	// Builtin True for the plugin VVMDM bundles, which cannot be replaced or deleted.
+	Builtin     bool    `json:"builtin"`
 	Description *string `json:"description,omitempty"`
 
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
 	Digest string `json:"digest"`
 
-	// Domains The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none.
+	// Domains The link hosts the plugin fetches by url, in manifest order; empty when it declares none. The bundled plugin's only domain is *, which stands for every link.
 	Domains []string `json:"domains"`
 
 	// FileName Uploaded filename.
@@ -6864,6 +6984,9 @@ type WorkInfoPlugin struct {
 
 	// LastRunAt Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains.
 	LastRunAt *int64 `json:"lastRunAt,omitempty"`
+
+	// LinkRank 1-based place of a work-info plugin that declares domains in the order plugins are tried for a link; absent otherwise.
+	LinkRank *int `json:"linkRank,omitempty"`
 
 	// Name Manifest name; absent when the manifest could not be read.
 	Name *string `json:"name,omitempty"`
@@ -6898,6 +7021,11 @@ type WorkInfoPluginKind string
 type WorkInfoPluginLastRun struct {
 	// Run Latest run's standard error.
 	Run *WorkInfoPluginRun `json:"run,omitempty"`
+}
+
+// WorkInfoPluginLinkOrder defines model for WorkInfoPluginLinkOrder.
+type WorkInfoPluginLinkOrder struct {
+	PluginIds []int64 `json:"pluginIds"`
 }
 
 // WorkInfoPluginList defines model for WorkInfoPluginList.
@@ -7543,6 +7671,18 @@ type ListVideosParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// Kind Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both.
+	Kind *ListVideosParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// ListVideosParamsKind defines parameters for ListVideos.
+type ListVideosParamsKind string
+
+// DeleteVideoParams defines parameters for DeleteVideo.
+type DeleteVideoParams struct {
+	// ContentVersion The contentVersion the screen read.
+	ContentVersion string `form:"contentVersion" json:"contentVersion"`
 }
 
 // GetVideoParams defines parameters for GetVideo.
@@ -7918,8 +8058,17 @@ type FetchWorkInfoJSONRequestBody = WorkInfoFetchRequest
 // ApplyWorkInfoFetchJSONRequestBody defines body for ApplyWorkInfoFetch for application/json ContentType.
 type ApplyWorkInfoFetchJSONRequestBody = ApplyWorkInfoFetchRequest
 
+// CreateVirtualVideoJSONRequestBody defines body for CreateVirtualVideo for application/json ContentType.
+type CreateVirtualVideoJSONRequestBody = VirtualVideoCreate
+
+// MergeVirtualVideoJSONRequestBody defines body for MergeVirtualVideo for application/json ContentType.
+type MergeVirtualVideoJSONRequestBody = VirtualVideoMerge
+
 // UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
 type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
+
+// SetWorkInfoPluginLinkOrderJSONRequestBody defines body for SetWorkInfoPluginLinkOrder for application/json ContentType.
+type SetWorkInfoPluginLinkOrderJSONRequestBody = WorkInfoPluginLinkOrder
 
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
@@ -8400,6 +8549,9 @@ type ServerInterface interface {
 	// ListVideos List videos
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
+	// DeleteVideo Delete a virtual video
+	// (DELETE /api/videos/{id})
+	DeleteVideo(w http.ResponseWriter, r *http.Request, id VideoId, params DeleteVideoParams)
 	// GetVideo Return video details
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoParams)
@@ -8505,6 +8657,12 @@ type ServerInterface interface {
 	// GetWorkInfoFetchPersonImage Return a fetched person's image
 	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image)
 	GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
+	// CreateVirtualVideo Create a virtual video
+	// (POST /api/virtual-videos)
+	CreateVirtualVideo(w http.ResponseWriter, r *http.Request)
+	// MergeVirtualVideo Merge a virtual video into a file video
+	// (POST /api/virtual-videos/{id}/merge)
+	MergeVirtualVideo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearWatchHistory Clear all watch history
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -8523,6 +8681,9 @@ type ServerInterface interface {
 	// UploadWorkInfoPlugin Add a work-info plugin or replace one with the same name
 	// (POST /api/work-info-plugins)
 	UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request)
+	// SetWorkInfoPluginLinkOrder Set the order in which plugins are tried for a link
+	// (PUT /api/work-info-plugins/link-order)
+	SetWorkInfoPluginLinkOrder(w http.ResponseWriter, r *http.Request)
 	// DeleteWorkInfoPlugin Delete a work-info plugin
 	// (DELETE /api/work-info-plugins/{id})
 	DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -13102,8 +13263,63 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListVideos(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteVideo operation middleware
+func (siw *ServerInterfaceWrapper) DeleteVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteVideoParams
+
+	// ------------- Required query parameter "contentVersion" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "contentVersion", r.URL.Query(), &params.ContentVersion, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "contentVersion"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "contentVersion", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteVideo(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14410,6 +14626,46 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoFetchPersonImage(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// CreateVirtualVideo operation middleware
+func (siw *ServerInterfaceWrapper) CreateVirtualVideo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateVirtualVideo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeVirtualVideo operation middleware
+func (siw *ServerInterfaceWrapper) MergeVirtualVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeVirtualVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -14626,6 +14882,20 @@ func (siw *ServerInterfaceWrapper) UploadWorkInfoPlugin(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UploadWorkInfoPlugin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWorkInfoPluginLinkOrder operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkInfoPluginLinkOrder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkInfoPluginLinkOrder(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14944,7 +15214,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}", wrapper.DeleteVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos", wrapper.CreateVirtualVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/virtual-videos/{id}/merge", wrapper.MergeVirtualVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
@@ -15023,6 +15296,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/link-order", wrapper.SetWorkInfoPluginLinkOrder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)

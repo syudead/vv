@@ -39,6 +39,7 @@ const full: MediaInfo = {
 
 const bare: Video = {
   id: 7,
+  virtual: false,
   title: "a",
   sizeBytes: 1,
   addedAt: "2026-09-20T03:00:00Z",

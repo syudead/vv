@@ -22,6 +22,7 @@ import {
   selectionEmpty,
   skippedPersonLines,
 } from "./personCompareRows";
+import { typedLink } from "../../../lib/typedLink";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
@@ -61,24 +62,6 @@ export interface LinkRefusal {
 
 export function candidateKey(candidate: CandidateId): string {
   return `${candidate.source}\u0000${candidate.id}`;
-}
-
-/**
- * The link to fetch by when the Name field holds an http or https URL, else undefined. The browser's serialization
- * is sent because the server's URL parser rejects forms the browser repairs, such as `https:example.com`.
- */
-export function typedLink(value: string): string | undefined {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether the Name field holds a link to fetch by instead of words to search. */
-export function isLink(value: string): boolean {
-  return typedLink(value) !== undefined;
 }
 
 function failedWith(error: unknown, code: string): error is RequestFailed {

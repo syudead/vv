@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
@@ -19,6 +19,14 @@ vi.mock("../auth/pageNavigation", async (importOriginal) => ({
 
 type SidebarMode = "rail" | "drawer";
 
+function LocationProbe() {
+  const location = useLocation();
+  const state = location.state as { from?: string } | null;
+  return (
+    <output aria-label="location">{`${location.pathname} from ${state?.from ?? ""}`}</output>
+  );
+}
+
 function stubWidth(phone: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -36,10 +44,12 @@ function renderSidebar({
   audience = "owner",
   mode = "drawer",
   path = "/",
+  probe = false,
 }: {
   audience?: Audience;
   mode?: SidebarMode;
   path?: string;
+  probe?: boolean;
 } = {}) {
   stubWidth(mode === "drawer");
   const result = render(
@@ -54,6 +64,7 @@ function renderSidebar({
           </TooltipProvider>
         </ToastProvider>
       </AudienceProvider>
+      {probe && <LocationProbe />}
     </MemoryRouter>,
   );
   if (mode === "drawer") {
@@ -175,6 +186,59 @@ describe("Sidebar", () => {
       );
       expect(within(nav).queryByRole("link", { name: "Settings" })).toBeNull();
       expect(within(nav).queryByRole("button", { name: "Sign out" })).toBeNull();
+    },
+  );
+
+  it("所有者だけが上段の下端の「New virtual video」から題名を入れて作り、閉じたドロワーの元のページを戻り先に開く", async () => {
+    const user = userEvent.setup();
+    const created: unknown[] = [];
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) !== "/api/virtual-videos") return new Promise(() => undefined);
+      created.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 7, virtual: true, title: "京都の記録" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    renderSidebar({ path: "/folders/3?query=x", probe: true });
+    const main = screen.getByRole("complementary", { name: "Main navigation" });
+    const entry = within(main).getByRole("button", { name: "New virtual video" });
+    expect(entry.closest("nav")).toBeNull();
+    expect(
+      entry.compareDocumentPosition(
+        within(main).getByRole("link", { name: "Activity" }),
+      ) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    expect(
+      entry.compareDocumentPosition(accountNav()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(entry);
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
+    const dialog = await screen.findByRole("dialog", { name: "New virtual video" });
+    const field = within(dialog).getByRole("textbox", { name: "Title" });
+    await user.type(field, "   ");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    expect(within(dialog).getByText("Enter a title or a link.")).toBeDefined();
+    expect(created).toHaveLength(0);
+
+    await user.clear(field);
+    await user.type(field, " 京都の記録 {Enter}");
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "location" }).textContent).toBe(
+        "/videos/7 from /folders/3?query=x",
+      ),
+    );
+    expect(created).toEqual([{ title: "京都の記録" }]);
+  });
+
+  it.each<SidebarMode>(["rail", "drawer"])(
+    "ゲストには「New virtual video」を出さない（%s）",
+    (mode) => {
+      renderSidebar({ audience: "guest", mode });
+      expect(screen.queryByRole("button", { name: "New virtual video" })).toBeNull();
     },
   );
 

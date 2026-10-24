@@ -113,6 +113,18 @@ export function rootFolderName(root: { name: string; rootPath?: string }): strin
   return root.rootPath === undefined ? root.name : rootDisplayName(root.rootPath);
 }
 
+/** Root names by ID, named as breadcrumbs name them. */
+export function rootDisplays(
+  roots: readonly { rootId: number; name: string; rootPath?: string }[],
+): Map<number, RootDisplay> {
+  return new Map(
+    roots.map((root) => [
+      root.rootId,
+      { name: rootFolderName(root), rootPath: root.rootPath },
+    ]),
+  );
+}
+
 /** A crumb without to is the current location. */
 export interface Crumb {
   label: string;

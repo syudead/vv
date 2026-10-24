@@ -39,6 +39,13 @@ func TestRankRelatedWeighsTagsAgainstFolder(t *testing.T) {
 	}
 }
 
+// A virtual video has no path, so two of them share no folder.
+func TestContentRelatednessVirtualSharesNoFolder(t *testing.T) {
+	if got, want := scoreOf(candidate(1, ""), candidate(2, "")), relatedDatePoints*RelatedScoreUnit; got != want {
+		t.Fatalf("score = %d, want %d (date only)", got, want)
+	}
+}
+
 func TestContentRelatednessTagShare(t *testing.T) {
 	self := candidate(1, "/a/x.mp4", 1, 2, 3)
 	cases := []struct {

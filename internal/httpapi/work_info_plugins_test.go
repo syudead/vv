@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -155,6 +157,7 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 	}
 }
 
+// The bundled plugin is the other listed row.
 func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 	e := newPluginEnv(t)
 	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
@@ -181,7 +184,7 @@ func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 	if same.Id != added.Id || same.State != gen.WorkInfoPluginStateUnapproved {
 		t.Fatalf("same bytes again = %+v; want the same row unapproved", same)
 	}
-	if list := e.get("/api/work-info-plugins", e.owner); strings.Count(list.Body.String(), `"id":`) != 1 {
+	if list := e.get("/api/work-info-plugins", e.owner); strings.Count(list.Body.String(), `"id":`) != 2 {
 		t.Fatalf("差し替えが別の行を足した: %s", list.Body)
 	}
 }
@@ -214,7 +217,8 @@ func TestWorkInfoPluginUploadLimits(t *testing.T) {
 	rec = e.uploadParts([]byte(pluginManifest), 2, e.owner)
 	assertErrorBody(t, "module 2 つ", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
-	if list := e.get("/api/work-info-plugins", e.owner); !strings.Contains(list.Body.String(), `"plugins":[]`) {
+	// Only the bundled plugin is listed.
+	if list := e.get("/api/work-info-plugins", e.owner); strings.Count(list.Body.String(), `"id":`) != 1 {
 		t.Fatalf("断った追加が残った: %s", list.Body)
 	}
 }
@@ -307,4 +311,39 @@ func TestWorkInfoPluginRoutesAreOwnerOnly(t *testing.T) {
 	if !strings.Contains(list.Body.String(), `"state":"unapproved"`) || strings.Contains(list.Body.String(), `"value":"en"`) {
 		t.Fatalf("ゲストの要求が書いた: %s", list.Body)
 	}
+}
+
+// The list carries the bundled plugin, which cannot be deleted, and each link plugin's place, which the owner changes
+// by naming every link plugin; an order that misses one changes nothing.
+func TestWorkInfoPluginLinkOrderRoute(t *testing.T) {
+	e := newPluginEnv(t)
+	site := decodePlugin(t, "追加", e.uploadParts([]byte(`{"contract":1,"name":"site","version":"1","operations":["fetch"],`+
+		`"domains":["example.com"]}`), 1, e.owner), http.StatusCreated)
+	if site.LinkRank == nil || *site.LinkRank != 1 || !slices.Equal(site.Domains, []string{"example.com"}) {
+		t.Fatalf("site plugin = %+v; want first in the link order with its domain", site)
+	}
+	list := decode[gen.WorkInfoPluginList](t, e.json(http.MethodGet, "/api/work-info-plugins", "", e.owner))
+	var builtin gen.WorkInfoPlugin
+	for _, p := range list.Plugins {
+		if p.Builtin {
+			builtin = p
+		}
+	}
+	if builtin.LinkRank == nil || *builtin.LinkRank != 2 || !slices.Equal(builtin.Domains, []string{domain.AnyLinkDomain}) {
+		t.Fatalf("bundled plugin = %+v; want it after the site plugin", builtin)
+	}
+	rec := e.json(http.MethodDelete, pluginPath(builtin.Id, ""), "", e.owner)
+	assertErrorBody(t, "deleting the bundled plugin", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodePluginBuiltin})
+
+	order := fmt.Sprintf(`{"pluginIds":[%d,%d]}`, builtin.Id, site.Id)
+	list = decode[gen.WorkInfoPluginList](t, e.json(http.MethodPut, "/api/work-info-plugins/link-order", order, e.owner))
+	for _, p := range list.Plugins {
+		if p.Id == site.Id && (p.LinkRank == nil || *p.LinkRank != 2) {
+			t.Fatalf("site plugin after the new order = %+v; want second", p)
+		}
+	}
+	rec = e.json(http.MethodPut, "/api/work-info-plugins/link-order", fmt.Sprintf(`{"pluginIds":[%d]}`, site.Id), e.owner)
+	assertErrorBody(t, "an order without the bundled plugin", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeLinkOrderChanged})
 }

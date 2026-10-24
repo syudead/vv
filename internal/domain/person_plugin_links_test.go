@@ -24,6 +24,10 @@ func TestLinkMatchesDomainsByHostSuffixOverHTTPOnly(t *testing.T) {
 			t.Errorf("LinkMatchesDomains(%q) = %v; want %v", tc.link, got, tc.want)
 		}
 	}
+	any := []string{AnyLinkDomain}
+	if !LinkMatchesDomains("https://anything.test/x", any) || LinkMatchesDomains("ftp://anything.test/x", any) {
+		t.Error("AnyLinkDomain must match every http or https link and nothing else")
+	}
 }
 
 func TestPersonFetchLinksFoldsSchemeHostCaseAndTrailingSlashOnly(t *testing.T) {
@@ -52,13 +56,13 @@ func TestPersonFetchLinksFoldsSchemeHostCaseAndTrailingSlashOnly(t *testing.T) {
 	}
 }
 
-func TestNormalizePersonFetchLinkAcceptsOnlyHTTPURLs(t *testing.T) {
-	if got, err := NormalizePersonFetchLink("  https://example.com/p/1  "); err != nil || got != "https://example.com/p/1" {
-		t.Fatalf("NormalizePersonFetchLink = %q, %v; want the trimmed link", got, err)
+func TestNormalizeFetchLinkAcceptsOnlyHTTPURLs(t *testing.T) {
+	if got, err := NormalizeFetchLink("  https://example.com/p/1  "); err != nil || got != "https://example.com/p/1" {
+		t.Fatalf("NormalizeFetchLink = %q, %v; want the trimmed link", got, err)
 	}
 	for _, raw := range []string{"", "Hanako", "ftp://example.com/p/1", "https:///p/1", "https://example.com/\n"} {
-		if _, err := NormalizePersonFetchLink(raw); !errors.Is(err, ErrWorkInfoRunInvalid) {
-			t.Errorf("NormalizePersonFetchLink(%q) err = %v; want ErrWorkInfoRunInvalid", raw, err)
+		if _, err := NormalizeFetchLink(raw); !errors.Is(err, ErrWorkInfoRunInvalid) {
+			t.Errorf("NormalizeFetchLink(%q) err = %v; want ErrWorkInfoRunInvalid", raw, err)
 		}
 	}
 }

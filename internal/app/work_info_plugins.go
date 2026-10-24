@@ -30,8 +30,10 @@ type WorkInfoPluginStore interface {
 	RevokeWorkInfoPlugin(ctx context.Context, id int64, now time.Time) (domain.WorkInfoPlugin, error)
 	// SetWorkInfoPluginValues revalidates transactionally like approval; unknown keys or oversized values additionally return ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginValues(ctx context.Context, id int64, values map[string]*string, now time.Time) (domain.WorkInfoPlugin, error)
-	// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound.
+	// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound or ErrWorkInfoPluginBuiltin.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
+	// SetLinkOrder ranks the plugins that handle links, or returns ErrLinkOrderChanged without writes.
+	SetLinkOrder(ctx context.Context, order []int64) ([]domain.WorkInfoPlugin, error)
 	// SaveWorkInfoPluginRun replaces the latest log only if the row exists and its generation matches run.Generation.
 	SaveWorkInfoPluginRun(ctx context.Context, run domain.WorkInfoPluginRun) error
 	// WorkInfoPluginRun returns the latest run and its presence, or ErrNotFound for a missing plugin.
@@ -78,6 +80,8 @@ type WorkInfoPlugins struct {
 	people       PersonPluginPeople
 	now          func() time.Time
 	fetches      *workInfoFetches
+	// links is nil until StartLinkFetches.
+	links *linkFetches
 }
 
 // NewWorkInfoPlugins creates the plugin use case.
@@ -116,6 +120,9 @@ func (p *WorkInfoPlugins) UploadWorkInfoPlugin(
 	manifest, problem, err := p.runtime.Inspect(ctx, module)
 	if err != nil {
 		return domain.WorkInfoPluginEntry{}, false, err
+	}
+	if manifest.Name == domain.LinkPluginName {
+		return domain.WorkInfoPluginEntry{}, false, domain.ErrWorkInfoPluginBuiltin
 	}
 	if fileName == "" {
 		fileName = workInfoPluginDefaultFileName
@@ -171,7 +178,21 @@ func (p *WorkInfoPlugins) SetWorkInfoPluginSettings(
 	return entryOf(p.store.SetWorkInfoPluginValues(ctx, id, values, p.now()))
 }
 
-// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound.
+// SetLinkOrder sets the order in which the plugins that declare domains are tried for a link; order must name each
+// of them once, or ErrLinkOrderChanged is returned. The list is returned as ListWorkInfoPlugins returns it.
+func (p *WorkInfoPlugins) SetLinkOrder(ctx context.Context, order []int64) ([]domain.WorkInfoPluginEntry, error) {
+	plugins, err := p.store.SetLinkOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]domain.WorkInfoPluginEntry, 0, len(plugins))
+	for _, plugin := range plugins {
+		entries = append(entries, plugin.Entry())
+	}
+	return entries, nil
+}
+
+// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound or ErrWorkInfoPluginBuiltin.
 func (p *WorkInfoPlugins) DeleteWorkInfoPlugin(ctx context.Context, id int64) error {
 	return p.store.DeleteWorkInfoPlugin(ctx, id)
 }

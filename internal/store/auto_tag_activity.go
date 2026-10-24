@@ -13,9 +13,11 @@ import (
 
 // Update auto-tag activity in the queue transaction; retain applied tags for atomic per-tag undo.
 
-// Prefer the override label, then a registered representative location, then the content key.
+// Prefer the override label, then a virtual video's title, then a registered representative location, then the
+// content key.
 func contentLabelExpr(keyExpr string) string {
 	return `coalesce((select nullif(ov.display_name, '') from video_overrides ov where ov.content_key = ` + keyExpr + `),
+		(select vv.title from virtual_videos vv where vv.user_key = ` + keyExpr + `),
 		(select l.title from videos lv join video_locations l on l.video_id = lv.id
 			where lv.content_key = ` + keyExpr + ` and ` + registeredLocationCondition("l") + ` order by l.path limit 1),
 		` + keyExpr + `)`

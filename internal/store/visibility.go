@@ -26,9 +26,25 @@ func visibleLocationCondition(alias string, audience domain.Audience) string {
 	return registered + ` and ` + publicVideoCondition(alias)
 }
 
+// A file video needs a visible location; a projected virtual video has none and follows visibleVirtualCondition.
 func visibleVideoCondition(alias string, audience domain.Audience) string {
-	return `exists (select 1 from video_locations l where l.video_id = ` + alias + `.id and ` +
-		visibleLocationCondition("l", audience) + `)`
+	return `(exists (select 1 from video_locations l where l.video_id = ` + alias + `.id and ` +
+		visibleLocationCondition("l", audience) + `) or ` + visibleVirtualCondition(alias+`.content_key`, audience) + `)`
+}
+
+// The owner sees every virtual video; a guest sees one only while its user key is public.
+func visibleVirtualCondition(key string, audience domain.Audience) string {
+	condition := `exists (select 1 from virtual_videos vis_vv where vis_vv.user_key = ` + key + `)`
+	if audience.IsOwner() {
+		return condition
+	}
+	return condition + ` and exists (select 1 from public_videos vis_pub where vis_pub.content_key = ` + key + `)`
+}
+
+// User data attaches to a video with a registered location or to a virtual video.
+func libraryVideoCondition(alias string) string {
+	return `(` + registeredVideoCondition(alias) + ` or ` +
+		visibleVirtualCondition(alias+`.content_key`, domain.AudienceOwner) + `)`
 }
 
 var publicColumn = `exists (select 1 from public_videos pub where pub.content_key = ` + userKeyExpr("videos") +

@@ -14,6 +14,7 @@ import { itemTitle } from "./playlistItems";
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
+    virtual: false,
     title: `Video ${String(id)}`,
     public: false,
     sizeBytes: 1024,
@@ -331,6 +332,58 @@ describe("PlaylistPage", () => {
         'Video page /videos/13?playlist=7&item=3 {"from":"/playlists/7","autoplay":true}',
       ),
     ).toBeDefined();
+  });
+
+  it("先頭のバーチャルな項目を「Play」は飛ばし、その行は長さの代わりに印を出して、そのページを開く", async () => {
+    server.items = [
+      {
+        id: 1,
+        kind: "video",
+        video: video(11, { virtual: true, playable: false, durationMs: undefined }),
+      },
+      { id: 2, kind: "group", group: group("Series", 21) },
+    ];
+    renderPage();
+    const table = await screen.findByRole("table", { name: "Items" });
+
+    expect(
+      screen
+        .getByRole("link", { name: 'Play "Morning" from the top' })
+        .getAttribute("href"),
+    ).toBe("/videos/21?playlist=7&item=2");
+    const row = within(table).getAllByRole("row")[0]!;
+    expect(within(row).getAllByText("Virtual")).toHaveLength(2);
+    expect(within(row).getAllByText("Virtual video, no file")).toHaveLength(1);
+    expect(
+      within(row).getByRole("link", { name: "Play from Video 11" }).getAttribute("href"),
+    ).toBe("/videos/11?playlist=7&item=1");
+    expect(
+      screen.queryByText("These are all virtual videos, so there's nothing to play."),
+    ).toBeNull();
+  });
+
+  it("全項目がバーチャルなら「Play」を出さず、再生できるものが無い理由を説明に出す", async () => {
+    server.items = [
+      {
+        id: 1,
+        kind: "video",
+        video: video(11, { virtual: true, playable: false, durationMs: undefined }),
+      },
+      {
+        id: 3,
+        kind: "video",
+        video: video(13, { virtual: true, playable: false, durationMs: undefined }),
+      },
+    ];
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+
+    expect(
+      screen.getByText("These are all virtual videos, so there's nothing to play."),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: 'Play "Morning" from the top' }),
+    ).toBeNull();
   });
 
   it("キーボードで項目を動かすと、上にある項目を付けて move を送り、読み直しても新しい順で出る", async () => {

@@ -244,13 +244,13 @@ small label in a 56px (`rail-item`) square, so every entry stays named.
 Card width follows the zoom level. Guest rules are in
 [authentication.md](authentication.md).
 
-| Part                                      | Owner                  | Guest                                |
-| ----------------------------------------- | ---------------------- | ------------------------------------ |
-| Sidebar, upper                            | All entries            | `Home`, `Library` and `Folders` only |
-| Sidebar, lower                            | `Settings`, `Sign out` | `Sign in`                            |
-| `Scan library` button and import progress | Shown                  | Hidden                               |
-| Sort orders                               | 9                      | 7                                    |
-| Filter button                             | Shown                  | Hidden                               |
+| Part                                      | Owner                                               | Guest                                |
+| ----------------------------------------- | --------------------------------------------------- | ------------------------------------ |
+| Sidebar, upper                            | All entries, then `New virtual video` at its bottom | `Home`, `Library` and `Folders` only |
+| Sidebar, lower                            | `Settings`, `Sign out`                              | `Sign in`                            |
+| `Scan library` button and import progress | Shown                                               | Hidden                               |
+| Sort orders                               | 9                                                   | 7                                    |
+| Filter button                             | Shown                                               | Hidden                               |
 
 The toolbar holds search, filters, sort, view (library only) and zoom, in
 that Tab order. It never wraps: the search field takes the remaining width,
@@ -405,6 +405,25 @@ Video card behaviour:
 | Hover preview                                | One at a time on any screen                                                                                                                                                    |
 | Zoom changed                                 | Returns to the card that was at the top                                                                                                                                        |
 
+A virtual video, which has no file, is a video card of the same size whose
+duration pill holds `VirtualMark` (the `SquareDashed` icon and `Virtual`), after
+a public mark when there is one. Its sr-only `Virtual video, no file` is the
+card link's `aria-describedby`. The card has no progress, unplayable notice,
+hover preview or scrub band, and without an uploaded image its frame shows the
+placeholder of a file video whose thumbnail is not made yet.
+
+The owner creates a virtual video from `New virtual video` (`SquareDashed`),
+an entry at the bottom of the sidebar's upper area, above the account entries;
+guests never see it. Creating one is rare, so it stays out of the library
+header, which keeps only `Save as smart folder` while filters apply. The entry
+is a button, not a screen link, and in the narrow-width drawer it closes the
+drawer first, as the other entries do. It opens a dialog with a `Title` field
+and a `Link` field, built from the parts `NameDialog` uses; either one is
+enough, a link that is not http or https is refused under its field, and
+`POST /api/virtual-videos` then opens the new video's page with the page the
+owner was on as its return target. A link starts the fetch that fills the
+empty fields ([link-fetch.md](link-fetch.md)).
+
 Folder, group and smart folder cards show the name on up to two lines with the
 full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
@@ -499,7 +518,9 @@ List view (library only) shows title, favorite (owner), add to playlist and
 add to group (owner, from `sm`; below it the selection bar offers them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
-title, `3 / 12` watched, total duration and size, empty quality.
+title, `3 / 12` watched, total duration and size, empty quality. A virtual
+video's row shows the virtual mark in the duration cell, empty quality and size
+cells and its creation time as the date added.
 
 Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
@@ -805,6 +826,51 @@ starts from the page's video and returns along the history, so the page's `×`
 still leads to the list; opened by its URL, it reads the video first, and a
 guest is sent to sign in.
 
+### Virtual video page
+
+A virtual video has no file, so its page keeps a file video's layout and
+leaves out only what needs a file. Its links and description read where a file
+video's do.
+
+| Part          | Rule                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header band   | `Virtual video` with `SquareDashed`, muted and not a link, in the breadcrumb's place                                                                                                                                                                                                                                                                                               |
+| Media         | The player frame holding the uploaded image (`object-contain`), as a file video's frame shows its thumbnail, or `SquareDashed` over `No thumbnail`. No play button or control bar. Where a file video's frame starts playback, a press opens the first link in a new tab, named `Open on {host}` with an `ExternalLink` badge in the centre; without a link the frame does nothing |
+| Tabs          | Overview, Work, People and Thumbnail under [the tab rules](#tabs); no Versions or File & media, since there is no file. Overview's facts are `Added` and, for the owner, `Edited`; no length or resolution. A guest sees Overview alone                                                                                                                                            |
+| Thumbnail tab | `Current`: the uploaded image, or the empty frame over `No thumbnail yet`, with `Remove image` while an image exists. `Replace with`: `An image` alone, whose `Upload…` opens the `ImageUploadDialog` and then a preview with framing only                                                                                                                                         |
+| Actions       | Favorite, `Playlist`, `Group`, `Edit` and `More` (`Ellipsis`) on the title row's action line, with the visibility switch at its right end, as on a file video; `More` holds `Merge into a file video…` and, after a separator, `Delete…`; the work-info fetch on the Work tab                                                                                                      |
+
+The links first sat under the tags as buttons and then in the player frame
+over the image. The maintainer asked for the page a file video has: a virtual
+video may have an image and no link, and a frame that changed with its links
+made the two kinds of page look unrelated.
+
+Saves of the title, the details, deletion and merging send the `contentVersion` the
+page read. `409 content_changed` shows
+`This video changed in another tab.` with `Reload`, and `404` shows that the
+video is gone without recreating it: the page shows the missing-video layer,
+and the details editor shows `This virtual video was deleted or merged.` with
+`Back to the library`. An empty title is refused with `Enter a title.` before
+sending.
+
+`Merge into a file video…` opens a `FormDialog` whose `Command` searches the
+owner's file videos (`GET /api/videos?kind=file`), 20 rows per read and more
+on scroll. Each row shows the thumbnail at `w-list-thumb`, the title on one
+line, and the duration and folder under it. Choosing a row marks it, and only
+it, with the `primary-soft` fill and a `Check`; `Merge` stays disabled until
+then. Changing the search clears the choice, so `Merge` never sends a video
+the new results hide. A popover picker of names was rejected because the thumbnail and the
+folder are what tell similar file videos apart, and merging into the wrong one
+cannot be undone.
+
+| Result                                      | Screen                                                                                                                                                                              |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200`                                       | The page replaces itself with the file video's page, keeping the return target, and shows `Merged into "{title}"`; list snapshots are cleared so the library drops the virtual card |
+| `409 description_too_long`, `too_many_urls` | The limit the combined work information would pass, in a `destructive` `Alert`; the dialog and the choice stay                                                                      |
+| `409 content_changed`                       | `One of the videos changed in another tab.` with `Reload`, which closes the dialog and re-reads the page                                                                            |
+| `404`                                       | `One of the videos is no longer in the library.`                                                                                                                                    |
+| Other                                       | `Couldn't merge: {reason}`                                                                                                                                                          |
+
 ### Player states
 
 Loading, import stages, read failure, playback failure, video gone and playback
@@ -952,6 +1018,13 @@ as one row with the group item's shape and the `FolderSearch` icon, on the
 playlist screen and in the panel; its link and every playlist step onto it
 carry `smartFolder` from the item or from the step's `smartFolderId`, and a
 folder with no video is a row without a link.
+
+A virtual video in a playlist is a row with the virtual mark in the duration's
+place. The playlist page's `Play` starts at the first item that is not a
+virtual video and is absent without one; when every item is a virtual video,
+the header's description says there is nothing to play. The panel shows
+`Nothing to play` under its heading when the playback read's `playableCount`
+is `0`.
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into
 view on wide screens; on narrow widths scrolling would move the whole page and

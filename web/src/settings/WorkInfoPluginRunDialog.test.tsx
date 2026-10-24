@@ -25,6 +25,7 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
     kind: "work",
     sources: [],
     domains: [],
+    builtin: false,
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",

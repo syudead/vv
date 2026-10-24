@@ -33,7 +33,8 @@ export function creditedPeopleCount(info: WorkInfo | undefined): number {
 
 /**
  * The tabs a video has, in strip order. `workPlugin` is whether an approved work-info plugin
- * exists; callers pass false until the plugin list has been read.
+ * exists; callers pass false until the plugin list has been read. A virtual video has no file,
+ * so it has no Versions or File & media tab.
  */
 export function availableTabs(
   video: Video,
@@ -44,9 +45,9 @@ export function availableTabs(
     overview: true,
     work: owner && (hasWorkItems(video.workInfo) || workPlugin),
     people: owner && creditedPeopleCount(video.workInfo) > 0,
-    versions: (video.versions?.count ?? 0) >= 2,
+    versions: !video.virtual && (video.versions?.count ?? 0) >= 2,
     thumbnail: owner,
-    file: true,
+    file: !video.virtual,
   };
   return videoTabs.filter((tab) => shown[tab]);
 }

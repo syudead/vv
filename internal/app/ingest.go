@@ -39,6 +39,11 @@ type IngestStore interface {
 	// After frame publication under the generation lock, atomically remove the image row and mark
 	// matching content done.
 	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
+	// Under the generation lock, remove a virtual video's image and return its thumbnail to the placeholder; a key
+	// other than contentKey is ErrContentChanged and a file video ErrNotVirtual.
+	RemoveVirtualThumbnailImage(ctx context.Context, videoID int64, contentKey string) (domain.Video, error)
+	// Keys of the virtual videos that have an uploaded image.
+	VirtualThumbnailKeys(ctx context.Context) ([]string, error)
 	// Nil means no applied image.
 	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
 	// Nil means no applied image or one applied before sources were stored.
@@ -58,6 +63,7 @@ type ArtifactStore interface {
 	ArtifactRemover
 	// write leaves poster empty when it has no larger image; the store then removes the old poster.
 	PublishThumbnail(contentKey string, write func(output, poster string) error) error
+	ThumbnailAvailable(contentKey string) bool
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
 	// Reuse complete sprites without write unless forced, replacing incomplete legacy directories during
@@ -309,7 +315,8 @@ func (i *Ingest) SetThumbnailPosition(
 
 // RevertThumbnailImage rereads position under the generation lock and restores that frame or the
 // automatic frame, even when no applied image exists. It shares SetThumbnailPosition identity
-// checks and rollback, preserving the image row/file on extraction failure.
+// checks and rollback, preserving the image row/file on extraction failure. A virtual video has no frame, so its
+// image is removed and its thumbnail returns to the placeholder.
 func (i *Ingest) RevertThumbnailImage(
 	ctx context.Context, videoID int64, locationPath, path string,
 ) (domain.Video, error) {
@@ -319,6 +326,9 @@ func (i *Ingest) RevertThumbnailImage(
 	}
 	if video.ContentKey == "" {
 		return domain.Video{}, domain.ErrNotFound
+	}
+	if video.Virtual() {
+		return i.removeVirtualThumbnailImage(ctx, video)
 	}
 	return i.replaceThumbnailWithFrame(ctx, video, locationPath, path,
 		func() (*int64, error) {
@@ -399,6 +409,18 @@ func (i *Ingest) replaceThumbnailWithFrame(
 func (i *Ingest) ApplyThumbnailImage(
 	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
+	return i.applyThumbnailImage(ctx, videoID, contentKey, image, origin, false)
+}
+
+// errThumbnailImageSet stops a fill that found an image already applied under the generation lock.
+var errThumbnailImageSet = errors.New("the video already has a thumbnail image")
+
+// applyThumbnailImage is ApplyThumbnailImage; onlyEmpty refuses with errThumbnailImageSet a video that has an
+// applied image when the lock is taken, so a fill never replaces an image applied meanwhile.
+func (i *Ingest) applyThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
+	onlyEmpty bool,
+) (domain.Video, error) {
 	if contentKey == "" {
 		return domain.Video{}, domain.ErrContentChanged
 	}
@@ -413,6 +435,9 @@ func (i *Ingest) ApplyThumbnailImage(
 		}
 		if video.ContentKey != contentKey {
 			return false, domain.ErrContentChanged
+		}
+		if onlyEmpty && video.ThumbnailImageRevision != 0 {
+			return false, errThumbnailImageSet
 		}
 		applied, err := i.fitThumbnailImage(ctx, image, video, origin)
 		if err != nil {

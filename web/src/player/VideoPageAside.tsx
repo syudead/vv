@@ -57,6 +57,7 @@ export default function VideoPageAside({
             name={playback?.playlist.name}
             position={playback?.position ?? 0}
             count={playback?.count ?? 0}
+            nothingToPlay={playback?.playableCount === 0}
             currentItemId={panelCurrentItemId(playback, playlist.itemId)}
             backTo={backTo}
             autoplay={autoplay}

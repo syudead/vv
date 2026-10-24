@@ -17,6 +17,7 @@ import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSna
 function item(id: number, favorite = false): Video {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: false,
     sizeBytes: 1024,

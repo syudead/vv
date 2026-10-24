@@ -97,11 +97,14 @@ type VideoQuery struct {
 	PersonRole PersonRole
 	// TagKindID matches manual or folder-derived tags; zero disables filtering and nonexistent IDs match nothing.
 	TagKindID int64
+	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.
+	Kind VideoKind
 }
 
-// ListsSmartFolders allows only unfiltered or favorite-only listings; sort order does not count as a filter.
+// ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
-	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0
+	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
+		q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
 }
 
 type VideoPage struct {

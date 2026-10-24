@@ -54,7 +54,8 @@ func TestApplyFetchedWorkInfoWritesTitleAndTentativeTags(t *testing.T) {
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 	applied, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Title: &title,
+		VideoID: ids[fixturePath("/media/alpha.mp4")], ContentKey: "key-alpha",
+		PluginID: plugin.ID, Digest: "d1", Title: &title,
 		Tags: []string{"drama", "spoiler", "comedy"},
 	})
 	if err != nil {
@@ -97,7 +98,8 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
+		VideoID: ids["b"], ContentKey: videoContentKey(t, db, ids["b"]),
+		PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
@@ -110,7 +112,8 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	recorder.events = nil
 	title := "Fetched"
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Title: &title,
+		VideoID: ids["b"], ContentKey: videoContentKey(t, db, ids["b"]),
+		PluginID: plugin.ID, Digest: "d1", Title: &title,
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
@@ -125,7 +128,8 @@ func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 	plugin := approvedPlugin(t, db, "example", "d1")
 	setDisplayName(t, db, ids[fixturePath("/media/alpha.mp4")], "Mine")
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
+		VideoID: ids[fixturePath("/media/alpha.mp4")], ContentKey: "key-alpha",
+		PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +191,8 @@ func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T)
 			tags := allTagCount(t, db)
 			title := "Fetched"
 			_, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
-				VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation,
+				VideoID: ids[fixturePath("/media/alpha.mp4")], ContentKey: "key-alpha",
+				PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation,
 				Title: &title, Tags: []string{"drama"},
 			})
 			if !errors.Is(err, domain.ErrWorkInfoFetchStale) {
@@ -214,7 +219,8 @@ func TestApplyFetchedWorkInfoFailureWritesNeitherField(t *testing.T) {
 	}
 	bad := "bad\ttitle"
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Title: &bad, Tags: []string{"drama"},
+		VideoID: ids[fixturePath("/media/alpha.mp4")], ContentKey: "key-alpha",
+		PluginID: plugin.ID, Digest: "d1", Title: &bad, Tags: []string{"drama"},
 	}); !errors.Is(err, domain.ErrInvalidDisplayName) {
 		t.Fatalf("bad title: err = %v; want ErrInvalidDisplayName", err)
 	}
@@ -234,7 +240,8 @@ func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
-		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama", "comedy"},
+		VideoID: ids[fixturePath("/media/alpha.mp4")], ContentKey: "key-alpha",
+		PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama", "comedy"},
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
@@ -243,6 +250,107 @@ func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 	}
 	if got := tentativeOf(t, db, "key-alpha", tagIDByName(t, db, "comedy")); got != 0 {
 		t.Fatalf("comedy assignment tentative = %d; want 0", got)
+	}
+}
+
+// A virtual video takes the fetched title as its own title, never as a display-name override, and the other fields as
+// work information under its key; a stale plugin leaves it unchanged.
+func TestApplyFetchedWorkInfoToVirtualVideo(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	virtual := createVirtual(t, db, "Before", fixedTime)
+	plugin := approvedPlugin(t, db, "example", "d1")
+	title := "  Fetched title  "
+	apply := domain.FetchedWorkInfoApply{
+		VideoID: virtual.ID, ContentKey: virtual.ContentKey,
+		PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation, Title: &title,
+		Details: domain.FetchedWorkInfo{
+			Description: "Fetched notes", Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "2024-03-01"}},
+			URLs: []string{"https://example.com/works/1"},
+		},
+		DetailFields: []domain.WorkInfoField{
+			domain.WorkInfoFieldDescription, domain.DateField(domain.DateRelease), domain.WorkInfoFieldURLs,
+		},
+	}
+	stored := func() (string, domain.WorkInfo, int) {
+		t.Helper()
+		var stored string
+		var overrides int
+		if err := db.sql.QueryRow(`select title from virtual_videos where user_key = ?`, virtual.UserKey).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.sql.QueryRow(`select count(*) from video_overrides where content_key = ?`, virtual.UserKey).Scan(&overrides); err != nil {
+			t.Fatal(err)
+		}
+		infos, err := db.WorkInfo().ByUserKeys(ctx, []string{virtual.UserKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stored, infos[virtual.UserKey], overrides
+	}
+
+	if _, err := db.WorkInfoPlugins().RevokeWorkInfoPlugin(ctx, plugin.ID, pluginNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, apply); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+		t.Fatalf("revoked plugin: err = %v, want ErrWorkInfoFetchStale", err)
+	}
+	if got, info, overrides := stored(); got != "Before" || info.Description != "" || len(info.URLs) != 0 || overrides != 0 {
+		t.Fatalf("after a stale apply: title %q, work info %+v, %d overrides; want nothing written", got, info, overrides)
+	}
+
+	plugin = approvedPlugin(t, db, "example", "d1")
+	apply.Generation = plugin.Generation
+	applied, err := db.Overrides().ApplyFetchedWorkInfo(ctx, apply)
+	if err != nil {
+		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
+	}
+	got, info, overrides := stored()
+	if got != "Fetched title" || applied.Video.Title != "Fetched title" || overrides != 0 {
+		t.Fatalf("title %q (video %q), %d overrides; want the trimmed title in virtual_videos alone",
+			got, applied.Video.Title, overrides)
+	}
+	if info.Description != "Fetched notes" || !slices.Equal(info.URLs, apply.Details.URLs) ||
+		!slices.Equal(info.Dates, apply.Details.Dates) {
+		t.Fatalf("work info = %+v; want the fetched description, release date and link", info)
+	}
+}
+
+// A fetch is bound to the video's key: once that virtual video is deleted and a new one reuses its projected row ID,
+// the held result must not land on the new video.
+func TestApplyFetchedWorkInfoRefusesAVideoThatReusedTheFetchedID(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	fetched := createVirtual(t, db, "Fetched for", fixedTime)
+	plugin := approvedPlugin(t, db, "example", "d1")
+	if err := db.VirtualVideos().Delete(ctx, fetched.ID, fetched.UserKey); err != nil {
+		t.Fatal(err)
+	}
+	reused := createVirtual(t, db, "Unrelated", fixedTime)
+	if reused.ID != fetched.ID {
+		t.Fatalf("new virtual video ID = %d; want the deleted ID %d reused", reused.ID, fetched.ID)
+	}
+
+	title := "Fetched title"
+	_, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+		VideoID: fetched.ID, ContentKey: fetched.ContentKey,
+		PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation, Title: &title,
+		Details:      domain.FetchedWorkInfo{Description: "Fetched notes"},
+		DetailFields: []domain.WorkInfoField{domain.WorkInfoFieldDescription},
+	})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err = %v; want ErrNotFound", err)
+	}
+	var stored string
+	if err := db.sql.QueryRow(`select title from virtual_videos where user_key = ?`, reused.UserKey).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	infos, err := db.WorkInfo().ByUserKeys(ctx, []string{reused.UserKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored != "Unrelated" || infos[reused.UserKey].Description != "" {
+		t.Fatalf("new video: title %q, work info %+v; want it unchanged", stored, infos[reused.UserKey])
 	}
 }
 
@@ -261,4 +369,14 @@ func TestWorkInfoPluginModuleReturnsTheRowAndBytes(t *testing.T) {
 	if _, _, err := s.WorkInfoPluginModule(ctx, 9999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing: err = %v; want ErrNotFound", err)
 	}
+}
+
+// videoContentKey is the key a work-information fetch binds for the video.
+func videoContentKey(t *testing.T, db *DB, videoID int64) string {
+	t.Helper()
+	var key string
+	if err := db.sql.QueryRow(`select content_key from videos where id = ?`, videoID).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	return key
 }

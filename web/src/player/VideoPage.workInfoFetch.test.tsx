@@ -166,6 +166,30 @@ describe("VideoPage work-info fetch", () => {
     );
   });
 
+  it("どのリンクも読むプラグインはファイルのある動画のリンクから始め、それをリンクとして取得する", async () => {
+    const link = "https://site.example/watch?v=1";
+    server.video = { ...video, workInfo: { ...coded, urls: [link] } };
+    server.plugins = [
+      {
+        ...works,
+        id: 3,
+        name: "vv.link",
+        builtin: true,
+        domains: ["*"],
+        operations: ["fetch"],
+        settings: [],
+      },
+    ];
+    server.fetch.mockImplementation(() => json(fetchResult({ title: "リンクの題名" })));
+    const { user, dialog } = await openDialog();
+    const query = within(dialog).getByRole("textbox", { name: "Link" });
+    expect(query).toHaveProperty("value", link);
+    expect(within(dialog).getByText("Fetched by this link.")).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await within(dialog).findByRole("checkbox", { name: "Title" });
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, link });
+  });
+
   it("今と同じ題名は Same as now に畳み、選ぶものが無ければ Apply selected は押せない", async () => {
     server.fetch.mockImplementation(() =>
       json(fetchResult({ title: "テスト動画", tags: ["既存"] }), 201),

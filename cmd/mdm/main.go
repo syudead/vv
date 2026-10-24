@@ -290,6 +290,11 @@ func run(opts runOptions) error {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
+	workersDone.Go(func() {
+		if err := ingest.RepublishVirtualThumbnails(backgroundCtx); err != nil {
+			logger.Warn("could not republish the thumbnails of virtual videos", slog.Any("error", err))
+		}
+	})
 	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
@@ -381,6 +386,7 @@ func run(opts runOptions) error {
 		WatchHistory:     playbackStore,
 		Activity:         activity,
 		Overrides:        db.Overrides(),
+		VirtualVideos:    db.VirtualVideos(),
 		Versions:         db.Versions(),
 		// Thumbnail position changes share ingestion's generation lock.
 		ThumbnailPicker: ingest,

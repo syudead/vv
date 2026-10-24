@@ -271,6 +271,7 @@ describe("App", () => {
       "Organizations",
       "Duplicates",
       "Activity",
+      "New virtual video",
       "Settings",
       "Sign out",
     ]);

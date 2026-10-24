@@ -18,7 +18,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import RootFolderCard from "./RootFolderCard";
 import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
-import { type RootDisplay, rootFolderName } from "./folderPath";
+import { rootDisplays } from "./folderPath";
 import { Section } from "./layout";
 import RootSearchResults, { ROOT_SEARCH_KEY } from "./RootSearchResults";
 import { CardsLoading, FolderEmpty, GuestEmpty, LoadFailed } from "./states";
@@ -54,17 +54,7 @@ export default function RootView() {
   const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
-  // Match breadcrumb naming: use rootDisplayName with an absolute path, otherwise the server's name.
-  const rootNames = useMemo(
-    () =>
-      new Map<number, RootDisplay>(
-        folders.map((folder) => [
-          folder.rootId,
-          { name: rootFolderName(folder), rootPath: folder.rootPath },
-        ]),
-      ),
-    [folders],
-  );
+  const rootNames = useMemo(() => rootDisplays(folders), [folders]);
   const searching = criteria.query !== "";
 
   const scan = useScanControls();

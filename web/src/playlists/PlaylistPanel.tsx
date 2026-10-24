@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, ListVideo } from "lucide-react";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useId, useLayoutEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -41,6 +41,7 @@ export default function PlaylistPanel({
   name,
   position,
   count,
+  nothingToPlay = false,
   currentItemId,
   backTo,
   autoplay,
@@ -54,6 +55,8 @@ export default function PlaylistPanel({
   /** Hide position information when unknown or zero. */
   position: number;
   count: number;
+  /** True when the playback read finds no visible item with a file. */
+  nothingToPlay?: boolean;
   currentItemId: number | undefined;
   backTo: string;
   autoplay: boolean;
@@ -98,6 +101,11 @@ export default function PlaylistPanel({
           </span>
         )}
       </div>
+      {nothingToPlay && (
+        <p className="pb-3 text-xs text-muted-foreground">
+          {t.player.playlist.nothingToPlay}
+        </p>
+      )}
       {panel.kind === "loading" && (
         <ul
           aria-hidden="true"
@@ -288,6 +296,7 @@ function VideoRow({
 }) {
   const preview = useHoverPreview(video);
   const { scrub, release, setLink } = useRelatedScrub(video, preview);
+  const markId = useId();
   return (
     <li>
       <Link
@@ -295,6 +304,7 @@ function VideoRow({
         to={to}
         state={state}
         aria-label={label}
+        aria-describedby={video.virtual ? markId : undefined}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
         className="-m-1.5 flex flex-col gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent"
@@ -303,6 +313,7 @@ function VideoRow({
           video={video}
           preview={preview}
           scrub={scrub}
+          markId={markId}
           marks={<CardNumber position={position} />}
         />
         {text}
