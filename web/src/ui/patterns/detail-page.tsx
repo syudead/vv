@@ -19,6 +19,11 @@ export interface DetailPageProps {
   contentClassName?: string;
   /** Root CSS variables consumed by contentClassName. */
   style?: CSSProperties;
+  /**
+   * From lg, run the media across the window above the content and aside, and let the page scroll
+   * as one. Only classes change, so toggling it keeps the media mounted.
+   */
+  theater?: boolean;
 }
 
 export function DetailPage({
@@ -28,6 +33,7 @@ export function DetailPage({
   children,
   contentClassName,
   style,
+  theater = false,
 }: DetailPageProps) {
   return (
     <DensityProvider density="viewing">
@@ -42,22 +48,49 @@ export function DetailPage({
         >
           {header}
         </div>
-        <div className="flex w-full flex-col gap-5 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6">
+        <div
+          data-theater={theater ? "" : undefined}
+          className={cn(
+            "flex w-full flex-col gap-5",
+            theater
+              ? "lg:grid lg:grid-cols-detail-theater lg:gap-x-6 lg:gap-y-6"
+              : "lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6",
+          )}
+        >
           {/*
            * Expand scrolling edges with padding to preserve focus rings; establish a relative
            * container so absolute accessibility elements cannot enlarge the page.
            */}
           <div
             data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6"
+            className={cn(
+              "flex min-w-0 flex-col gap-5",
+              // Theater mode lifts the media and children into the row's grid.
+              theater
+                ? "lg:contents"
+                : "lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6",
+            )}
           >
             <div
               data-slot="detail-page-content"
-              className={cn("flex flex-col gap-6 lg:mx-auto lg:w-full", contentClassName)}
+              className={cn(
+                "flex flex-col gap-6",
+                theater ? "lg:contents" : cn("lg:mx-auto lg:w-full", contentClassName),
+              )}
             >
-              {media}
+              <div
+                data-slot="detail-page-media"
+                className={theater ? "contents lg:col-span-full lg:block" : "contents"}
+              >
+                {media}
+              </div>
               {/* Room under the last child, so it is not read against the window's edge. */}
-              <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 lg:px-0 lg:pb-16">
+              <div
+                className={cn(
+                  "flex flex-col gap-3 px-4 pb-10 sm:px-6 lg:pb-16",
+                  theater ? "lg:min-w-0 lg:pr-0 lg:pl-6" : "lg:px-0",
+                )}
+              >
                 {children}
               </div>
             </div>
@@ -69,7 +102,10 @@ export function DetailPage({
           {aside && (
             <aside
               data-slot="detail-page-aside"
-              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:-mr-6 lg:border-t-0 lg:border-l lg:pt-6 lg:pr-0 lg:pl-5 xl:w-detail-aside-wide"
+              className={cn(
+                "min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:border-t-0 lg:border-l lg:pr-0 lg:pl-5 xl:w-detail-aside-wide",
+                theater ? "lg:pt-0" : "lg:-mr-6 lg:pt-6",
+              )}
             >
               {aside}
             </aside>

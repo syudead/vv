@@ -673,6 +673,7 @@ Width variations stay in CSS, as in
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lg` and above | The page keeps the viewport's height and the left column scrolls on its own. The right column is `detail-aside` wide (the card width plus its padding) and reaches the window's right edge, so its scrollbar sits at the edge. The playlist panel, `Up next` and related videos scroll in one container, and each section's heading stays at the top only while its section is in view. The player's height leaves room for one line of the title, so a landscape video fills the column's width. Its width also stops at the video's own display width (never below 60rem) and at 100rem, so a large window does not stretch a small video; when a limit stops it first, the player, title and tabs take the player's width and sit in the middle of the column. The tags, the tab strip and the panel are reached by scrolling the column |
 | Below `lg`     | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Theater mode   | From `lg` only, toggled by the control bar's theater button or T and remembered per browser. The player runs across the window under the band with square corners, at most `player-height-theater` high (one title line stays in view), and the video sits letterboxed in the middle. The left column's content and the right column follow under it side by side, and the page scrolls as one under the sticky band, so earlier group members load with a button as below `lg`. Switching keeps the player playing                                                                                                                                                                                                                                                                                                                         |
 | Below `md`     | The breadcrumb shows only its last segment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 The column ends with `pb-16` (`pb-10` below `lg`) under its last panel, on
@@ -681,8 +682,8 @@ or the right column's border; `DetailPage` owns this padding
 ([patterns.md, Detail page](../../web/registry/rules/patterns.md#detail-page)).
 
 The player frame takes its size from the named steps `player-width`,
-`player-height` and their `-lg` forms in `tokens.css`, which read the video's
-aspect ratio from the frame at run time.
+`player-height`, their `-lg` forms and `player-height-theater` in `tokens.css`,
+which read the video's aspect ratio from the frame at run time.
 
 ### Tabs
 
@@ -953,13 +954,13 @@ read (corrupt), or the video cannot be served (moved, gone, format).
 ### Control bar
 
 Only control bar parts are video.js components: restart, chapters, quality,
-subtitles, playback speed, current time/duration and the transcode indicator. The status
-display is React, because a video.js component could not share state with the
-rest of the screen.
+theater mode, subtitles, playback speed, current time/duration and the
+transcode indicator. The status display is React, because a video.js component
+could not share state with the rest of the screen.
 
 | Control             | Rule                                                                                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Right-hand group    | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, full screen, in that order                                                                                          |
+| Right-hand group    | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, theater mode (from `lg`), full screen, in that order                                                                |
 | Quality             | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts))                                                             |
 | Quality label       | The current quality; for the original, the video's short side                                                                                                                               |
 | Choosing a quality  | Replaces the source at the same position without recreating the player                                                                                                                      |
@@ -984,9 +985,10 @@ latest start at or before it whose end is after it.
 Keyboard shortcuts work on the whole screen: video.js components stop key
 propagation, so keys are caught in the capture phase on `window`, passing
 through only keys that operate the focused button or slider. Space, F, M, C
-(subtitles), 0 and Esc are handled. Keys pressed inside an open popover or
-menu, such as the playlist picker, belong to it: only Esc reaches the page,
-and it closes the popover, not the page. While a `Dialog` or `AlertDialog` is
+(subtitles), T (theater mode, also without a player), 0 and Esc are handled.
+Keys pressed inside an open popover or menu, such as the playlist picker,
+belong to it: only Esc reaches the page, and it closes the popover, not the
+page. While a `Dialog` or `AlertDialog` is
 open, such as the seek sprite shown large, it owns every key, and Esc
 closes only the dialog.
 

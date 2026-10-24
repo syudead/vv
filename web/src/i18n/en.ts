@@ -2026,6 +2026,8 @@ export const en = {
       unmute: "Unmute",
       fullscreen: "Fullscreen",
       exitFullscreen: "Exit fullscreen",
+      theater: "Theater mode",
+      exitTheater: "Default view",
       pictureInPicture: "Picture-in-picture",
       exitPictureInPicture: "Exit picture-in-picture",
       playbackRate: "Playback speed",

@@ -225,6 +225,11 @@ own and an aside that is a flex column, so a list in it can scroll under its
 heading while the header band and the media stay in view. Otherwise the page
 scrolls as one under the sticky band.
 
+With `theater`, from `lg` the media spans the window edge to edge above the
+children and the aside, which sit side by side under it, and the page scrolls as
+one; the screen drops its `lg:h-dvh` column. Only classes change, so switching
+keeps the media mounted. Below `lg` the layout is the same as without it.
+
 | Slot     | Put in it                                                                                                                                                                           | Never                   |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `header` | The band's content: the brand or a ghost `Back` button, the location, a close ×                                                                                                     | A page title block      |

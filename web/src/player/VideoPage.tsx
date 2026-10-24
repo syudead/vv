@@ -21,6 +21,7 @@ import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { parsePlaylistQuery } from "../playlists/playlistPlayback";
+import { cn } from "../lib/cn";
 import { DetailPage } from "../ui/patterns/detail-page";
 import type { AutoplayPhase } from "./AutoplayNotice";
 import { usePageHandoff } from "./detailsEditor/handoff";
@@ -49,6 +50,7 @@ import { useNeighborNavigation } from "./useNeighborNavigation";
 import { useVideoGroupContext } from "./useVideoGroupContext";
 import { useUnplayableSkip, useVideoPlaylist } from "./useVideoPlaylist";
 import StallWarning from "./StallWarning";
+import { useTheaterMode } from "./theaterMode";
 import VideoHeader from "./VideoHeader";
 import VideoPageAside from "./VideoPageAside";
 import VideoPageDetails from "./VideoPageDetails";
@@ -373,17 +375,26 @@ export default function VideoPage() {
     linkState,
   });
 
+  const [theater, toggleTheater] = useTheaterMode();
   // Escape cancels the countdown without leaving the page.
   useKeyboardShortcuts(
     showPlayer ? controls : null,
     noticeShown ? cancelAutoplay : close,
     editingThumbnail,
+    toggleTheater,
   );
 
   const aspect = playerAspectRatio(video, mediaAspect);
   return (
-    <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
+    // Theater mode lets the page scroll as one instead of holding it at the viewport's height.
+    <div
+      className={cn(
+        "min-h-dvh bg-background",
+        !theater && "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden",
+      )}
+    >
       <DetailPage
+        theater={theater}
         // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="lg:max-w-player-width-lg"
@@ -402,12 +413,18 @@ export default function VideoPage() {
             // Descendants use these variables for seek previews and player size tokens.
             // Reserve room for one title line; tags and facts scroll within the main column.
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
+            className={cn(
+              "relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar [&:fullscreen]:rounded-none",
+              theater ? "lg:max-w-none" : "lg:max-w-player-width-lg lg:rounded-lg",
+            )}
           >
             {/* Aspect ratio supplies a minimum height outside fullscreen; status content may grow taller. */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-player max-h-player-height lg:max-h-player-height-lg [:fullscreen>&]:hidden"
+              className={cn(
+                "col-start-1 row-start-1 aspect-player max-h-player-height [:fullscreen>&]:hidden",
+                theater ? "lg:max-h-player-height-theater" : "lg:max-h-player-height-lg",
+              )}
             />
             {/* A virtual video has no player and no processing to report. */}
             {thumbnail.video !== undefined ? (
@@ -446,6 +463,7 @@ export default function VideoPage() {
                 onAspectRatio={setMediaAspect}
                 fullscreenTarget={fullscreenTarget}
                 subtitles={subtitles}
+                theater={{ on: theater, onToggle: toggleTheater }}
               />
             )}
             <PlayerArrows

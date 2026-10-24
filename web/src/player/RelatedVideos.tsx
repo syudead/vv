@@ -16,6 +16,7 @@ import { isAborted, listVideoGroupMembers, type Video } from "../api/client";
 import type { RelatedState, VideoReadContext } from "../api/useVideoDetail";
 import type { VideoLinkState } from "./pageDecisions";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
+import { subscribeTheaterMode, theaterMode } from "./theaterMode";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
@@ -150,24 +151,33 @@ export function VideoThumbnail({
   );
 }
 
-/** The lg breakpoint enables independently scrolling columns. */
+/** The lg breakpoint enables independently scrolling columns; in theater mode the page scrolls as one. */
 const wideScreen = "(min-width: 64rem)";
 
 export function isWideScreen(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(wideScreen).matches;
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(wideScreen).matches &&
+    !theaterMode()
+  );
 }
 
-/** Track breakpoint changes so pagination switches between scrolling and buttons after resizing. */
+/** Track breakpoint and theater changes so pagination switches between scrolling and buttons. */
 function useWideScreen(): boolean {
   const [wide, setWide] = useState(isWideScreen);
   useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia(wideScreen);
-    if (typeof query.addEventListener !== "function") return;
-    const update = () => setWide(query.matches);
+    const update = () => setWide(isWideScreen());
     update();
+    const unsubscribe = subscribeTheaterMode(update);
+    const query =
+      typeof window.matchMedia === "function" ? window.matchMedia(wideScreen) : null;
+    if (query === null || typeof query.addEventListener !== "function")
+      return unsubscribe;
     query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    return () => {
+      unsubscribe();
+      query.removeEventListener("change", update);
+    };
   }, []);
   return wide;
 }

@@ -278,6 +278,7 @@
     100rem,
     max(60rem, var(--vv-video-width, 100rem))
   );
+  --spacing-player-height-theater: max(100dvh - 6.75rem, 15rem);
   --aspect-player: var(--vv-video-aspect);
 }
 
@@ -299,6 +300,11 @@
 /* Use a named utility because content-sized grid columns cannot be represented by spacing tokens. */
 @utility grid-cols-term {
   grid-template-columns: auto 1fr;
+}
+
+/* Named grid utility for the theater detail page: flexible content beside the aside's own width. */
+@utility grid-cols-detail-theater {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 /* Named grid utility for the list body's flexible content and fixed-width aside. */

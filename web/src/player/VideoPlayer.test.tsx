@@ -649,6 +649,23 @@ describe("VideoPlayer", () => {
     expect(player?.time).toBe(0);
   });
 
+  it("シアターモードのボタンを全画面の前に置き、状態に合わせた名前で押すと切り替えを頼む", async () => {
+    const onToggle = vi.fn();
+    const view = render(<VideoPlayer {...props()} theater={{ on: false, onToggle }} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const button = await screen.findByRole("button", { name: "Theater mode" });
+    expect(button.getAttribute("title")).toBe("Theater mode (T)");
+    expect(button.closest(".vv-player-theater")?.nextElementSibling?.className).toContain(
+      "vjs-fullscreen-control",
+    );
+    fireEvent.click(button);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+
+    view.rerender(<VideoPlayer {...props()} theater={{ on: true, onToggle }} />);
+    expect(screen.getByRole("button", { name: "Default view" })).toBeDefined();
+    expect(mock.instances).toHaveLength(1);
+  });
+
   it("変換して再生する動画だけ、操作バーの再生速度の前に「変換して再生中」を出す", async () => {
     const direct = render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
