@@ -2597,13 +2597,13 @@ describe("VideoPage", () => {
     }
 
     async function expectEditedAfter() {
-      await waitFor(() => expect(edited()).toMatch(/^Sep 28, 2026 /));
+      await waitFor(() => expect(edited()).toBe("Sep 28, 2026"));
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
       await showFile();
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(edited()).toBe(fileFact("Added"));
       expect(fileFact("File created")).not.toBe("");
       expect(fileFact("File modified")).not.toBe("");
@@ -2614,7 +2614,7 @@ describe("VideoPage", () => {
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
       await showFile();
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(fileFact("File created")).not.toBe("");
       expect(fileFact("File modified")).not.toBe("");
     });
@@ -2675,7 +2675,7 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited()).toMatch(/^Sep 1, 2026 /);
+      expect(edited()).toBe("Sep 1, 2026");
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });
