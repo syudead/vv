@@ -49,6 +49,11 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
 	}
 
+	if apply.FillEmpty {
+		if apply, err = emptyFieldsOnly(ctx, tx, contentKey, userKeys[0], apply); err != nil {
+			return domain.FetchedWorkInfoApplied{}, err
+		}
+	}
 	now := time.Now()
 	var touched []string
 	if apply.Title != nil {
@@ -114,6 +119,31 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
 	return out, nil
+}
+
+// emptyFieldsOnly narrows a fill to the title, tags and detail fields the video has no value for, read inside the
+// apply's transaction so an owner's edit made during the fetch is never overwritten.
+func emptyFieldsOnly(
+	ctx context.Context, tx *sql.Tx, contentKey, userKey string, apply domain.FetchedWorkInfoApply,
+) (domain.FetchedWorkInfoApply, error) {
+	var titleFromLink, hasTags bool
+	if err := tx.QueryRowContext(ctx, `select
+		exists (select 1 from virtual_videos where user_key = ? and title_from_link = 1),
+		exists (select 1 from video_tags where content_key = ?)`, contentKey, userKey).Scan(&titleFromLink, &hasTags); err != nil {
+		return apply, fmt.Errorf("cannot read the video's values: %w", err)
+	}
+	if !titleFromLink {
+		apply.Title = nil
+	}
+	if hasTags {
+		apply.Tags = nil
+	}
+	stored, err := workInfoByUserKeys(ctx, tx, []string{userKey})
+	if err != nil {
+		return apply, err
+	}
+	apply.DetailFields = domain.EmptyWorkInfoFields(stored[userKey], apply.DetailFields)
+	return apply, nil
 }
 
 // writeFetchedTitle writes a virtual video's own title, or a file video's display name, and returns the touched keys.

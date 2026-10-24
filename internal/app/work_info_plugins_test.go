@@ -280,3 +280,7 @@ func TestRevokeAndDeleteWorkInfoPlugin(t *testing.T) {
 		t.Fatalf("second delete err = %v, want ErrNotFound", err)
 	}
 }
+
+func (s *fakePluginStore) SetLinkOrder(context.Context, []int64) ([]domain.WorkInfoPlugin, error) {
+	return nil, errors.New("not used")
+}

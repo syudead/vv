@@ -31,7 +31,9 @@ content key and no location projects it into the index, so per-video
 operations and the user-data tables serve it unchanged. The orphan sweep after
 a scan keeps that row, and startup recreates it when it is missing. Deleting a
 virtual video removes its row, its projection and the user data under its key
-in one transaction.
+in one transaction. A virtual video created from a link starts with that link
+and fills its empty fields from it after the create returns
+([link-fetch.md](link-fetch.md#a-virtual-video-created-from-a-link-fills-its-empty-fields)).
 
 Saving and deleting a virtual video carry the `contentVersion` the screen
 read, which is its whole user key. `videos.id` is a rowid that SQLite can

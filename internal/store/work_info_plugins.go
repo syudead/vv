@@ -16,7 +16,9 @@ import (
 
 // Metadata reads omit module bytes and include the optional latest-run completion time.
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, domains,
+	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, domains, builtin,
+	(select count(*) from work_info_plugins r where r.link_rank is not null and work_info_plugins.link_rank is not null
+		and (r.link_rank < work_info_plugins.link_rank or r.link_rank = work_info_plugins.link_rank and r.id <= work_info_plugins.id)),
 	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
 
 // ListWorkInfoPlugins sorts by name then filename, placing unreadable names last.
@@ -26,6 +28,10 @@ func (s *WorkInfoPluginStore) ListWorkInfoPlugins(ctx context.Context) ([]domain
 		return nil, fmt.Errorf("cannot list the work-info plugins: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	return listWorkInfoPlugins(ctx, tx)
+}
+
+func listWorkInfoPlugins(ctx context.Context, tx *sql.Tx) ([]domain.WorkInfoPlugin, error) {
 	rows, err := tx.QueryContext(ctx, `select `+workInfoPluginColumns+` from work_info_plugins
 		order by name is null, name, file_name, id`)
 	if err != nil {
@@ -102,6 +108,11 @@ func (s *WorkInfoPluginStore) SaveWorkInfoPlugin(
 	if err != nil {
 		return domain.WorkInfoPlugin{}, false, err
 	}
+	handlesLinks := upload.Problem == "" && upload.Manifest.Kind != domain.WorkInfoPluginKindPerson &&
+		len(upload.Manifest.Domains) > 0
+	if err := placeLinkRank(ctx, tx, id, handlesLinks); err != nil {
+		return domain.WorkInfoPlugin{}, false, err
+	}
 	plugin, err := readWorkInfoPlugin(ctx, tx, id)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, false, err
@@ -143,9 +154,10 @@ func workInfoPluginUploadColumns(upload domain.WorkInfoPluginUpload) (uploadColu
 			return uploadColumns{}, fmt.Errorf("cannot encode the person plugin sources: %w", err)
 		}
 		cols.kind, cols.sources = m.Kind, sql.NullString{String: string(encoded), Valid: true}
-		if cols.domains, err = encodeDomains(m.Domains); err != nil {
-			return uploadColumns{}, err
-		}
+	}
+	var err error
+	if cols.domains, err = encodeDomains(m.Domains); err != nil {
+		return uploadColumns{}, err
 	}
 	if upload.Problem != "" {
 		cols.problem = nullString(string(upload.Problem))
@@ -183,7 +195,7 @@ func encodeDomains(domains []string) (sql.NullString, error) {
 	}
 	encoded, err := json.Marshal(domains)
 	if err != nil {
-		return sql.NullString{}, fmt.Errorf("cannot encode the person plugin domains: %w", err)
+		return sql.NullString{}, fmt.Errorf("cannot encode the plugin domains: %w", err)
 	}
 	return sql.NullString{String: string(encoded), Valid: true}, nil
 }
@@ -197,14 +209,75 @@ func existingWorkInfoPlugin(ctx context.Context, tx *sql.Tx, name string) (int64
 		return 0, false, nil
 	}
 	var id int64
-	err := tx.QueryRowContext(ctx, `select id from work_info_plugins where name = ?`, name).Scan(&id)
+	var builtin bool
+	err := tx.QueryRowContext(ctx, `select id, builtin from work_info_plugins where name = ?`, name).Scan(&id, &builtin)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return 0, false, nil
 	case err != nil:
 		return 0, false, fmt.Errorf("cannot read the work-info plugin %q: %w", name, err)
+	case builtin:
+		return 0, false, domain.ErrWorkInfoPluginBuiltin
 	}
 	return id, true, nil
+}
+
+// placeLinkRank keeps a plugin's place in the link order, places a plugin new to the order just before the bundled
+// one, so a site's own plugin wins over it by default, and drops a plugin that no longer declares domains.
+func placeLinkRank(ctx context.Context, tx *sql.Tx, id int64, handlesLinks bool) error {
+	if !handlesLinks {
+		_, err := tx.ExecContext(ctx, `update work_info_plugins set link_rank = null where id = ?`, id)
+		return err
+	}
+	var rank, builtinRank sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `select link_rank,
+		(select min(link_rank) from work_info_plugins where builtin = 1) from work_info_plugins where id = ?`,
+		id).Scan(&rank, &builtinRank); err != nil {
+		return fmt.Errorf("cannot read the plugin's link order: %w", err)
+	}
+	if rank.Valid {
+		return nil
+	}
+	if !builtinRank.Valid {
+		_, err := tx.ExecContext(ctx, `update work_info_plugins
+			set link_rank = coalesce((select max(link_rank) from work_info_plugins), 0) + 1 where id = ?`, id)
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `update work_info_plugins set link_rank = link_rank + 1 where link_rank >= ?`,
+		builtinRank.Int64); err != nil {
+		return fmt.Errorf("cannot move the plugins in the link order: %w", err)
+	}
+	_, err := tx.ExecContext(ctx, `update work_info_plugins set link_rank = ? where id = ?`, builtinRank.Int64, id)
+	return err
+}
+
+// SetLinkOrder ranks the plugins that declare domains in order, which must name each of them once, and returns the
+// plugins as ListWorkInfoPlugins does.
+func (s *WorkInfoPluginStore) SetLinkOrder(ctx context.Context, order []int64) ([]domain.WorkInfoPlugin, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("cannot change the link order: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	plugins, err := listWorkInfoPlugins(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err := domain.CheckLinkOrder(plugins, order); err != nil {
+		return nil, err
+	}
+	for i, id := range order {
+		if _, err := tx.ExecContext(ctx, `update work_info_plugins set link_rank = ? where id = ?`, i+1, id); err != nil {
+			return nil, fmt.Errorf("cannot change the link order: %w", err)
+		}
+	}
+	if plugins, err = listWorkInfoPlugins(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cannot change the link order: %w", err)
+	}
+	return plugins, nil
 }
 
 func insertWorkInfoPlugin(
@@ -334,9 +407,19 @@ func (s *WorkInfoPluginStore) changeWorkInfoPlugin(
 	return changed, nil
 }
 
-// DeleteWorkInfoPlugin cascades settings and rejects a missing plugin.
+// DeleteWorkInfoPlugin cascades settings and rejects a missing plugin and the bundled one.
 func (s *WorkInfoPluginStore) DeleteWorkInfoPlugin(ctx context.Context, id int64) error {
-	result, err := s.sql.ExecContext(ctx, `delete from work_info_plugins where id = ?`, id)
+	var builtin bool
+	err := s.sql.QueryRowContext(ctx, `select builtin from work_info_plugins where id = ?`, id).Scan(&builtin)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return domain.ErrNotFound
+	case err != nil:
+		return fmt.Errorf("cannot delete the work-info plugin: %w", err)
+	case builtin:
+		return domain.ErrWorkInfoPluginBuiltin
+	}
+	result, err := s.sql.ExecContext(ctx, `delete from work_info_plugins where id = ? and builtin = 0`, id)
 	if err != nil {
 		return fmt.Errorf("cannot delete the work-info plugin: %w", err)
 	}
@@ -416,7 +499,7 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
 		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation,
-		&kind, &sources, &domains, &lastRunAt)
+		&kind, &sources, &domains, &plugin.Builtin, &plugin.LinkRank, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}
@@ -437,7 +520,7 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	}
 	if domains.Valid {
 		if err := json.Unmarshal([]byte(domains.String), &plugin.Manifest.Domains); err != nil {
-			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the person plugin domains: %w", err)
+			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the plugin domains: %w", err)
 		}
 	}
 	if operations.String != "" {
@@ -456,6 +539,10 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	plugin.UpdatedAt = time.Unix(updatedAt, 0)
 	if lastRunAt.Valid {
 		plugin.LastRunAt = time.Unix(lastRunAt.Int64, 0)
+	}
+	if plugin.Builtin {
+		// The bundled plugin's manifest is the code's, so a newer VVMDM describes it without a migration.
+		plugin.Manifest = domain.LinkPluginManifest
 	}
 	return plugin, nil
 }

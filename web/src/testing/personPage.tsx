@@ -46,6 +46,7 @@ export const people: WorkInfoPlugin = {
   kind: "person",
   sources: ["fanza"],
   domains: [],
+  builtin: false,
   name: "people",
   fileName: "people.wasm",
   operations: ["search", "fetch"],

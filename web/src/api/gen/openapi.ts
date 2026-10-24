@@ -179,7 +179,7 @@ export interface paths {
         put?: never;
         /**
          * Create a virtual video
-         * @description Owner-only. Creates a video with no file from a title. The title follows the display-name rules and must not be empty after trimming: an empty or whitespace-only title returns 400 invalid_title. Returns the GET detail shape with virtual=true. Emits a library change after commit.
+         * @description Owner-only. Creates a video with no file from a title, a link or both. The title follows the display-name rules; without a url it must not be empty after trimming, and an empty or whitespace-only title returns 400 invalid_title. A url must be an http or https URL of at most 2048 characters, or 400 invalid_request with field url; the video then holds it as its link, takes it as its title when none is given, and starts a fetch by link that fills the empty fields after the response (linkFetch running). Returns the GET detail shape with virtual=true. Emits a library change after commit, and a video event when the fetch ends.
          */
         post: operations["createVirtualVideo"];
         delete?: never;
@@ -1457,7 +1457,7 @@ export interface paths {
         put?: never;
         /**
          * Add a work-info plugin or replace one with the same name
-         * @description Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200, whatever either kind; otherwise creates with 201. Replacement resets approval, takes kind and sources from the new manifest and preserves values only for keys declared by the new manifest. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing.
+         * @description Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200, whatever either kind; otherwise creates with 201. Replacement resets approval, takes kind, sources and domains from the new manifest and preserves values only for keys declared by the new manifest. A work-info plugin new to the link order is placed just before the bundled plugin, and a replacement keeps its place. A manifest named vv.link returns 409 plugin_builtin without writes. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing.
          */
         post: operations["uploadWorkInfoPlugin"];
         delete?: never;
@@ -1478,9 +1478,29 @@ export interface paths {
         post?: never;
         /**
          * Delete a work-info plugin
-         * @description Owner-only; also deletes settings. Missing plugins return 404 not_found.
+         * @description Owner-only; also deletes settings. Missing plugins return 404 not_found; the bundled plugin returns 409 plugin_builtin.
          */
         delete: operations["deleteWorkInfoPlugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/link-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the order in which plugins are tried for a link
+         * @description Owner-only. pluginIds names every work-info plugin that declares domains, the bundled one included, once each, first tried first; otherwise 409 link_order_changed without writes. Returns the plugin list.
+         */
+        put: operations["setWorkInfoPluginLinkOrder"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1601,7 +1621,7 @@ export interface paths {
         put?: never;
         /**
          * Fetch video work information with a plugin
-         * @description Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md.
+         * @description Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input, or with a link. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. A link must be an http or https URL (else 400 invalid_request) that one of the plugin's domains matches (else 400 work_info_link_unsupported), checked before the plugin runs; both or neither of id and link is 400 invalid_request. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md.
          */
         post: operations["fetchWorkInfo"];
         delete?: never;
@@ -3750,8 +3770,12 @@ export interface components {
             kind: components["schemas"]["WorkInfoPluginKind"];
             /** @description A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin. */
             sources: string[];
-            /** @description The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none. */
+            /** @description The link hosts the plugin fetches by url, in manifest order; empty when it declares none. The bundled plugin's only domain is *, which stands for every link. */
             domains: string[];
+            /** @description True for the plugin VVMDM bundles, which cannot be replaced or deleted. */
+            builtin: boolean;
+            /** @description 1-based place of a work-info plugin that declares domains in the order plugins are tried for a link; absent otherwise. */
+            linkRank?: number;
             /** @description Manifest name; absent when the manifest could not be read. */
             name?: string;
             /** @description Uploaded filename. */
@@ -3778,6 +3802,9 @@ export interface components {
              * @description Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains.
              */
             lastRunAt?: number;
+        };
+        WorkInfoPluginLinkOrder: {
+            pluginIds: number[];
         };
         /**
          * @description Run failure kind; busy is not retained because runs without an execution slot never start the module.
@@ -3919,6 +3946,7 @@ export interface components {
             /** @description First 50 candidates in plugin order. */
             candidates: components["schemas"]["WorkInfoCandidate"][];
         };
+        /** @description Exactly one of id and link. */
         WorkInfoFetchRequest: {
             /**
              * Format: int64
@@ -3926,7 +3954,9 @@ export interface components {
              */
             pluginId: number;
             /** @description Work ID, such as a product code: 1-200 characters after trimming. Even URL-shaped values pass unchanged as IDs; the plugin builds request URLs. */
-            id: string;
+            id?: string;
+            /** @description An http or https link one of the plugin's domains matches; the plugin fetches by url. */
+            link?: string;
         };
         /** @description Fetch result held in memory. */
         WorkInfoFetch: {
@@ -5579,6 +5609,7 @@ export interface components {
             id: number;
             /** @description True for a virtual video, which has no file and is never playable. */
             virtual: boolean;
+            linkFetch?: components["schemas"]["VirtualLinkFetch"];
             /** @description Effective title: display name when set, otherwise filename without extension; a virtual video's own title. */
             title: string;
             /** @description Filename without extension; owner responses only. */
@@ -6321,9 +6352,21 @@ export interface components {
             /** @description The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored. */
             contentVersion?: string;
         };
+        /** @description A title, a url or both; the title is required without a url. */
         VirtualVideoCreate: {
-            /** @description Title; follows the display-name rules and must not be empty after trimming. */
-            title: string;
+            /** @description Title; follows the display-name rules and must not be empty after trimming unless url is set. */
+            title?: string;
+            /** @description The video's link, http or https, at most 2048 characters; its fetch fills the empty fields. */
+            url?: string;
+        };
+        /** @description The fetch started when a virtual video was created from a link; owner-only. */
+        VirtualLinkFetch: {
+            /** @enum {string} */
+            state: "running" | "failed" | "done";
+            /** @description Why a failed fetch failed, for the owner to read. */
+            failure?: string;
+            /** @description Name of the plugin that ran last; absent when no plugin handled the link. */
+            plugin?: string;
         };
         VirtualVideoMerge: {
             /** @description The virtual video's contentVersion the screen read. */
@@ -6846,7 +6889,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -9571,6 +9614,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             413: components["responses"]["PluginTooLarge"];
         };
     };
@@ -9596,6 +9640,34 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    setWorkInfoPluginLinkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoPluginLinkOrder"];
+            };
+        };
+        responses: {
+            /** @description Plugin list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPluginList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     approveWorkInfoPlugin: {

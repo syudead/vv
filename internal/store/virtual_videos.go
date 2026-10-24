@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -16,6 +17,8 @@ import (
 // Tests replace the clock to place a virtual video among file videos in time order.
 var virtualNow = time.Now
 
+const linkFetchInterrupted = "VVMDM stopped before the fetch finished."
+
 func virtualUserKey(id int64) string {
 	return fmt.Sprintf("%s%d", domain.VirtualKeyPrefix, id)
 }
@@ -25,6 +28,35 @@ func (s *VirtualVideoStore) Create(ctx context.Context, title string) (domain.Vi
 	title, err := domain.NormalizeVirtualTitle(title)
 	if err != nil {
 		return domain.Video{}, err
+	}
+	return s.create(ctx, title, "")
+}
+
+// CreateFromLink stores a virtual video whose work information holds link and whose link fetch is running. An empty
+// title becomes domain.LinkTitle, which a fill may replace until the title is saved.
+func (s *VirtualVideoStore) CreateFromLink(ctx context.Context, title, link string) (domain.Video, error) {
+	link, err := domain.NormalizeVirtualLink(link)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	if strings.TrimSpace(title) != "" {
+		if title, err = domain.NormalizeVirtualTitle(title); err != nil {
+			return domain.Video{}, err
+		}
+	}
+	return s.create(ctx, title, link)
+}
+
+// create stores the row; with a link it also stores the link and marks the fetch running, and an empty title then
+// comes from the link.
+func (s *VirtualVideoStore) create(ctx context.Context, title, link string) (domain.Video, error) {
+	titleFromLink := link != "" && title == ""
+	if titleFromLink {
+		title = domain.LinkTitle(link)
+	}
+	var fetch sql.NullString
+	if link != "" {
+		fetch = sql.NullString{String: string(domain.LinkFetchRunning), Valid: true}
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -36,9 +68,10 @@ func (s *VirtualVideoStore) Create(ctx context.Context, title string) (domain.Vi
 	// The id is known only after the insert; the empty key never outlives this transaction.
 	var id int64
 	if err := tx.QueryRowContext(ctx, `insert into virtual_videos
-		(user_key, title, title_key, search_key, search_version, created_at, updated_at)
-		values ('', ?, ?, ?, ?, ?, ?) returning id`,
-		title, domain.NaturalSortKey(title), searchKeyPart(title), domain.SearchKeyVersion, now, now).Scan(&id); err != nil {
+		(user_key, title, title_key, search_key, search_version, created_at, updated_at, title_from_link, link_fetch)
+		values ('', ?, ?, ?, ?, ?, ?, ?, ?) returning id`,
+		title, domain.NaturalSortKey(title), searchKeyPart(title), domain.SearchKeyVersion, now, now,
+		titleFromLink, fetch).Scan(&id); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot create the virtual video: %w", err)
 	}
 	key := virtualUserKey(id)
@@ -47,6 +80,11 @@ func (s *VirtualVideoStore) Create(ctx context.Context, title string) (domain.Vi
 	}
 	if err := projectVirtualVideos(ctx, tx, `vv.id = ?`, id); err != nil {
 		return domain.Video{}, err
+	}
+	if link != "" {
+		if _, err := applyWorkInfo(ctx, tx, []string{key}, map[string]domain.WorkInfo{key: {URLs: []string{link}}}); err != nil {
+			return domain.Video{}, err
+		}
 	}
 	video, err := virtualVideoOf(ctx, tx, key)
 	if err != nil {
@@ -58,6 +96,53 @@ func (s *VirtualVideoStore) Create(ctx context.Context, title string) (domain.Vi
 		return domain.Video{}, fmt.Errorf("cannot create the virtual video: %w", err)
 	}
 	return video, nil
+}
+
+// LinkFetch reads the virtual video's link fetch; false when the video was not created from a link.
+func (s *VirtualVideoStore) LinkFetch(ctx context.Context, key string) (domain.LinkFetch, bool, error) {
+	var state, failure, plugin sql.NullString
+	err := s.db.read.QueryRowContext(ctx, `select link_fetch, link_fetch_failure, link_fetch_plugin
+		from virtual_videos where user_key = ?`, key).Scan(&state, &failure, &plugin)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return domain.LinkFetch{}, false, nil
+	case err != nil:
+		return domain.LinkFetch{}, false, fmt.Errorf("cannot read the link fetch: %w", err)
+	}
+	return domain.LinkFetch{
+		State: domain.LinkFetchState(state.String), Failure: failure.String, Plugin: plugin.String,
+	}, state.Valid, nil
+}
+
+// FinishLinkFetch records the end of a running link fetch, failed when failure is set, and notifies the video's
+// screens; a video deleted or merged since has no row and nothing is written.
+func (s *VirtualVideoStore) FinishLinkFetch(ctx context.Context, key, plugin, failure string) error {
+	state := domain.LinkFetchDone
+	if failure != "" {
+		state = domain.LinkFetchFailed
+	}
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot save the link fetch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `update virtual_videos set link_fetch = ?, link_fetch_failure = ?, link_fetch_plugin = ?
+		where user_key = ? and link_fetch = ?`,
+		state, nullString(failure), nullString(plugin), key, domain.LinkFetchRunning)
+	if err != nil {
+		return fmt.Errorf("cannot save the link fetch: %w", err)
+	}
+	if n, err := result.RowsAffected(); err != nil || n == 0 {
+		return err
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx, `select id from videos where content_key = ?`, key).Scan(&id); err != nil {
+		return fmt.Errorf("cannot read the virtual video (%s): %w", key, err)
+	}
+	if err := s.db.commitWith(ctx, tx, &changes{}, domain.VideoOverrideChanged{VideoID: id}); err != nil {
+		return fmt.Errorf("cannot save the link fetch: %w", err)
+	}
+	return nil
 }
 
 // SaveTitle replaces the title and its keys; contentVersion is the whole user key the editor read.
@@ -114,6 +199,11 @@ func (s *VirtualVideoStore) save(
 			return domain.Video{}, err
 		}
 	}
+	// The owner's save answers a failed link fetch, so its note leaves the page.
+	if _, err := tx.ExecContext(ctx, `update virtual_videos set link_fetch = null, link_fetch_failure = null,
+		link_fetch_plugin = null where user_key = ? and link_fetch = ?`, key, domain.LinkFetchFailed); err != nil {
+		return domain.Video{}, fmt.Errorf("cannot save the virtual video: %w", err)
+	}
 	var video domain.Video
 	if info != nil {
 		video, err = ownerVideoWithWorkInfo(ctx, tx, videoID)
@@ -147,7 +237,7 @@ func writeVirtualWorkInfo(ctx context.Context, tx *sql.Tx, key string, input, no
 // Write a changed title with its sort and search keys; reports whether the title changed.
 func writeVirtualTitle(ctx context.Context, tx *sql.Tx, key, title string, now time.Time) (bool, error) {
 	result, err := tx.ExecContext(ctx, `update virtual_videos
-		set title = ?, title_key = ?, search_key = ?, search_version = ?, updated_at = ?
+		set title = ?, title_key = ?, search_key = ?, search_version = ?, updated_at = ?, title_from_link = 0
 		where user_key = ? and title <> ?`,
 		title, domain.NaturalSortKey(title), searchKeyPart(title), domain.SearchKeyVersion, now.Unix(), key, title)
 	if err != nil {
@@ -292,7 +382,12 @@ func deleteKeyItems(ctx context.Context, tx *sql.Tx, t positionTable, key string
 }
 
 // Refresh stale virtual title keys and recreate missing projected rows; startup runs this with the location keys.
+// A link fetch still running belonged to the previous process, so it is recorded as interrupted.
 func refreshVirtualVideos(ctx context.Context, tx *sql.Tx) (int, error) {
+	if _, err := tx.ExecContext(ctx, `update virtual_videos set link_fetch = ?, link_fetch_failure = ?
+		where link_fetch = ?`, domain.LinkFetchFailed, linkFetchInterrupted, domain.LinkFetchRunning); err != nil {
+		return 0, fmt.Errorf("cannot save the interrupted link fetches: %w", err)
+	}
 	titles, err := staleVirtualTitles(ctx, tx)
 	if err != nil {
 		return 0, err

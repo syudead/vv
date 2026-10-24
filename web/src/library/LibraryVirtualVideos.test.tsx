@@ -86,9 +86,13 @@ function install() {
       return Promise.resolve(json({ items: [videoItem(video(1))], total: 1 }));
     }
     if (path === "/api/virtual-videos" && init?.method === "POST") {
-      const body = JSON.parse(String(init.body)) as { title: string };
+      const body = JSON.parse(String(init.body)) as { title?: string; url?: string };
       created.push(body);
-      return Promise.resolve(json(video(7, { virtual: true, title: body.title }), 201));
+      if (body.url === "https://bad.test/")
+        return Promise.resolve(json({ code: "invalid_request", message: "x" }, 400));
+      return Promise.resolve(
+        json(video(7, { virtual: true, title: body.title ?? body.url ?? "" }), 201),
+      );
     }
     throw new Error(`unexpected request: ${path}`);
   });
@@ -127,12 +131,46 @@ describe("New virtual video", () => {
     const field = within(dialog).getByRole("textbox", { name: "Title" });
     await user.type(field, "   ");
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
-    expect(within(dialog).getByText("Enter a title.")).toBeDefined();
+    expect(within(dialog).getByText("Enter a title or a link.")).toBeDefined();
     expect(created).toHaveLength(0);
 
     await user.clear(field);
     await user.type(field, " 京都の記録 {Enter}");
     await waitFor(() => expect(created).toEqual([{ title: "京都の記録" }]));
+    expect(await screen.findByText("video page from /")).toBeDefined();
+  });
+
+  it("リンクだけでも作れ、http でないリンクとサーバーが断ったリンクはリンクの欄に理由を出す", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getByRole("button", { name: "New virtual video" }));
+    const dialog = await screen.findByRole("dialog", { name: "New virtual video" });
+    const link = within(dialog).getByRole("textbox", { name: "Link" });
+    await user.type(link, "example.com/watch");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    expect(
+      within(dialog).getByText("Enter a link that starts with http:// or https://."),
+    ).toBeDefined();
+    expect(created).toHaveLength(0);
+
+    await user.clear(link);
+    await user.type(link, "https://bad.test/{Enter}");
+    expect(
+      await within(dialog).findByText(
+        "Enter a link that starts with http:// or https://.",
+      ),
+    ).toBeDefined();
+
+    await user.clear(link);
+    await user.type(link, " https://example.com/watch?v=1 {Enter}");
+    await waitFor(() =>
+      expect(created).toEqual([
+        { url: "https://bad.test/" },
+        { url: "https://example.com/watch?v=1" },
+      ]),
+    );
     expect(await screen.findByText("video page from /")).toBeDefined();
   });
 

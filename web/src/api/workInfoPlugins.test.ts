@@ -34,6 +34,7 @@ const plugin: WorkInfoPlugin = {
   kind: "work",
   sources: [],
   domains: [],
+  builtin: false,
   name: "example.works",
   fileName: "example.wasm",
   operations: ["search", "fetch"],

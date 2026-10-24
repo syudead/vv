@@ -22,12 +22,14 @@ import ActionButton from "../ActionButton";
 import {
   canChooseFindBy,
   canFetch,
+  fetchLink,
   type FindBy,
   hostOf,
   missingSettingLabels,
   pluginLabel,
   queryLabel,
   type RunOperation,
+  runFor,
 } from "./fetchRules";
 
 export const WORK_INFO_PLUGIN_SETTINGS = "/settings/plugins#work-info-plugins";
@@ -416,6 +418,13 @@ export default function FindStep({
         value={query}
         busy={busy}
         inputRef={queryRef}
+        description={
+          plugin !== undefined &&
+          runFor(plugin, by) === "fetch" &&
+          fetchLink(plugin, query) !== undefined
+            ? text.linkTyped
+            : undefined
+        }
         onChange={onQuery}
       />
       {failure !== null && <FailureAlert failure={failure} />}

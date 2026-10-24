@@ -36,7 +36,7 @@ func TestWorkInfoPluginRunIsReplacedByTheNextRun(t *testing.T) {
 	s := migratedDB(t).WorkInfoPlugins()
 	plugin, _ := savePlugin(t, s, pluginUpload("example", "d1"))
 	wantNoRun(t, s, plugin.ID)
-	if list, err := s.ListWorkInfoPlugins(ctx); err != nil || !list[0].LastRunAt.IsZero() {
+	if list, err := uploadedPlugins(ctx, s); err != nil || !list[0].LastRunAt.IsZero() {
 		t.Fatalf("List = %+v, %v; want no last run", list, err)
 	}
 
@@ -55,7 +55,7 @@ func TestWorkInfoPluginRunIsReplacedByTheNextRun(t *testing.T) {
 	if err != nil || !ok || got != second {
 		t.Fatalf("WorkInfoPluginRun = %+v, %v, %v; want the second run %+v", got, ok, err, second)
 	}
-	list, err := s.ListWorkInfoPlugins(ctx)
+	list, err := uploadedPlugins(ctx, s)
 	if err != nil || !list[0].LastRunAt.Equal(second.RanAt) {
 		t.Fatalf("List = %+v, %v; want lastRunAt %v", list, err, second.RanAt)
 	}

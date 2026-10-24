@@ -26,5 +26,9 @@ func newWorkInfoPlugins(
 		Matcher: db.Credits(), Network: network, Covers: covers, PersonImages: personImages,
 		People: db.Credits(),
 	})
-	return registry, func() { _ = runtime.Close(context.WithoutCancel(ctx)) }
+	registry.StartLinkFetches(ctx, db.VirtualVideos(), logger)
+	return registry, func() {
+		registry.Close()
+		_ = runtime.Close(context.WithoutCancel(ctx))
+	}
 }

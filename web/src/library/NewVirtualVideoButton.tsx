@@ -2,16 +2,11 @@ import { SquareDashed } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
-import { createVirtualVideo } from "../api/virtualVideos";
-import { t, type UiText } from "../i18n";
+import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
-import NameDialog from "./NameDialog";
+import NewVirtualVideoDialog from "./NewVirtualVideoDialog";
 
 const words = t.library.newVirtualVideo;
-
-function validateTitle(text: string): UiText | null {
-  return text.trim() === "" ? words.rule : null;
-}
 
 /** Owner-only header action; a created video opens on its page with the list as its return target. */
 export default function NewVirtualVideoButton({ backTo }: { backTo: string }) {
@@ -24,13 +19,7 @@ export default function NewVirtualVideoButton({ backTo }: { backTo: string }) {
         {words.action}
       </Button>
       {open && (
-        <NameDialog
-          words={words}
-          description={words.description}
-          nameLabel={words.field}
-          nameRule={words.rule}
-          validate={validateTitle}
-          send={(title) => createVirtualVideo(title)}
+        <NewVirtualVideoDialog
           onClose={() => setOpen(false)}
           onDone={(video) => {
             setOpen(false);

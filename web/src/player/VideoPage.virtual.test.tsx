@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setRenderedAudience as forgetAudience, type Video } from "../api/client";
-import { installFakeEventSource } from "../api/fakeEventSource";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -162,6 +162,28 @@ describe("VideoPage for a virtual video", () => {
     expect(overview.queryByText("Length")).toBeNull();
     expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
     expect(overview.getByRole("button", { name: /^Edited / })).toBeDefined();
+  });
+
+  it("リンクからの取得中はそれを伝え、終わりの知らせで読み直して失敗の理由と次の手を出す", async () => {
+    server.video = { ...virtualVideo, linkFetch: { state: "running" } };
+    await openPage();
+    expect(screen.getByText(/^Reading the link…/)).toBeDefined();
+
+    server.video = {
+      ...virtualVideo,
+      linkFetch: {
+        state: "failed",
+        failure: "vv.link: The site answered 404 Not Found for the link.",
+      },
+    };
+    await emitServerEvent("video", { id: 7 });
+    expect(
+      await screen.findByText(
+        /Couldn't read the link\. vv\.link: The site answered 404 Not Found/,
+      ),
+    ).toBeDefined();
+    expect(screen.getByText(/try Fetch info… on the Work tab/)).toBeDefined();
+    expect(screen.queryByText(/^Reading the link…/)).toBeNull();
   });
 
   it("ゲストには作成、編集、マージ、削除の操作が無く、事実は Added だけ", async () => {

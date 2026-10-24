@@ -503,6 +503,7 @@ const (
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
 	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
 	ErrorCodeInvalidSmartRule            ErrorCode = "invalid_smart_rule"
+	ErrorCodeLinkOrderChanged            ErrorCode = "link_order_changed"
 	ErrorCodeLoginThrottled              ErrorCode = "login_throttled"
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
@@ -513,6 +514,7 @@ const (
 	ErrorCodePersonExternalIdMissing     ErrorCode = "person_external_id_missing"
 	ErrorCodePersonLinkAmbiguous         ErrorCode = "person_link_ambiguous"
 	ErrorCodePersonLinkUnsupported       ErrorCode = "person_link_unsupported"
+	ErrorCodePluginBuiltin               ErrorCode = "plugin_builtin"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
@@ -534,6 +536,7 @@ const (
 	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 	ErrorCodeWorkInfoFetchStale          ErrorCode = "work_info_fetch_stale"
+	ErrorCodeWorkInfoLinkUnsupported     ErrorCode = "work_info_link_unsupported"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -563,6 +566,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeInvalidSmartRule:
 		return true
+	case ErrorCodeLinkOrderChanged:
+		return true
 	case ErrorCodeLoginThrottled:
 		return true
 	case ErrorCodeMediaFolderNotFound:
@@ -582,6 +587,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePersonLinkAmbiguous:
 		return true
 	case ErrorCodePersonLinkUnsupported:
+		return true
+	case ErrorCodePluginBuiltin:
 		return true
 	case ErrorCodePluginBusy:
 		return true
@@ -624,6 +631,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
 	case ErrorCodeWorkInfoFetchStale:
+		return true
+	case ErrorCodeWorkInfoLinkUnsupported:
 		return true
 	default:
 		return false
@@ -2379,6 +2388,27 @@ func (e VideoTagsAction) Valid() bool {
 	case Add:
 		return true
 	case Remove:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VirtualLinkFetchState.
+const (
+	VirtualLinkFetchStateDone    VirtualLinkFetchState = "done"
+	VirtualLinkFetchStateFailed  VirtualLinkFetchState = "failed"
+	VirtualLinkFetchStateRunning VirtualLinkFetchState = "running"
+)
+
+// Valid indicates whether the value is a known member of the VirtualLinkFetchState enum.
+func (e VirtualLinkFetchState) Valid() bool {
+	switch e {
+	case VirtualLinkFetchStateDone:
+		return true
+	case VirtualLinkFetchStateFailed:
+		return true
+	case VirtualLinkFetchStateRunning:
 		return true
 	default:
 		return false
@@ -6218,6 +6248,9 @@ type Video struct {
 	Height *int  `json:"height,omitempty"`
 	Id     int64 `json:"id"`
 
+	// LinkFetch The fetch started when a virtual video was created from a link; owner-only.
+	LinkFetch *VirtualLinkFetch `json:"linkFetch,omitempty"`
+
 	// Location Representative location, only in GET /api/videos/{id}.
 	Location *VideoLocation `json:"location,omitempty"`
 
@@ -6670,10 +6703,26 @@ type VideoVisibilityResponse struct {
 	Applied int `json:"applied"`
 }
 
-// VirtualVideoCreate defines model for VirtualVideoCreate.
+// VirtualLinkFetch The fetch started when a virtual video was created from a link; owner-only.
+type VirtualLinkFetch struct {
+	// Failure Why a failed fetch failed, for the owner to read.
+	Failure *string `json:"failure,omitempty"`
+
+	// Plugin Name of the plugin that ran last; absent when no plugin handled the link.
+	Plugin *string               `json:"plugin,omitempty"`
+	State  VirtualLinkFetchState `json:"state"`
+}
+
+// VirtualLinkFetchState defines model for VirtualLinkFetch.State.
+type VirtualLinkFetchState string
+
+// VirtualVideoCreate A title, a url or both; the title is required without a url.
 type VirtualVideoCreate struct {
-	// Title Title; follows the display-name rules and must not be empty after trimming.
-	Title string `json:"title"`
+	// Title Title; follows the display-name rules and must not be empty after trimming unless url is set.
+	Title *string `json:"title,omitempty"`
+
+	// Url The video's link, http or https, at most 2048 characters; its fetch fills the empty fields.
+	Url *string `json:"url,omitempty"`
 }
 
 // VirtualVideoMerge defines model for VirtualVideoMerge.
@@ -6825,10 +6874,13 @@ type WorkInfoFetchApplied struct {
 	Video Video `json:"video"`
 }
 
-// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
+// WorkInfoFetchRequest Exactly one of id and link.
 type WorkInfoFetchRequest struct {
 	// Id Work ID, such as a product code: 1-200 characters after trimming. Even URL-shaped values pass unchanged as IDs; the plugin builds request URLs.
-	Id string `json:"id"`
+	Id *string `json:"id,omitempty"`
+
+	// Link An http or https link one of the plugin's domains matches; the plugin fetches by url.
+	Link *string `json:"link,omitempty"`
 
 	// PluginId Approved plugin.
 	PluginId int64 `json:"pluginId"`
@@ -6913,12 +6965,14 @@ type WorkInfoOperation string
 
 // WorkInfoPlugin One work-info or person plugin.
 type WorkInfoPlugin struct {
+	// Builtin True for the plugin VVMDM bundles, which cannot be replaced or deleted.
+	Builtin     bool    `json:"builtin"`
 	Description *string `json:"description,omitempty"`
 
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
 	Digest string `json:"digest"`
 
-	// Domains The link hosts a person plugin fetches by url, in manifest order; empty for a work-info plugin and for a person plugin that declares none.
+	// Domains The link hosts the plugin fetches by url, in manifest order; empty when it declares none. The bundled plugin's only domain is *, which stands for every link.
 	Domains []string `json:"domains"`
 
 	// FileName Uploaded filename.
@@ -6930,6 +6984,9 @@ type WorkInfoPlugin struct {
 
 	// LastRunAt Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains.
 	LastRunAt *int64 `json:"lastRunAt,omitempty"`
+
+	// LinkRank 1-based place of a work-info plugin that declares domains in the order plugins are tried for a link; absent otherwise.
+	LinkRank *int `json:"linkRank,omitempty"`
 
 	// Name Manifest name; absent when the manifest could not be read.
 	Name *string `json:"name,omitempty"`
@@ -6964,6 +7021,11 @@ type WorkInfoPluginKind string
 type WorkInfoPluginLastRun struct {
 	// Run Latest run's standard error.
 	Run *WorkInfoPluginRun `json:"run,omitempty"`
+}
+
+// WorkInfoPluginLinkOrder defines model for WorkInfoPluginLinkOrder.
+type WorkInfoPluginLinkOrder struct {
+	PluginIds []int64 `json:"pluginIds"`
 }
 
 // WorkInfoPluginList defines model for WorkInfoPluginList.
@@ -8005,6 +8067,9 @@ type MergeVirtualVideoJSONRequestBody = VirtualVideoMerge
 // UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
 type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 
+// SetWorkInfoPluginLinkOrderJSONRequestBody defines body for SetWorkInfoPluginLinkOrder for application/json ContentType.
+type SetWorkInfoPluginLinkOrderJSONRequestBody = WorkInfoPluginLinkOrder
+
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
 
@@ -8616,6 +8681,9 @@ type ServerInterface interface {
 	// UploadWorkInfoPlugin Add a work-info plugin or replace one with the same name
 	// (POST /api/work-info-plugins)
 	UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request)
+	// SetWorkInfoPluginLinkOrder Set the order in which plugins are tried for a link
+	// (PUT /api/work-info-plugins/link-order)
+	SetWorkInfoPluginLinkOrder(w http.ResponseWriter, r *http.Request)
 	// DeleteWorkInfoPlugin Delete a work-info plugin
 	// (DELETE /api/work-info-plugins/{id})
 	DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -14823,6 +14891,20 @@ func (siw *ServerInterfaceWrapper) UploadWorkInfoPlugin(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// SetWorkInfoPluginLinkOrder operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkInfoPluginLinkOrder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkInfoPluginLinkOrder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteWorkInfoPlugin operation middleware
 func (siw *ServerInterfaceWrapper) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
 
@@ -15214,6 +15296,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/link-order", wrapper.SetWorkInfoPluginLinkOrder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)

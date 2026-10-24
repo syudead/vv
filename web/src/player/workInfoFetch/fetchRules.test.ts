@@ -5,6 +5,7 @@ import type { WorkInfoFetch, WorkInfoPlugin } from "../../api/workInfoPlugins";
 import {
   approvedWorkPlugins,
   canChooseFindBy,
+  fetchLink,
   initialQuery,
   missingSettingLabels,
   orderSkipped,
@@ -27,6 +28,7 @@ function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
     settings: [],
     network: true,
     updatedAt: 0,
+    builtin: false,
     ...overrides,
   };
 }
@@ -100,6 +102,26 @@ describe("fetchRules", () => {
     expect(initialQuery(fetchOnly, "words", coded)).toBe("ABC-123");
     expect(initialQuery(fetchOnly, "words", titled)).toBe("");
     expect(initialQuery(undefined, "words", coded)).toBe("");
+  });
+
+  it("ドメインを宣言したプラグインはリンクをリンクとして送り、どのリンクも読むものは動画の最初のリンクから始める", () => {
+    const linked = {
+      ...video,
+      workInfo: {
+        code: "ABC-123",
+        urls: ["https://example.com/v/1", "https://other.test/2"],
+      },
+    } as unknown as Video;
+    const site = plugin({ operations: ["fetch"], domains: ["example.com"] });
+    const any = plugin({ operations: ["fetch"], domains: ["*"], builtin: true });
+    expect(queryLabel(site, "words")).toBe("The work's ID or link");
+    expect(queryLabel(any, "words")).toBe("Link");
+    expect(initialQuery(site, "words", linked)).toBe("ABC-123");
+    expect(initialQuery(any, "words", linked)).toBe("https://example.com/v/1");
+    expect(fetchLink(site, " https://example.com/v/1 ")).toBe("https://example.com/v/1");
+    expect(fetchLink(site, "ABC-123")).toBeUndefined();
+    // Without domains a URL-shaped value stays an opaque ID.
+    expect(fetchLink(plugin(), "https://example.com/v/1")).toBeUndefined();
   });
 
   it("選べるタグは動画に無い取得したタグを一度ずつ", () => {

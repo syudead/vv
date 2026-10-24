@@ -89,7 +89,7 @@ func ShownFetchedProfile(p PersonProfile, today time.Time) PersonProfile {
 
 func profileFieldText(p PersonProfile, field PersonProfileField) string {
 	if at, ok := fetchedProfileTexts[field]; ok {
-		return truncateRunes(*at(&p), SkippedDescriptionMaxRunes)
+		return TruncateRunes(*at(&p), SkippedDescriptionMaxRunes)
 	}
 	if at, ok := fetchedProfileInts[field]; ok && *at(&p) != nil {
 		return strconv.Itoa(**at(&p))

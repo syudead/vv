@@ -12,6 +12,7 @@ import { type DetailMark, detailMark } from "../../api/useVideoDetail";
 import {
   applyWorkInfoFetch,
   fetchWorkInfo,
+  fetchWorkInfoByLink,
   searchWorkInfo,
   type WorkInfoCandidate,
   type WorkInfoFetchApplied,
@@ -29,6 +30,7 @@ import CompareStep, { type Fetched } from "./CompareStep";
 import { type CoverFraming, useCoverFraming } from "./coverFraming";
 import {
   canFetch,
+  fetchLink,
   type FindBy,
   initialQuery,
   type RunOperation,
@@ -236,9 +238,13 @@ function useFetchFlow({
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      // Treat URL-shaped text as an opaque work ID, never as a fetchable URL.
+      // URL-shaped text stays an opaque work ID unless the plugin declares domains, which take it as a link.
       const source = input.trim();
-      const result = await fetchWorkInfo(video.id, target.id, source, signal);
+      const link = fetchLink(target, source);
+      const result =
+        link === undefined
+          ? await fetchWorkInfo(video.id, target.id, source, signal)
+          : await fetchWorkInfoByLink(video.id, target.id, link, signal);
       if (signal.aborted) return;
       showCompare({ source, plugin: target, fromSearch, result }, result);
     } catch (error) {

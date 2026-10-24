@@ -15,6 +15,7 @@ import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { DropdownMenuItem } from "../ui/shadcn/dropdown-menu";
 import {
+  acceptsLinksText,
   missingRequired,
   operationTexts,
   pluginName,
@@ -23,7 +24,19 @@ import {
   unixDate,
 } from "./workInfoPluginRows";
 
-export type RowWork = "revoke" | "delete";
+export type RowWork = "revoke" | "delete" | "move";
+
+/** A handler is absent at an end of the order or while another move is saving. */
+export interface LinkMove {
+  up?: () => void;
+  down?: () => void;
+}
+
+const workText = {
+  revoke: () => t.settings.workInfoPlugins.revoking,
+  delete: () => t.settings.workInfoPlugins.deleting,
+  move: () => t.settings.workInfoPlugins.moving,
+} satisfies Record<RowWork, () => UiText>;
 
 const badgeVariant = {
   approved: "success",
@@ -45,8 +58,8 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
     parts.push({ id: "operations", node: operations.join(" · ") });
   if (plugin.kind === "person" && plugin.sources.length > 0)
     parts.push({ id: "sources", node: text.person.accepts(plugin.sources) });
-  if (plugin.kind === "person" && plugin.domains.length > 0)
-    parts.push({ id: "domains", node: text.person.acceptsLinks(plugin.domains) });
+  const links = acceptsLinksText(plugin);
+  if (links !== null) parts.push({ id: "domains", node: links });
   if (plugin.network)
     parts.push({
       id: "network",
@@ -99,6 +112,9 @@ function RowText({ plugin, nameId }: { plugin: WorkInfoPlugin; nameId: string })
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        {plugin.linkRank !== undefined && (
+          <Badge variant="outline">{text.linkRank(plugin.linkRank)}</Badge>
+        )}
         <Badge variant={badgeVariant[plugin.state]}>
           {badgeIcon[plugin.state]}
           {text.states[plugin.state]}
@@ -117,6 +133,7 @@ function RowText({ plugin, nameId }: { plugin: WorkInfoPlugin; nameId: string })
             {text.version(plugin.version)}
           </span>
         )}
+        {plugin.builtin && <Badge variant="secondary">{text.builtin}</Badge>}
       </div>
       {plugin.description !== undefined && (
         <p className="truncate text-muted-foreground" title={plugin.description}>
@@ -140,11 +157,58 @@ function RowText({ plugin, nameId }: { plugin: WorkInfoPlugin; nameId: string })
   );
 }
 
+function RowMenu({
+  plugin,
+  label,
+  disabled,
+  move,
+  onLastRun,
+  onRevoke,
+  onDelete,
+}: {
+  plugin: WorkInfoPlugin;
+  label: UiText;
+  disabled: boolean;
+  move: LinkMove | null;
+  onLastRun: () => void;
+  onRevoke: () => void;
+  onDelete: () => void;
+}) {
+  const text = t.settings.workInfoPlugins;
+  return (
+    <RowMoreMenu buttonRef={null} label={label} disabled={disabled}>
+      {move !== null && (
+        <>
+          <DropdownMenuItem onSelect={move.up} disabled={move.up === undefined}>
+            {text.moveUp}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={move.down} disabled={move.down === undefined}>
+            {text.moveDown}
+          </DropdownMenuItem>
+        </>
+      )}
+      {plugin.state !== "invalid" && (
+        <DropdownMenuItem onSelect={onLastRun}>{text.lastRunOutput}</DropdownMenuItem>
+      )}
+      {plugin.state === "approved" && (
+        <DropdownMenuItem onSelect={onRevoke}>{text.revoke}</DropdownMenuItem>
+      )}
+      {!plugin.builtin && (
+        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+          {text.delete}
+        </DropdownMenuItem>
+      )}
+    </RowMoreMenu>
+  );
+}
+
+/** move is null for a plugin without a link rank. */
 export default function WorkInfoPluginRow({
   plugin,
   work,
   error,
   rowRef,
+  move,
   onApprove,
   onSettings,
   onLastRun,
@@ -155,6 +219,7 @@ export default function WorkInfoPluginRow({
   work: RowWork | null;
   error: UiText | null;
   rowRef: Ref<HTMLDivElement>;
+  move: LinkMove | null;
   onApprove: () => void;
   onSettings: () => void;
   onLastRun: () => void;
@@ -176,7 +241,7 @@ export default function WorkInfoPluginRow({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {work !== null && (
           <span role="status" className="text-xs text-muted-foreground">
-            {work === "revoke" ? text.revoking : text.deleting}
+            {workText[work]()}
           </span>
         )}
         {plugin.state === "unapproved" && (
@@ -190,17 +255,15 @@ export default function WorkInfoPluginRow({
             {text.settings}
           </Button>
         )}
-        <RowMoreMenu buttonRef={null} label={text.more(name)} disabled={busy}>
-          {plugin.state !== "invalid" && (
-            <DropdownMenuItem onSelect={onLastRun}>{text.lastRunOutput}</DropdownMenuItem>
-          )}
-          {plugin.state === "approved" && (
-            <DropdownMenuItem onSelect={onRevoke}>{text.revoke}</DropdownMenuItem>
-          )}
-          <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-            {text.delete}
-          </DropdownMenuItem>
-        </RowMoreMenu>
+        <RowMenu
+          plugin={plugin}
+          label={text.more(name)}
+          disabled={busy}
+          move={move}
+          onLastRun={onLastRun}
+          onRevoke={onRevoke}
+          onDelete={onDelete}
+        />
       </div>
       {error !== null && (
         <p role="alert" className="text-destructive sm:basis-full">

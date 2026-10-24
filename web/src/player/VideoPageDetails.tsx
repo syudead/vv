@@ -15,6 +15,7 @@ import VideoPageTabs, { useVideoTabState } from "./tabs/VideoPageTabs";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
 import type { VirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
+import LinkFetchLine from "./virtualVideo/LinkFetchLine";
 import VirtualLinks from "./virtualVideo/VirtualLinks";
 
 type Detail = ReturnType<typeof useVideoDetail>;
@@ -105,6 +106,7 @@ export default function VideoPageDetails({
           title={<VideoTitle video={video} owner={owner} />}
         />
         {owner && <OwnerTags video={video} reread={reread} />}
+        {owner && <LinkFetchLine video={video} />}
       </div>
       {/* A virtual video has nothing to play, so its links and description take the main action's place. */}
       {video.virtual && <VirtualLinks videoId={video.id} info={video.workInfo} />}

@@ -229,7 +229,7 @@ func setRunKey(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginMan
 
 // setRunLink checks the link as the server checks a link sent for a person fetch.
 func setRunLink(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginManifest, input string) *accountFailure {
-	link, err := domain.NormalizePersonFetchLink(input)
+	link, err := domain.NormalizeFetchLink(input)
 	if err != nil {
 		return usageFailure("--url needs an http or https link of at most %d characters.", domain.WorkInfoLimits.URLMaxLength)
 	}

@@ -717,6 +717,9 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	if !ok {
 		return false
 	}
+	if suffix == "link-order" {
+		return r.Method == http.MethodPut
+	}
 	id, rest, found := strings.Cut(suffix, "/")
 	if !found || id == "" {
 		return false
@@ -880,6 +883,9 @@ const (
 	codePersonExternalIDMissing     = gen.ErrorCodePersonExternalIdMissing
 	codePersonLinkAmbiguous         = gen.ErrorCodePersonLinkAmbiguous
 	codePersonLinkUnsupported       = gen.ErrorCodePersonLinkUnsupported
+	codeWorkInfoLinkUnsupported     = gen.ErrorCodeWorkInfoLinkUnsupported
+	codePluginBuiltin               = gen.ErrorCodePluginBuiltin
+	codeLinkOrderChanged            = gen.ErrorCodeLinkOrderChanged
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
 )

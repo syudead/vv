@@ -55,6 +55,7 @@ export const works: WorkInfoPlugin = {
   kind: "work",
   sources: [],
   domains: [],
+  builtin: false,
   name: "works",
   fileName: "works.wasm",
   operations: ["search", "fetch"],

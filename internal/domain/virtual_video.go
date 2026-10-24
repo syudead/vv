@@ -60,3 +60,38 @@ func (k VideoKind) IncludesFiles() bool {
 func (k VideoKind) IncludesVirtual() bool {
 	return k != VideoKindFile
 }
+
+// ErrInvalidVirtualLink rejects a link that is not an http or https URL of at most WorkInfoLimits.URLMaxLength.
+var ErrInvalidVirtualLink = errors.New("the link must be an http or https URL")
+
+// NormalizeVirtualLink trims a link a virtual video is created from and checks it as a stored work URL is checked.
+func NormalizeVirtualLink(raw string) (string, error) {
+	link, err := normalizeWorkInfoText("url", raw, WorkInfoLimits.URLMaxLength, false)
+	if err != nil || !isWorkURL(link) {
+		return "", ErrInvalidVirtualLink
+	}
+	return link, nil
+}
+
+// LinkTitle is the title of a virtual video created from link without one: the link itself, cut to the
+// display-name limit, until a fetch or the owner replaces it.
+func LinkTitle(link string) string {
+	return TruncateRunes(link, DisplayNameMaxLength)
+}
+
+// LinkFetchState is the progress of the fetch started when a virtual video was created from a link.
+type LinkFetchState string
+
+const (
+	LinkFetchRunning LinkFetchState = "running"
+	LinkFetchFailed  LinkFetchState = "failed"
+	LinkFetchDone    LinkFetchState = "done"
+)
+
+// LinkFetch is a virtual video's link fetch; Failure tells the owner why a failed one failed.
+type LinkFetch struct {
+	State   LinkFetchState
+	Failure string
+	// Plugin names the plugin that ran, empty when none did.
+	Plugin string
+}

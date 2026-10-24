@@ -347,6 +347,16 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
 
 	// Locations and seek-preview state are detail-only to avoid sending unused paths for every list item. forAudience removes locations for guests.
+	if video.Virtual() && audienceFrom(r.Context()).IsOwner() && s.virtualVideos != nil {
+		fetch, ok, err := s.virtualVideos.LinkFetch(r.Context(), video.ContentKey)
+		errs = append(errs, err)
+		if ok {
+			payload.LinkFetch = &gen.VirtualLinkFetch{
+				State: gen.VirtualLinkFetchState(fetch.State), Failure: optionalString(fetch.Failure),
+				Plugin: optionalString(fetch.Plugin),
+			}
+		}
+	}
 	if !video.Virtual() {
 		payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 		payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
