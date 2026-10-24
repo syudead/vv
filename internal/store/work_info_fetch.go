@@ -33,26 +33,9 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
-		return domain.FetchedWorkInfoApplied{}, err
-	}
-	contentKey, err := writableContentKeyOf(ctx, tx, apply.VideoID)
+	contentKey, userKeys, apply, err := fetchedApplyTarget(ctx, tx, apply)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
-	}
-	userKeys, err := userKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
-	if err != nil {
-		return domain.FetchedWorkInfoApplied{}, err
-	}
-	// A different key means the fetched video was deleted and its ID reused.
-	if contentKey == "" || contentKey != apply.ContentKey || len(userKeys) == 0 {
-		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
-	}
-
-	if apply.FillEmpty {
-		if apply, err = emptyFieldsOnly(ctx, tx, contentKey, userKeys[0], apply); err != nil {
-			return domain.FetchedWorkInfoApplied{}, err
-		}
 	}
 	now := time.Now()
 	var touched []string
@@ -119,6 +102,32 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
 	return out, nil
+}
+
+// fetchedApplyTarget rechecks the plugin and the fetched video and returns its content and user keys, with a fill
+// narrowed to the empty fields.
+func fetchedApplyTarget(
+	ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply,
+) (string, []string, domain.FetchedWorkInfoApply, error) {
+	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
+		return "", nil, apply, err
+	}
+	contentKey, err := writableContentKeyOf(ctx, tx, apply.VideoID)
+	if err != nil {
+		return "", nil, apply, err
+	}
+	userKeys, err := userKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
+	if err != nil {
+		return "", nil, apply, err
+	}
+	// A different key means the fetched video was deleted and its ID reused.
+	if contentKey == "" || contentKey != apply.ContentKey || len(userKeys) == 0 {
+		return "", nil, apply, domain.ErrNotFound
+	}
+	if apply.FillEmpty {
+		apply, err = emptyFieldsOnly(ctx, tx, contentKey, userKeys[0], apply)
+	}
+	return contentKey, userKeys, apply, err
 }
 
 // emptyFieldsOnly narrows a fill to the title, tags and detail fields the video has no value for, read inside the

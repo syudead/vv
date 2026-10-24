@@ -135,7 +135,7 @@ the owner made during the fetch stays:
 | Title | `title_from_link` is still set: no title was given and none was saved since |
 | Tags | The video has none |
 | A detail field (code, description, a date kind, a role, links, external IDs) | It is empty |
-| Cover | The video still has no image, checked just before the upload |
+| Cover | The video still has no image, checked under the generation lock every image write takes (`Ingest.FillThumbnailImage`) |
 
 The fetch then ends `done`, or `failed` with the first plugin's reason, and
 the store publishes a video event so open pages read the video again. A failed

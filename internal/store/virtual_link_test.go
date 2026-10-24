@@ -23,7 +23,7 @@ func TestCreateFromLinkThenFillOnlyEmptyFields(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)
 	link := "https://example.com/watch?v=1&utm_source=x"
-	video, err := db.VirtualVideos().CreateFromLink(ctx, "", link)
+	video, err := db.VirtualVideos().CreateFromLink(ctx, "  ", link)
 	if err != nil {
 		t.Fatalf("CreateFromLink: %v", err)
 	}

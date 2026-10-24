@@ -156,11 +156,7 @@ func (p *WorkInfoPlugins) fillCover(ctx context.Context, video domain.Video, cov
 	if p.covers == nil || len(covers) == 0 {
 		return
 	}
-	current, err := p.videos.GetVideo(ctx, domain.AudienceOwner, video.ID)
-	if err != nil || current.ContentKey != video.ContentKey || current.ThumbnailImageRevision != 0 {
-		return
-	}
-	if _, err := p.covers.UploadThumbnailImage(ctx, video.ID, video.ContentKey, covers[0].Data); err != nil {
+	if _, err := p.covers.FillThumbnailImage(ctx, video.ID, video.ContentKey, covers[0].Data); err != nil {
 		p.links.logger.Info("the link's image was not applied", "video", video.ID, "error", err)
 	}
 }

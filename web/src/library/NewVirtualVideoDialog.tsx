@@ -1,15 +1,10 @@
-import { CircleAlert } from "lucide-react";
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 import { RequestFailed, type Video } from "../api/client";
 import { createVirtualVideo } from "../api/virtualVideos";
 import { errorText, t, type UiText } from "../i18n";
 import { typedLink } from "../lib/typedLink";
-import { FormDialog } from "../ui/patterns/form-dialog";
-import { Alert, AlertTitle } from "../ui/shadcn/alert";
-import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/shadcn/field";
-import { Input } from "../ui/shadcn/input";
-import { Spinner } from "../ui/shadcn/spinner";
+import { CreateDialogFrame, DialogTextField } from "./NameDialogParts";
 
 const words = t.library.newVirtualVideo;
 
@@ -24,11 +19,6 @@ export default function NewVirtualVideoDialog({
   onClose: () => void;
   onDone: (video: Video) => void;
 }) {
-  const titleId = useId();
-  const linkId = useId();
-  const titleErrorId = useId();
-  const linkErrorId = useId();
-  const linkHintId = useId();
   const titleInput = useRef<HTMLInputElement>(null);
   const linkInput = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -79,73 +69,37 @@ export default function NewVirtualVideoDialog({
   }
 
   return (
-    <FormDialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) onClose();
-      }}
-      title={words.title}
+    <CreateDialogFrame
+      words={words}
       description={words.description}
-      onSubmit={submit}
-      cancelLabel={t.common.cancel}
-      submitLabel={
-        <>
-          {pending && <Spinner aria-hidden="true" />}
-          {pending ? words.submitting : words.submit}
-        </>
-      }
       pending={pending}
+      failure={failure}
       initialFocus={titleInput}
+      onSubmit={submit}
+      onClose={onClose}
     >
-      <Field data-invalid={titleInvalid !== null || undefined}>
-        <FieldLabel htmlFor={titleId}>{words.field}</FieldLabel>
-        <Input
-          ref={titleInput}
-          id={titleId}
-          type="text"
-          autoComplete="off"
-          value={title}
-          onChange={(event) => {
-            setTitle(event.target.value);
-            setTitleInvalid(null);
-          }}
-          aria-invalid={titleInvalid !== null || undefined}
-          aria-describedby={titleInvalid !== null ? titleErrorId : undefined}
-          className="h-8"
-        />
-        {titleInvalid !== null && (
-          <FieldError id={titleErrorId}>{titleInvalid}</FieldError>
-        )}
-      </Field>
-      <Field data-invalid={linkInvalid !== null || undefined}>
-        <FieldLabel htmlFor={linkId}>{words.linkField}</FieldLabel>
-        <Input
-          ref={linkInput}
-          id={linkId}
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          value={link}
-          onChange={(event) => {
-            setLink(event.target.value);
-            setLinkInvalid(null);
-          }}
-          aria-invalid={linkInvalid !== null || undefined}
-          aria-describedby={linkInvalid !== null ? linkErrorId : linkHintId}
-          className="h-8"
-        />
-        {linkInvalid !== null ? (
-          <FieldError id={linkErrorId}>{linkInvalid}</FieldError>
-        ) : (
-          <FieldDescription id={linkHintId}>{words.linkHint}</FieldDescription>
-        )}
-      </Field>
-      {failure !== null && (
-        <Alert variant="destructive">
-          <CircleAlert aria-hidden="true" />
-          <AlertTitle>{failure}</AlertTitle>
-        </Alert>
-      )}
-    </FormDialog>
+      <DialogTextField
+        label={words.field}
+        value={title}
+        invalid={titleInvalid}
+        inputRef={titleInput}
+        onChange={(value) => {
+          setTitle(value);
+          setTitleInvalid(null);
+        }}
+      />
+      <DialogTextField
+        label={words.linkField}
+        value={link}
+        invalid={linkInvalid}
+        hint={words.linkHint}
+        inputRef={linkInput}
+        inputMode="url"
+        onChange={(value) => {
+          setLink(value);
+          setLinkInvalid(null);
+        }}
+      />
+    </CreateDialogFrame>
   );
 }

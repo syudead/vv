@@ -39,10 +39,11 @@ func (s *VirtualVideoStore) CreateFromLink(ctx context.Context, title, link stri
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if strings.TrimSpace(title) != "" {
-		if title, err = domain.NormalizeVirtualTitle(title); err != nil {
-			return domain.Video{}, err
-		}
+	if strings.TrimSpace(title) == "" {
+		// A blank title is no title, so the link titles the video and a fill may replace it.
+		title = ""
+	} else if title, err = domain.NormalizeVirtualTitle(title); err != nil {
+		return domain.Video{}, err
 	}
 	return s.create(ctx, title, link)
 }

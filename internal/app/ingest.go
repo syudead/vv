@@ -409,6 +409,18 @@ func (i *Ingest) replaceThumbnailWithFrame(
 func (i *Ingest) ApplyThumbnailImage(
 	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
+	return i.applyThumbnailImage(ctx, videoID, contentKey, image, origin, false)
+}
+
+// errThumbnailImageSet stops a fill that found an image already applied under the generation lock.
+var errThumbnailImageSet = errors.New("the video already has a thumbnail image")
+
+// applyThumbnailImage is ApplyThumbnailImage; onlyEmpty refuses with errThumbnailImageSet a video that has an
+// applied image when the lock is taken, so a fill never replaces an image applied meanwhile.
+func (i *Ingest) applyThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
+	onlyEmpty bool,
+) (domain.Video, error) {
 	if contentKey == "" {
 		return domain.Video{}, domain.ErrContentChanged
 	}
@@ -423,6 +435,9 @@ func (i *Ingest) ApplyThumbnailImage(
 		}
 		if video.ContentKey != contentKey {
 			return false, domain.ErrContentChanged
+		}
+		if onlyEmpty && video.ThumbnailImageRevision != 0 {
+			return false, errThumbnailImageSet
 		}
 		applied, err := i.fitThumbnailImage(ctx, image, video, origin)
 		if err != nil {
