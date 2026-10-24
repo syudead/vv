@@ -545,13 +545,19 @@ so they read on devices without hover; the design-system bar
 (`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
 fit.
 
-Its items, in order, are clear, `N selected`, `Edit`,
+Its items, in order, are clear, `N selected`, `Edit`, `Fill info…`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
 There is no `Select all`: selection covers only the cards the viewer checks,
 directly, as a Shift range or inside a drawn box.
 The actions sit at the right end; those that do not fit move to the right end
 of the next line.
+
+`Fill info…` shares `Edit`'s limit and opens a dialog that picks a work-info
+plugin and queues fills of the selection's empty fields by work code
+([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-by-code)).
+A toast counts the videos queued and those left out without a code; the
+selection stays.
 
 `Delete…` (`ghost-destructive`) removes the selected collections, never videos.
 It is disabled with the reason `Select a group or smart folder` until a group

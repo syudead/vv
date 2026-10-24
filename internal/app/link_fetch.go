@@ -32,10 +32,13 @@ type linkFetchJob struct {
 	link  string
 }
 
+// linkFetches is the one worker behind every fill, link fetches and code fills alike, so fills never contend with
+// each other for the runtime's run slot.
 type linkFetches struct {
 	store  LinkFetchStore
 	logger *slog.Logger
 	queue  chan linkFetchJob
+	codes  codeFillQueue
 	stop   context.CancelFunc
 	done   chan struct{}
 }
@@ -45,8 +48,8 @@ type linkFetches struct {
 func (p *WorkInfoPlugins) StartLinkFetches(ctx context.Context, store LinkFetchStore, logger *slog.Logger) {
 	ctx, stop := context.WithCancel(ctx)
 	f := &linkFetches{
-		store: store, logger: logger, queue: make(chan linkFetchJob, linkFetchQueueSize), stop: stop,
-		done: make(chan struct{}),
+		store: store, logger: logger, queue: make(chan linkFetchJob, linkFetchQueueSize),
+		codes: codeFillQueue{jobs: make(chan codeFillJob, codeFillQueueSize)}, stop: stop, done: make(chan struct{}),
 	}
 	p.links = f
 	go func() {
@@ -57,6 +60,8 @@ func (p *WorkInfoPlugins) StartLinkFetches(ctx context.Context, store LinkFetchS
 				return
 			case job := <-f.queue:
 				p.runLinkFetch(ctx, job)
+			case job := <-f.codes.jobs:
+				p.runCodeFill(ctx, job)
 			}
 		}
 	}()
@@ -111,7 +116,7 @@ func (p *WorkInfoPlugins) fillFromLink(ctx context.Context, video domain.Video, 
 	first, name := "", ""
 	for _, plugin := range candidates {
 		name = plugin.Manifest.Name
-		err := p.fillWith(ctx, video, plugin.ID, link)
+		err := p.fillWith(ctx, video, plugin.ID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: link})
 		if err == nil || errors.Is(err, domain.ErrNotFound) || ctx.Err() != nil {
 			// A video deleted or merged since is not the fetch's to report on.
 			return name, ""
@@ -123,11 +128,12 @@ func (p *WorkInfoPlugins) fillFromLink(ctx context.Context, video domain.Video, 
 	return name, first
 }
 
-// fillWith runs one plugin by link and applies its result to the empty fields only, then sets the first cover when
+// fillWith runs one plugin's fetch and applies its result to the empty fields only, then sets the first cover when
 // the video still has no image.
-func (p *WorkInfoPlugins) fillWith(ctx context.Context, video domain.Video, pluginID int64, link string) error {
-	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoPluginKindWork,
-		domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: link})
+func (p *WorkInfoPlugins) fillWith(
+	ctx context.Context, video domain.Video, pluginID int64, req domain.WorkInfoRunRequest,
+) error {
+	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoPluginKindWork, req)
 	if recordErr := p.recordFetch(ctx, video.ID, err); recordErr != nil {
 		return recordErr
 	}
@@ -165,7 +171,7 @@ func (p *WorkInfoPlugins) fillCover(ctx context.Context, video domain.Video, cov
 		return
 	}
 	if _, err := p.covers.FillThumbnailImage(ctx, video.ID, video.ContentKey, covers[i].Data); err != nil {
-		p.links.logger.Info("the link's image was not applied", "video", video.ID, "error", err)
+		p.links.logger.Info("the fetched image was not applied", "video", video.ID, "error", err)
 	}
 }
 

@@ -536,6 +536,7 @@ const (
 	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 	ErrorCodeWorkInfoFetchStale          ErrorCode = "work_info_fetch_stale"
+	ErrorCodeWorkInfoFillsBusy           ErrorCode = "work_info_fills_busy"
 	ErrorCodeWorkInfoLinkUnsupported     ErrorCode = "work_info_link_unsupported"
 )
 
@@ -631,6 +632,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
 	case ErrorCodeWorkInfoFetchStale:
+		return true
+	case ErrorCodeWorkInfoFillsBusy:
 		return true
 	case ErrorCodeWorkInfoLinkUnsupported:
 		return true
@@ -6950,6 +6953,24 @@ type WorkInfoFetchedPerson struct {
 // WorkInfoField Fetched fields applicable to the video, in comparison-row order.
 type WorkInfoField string
 
+// WorkInfoFillsQueued defines model for WorkInfoFillsQueued.
+type WorkInfoFillsQueued struct {
+	// Queued User-data keys whose fill was queued.
+	Queued int `json:"queued"`
+
+	// WithoutCode User-data keys left out because their work information has no code that can be sent.
+	WithoutCode int `json:"withoutCode"`
+}
+
+// WorkInfoFillsRequest defines model for WorkInfoFillsRequest.
+type WorkInfoFillsRequest struct {
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to fill. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
+}
+
 // WorkInfoInput Full work-info replacement with the seven WorkInfo properties; each may be omitted or null, either of which clears it.
 type WorkInfoInput struct {
 	Code          *string                  `json:"code,omitempty"`
@@ -8092,6 +8113,9 @@ type SetWorkInfoPluginLinkOrderJSONRequestBody = WorkInfoPluginLinkOrder
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
 
+// StartWorkInfoFillsJSONRequestBody defines body for StartWorkInfoFills for application/json ContentType.
+type StartWorkInfoFillsJSONRequestBody = WorkInfoFillsRequest
+
 // SearchPeopleWithPluginJSONRequestBody defines body for SearchPeopleWithPlugin for application/json ContentType.
 type SearchPeopleWithPluginJSONRequestBody = WorkInfoSearchRequest
 
@@ -8718,6 +8742,9 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// StartWorkInfoFills Fill selected videos' empty fields by their work codes
+	// (POST /api/work-info-plugins/{id}/fills)
+	StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
 	// (GET /api/work-info-plugins/{id}/last-run)
 	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -15036,6 +15063,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// StartWorkInfoFills operation middleware
+func (siw *ServerInterfaceWrapper) StartWorkInfoFills(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartWorkInfoFills(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWorkInfoPluginLastRun operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request) {
 
@@ -15357,6 +15410,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/fills", wrapper.StartWorkInfoFills)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/person-search", wrapper.SearchPeopleWithPlugin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)

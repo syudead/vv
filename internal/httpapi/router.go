@@ -729,7 +729,7 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	case http.MethodPut:
 		return rest == "approval" || rest == "settings" || rest == "auto-lookup"
 	case http.MethodPost:
-		return rest == "search" || rest == "person-search"
+		return rest == "search" || rest == "person-search" || rest == "fills"
 	}
 	return false
 }
@@ -885,6 +885,7 @@ const (
 	codePersonLinkAmbiguous         = gen.ErrorCodePersonLinkAmbiguous
 	codePersonLinkUnsupported       = gen.ErrorCodePersonLinkUnsupported
 	codeWorkInfoLinkUnsupported     = gen.ErrorCodeWorkInfoLinkUnsupported
+	codeWorkInfoFillsBusy           = gen.ErrorCodeWorkInfoFillsBusy
 	codePluginBuiltin               = gen.ErrorCodePluginBuiltin
 	codeLinkOrderChanged            = gen.ErrorCodeLinkOrderChanged
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable

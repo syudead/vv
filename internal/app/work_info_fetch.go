@@ -197,13 +197,7 @@ func (p *WorkInfoPlugins) run(
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoRunInvalid
 	}
 	req.Kind, req.Sources = kind, plugin.Manifest.Sources
-	if plugin.State() != domain.WorkInfoPluginApproved {
-		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginNotApproved
-	}
-	if !plugin.Manifest.Supports(req.Operation) {
-		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoOperationUnsupported
-	}
-	req.Settings, err = domain.WorkInfoRunSettings(plugin.Manifest.Settings, plugin.Values)
+	req.Settings, err = runnableSettings(plugin, req.Operation)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
@@ -218,6 +212,17 @@ func (p *WorkInfoPlugins) run(
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
 	return plugin, result, nil
+}
+
+// runnableSettings returns the settings a run of operation sends, or why the plugin cannot run it.
+func runnableSettings(plugin domain.WorkInfoPlugin, operation domain.WorkInfoOperation) (map[string]string, error) {
+	if plugin.State() != domain.WorkInfoPluginApproved {
+		return nil, domain.ErrWorkInfoPluginNotApproved
+	}
+	if !plugin.Manifest.Supports(operation) {
+		return nil, domain.ErrWorkInfoOperationUnsupported
+	}
+	return domain.WorkInfoRunSettings(plugin.Manifest.Settings, plugin.Values)
 }
 
 // Use no proxy when no network source is configured.

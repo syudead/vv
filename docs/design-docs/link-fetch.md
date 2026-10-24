@@ -2,12 +2,14 @@
 
 VVMDM reads a video's title, description, date and image from any video link
 with its bundled work-info plugin `vv.link`, tries the plugins that declare
-domains in an order the owner sets, and fills the empty fields of a virtual
-video created from a link. The rules are in
+domains in an order the owner sets, fills the empty fields of a virtual
+video created from a link, and fills a selection's empty fields by their work
+codes. The rules are in
 [`link_plugin.go`](../../internal/domain/link_plugin.go), the bundled plugin in
 [`link.go`](../../internal/wasmplugin/link.go) and
-[`link_page.go`](../../internal/wasmplugin/link_page.go), and the fill in
-[`link_fetch.go`](../../internal/app/link_fetch.go). The sandbox and network
+[`link_page.go`](../../internal/wasmplugin/link_page.go), and the fills in
+[`link_fetch.go`](../../internal/app/link_fetch.go) and
+[`code_fill.go`](../../internal/app/code_fill.go). The sandbox and network
 rules it shares are in [work-info-plugins.md](work-info-plugins.md).
 
 The diagram shows a virtual video created from a link.
@@ -150,3 +152,58 @@ worker belonged to the previous process.
 | A job in the jobs table | Jobs are content work claimed by workers with ffmpeg; one in-memory queue serves a fetch that ends within a minute |
 | Overwriting with the fetched values | The owner's typed title or description would be lost to a site's |
 | Trying only the first matching plugin | A site plugin that fails, such as one needing a login, would leave the video empty although the generic plugin can read it |
+
+## A selection fills its empty fields by code
+
+`Fill info…` on the list selection bar
+([library-ui.md, Selection bar](library-ui.md#selection-bar)) asks for one
+approved work-info plugin that fetches, and
+`POST /api/work-info-plugins/{id}/fills` queues one fill for each selected
+user-data key whose work information has a code. The fill sends the code as
+the fetch's `id` and applies the result as the fill of a link fetch does,
+through the same worker, so a fill never waits on another for the runtime's
+run slot. The response returns at once with the keys queued and the keys
+left out for lacking a code; the cards update from the video events as each
+fill lands, and each run is recorded as the video's work-info fetch activity.
+
+The diagram shows one request from the selection bar to the filled videos.
+
+```mermaid
+sequenceDiagram
+  participant P as Selection bar
+  participant H as POST fills
+  participant S as Store
+  participant Q as Fill worker
+  participant R as Plugin run
+  P->>H: plugin, videos, smart folders
+  H->>S: smart-folder members, codes per user-data key
+  H->>Q: queue every coded key, or none
+  H-->>P: 202, queued and without a code
+  loop each queued key
+    Q->>R: fetch by the code
+    R-->>Q: work information or failure
+    Q->>S: fill empty fields only, then the cover if no image
+    S-->>P: video events, fetch activity
+  end
+```
+
+The fill writes the empty fields of the
+[link fill table](#a-virtual-video-created-from-a-link-fills-its-empty-fields)
+except the title: a file video always shows its file title and a virtual video
+named by the owner has its own, so a title is never empty in that sense. The
+versions of a bundle share one code and one user-data key and are filled once,
+through the first version selected.
+
+The plugin is checked before anything is queued: a plugin that is not an
+approved work-info plugin declaring `fetch` with its required settings set
+answers with the same error as a single fetch. The queue holds 20,000 fills,
+one selection at the bulk actions' limit, and takes a request whole or answers
+`503 work_info_fills_busy` without queuing any of it. Queued fills live in
+memory and end with the process; the activity shows which videos were filled.
+
+| Rejected | Why |
+| --- | --- |
+| Searching by title and taking the first candidate | A similar title fetches another work, and the fill would write its people and tags without the owner seeing them |
+| Overwriting the selection's values | The owner's tags and details would be lost to a site's |
+| A job in the jobs table | Jobs are content work for ffmpeg workers; the fills share the in-memory worker of link fetches and its single run slot |
+| Applying to every video matching the list's filter | The selection bar acts on what is selected; a smart folder saved from the filter covers its matches |

@@ -106,6 +106,29 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
 }
 
+// StartWorkInfoFills answers once the fills are queued; their outcomes arrive as video events and fetch activity.
+func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	var body gen.WorkInfoFillsRequest
+	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds)
+	if !ok {
+		return
+	}
+	queued, err := s.workInfoPlugins.StartCodeFills(r.Context(), id, videoIDs)
+	if errors.Is(err, domain.ErrCodeFillQueueFull) {
+		s.writeError(w, http.StatusServiceUnavailable, codeWorkInfoFillsBusy, "Too many fills are queued; try again later.")
+		return
+	}
+	if err != nil {
+		s.workInfoRunError(w, err, "The work-info plugin was not found.")
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusAccepted, gen.WorkInfoFillsQueued{Queued: queued.Queued, WithoutCode: queued.WithoutCode}, s.logger)
+}
+
 // Use empty arrays for absent lists; omit absent code and description.
 func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	details := fetch.Details

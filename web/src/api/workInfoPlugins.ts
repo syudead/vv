@@ -1,6 +1,7 @@
 import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
+import { smartFolderField } from "./smartFolderChanges";
 import { afterTagsAppliedByName } from "./tags";
 
 // Owner-only plugin changes emit no events; refresh the list after mutations.
@@ -27,6 +28,7 @@ export type WorkInfoMatch = components["schemas"]["WorkInfoMatch"];
 export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
 export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
 export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
+export type WorkInfoFillsQueued = components["schemas"]["WorkInfoFillsQueued"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -140,6 +142,21 @@ export async function searchWorkInfo(
     { method: "POST", headers: jsonHeaders, body: JSON.stringify({ query }), signal },
   );
   return result.candidates;
+}
+
+/** Queue fills by work code for the videos and smart folders; the server answers before any plugin runs. */
+export function startWorkInfoFills(
+  pluginId: number,
+  videoIds: readonly number[],
+  smartFolderIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<WorkInfoFillsQueued> {
+  return request<WorkInfoFillsQueued>(`${pluginPath(pluginId)}/fills`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ videoIds, ...smartFolderField(smartFolderIds) }),
+    signal,
+  });
 }
 
 /** Treat id as opaque even when URL-shaped; plugins build URLs. Fetch results last ten minutes without modifying the video. */

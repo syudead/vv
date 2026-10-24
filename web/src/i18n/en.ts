@@ -237,6 +237,7 @@ const errorCodes = {
     "This person has several links the plugin handles. Choose one first.",
   person_link_unsupported: "The plugin doesn't handle this link.",
   work_info_link_unsupported: "The plugin doesn't handle this link.",
+  work_info_fills_busy: "Too many videos are waiting to be filled. Try again later.",
   plugin_builtin: "The built-in plugin can't be deleted or replaced.",
   link_order_changed: "The plugins changed meanwhile. Check the order and try again.",
   activity_not_retryable: "This can no longer be retried",
@@ -1178,6 +1179,22 @@ export const en = {
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
       removeFromGroup: "Remove from group",
+      fillInfo: "Fill info…",
+      fillDialog: {
+        title: "Fill empty info by code",
+        description:
+          "Each video's work is fetched by its code, and only its empty tags, details and image are filled. Videos without a code are left out. The fetches run in the background, one at a time.",
+        plugin: "Plugin",
+        noPlugin:
+          "No approved plugin fetches works by ID. Add or approve one in Settings.",
+        submit: "Start",
+        submitting: "Starting…",
+        failed: (reason: string) => `Couldn't start the fills: ${reason}`,
+      },
+      fillsQueued: (queued: number, withoutCode: number) =>
+        withoutCode === 0
+          ? `Filling ${videos(queued)} in the background`
+          : `Filling ${videos(queued)} in the background; ${videos(withoutCode)} without a code left out`,
       deleteCollections: "Delete…",
       deleteNeedsCollection: "Select a group or smart folder",
       deleteDialog: {

@@ -30,9 +30,17 @@ type scriptedPlugins struct {
 	selection  domain.WorkInfoSelection
 	pageCover  bool
 	ids        []string
+	fillIDs    []int64
+	queued     domain.CodeFillsQueued
 	// covers and personImages map an index to its kept image.
 	covers       map[int]domain.WorkInfoCover
 	personImages map[int]domain.WorkInfoCover
+}
+
+func (p *scriptedPlugins) StartCodeFills(_ context.Context, _ int64, videoIDs []int64) (domain.CodeFillsQueued, error) {
+	p.calls++
+	p.fillIDs = videoIDs
+	return p.queued, p.err
 }
 
 func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
@@ -102,6 +110,7 @@ const (
 	personSearchPath = "/api/work-info-plugins/1/person-search"
 	fetchPath        = "/api/videos/7/work-info-fetches"
 	applyPath        = "/api/videos/7/work-info-fetches/abc/apply"
+	fillsPath        = "/api/work-info-plugins/1/fills"
 )
 
 func decodeErrorBody(t *testing.T, body []byte) gen.Error {
@@ -156,6 +165,7 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 			{searchPath, `{"query":"work"}`},
 			{personSearchPath, `{"query":"person"}`},
 			{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
+			{fillsPath, `{"videoIds":[7]}`},
 		} {
 			label := tc.name + " " + route.path
 			status, body := e.post(route.path, route.body, e.owner)
@@ -207,6 +217,21 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	if e.plugins.calls != calls {
 		t.Fatal("an incomplete request reached the registry")
 	}
+}
+
+// Fills answer at once with the counts, and a full queue is its own busy code.
+func TestWorkInfoFillsAnswer(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	e.plugins.queued = domain.CodeFillsQueued{Queued: 2, WithoutCode: 1}
+	status, body := e.post(fillsPath, `{"videoIds":[7,8,9]}`, e.owner)
+	var got gen.WorkInfoFillsQueued
+	if status != http.StatusAccepted || json.Unmarshal(body, &got) != nil || got.Queued != 2 || got.WithoutCode != 1 ||
+		!slices.Equal(e.plugins.fillIDs, []int64{7, 8, 9}) {
+		t.Fatalf("fills = %d %s (ids %v)", status, body, e.plugins.fillIDs)
+	}
+	e.plugins.err = domain.ErrCodeFillQueueFull
+	status, body = e.post(fillsPath, `{"videoIds":[7]}`, e.owner)
+	assertErrorBody(t, "full queue", status, body, wantError{status: 503, code: gen.ErrorCodeWorkInfoFillsBusy})
 }
 
 func TestPersonSearchAnswersCandidates(t *testing.T) {

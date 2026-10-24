@@ -2434,6 +2434,41 @@ paths:
         "504":
           $ref: "#/components/responses/PluginTimedOut"
 
+  /api/work-info-plugins/{id}/fills:
+    post:
+      operationId: startWorkInfoFills
+      summary: "Fill selected videos' empty fields by their work codes"
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags, takes the first video of each user-data key, and queues one fetch per key whose work information has a code, sending the code as the fetch id. Returns 202 at once with the keys queued and the keys left out for lacking a code (or for a code over 200 characters). Each queued fetch runs in the background, one at a time on the worker that runs link fetches, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, and the first cover when the video has no image; a title is never written. Every run is recorded as the video's work-info fetch activity. A missing plugin returns 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing."
+      parameters:
+        - $ref: "#/components/parameters/WorkInfoPluginId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoFillsRequest"
+      responses:
+        "202":
+          description: "Queued fills"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoFillsQueued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: "The fill queue has no room for the request (work_info_fills_busy)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/work-info-plugins/{id}/person-search:
     post:
       operationId: searchPeopleWithPlugin
@@ -8982,6 +9017,38 @@ components:
             type: integer
             format: int64
 
+    WorkInfoFillsRequest:
+      type: object
+      required: [videoIds]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          description: "Video IDs to fill. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    WorkInfoFillsQueued:
+      type: object
+      required: [queued, withoutCode]
+      additionalProperties: false
+      properties:
+        queued:
+          type: integer
+          description: "User-data keys whose fill was queued."
+        withoutCode:
+          type: integer
+          description: "User-data keys left out because their work information has no code that can be sent."
+
     VideoTagsSummaryItem:
       type: object
       required: [tag, count, manualCount]
@@ -12036,6 +12103,7 @@ components:
             - person_link_ambiguous
             - person_link_unsupported
             - work_info_link_unsupported
+            - work_info_fills_busy
             - plugin_builtin
             - link_order_changed
             - invalid_smart_rule

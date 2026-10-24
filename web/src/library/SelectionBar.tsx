@@ -13,6 +13,7 @@ import BundleDialog from "../versions/BundleDialog";
 import BulkEditor from "./bulkEdit/BulkEditor";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
+import FillInfoAction from "./FillInfoAction";
 import {
   DisabledReason,
   disabledProps,
@@ -229,6 +230,12 @@ export default function SelectionBar({
             }}
           />
         )}
+
+        <FillInfoAction
+          videoIds={selectedIds}
+          smartFolderIds={smartFolderIds}
+          disabledReason={reasons.tag}
+        />
 
         <FavoriteMenu
           videoIds={favoriteVideoIds}

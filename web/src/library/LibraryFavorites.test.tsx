@@ -620,6 +620,7 @@ describe("選択バーの一括のお気に入り", () => {
       names.slice(names.indexOf("Edit"), names.indexOf("Bundle as versions") + 1),
     ).toEqual([
       "Edit",
+      "Fill info…",
       "Favorite",
       "Add to playlist",
       "New group",
