@@ -385,14 +385,9 @@ export default function VideoPage() {
   );
 
   const aspect = playerAspectRatio(video, mediaAspect);
+  const layout = theaterLayout(theater);
   return (
-    // Theater mode lets the page scroll as one instead of holding it at the viewport's height.
-    <div
-      className={cn(
-        "min-h-dvh bg-background",
-        !theater && "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden",
-      )}
-    >
+    <div className={cn("min-h-dvh bg-background", layout.page)}>
       <DetailPage
         theater={theater}
         // Center player and details at the media width, bounded by aspect ratio and original display size.
@@ -415,7 +410,7 @@ export default function VideoPage() {
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
             className={cn(
               "relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar [&:fullscreen]:rounded-none",
-              theater ? "lg:max-w-none" : "lg:max-w-player-width-lg lg:rounded-lg",
+              layout.frame,
             )}
           >
             {/* Aspect ratio supplies a minimum height outside fullscreen; status content may grow taller. */}
@@ -423,7 +418,7 @@ export default function VideoPage() {
               aria-hidden="true"
               className={cn(
                 "col-start-1 row-start-1 aspect-player max-h-player-height [:fullscreen>&]:hidden",
-                theater ? "lg:max-h-player-height-theater" : "lg:max-h-player-height-lg",
+                layout.sizer,
               )}
             />
             {/* A virtual video has no player and no processing to report. */}
@@ -544,6 +539,17 @@ function currentFor<S extends { id: number }>(
   id: number,
 ): S | { kind: "loading"; id: number } {
   return state.id === id ? state : { kind: "loading", id };
+}
+
+/** Theater mode lets the page scroll as one instead of holding it at the viewport's height. */
+function theaterLayout(theater: boolean): { page: string; frame: string; sizer: string } {
+  return theater
+    ? { page: "", frame: "lg:max-w-none", sizer: "lg:max-h-player-height-theater" }
+    : {
+        page: "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden",
+        frame: "lg:max-w-player-width-lg lg:rounded-lg",
+        sizer: "lg:max-h-player-height-lg",
+      };
 }
 
 function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSProperties {
