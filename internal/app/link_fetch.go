@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 // A virtual video created from a link gets its empty fields filled by the plugins that handle the link, in the
 // owner's link order, one fetch at a time behind the request that created it (docs/design-docs/link-fetch.md).
+
+// linkCoverMaxPixels bounds a cover a fill applies without the owner looking at it: 4096×4096, 64 MiB once decoded,
+// against the 120 megapixels an upload the owner chose may reach.
+const linkCoverMaxPixels = 4096 * 4096
 
 // linkFetchQueueSize bounds the fetches waiting behind the running one; a fetch past it fails at once as busy.
 const linkFetchQueueSize = 64
@@ -150,13 +155,16 @@ func (p *WorkInfoPlugins) fillWith(ctx context.Context, video domain.Video, plug
 	return nil
 }
 
-// fillCover uploads the first cover only while the video has no image, so an image the owner set during the fetch
-// stays.
+// fillCover uploads the first cover within linkCoverMaxPixels, judged by its header before any decode, only while
+// the video has no image, so an image the owner set during the fetch stays.
 func (p *WorkInfoPlugins) fillCover(ctx context.Context, video domain.Video, covers []domain.WorkInfoCover) {
-	if p.covers == nil || len(covers) == 0 {
+	i := slices.IndexFunc(covers, func(c domain.WorkInfoCover) bool {
+		return int64(c.Width)*int64(c.Height) <= linkCoverMaxPixels
+	})
+	if p.covers == nil || i < 0 {
 		return
 	}
-	if _, err := p.covers.FillThumbnailImage(ctx, video.ID, video.ContentKey, covers[0].Data); err != nil {
+	if _, err := p.covers.FillThumbnailImage(ctx, video.ID, video.ContentKey, covers[i].Data); err != nil {
 		p.links.logger.Info("the link's image was not applied", "video", video.ID, "error", err)
 	}
 }

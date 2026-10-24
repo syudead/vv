@@ -123,3 +123,21 @@ func TestFetchWorkInfoByLinkChecksTheDomains(t *testing.T) {
 		t.Fatalf("err = %v, requests %+v; want a fetch by link", err, e.runtime.requests)
 	}
 }
+
+// A fill skips a cover whose header names more than linkCoverMaxPixels and applies the next one.
+func TestFillCoverSkipsCoversTooLargeToDecodeUnseen(t *testing.T) {
+	e, _ := newLinkEnv()
+	covers := &fakeCovers{}
+	e.plugins.covers = covers
+	huge := domain.WorkInfoCover{Data: []byte("huge"), Width: 12_000, Height: 10_000}
+	small := domain.WorkInfoCover{Data: []byte("small"), Width: 1280, Height: 720}
+	e.plugins.fillCover(context.Background(), linkVideo, []domain.WorkInfoCover{huge, small})
+	if len(covers.images) != 1 || string(covers.images[0]) != "small" {
+		t.Fatalf("applied %q; want only the small cover", covers.images)
+	}
+	covers.images = nil
+	e.plugins.fillCover(context.Background(), linkVideo, []domain.WorkInfoCover{huge})
+	if len(covers.images) != 0 {
+		t.Fatalf("applied %q; want nothing", covers.images)
+	}
+}
