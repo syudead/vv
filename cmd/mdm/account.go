@@ -147,7 +147,7 @@ func changeCredentials(err error, done string, env accountEnv) *accountFailure {
 	if err != nil {
 		return operationFailure("%v", err)
 	}
-	_, _ = fmt.Fprintln(env.Stderr, done+"All existing login sessions have been signed out and all API tokens have been revoked.")
+	_, _ = fmt.Fprintln(env.Stderr, done+"All existing login sessions have been signed out; API tokens stay valid.")
 	return nil
 }
 

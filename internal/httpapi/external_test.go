@@ -400,7 +400,8 @@ func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 	<-done
 }
 
-func TestExternalCredentialChangeAbortsInFlightRequestOnRecheck(t *testing.T) {
+// Revocation outside this process cancels nothing in the ledger, so only the recheck ends the request.
+func TestExternalRevocationElsewhereAbortsInFlightRequestOnRecheck(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	env, cookie := newExternalEnv(t, Options{Tags: tags, SessionRecheck: 20 * time.Millisecond})
 	created := env.createAPIToken(cookie, "scraper")
@@ -415,7 +416,7 @@ func TestExternalCredentialChangeAbortsInFlightRequestOnRecheck(t *testing.T) {
 		t.Fatalf("有効なうちに打ち切った: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	if err := env.db.Auth().ChangePassword(context.Background(), "new-hash", time.Now()); err != nil {
+	if err := env.db.Auth().DeleteAPIToken(context.Background(), created.Token.Id); err != nil {
 		t.Fatal(err)
 	}
 	select {

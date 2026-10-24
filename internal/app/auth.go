@@ -36,6 +36,9 @@ type AuthStore interface {
 	Session(ctx context.Context, sessionToken string, now time.Time) (time.Time, bool, error)
 	// Deleting an absent session is a no-op.
 	DeleteSession(ctx context.Context, sessionToken string) error
+	// ReplaceCredentials returns ErrSessionNotValid unless sessionToken is still a current session;
+	// it signs out every session, keeps API tokens and adds newSessionToken at the new account version.
+	ReplaceCredentials(ctx context.Context, sessionToken, username, passwordHash, newSessionToken string, now time.Time) error
 
 	// Add tokens only while the authorizing session remains valid, using its account version;
 	// otherwise return ErrSessionNotValid.
@@ -234,6 +237,101 @@ func (a *Auth) Login(ctx context.Context, req LoginRequest) (Session, error) {
 	}
 	a.throttle.succeed(source)
 	return Session{Token: token, ExpiresAt: sessionExpiry(now)}, nil
+}
+
+// Username returns ErrAccountNotConfigured before setup.
+func (a *Auth) Username(ctx context.Context) (string, error) {
+	account, err := a.store.Account(ctx)
+	if err != nil {
+		return "", err
+	}
+	return account.Username, nil
+}
+
+type CredentialChange struct {
+	// SessionToken is the signed-in session; the change replaces it with the returned one.
+	SessionToken    string
+	CurrentPassword string
+	Username        string
+	// Empty keeps the current password.
+	NewPassword string
+	// Source IP shares the login throttle bucket.
+	Source netip.Addr
+}
+
+// ChangeCredentials re-verifies the current password under the login throttle, then replaces both
+// credentials and returns the only remaining session; invalid new values fail before any hashing.
+func (a *Auth) ChangeCredentials(ctx context.Context, req CredentialChange) (Session, error) {
+	if err := domain.ValidateUsername(req.Username); err != nil {
+		return Session{}, err
+	}
+	if req.NewPassword != "" {
+		if err := domain.ValidatePassword(req.NewPassword); err != nil {
+			return Session{}, err
+		}
+	}
+	source := throttleKey(req.Source)
+	if retryAfter, ok := a.throttle.reserve(source, a.now()); !ok {
+		return Session{}, &ThrottledError{RetryAfter: retryAfter}
+	}
+	session, counted, err := a.replaceCredentials(ctx, req)
+	switch {
+	case err == nil:
+		a.throttle.succeed(source)
+	case counted:
+		a.throttle.fail(source, a.now())
+	default:
+		a.throttle.cancel(source)
+	}
+	return session, err
+}
+
+// replaceCredentials reports counted when the error is a wrong current password.
+func (a *Auth) replaceCredentials(ctx context.Context, req CredentialChange) (Session, bool, error) {
+	account, err := a.store.Account(ctx)
+	if err != nil {
+		return Session{}, false, err
+	}
+	if err := a.acquireVerifySlot(ctx, a.verifyWait); err != nil {
+		return Session{}, false, err
+	}
+	hash, err := a.verifyAndHash(req, account.PasswordHash)
+	a.releaseVerifySlot()
+	if errors.Is(err, domain.ErrInvalidCredentials) {
+		return Session{}, true, err
+	}
+	if err != nil {
+		return Session{}, false, err
+	}
+
+	token, err := a.newSessionToken()
+	if err != nil {
+		return Session{}, false, err
+	}
+	now := a.now()
+	if err := a.store.ReplaceCredentials(ctx, req.SessionToken, req.Username, hash, token, now); err != nil {
+		return Session{}, false, err
+	}
+	return Session{Token: token, ExpiresAt: sessionExpiry(now)}, false, nil
+}
+
+// verifyAndHash returns the hash to store: the current one unless a new password is given.
+func (a *Auth) verifyAndHash(req CredentialChange, currentHash string) (string, error) {
+	matched, err := a.hasher.Verify(req.CurrentPassword, currentHash)
+	if err != nil {
+		return "", fmt.Errorf("cannot verify the password: %w", err)
+	}
+	if !matched {
+		return "", domain.ErrInvalidCredentials
+	}
+	if req.NewPassword == "" {
+		return currentHash, nil
+	}
+	hash, err := a.hasher.Hash(req.NewPassword)
+	if err != nil {
+		return "", fmt.Errorf("cannot hash the password: %w", err)
+	}
+	return hash, nil
 }
 
 // CheckSession rejects malformed tokens without storage access; storage errors must not masquerade

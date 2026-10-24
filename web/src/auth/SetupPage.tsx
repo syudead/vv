@@ -36,19 +36,21 @@ interface Invalid {
   message: UiText;
 }
 
+/** Shared with the account settings, which change the username after setup. */
+export function usernameProblem(username: string): UiText | null {
+  if (username === "") return t.auth.setup.usernameRequired;
+  if (usernameBreaksRule(username)) return t.auth.setup.usernameRule(MAX_USERNAME_LENGTH);
+  return null;
+}
+
 export function validateSetup(
   username: string,
   password: string,
   confirm: string,
 ): Invalid | null {
-  if (username === "") {
-    return { field: "username", message: t.auth.setup.usernameRequired };
-  }
-  if (usernameBreaksRule(username)) {
-    return {
-      field: "username",
-      message: t.auth.setup.usernameRule(MAX_USERNAME_LENGTH),
-    };
+  const usernameMessage = usernameProblem(username);
+  if (usernameMessage !== null) {
+    return { field: "username", message: usernameMessage };
   }
   if (password === "") {
     return { field: "password", message: t.auth.setup.passwordRequired };

@@ -279,6 +279,12 @@ func (ownerAuth) Logout(context.Context, string) error { return nil }
 
 func (ownerAuth) State(context.Context, string) (AuthState, error) { return AuthStateOwner, nil }
 
+func (ownerAuth) Username(context.Context) (string, error) { return testUsername, nil }
+
+func (ownerAuth) ChangeCredentials(context.Context, CredentialChange) (IssuedSession, error) {
+	return IssuedSession{}, domain.ErrInvalidCredentials
+}
+
 type emptyAssets struct{}
 
 func (emptyAssets) Open(string) (fs.File, error) { return nil, errors.New("assets はありません") }

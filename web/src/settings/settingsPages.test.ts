@@ -58,7 +58,7 @@ describe("pageForAnchor", () => {
 });
 
 describe("settingsPages", () => {
-  it("lists the nine pages in order, each title in the catalog, no section twice", () => {
+  it("lists the pages in order, each title in the catalog, no section twice", () => {
     expect(settingsPages.map((page) => page.slug)).toEqual([
       "scan",
       "library",
@@ -68,6 +68,7 @@ describe("settingsPages", () => {
       "plugins",
       "conversion",
       "network",
+      "account",
       "api",
       "danger-zone",
     ]);

@@ -12,6 +12,7 @@ import {
   SettingsPage as SettingsPageLayout,
 } from "../ui/patterns/settings-page";
 import { Button } from "../ui/shadcn/button";
+import AccountSection from "./AccountSection";
 import APITokensSection from "./APITokensSection";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
@@ -52,6 +53,7 @@ const sectionComponents: Record<SettingsSectionId, ComponentType | null> = {
   "work-info-plugins": WorkInfoPluginsSection,
   transcoding: TranscodingSection,
   network: NetworkSection,
+  account: AccountSection,
   "api-tokens": APITokensSection,
   "clear-people": ClearPeopleSection,
 };

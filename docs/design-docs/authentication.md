@@ -20,8 +20,18 @@ flowchart LR
 
 Initial setup creates the account and its first session in one transaction,
 so concurrent setup requests cannot create two owners. Passwords use Argon2id
-with PHC encoding. Credential changes invalidate existing sessions and API
-tokens together, preventing old credentials from retaining access.
+with PHC encoding. Credential changes sign out every existing session,
+preventing an old password from retaining access. API tokens survive the
+change: each is an independent secret that does not derive from the password,
+so the owner revokes a leaked token on its own instead of losing every
+integration with each password change.
+
+The owner changes the username or password in Settings after re-entering the
+current password, which shares the sign-in throttle. One transaction applies
+the change only while the requesting session is still current, then replaces
+it with a new session, so a concurrent host-side reset wins and the browser
+that made the change stays signed in. The host-side `mdm account` commands
+remain for a lost password.
 
 The application owns setup and login throttling; `internal/password` owns
 hashing, and `internal/store` owns the account, sessions and tokens.

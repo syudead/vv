@@ -61,6 +61,14 @@ func (ownerAuthenticator) State(context.Context, string) (httpapi.AuthState, err
 	return httpapi.AuthStateOwner, nil
 }
 
+func (ownerAuthenticator) Username(context.Context) (string, error) { return "owner", nil }
+
+func (ownerAuthenticator) ChangeCredentials(
+	context.Context, httpapi.CredentialChange,
+) (httpapi.IssuedSession, error) {
+	return httpapi.IssuedSession{}, domain.ErrInvalidCredentials
+}
+
 func TestHealthReturnsOKWhenStoreIsReachable(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newTestRouter(t, stubPinger{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/health", nil))

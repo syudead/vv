@@ -37,6 +37,12 @@ func (ownerAuth) State(context.Context, string) (httpapi.AuthState, error) {
 	return httpapi.AuthStateOwner, nil
 }
 
+func (ownerAuth) Username(context.Context) (string, error) { return "owner", nil }
+
+func (ownerAuth) ChangeCredentials(context.Context, httpapi.CredentialChange) (httpapi.IssuedSession, error) {
+	return httpapi.IssuedSession{}, domain.ErrInvalidCredentials
+}
+
 func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	dataDir := newMigratedDataDir(t)
 	db, err := store.Open(dataDir)
@@ -101,7 +107,7 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	}
 	fresh := login.Result().Cookies()[0]
 	list := serve(http.MethodGet, "/api/api-tokens", "", &http.Cookie{Name: fresh.Name, Value: fresh.Value})
-	if list.Code != http.StatusOK || strings.TrimSpace(list.Body.String()) != `{"items":[]}` {
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "Claude Code") {
 		t.Fatalf("再設定後の API トークンの一覧: status = %d: %s", list.Code, list.Body)
 	}
 }

@@ -38,6 +38,7 @@ const pages: [string, string, string[]][] = [
   ["/settings/plugins", "Plugins", ["Work-info plugins", "Person plugins"]],
   ["/settings/conversion", "Video conversion", ["Encoder"]],
   ["/settings/network", "Network", ["Local network"]],
+  ["/settings/account", "Account", ["Account"]],
   ["/settings/api", "API", ["API tokens"]],
   ["/settings/danger-zone", "Danger zone", ["Delete all people"]],
 ];

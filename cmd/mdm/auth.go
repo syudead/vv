@@ -42,6 +42,15 @@ func (a httpAuth) State(ctx context.Context, token string) (httpapi.AuthState, e
 	return httpapi.AuthState(state), err
 }
 
+func (a httpAuth) Username(ctx context.Context) (string, error) { return a.auth.Username(ctx) }
+
+func (a httpAuth) ChangeCredentials(
+	ctx context.Context, change httpapi.CredentialChange,
+) (httpapi.IssuedSession, error) {
+	session, err := a.auth.ChangeCredentials(ctx, app.CredentialChange(change))
+	return httpapi.IssuedSession(session), err
+}
+
 // Reuse app.Auth for API tokens because it already implements httpapi.APITokens.
 func newHTTPAuth(authStore *store.AuthStore) (httpapi.Authenticator, httpapi.APITokens) {
 	auth := app.NewAuth(app.AuthOptions{Store: authStore, Hasher: passwordHasher{}})
