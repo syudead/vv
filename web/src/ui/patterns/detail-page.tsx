@@ -6,6 +6,7 @@ import { DensityProvider } from "./density";
 
 // Detail-page skeleton; see web/registry/rules/patterns.md, Detail page.
 // On wide screens, constrain height in an lg:h-dvh flex column to scroll content and aside independently without double page scrolling.
+// Inner parts use the split variant (lg outside theater mode), so theater mode keeps the stacked layout at every width.
 
 export interface DetailPageProps {
   header: ReactNode;
@@ -19,6 +20,11 @@ export interface DetailPageProps {
   contentClassName?: string;
   /** Root CSS variables consumed by contentClassName. */
   style?: CSSProperties;
+  /**
+   * Stack the media, content and aside at every width, so the media spans the window. Only an
+   * attribute changes, so toggling it keeps the media mounted.
+   */
+  theater?: boolean;
 }
 
 export function DetailPage({
@@ -28,11 +34,13 @@ export function DetailPage({
   children,
   contentClassName,
   style,
+  theater = false,
 }: DetailPageProps) {
   return (
     <DensityProvider density="viewing">
       <div
         data-slot="detail-page"
+        data-theater={theater ? "" : undefined}
         style={style}
         className="flex flex-col bg-background pb-16 lg:min-h-0 lg:flex-1 lg:pb-0"
       >
@@ -42,22 +50,25 @@ export function DetailPage({
         >
           {header}
         </div>
-        <div className="flex w-full flex-col gap-5 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6">
+        <div className="flex w-full flex-col gap-5 split:min-h-0 split:flex-1 split:flex-row split:gap-6 split:px-6">
           {/*
            * Expand scrolling edges with padding to preserve focus rings; establish a relative
            * container so absolute accessibility elements cannot enlarge the page.
            */}
           <div
             data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6"
+            className="flex min-w-0 flex-col gap-5 split:relative split:-mx-1 split:min-h-0 split:flex-1 split:scrollbar-none split:overflow-y-auto split:overscroll-contain split:px-1 split:pt-6"
           >
             <div
               data-slot="detail-page-content"
-              className={cn("flex flex-col gap-6 lg:mx-auto lg:w-full", contentClassName)}
+              className={cn(
+                "flex flex-col gap-6 split:mx-auto split:w-full",
+                contentClassName,
+              )}
             >
               {media}
               {/* Room under the last child, so it is not read against the window's edge. */}
-              <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 lg:px-0 lg:pb-16">
+              <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6 split:px-0 split:pb-16">
                 {children}
               </div>
             </div>
@@ -69,7 +80,7 @@ export function DetailPage({
           {aside && (
             <aside
               data-slot="detail-page-aside"
-              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:-mr-6 lg:border-t-0 lg:border-l lg:pt-6 lg:pr-0 lg:pl-5 xl:w-detail-aside-wide"
+              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 split:flex split:min-h-0 split:w-detail-aside split:shrink-0 split:flex-col split:-mr-6 split:border-t-0 split:border-l split:pt-6 split:pr-0 split:pl-5 split:xl:w-detail-aside-wide"
             >
               {aside}
             </aside>

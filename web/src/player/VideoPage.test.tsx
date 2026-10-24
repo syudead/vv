@@ -38,6 +38,7 @@ interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
   subtitles?: readonly SubtitleTrack[];
+  theater?: { on: boolean; onToggle: () => void };
 }
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
@@ -448,6 +449,35 @@ describe("VideoPage", () => {
       // Without a column constraint, overlay content can overflow narrow screens.
       const frame = document.querySelector("[data-player-frame]");
       expect(frame?.className.split(" ")).toContain("grid-cols-1");
+    });
+  });
+
+  describe("シアターモード", () => {
+    function theaterRow() {
+      return document.querySelector("[data-theater]");
+    }
+
+    it("操作バーのボタンと T で切り替え、プレイヤーを作り直さず、次に開いたページへ引き継ぐ", async () => {
+      const view = renderPage();
+      await ready();
+      await screen.findByTestId("video-player");
+      expect(player().theater?.on).toBe(false);
+      expect(theaterRow()).toBeNull();
+
+      act(() => player().theater?.onToggle());
+      expect(player().theater?.on).toBe(true);
+      expect(theaterRow()).not.toBeNull();
+      expect(playerMock.mounts).toBe(1);
+
+      view.unmount();
+      renderPage();
+      await screen.findByTestId("video-player");
+      expect(player().theater?.on).toBe(true);
+      expect(theaterRow()).not.toBeNull();
+
+      fireEvent.keyDown(document.body, { key: "t" });
+      expect(player().theater?.on).toBe(false);
+      expect(theaterRow()).toBeNull();
     });
   });
 

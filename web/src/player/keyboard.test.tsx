@@ -27,12 +27,14 @@ function Harness({
   controls,
   onClose,
   suspended = false,
+  onTheater,
 }: {
   controls: PlayerControls | null;
   onClose: () => void;
   suspended?: boolean;
+  onTheater?: () => void;
 }) {
-  useKeyboardShortcuts(controls, onClose, suspended);
+  useKeyboardShortcuts(controls, onClose, suspended, onTheater);
   return (
     <div>
       <button type="button">ボタン</button>
@@ -281,6 +283,16 @@ describe("useKeyboardShortcuts", () => {
     } finally {
       wrapper.remove();
     }
+  });
+
+  it("T でシアターモードを切り替える。プレイヤーが無くても切り替え、入力欄では切り替えない", () => {
+    const onTheater = vi.fn();
+    render(<Harness controls={null} onClose={vi.fn()} onTheater={onTheater} />);
+    const handled = fireEvent.keyDown(document.body, { key: "t" });
+    fireEvent.keyDown(document.body, { key: "T", shiftKey: true });
+    fireEvent.keyDown(screen.getByLabelText("入力"), { key: "t" });
+    expect(onTheater).toHaveBeenCalledTimes(2);
+    expect(handled).toBe(false);
   });
 
   it("プレイヤーが無いときは再生の操作をしない", () => {

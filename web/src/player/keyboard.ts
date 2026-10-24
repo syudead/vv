@@ -5,7 +5,7 @@ import type { PlayerControls } from "./playerControls";
 /** Listen in window capture because video.js stops bubbling keys; leave each control's own shortcuts untouched. */
 
 export type ShortcutAction =
-  "togglePlay" | "fullscreen" | "mute" | "subtitles" | "start" | "close";
+  "togglePlay" | "fullscreen" | "theater" | "mute" | "subtitles" | "start" | "close";
 
 function isEditable(element: Element): boolean {
   if (element instanceof HTMLElement && element.isContentEditable) return true;
@@ -33,6 +33,9 @@ export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
     case "f":
     case "F":
       return "fullscreen";
+    case "t":
+    case "T":
+      return "theater";
     case "m":
     case "M":
       return "mute";
@@ -73,17 +76,18 @@ function isModalOpen(): boolean {
   );
 }
 
-/** Fullscreen and open menus own Escape; without a player only Escape works. Suspension leaves all keys to the editor. */
+/** Fullscreen and open menus own Escape; without a player only Escape and T work. Suspension leaves all keys to the editor. */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,
   onClose: () => void,
   suspended = false,
+  onTheater?: () => void,
 ): void {
-  const latest = useRef({ controls, onClose, suspended });
+  const latest = useRef({ controls, onClose, suspended, onTheater });
   // Update at layout commit; a passive effect could briefly treat Escape as having no player.
   useLayoutEffect(() => {
-    latest.current = { controls, onClose, suspended };
-  }, [controls, onClose, suspended]);
+    latest.current = { controls, onClose, suspended, onTheater };
+  }, [controls, onClose, suspended, onTheater]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -97,6 +101,14 @@ export function useKeyboardShortcuts(
         if (player?.menuOpen() === true || isPopoverOpen()) return;
         event.preventDefault();
         close();
+        return;
+      }
+      // Theater mode changes the page layout, so it works for a page without a player too.
+      if (action === "theater") {
+        if (latest.current.onTheater === undefined) return;
+        event.preventDefault();
+        latest.current.onTheater();
+        player?.wake();
         return;
       }
       if (player === null) return;

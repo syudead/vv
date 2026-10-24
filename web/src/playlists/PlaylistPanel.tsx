@@ -111,7 +111,7 @@ export default function PlaylistPanel({
           aria-hidden="true"
           className={cn(
             cardListClass,
-            "max-h-playlist-panel overflow-hidden lg:max-h-none",
+            "max-h-playlist-panel overflow-hidden split:max-h-none",
           )}
         >
           {Array.from({ length: 3 }, (_, index) => (
@@ -197,7 +197,7 @@ function PanelRows({
       // Allow padding for the hover surface and outline to avoid clipping.
       className={cn(
         cardListClass,
-        "relative -mx-1.5 max-h-playlist-panel overflow-y-auto overscroll-contain scrollbar-on-hover px-1.5 py-1.5 lg:static lg:max-h-none lg:overflow-visible",
+        "relative -mx-1.5 max-h-playlist-panel overflow-y-auto overscroll-contain scrollbar-on-hover px-1.5 py-1.5 split:static split:max-h-none split:overflow-visible",
       )}
     >
       {items.map((item, index) =>

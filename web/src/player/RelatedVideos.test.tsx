@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
 import RelatedVideos from "./RelatedVideos";
+import { setTheaterMode } from "./theaterMode";
 
 vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
@@ -899,6 +900,22 @@ describe("関連動画のスクラブの帯", () => {
           for (const listener of listeners) listener();
         });
         expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("広い画面でもシアターモードではページが一つで流れるので、前の読み足しをボタンに切り替える", () => {
+      wide(true);
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn();
+      try {
+        renderWindow();
+        expect(edges()).toHaveLength(2);
+
+        act(() => setTheaterMode(true));
+        expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+        expect(edges()).toHaveLength(1);
       } finally {
         Element.prototype.scrollIntoView = original;
       }

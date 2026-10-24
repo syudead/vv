@@ -1,4 +1,10 @@
-import { Info, RotateCcw, type LucideIcon } from "lucide-react";
+import {
+  Columns2,
+  Info,
+  RectangleHorizontal,
+  RotateCcw,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import videojs from "video.js";
@@ -169,6 +175,8 @@ interface Props {
   fullscreenTarget?: () => HTMLElement | null;
   /** Replace tracks when subtitles arrive without recreating the player. */
   subtitles?: readonly SubtitleTrack[];
+  /** Show a theater mode button before fullscreen; changing it never recreates the player. */
+  theater?: { on: boolean; onToggle: () => void };
 }
 
 const noSubtitles: readonly SubtitleTrack[] = [];
@@ -192,6 +200,7 @@ export default function VideoPlayer(props: Props) {
   const subtitlesRef = useRef<SubtitleTracks | null>(null);
   const [indicatorSlot, setIndicatorSlot] = useState<HTMLElement | null>(null);
   const [restartSlot, setRestartSlot] = useState<HTMLElement | null>(null);
+  const [theaterSlot, setTheaterSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
   const [quality, setQuality] = useState<PlaybackQuality>("original");
   const [holdControlBar, setHoldControlBar] = useState(true);
@@ -281,6 +290,7 @@ export default function VideoPlayer(props: Props) {
     let probe: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
+    let theater: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
     let stall: StallState = initialStallState;
     let stallTimer: number | undefined;
@@ -466,6 +476,11 @@ export default function VideoPlayer(props: Props) {
           ),
         );
         setIndicatorSlot(slot);
+        // Theater mode only changes the wide-screen layout, so the button shows from lg.
+        theater = document.createElement("div");
+        theater.className = "vv-player-theater hidden flex-none lg:flex";
+        bar.insertBefore(theater, bar.querySelector(":scope > .vjs-fullscreen-control"));
+        setTheaterSlot(theater);
       }
       renderQualityMenu();
     });
@@ -895,6 +910,8 @@ export default function VideoPlayer(props: Props) {
       setIndicatorSlot(null);
       restart?.remove();
       setRestartSlot(null);
+      theater?.remove();
+      setTheaterSlot(null);
       popoverOpen.current = false;
       latest.current.onControls(null);
       subtitles.dispose();
@@ -984,6 +1001,19 @@ export default function VideoPlayer(props: Props) {
             }}
           />,
           restartSlot,
+        )}
+      {theaterSlot !== null &&
+        props.theater !== undefined &&
+        createPortal(
+          <BarButton
+            label={
+              props.theater.on ? t.player.controls.exitTheater : t.player.controls.theater
+            }
+            keys="T"
+            icon={props.theater.on ? Columns2 : RectangleHorizontal}
+            onClick={props.theater.onToggle}
+          />,
+          theaterSlot,
         )}
       {indicatorSlot !== null &&
         route === "transcode" &&

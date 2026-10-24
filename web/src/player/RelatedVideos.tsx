@@ -16,6 +16,7 @@ import { isAborted, listVideoGroupMembers, type Video } from "../api/client";
 import type { RelatedState, VideoReadContext } from "../api/useVideoDetail";
 import type { VideoLinkState } from "./pageDecisions";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
+import { subscribeTheaterMode, theaterMode } from "./theaterMode";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
@@ -150,24 +151,33 @@ export function VideoThumbnail({
   );
 }
 
-/** The lg breakpoint enables independently scrolling columns. */
+/** The lg breakpoint enables independently scrolling columns; in theater mode the page scrolls as one. */
 const wideScreen = "(min-width: 64rem)";
 
 export function isWideScreen(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(wideScreen).matches;
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(wideScreen).matches &&
+    !theaterMode()
+  );
 }
 
-/** Track breakpoint changes so pagination switches between scrolling and buttons after resizing. */
+/** Track breakpoint and theater changes so pagination switches between scrolling and buttons. */
 function useWideScreen(): boolean {
   const [wide, setWide] = useState(isWideScreen);
   useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia(wideScreen);
-    if (typeof query.addEventListener !== "function") return;
-    const update = () => setWide(query.matches);
+    const update = () => setWide(isWideScreen());
     update();
+    const unsubscribe = subscribeTheaterMode(update);
+    const query =
+      typeof window.matchMedia === "function" ? window.matchMedia(wideScreen) : null;
+    if (query === null || typeof query.addEventListener !== "function")
+      return unsubscribe;
     query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    return () => {
+      unsubscribe();
+      query.removeEventListener("change", update);
+    };
   }, []);
   return wide;
 }
@@ -175,14 +185,14 @@ function useWideScreen(): boolean {
 /** Share one scroll container and offsetTop origin across playlist, continuous-play, and related sections. */
 const scrollerClass =
   // Contain scrolling and leave space for hover outlines; align right padding with the header close button.
-  "flex flex-col lg:relative lg:-ml-1.5 lg:min-h-0 lg:flex-1 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
+  "flex flex-col split:relative split:-ml-1.5 split:min-h-0 split:flex-1 split:scrollbar-on-hover split:overflow-y-auto split:overscroll-contain split:pt-1.5 split:pr-3 split:pb-6 split:pl-1.5";
 
 export const cardListClass =
-  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 split:grid-cols-1 theater:grid-cols-card-fill";
 
 /** Each section heading remains sticky only while its section is visible. */
 export const stickyHeadingClass =
-  "flex items-baseline justify-between gap-3 bg-background pb-3 lg:sticky lg:-top-1.5 lg:z-30 lg:-mx-1.5 lg:-mt-1.5 lg:px-1.5 lg:pt-1.5";
+  "flex items-baseline justify-between gap-3 bg-background pb-3 split:sticky split:-top-1.5 split:z-30 split:-mx-1.5 split:-mt-1.5 split:px-1.5 split:pt-1.5";
 
 /** Defaults to the video's URL and return destination; playlist callers preserve playlist context. */
 export type MemberTarget = (videoId: number) => { to: string; state: unknown };
