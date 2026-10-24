@@ -72,7 +72,7 @@ func TestWorkInfoPluginUploadApproveAndReplace(t *testing.T) {
 	if _, err := s.ApproveWorkInfoPlugin(ctx, added.ID, "d1", pluginNow); !errors.Is(err, domain.ErrWorkInfoPluginChanged) {
 		t.Fatalf("Approve with the old digest err = %v, want ErrWorkInfoPluginChanged", err)
 	}
-	if list, err := s.ListWorkInfoPlugins(ctx); err != nil || len(list) != 1 {
+	if list, err := uploadedPlugins(ctx, s); err != nil || len(list) != 1 {
 		t.Fatalf("List = %d plugins, %v; want the one replaced row", len(list), err)
 	}
 }
@@ -116,7 +116,7 @@ func TestWorkInfoPluginInvalidIsListedAndCannotBeApproved(t *testing.T) {
 	if replaced || another.ID == broken.ID {
 		t.Fatal("an upload without a readable name replaced another row")
 	}
-	list, err := s.ListWorkInfoPlugins(ctx)
+	list, err := uploadedPlugins(ctx, s)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("List = %+v, %v", list, err)
 	}
@@ -137,7 +137,7 @@ func TestWorkInfoPluginListOrder(t *testing.T) {
 	savePlugin(t, s, brokenUpload("a.wasm", "x", domain.WorkInfoPluginNotWasm))
 	savePlugin(t, s, pluginUpload("zeta", "z"))
 	savePlugin(t, s, pluginUpload("alpha", "a"))
-	list, err := s.ListWorkInfoPlugins(context.Background())
+	list, err := uploadedPlugins(context.Background(), s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,5 +238,89 @@ func TestWorkInfoPluginReplacementKeepsDeclaredValues(t *testing.T) {
 	var module []byte
 	if err := s.sql.QueryRowContext(ctx, `select module from work_info_plugins where id = ?`, added.ID).Scan(&module); err != nil || module != nil {
 		t.Fatalf("module of the broken replacement = %v, %v; want null", module, err)
+	}
+}
+
+// uploadedPlugins lists the plugins without the bundled one, which every migrated database holds.
+func uploadedPlugins(ctx context.Context, s *WorkInfoPluginStore) ([]domain.WorkInfoPlugin, error) {
+	list, err := s.ListWorkInfoPlugins(ctx)
+	var out []domain.WorkInfoPlugin
+	for _, p := range list {
+		if !p.Builtin {
+			out = append(out, p)
+		}
+	}
+	return out, err
+}
+
+func linkUpload(name, digest string, domains ...string) domain.WorkInfoPluginUpload {
+	upload := pluginUpload(name, digest)
+	upload.Manifest.Kind = domain.WorkInfoPluginKindWork
+	upload.Manifest.Domains = domains
+	return upload
+}
+
+func linkRanks(t *testing.T, plugins []domain.WorkInfoPlugin) map[string]int {
+	t.Helper()
+	ranks := map[string]int{}
+	for _, p := range plugins {
+		ranks[p.Manifest.Name] = p.LinkRank
+	}
+	return ranks
+}
+
+// A new site plugin goes just before the bundled one, keeps its place when replaced, and leaves the order when it
+// stops declaring domains; the owner's order then holds.
+func TestLinkOrderPlacesNewSitePluginsBeforeTheBundledOne(t *testing.T) {
+	ctx := context.Background()
+	s := migratedDB(t).WorkInfoPlugins()
+	first, _ := savePlugin(t, s, linkUpload("first", "f1", "a.example"))
+	second, _ := savePlugin(t, s, linkUpload("second", "s1", "b.example"))
+	savePlugin(t, s, pluginUpload("plain", "p1"))
+	list, err := s.ListWorkInfoPlugins(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"first": 1, "second": 2, domain.LinkPluginName: 3, "plain": 0}
+	if got := linkRanks(t, list); !maps.Equal(got, want) {
+		t.Fatalf("ranks = %v; want %v", got, want)
+	}
+	var builtin domain.WorkInfoPlugin
+	for _, p := range list {
+		if p.Builtin {
+			builtin = p
+		}
+	}
+	if _, err := s.SetLinkOrder(ctx, []int64{builtin.ID, second.ID, first.ID}); err != nil {
+		t.Fatalf("SetLinkOrder: %v", err)
+	}
+	savePlugin(t, s, linkUpload("second", "s2", "b.example"))
+	savePlugin(t, s, pluginUpload("first", "f2"))
+	if list, err = s.ListWorkInfoPlugins(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want = map[string]int{domain.LinkPluginName: 1, "second": 2, "first": 0, "plain": 0}
+	if got := linkRanks(t, list); !maps.Equal(got, want) {
+		t.Fatalf("ranks after the owner's order and replacements = %v; want %v", got, want)
+	}
+	if _, err := s.SetLinkOrder(ctx, []int64{second.ID}); !errors.Is(err, domain.ErrLinkOrderChanged) {
+		t.Fatalf("SetLinkOrder without the bundled plugin = %v; want ErrLinkOrderChanged", err)
+	}
+}
+
+// The bundled plugin keeps its row: deleting it or uploading a module under its name is refused.
+func TestBundledPluginCannotBeDeletedOrReplaced(t *testing.T) {
+	ctx := context.Background()
+	s := migratedDB(t).WorkInfoPlugins()
+	list, err := s.ListWorkInfoPlugins(ctx)
+	if err != nil || len(list) != 1 || !list[0].Builtin || list[0].State() != domain.WorkInfoPluginApproved ||
+		list[0].Manifest.Name != domain.LinkPluginName {
+		t.Fatalf("migrated plugins = %+v, %v; want the approved bundled plugin", list, err)
+	}
+	if err := s.DeleteWorkInfoPlugin(ctx, list[0].ID); !errors.Is(err, domain.ErrWorkInfoPluginBuiltin) {
+		t.Fatalf("delete = %v; want ErrWorkInfoPluginBuiltin", err)
+	}
+	if _, _, err := s.SaveWorkInfoPlugin(ctx, pluginUpload(domain.LinkPluginName, "x"), pluginNow); !errors.Is(err, domain.ErrWorkInfoPluginBuiltin) {
+		t.Fatalf("upload under the bundled name = %v; want ErrWorkInfoPluginBuiltin", err)
 	}
 }

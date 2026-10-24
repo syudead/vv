@@ -25,7 +25,7 @@ func (e *PersonLinkAmbiguousError) Error() string { return ErrPersonLinkAmbiguou
 func (e *PersonLinkAmbiguousError) Unwrap() error { return ErrPersonLinkAmbiguous }
 
 // LinkMatchesDomains reports whether link is an http or https URL whose lowercased host is one of domains or ends
-// with "." and one of them.
+// with "." and one of them; AnyLinkDomain matches every such URL.
 func LinkMatchesDomains(link string, domains []string) bool {
 	parsed, err := url.Parse(link)
 	if err != nil || !isWorkURL(link) {
@@ -33,7 +33,7 @@ func LinkMatchesDomains(link string, domains []string) bool {
 	}
 	host := strings.ToLower(parsed.Hostname())
 	for _, domain := range domains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
+		if domain == AnyLinkDomain || host == domain || strings.HasSuffix(host, "."+domain) {
 			return true
 		}
 	}
@@ -76,9 +76,9 @@ func foldedPersonLink(link string) string {
 	return b.String()
 }
 
-// NormalizePersonFetchLink trims a link sent for a fetch and checks it as a stored person link is checked; a value
+// NormalizeFetchLink trims a link sent for a fetch by link and checks it as a stored link is checked; a value
 // that is not an http or https URL returns ErrWorkInfoRunInvalid.
-func NormalizePersonFetchLink(raw string) (string, error) {
+func NormalizeFetchLink(raw string) (string, error) {
 	link, err := normalizeWorkInfoText("link", raw, WorkInfoLimits.URLMaxLength, false)
 	if err != nil || !isWorkURL(link) {
 		return "", ErrWorkInfoRunInvalid

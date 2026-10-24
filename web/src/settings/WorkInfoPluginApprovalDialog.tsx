@@ -6,7 +6,7 @@ import { FactList, type Fact } from "../ui/patterns/fact-list";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Badge } from "../ui/shadcn/badge";
 import WorkInfoPluginDialog from "./WorkInfoPluginDialog";
-import { operationTexts, pluginName } from "./workInfoPluginRows";
+import { domainLabels, operationTexts, pluginName } from "./workInfoPluginRows";
 
 function BadgeRow({ items, className }: { items: string[]; className?: string }) {
   return (
@@ -44,13 +44,13 @@ function facts(plugin: WorkInfoPlugin): Fact[] {
       value: <BadgeRow items={plugin.sources} />,
     });
   // A domain is never clipped: the owner approves exactly the sites it names.
-  if (plugin.kind === "person" && plugin.domains.length > 0)
+  if (plugin.domains.length > 0)
     list.push({
       id: "domains",
       term: text.domains,
       value: (
         <BadgeRow
-          items={plugin.domains}
+          items={domainLabels(plugin)}
           className="h-auto min-h-6 max-w-full py-0.5 whitespace-normal break-all"
         />
       ),

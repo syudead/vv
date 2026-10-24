@@ -36,10 +36,13 @@ func checkPluginKind(m WorkInfoPluginManifest, hasSources, hasDomains bool) *Wor
 		if hasSources {
 			return manifestInvalid("sources", "is allowed only when kind is person")
 		}
-		if hasDomains {
-			return manifestInvalid("domains", "is allowed only when kind is person")
+		if !hasDomains {
+			return nil
 		}
-		return nil
+		if !m.Supports(WorkInfoFetch) {
+			return manifestInvalid("operations", "must list fetch for a plugin that declares domains")
+		}
+		return checkPluginDomains(m.Domains)
 	case WorkInfoPluginKindPerson:
 	default:
 		return manifestInvalid("kind", "must be work or person")
@@ -62,13 +65,13 @@ func checkPluginKind(m WorkInfoPluginManifest, hasSources, hasDomains bool) *Wor
 		}
 	}
 	if hasDomains {
-		return checkPersonPluginDomains(m.Domains)
+		return checkPluginDomains(m.Domains)
 	}
 	return nil
 }
 
-// checkPersonPluginDomains accepts bare lowercase host names, so a scheme, port or path never passes.
-func checkPersonPluginDomains(domains []string) *WorkInfoPluginManifestError {
+// checkPluginDomains accepts bare lowercase host names, so a scheme, port or path never passes.
+func checkPluginDomains(domains []string) *WorkInfoPluginManifestError {
 	if len(domains) == 0 || len(domains) > PersonPluginMaxDomains {
 		return manifestInvalid("domains", fmt.Sprintf("must list 1 to %d domains", PersonPluginMaxDomains))
 	}

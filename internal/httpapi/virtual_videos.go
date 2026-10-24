@@ -15,6 +15,13 @@ import (
 type VirtualVideoStore interface {
 	// Create returns ErrInvalidVirtualTitle for an empty title and InvalidDisplayNameError for an unusable one.
 	Create(ctx context.Context, title string) (domain.Video, error)
+	// CreateFromLink stores link as the video's link and starts its fetch; an empty title comes from the link. It
+	// returns ErrInvalidVirtualLink for a link that is not an http or https URL, and Create's title errors.
+	CreateFromLink(ctx context.Context, title, link string) (domain.Video, error)
+	// FinishLinkFetch records the end of a running link fetch.
+	FinishLinkFetch(ctx context.Context, key, plugin, failure string) error
+	// LinkFetch reads the fetch of a video created from a link; false for any other video.
+	LinkFetch(ctx context.Context, key string) (domain.LinkFetch, bool, error)
 	// SaveTitle, SaveDetails and Delete return ErrNotFound for a missing video, ErrNotVirtual for a video with a
 	// file and ErrContentChanged for another contentVersion.
 	SaveTitle(ctx context.Context, videoID int64, contentVersion, title string) (domain.Video, error)
@@ -30,18 +37,23 @@ type VirtualVideoStore interface {
 func (s *server) CreateVirtualVideo(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title *string `json:"title"`
+		URL   *string `json:"url"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.Title == nil {
-		s.invalidRequest(w, "title is required.")
+	if body.Title == nil && body.URL == nil {
+		s.invalidRequest(w, "title or url is required.")
 		return
 	}
 	if !s.virtualVideosConfigured(w) {
 		return
 	}
-	video, err := s.virtualVideos.Create(r.Context(), *body.Title)
+	video, err := s.createVirtualVideo(r.Context(), body.Title, body.URL)
+	if errors.Is(err, domain.ErrInvalidVirtualLink) {
+		s.invalidRequest(w, "url must be an http or https URL of at most 2048 characters.")
+		return
+	}
 	if err != nil {
 		s.writeVirtualVideoError(w, err, "", "Could not create the video.")
 		return
@@ -53,6 +65,29 @@ func (s *server) CreateVirtualVideo(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusCreated, payload, s.logger)
+}
+
+// createVirtualVideo creates from the title alone, or from the link with an optional title and then starts the
+// link's fetch, which ends after the response.
+func (s *server) createVirtualVideo(ctx context.Context, title, link *string) (domain.Video, error) {
+	if link == nil {
+		return s.virtualVideos.Create(ctx, *title)
+	}
+	var typed string
+	if title != nil {
+		typed = *title
+	}
+	video, err := s.virtualVideos.CreateFromLink(ctx, typed, *link)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	normalized, _ := domain.NormalizeVirtualLink(*link)
+	if s.workInfoPlugins == nil {
+		err := s.virtualVideos.FinishLinkFetch(ctx, video.ContentKey, "", "Plugins are not available.")
+		return video, err
+	}
+	s.workInfoPlugins.StartLinkFetch(video, normalized)
+	return video, nil
 }
 
 func (s *server) DeleteVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.DeleteVideoParams) {

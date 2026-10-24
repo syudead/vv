@@ -66,7 +66,7 @@ function overviewFacts(video: Video, owner: boolean): Fact[] {
 
 /**
  * At the left, the owner's description and work summary, each under its own heading; at the right,
- * the facts. A virtual video's description is already under its title with its links.
+ * the facts.
  */
 export default function OverviewPanel({
   video,
@@ -75,7 +75,7 @@ export default function OverviewPanel({
   video: Video;
   owner: boolean;
 }) {
-  const description = owner && !video.virtual ? video.workInfo?.description : undefined;
+  const description = owner ? video.workInfo?.description : undefined;
   const summary = owner ? workSummary(video.workInfo) : "";
   const text = t.player.tabs;
   const hasMain = description !== undefined || summary !== "";

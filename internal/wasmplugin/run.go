@@ -23,6 +23,12 @@ const memoryLimitBytes = domain.WorkInfoPluginMemoryLimitPages * 65536
 // make compilation uncancelable.
 const compileWorkers = 2
 
+// builtins runs a bundled plugin's Go code in place of a module, keyed by its digest, under the same slot, deadline,
+// HTTP rules and response parsing.
+var builtins = map[string]func(ctx context.Context, s *httpSession, req domain.WorkInfoRunRequest) []byte{
+	domain.LinkPluginDigest: runLinkPlugin,
+}
+
 var (
 	errTimedOut       = errors.New("work-info plugin run timed out")
 	errOutputTooLarge = errors.New("work-info plugin output exceeded its limit")
@@ -50,7 +56,17 @@ func (r *Runtime) Run(
 	defer cancel()
 	session := r.run.net.session(network)
 	defer session.close()
-	output, stderr, started, err := r.run.run(ctx, deadline, digest, module, input, session)
+	var (
+		output  []byte
+		stderr  *keptOutput
+		started bool
+	)
+	if builtin, ok := builtins[digest]; ok {
+		output, stderr, started = builtin(deadline, session, req), &keptOutput{}, true
+		err = stopped(ctx, deadline)
+	} else {
+		output, stderr, started, err = r.run.run(ctx, deadline, digest, module, input, session)
+	}
 	var result domain.WorkInfoRunResult
 	if err == nil {
 		result, err = domain.ParseRunResponse(req, output)

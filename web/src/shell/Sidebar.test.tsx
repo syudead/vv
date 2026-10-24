@@ -221,7 +221,7 @@ describe("Sidebar", () => {
     const field = within(dialog).getByRole("textbox", { name: "Title" });
     await user.type(field, "   ");
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
-    expect(within(dialog).getByText("Enter a title.")).toBeDefined();
+    expect(within(dialog).getByText("Enter a title or a link.")).toBeDefined();
     expect(created).toHaveLength(0);
 
     await user.clear(field);

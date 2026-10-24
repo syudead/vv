@@ -29,6 +29,10 @@ func (c *fakeCovers) UploadThumbnailImage(_ context.Context, videoID int64, _ st
 	return domain.Video{ID: videoID}, nil
 }
 
+func (c *fakeCovers) FillThumbnailImage(ctx context.Context, videoID int64, key string, image []byte) (domain.Video, error) {
+	return c.UploadThumbnailImage(ctx, videoID, key, image)
+}
+
 func pngOf(t *testing.T, width, height int) []byte {
 	t.Helper()
 	var buf bytes.Buffer

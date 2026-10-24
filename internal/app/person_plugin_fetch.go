@@ -102,7 +102,7 @@ func personFetchRequest(
 	req := domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch}
 	switch {
 	case key.Link != nil:
-		link, err := domain.NormalizePersonFetchLink(*key.Link)
+		link, err := domain.NormalizeFetchLink(*key.Link)
 		if err != nil {
 			return req, err
 		}

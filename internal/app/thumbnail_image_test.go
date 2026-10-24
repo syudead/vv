@@ -110,6 +110,21 @@ func TestUploadThumbnailImageFitsVirtualVideoTo16By9(t *testing.T) {
 	}
 }
 
+// A fill writes only to a video without an applied image, read under the generation lock.
+func TestFillThumbnailImageKeepsAnAppliedImage(t *testing.T) {
+	video := domain.Video{ID: 3, ContentKey: "virtual:3", UserKey: "virtual:3", ThumbnailImageRevision: 2}
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{thumbnailDir: t.TempDir()}
+	ingest, _ := newTestIngest(store, generator)
+
+	if _, err := ingest.FillThumbnailImage(context.Background(), video.ID, "virtual:3", uploadPNG(t)); err == nil {
+		t.Fatal("a fill over an applied image succeeded")
+	}
+	if _, ok := store.rows["virtual:3"]; ok || len(generator.published) != 0 {
+		t.Fatalf("a refused fill wrote: rows %v, published %v", store.rows, generator.published)
+	}
+}
+
 // Reject changed content before fitting, publishing or recording.
 func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	for _, tc := range []struct {

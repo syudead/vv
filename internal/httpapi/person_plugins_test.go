@@ -12,6 +12,7 @@ import (
 const personPluginManifest = `{"contract":1,"kind":"person","name":"example.people","version":"1.0.0",` +
 	`"operations":["search","fetch"],"sources":["site","wiki"],"domains":["example.com","example.org"]}`
 
+// The bundled plugin is the third listed row.
 func TestPluginListCarriesKindSourcesAndDomains(t *testing.T) {
 	e := newPluginEnv(t)
 	work := decodePlugin(t, "work", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
@@ -19,7 +20,7 @@ func TestPluginListCarriesKindSourcesAndDomains(t *testing.T) {
 
 	rec := e.get("/api/work-info-plugins", e.owner)
 	var list gen.WorkInfoPluginList
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &list) != nil || len(list.Plugins) != 2 {
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &list) != nil || len(list.Plugins) != 3 {
 		t.Fatalf("list = %d %s", rec.Code, rec.Body)
 	}
 	byID := map[int64]gen.WorkInfoPlugin{}

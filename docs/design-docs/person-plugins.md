@@ -21,7 +21,8 @@ flowchart LR
 
 ## Person plugins extend contract 1
 
-`kind`, `sources` and `domains` are manifest fields of contract `1`, `fetch`
+`kind`, `sources` and `domains` are manifest fields of contract `1` (work-info
+plugins declare `domains` too, [link-fetch.md](link-fetch.md)), `fetch`
 gains a `source` or a `url`, and the fetch response gains a `person` object;
 everything else about a module stays as for a work-info plugin.
 
@@ -37,7 +38,6 @@ An older VVMDM ignores `kind` and fails the run on the `person` response with
 | Contract `2` for person plugins | Contract `2` would also have to describe work-info plugins, which do not change |
 | Sources or domains returned by a `describe` operation | The approval would show values that unapproved code produced |
 | URL patterns instead of domains | The owner could not read at approval which links the plugin receives, and the plugin parses the link itself anyway |
-| Accepting `domains` on work-info plugins now | The list would show a declaration that no work-info fetch acts on; a `kind: work` manifest with `domains` is `manifest_invalid` until one does |
 
 ## A person plugin declares both operations
 

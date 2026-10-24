@@ -16,6 +16,44 @@ export function pluginName(plugin: Pick<WorkInfoPlugin, "name" | "fileName">): s
   return plugin.name ?? plugin.fileName;
 }
 
+/** "*" in domains means every link, so it replaces the list. */
+export function acceptsLinksText(plugin: Pick<WorkInfoPlugin, "domains">): UiText | null {
+  const text = t.settings.workInfoPlugins;
+  if (plugin.domains.length === 0) return null;
+  if (plugin.domains.includes("*")) return text.acceptsAnyLink;
+  return text.acceptsLinks(plugin.domains);
+}
+
+export function domainLabels(plugin: Pick<WorkInfoPlugin, "domains">): string[] {
+  const text = t.settings.workInfoPlugins;
+  return plugin.domains.map((domain) => (domain === "*" ? text.anySite : domain));
+}
+
+/** Plugins tried for links come first in that order; the rest keep the server's order. */
+export function inLinkOrder<P extends Pick<WorkInfoPlugin, "linkRank">>(
+  plugins: readonly P[],
+): P[] {
+  const ranked = plugins
+    .filter((plugin) => plugin.linkRank !== undefined)
+    .sort((a, b) => (a.linkRank ?? 0) - (b.linkRank ?? 0));
+  return [...ranked, ...plugins.filter((plugin) => plugin.linkRank === undefined)];
+}
+
+/** The ids of ranked plugins with target moved by offset places, or null at an end. */
+export function movedLinkOrder(
+  plugins: readonly Pick<WorkInfoPlugin, "id" | "linkRank">[],
+  targetId: number,
+  offset: -1 | 1,
+): number[] | null {
+  const ids = inLinkOrder(plugins)
+    .filter((plugin) => plugin.linkRank !== undefined)
+    .map((plugin) => plugin.id);
+  const from = ids.indexOf(targetId);
+  const other = from < 0 ? undefined : ids[from + offset];
+  if (other === undefined) return null;
+  return ids.map((id) => (id === targetId ? other : id === other ? targetId : id));
+}
+
 export function operationTexts(
   plugin: Pick<WorkInfoPlugin, "operations" | "kind">,
 ): UiText[] {

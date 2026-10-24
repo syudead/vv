@@ -260,29 +260,53 @@ func stableByOrder[T any, K comparable](items []T, order []K, key func(T) K) []T
 }
 
 func (f FetchedWorkInfo) HasDetail(field WorkInfoField) bool {
+	return detailHasValue(field, detailValues{
+		code: f.Code, description: f.Description, urls: len(f.URLs), externalIDs: len(f.ExternalIDs),
+		date: func(kind DateKind) bool {
+			return slices.ContainsFunc(f.Dates, func(d WorkDate) bool { return d.Kind == kind })
+		},
+		person: func(role PersonRole) bool {
+			return slices.ContainsFunc(f.People, func(p FetchedPerson) bool { return p.Role == role })
+		},
+		organization: func(role OrganizationRole) bool {
+			return slices.ContainsFunc(f.Organizations, func(o FetchedOrganization) bool { return o.Role == role })
+		},
+	})
+}
+
+// detailValues is what detailHasValue reads of fetched or stored work information.
+type detailValues struct {
+	code, description string
+	urls, externalIDs int
+	date              func(DateKind) bool
+	person            func(PersonRole) bool
+	organization      func(OrganizationRole) bool
+}
+
+func detailHasValue(field WorkInfoField, v detailValues) bool {
 	switch field {
 	case WorkInfoFieldCode:
-		return f.Code != ""
+		return v.code != ""
 	case WorkInfoFieldDescription:
-		return f.Description != ""
+		return v.description != ""
 	case WorkInfoFieldURLs:
-		return len(f.URLs) > 0
+		return v.urls > 0
 	case WorkInfoFieldExternalIDs:
-		return len(f.ExternalIDs) > 0
+		return v.externalIDs > 0
 	}
 	for _, kind := range DateKinds {
 		if field == DateField(kind) {
-			return slices.ContainsFunc(f.Dates, func(d WorkDate) bool { return d.Kind == kind })
+			return v.date(kind)
 		}
 	}
 	for _, role := range PersonRoles {
 		if field == PersonField(role) {
-			return slices.ContainsFunc(f.People, func(p FetchedPerson) bool { return p.Role == role })
+			return v.person(role)
 		}
 	}
 	for _, role := range OrganizationRoles {
 		if field == OrganizationField(role) {
-			return slices.ContainsFunc(f.Organizations, func(o FetchedOrganization) bool { return o.Role == role })
+			return v.organization(role)
 		}
 	}
 	return false
@@ -318,6 +342,9 @@ type FetchedWorkInfoApply struct {
 	DetailFields []WorkInfoField
 	// SamePeople's positions are in Details.People.
 	SamePeople []SamePerson
+	// FillEmpty writes only what the video has no value for: a virtual video's title while it is still the one VVMDM
+	// gave it from a link, tags when it has none, and each detail field that is empty.
+	FillEmpty bool
 }
 
 // RejectedTags is deduplicated in Tags order; Skipped reports omitted detail values.

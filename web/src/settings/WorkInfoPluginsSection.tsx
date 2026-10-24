@@ -7,6 +7,7 @@ import {
   deleteWorkInfoPlugin,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
+  setWorkInfoPluginLinkOrder,
   setWorkInfoPluginSettings,
   uploadWorkInfoPlugin,
   type WorkInfoPlugin,
@@ -19,9 +20,9 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { useToast } from "../ui/Toast";
 import { useSectionAnchor } from "./useSectionAnchor";
 import WorkInfoPluginApprovalDialog from "./WorkInfoPluginApprovalDialog";
-import WorkInfoPluginRow, { type RowWork } from "./WorkInfoPluginRow";
+import WorkInfoPluginRow, { type LinkMove, type RowWork } from "./WorkInfoPluginRow";
 import WorkInfoPluginRunDialog from "./WorkInfoPluginRunDialog";
-import { pluginName } from "./workInfoPluginRows";
+import { inLinkOrder, movedLinkOrder, pluginName } from "./workInfoPluginRows";
 import {
   AddButton,
   GuideLink,
@@ -265,6 +266,41 @@ export default function WorkInfoPluginsSection() {
     }
   };
 
+  const moveLink = async (target: WorkInfoPlugin, offset: -1 | 1) => {
+    const order = movedLinkOrder(plugins, target.id, offset);
+    if (order === null) return;
+    setRowError(null);
+    setWork({ id: target.id, kind: "move" });
+    try {
+      const list = await setWorkInfoPluginLinkOrder(order);
+      changePlugins(() => list);
+      focusAfterRender.current = { menu: target.id };
+    } catch (failure) {
+      if (failure instanceof RequestFailed && failure.code === "link_order_changed") {
+        toast(errorText(failure));
+        void load();
+        return;
+      }
+      setRowError({
+        id: target.id,
+        message: text().rowFailed(pluginName(target), errorText(failure)),
+      });
+    } finally {
+      setWork(null);
+    }
+  };
+
+  /** Moves wait for a pending one so each order is computed from the saved list. */
+  const linkMove = (plugin: WorkInfoPlugin): LinkMove | null => {
+    if (plugin.linkRank === undefined) return null;
+    if (work?.kind === "move") return {};
+    const can = (offset: -1 | 1) => movedLinkOrder(plugins, plugin.id, offset) !== null;
+    return {
+      up: can(-1) ? () => void moveLink(plugin, -1) : undefined,
+      down: can(1) ? () => void moveLink(plugin, 1) : undefined,
+    };
+  };
+
   const remove = async () => {
     if (deleting === null) return;
     const target = deleting.plugin;
@@ -275,7 +311,9 @@ export default function WorkInfoPluginsSection() {
       // Remove from the latest list because concurrent uploads may have refreshed it; focus the
       // next row of the same section or that section's Add plugin.
       changePlugins((current) => {
-        const section = current.filter((plugin) => plugin.kind === target.kind);
+        const section = inLinkOrder(
+          current.filter((plugin) => plugin.kind === target.kind),
+        );
         const index = section.findIndex((plugin) => plugin.id === target.id);
         const remaining = section.filter((plugin) => plugin.id !== target.id);
         const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
@@ -310,6 +348,7 @@ export default function WorkInfoPluginsSection() {
         if (element === null) rowRefs.current.delete(plugin.id);
         else rowRefs.current.set(plugin.id, element);
       }}
+      move={linkMove(plugin)}
       onApprove={() =>
         setApproving({ plugin, pending: false, changed: false, error: null })
       }
@@ -328,7 +367,8 @@ export default function WorkInfoPluginsSection() {
           title={own.heading}
           description={
             <>
-              {own.description} <GuideLink />
+              {own.description} {kind === "work" && `${text().linkRankHint} `}
+              <GuideLink />
             </>
           }
           actions={
@@ -352,7 +392,7 @@ export default function WorkInfoPluginsSection() {
             kind={kind}
             loading={loading}
             loadError={loadError}
-            plugins={plugins.filter((plugin) => plugin.kind === kind)}
+            plugins={inLinkOrder(plugins.filter((plugin) => plugin.kind === kind))}
             onRetry={() => {
               setLoading(true);
               void load();

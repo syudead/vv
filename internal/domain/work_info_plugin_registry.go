@@ -43,6 +43,10 @@ type WorkInfoPlugin struct {
 	Values     map[string]string
 	// LastRunAt is the last retained run's completion time, or zero.
 	LastRunAt time.Time
+	// Builtin marks the plugin VVMDM bundles, which has no module and is never replaced or deleted.
+	Builtin bool
+	// LinkRank orders the plugins that declare domains for a link, lowest first; zero without domains.
+	LinkRank int
 }
 
 func (p WorkInfoPlugin) State() WorkInfoPluginState {
@@ -76,8 +80,11 @@ type WorkInfoPluginEntry struct {
 	Kind      WorkInfoPluginKind
 	// Sources is empty for a work-info plugin.
 	Sources []string
-	// Domains is empty for a work-info plugin and for a person plugin that declares none.
+	// Domains is empty for a plugin that declares none; AnyLinkDomain stands for every link.
 	Domains []string
+	Builtin bool
+	// LinkRank is the plugin's 1-based place among the plugins that declare domains, or zero.
+	LinkRank int
 }
 
 // Entry preserves declaration order and removes secret values.
@@ -103,7 +110,7 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 	if kind == WorkInfoPluginKindPerson && p.Manifest.Sources != nil {
 		sources = p.Manifest.Sources
 	}
-	if kind == WorkInfoPluginKindPerson && p.Manifest.Domains != nil {
+	if p.Manifest.Domains != nil {
 		domains = p.Manifest.Domains
 	}
 	return WorkInfoPluginEntry{
@@ -122,6 +129,8 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		Kind:        kind,
 		Sources:     sources,
 		Domains:     domains,
+		Builtin:     p.Builtin,
+		LinkRank:    p.LinkRank,
 	}
 }
 

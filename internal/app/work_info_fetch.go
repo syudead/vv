@@ -83,6 +83,28 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: normalized})
 }
 
+// FetchWorkInfoByLink fetches like FetchWorkInfo, by a link instead of an ID: a value that is not an http or https URL
+// returns ErrWorkInfoRunInvalid, a person plugin ErrWorkInfoPluginKindMismatch, and a link none of the plugin's
+// domains matches ErrWorkInfoLinkUnsupported, all before the module runs.
+func (p *WorkInfoPlugins) FetchWorkInfoByLink(
+	ctx context.Context, videoID, pluginID int64, link string,
+) (domain.WorkInfoFetchResult, error) {
+	normalized, err := domain.NormalizeFetchLink(link)
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
+	plugin, err := p.store.WorkInfoPlugin(ctx, pluginID)
+	switch {
+	case err != nil:
+		return domain.WorkInfoFetchResult{}, err
+	case plugin.Kind() != domain.WorkInfoPluginKindWork:
+		return domain.WorkInfoFetchResult{}, domain.ErrWorkInfoPluginKindMismatch
+	case !domain.LinkMatchesDomains(normalized, plugin.Manifest.Domains):
+		return domain.WorkInfoFetchResult{}, domain.ErrWorkInfoLinkUnsupported
+	}
+	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: normalized})
+}
+
 // Check video existence before execution, then match and retain the result bound to that video.
 func (p *WorkInfoPlugins) keepFetched(
 	ctx context.Context, videoID, pluginID int64, req domain.WorkInfoRunRequest,

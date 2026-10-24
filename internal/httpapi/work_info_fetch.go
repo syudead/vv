@@ -75,18 +75,29 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	var body struct {
 		PluginID *int64  `json:"pluginId"`
 		ID       *string `json:"id"`
+		Link     *string `json:"link"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.PluginID == nil || body.ID == nil {
-		s.invalidRequest(w, "pluginId and id are required.")
+	if body.PluginID == nil || (body.ID == nil) == (body.Link == nil) {
+		s.invalidRequest(w, "pluginId and one of id and link are required.")
 		return
 	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	fetch, err := s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
+	var fetch domain.WorkInfoFetchResult
+	var err error
+	if body.Link != nil {
+		fetch, err = s.workInfoPlugins.FetchWorkInfoByLink(r.Context(), id, *body.PluginID, *body.Link)
+	} else {
+		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
+	}
+	if errors.Is(err, domain.ErrWorkInfoLinkUnsupported) {
+		s.writeError(w, http.StatusBadRequest, codeWorkInfoLinkUnsupported, "The plugin does not read links from this site.")
+		return
+	}
 	if err != nil {
 		s.workInfoRunError(w, err, "The video or the work-info plugin was not found.")
 		return

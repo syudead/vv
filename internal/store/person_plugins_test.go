@@ -20,7 +20,7 @@ func TestPersonPluginUploadStoresKindSourcesAndDomains(t *testing.T) {
 	s := migratedDB(t).WorkInfoPlugins()
 
 	savePlugin(t, s, personPluginUpload("people", "d1", "site", "wiki"))
-	listed, err := s.ListWorkInfoPlugins(ctx)
+	listed, err := uploadedPlugins(ctx, s)
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("List = %+v, %v", listed, err)
 	}
@@ -36,7 +36,7 @@ func TestPersonPluginUploadStoresKindSourcesAndDomains(t *testing.T) {
 	withDomains := personPluginUpload("people", "d3", "wiki")
 	withDomains.Manifest.Domains = []string{"example.com", "example.org"}
 	savePlugin(t, s, withDomains)
-	listed, err = s.ListWorkInfoPlugins(ctx)
+	listed, err = uploadedPlugins(ctx, s)
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("List = %+v, %v", listed, err)
 	}

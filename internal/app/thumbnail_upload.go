@@ -32,6 +32,20 @@ func (g uploadGate) acquire(ctx context.Context) (release func(), err error) {
 func (i *Ingest) UploadThumbnailImage(
 	ctx context.Context, videoID int64, contentKey string, image []byte,
 ) (domain.Video, error) {
+	return i.uploadThumbnailImage(ctx, videoID, contentKey, image, false)
+}
+
+// FillThumbnailImage uploads like UploadThumbnailImage only while the video has no applied image, checked under the
+// generation lock that every image write takes; otherwise it returns an error and writes nothing.
+func (i *Ingest) FillThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte,
+) (domain.Video, error) {
+	return i.uploadThumbnailImage(ctx, videoID, contentKey, image, true)
+}
+
+func (i *Ingest) uploadThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte, onlyEmpty bool,
+) (domain.Video, error) {
 	release, err := i.uploads.acquire(ctx)
 	if err != nil {
 		return domain.Video{}, err
@@ -41,7 +55,7 @@ func (i *Ingest) UploadThumbnailImage(
 	if err != nil {
 		return domain.Video{}, err
 	}
-	return i.ApplyThumbnailImage(ctx, videoID, contentKey, image, domain.ThumbnailImageUploaded)
+	return i.applyThumbnailImage(ctx, videoID, contentKey, image, domain.ThumbnailImageUploaded, onlyEmpty)
 }
 
 func checkThumbnailUpload(data []byte) error {

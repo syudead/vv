@@ -1,21 +1,15 @@
-import { CircleAlert } from "lucide-react";
-import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
-import { errorText, t, type UiText } from "../i18n";
+import { errorText, type UiText } from "../i18n";
 import { playlistName } from "../playlists/playlistName";
-import { FormDialog } from "../ui/patterns/form-dialog";
-import { Alert, AlertTitle } from "../ui/shadcn/alert";
-import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
-import { Input } from "../ui/shadcn/input";
-import { Spinner } from "../ui/shadcn/spinner";
+import {
+  CreateDialogFrame,
+  DialogTextField,
+  type NameDialogWords,
+} from "./NameDialogParts";
 
-export interface NameDialogWords {
-  title: UiText;
-  submit: UiText;
-  submitting: UiText;
-  failed: (reason: string) => UiText;
-}
+export type { NameDialogWords } from "./NameDialogParts";
 
 /** Mount only while open so drafts reset on close; validate on submit and block closing while pending. */
 export default function NameDialog<T>({
@@ -40,8 +34,6 @@ export default function NameDialog<T>({
   onDone: (result: T) => void;
   onFailed?: (error: unknown) => void;
 }) {
-  const nameId = useId();
-  const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [invalid, setInvalid] = useState<UiText | null>(null);
@@ -81,48 +73,25 @@ export default function NameDialog<T>({
   }
 
   return (
-    <FormDialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) onClose();
-      }}
-      title={words.title}
+    <CreateDialogFrame
+      words={words}
       description={description}
-      onSubmit={submit}
-      cancelLabel={t.common.cancel}
-      submitLabel={
-        <>
-          {pending && <Spinner aria-hidden="true" />}
-          {pending ? words.submitting : words.submit}
-        </>
-      }
       pending={pending}
+      failure={failure}
       initialFocus={input}
+      onSubmit={submit}
+      onClose={onClose}
     >
-      <Field data-invalid={invalid !== null || undefined}>
-        <FieldLabel htmlFor={nameId}>{nameLabel}</FieldLabel>
-        <Input
-          ref={input}
-          id={nameId}
-          type="text"
-          autoComplete="off"
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setInvalid(null);
-          }}
-          aria-invalid={invalid !== null || undefined}
-          aria-describedby={invalid !== null ? errorId : undefined}
-          className="h-8"
-        />
-        {invalid !== null && <FieldError id={errorId}>{invalid}</FieldError>}
-      </Field>
-      {failure !== null && (
-        <Alert variant="destructive">
-          <CircleAlert aria-hidden="true" />
-          <AlertTitle>{failure}</AlertTitle>
-        </Alert>
-      )}
-    </FormDialog>
+      <DialogTextField
+        label={nameLabel}
+        value={text}
+        invalid={invalid}
+        inputRef={input}
+        onChange={(value) => {
+          setText(value);
+          setInvalid(null);
+        }}
+      />
+    </CreateDialogFrame>
   );
 }

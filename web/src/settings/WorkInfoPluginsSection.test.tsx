@@ -24,6 +24,7 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
     kind: "work",
     sources: [],
     domains: [],
+    builtin: false,
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",
@@ -60,6 +61,20 @@ function person(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
     name: "example.people",
     fileName: "people.wasm",
     description: "Fetches faces from example.people",
+    ...values,
+  });
+}
+
+/** The plugin VVMDM bundles; it tries every link. */
+function bundled(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugin {
+  return plugin({
+    name: "vv.link",
+    fileName: "Built in",
+    version: undefined,
+    description: "Fetches what a page states about itself",
+    domains: ["*"],
+    builtin: true,
+    state: "approved",
     ...values,
   });
 }
@@ -172,6 +187,12 @@ function rowOf(text: string, label?: string): HTMLElement {
     .closest<HTMLElement>("[data-plugin-id]");
   if (row === null) throw new Error(`no row for ${text}`);
   return row;
+}
+
+function rowIds(): number[] {
+  return Array.from(list().querySelectorAll("[data-plugin-id]"), (row) =>
+    Number(row.getAttribute("data-plugin-id")),
+  );
 }
 
 describe("WorkInfoPluginsSection", () => {
@@ -859,6 +880,117 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(dialog).queryByText("Accepts links from")).toBeNull();
   });
 
+  it("リンクの順のある作品情報プラグインを順位と受け付けるドメイン付きで先に並べ、同梱のものは削除できない", async () => {
+    fetchMock.mockImplementation(
+      server([
+        plugin({ id: 1, name: "plain.works", fileName: "plain.wasm" }),
+        bundled({ id: 2, linkRank: 2 }),
+        plugin({ id: 3, domains: ["example.works"], linkRank: 1 }),
+      ]).handler,
+    );
+    const user = userEvent.setup();
+    renderSection();
+
+    await waitFor(() => rowOf("vv.link"));
+    expect(rowIds()).toEqual([3, 2, 1]);
+    const site = rowOf("example.works");
+    expect(within(site).getByText("Link order 1")).toBeDefined();
+    expect(within(site).getByText(/Accepts links from example\.works/)).toBeDefined();
+    const link = rowOf("vv.link");
+    expect(within(link).getByText("Link order 2")).toBeDefined();
+    expect(within(link).getByText("Built in")).toBeDefined();
+    expect(within(link).getByText(/Accepts links from any site/)).toBeDefined();
+    const plain = rowOf("plain.works");
+    expect(within(plain).queryByText(/Link order/)).toBeNull();
+    expect(within(plain).queryByText(/Accepts links/)).toBeNull();
+
+    await user.click(
+      within(link).getByRole("button", { name: "More actions for vv.link" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Revoke approval" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "Move down" }).getAttribute("aria-disabled"),
+    ).toBe("true");
+  });
+
+  it("Move up はリンクの順の全体を送り、応答の一覧で並べ替える", async () => {
+    const site = plugin({ id: 3, domains: ["example.works"], linkRank: 1 });
+    const link = bundled({ id: 2, linkRank: 2 });
+    const fake = server([site, link], (method, url) =>
+      method === "PUT" && url === "/api/work-info-plugins/link-order"
+        ? json({
+            plugins: [
+              { ...site, linkRank: 2 },
+              { ...link, linkRank: 1 },
+            ],
+          })
+        : undefined,
+    );
+    fetchMock.mockImplementation(fake.handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    const first = await waitFor(() => rowOf("example.works"));
+    await user.click(
+      within(first).getByRole("button", { name: "More actions for example.works" }),
+    );
+    expect(
+      (await screen.findByRole("menuitem", { name: "Move up" })).getAttribute(
+        "aria-disabled",
+      ),
+    ).toBe("true");
+    await user.keyboard("{Escape}");
+    await user.click(
+      within(rowOf("vv.link")).getByRole("button", { name: "More actions for vv.link" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Move up" }));
+
+    await waitFor(() => expect(rowIds()).toEqual([2, 3]));
+    expect(within(rowOf("vv.link")).getByText("Link order 1")).toBeDefined();
+    expect(fake.requests.find((request) => request.method === "PUT")?.body).toEqual({
+      pluginIds: [2, 3],
+    });
+  });
+
+  it("リンクの順が他で変わっていたら知らせて一覧を読み直す", async () => {
+    const fake = server(
+      [
+        plugin({ id: 3, domains: ["example.works"], linkRank: 1 }),
+        bundled({ id: 2, linkRank: 2 }),
+      ],
+      (method, url) =>
+        method === "PUT" && url === "/api/work-info-plugins/link-order"
+          ? json({ code: "link_order_changed", message: "changed" }, 409)
+          : undefined,
+    );
+    fetchMock.mockImplementation(fake.handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    const link = await waitFor(() => rowOf("vv.link"));
+    await user.click(
+      within(link).getByRole("button", { name: "More actions for vv.link" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Move up" }));
+
+    expect(
+      await screen.findByText(
+        "The plugins changed meanwhile. Check the order and try again.",
+      ),
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(
+        fake.requests.filter(
+          (request) =>
+            request.method === "GET" && request.url === "/api/work-info-plugins",
+        ),
+      ).toHaveLength(2),
+    );
+  });
+
   it("画面の文言はカタログか利用者のデータだけである", async () => {
     enablePseudoLocale();
     fetchMock.mockImplementation(
@@ -891,6 +1023,7 @@ describe("WorkInfoPluginsSection", () => {
         }),
         plugin({ ...uploads["broken.wasm"], id: 2 }),
         person({ id: 3, state: "approved" }),
+        bundled({ id: 4, linkRank: 1 }),
       ]).handler,
     );
     const { container } = renderSection();
@@ -906,6 +1039,8 @@ describe("WorkInfoPluginsSection", () => {
       "example.people",
       "Fetches faces from example.people",
       "other.people",
+      "vv.link",
+      "Fetches what a page states about itself",
     ]);
   });
 });

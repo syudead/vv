@@ -19,6 +19,8 @@ type fakeVirtualVideos struct {
 	video domain.Video
 	err   error
 	calls []virtualCall
+	// linkFetch is the fetch LinkFetch reports, when set.
+	linkFetch *domain.LinkFetch
 }
 
 type virtualCall struct {
@@ -34,6 +36,23 @@ type virtualCall struct {
 func (f *fakeVirtualVideos) Create(_ context.Context, title string) (domain.Video, error) {
 	f.calls = append(f.calls, virtualCall{op: "create", title: title})
 	return f.video, f.err
+}
+
+func (f *fakeVirtualVideos) CreateFromLink(_ context.Context, title, link string) (domain.Video, error) {
+	f.calls = append(f.calls, virtualCall{op: "create-link", title: title, info: domain.WorkInfo{URLs: []string{link}}})
+	return f.video, f.err
+}
+
+func (f *fakeVirtualVideos) FinishLinkFetch(_ context.Context, key, _, failure string) error {
+	f.calls = append(f.calls, virtualCall{op: "finish", contentVersion: key, title: failure})
+	return nil
+}
+
+func (f *fakeVirtualVideos) LinkFetch(context.Context, string) (domain.LinkFetch, bool, error) {
+	if f.linkFetch == nil {
+		return domain.LinkFetch{}, false, nil
+	}
+	return *f.linkFetch, true, nil
 }
 
 func (f *fakeVirtualVideos) SaveTitle(_ context.Context, videoID int64, contentVersion, title string) (domain.Video, error) {

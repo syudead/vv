@@ -267,38 +267,22 @@ test.describe.serial("work information", () => {
     }
   });
 
-  test("受け入れ条件 2: バーチャルな動画のリンクはスクロールせずに見えるプレーヤーの枠に収まり、新しいタブで開く", async ({
+  test("受け入れ条件 2: バーチャルな動画のリンクはファイルのある動画と同じく Work タブにあり、新しいタブで開く", async ({
     page,
     request,
   }) => {
     const link = `${origin}/settings?virtual=${run}`;
-    // Four links: two buttons and the rest's menu, the most the frame holds.
-    const links = [
-      link,
-      ...[2, 3, 4].map((n) => `${origin}/settings?virtual${String(n)}=${run}`),
-    ];
-    const virtual = await createVirtual(request, `作品e2eバーチャル${run}`, links);
+    const virtual = await createVirtual(request, `作品e2eバーチャル${run}`, [link]);
     try {
-      const frame = page.locator("[data-player-frame]");
-      const more = frame.getByRole("button", { name: "+2 more" });
-      for (const [width, height] of [
-        [360, 740],
-        [768, 1024],
-        [1280, 800],
-      ] as const) {
-        await page.setViewportSize({ width, height });
-        await openVideo(page, virtual.id, virtual.title);
-        await expect(more).toBeInViewport({ ratio: 1 });
-        const box = (await frame.boundingBox())!;
-        const last = (await more.boundingBox())!;
-        expect(last.y + last.height, `${String(width)}px`).toBeLessThanOrEqual(
-          box.y + box.height,
-        );
-      }
+      await openVideo(page, virtual.id, virtual.title);
       await expect(page.getByText("Virtual video", { exact: true })).toBeVisible();
-      const button = frame
-        .getByRole("list", { name: "Links" })
-        .getByRole("link", { name: link.replace(/^http:\/\//, "") });
+      // The frame opens the first link, as a file video's frame plays.
+      await expect(
+        page
+          .locator("[data-player-frame]")
+          .getByRole("link", { name: "Open on 127.0.0.1:15173" }),
+      ).toHaveAttribute("href", link);
+      const button = await workLink(page, link);
       const opened = page.context().waitForEvent("page");
       await button.click();
       const tab = await opened;
@@ -323,11 +307,6 @@ test.describe.serial("work information", () => {
       await setPublic(request, shown, true);
       const page = await context.newPage();
       await openVideo(page, shown.id, shown.title);
-      await expect(
-        page
-          .locator("[data-player-frame]")
-          .getByRole("link", { name: link.replace(/^http:\/\//, "") }),
-      ).toBeInViewport();
       await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
 
       await page.goto(`/videos/${String(hidden.id)}`);

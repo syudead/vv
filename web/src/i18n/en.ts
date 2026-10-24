@@ -236,6 +236,9 @@ const errorCodes = {
   person_link_ambiguous:
     "This person has several links the plugin handles. Choose one first.",
   person_link_unsupported: "The plugin doesn't handle this link.",
+  work_info_link_unsupported: "The plugin doesn't handle this link.",
+  plugin_builtin: "The built-in plugin can't be deleted or replaced.",
+  link_order_changed: "The plugins changed meanwhile. Check the order and try again.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",
@@ -963,9 +966,13 @@ export const en = {
       action: "New virtual video",
       title: "New virtual video",
       description:
-        "A video without a file. Add links, a description and a thumbnail on its page.",
+        "A video without a file. Give a title, a link or both; the rest goes on its page.",
       field: "Title",
-      rule: "Enter a title.",
+      rule: "Enter a title or a link.",
+      linkField: "Link",
+      linkHint:
+        "VVMDM fills the empty title, description, date and thumbnail from the link after creating.",
+      linkRule: "Enter a link that starts with http:// or https://.",
       submit: "Create",
       submitting: "Creating…",
       failed: (reason: string) => `Couldn't create the virtual video: ${reason}`,
@@ -2122,11 +2129,15 @@ export const en = {
     },
     virtual: {
       band: "Virtual video",
+      linkFetch: {
+        running:
+          "Reading the link… Empty fields fill in when it finishes; you can edit meanwhile.",
+        failed: "Couldn't read the link.",
+        failedNext: "Fill in the details yourself, or try Fetch info… on the Work tab.",
+      },
       noThumbnailYet: "No thumbnail yet",
       noThumbnail: "No thumbnail",
-      uploadImage: "Upload an image…",
-      links: "Links",
-      moreLinks: (count: number) => `+${formatNumber(count)} more`,
+      openLink: (host: string) => `Open on ${host}`,
       removeImage: "Remove image",
       delete: "Delete…",
       deleteTitle: (title: string) => `Delete "${title}"?`,
@@ -2522,6 +2533,9 @@ export const en = {
       plugin: "Plugin",
       querySearch: "Search words",
       queryFetch: "The work's ID",
+      queryFetchOrLink: "The work's ID or link",
+      queryLink: "Link",
+      linkTyped: "Fetched by this link.",
       findBy: "Find by",
       findByOptions: {
         words: "Words",
@@ -4208,9 +4222,18 @@ export const en = {
           fetch: "Fetch by ID",
         } satisfies Record<WorkInfoOperation, string>,
         accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
-        acceptsLinks: (domains: readonly string[]) =>
-          `Accepts links from ${domains.join(", ")}`,
       },
+      acceptsLinks: (domains: readonly string[]) =>
+        `Accepts links from ${domains.join(", ")}`,
+      acceptsAnyLink: "Accepts links from any site",
+      anySite: "Any site",
+      linkRank: (rank: number) => `Link order ${formatNumber(rank)}`,
+      linkRankHint:
+        "When several plugins accept a link, the lower link order is tried first.",
+      builtin: "Built in",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      moving: "Saving the order…",
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,
