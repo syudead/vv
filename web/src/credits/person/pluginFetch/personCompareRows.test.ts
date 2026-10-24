@@ -5,6 +5,7 @@ import {
   initialSelection,
   type PersonCompareCurrent,
   selectionBody,
+  skippedPersonReason,
 } from "./personCompareRows";
 
 const current: PersonCompareCurrent = {
@@ -78,5 +79,16 @@ describe("initialSelection", () => {
 
   it("offers no image to fill a face the person has", () => {
     expect(initialSelection(current, fetched).image).toBeNull();
+  });
+});
+
+describe("skippedPersonReason", () => {
+  it("names the list whose limit each too_many value went over", () => {
+    const reason = (item: "aliases" | "externalIds" | "profile.links") =>
+      skippedPersonReason({ item, reason: "too_many" });
+
+    expect(reason("aliases")).toBe("over the limit for aliases");
+    expect(reason("externalIds")).toBe("over the limit for external IDs");
+    expect(reason("profile.links")).toBe("over the limit for links");
   });
 });

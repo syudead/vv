@@ -267,8 +267,11 @@ export function skippedPersonReason(
 ): UiText {
   const text = t.credits.personPage.pluginFetch.skipped;
   if (value.reason === "taken") return text.taken(value.holderName ?? "");
-  if (value.reason === "too_many")
-    return value.item === "aliases" ? text.tooManyAliases : text.tooManyIds;
+  if (value.reason === "too_many") {
+    if (value.item === "aliases") return text.tooManyAliases;
+    if (value.item === "profile.links") return text.tooManyLinks;
+    return text.tooManyIds;
+  }
   return text.invalid;
 }
 
