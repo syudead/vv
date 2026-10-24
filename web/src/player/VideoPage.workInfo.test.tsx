@@ -130,7 +130,7 @@ function summary(text: string) {
 
 async function openEditor() {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("link", { name: "Edit details" }));
+  await user.click(screen.getByRole("link", { name: "Edit" }));
   await screen.findByRole("heading", { level: 1, name: "Edit details" });
   return user;
 }
@@ -195,7 +195,7 @@ describe("VideoPage work information", () => {
     server.video = { ...plain, location: undefined, public: true };
     await openPage("guest");
     expect(screen.queryByText(/AB-123/)).toBeNull();
-    expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
   it("ページから開いた編集画面に、今の表示名と項目が出る", async () => {
@@ -294,9 +294,7 @@ describe("VideoPage work information", () => {
     });
     expect(summary("XY-9 · Released 2025 · Bob, Carol")).toBeDefined();
     await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole("link", { name: "Edit details" }),
-      ),
+      expect(document.activeElement).toBe(screen.getByRole("link", { name: "Edit" })),
     );
   });
 

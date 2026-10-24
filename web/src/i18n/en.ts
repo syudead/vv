@@ -2403,7 +2403,7 @@ export const en = {
       showFewer: "Show fewer",
       showMore: "Show more",
       showLess: "Show less",
-      edit: "Edit details",
+      edit: "Edit",
     },
     mediaInfo: {
       video: "Video",

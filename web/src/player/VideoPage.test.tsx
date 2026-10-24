@@ -2519,7 +2519,7 @@ describe("VideoPage", () => {
         `File name ${fileTitle}`,
       );
       expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
-      expect(screen.getByRole("link", { name: "Edit details" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Edit" })).toBeDefined();
     });
 
     it("ゲストの動画ページには編集の入口もファイル名の行も無い（受け入れ条件 9）", async () => {

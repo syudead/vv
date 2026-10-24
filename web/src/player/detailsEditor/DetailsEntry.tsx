@@ -1,3 +1,4 @@
+import { Pencil } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
@@ -32,14 +33,21 @@ export default function DetailsEntry({ video, owner, details }: DetailsEntryProp
 
   if (!owner || details === undefined) return null;
   return (
-    <Button variant="ghost" size="sm" asChild>
+    <Button
+      variant="secondary"
+      size="sm"
+      shape="pill"
+      className="text-foreground"
+      asChild
+    >
       <Link
         ref={ref}
         to={videoEditPath(video.id)}
         state={{ ...details.linkState, fromPage: true }}
         onClick={() => handVideoToEditor(video)}
       >
-        {t.player.workInfo.edit}
+        <Pencil aria-hidden="true" />
+        <span className="max-sm:sr-only">{t.player.workInfo.edit}</span>
       </Link>
     </Button>
   );

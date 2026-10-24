@@ -638,12 +638,12 @@ flowchart LR
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Header band       | Logo (home), breadcrumb to the folder, the only ×                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Return target     | The list before the page opened, kept through related videos and `Play next`                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Title row         | The title, with no edit control of its own (the name is edited in [Details editor](#details-editor)), then `Favorite`, `Add to playlist` and `Add to group`, each an icon and its word (below `sm` the icon alone, the word kept as its accessible name, so the three fit one line), `secondary` `sm` pills `gap-2` apart, on a row of their own `gap-3` under the title, so a long title keeps the column's full width                                                                         |
+| Title row         | The title, with no edit control of its own (the name is edited in [Details editor](#details-editor)), then `Favorite`, `Add to playlist`, `Add to group` and `Edit`, each an icon and its word (below `sm` the icon alone, the word kept as its accessible name, so the three fit one line), `secondary` `sm` pills `gap-2` apart, on a row of their own `gap-3` under the title, so a long title keeps the column's full width                                                                 |
 | Tags              | Right below the title as one unit; the add field shows only `+ Add tag` until pointed at or focused                                                                                                                                                                                                                                                                                                                                                                                             |
-| Tab strip         | Under the tags; the tabs, then the visibility toggle and `Edit details` at its end ([Tabs](#tabs))                                                                                                                                                                                                                                                                                                                                                                                              |
-| Visibility toggle | `Private` or `Public` in `text-xs`, then a `Switch` checked when public, both in one `Label`, at the end of the tab strip                                                                                                                                                                                                                                                                                                                                                                       |
+| Tab strip         | Under the tags; the tabs alone ([Tabs](#tabs))                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Visibility toggle | `Private` or `Public` in `text-xs`, then a `Switch` checked when public, both in one `Label`, at the right end of the title row's action line                                                                                                                                                                                                                                                                                                                                                   |
 | Right column      | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests            | No title row actions, tags, visibility toggle, `Edit details`, work information or location; the tabs Overview, Versions (with two or more versions) and File & media                                                                                                                                                                                                                                                                                                                           |
+| Guests            | No title row actions, tags, visibility toggle, `Edit`, work information or location; the tabs Overview, Versions (with two or more versions) and File & media                                                                                                                                                                                                                                                                                                                                   |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
@@ -679,10 +679,12 @@ read at the left and the figures or the one action in a `facts-column` wide
 column at the right, `gap-12` apart; below `md` the right column follows the
 left one. A single column of `text-base` facts was rejected on review: at the
 player's width it left most of the panel empty and read as large as the title.
-Actions are labelled pills in three fixed places: what the viewer does with the
-video under the title, what changes the record (visibility, `Edit details`)
-at the strip's end, and what changes one kind of information in that kind's
-panel. A filled pill was chosen over `ghost` words, which read as captions
+Actions are labelled pills in two fixed places: what the viewer does with the
+video or its record (favorite, playlist, group, `Edit`, with the visibility
+switch at the line's right end) under the title, and what changes one kind of
+information in that kind's panel. The record's actions once sat at the strip's
+end; they were moved because below `sm` they took a line of their own above the
+strip, and a strip of tabs alone reads as one control. A filled pill was chosen over `ghost` words, which read as captions
 under the title. Actions inside a list row stay `ghost` words, so a row's one
 pill is its first action, `Play`. A per-row `More` menu was rejected because it
 hides two actions behind an icon, and an empty-state block on Work was rejected
@@ -755,15 +757,13 @@ breadcrumb already shows the location.
 
 The strip has no line above it, and the selected tab's `primary` underline lies
 on its bottom border. A tab is the word in `text-sm font-medium`, with the
-count after it in `text-2xs` muted. The two controls at its end stand `gap-1`
-apart; `Edit details` is a `ghost` `sm` link with the word alone. The tabs
-never wrap: selecting a tab scrolls it into view inside the strip.
+count after it in `text-2xs` muted. The tabs never wrap: selecting a tab scrolls it into view inside the strip.
 
-| Width          | Strip and panels                                                                                                                                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `md` and above | One strip line, the tabs then the two controls; each panel in its two columns, Thumbnail's `Current` and `Replace with` across a vertical line                                                                                                           |
-| `sm` to `md`   | One strip line; each panel in one column, the right column after the left, and Thumbnail's `Current`, a horizontal line, then the rows                                                                                                                   |
-| Below `sm`     | The two controls on a line of their own above the strip, right-aligned; the tabs scroll sideways inside the strip, so the page never scrolls sideways; a Versions row's actions under its path, and a `Replace with` row's pill under its title and note |
+| Width          | Strip and panels                                                                                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `md` and above | One strip line of tabs; each panel in its two columns, Thumbnail's `Current` and `Replace with` across a vertical line                                                           |
+| `sm` to `md`   | One strip line; each panel in one column, the right column after the left, and Thumbnail's `Current`, a horizontal line, then the rows                                           |
+| Below `sm`     | The tabs scroll sideways inside the strip, so the page never scrolls sideways; a Versions row's actions under its path, and a `Replace with` row's pill under its title and note |
 
 The owner's favorite toggle is the first control after the title
 (`FavoriteToggle` `page` form: a `sm` pill `Toggle` with the heart and the word,
@@ -783,12 +783,12 @@ Updating the cached list means the library card has changed on return.
 
 ### Details editor
 
-`Edit details` (the word alone, `ghost` `sm`, the owner's only, at the
-end of the tab strip) is a link to
+`Edit` (a pencil and the word, the same pill as the title row's other actions,
+the owner's only) is a link to
 `/videos/:id/edit`, a full-screen `FormPage` outside the shell and the player
 that edits the display name and every work information item together; it is
 the one place to rename, so the title carries no pencil of its own. A title
-pencil beside `Edit details` was rejected on review: two entries that both
+pencil beside `Edit` was rejected on review: two entries that both
 change the name read as two different features. The band holds `Cancel` and
 `Save`; the left column, the skeleton's `aside`, names the video (thumbnail,
 file name, duration, size and resolution, folder) and holds
@@ -797,7 +797,7 @@ in a 2×2 grid, the description, links and IDs; `Credits` holds one row per
 role with the chips and a `CreditCommand` picker that finds a person or an
 organization, or makes a chip marked `New` that `Save` creates first. `Save`
 then sends one `PUT /api/videos/{id}/details` and returns to the page with the
-response, focusing `Edit details`; a reason with a `field` stays in the editor
+response, focusing `Edit`; a reason with a `field` stays in the editor
 under that control. `Cancel`, `Back to the video` and the browser's Back ask
 `Discard changes?` when the draft changed. Opened from the page, the editor
 starts from the page's video and returns along the history, so the page's `×`

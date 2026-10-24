@@ -15,9 +15,12 @@ export default function TitleRow({
   video,
   title,
   onFavorite,
+  actions,
 }: {
   video: Video;
   title: ReactNode;
+  /** The owner's further actions, after the three on the video as a whole. */
+  actions?: ReactNode;
   /** Resolve after toggling and refreshing the video; reject on failure. Absent for guests. */
   onFavorite: ((favorite: boolean) => Promise<void>) | undefined;
 }) {
@@ -50,6 +53,7 @@ export default function TitleRow({
             label={t.groups.add.label}
             videoIds={[video.id]}
           />
+          {actions}
         </div>
       </div>
       <FailureLine failure={failure} />

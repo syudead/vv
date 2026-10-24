@@ -6,11 +6,9 @@ import type { DetailMark } from "../../api/useVideoDetail";
 import { formatNumber, t, type UiText } from "../../i18n";
 import { isNarrowVideo } from "../../lib/format";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/shadcn/tabs";
-import DetailsEntry, { type DetailsEntryProps } from "../detailsEditor/DetailsEntry";
 import type { ThumbnailCapture } from "../playerLayers";
 import { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
 import UploadPreview from "../thumbnailUpload/UploadPreview";
-import VisibilitySwitch from "../VisibilitySwitch";
 import { approvedWorkPlugins } from "../workInfoFetch/fetchRules";
 import FetchDialog from "../workInfoFetch/FetchDialog";
 import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
@@ -43,7 +41,6 @@ export interface VideoPageTabsProps {
   onStale: () => void;
   /** Suspend page shortcuts while the thumbnail preview or the fetch dialog is open. */
   onEditingChange: (open: boolean) => void;
-  details: DetailsEntryProps["details"];
   state: VideoTabState;
   versions: {
     navigation: VersionsNavigation;
@@ -109,7 +106,7 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
-}: Omit<VideoPageTabsProps, "owner" | "details" | "state" | "versions" | "player">) {
+}: Omit<VideoPageTabsProps, "owner" | "state" | "versions" | "player">) {
   const [failure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
@@ -229,9 +226,9 @@ function panel(
   }
 }
 
-/** The tab strip under the tags with the record's actions at its end, and the selected panel. */
+/** The tab strip under the tags and the selected panel. */
 export default function VideoPageTabs(props: VideoPageTabsProps) {
-  const { video, owner, details, onStale, state } = props;
+  const { video, owner, state } = props;
   const { plugins, reload, select } = state;
   const tabs = availableTabs(video, owner, state.workPlugin);
   const current = nextTab(state.selected, tabs);
@@ -246,30 +243,15 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
       onValueChange={(next) => select(next as VideoTab)}
       className="gap-6"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:border-b sm:border-border">
-        <div
-          ref={strip}
-          className="min-w-0 flex-1 overflow-x-auto border-b border-border pb-1.5 scrollbar-none sm:border-b-0"
-        >
-          <TabsList variant="line" aria-label={text.label} className="gap-1">
-            {tabs.map((tab) => (
-              <TabTrigger key={tab} tab={tab} count={tabCount(tab, video)} />
-            ))}
-          </TabsList>
-        </div>
-        {owner && (
-          // Above the strip below `sm`, so the tabs alone take its line.
-          <div className="order-first flex shrink-0 items-center justify-end gap-1 sm:order-none sm:pb-1">
-            <VisibilitySwitch
-              // Key by video ID so errors do not survive navigation.
-              key={`visibility:${String(video.id)}`}
-              videoId={video.id}
-              isPublic={video.public}
-              onChanged={onStale}
-            />
-            <DetailsEntry video={video} owner={owner} details={details} />
-          </div>
-        )}
+      <div
+        ref={strip}
+        className="min-w-0 overflow-x-auto border-b border-border pb-1.5 scrollbar-none"
+      >
+        <TabsList variant="line" aria-label={text.label} className="gap-1">
+          {tabs.map((tab) => (
+            <TabTrigger key={tab} tab={tab} count={tabCount(tab, video)} />
+          ))}
+        </TabsList>
       </div>
       <TabsContent value={current}>
         {panel(current, props, {

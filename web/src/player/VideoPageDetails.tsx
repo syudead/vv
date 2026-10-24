@@ -2,6 +2,7 @@ import type { Video } from "../api/client";
 import type { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import AutoTagButton from "./AutoTagButton";
+import DetailsEntry from "./detailsEditor/DetailsEntry";
 import type { usePageHandoff } from "./detailsEditor/handoff";
 import GroupLine from "./GroupLine";
 import PlaylistLine from "./PlaylistLine";
@@ -14,6 +15,7 @@ import TitleRow from "./TitleRow";
 import VideoPageTabs, { useVideoTabState } from "./tabs/VideoPageTabs";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
+import VisibilitySwitch from "./VisibilitySwitch";
 
 type Detail = ReturnType<typeof useVideoDetail>;
 type Related = ReturnType<typeof useRelatedVideos>;
@@ -96,6 +98,28 @@ export default function VideoPageDetails({
             video={video}
             onFavorite={owner ? setFavorite : undefined}
             title={<VideoTitle video={video} owner={owner} />}
+            actions={
+              <>
+                <DetailsEntry
+                  video={video}
+                  owner={owner}
+                  // Preserve navigation history and restore focus to the metadata editor's entry point.
+                  details={{
+                    linkState: { from: backTo, trail },
+                    focusEntry: handoff.focusEntry(video.id),
+                  }}
+                />
+                <div className="ml-auto">
+                  <VisibilitySwitch
+                    // Key by video ID so errors do not survive navigation.
+                    key={`visibility:${String(video.id)}`}
+                    videoId={video.id}
+                    isPublic={video.public}
+                    onChanged={reread}
+                  />
+                </div>
+              </>
+            }
           />
           {owner && <OwnerTags video={video} reread={reread} />}
         </div>
@@ -112,11 +136,6 @@ export default function VideoPageDetails({
           }}
           onStale={reread}
           onEditingChange={onEditingThumbnail}
-          // Preserve navigation history and restore focus to the metadata editor's entry point.
-          details={{
-            linkState: { from: backTo, trail },
-            focusEntry: handoff.focusEntry(video.id),
-          }}
           state={tabState}
           versions={{
             navigation: { backTo, autoplay },
