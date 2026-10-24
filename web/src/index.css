@@ -11,6 +11,37 @@
  * Design-system demos force interaction styles through data-demo-state; real screens must not use
  * it. Preserve hover-capability gating for normal interactions.
  */
+/*
+ * The video page's two columns (lg outside theater mode) and its theater layout from lg; both read
+ * DetailPage's data-theater attribute (docs/design-docs/library-ui.md, Video page layout).
+ */
+@custom-variant split {
+  @media (width >= 64rem) {
+    &:where(:not([data-theater] *)) {
+      @slot;
+    }
+  }
+}
+
+@custom-variant theater {
+  @media (width >= 64rem) {
+    [data-theater] & {
+      @slot;
+    }
+  }
+}
+
+/* Theater mode switches through a short view transition that resizes the player in place. */
+[data-player-frame] {
+  view-transition-name: vv-player;
+}
+
+::view-transition-group(root),
+::view-transition-group(vv-player) {
+  animation-duration: var(--duration-theater);
+  animation-timing-function: var(--ease-out-quart);
+}
+
 @custom-variant hover {
   @media (hover: hover) {
     &:hover {

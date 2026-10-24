@@ -225,10 +225,12 @@ own and an aside that is a flex column, so a list in it can scroll under its
 heading while the header band and the media stay in view. Otherwise the page
 scrolls as one under the sticky band.
 
-With `theater`, from `lg` the media spans the window edge to edge above the
-children and the aside, which sit side by side under it, and the page scrolls as
-one; the screen drops its `lg:h-dvh` column. Only classes change, so switching
-keeps the media mounted. Below `lg` the layout is the same as without it.
+With `theater`, the page keeps the stacked layout at every width: the media
+spans the window, then the children, then the aside, and the page scrolls as
+one; the screen drops its `lg:h-dvh` column. The parts use the `split` variant
+(`lg` outside theater mode) for the two-column rules and `theater` (`lg` inside
+it) for theater-only rules, both reading `data-theater` on the root, so
+switching changes one attribute and keeps the media mounted.
 
 | Slot     | Put in it                                                                                                                                                                           | Never                   |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |

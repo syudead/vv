@@ -185,14 +185,14 @@ function useWideScreen(): boolean {
 /** Share one scroll container and offsetTop origin across playlist, continuous-play, and related sections. */
 const scrollerClass =
   // Contain scrolling and leave space for hover outlines; align right padding with the header close button.
-  "flex flex-col lg:relative lg:-ml-1.5 lg:min-h-0 lg:flex-1 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
+  "flex flex-col split:relative split:-ml-1.5 split:min-h-0 split:flex-1 split:scrollbar-on-hover split:overflow-y-auto split:overscroll-contain split:pt-1.5 split:pr-3 split:pb-6 split:pl-1.5";
 
 export const cardListClass =
-  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 split:grid-cols-1 theater:grid-cols-card-fill";
 
 /** Each section heading remains sticky only while its section is visible. */
 export const stickyHeadingClass =
-  "flex items-baseline justify-between gap-3 bg-background pb-3 lg:sticky lg:-top-1.5 lg:z-30 lg:-mx-1.5 lg:-mt-1.5 lg:px-1.5 lg:pt-1.5";
+  "flex items-baseline justify-between gap-3 bg-background pb-3 split:sticky split:-top-1.5 split:z-30 split:-mx-1.5 split:-mt-1.5 split:px-1.5 split:pt-1.5";
 
 /** Defaults to the video's URL and return destination; playlist callers preserve playlist context. */
 export type MemberTarget = (videoId: number) => { to: string; state: unknown };

@@ -213,6 +213,8 @@
   --spacing-seek-preview-time-x: 6px;
   --text-seek-preview: 11px;
   --duration-seek-preview: 100ms;
+  /* The theater-mode view transition; skipped under reduced-motion preferences. */
+  --duration-theater: 200ms;
   /* Chapter tick width; see docs/design-docs/media-information.md. */
   --spacing-chapter-mark: 2px;
 
@@ -302,9 +304,9 @@
   grid-template-columns: auto 1fr;
 }
 
-/* Named grid utility for the theater detail page: flexible content beside the aside's own width. */
-@utility grid-cols-detail-theater {
-  grid-template-columns: minmax(0, 1fr) auto;
+/* Named grid utility for cards that fill a full-width row at their library width or wider. */
+@utility grid-cols-card-fill {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
 /* Named grid utility for the list body's flexible content and fixed-width aside. */

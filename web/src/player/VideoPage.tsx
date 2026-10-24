@@ -385,14 +385,13 @@ export default function VideoPage() {
   );
 
   const aspect = playerAspectRatio(video, mediaAspect);
-  const layout = theaterLayout(theater);
   return (
-    <div className={cn("min-h-dvh bg-background", layout.page)}>
+    <div className={cn("min-h-dvh bg-background", pageClass(theater))}>
       <DetailPage
         theater={theater}
         // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
-        contentClassName="lg:max-w-player-width-lg"
+        contentClassName="split:max-w-player-width-lg"
         header={
           <VideoHeader
             folder={video?.folder}
@@ -408,18 +407,12 @@ export default function VideoPage() {
             // Descendants use these variables for seek previews and player size tokens.
             // Reserve room for one title line; tags and facts scroll within the main column.
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className={cn(
-              "relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar [&:fullscreen]:rounded-none",
-              layout.frame,
-            )}
+            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar split:max-w-player-width-lg split:rounded-lg theater:max-w-none [&:fullscreen]:rounded-none"
           >
             {/* Aspect ratio supplies a minimum height outside fullscreen; status content may grow taller. */}
             <div
               aria-hidden="true"
-              className={cn(
-                "col-start-1 row-start-1 aspect-player max-h-player-height [:fullscreen>&]:hidden",
-                layout.sizer,
-              )}
+              className="col-start-1 row-start-1 aspect-player max-h-player-height split:max-h-player-height-lg theater:max-h-player-height-theater [:fullscreen>&]:hidden"
             />
             {/* A virtual video has no player and no processing to report. */}
             {thumbnail.video !== undefined ? (
@@ -542,14 +535,8 @@ function currentFor<S extends { id: number }>(
 }
 
 /** Theater mode lets the page scroll as one instead of holding it at the viewport's height. */
-function theaterLayout(theater: boolean): { page: string; frame: string; sizer: string } {
-  return theater
-    ? { page: "", frame: "lg:max-w-none", sizer: "lg:max-h-player-height-theater" }
-    : {
-        page: "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden",
-        frame: "lg:max-w-player-width-lg lg:rounded-lg",
-        sizer: "lg:max-h-player-height-lg",
-      };
+function pageClass(theater: boolean): string {
+  return theater ? "" : "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden";
 }
 
 function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSProperties {
