@@ -40,7 +40,7 @@ values. The server does not serve it. The screens' contract is
 2. Copy the plaintext token (47 characters starting with `vvt_`) now. It is
    shown only once; if you lose it, revoke it and create a new one.
 3. Revoke tokens you no longer use in the same section. Changing the username
-   or password (`mdm account`) revokes every token.
+   or password (Settings → Account, or `mdm account`) revokes every token.
 
 A token has the owner's rights, including reading private videos; store it like
 a password.

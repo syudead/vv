@@ -145,6 +145,59 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/account:
+    get:
+      operationId: getAccount
+      summary: "Return the owner account"
+      description: "Never returns the password or its hash."
+      responses:
+        "200":
+          description: "Owner account"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+    put:
+      operationId: updateAccount
+      summary: "Change the username or password"
+      description: "Accepts at most 8 KiB. Requires the current password and shares the login throttle. A change signs out every session, revokes every API token, and returns a new session for this browser through `Set-Cookie`. Other in-flight requests stop at their next session recheck."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountRequest"
+      responses:
+        "200":
+          description: "Credentials changed and signed in again"
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionSetCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          description: "Incorrect current password (`invalid_credentials`), or a cross-origin request (`forbidden`); nothing written"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "Too many attempts (`login_throttled`); the current password was not checked"
+          headers:
+            Retry-After:
+              description: "Seconds until another attempt is allowed"
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/videos:
     get:
       operationId: listVideos
@@ -5589,6 +5642,28 @@ components:
         redirectTo:
           type: string
           description: "Server-validated same-origin navigation path"
+
+    Account:
+      type: object
+      required: [username]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+
+    UpdateAccountRequest:
+      type: object
+      required: [currentPassword, username]
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+        username:
+          type: string
+          description: "1–128 characters, without control characters or surrounding whitespace; send the current username to keep it"
+        newPassword:
+          type: string
+          description: "1–1024 bytes; omit to keep the current password"
 
     AuthSession:
       type: object

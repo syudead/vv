@@ -37,6 +37,12 @@ func (ownerAuth) State(context.Context, string) (httpapi.AuthState, error) {
 	return httpapi.AuthStateOwner, nil
 }
 
+func (ownerAuth) Username(context.Context) (string, error) { return "owner", nil }
+
+func (ownerAuth) ChangeCredentials(context.Context, httpapi.CredentialChange) (httpapi.IssuedSession, error) {
+	return httpapi.IssuedSession{}, domain.ErrInvalidCredentials
+}
+
 func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	dataDir := newMigratedDataDir(t)
 	db, err := store.Open(dataDir)

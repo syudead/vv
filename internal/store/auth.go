@@ -115,6 +115,49 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 	return nil
 }
 
+// ReplaceCredentials writes both credentials only while sessionToken is still a current session,
+// revokes every session and API token, and issues newSessionToken at the new account version.
+func (s *AuthStore) ReplaceCredentials(
+	ctx context.Context, sessionToken, username, passwordHash, newSessionToken string, now time.Time,
+) error {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot update the account: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var version int64
+	err = tx.QueryRowContext(ctx, `
+		update account
+		   set username = ?, password_hash = ?, version = version + 1, updated_at = ?
+		 where id = ? and exists (
+		       select 1 from sessions s
+		        where s.token_hash = ? and s.account_version = account.version and s.expires_at > ?)
+		returning version`,
+		username, passwordHash, now.Unix(), accountID, sessionTokenHash(sessionToken), now.Unix(),
+	).Scan(&version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrSessionNotValid
+	}
+	if err != nil {
+		return fmt.Errorf("cannot update the account: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
+		return fmt.Errorf("cannot delete sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
+		return fmt.Errorf("cannot delete API tokens: %w", err)
+	}
+	if err := insertSession(ctx, tx, newSessionToken, version, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cannot commit the account update: %w", err)
+	}
+	return nil
+}
+
 // AddSession uses the account version read during authentication so concurrent credential changes invalidate the new session.
 func (s *AuthStore) AddSession(
 	ctx context.Context, sessionToken string, accountVersion int64, replaceToken string, now time.Time,

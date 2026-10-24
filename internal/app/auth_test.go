@@ -90,6 +90,22 @@ func (f *fakeAuthStore) DeleteSession(_ context.Context, token string) error {
 	return nil
 }
 
+func (f *fakeAuthStore) ReplaceCredentials(
+	_ context.Context, token, username, passwordHash, newToken string, now time.Time,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.sessions[token]
+	if !ok || f.account == nil || s.version != f.account.Version || !s.expires.After(now) {
+		return domain.ErrSessionNotValid
+	}
+	version := f.account.Version + 1
+	f.account = &domain.Account{Username: username, PasswordHash: passwordHash, Version: version}
+	f.sessions = map[string]fakeSession{newToken: {version: version, expires: now.Add(domain.SessionLifetime)}}
+	f.apiTokens = map[string]fakeAPIToken{}
+	return nil
+}
+
 func (f *fakeAuthStore) hasSession(token string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -574,5 +590,94 @@ func TestAuthState(t *testing.T) {
 	f.store.failAccount = true
 	if _, err := f.auth.State(ctx, session.Token); !errors.Is(err, errFakeDB) {
 		t.Errorf("Account が失敗した State = %v, want DB の誤り", err)
+	}
+}
+
+// configuredSession sets up the account and returns its first session token.
+func configuredSession(t *testing.T, f authFixture) string {
+	t.Helper()
+	session, err := f.auth.Setup(context.Background(), "owner", "correct-password")
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	return session.Token
+}
+
+func TestAuthChangeCredentialsReplacesSession(t *testing.T) {
+	for name, tc := range map[string]struct {
+		newPassword string
+		wantHash    string
+	}{
+		"username only keeps the password": {newPassword: "", wantHash: "hash:correct-password"},
+		"new password":                     {newPassword: "next-password", wantHash: "hash:next-password"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newAuthFixture(t, nil)
+			current := configuredSession(t, f)
+
+			session, err := f.auth.ChangeCredentials(context.Background(), CredentialChange{
+				SessionToken: current, CurrentPassword: "correct-password",
+				Username: "renamed", NewPassword: tc.newPassword, Source: sourceA,
+			})
+			if err != nil {
+				t.Fatalf("ChangeCredentials: %v", err)
+			}
+			if !validTokenFormat(session.Token) || session.Token == current {
+				t.Errorf("session token = %q", session.Token)
+			}
+			if f.store.hasSession(current) || !f.store.hasSession(session.Token) {
+				t.Error("the old session must be replaced by the returned one")
+			}
+			if got := f.store.account; got.Username != "renamed" || got.PasswordHash != tc.wantHash {
+				t.Errorf("account = %+v, want renamed / %s", got, tc.wantHash)
+			}
+		})
+	}
+}
+
+func TestAuthChangeCredentialsWrongPasswordCountsTowardThrottle(t *testing.T) {
+	f := newAuthFixture(t, nil)
+	current := configuredSession(t, f)
+	change := CredentialChange{SessionToken: current, CurrentPassword: "wrong", Username: "renamed", Source: sourceA}
+
+	for i := range 5 {
+		if _, err := f.auth.ChangeCredentials(context.Background(), change); !errors.Is(err, domain.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: err = %v, want ErrInvalidCredentials", i+1, err)
+		}
+	}
+	if f.store.account.Username != "owner" || !f.store.hasSession(current) {
+		t.Errorf("a wrong current password changed state: account = %+v", f.store.account)
+	}
+
+	// Change attempts and sign-ins share the source's bucket.
+	if _, err := login(f, "owner", "correct-password", sourceA); !errors.Is(err, domain.ErrLoginThrottled) {
+		t.Errorf("Login after five wrong passwords = %v, want ErrLoginThrottled", err)
+	}
+}
+
+func TestAuthChangeCredentialsRejectsInvalidValuesBeforeVerifying(t *testing.T) {
+	for name, tc := range map[string]struct {
+		username, newPassword string
+		want                  error
+	}{
+		"blank username":    {username: "", want: domain.ErrInvalidUsername},
+		"long new password": {username: "owner", newPassword: strings.Repeat("x", domain.MaxPasswordBytes+1), want: domain.ErrInvalidPassword},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newAuthFixture(t, nil)
+			current := configuredSession(t, f)
+			before := f.hasher.verifies.Load()
+
+			_, err := f.auth.ChangeCredentials(context.Background(), CredentialChange{
+				SessionToken: current, CurrentPassword: "correct-password",
+				Username: tc.username, NewPassword: tc.newPassword, Source: sourceA,
+			})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if got := f.hasher.verifies.Load(); got != before {
+				t.Errorf("verified the password %d times for an invalid value", got-before)
+			}
+		})
 	}
 }

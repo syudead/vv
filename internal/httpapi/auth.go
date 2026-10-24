@@ -54,6 +54,19 @@ type Authenticator interface {
 	CheckSession(ctx context.Context, token string) (time.Time, bool, error)
 	Logout(ctx context.Context, token string) error
 	State(ctx context.Context, token string) (AuthState, error)
+	Username(ctx context.Context) (string, error)
+	// ChangeCredentials matches ErrInvalidCredentials for a wrong current password and
+	// ErrSessionNotValid when the session was revoked meanwhile.
+	ChangeCredentials(ctx context.Context, change CredentialChange) (IssuedSession, error)
+}
+
+type CredentialChange struct {
+	SessionToken    string
+	CurrentPassword string
+	Username        string
+	// Empty keeps the current password.
+	NewPassword string
+	Source      netip.Addr
 }
 
 // Unknown routes default to owner-only; bearer routes ignore cookies, and all other routes ignore Authorization.
@@ -416,16 +429,7 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrAccountAlreadyConfigured):
 		s.writeError(w, http.StatusConflict, gen.ErrorCodeAccountAlreadyConfigured, "The account is already set up.")
 		return
-	case errors.Is(err, domain.ErrUsernameLength):
-		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength, invalidUsernameMessage)
-		return
-	case errors.Is(err, domain.ErrInvalidUsername):
-		// Only length violations receive username_length; controls/whitespace have no corresponding reason.
-		s.invalidRequest(w, invalidUsernameMessage)
-		return
-	case errors.Is(err, domain.ErrInvalidPassword):
-		s.invalidRequestLimit(w, reasonPasswordLength, domain.MaxPasswordBytes,
-			"Passwords must be 1 to "+strconv.Itoa(domain.MaxPasswordBytes)+" bytes.")
+	case s.invalidCredentialValue(w, err):
 		return
 	default:
 		s.internalError(w, "Could not complete the initial setup.", err)
@@ -453,7 +457,6 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		Source:       s.clientOrigin(r).source,
 		CurrentToken: current,
 	})
-	var throttled interface{ RetryAfterSeconds() int }
 	switch {
 	case err == nil:
 	case errors.Is(err, domain.ErrInvalidCredentials):
@@ -461,14 +464,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeInvalidCredentials, "Incorrect username or password.")
 		return
 	case errors.Is(err, domain.ErrLoginThrottled):
-		s.logAuthEvent(r, "login_throttled")
-		retryAfter := 1
-		if errors.As(err, &throttled) {
-			retryAfter = max(throttled.RetryAfterSeconds(), 1)
-		}
-		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-		s.writeError(w, http.StatusTooManyRequests, gen.ErrorCodeLoginThrottled,
-			"Too many sign-in attempts. Wait a moment and try again.")
+		s.loginThrottled(w, r, err, "login_throttled")
 		return
 	default:
 		s.internalError(w, "Could not sign in.", err)
@@ -486,6 +482,99 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.AuthRedirect{RedirectTo: domain.SafeRedirectTarget(next)}, s.logger)
+}
+
+// invalidCredentialValue writes the 400 for a rejected new username or password and reports whether it did.
+func (s *server) invalidCredentialValue(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, domain.ErrUsernameLength):
+		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength, invalidUsernameMessage)
+	case errors.Is(err, domain.ErrInvalidUsername):
+		// Only length violations receive username_length; controls/whitespace have no corresponding reason.
+		s.invalidRequest(w, invalidUsernameMessage)
+	case errors.Is(err, domain.ErrInvalidPassword):
+		s.invalidRequestLimit(w, reasonPasswordLength, domain.MaxPasswordBytes,
+			"Passwords must be 1 to "+strconv.Itoa(domain.MaxPasswordBytes)+" bytes.")
+	default:
+		return false
+	}
+	return true
+}
+
+func (s *server) loginThrottled(w http.ResponseWriter, r *http.Request, err error, event string) {
+	s.logAuthEvent(r, event)
+	retryAfter := 1
+	var throttled interface{ RetryAfterSeconds() int }
+	if errors.As(err, &throttled) {
+		retryAfter = max(throttled.RetryAfterSeconds(), 1)
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	s.writeError(w, http.StatusTooManyRequests, gen.ErrorCodeLoginThrottled,
+		"Too many sign-in attempts. Wait a moment and try again.")
+}
+
+func (s *server) GetAccount(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		s.internalError(w, "Cannot load the account.", errors.New("authentication is not configured"))
+		return
+	}
+	username, err := s.auth.Username(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not load the account.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.Account{Username: username}, s.logger)
+}
+
+// UpdateAccount keeps this request's tracked session alive; the store already deleted it, and other
+// sessions' in-flight requests stop at their next recheck.
+func (s *server) UpdateAccount(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		s.internalError(w, "Cannot change the account.", errors.New("authentication is not configured"))
+		return
+	}
+	var body gen.UpdateAccountRequest
+	if !s.readAuthBody(w, r, &body) {
+		return
+	}
+	change := CredentialChange{
+		SessionToken:    s.sessionToken(r),
+		CurrentPassword: body.CurrentPassword,
+		Username:        body.Username,
+		Source:          s.clientOrigin(r).source,
+	}
+	if body.NewPassword != nil {
+		change.NewPassword = *body.NewPassword
+		if change.NewPassword == "" {
+			// An explicit empty password is invalid rather than a request to keep the current one.
+			s.invalidCredentialValue(w, domain.ErrInvalidPassword)
+			return
+		}
+	}
+	session, err := s.auth.ChangeCredentials(r.Context(), change)
+	switch {
+	case err == nil:
+	case s.invalidCredentialValue(w, err):
+		return
+	case errors.Is(err, domain.ErrInvalidCredentials):
+		s.logAuthEvent(r, "credentials_change_failed")
+		s.writeError(w, http.StatusForbidden, gen.ErrorCodeInvalidCredentials, "The current password is incorrect.")
+		return
+	case errors.Is(err, domain.ErrLoginThrottled):
+		s.loginThrottled(w, r, err, "credentials_change_throttled")
+		return
+	case errors.Is(err, domain.ErrSessionNotValid):
+		s.unauthenticated(w)
+		return
+	default:
+		s.internalError(w, "Could not change the account.", err)
+		return
+	}
+	s.logAuthEvent(r, "credentials_changed")
+	s.setSessionCookie(w, r, session)
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.Account{Username: body.Username}, s.logger)
 }
 
 func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params gen.GetAuthSessionParams) {

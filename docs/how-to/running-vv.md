@@ -92,7 +92,8 @@ is unset.
 | The window is closed during a scan or import | Asks first; the work resumes on the next start |
 
 The Windows app does not read the [Runtime settings](#runtime-settings)
-variables and has no `mdm account` command.
+variables and has no `mdm account` command; change the username or password
+under **Settings → Account**.
 
 ### Data
 
@@ -194,9 +195,14 @@ server, open VVMDM and choose the username and password on the setup screen.
 
 ## Changing the username or resetting the password
 
-After setup, the username and password change only from a shell on the host.
-The commands read `MDM_DATA_DIR` alone, apply migrations, do not need
-`ffmpeg`, and work whether the server is running or stopped.
+While signed in, change the username or password under **Settings → Account**.
+Each change asks for the current password, and wrong attempts count toward the
+same limit as sign-in. A change signs out every other browser and revokes every
+API token; the browser that made it stays signed in.
+
+When the password is lost, reset it from a shell on the host instead. The
+commands read `MDM_DATA_DIR` alone, apply migrations, do not need `ffmpeg`,
+and work whether the server is running or stopped.
 
 1. Run the command. With Docker Compose and the container running:
 

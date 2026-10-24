@@ -56,6 +56,15 @@ func (a appAuthenticator) State(ctx context.Context, token string) (AuthState, e
 	return AuthState(state), err
 }
 
+func (a appAuthenticator) Username(ctx context.Context) (string, error) {
+	return a.auth.Username(ctx)
+}
+
+func (a appAuthenticator) ChangeCredentials(ctx context.Context, change CredentialChange) (IssuedSession, error) {
+	session, err := a.auth.ChangeCredentials(ctx, app.CredentialChange(change))
+	return IssuedSession(session), err
+}
+
 // Use a cheap fake hash to isolate auth routing; internal/password tests verify real hashing without repeated Argon2id cost here.
 type passwordHasher struct{}
 
@@ -990,5 +999,72 @@ func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
 	}
 	if _, ok := ledger.serve(ctx, req, time.Now().Add(time.Hour)); ok {
 		t.Fatal("打ち切られた要求で応答を始められた")
+	}
+}
+
+func accountBody(current, username string, newPassword *string) string {
+	body, _ := json.Marshal(gen.UpdateAccountRequest{CurrentPassword: current, Username: username, NewPassword: newPassword})
+	return string(body)
+}
+
+func TestAuthUpdateAccountSignsInAgainAndEndsOtherSessions(t *testing.T) {
+	env := newAuthEnv(t, t.TempDir(), Options{})
+	current := env.setup()
+	other := env.login(false)
+
+	newPassword := "a new password"
+	rec := env.serve(authRequest{
+		method: http.MethodPut, target: "/api/account", cookies: []*http.Cookie{current},
+		body: accountBody(testPassword, "renamed", &newPassword),
+	})
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"username":"renamed"}` {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+		t.Errorf("Cache-Control = %q", got)
+	}
+	renewed := responseCookie(t, rec, sessionCookieHTTP)
+
+	assertUnauthenticated(t, "the changing session's old cookie", env.get("/api/account", current))
+	assertUnauthenticated(t, "another session", env.get("/api/account", other))
+	got := env.get("/api/account", renewed)
+	if got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"username":"renamed"}` {
+		t.Errorf("GET with the renewed cookie: status = %d: %s", got.Code, got.Body)
+	}
+	login := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/login", body: credentialsBody("renamed", newPassword)})
+	if login.Code != http.StatusOK {
+		t.Errorf("sign-in with the new credentials: status = %d: %s", login.Code, login.Body)
+	}
+}
+
+func TestAuthUpdateAccountRejectsWrongPasswordWithoutSigningOut(t *testing.T) {
+	env := newAuthEnv(t, t.TempDir(), Options{})
+	current := env.setup()
+
+	rec := env.serve(authRequest{
+		method: http.MethodPut, target: "/api/account", cookies: []*http.Cookie{current},
+		body: accountBody("wrong password", "renamed", nil),
+	})
+	// 403 rather than 401, so the client does not treat it as a lost session.
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"invalid_credentials"`) {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	assertAudience(t, "wrong password", rec, "owner")
+	if rec.Header().Get("Set-Cookie") != "" {
+		t.Error("a rejected change set a cookie")
+	}
+
+	empty := ""
+	rec = env.serve(authRequest{
+		method: http.MethodPut, target: "/api/account", cookies: []*http.Cookie{current},
+		body: accountBody(testPassword, testUsername, &empty),
+	})
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"password_length"`) {
+		t.Errorf("explicit empty new password: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	got := env.get("/api/account", current)
+	if got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"username":"`+testUsername+`"}` {
+		t.Errorf("after rejected changes: status = %d: %s", got.Code, got.Body)
 	}
 }

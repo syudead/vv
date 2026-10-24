@@ -640,6 +640,7 @@ func requiresPostJSONBody(path string) bool {
 }
 
 var putJSONBodyPaths = map[string]bool{
+	"/api/account":                   true,
 	"/api/video-visibility":          true,
 	"/api/favorites":                 true,
 	"/api/settings/transcoding":      true,

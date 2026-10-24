@@ -112,6 +112,8 @@ export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
 export type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 export type APIToken = components["schemas"]["APIToken"];
 export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
+export type Account = components["schemas"]["Account"];
+export type UpdateAccount = components["schemas"]["UpdateAccountRequest"];
 
 /** Card values are fetched separately when a smart-folder card becomes visible. */
 export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
@@ -1133,6 +1135,22 @@ async function settleVideoTag(
   if (!response.ok) {
     throw await toRequestFailed(response);
   }
+}
+
+export function getAccount(signal?: AbortSignal): Promise<Account> {
+  return request<Account>("/api/account", { signal });
+}
+
+/**
+ * A wrong current password is 403, not 401, so it does not reload the page. Success signs out every
+ * other session, revokes every API token and renews this browser's cookie.
+ */
+export function updateAccount(change: UpdateAccount): Promise<Account> {
+  return request<Account>("/api/account", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
+  });
 }
 
 /** Secrets are never included in token lists. */

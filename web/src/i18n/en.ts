@@ -3602,7 +3602,7 @@ export const en = {
     setup: {
       title: "Create an account",
       description:
-        "Create the one account for this server. To change it later, use the server's command line.",
+        "Create the one account for this server. You can change the username and password later in Settings.",
       submit: "Create account",
       submitting: "Creating the account…",
       goToLogin: "Go to sign in",
@@ -3728,8 +3728,35 @@ export const en = {
       plugins: "Plugins",
       conversion: "Video conversion",
       network: "Network",
+      account: "Account",
       api: "API",
       "danger-zone": "Danger zone",
+    },
+    account: {
+      heading: "Account",
+      description:
+        "Changing the username or password signs out every other browser and revokes every API token. This browser stays signed in.",
+      username: "Username",
+      password: "Password",
+      passwordDescription: "Never shown. Change it if it might be known to someone else.",
+      loadFailed: (reason: string) => `Couldn't load the account: ${reason}`,
+      changeUsername: "Change username",
+      changePassword: "Change password",
+      usernameTitle: "Change the username",
+      passwordTitle: "Change the password",
+      saving: "Saving…",
+      newUsername: "New username",
+      currentPassword: "Current password",
+      newPassword: "New password",
+      confirmPassword: "Confirm the new password",
+      usernameUnchanged: "Enter a different username.",
+      currentPasswordRequired: "Enter your current password.",
+      currentPasswordWrong: "The current password is incorrect.",
+      failed: (reason: string) => `Couldn't save the change: ${reason}`,
+      usernameChanged:
+        "Changed the username. Other browsers were signed out and API tokens were revoked.",
+      passwordChanged:
+        "Changed the password. Other browsers were signed out and API tokens were revoked.",
     },
     dangerZone: {
       clearPeople: {

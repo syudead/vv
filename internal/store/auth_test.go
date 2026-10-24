@@ -209,6 +209,68 @@ func TestAuthStoreChangeUsernameAndPasswordWriteValues(t *testing.T) {
 	}
 }
 
+func TestAuthStoreReplaceCredentialsKeepsOnlyTheNewSession(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	auth := db.Auth()
+	if err := auth.Setup(ctx, "owner", "hash", "setup-token", authNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.AddSession(ctx, "other-token", 1, "", authNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.AddAPIToken(ctx, "setup-token", "cli", "api-secret", authNow); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := auth.ReplaceCredentials(ctx, "setup-token", "renamed", "hash-2", "new-token", authNow); err != nil {
+		t.Fatal(err)
+	}
+	account, err := auth.Account(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account != (domain.Account{Username: "renamed", PasswordHash: "hash-2", Version: 2}) {
+		t.Errorf("Account() = %+v", account)
+	}
+	for token, want := range map[string]bool{"setup-token": false, "other-token": false, "new-token": true} {
+		if got := sessionValid(t, auth, token, authNow); got != want {
+			t.Errorf("%s valid = %v, want %v", token, got, want)
+		}
+	}
+	if _, ok, err := auth.APIToken(ctx, "api-secret"); err != nil || ok {
+		t.Errorf("API token after change: ok = %v, err = %v", ok, err)
+	}
+}
+
+func TestAuthStoreReplaceCredentialsRejectsRevokedSession(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	auth := db.Auth()
+	if err := auth.Setup(ctx, "owner", "hash", "setup-token", authNow); err != nil {
+		t.Fatal(err)
+	}
+	// A host-side reset between the boundary check and the write revokes the session.
+	if err := auth.ChangePassword(ctx, "hash-reset", authNow); err != nil {
+		t.Fatal(err)
+	}
+
+	err := auth.ReplaceCredentials(ctx, "setup-token", "renamed", "hash-2", "new-token", authNow)
+	if !errors.Is(err, domain.ErrSessionNotValid) {
+		t.Fatalf("err = %v, want ErrSessionNotValid", err)
+	}
+	account, err := auth.Account(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account != (domain.Account{Username: "owner", PasswordHash: "hash-reset", Version: 2}) {
+		t.Errorf("Account() = %+v", account)
+	}
+	if sessionValid(t, auth, "new-token", authNow) {
+		t.Error("rejected change issued a session")
+	}
+}
+
 func TestAuthStoreExpiredSessions(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

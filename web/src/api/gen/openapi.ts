@@ -104,6 +104,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the owner account
+         * @description Never returns the password or its hash.
+         */
+        get: operations["getAccount"];
+        /**
+         * Change the username or password
+         * @description Accepts at most 8 KiB. Requires the current password and shares the login throttle. A change signs out every session, revokes every API token, and returns a new session for this browser through `Set-Cookie`. Other in-flight requests stop at their next session recheck.
+         */
+        put: operations["updateAccount"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos": {
         parameters: {
             query?: never;
@@ -3360,6 +3384,16 @@ export interface components {
         AuthRedirect: {
             /** @description Server-validated same-origin navigation path */
             redirectTo: string;
+        };
+        Account: {
+            username: string;
+        };
+        UpdateAccountRequest: {
+            currentPassword: string;
+            /** @description 1–128 characters, without control characters or surrounding whitespace; send the current username to keep it */
+            username: string;
+            /** @description 1–1024 bytes; omit to keep the current password */
+            newPassword?: string;
         };
         AuthSession: {
             /**
@@ -7126,6 +7160,72 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owner account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+        };
+    };
+    updateAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Credentials changed and signed in again */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionSetCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description Incorrect current password (`invalid_credentials`), or a cross-origin request (`forbidden`); nothing written */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many attempts (`login_throttled`); the current password was not checked */
+            429: {
+                headers: {
+                    /** @description Seconds until another attempt is allowed */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listVideos: {

@@ -2731,6 +2731,11 @@ type APITokenList struct {
 	Items []APIToken `json:"items"`
 }
 
+// Account defines model for Account.
+type Account struct {
+	Username string `json:"username"`
+}
+
 // ActivityCounts Counts by status for top-level records matching every filter except status.
 type ActivityCounts struct {
 	Attention int `json:"attention"`
@@ -5882,6 +5887,17 @@ type TranscodingSettings struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// UpdateAccountRequest defines model for UpdateAccountRequest.
+type UpdateAccountRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+
+	// NewPassword 1–1024 bytes; omit to keep the current password
+	NewPassword *string `json:"newPassword,omitempty"`
+
+	// Username 1–128 characters, without control characters or surrounding whitespace; send the current username to keep it
+	Username string `json:"username"`
+}
+
 // UpdateAutoImportSettingsRequest defines model for UpdateAutoImportSettingsRequest.
 type UpdateAutoImportSettingsRequest struct {
 	Enabled bool `json:"enabled"`
@@ -7678,6 +7694,9 @@ type ListWatchHistoryDatesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
+// UpdateAccountJSONRequestBody defines body for UpdateAccount for application/json ContentType.
+type UpdateAccountJSONRequestBody = UpdateAccountRequest
+
 // UndoActivityJSONRequestBody defines body for UndoActivity for application/json ContentType.
 type UndoActivityJSONRequestBody = ActivityUndoRequest
 
@@ -7935,6 +7954,12 @@ type SetWorkInfoPluginSettingsJSONRequestBody = SetWorkInfoPluginSettingsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetAccount Return the owner account
+	// (GET /api/account)
+	GetAccount(w http.ResponseWriter, r *http.Request)
+	// UpdateAccount Change the username or password
+	// (PUT /api/account)
+	UpdateAccount(w http.ResponseWriter, r *http.Request)
 	// ListActivity List activity records, newest first
 	// (GET /api/activity)
 	ListActivity(w http.ResponseWriter, r *http.Request, params ListActivityParams)
@@ -8554,6 +8579,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccount operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListActivity operation middleware
 func (siw *ServerInterfaceWrapper) ListActivity(w http.ResponseWriter, r *http.Request) {
@@ -14942,6 +14995,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/login", wrapper.Login)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/session", wrapper.GetAuthSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/account", wrapper.GetAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/account", wrapper.UpdateAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
