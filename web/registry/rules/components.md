@@ -59,7 +59,7 @@ link.
 The `shape` is `default` (`rounded-md`) or `pill` (`rounded-full`); `Toggle`
 takes the same axis, and a screen never sets a radius on a control itself. A
 pill is a labelled action the viewer finds by its place: on the video page,
-the actions beside the title, a section's one action and a row's `Play` are
+the actions under the title, a section's one action and a row's `Play` are
 `secondary` `sm` pills, while the other actions inside a row stay `ghost`, so
 the one pill in a row is its first action.
 
