@@ -49,7 +49,7 @@ person page reads the profile without a join. Organizations have no profile;
 | `bloodType`                        | `A`, `B`, `O`, `AB`, in any case                                                         | `work_info_out_of_range`                                             |
 | `careerStartYear`, `careerEndYear` | 1900–9999, the end not before the start                                                  | `work_info_out_of_range`                                             |
 | `bio`                              | 1–5,000 code points; line breaks kept                                                    | `work_info_too_long`                                                 |
-| `links`                            | Up to 20 unique HTTP(S) URLs, as work URLs                                               | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
+| `links`                            | Up to 100 unique HTTP(S) URLs, as work URLs                                              | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
 
 Owners and plugins often know a date only to the year, so a date keeps its own
 precision instead of being padded to a full date.
