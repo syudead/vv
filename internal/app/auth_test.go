@@ -102,7 +102,10 @@ func (f *fakeAuthStore) ReplaceCredentials(
 	version := f.account.Version + 1
 	f.account = &domain.Account{Username: username, PasswordHash: passwordHash, Version: version}
 	f.sessions = map[string]fakeSession{newToken: {version: version, expires: now.Add(domain.SessionLifetime)}}
-	f.apiTokens = map[string]fakeAPIToken{}
+	for secret, token := range f.apiTokens {
+		token.version = version
+		f.apiTokens[secret] = token
+	}
 	return nil
 }
 

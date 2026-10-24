@@ -1143,7 +1143,7 @@ export function getAccount(signal?: AbortSignal): Promise<Account> {
 
 /**
  * A wrong current password is 403, not 401, so it does not reload the page. Success signs out every
- * other session, revokes every API token and renews this browser's cookie.
+ * other session and renews this browser's cookie; API tokens stay valid.
  */
 export function updateAccount(change: UpdateAccount): Promise<Account> {
   return request<Account>("/api/account", {

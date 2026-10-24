@@ -71,12 +71,12 @@ func (s *AuthStore) Setup(
 	return nil
 }
 
-// ChangeUsername increments the account version and revokes all sessions and API tokens.
+// ChangeUsername increments the account version and signs out every session; API tokens stay valid.
 func (s *AuthStore) ChangeUsername(ctx context.Context, username string, now time.Time) error {
 	return s.changeCredentials(ctx, "username", username, now)
 }
 
-// ChangePassword increments the account version and revokes all sessions and API tokens.
+// ChangePassword increments the account version and signs out every session; API tokens stay valid.
 func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now time.Time) error {
 	return s.changeCredentials(ctx, "password_hash", passwordHash, now)
 }
@@ -103,7 +103,7 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 		return domain.ErrAccountNotConfigured
 	}
 
-	if err := revokeAllAccess(ctx, tx); err != nil {
+	if err := signOutAll(ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -113,7 +113,7 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 }
 
 // ReplaceCredentials writes both credentials only while sessionToken is still a current session,
-// revokes every session and API token, and issues newSessionToken at the new account version.
+// signs out every session, keeps API tokens, and issues newSessionToken at the new account version.
 func (s *AuthStore) ReplaceCredentials(
 	ctx context.Context, sessionToken, username, passwordHash, newSessionToken string, now time.Time,
 ) error {
@@ -140,7 +140,7 @@ func (s *AuthStore) ReplaceCredentials(
 		return fmt.Errorf("cannot update the account: %w", err)
 	}
 
-	if err := revokeAllAccess(ctx, tx); err != nil {
+	if err := signOutAll(ctx, tx); err != nil {
 		return err
 	}
 	if err := insertSession(ctx, tx, newSessionToken, version, now); err != nil {
@@ -152,13 +152,16 @@ func (s *AuthStore) ReplaceCredentials(
 	return nil
 }
 
-// revokeAllAccess removes every session and API token after a credential change.
-func revokeAllAccess(ctx context.Context, tx *sql.Tx) error {
+// signOutAll runs after the account version moves: it deletes every session and carries API tokens
+// to the new version, since a token is its own secret and does not derive from the password.
+func signOutAll(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
 		return fmt.Errorf("cannot delete sessions: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
-		return fmt.Errorf("cannot delete API tokens: %w", err)
+	if _, err := tx.ExecContext(ctx,
+		`update api_tokens set account_version = (select version from account where id = ?)`, accountID,
+	); err != nil {
+		return fmt.Errorf("cannot keep API tokens: %w", err)
 	}
 	return nil
 }

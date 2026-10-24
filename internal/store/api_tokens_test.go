@@ -160,7 +160,7 @@ func TestAPITokenEmptyListIsNotNil(t *testing.T) {
 	}
 }
 
-func TestAPITokenChangeCredentialsDeletesTokens(t *testing.T) {
+func TestAPITokenChangeCredentialsKeepsTokens(t *testing.T) {
 	for _, change := range []struct {
 		name string
 		run  func(*AuthStore) error
@@ -175,15 +175,12 @@ func TestAPITokenChangeCredentialsDeletesTokens(t *testing.T) {
 			if err := change.run(db.Auth()); err != nil {
 				t.Fatal(err)
 			}
-			if apiTokenValid(t, db, "t1") {
-				t.Error("資格情報の変更の後もトークンが有効")
+			if !apiTokenValid(t, db, "t1") {
+				t.Error("token is invalid after a credential change")
 			}
-			var count int
-			if err := db.sql.QueryRow(`select count(*) from api_tokens`).Scan(&count); err != nil {
-				t.Fatal(err)
-			}
-			if count != 0 {
-				t.Errorf("api_tokens = %d 行, want 0", count)
+			list, err := db.Auth().ListAPITokens(context.Background())
+			if err != nil || len(list) != 1 {
+				t.Errorf("ListAPITokens = %+v, %v, want the one token", list, err)
 			}
 		})
 	}

@@ -160,7 +160,7 @@ paths:
     put:
       operationId: updateAccount
       summary: "Change the username or password"
-      description: "Accepts at most 8 KiB. Requires the current password and shares the login throttle. A change signs out every session, revokes every API token, and returns a new session for this browser through `Set-Cookie`. Other in-flight requests stop at their next session recheck."
+      description: "Accepts at most 8 KiB. Requires the current password and shares the login throttle. A change signs out every session, keeps API tokens valid, and returns a new session for this browser through `Set-Cookie`. Other in-flight requests stop at their next session recheck."
       requestBody:
         required: true
         content:

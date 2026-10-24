@@ -44,7 +44,7 @@ func newMCPHandler(srv *server) http.Handler {
 	})
 }
 
-// The SDK detaches tool cancellation from HTTP requests; reconnect it so token revocation and credential changes stop running tools.
+// The SDK detaches tool cancellation from HTTP requests; reconnect it so token revocation stops running tools.
 type mcpRequestWatch func(cancel func(error)) (stop func() bool)
 
 type mcpRequestWatchKey struct{}

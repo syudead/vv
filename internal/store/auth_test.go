@@ -209,7 +209,7 @@ func TestAuthStoreChangeUsernameAndPasswordWriteValues(t *testing.T) {
 	}
 }
 
-func TestAuthStoreReplaceCredentialsKeepsOnlyTheNewSession(t *testing.T) {
+func TestAuthStoreReplaceCredentialsKeepsOnlyTheNewSessionAndTokens(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	auth := db.Auth()
@@ -238,8 +238,8 @@ func TestAuthStoreReplaceCredentialsKeepsOnlyTheNewSession(t *testing.T) {
 			t.Errorf("%s valid = %v, want %v", token, got, want)
 		}
 	}
-	if _, ok, err := auth.APIToken(ctx, "api-secret"); err != nil || ok {
-		t.Errorf("API token after change: ok = %v, err = %v", ok, err)
+	if _, ok, err := auth.APIToken(ctx, "api-secret"); err != nil || !ok {
+		t.Errorf("API token after change: ok = %v, err = %v, want valid", ok, err)
 	}
 }
 

@@ -37,7 +37,7 @@ type AuthStore interface {
 	// Deleting an absent session is a no-op.
 	DeleteSession(ctx context.Context, sessionToken string) error
 	// ReplaceCredentials returns ErrSessionNotValid unless sessionToken is still a current session;
-	// it revokes every session and API token and adds newSessionToken at the new account version.
+	// it signs out every session, keeps API tokens and adds newSessionToken at the new account version.
 	ReplaceCredentials(ctx context.Context, sessionToken, username, passwordHash, newSessionToken string, now time.Time) error
 
 	// Add tokens only while the authorizing session remains valid, using its account version;

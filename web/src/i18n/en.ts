@@ -3735,7 +3735,7 @@ export const en = {
     account: {
       heading: "Account",
       description:
-        "Changing the username or password signs out every other browser and revokes every API token. This browser stays signed in.",
+        "Changing the username or password signs out every other browser. This browser stays signed in, and API tokens keep working.",
       username: "Username",
       password: "Password",
       passwordDescription: "Never shown. Change it if it might be known to someone else.",
@@ -3753,10 +3753,8 @@ export const en = {
       currentPasswordRequired: "Enter your current password.",
       currentPasswordWrong: "The current password is incorrect.",
       failed: (reason: string) => `Couldn't save the change: ${reason}`,
-      usernameChanged:
-        "Changed the username. Other browsers were signed out and API tokens were revoked.",
-      passwordChanged:
-        "Changed the password. Other browsers were signed out and API tokens were revoked.",
+      usernameChanged: "Changed the username. Other browsers were signed out.",
+      passwordChanged: "Changed the password. Other browsers were signed out.",
     },
     dangerZone: {
       clearPeople: {
