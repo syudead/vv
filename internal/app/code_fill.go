@@ -46,7 +46,7 @@ func (q *codeFillQueue) push(jobs []codeFillJob) bool {
 
 // StartCodeFills queues a fill by work code with pluginID for each user-data key among videoIDs that has a code,
 // and returns at once. The plugin must be an approved work-info plugin that fetches and has its required settings,
-// or the error run returns for it comes back; a request the queue has no room for returns ErrCodeFillQueueFull. Both
+// or the error run returns for it comes back; the bundled link plugin returns ErrWorkInfoOperationUnsupported; a request the queue has no room for returns ErrCodeFillQueueFull. Both
 // queue nothing.
 func (p *WorkInfoPlugins) StartCodeFills(
 	ctx context.Context, pluginID int64, videoIDs []int64,
@@ -63,6 +63,10 @@ func (p *WorkInfoPlugins) StartCodeFills(
 	}
 	if _, err := runnableSettings(plugin, domain.WorkInfoFetch); err != nil {
 		return domain.CodeFillsQueued{}, err
+	}
+	// The bundled plugin declares fetch but reads links only, so every fill by code would fail.
+	if plugin.Manifest.Name == domain.LinkPluginName {
+		return domain.CodeFillsQueued{}, domain.ErrWorkInfoOperationUnsupported
 	}
 	coded, keys, err := p.codes.CodedVideos(ctx, videoIDs)
 	if err != nil {

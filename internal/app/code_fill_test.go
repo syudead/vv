@@ -64,13 +64,19 @@ func TestStartCodeFillsFillsEachCodedVideoByItsCode(t *testing.T) {
 	}
 }
 
-// A plugin that cannot fetch, or a request larger than the room left, queues nothing.
+// A plugin that cannot fetch by ID, or a request larger than the room left, queues nothing.
 func TestStartCodeFillsQueuesNothingItCannotRunWhole(t *testing.T) {
 	e, codes := newCodeFillEnv(1)
 	e.store.plugins[1].ApprovedDigest = ""
 	if _, err := e.plugins.StartCodeFills(context.Background(), 1, []int64{fetchVideo}); !errors.Is(err, domain.ErrWorkInfoPluginNotApproved) ||
 		codes.calls != 0 {
 		t.Fatalf("err = %v after %d code reads; want ErrWorkInfoPluginNotApproved before reading codes", err, codes.calls)
+	}
+	e.store.plugins[1].ApprovedDigest = "d1"
+	e.store.plugins[1].Manifest.Name = domain.LinkPluginName
+	if _, err := e.plugins.StartCodeFills(context.Background(), 1, []int64{fetchVideo}); !errors.Is(err, domain.ErrWorkInfoOperationUnsupported) ||
+		codes.calls != 0 {
+		t.Fatalf("err = %v after %d code reads; want the link-only plugin refused", err, codes.calls)
 	}
 	codes.coded = append(codes.coded, domain.CodedVideo{VideoID: otherVideo, ContentKey: "key-2", Code: "ABC-2"})
 	if _, err := e.plugins.StartCodeFills(context.Background(), 2, []int64{fetchVideo, otherVideo}); !errors.Is(err, domain.ErrCodeFillQueueFull) ||

@@ -196,7 +196,9 @@ through the first version selected.
 
 The plugin is checked before anything is queued: a plugin that is not an
 approved work-info plugin declaring `fetch` with its required settings set
-answers with the same error as a single fetch. The queue holds 20,000 fills,
+answers with the same error as a single fetch. `vv.link` declares `fetch` but
+reads links only, so it answers `409 operation_unsupported` and the dialog
+does not offer it. The queue holds 20,000 fills,
 one selection at the bulk actions' limit, and takes a request whole or answers
 `503 work_info_fills_busy` without queuing any of it. Queued fills live in
 memory and end with the process; the activity shows which videos were filled.

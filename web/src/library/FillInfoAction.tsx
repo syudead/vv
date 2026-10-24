@@ -31,8 +31,11 @@ interface Targets {
   smartFolderIds: readonly number[];
 }
 
+// The bundled plugin fetches by link only, so it cannot fill by code.
 function fillPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
-  return approvedWorkPlugins(plugins).filter(canFetch);
+  return approvedWorkPlugins(plugins).filter(
+    (plugin) => canFetch(plugin) && !plugin.builtin,
+  );
 }
 
 /**

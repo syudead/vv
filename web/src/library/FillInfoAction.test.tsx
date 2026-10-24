@@ -56,6 +56,7 @@ describe("FillInfoAction", () => {
     const fills = install([
       { ...works, id: 5, name: "search only", operations: ["search"] },
       { ...works, id: 6, name: "people", kind: "person" },
+      { ...works, id: 7, name: "vv.link", operations: ["fetch"], builtin: true },
       works,
     ]);
     renderAction();
