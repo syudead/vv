@@ -74,7 +74,7 @@ async function waitForVideos(request: APIRequestContext) {
 }
 
 /** Wait for initial media loading and fail with the alert and stream response when it fails; otherwise the hidden play button only produces a timeout. */
-async function play(page: Page, item: Video) {
+async function play(page: Page, item: Video, search = "") {
   const mediaResponses: string[] = [];
   page.on("response", (response) => {
     const url = new URL(response.url());
@@ -82,7 +82,7 @@ async function play(page: Page, item: Video) {
       mediaResponses.push(`${String(response.status())} ${url.pathname}${url.search}`);
     }
   });
-  await page.goto(`/videos/${String(item.id)}`);
+  await page.goto(`/videos/${String(item.id)}${search}`);
   // Wait for preload metadata before clicking; a late load failure can hide the play button.
   await page.waitForFunction(
     () => {
@@ -507,6 +507,66 @@ test.describe("live MP4 playback", () => {
       expect(bounds?.x ?? -1).toBeGreaterThanOrEqual(0);
       expect((bounds?.x ?? width) + (bounds?.width ?? width + 1)).toBeLessThanOrEqual(
         width,
+      );
+    }
+  });
+
+  test("ファイル、バーチャル、ファイルの順のプレイリストは、連続再生でバーチャルな項目を飛ばして 2 本目に届く", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(60_000);
+    const first = video("direct");
+    const second = video("container-only");
+    const created = await request.post("/api/virtual-videos", {
+      headers: mutationHeaders,
+      data: { title: "e2e virtual between files" },
+    });
+    expect(created.status()).toBe(201);
+    const virtual = (await created.json()) as { id: number; contentVersion: string };
+    const made = await request.post("/api/playlists", {
+      headers: mutationHeaders,
+      data: { name: "e2e virtual skip" },
+    });
+    expect(made.status()).toBe(201);
+    const playlistId = ((await made.json()) as { id: number }).id;
+    try {
+      const added = await request.post(`/api/playlists/${String(playlistId)}/items`, {
+        headers: mutationHeaders,
+        data: { videoIds: [first.id, virtual.id, second.id] },
+      });
+      expect(added.ok()).toBe(true);
+      const read = await request.get(`/api/playlists/${String(playlistId)}`);
+      const items = ((await read.json()) as { items: { id: number }[] }).items;
+      expect(items).toHaveLength(3);
+      const [firstItem, , secondItem] = items;
+
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await play(
+        page,
+        first,
+        `?playlist=${String(playlistId)}&item=${String(firstItem!.id)}`,
+      );
+      // The 6-second clip ends by itself; the notice names the second file video, not the virtual one.
+      const frame = page.locator("[data-player-frame]");
+      await expect(
+        frame.getByRole("link", { name: new RegExp(`^${second.title} \\d`) }),
+      ).toBeVisible({ timeout: 20_000 });
+      // With autoplay on, the notice advances by itself; otherwise the ended layer waits for Play next.
+      const playNext = frame.getByRole("button", { name: "Play next" });
+      if (await playNext.isVisible()) await playNext.click();
+      await expect(page).toHaveURL(
+        `/videos/${String(second.id)}?playlist=${String(playlistId)}&item=${String(secondItem!.id)}`,
+        { timeout: 15_000 },
+      );
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(second.title);
+    } finally {
+      await request.delete(`/api/playlists/${String(playlistId)}`, {
+        headers: mutationHeaders,
+      });
+      await request.delete(
+        `/api/videos/${String(virtual.id)}?contentVersion=${encodeURIComponent(virtual.contentVersion)}`,
+        { headers: mutationHeaders },
       );
     }
   });

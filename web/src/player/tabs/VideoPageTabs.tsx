@@ -4,11 +4,15 @@ import { useLocation, useNavigate } from "react-router";
 import type { Video } from "../../api/client";
 import type { DetailMark } from "../../api/useVideoDetail";
 import { formatNumber, t, type UiText } from "../../i18n";
-import { isNarrowVideo } from "../../lib/format";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/shadcn/tabs";
 import type { ThumbnailCapture } from "../playerLayers";
-import { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
-import UploadPreview from "../thumbnailUpload/UploadPreview";
+import {
+  ThumbnailUploadDialog,
+  UploadPreviewDialog,
+  useThumbnailUpload,
+} from "../thumbnailUpload/UploadEntry";
+import type { VirtualThumbnail } from "../virtualVideo/useVirtualThumbnail";
+import VirtualThumbnailPanel from "../virtualVideo/VirtualThumbnailPanel";
 import { approvedWorkPlugins } from "../workInfoFetch/fetchRules";
 import FetchDialog from "../workInfoFetch/FetchDialog";
 import { useApprovedPlugins } from "../workInfoFetch/useApprovedPlugins";
@@ -47,6 +51,8 @@ export interface VideoPageTabsProps {
     /** Replace the page's video after its own version is removed. */
     onReplace: (video: Video, mark: DetailMark) => void;
   };
+  /** A virtual video's upload, shared with its media frame; idle for a file video. */
+  thumbnail: VirtualThumbnail;
 }
 
 /**
@@ -98,7 +104,8 @@ export type VideoTabState = ReturnType<typeof useVideoTabState>;
 
 /**
  * Operations that outlive a tab switch: the thumbnail sends, the upload preview and the work-info
- * fetch dialog. The panels that start them receive them as props; the dialogs render here.
+ * fetch dialog. The panels that start them receive them as props; the dialogs render here. A
+ * virtual video's upload and failure line are the page's, so the media frame shares them.
  */
 function useOperations({
   video,
@@ -106,8 +113,9 @@ function useOperations({
   onChanged,
   onStale,
   onEditingChange,
+  thumbnail: virtualThumbnail,
 }: Omit<VideoPageTabsProps, "owner" | "state" | "versions" | "player">) {
-  const [failure, setFailure] = useState<UiText | null>(null);
+  const [ownFailure, setFailure] = useState<UiText | null>(null);
   const [fetchOpen, setFetchOpen] = useState(false);
   const [videoId, setVideoId] = useState(video.id);
   if (videoId !== video.id) {
@@ -115,8 +123,17 @@ function useOperations({
     setFailure(null);
     setFetchOpen(false);
   }
-  const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
-  const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
+  const virtual = virtualThumbnail.video !== undefined;
+  const report = virtual ? virtualThumbnail.report : setFailure;
+  const failure = virtual ? virtualThumbnail.failure : ownFailure;
+  const thumbnail = useThumbnailPosition(video.id, report, onChanged, onStale);
+  const fileUpload = useThumbnailUpload(
+    virtual ? undefined : video,
+    setFailure,
+    onChanged,
+    onStale,
+  );
+  const upload = virtual ? virtualThumbnail.upload : fileUpload;
   const editing = fetchOpen || upload.preview !== null;
   const editingChange = useRef(onEditingChange);
   editingChange.current = onEditingChange;
@@ -127,6 +144,7 @@ function useOperations({
     return () => editingChange.current(false);
   }, [editing]);
   return {
+    virtual,
     failure,
     thumbnail,
     upload,
@@ -210,7 +228,14 @@ function panel(
         />
       );
     case "thumbnail":
-      return (
+      return operations.virtual ? (
+        <VirtualThumbnailPanel
+          video={video}
+          thumbnail={props.thumbnail}
+          position={operations.thumbnail}
+          failure={operations.failure}
+        />
+      ) : (
         <ThumbnailPanel
           video={video}
           capture={props.capture}
@@ -235,7 +260,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
   const operations = useOperations(props);
   const strip = useActiveTabInView(current);
   const text = t.player.tabs;
-  const { upload } = operations;
+  const { upload, virtual } = operations;
 
   return (
     <Tabs
@@ -269,16 +294,13 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
           onClose={operations.closeFetch}
         />
       )}
-      {upload.preview !== null && (
-        <UploadPreview
-          videoId={video.id}
-          image={upload.preview.image}
-          name={upload.preview.name}
-          aspect={upload.preview.aspect}
-          narrow={isNarrowVideo(video)}
-          applying={upload.applying}
-          onApply={upload.apply}
-          onCancel={upload.cancel}
+      {/* A virtual video has no frames, so its preview frames the image without a touch-up. */}
+      <UploadPreviewDialog video={video} upload={upload} framingOnly={virtual} />
+      {virtual && (
+        <ThumbnailUploadDialog
+          open={props.thumbnail.picking}
+          onOpenChange={props.thumbnail.setPicking}
+          onFile={upload.choose}
         />
       )}
     </Tabs>

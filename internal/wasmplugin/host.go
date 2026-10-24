@@ -91,6 +91,10 @@ type httpSession struct {
 type response struct {
 	meta []byte
 	body []byte
+	// status, url and header are what meta encodes, for the bundled plugins that read them in Go.
+	status int
+	url    *url.URL
+	header http.Header
 }
 
 type sendRequest struct {
@@ -172,7 +176,7 @@ func (s *httpSession) do(req *http.Request) (*response, int32) {
 	if err != nil {
 		return nil, hostUnreachable
 	}
-	return &response{meta: meta, body: body}, 0
+	return &response{meta: meta, body: body, status: resp.StatusCode, url: resp.Request.URL, header: resp.Header}, 0
 }
 
 func (s *httpSession) failure(req *http.Request, err error) int32 {
@@ -293,4 +297,25 @@ func isTokenByte(b byte) bool {
 		return true
 	}
 	return strings.IndexByte("!#$%&'*+-.^_`|~", b) >= 0
+}
+
+// get sends a bundled plugin's GET under the request count, time and size limits and the address rule of http_send;
+// nil stands for any of its error codes.
+func (s *httpSession) get(ctx context.Context, rawURL, accept string) *response {
+	if s.client == nil || !s.take() {
+		return nil
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, domain.WorkInfoPluginHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", defaultUserAgent)
+	req.Header.Set("Accept", accept)
+	resp, code := s.do(req)
+	if code < 0 {
+		return nil
+	}
+	return resp
 }

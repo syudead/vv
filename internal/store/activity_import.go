@@ -18,11 +18,12 @@ func pendingJobCondition(alias string) string {
 	return alias + `.state in ('queued', 'running')`
 }
 
-// Prefer the overridden title, then the first location by path.
+// Prefer the overridden title, then a virtual video's title, then the first location by path.
 func videoActivitySubject(ctx context.Context, q rowQueryer, videoID int64) (domain.ActivitySubject, error) {
 	subject := domain.ActivitySubject{Kind: domain.ActivitySubjectVideo}
 	err := q.QueryRowContext(ctx, `select v.content_key, coalesce(
 			(select ov.display_name from video_overrides ov where ov.content_key = v.content_key and v.content_key <> ''),
+			(select vv.title from virtual_videos vv where vv.user_key = v.content_key and v.content_key <> ''),
 			(select l.title from video_locations l where l.video_id = v.id order by l.path limit 1), '')
 		from videos v where v.id = ?`, videoID).Scan(&subject.Key, &subject.Label)
 	if err != nil {

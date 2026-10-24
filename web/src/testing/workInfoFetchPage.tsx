@@ -18,6 +18,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 
 export const video: Video = {
   id: 7,
+  virtual: false,
   title: "テスト動画",
   public: false,
   sizeBytes: 1_000,
@@ -54,6 +55,7 @@ export const works: WorkInfoPlugin = {
   kind: "work",
   sources: [],
   domains: [],
+  builtin: false,
   name: "works",
   fileName: "works.wasm",
   operations: ["search", "fetch"],

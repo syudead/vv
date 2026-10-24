@@ -183,8 +183,12 @@ func searchKeyTargets(ctx context.Context, q queryExecer, query string, args ...
 }
 
 // RefreshSearchKeys resumes stale rows in bounded startup transactions; failures must stop startup before serving stale search results.
+// It also refreshes virtual-video keys and recreates their missing projected rows; the count includes those videos.
 func (s *LibraryStore) RefreshSearchKeys(ctx context.Context) (int, error) {
-	refreshed := 0
+	refreshed, err := s.refreshVirtualVideos(ctx)
+	if err != nil {
+		return 0, err
+	}
 	for {
 		count, err := s.refreshSearchKeyBatch(ctx)
 		if err != nil {
@@ -195,6 +199,23 @@ func (s *LibraryStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 			return refreshed, nil
 		}
 	}
+}
+
+func (s *LibraryStore) refreshVirtualVideos(ctx context.Context) (int, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	count, err := refreshVirtualVideos(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	// Startup refreshes collection values after every key refresh, so a recreated row needs no commit-time refresh.
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("cannot save the virtual videos: %w", err)
+	}
+	return count, nil
 }
 
 func (s *LibraryStore) refreshSearchKeyBatch(ctx context.Context) (int, error) {

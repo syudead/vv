@@ -12,6 +12,7 @@ import {
 
 const video: Video = {
   id: 1,
+  virtual: false,
   title: "a",
   sizeBytes: 1,
   addedAt: "2026-01-01T00:00:00Z",

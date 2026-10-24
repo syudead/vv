@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
 import { getVideo, isAborted, RequestFailed, type Video } from "../../api/client";
 import { errorText, t, type UiText } from "../../i18n";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { FormPage } from "../../ui/patterns/form-page";
+import { Button } from "../../ui/shadcn/button";
 import { Field, FieldTitle } from "../../ui/shadcn/field";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import DetailsForm from "./DetailsForm";
@@ -18,7 +19,8 @@ type Load =
   | { kind: "loading" }
   | { kind: "ready"; video: Video }
   | { kind: "failed"; reason: UiText }
-  | { kind: "gone" };
+  /** virtual: a save found the virtual video deleted or merged, so nothing was saved. */
+  | { kind: "gone"; virtual?: boolean };
 
 function parseId(raw: string | undefined): number {
   const parsed = Number(raw);
@@ -95,6 +97,20 @@ function loadingPanels() {
   ];
 }
 
+function GoneState({ virtual }: { virtual: boolean }) {
+  if (!virtual) return <ErrorState title={t.player.detailsEditor.gone} />;
+  return (
+    <ErrorState
+      title={t.player.virtual.gone}
+      description={
+        <Button asChild variant="outline" size="sm">
+          <Link to="/">{t.player.virtual.backToLibrary}</Link>
+        </Button>
+      }
+    />
+  );
+}
+
 /** Key the owner-only editor by video ID because React Router reuses route elements; stale drafts must never save to the previous video. */
 export default function VideoDetailsEditor() {
   const id = parseId(useParams().id);
@@ -149,7 +165,11 @@ function DetailsEditor({ id }: { id: number }) {
           onSaved={(saved) => leaving.leave(saved)}
           onGone={() => {
             setChanged(false);
-            setLoad({ kind: "gone" });
+            setLoad({ kind: "gone", virtual: video.virtual });
+          }}
+          onReload={() => {
+            setChanged(false);
+            retry();
           }}
           onChangedChange={setChanged}
           onSavingChange={setSaving}
@@ -167,7 +187,7 @@ function DetailsEditor({ id }: { id: number }) {
         onRetry={retry}
       />
     ) : load.kind === "gone" ? (
-      <ErrorState title={e.gone} />
+      <GoneState virtual={load.virtual === true} />
     ) : undefined;
 
   return (

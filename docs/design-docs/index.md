@@ -37,6 +37,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Thumbnail editing sessions](thumbnail-editing.md)
 - [Work-info plugins: sandbox, limits and network](work-info-plugins.md)
 - [Person plugins: the contract](person-plugins.md)
+- [Link fetches: the bundled plugin, link order and filling from a link](link-fetch.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Bulk editing: the editor over a selection](bulk-editing.md)

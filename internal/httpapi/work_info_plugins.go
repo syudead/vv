@@ -27,8 +27,11 @@ type WorkInfoPlugins interface {
 	RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error)
 	// SetWorkInfoPluginSettings may return ErrNotFound, ErrWorkInfoPluginUnusable, or ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
-	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound.
+	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound, the bundled one
+	// ErrWorkInfoPluginBuiltin.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
+	// SetLinkOrder returns the list, or ErrLinkOrderChanged when order does not name each plugin that handles links once.
+	SetLinkOrder(ctx context.Context, order []int64) ([]domain.WorkInfoPluginEntry, error)
 	// WorkInfoPluginLastRun returns redacted stderr and whether it was retained; an absent plugin returns ErrNotFound.
 	WorkInfoPluginLastRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error)
 	// SearchWorkInfo requires an approved plugin; workInfoRunError maps failures to the API contract.
@@ -37,6 +40,11 @@ type WorkInfoPlugins interface {
 	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
+	// FetchWorkInfoByLink fetches like FetchWorkInfo by a link; ErrWorkInfoLinkUnsupported for a link outside the
+	// plugin's domains.
+	FetchWorkInfoByLink(ctx context.Context, videoID, pluginID int64, link string) (domain.WorkInfoFetchResult, error)
+	// StartLinkFetch queues the fill of a virtual video just created from link and returns at once.
+	StartLinkFetch(video domain.Video, link string)
 	// ApplyWorkInfoFetch applies a selection and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
 	// ErrWorkInfoFetchStale.
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
@@ -73,6 +81,30 @@ func (s *server) ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not load the work-info plugins.", err)
 		return
 	}
+	s.writeWorkInfoPluginList(w, entries)
+}
+
+func (s *server) SetWorkInfoPluginLinkOrder(w http.ResponseWriter, r *http.Request) {
+	var body gen.WorkInfoPluginLinkOrder
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.PluginIds == nil {
+		s.invalidRequest(w, "pluginIds is required.")
+		return
+	}
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	entries, err := s.workInfoPlugins.SetLinkOrder(r.Context(), body.PluginIds)
+	if err != nil {
+		s.workInfoPluginError(w, err)
+		return
+	}
+	s.writeWorkInfoPluginList(w, entries)
+}
+
+func (s *server) writeWorkInfoPluginList(w http.ResponseWriter, entries []domain.WorkInfoPluginEntry) {
 	plugins := make([]gen.WorkInfoPlugin, 0, len(entries))
 	for _, entry := range entries {
 		plugins = append(plugins, toWorkInfoPlugin(entry))
@@ -262,6 +294,10 @@ func (s *server) workInfoPluginError(w http.ResponseWriter, err error) {
 		s.invalidRequest(w, "Each key must be a setting the plugin declares, with a value of at most 2000 characters.")
 	case errors.Is(err, domain.ErrWorkInfoPluginKindMismatch):
 		s.writePluginKindMismatch(w)
+	case errors.Is(err, domain.ErrWorkInfoPluginBuiltin):
+		s.writeError(w, http.StatusConflict, codePluginBuiltin, "The plugin is bundled with VVMDM and cannot be replaced or deleted.")
+	case errors.Is(err, domain.ErrLinkOrderChanged):
+		s.writeError(w, http.StatusConflict, codeLinkOrderChanged, "The plugins that read links changed. Reload the list.")
 	default:
 		s.internalError(w, "Could not change the work-info plugin.", err)
 	}
@@ -304,6 +340,11 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		// All version 1 plugins can access internet sites.
 		Network:   true,
 		UpdatedAt: entry.UpdatedAt.Unix(),
+		Builtin:   entry.Builtin,
+	}
+	if entry.LinkRank > 0 {
+		rank := entry.LinkRank
+		plugin.LinkRank = &rank
 	}
 	if entry.Problem != "" {
 		problem := gen.WorkInfoPluginProblem(entry.Problem)

@@ -28,6 +28,7 @@ const unbundle = vi.mocked(unbundleVideo);
 const folder = { rootId: 1, path: "movies", rootName: "Media" };
 const versionA: Video = {
   id: 7,
+  virtual: false,
   title: "Alpha",
   sizeBytes: 84_331_821,
   addedAt: "2026-09-20T03:00:00Z",

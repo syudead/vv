@@ -232,7 +232,7 @@ before the other fields.
 | `contract` | integer | Yes | `1` |
 | `kind` | string | No | `work` (the default) or `person`; a person plugin follows [Person plugins](#person-plugins) |
 | `sources` | string array | With `"kind": "person"` | See [Person plugins](#person-plugins); not allowed for `work` |
-| `domains` | string array | No | See [Person plugins](#person-plugins); not allowed for `work` |
+| `domains` | string array | No | 1 to 10 lowercase host names; the plugin then fetches by link, see [Fetch by link](#fetch-by-link) and [Person plugins](#person-plugins); a work-info plugin with `domains` must declare `fetch` |
 | `name` | string | Yes | 1 to 64 characters of `a-z`, `0-9`, `-`, `.`; the plugin's identity, so a module with the same name replaces it |
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
@@ -256,10 +256,20 @@ page.
 A plugin that declares only `search` shows its candidates as text with a link
 to each page, with nothing to fetch.
 
-The fetch input is always an ID: what the owner types reaches the plugin as
-`id` unchanged, even when it looks like a URL, and VVMDM never fetches it as a
-page. A plugin that wants to accept a pasted page URL reads the ID out of it
-itself.
+Without `domains`, the fetch input is always an ID: what the owner types
+reaches the plugin as `id` unchanged, even when it looks like a URL, and VVMDM
+never fetches it as a page.
+
+### Fetch by link
+
+A plugin that declares `domains` also receives `fetch` with `url` in place of
+`id`: a link whose host, lowercased, is a declared domain or ends with `.` and
+one. It arrives when the owner pastes a link in the fetch dialog, and when the
+owner creates a virtual video from a link and the plugin comes first among the
+matching plugins in the owner's link order
+([link-fetch.md](../design-docs/link-fetch.md)). The plugin parses the link
+itself, including its tracking parameters. VVMDM bundles `vv.link`, which reads
+any link; declare domains for a site whose values it reads better.
 
 ### Setting fields
 
@@ -294,6 +304,7 @@ VVMDM writes one JSON object to standard input and closes it.
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}`: a candidate's `id` or the text the owner typed, without surrounding spaces; the plugin builds the page URL from the ID |
+| `fetch` by link | `{"contract": 1, "operation": "fetch", "url": "<http or https link>"}`: only for a plugin that declares `domains`, with a link one of them matches |
 
 Both operations also carry `"settings": {"<key>": "<value>"}` with the
 effective value of every declared key that has one, and only those keys. The

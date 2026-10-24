@@ -168,6 +168,26 @@ func TestPlaylistPlaybackUsesTheItemForAVideoInTwoItems(t *testing.T) {
 	}
 }
 
+// The store reads a virtual item with its virtual key, so continuous play passes over it while the manual step reaches it.
+func TestPlaylistPlaybackPassesOverAVirtualItem(t *testing.T) {
+	f := newPlaybackFixture(t)
+	virtual := createVirtual(t, f.db, "Notes", fixedTime)
+	addVideos(t, f.db, f.id, virtual.ID)
+	ids := playlistItemIDs(t, f.db, f.id)
+	itemV := ids[len(ids)-1]
+	if err := f.db.Playlists().MovePlaylistItem(context.Background(), f.id, itemV, &f.itemA); err != nil {
+		t.Fatal(err)
+	}
+
+	got := f.playback(t, f.itemA, f.a)
+	if stepOf(got.Next) != [2]int64{f.itemG, f.members[1]} || stepOf(got.NextItem) != [2]int64{itemV, virtual.ID} {
+		t.Errorf("next = %v, nextItem = %v, want G のメンバー 2 とバーチャルな項目", stepOf(got.Next), stepOf(got.NextItem))
+	}
+	if got.Count != 4 || got.PlayableCount != 3 {
+		t.Errorf("count・playableCount = %d・%d, want 4・3", got.Count, got.PlayableCount)
+	}
+}
+
 func TestPlaylistPlaybackNotFound(t *testing.T) {
 	f := newPlaybackFixture(t)
 	ctx := context.Background()

@@ -181,6 +181,32 @@ func TestUploadThumbnailImageRefusesStaleContentVersion(t *testing.T) {
 	}
 }
 
+// A virtual video's contentVersion is its whole key, so an upload echoing it must pass once the id outgrows the
+// file-video prefix length.
+func TestUploadThumbnailImageAcceptsLongVirtualContentVersion(t *testing.T) {
+	video := virtualVideo(10000, "Moonlight")
+	var keys []string
+	handler := newTestServer(t, Options{
+		Videos: &fakeLibrary{videos: map[int64]domain.Video{10000: video}},
+		ThumbnailUploads: thumbnailUploadFunc(func(_ context.Context, _ int64, key string, _ []byte) (domain.Video, error) {
+			keys = append(keys, key)
+			return video, nil
+		}),
+	})
+	detail := decode[gen.Video](t, do(t, handler, http.MethodGet, "/api/videos/10000"))
+	if detail.ContentVersion == nil {
+		t.Fatal("detail has no contentVersion")
+	}
+	body, contentType := uploadBodyVersion(t, []byte("image"), detail.ContentVersion)
+	r := httptest.NewRequest(http.MethodPost, "/api/videos/10000/thumbnail-image", body)
+	r.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK || len(keys) != 1 || keys[0] != "virtual:10000" {
+		t.Fatalf("status = %d, application keys = %q: %s", rec.Code, keys, rec.Body)
+	}
+}
+
 func TestUploadThumbnailImageSurvivesDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

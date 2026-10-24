@@ -29,7 +29,7 @@ func bundleUserKey(id int64) string {
 	return fmt.Sprintf("bundle:%d", id)
 }
 
-// Resolve registered identified videos to unique user keys; bundle members collapse to one key.
+// Resolve registered identified or virtual videos to unique user keys; bundle members collapse to one key.
 func userKeysForVideoIDs(ctx context.Context, q queryExecer, videoIDs []int64) ([]string, error) {
 	if len(videoIDs) == 0 {
 		return nil, nil
@@ -41,7 +41,7 @@ func userKeysForVideoIDs(ctx context.Context, q queryExecer, videoIDs []int64) (
 
 	query := `select distinct ` + userKeyExpr("v") + ` from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and ` +
-		registeredVideoCondition("v")
+		libraryVideoCondition("v")
 	rows, err := q.QueryContext(ctx, query, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)

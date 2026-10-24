@@ -7,6 +7,7 @@ import type {
   WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
+import { typedLink } from "../../lib/typedLink";
 import { creditKind, isDateRow, videoWorkInfo } from "./detailRows";
 
 export type RunOperation = "search" | "fetch";
@@ -52,20 +53,39 @@ export function runFor(plugin: WorkInfoPlugin, by: FindBy): RunOperation {
   return "search";
 }
 
-export function queryLabel(plugin: WorkInfoPlugin, by: FindBy): UiText {
-  const text = t.player.workInfoFetch;
-  return runFor(plugin, by) === "fetch" ? text.queryFetch : text.querySearch;
+/** Whether the plugin fetches by link: it declares domains, and the server checks a link against them. */
+export function fetchesByLink(plugin: WorkInfoPlugin): boolean {
+  return plugin.domains.length > 0 && can(plugin, "fetch");
 }
 
+/** Whether the plugin reads every link, as the bundled one does, and so takes only links. */
+function readsAnyLink(plugin: WorkInfoPlugin): boolean {
+  return plugin.domains.includes("*");
+}
+
+/** The link a fetch sends instead of an ID: the typed text when the plugin fetches by link and the text is a link. */
+export function fetchLink(plugin: WorkInfoPlugin, input: string): string | undefined {
+  return fetchesByLink(plugin) ? typedLink(input) : undefined;
+}
+
+export function queryLabel(plugin: WorkInfoPlugin, by: FindBy): UiText {
+  const text = t.player.workInfoFetch;
+  if (runFor(plugin, by) === "search") return text.querySearch;
+  if (!fetchesByLink(plugin)) return text.queryFetch;
+  return readsAnyLink(plugin) ? text.queryLink : text.queryFetchOrLink;
+}
+
+/** A plugin that reads any link starts from the video's first link; others from the title or the code. */
 export function initialQuery(
   plugin: WorkInfoPlugin | undefined,
   by: FindBy,
   video: Video,
 ): string {
   if (plugin === undefined) return "";
-  return runFor(plugin, by) === "search"
-    ? video.title
-    : (videoWorkInfo(video).code ?? "");
+  if (runFor(plugin, by) === "search") return video.title;
+  const info = videoWorkInfo(video);
+  if (fetchesByLink(plugin) && readsAnyLink(plugin)) return info.urls[0] ?? "";
+  return info.code ?? "";
 }
 
 export function canFetch(plugin: WorkInfoPlugin): boolean {

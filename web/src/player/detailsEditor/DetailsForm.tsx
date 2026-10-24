@@ -17,6 +17,7 @@ export default function DetailsForm({
   onLeave,
   onSaved,
   onGone,
+  onReload,
   onChangedChange,
   onSavingChange,
   cancelRef,
@@ -27,6 +28,7 @@ export default function DetailsForm({
   onLeave: () => void;
   onSaved: (video: Video) => void;
   onGone: () => void;
+  onReload: () => void;
   onChangedChange: (changed: boolean) => void;
   onSavingChange: (saving: boolean) => void;
   cancelRef?: Ref<HTMLButtonElement>;
@@ -37,11 +39,12 @@ export default function DetailsForm({
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const { saving, failure, problem, save } = useDetailsSave({
-    videoId: video.id,
+    video,
     draftRef,
     setDraft,
     onSaved,
     onGone,
+    onReload,
   });
   const nameRef = useEditorForm({
     changed: draftChanged(draft, loaded),
@@ -86,6 +89,11 @@ export default function DetailsForm({
           content: (
             <BasicsPanel
               {...panelProps}
+              nameLabel={
+                video.virtual
+                  ? t.player.detailsEditor.titleField
+                  : t.player.detailsEditor.name
+              }
               namePlaceholder={video.fileTitle ?? video.title}
               nameRef={nameRef}
             />

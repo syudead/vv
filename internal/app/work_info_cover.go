@@ -14,6 +14,9 @@ import (
 type WorkInfoCoverApplier interface {
 	// UploadThumbnailImage returns the updated video; contentKey is the content observed when application began.
 	UploadThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
+	// FillThumbnailImage uploads only while the video has no applied image, checked where every image write is
+	// serialized.
+	FillThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
 }
 
 // keptCovers keeps the readable covers of images, aligned with urls, and the URL each came from.

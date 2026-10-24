@@ -18,9 +18,6 @@ const maxQueryLength = 100
 // Keep the tag-filter limit aligned with OpenAPI maxItems.
 const maxTagFilterCount = 16
 
-// Use a content-key prefix as the thumbnail URL version for safe long-lived caching.
-const thumbnailVersionLength = 12
-
 // ListVideos uses cursor pagination and returns the total independently of the page.
 func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.ListVideosParams) {
 	if s.videos == nil {
@@ -37,6 +34,13 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	})
 	if !ok {
 		return
+	}
+	if params.Kind != nil {
+		if !params.Kind.Valid() {
+			s.invalidRequest(w, "kind must be all, file or virtual.")
+			return
+		}
+		query.Kind = domain.VideoKind(*params.Kind)
 	}
 
 	page, err := s.videos.ListVideos(r.Context(), audience, query)
@@ -193,9 +197,21 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.ThumbnailImage = nil
 	video.ContentVersion = nil
 	video.Favorite = nil
-	video.WorkInfo = nil
+	video.WorkInfo = guestWorkInfo(video.WorkInfo)
 	video.CardCredits = nil
 	return video
+}
+
+// Guests read a video's description and links; nil when the video has neither.
+func guestWorkInfo(info *gen.WorkInfo) *gen.WorkInfo {
+	if info == nil || (info.Description == nil && len(info.Urls) == 0) {
+		return nil
+	}
+	return &gen.WorkInfo{
+		Description: info.Description, Urls: info.Urls,
+		Dates: []gen.WorkDate{}, People: []gen.WorkPerson{}, Organizations: []gen.WorkOrganization{},
+		ExternalIds: []gen.ExternalId{},
+	}
 }
 
 // If registered roots cannot be read, omit folder metadata rather than fail the video list.
@@ -331,16 +347,28 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
 
 	// Locations and seek-preview state are detail-only to avoid sending unused paths for every list item. forAudience removes locations for guests.
-	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
-	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
+	if video.Virtual() && audienceFrom(r.Context()).IsOwner() && s.virtualVideos != nil {
+		fetch, ok, err := s.virtualVideos.LinkFetch(r.Context(), video.ContentKey)
+		errs = append(errs, err)
+		if ok {
+			payload.LinkFetch = &gen.VirtualLinkFetch{
+				State: gen.VirtualLinkFetchState(fetch.State), Failure: optionalString(fetch.Failure),
+				Plugin: optionalString(fetch.Plugin),
+			}
+		}
+	}
+	if !video.Virtual() {
+		payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
+		payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
+		// Include additional media information only when GetVideo populated it.
+		payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
+	}
 	// Include work information only when the caller loaded or saved it into video.
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
 	// Lists replace a changed item with this detail, so it carries the card's credits too.
 	if video.WorkInfo != nil {
 		payload.CardCredits = toAPICardCredits(*video.WorkInfo)
 	}
-	// Include additional media information only when GetVideo populated it.
-	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
 	// Detail context uses playback order and audience-visible counts; smart-folder context replaces group context.
 	if s.catalog != nil {
 		// Only position and count are needed; avoid loading member details.
@@ -467,6 +495,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	video := view.Video
 	out := gen.Video{
 		Id:             video.ID,
+		Virtual:        video.Virtual(),
 		Title:          video.Title,
 		SizeBytes:      video.SizeBytes,
 		AddedAt:        video.AddedAt,
@@ -496,11 +525,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
 	}
-	// Content version is owner-only and is echoed with image uploads.
-	if video.ContentKey != "" {
-		contentVersion := thumbnailVersion(video.ContentKey)
-		out.ContentVersion = &contentVersion
-	}
+	out.ContentVersion = contentVersionOf(video)
 	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {
 		origin := gen.VideoThumbnailImage(video.ThumbnailImageOrigin)
 		out.ThumbnailImage = &origin
@@ -555,8 +580,29 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		url := previewURL(video)
 		out.PreviewUrl = &url
 	}
-
+	if video.Virtual() {
+		return withoutFileFields(out)
+	}
 	return out
+}
+
+// Content version is owner-only and is echoed with image uploads; a virtual video's is its whole user key, which
+// its saves and deletion check (docs/design-docs/catalog-organization.md).
+func contentVersionOf(video domain.Video) *string {
+	if video.ContentKey == "" {
+		return nil
+	}
+	version := domain.ContentVersion(video.ContentKey)
+	return &version
+}
+
+// A virtual video has no file, so nothing a file supplies is sent and it is never playable.
+func withoutFileFields(video gen.Video) gen.Video {
+	video.FileTitle, video.DurationMs, video.Width, video.Height, video.DisplayAspectRatio = nil, nil, nil, nil, nil
+	video.Container, video.VideoCodec, video.AudioCodec, video.UnplayableReason = nil, nil, nil, nil
+	video.PreviewUrl, video.SeekThumbnailUrl, video.Versions = nil, nil, nil
+	video.Playable = false
+	return video
 }
 
 // VideoCatalog schedules missing previews for regeneration. Without a catalog, treat preview files as absent.
@@ -616,9 +662,10 @@ func withBuild(version string, build int64) string {
 	return version + "-b" + strconv.FormatInt(build, 10)
 }
 
+// Use a content-key prefix as the thumbnail URL version for safe long-lived caching.
 func thumbnailVersion(contentKey string) string {
-	if len(contentKey) > thumbnailVersionLength {
-		return contentKey[:thumbnailVersionLength]
+	if len(contentKey) > domain.ContentVersionLength {
+		return contentKey[:domain.ContentVersionLength]
 	}
 	return contentKey
 }

@@ -36,6 +36,7 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { VirtualMark } from "../videoList/VirtualMark";
 
 /** Keep progress percentages out of the link name while leaving the progress bar accessible. */
 export function videoLinkLabel(video: Video): string {
@@ -52,10 +53,13 @@ export function VideoThumbnail({
   preview,
   scrub,
   marks,
+  markId,
   selected,
 }: {
   video: Video;
   className?: string;
+  /** Id of the virtual mark's accessible text, for the enclosing link's aria-describedby. */
+  markId?: string;
   /** The `primary` ring of the one playing item in a list. */
   selected?: boolean;
   /** Position badge supplied by continuous-play and playlist cards. */
@@ -106,12 +110,18 @@ export function VideoThumbnail({
         />
       )}
       <ScrubFrame frame={scrub?.frame ?? null} />
-      {duration !== "" && (
+      {video.virtual ? (
         <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
-          {scrubPosition === null
-            ? duration
-            : t.list.card.scrubTime(formatDuration(scrubPosition.positionMs), duration)}
+          <VirtualMark id={markId} />
         </VideoThumbnailDuration>
+      ) : (
+        duration !== "" && (
+          <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
+            {scrubPosition === null
+              ? duration
+              : t.list.card.scrubTime(formatDuration(scrubPosition.positionMs), duration)}
+          </VideoThumbnailDuration>
+        )
       )}
       {ratio !== null && (
         <VideoThumbnailProgress

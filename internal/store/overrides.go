@@ -133,11 +133,7 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 	if err != nil {
 		return nil, err
 	}
-	events := make([]domain.Event, 0, len(ids))
-	for _, id := range ids {
-		events = append(events, domain.VideoOverrideChanged{VideoID: id})
-	}
-	if err := s.db.commitMatchChangeIf(ctx, tx, len(edited) > 0, events...); err != nil {
+	if err := s.db.commitMatchChangeIf(ctx, tx, len(edited) > 0, overrideChangedEvents(ids)...); err != nil {
 		return nil, fmt.Errorf("cannot update the display names: %w", err)
 	}
 	return out, nil
@@ -351,4 +347,13 @@ func videoIDsForContentKey(ctx context.Context, tx *sql.Tx, key string) ([]int64
 		return nil, fmt.Errorf("cannot read the videos of the content: %w", err)
 	}
 	return ids, nil
+}
+
+// Refresh each video on the screen without waking workers.
+func overrideChangedEvents(ids []int64) []domain.Event {
+	events := make([]domain.Event, 0, len(ids))
+	for _, id := range ids {
+		events = append(events, domain.VideoOverrideChanged{VideoID: id})
+	}
+	return events
 }

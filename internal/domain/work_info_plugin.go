@@ -138,7 +138,8 @@ type WorkInfoPluginManifest struct {
 	Settings    []WorkInfoPluginSetting
 	// Sources lists a person plugin's external-ID sources in manifest order; nil for a work-info plugin.
 	Sources []string
-	// Domains lists the link hosts a person plugin fetches by url, in manifest order; nil when it declares none.
+	// Domains lists the link hosts the plugin fetches by url, in manifest order; nil when it declares none.
+	// AnyLinkDomain, which no manifest can declare, matches every link.
 	Domains []string
 }
 
@@ -447,7 +448,7 @@ type WorkInfoRunRequest struct {
 	Kind WorkInfoPluginKind
 	// Source is a person plugin fetch's external-ID source, one of Sources; it is sent only for that fetch.
 	Source string
-	// URL replaces Source and ID in a person plugin's fetch by link; it matches one of the plugin's domains.
+	// URL replaces Source and ID in a fetch by link; it matches one of the plugin's domains.
 	URL string
 	// Sources is a person plugin's declared sources, which its search candidates must use; it is never sent.
 	Sources []string
@@ -476,7 +477,7 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 	case r.Operation == WorkInfoSearch:
 		body.Query = r.Query
 	case r.Operation != WorkInfoFetch:
-	case r.Kind == WorkInfoPluginKindPerson && r.URL != "":
+	case r.URL != "":
 		body.URL = r.URL
 	case r.Kind == WorkInfoPluginKindPerson:
 		body.Source, body.ID = r.Source, r.ID
@@ -592,7 +593,7 @@ func decodeRunResponse(output []byte, raw any, reported func() *runErrorJSON) er
 	if e := reported(); e != nil {
 		return &WorkInfoRunError{
 			Failure:       WorkInfoRunFailed,
-			PluginMessage: truncateRunes(e.Message, WorkInfoPluginMessageMaxRunes),
+			PluginMessage: TruncateRunes(e.Message, WorkInfoPluginMessageMaxRunes),
 		}
 	}
 	return nil
@@ -645,7 +646,8 @@ func firstUniqueTags(tags []string) []string {
 	return out
 }
 
-func truncateRunes(s string, n int) string {
+// TruncateRunes keeps the first n code points of s.
+func TruncateRunes(s string, n int) string {
 	i := 0
 	for pos := range s {
 		if i == n {

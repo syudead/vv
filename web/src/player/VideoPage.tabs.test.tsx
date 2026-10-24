@@ -67,6 +67,7 @@ const watched = new Date(2026, 9, 2, 12, 0).toISOString();
 
 const owned: Video = {
   id: 7,
+  virtual: false,
   title: "テスト動画",
   public: false,
   favorite: false,

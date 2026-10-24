@@ -17,8 +17,7 @@ import (
 )
 
 // Keep columns aligned with scanVideo; representativeJoin supplies the smallest audience-visible location path.
-var videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
-	` + mtimeNsExpr("rep") + ` as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
+var videoColumnsTemplate = `videos.id, ` + locationColumns("rep.path", "rep") + `,
 	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
@@ -107,10 +106,11 @@ type videoQueryer interface {
 	rowsQueryer
 }
 
-// Select the representative once for all columns; no visible location yields NULL fields.
+// Select the representative once for all columns; a virtual video reads its own row instead.
 func representativeJoin(audience domain.Audience) string {
 	return ` left join video_locations rep on rep.id = (select l.id from video_locations l
-		where l.video_id = videos.id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
+		where l.video_id = videos.id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)` +
+		virtualVideoJoin("videos")
 }
 
 func getVideo(ctx context.Context, q videoQueryer, audience domain.Audience, id int64) (domain.Video, error) {
@@ -308,6 +308,41 @@ func mtimeNsExpr(alias string) string {
 // Use modification time when file creation time is unknown.
 func fileCreatedAtExpr(alias string) string {
 	return `coalesce(` + alias + `.file_created_at, ` + alias + `.mtime)`
+}
+
+// A virtual video has no location; readers join its row as vv and take its location values from the expressions below.
+func virtualVideoJoin(video string) string {
+	return ` left join virtual_videos vv on vv.user_key = ` + video + `.content_key`
+}
+
+// The path is NULL for a chosen virtual video, so the location join finds nothing and vv supplies the values.
+func chosenLocationJoin(path, video string) string {
+	return ` left join video_locations loc on loc.path = ` + path + virtualVideoJoin(video)
+}
+
+// A virtual video's creation time is its modified and created sort value.
+func locationMTimeExpr(loc string) string {
+	return `coalesce(` + loc + `.mtime, vv.created_at)`
+}
+
+// The scanned modification time in nanoseconds; a virtual video reports its creation time.
+func locationMTimeNsExpr(loc string) string {
+	return `coalesce(` + mtimeNsExpr(loc) + `, vv.created_at * 1000000000)`
+}
+
+func locationCreatedAtExpr(loc string) string {
+	return `coalesce(` + fileCreatedAtExpr(loc) + `, vv.created_at)`
+}
+
+func locationTitleKeyExpr(loc string) string {
+	return `coalesce(` + loc + `.title_key, vv.title_key)`
+}
+
+// Columns in scanVideo order from path to file creation time; a virtual video has an empty path and size 0.
+func locationColumns(path, loc string) string {
+	return `coalesce(` + path + `, '') as path, coalesce(` + loc + `.title, vv.title) as title, ` +
+		`coalesce(` + loc + `.size_bytes, 0) as size_bytes, ` + locationMTimeNsExpr(loc) + ` as mtime, ` +
+		locationCreatedAtExpr(loc) + ` as file_created_at`
 }
 
 func nullableUnix(t time.Time) any {

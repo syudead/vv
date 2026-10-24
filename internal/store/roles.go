@@ -94,6 +94,9 @@ type VideoEditStore struct{ db *DB }
 // WorkInfoPluginStore revalidates approvals and settings inside write transactions; it emits no domain events.
 type WorkInfoPluginStore struct{ sql, read *sql.DB }
 
+// VirtualVideoStore owns virtual videos and their projected rows, publishing changes after commit.
+type VirtualVideoStore struct{ db *DB }
+
 // ActivityStore owns reads and startup recovery; other roles write activity through private helpers in their own transactions.
 type ActivityStore struct{ db *DB }
 
@@ -127,3 +130,6 @@ func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
 	return &WorkInfoPluginStore{sql: db.sql, read: db.read}
 }
 func (db *DB) Activity() *ActivityStore { return &ActivityStore{db: db} }
+func (db *DB) VirtualVideos() *VirtualVideoStore {
+	return &VirtualVideoStore{db: db}
+}

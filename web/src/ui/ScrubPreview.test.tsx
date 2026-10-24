@@ -20,6 +20,7 @@ const twoHoursMs = 7_200_000;
 function video(extra: Partial<Video> = {}): Video {
   return {
     id: 1,
+    virtual: false,
     title: "動画 1",
     public: false,
     sizeBytes: 1024,

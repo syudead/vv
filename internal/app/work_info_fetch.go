@@ -83,6 +83,28 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: normalized})
 }
 
+// FetchWorkInfoByLink fetches like FetchWorkInfo, by a link instead of an ID: a value that is not an http or https URL
+// returns ErrWorkInfoRunInvalid, a person plugin ErrWorkInfoPluginKindMismatch, and a link none of the plugin's
+// domains matches ErrWorkInfoLinkUnsupported, all before the module runs.
+func (p *WorkInfoPlugins) FetchWorkInfoByLink(
+	ctx context.Context, videoID, pluginID int64, link string,
+) (domain.WorkInfoFetchResult, error) {
+	normalized, err := domain.NormalizeFetchLink(link)
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
+	plugin, err := p.store.WorkInfoPlugin(ctx, pluginID)
+	switch {
+	case err != nil:
+		return domain.WorkInfoFetchResult{}, err
+	case plugin.Kind() != domain.WorkInfoPluginKindWork:
+		return domain.WorkInfoFetchResult{}, domain.ErrWorkInfoPluginKindMismatch
+	case !domain.LinkMatchesDomains(normalized, plugin.Manifest.Domains):
+		return domain.WorkInfoFetchResult{}, domain.ErrWorkInfoLinkUnsupported
+	}
+	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: normalized})
+}
+
 // Check video existence before execution, then match and retain the result bound to that video.
 func (p *WorkInfoPlugins) keepFetched(
 	ctx context.Context, videoID, pluginID int64, req domain.WorkInfoRunRequest,
@@ -90,7 +112,8 @@ func (p *WorkInfoPlugins) keepFetched(
 	if p.videos == nil || p.applier == nil || p.matcher == nil {
 		return domain.WorkInfoFetchResult{}, errors.New("work-info fetches are not configured")
 	}
-	if _, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID); err != nil {
+	video, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID)
+	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
 	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoPluginKindWork, req)
@@ -118,9 +141,9 @@ func (p *WorkInfoPlugins) keepFetched(
 		return domain.WorkInfoFetchResult{}, err
 	}
 	fetch := &workInfoFetch{
-		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
-		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
-		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
+		videoID: videoID, contentKey: video.ContentKey, pluginID: plugin.ID, digest: plugin.Digest,
+		generation: plugin.Generation, title: title, tags: tags, details: details, personMatches: people,
+		organizationMatches: organizations, expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
 	fetch.covers, fetch.coverURLs = keptCovers(result.WorkInfo.CoverURLs, result.CoverImages)
 	id := p.fetches.add(fetch, p.now())
@@ -251,8 +274,9 @@ func (p *WorkInfoPlugins) applyFetch(
 	}
 	fields := chosen.selection.Fields
 	apply := domain.FetchedWorkInfoApply{
-		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Details: chosen.details, DetailFields: chosen.detailFields, SamePeople: chosen.samePeople,
+		VideoID: fetch.videoID, ContentKey: fetch.contentKey, PluginID: fetch.pluginID, Digest: fetch.digest,
+		Generation: fetch.generation, Details: chosen.details, DetailFields: chosen.detailFields,
+		SamePeople: chosen.samePeople,
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -348,6 +372,7 @@ func skippedTags(names []string, invalid map[string]bool, rejected []string) []d
 // Retain validated title, plugin digest/generation and fetched details for the result lifetime. Entity matches are display snapshots only; application rechecks them transactionally.
 type workInfoFetch struct {
 	videoID             int64
+	contentKey          string
 	pluginID            int64
 	digest              string
 	generation          int64

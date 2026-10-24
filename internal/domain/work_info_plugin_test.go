@@ -195,6 +195,10 @@ func TestWorkInfoRunRequestJSON(t *testing.T) {
 	if err != nil || string(b) != `{"contract":1,"operation":"fetch","id":"https://e.test/w/1","settings":{}}` {
 		t.Fatalf("fetch request with a URL-shaped id = %s, %v", b, err)
 	}
+	b, err = json.Marshal(WorkInfoRunRequest{Operation: WorkInfoFetch, URL: "https://e.test/w/1", ID: "ignored"})
+	if err != nil || string(b) != `{"contract":1,"operation":"fetch","url":"https://e.test/w/1","settings":{}}` {
+		t.Fatalf("fetch request by link = %s, %v", b, err)
+	}
 }
 
 func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T) {

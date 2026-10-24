@@ -98,6 +98,11 @@ func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 		t.Fatalf("ゲストの詳細: status = %d: %s", guest.Code, guest.Body)
 	}
 	assertGuestVideo(t, "ゲストの詳細", rawVideo(t, guest))
+	guestWant := gen.WorkInfo{Description: &description, Urls: want.Urls,
+		Dates: []gen.WorkDate{}, People: []gen.WorkPerson{}, Organizations: []gen.WorkOrganization{}, ExternalIds: []gen.ExternalId{}}
+	if got := decode[gen.Video](t, guest).WorkInfo; got == nil || !reflect.DeepEqual(*got, guestWant) {
+		t.Errorf("ゲストの workInfo = %+v, want 説明とリンクだけ %+v", got, guestWant)
+	}
 
 	rec = f.putVideo("a", "/work-info", `{}`, f.owner)
 	if rec.Code != http.StatusOK {

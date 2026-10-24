@@ -45,6 +45,14 @@ function overviewFacts(video: Video, owner: boolean): Fact[] {
       term: f.added,
       value: <DateValue label={f.added} value={video.addedAt} />,
     },
+    // A virtual video has no File & media tab, so its owner reads the last edit here.
+    owner && video.virtual
+      ? {
+          id: "edited",
+          term: f.edited,
+          value: <DateValue label={f.edited} value={video.updatedAt} />,
+        }
+      : null,
     owner && video.progress !== undefined
       ? {
           id: "last-watched",

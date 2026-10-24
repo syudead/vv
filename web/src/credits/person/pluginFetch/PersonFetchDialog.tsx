@@ -22,9 +22,9 @@ import { FormDialog } from "../../../ui/patterns/form-dialog";
 import { Button } from "../../../ui/shadcn/button";
 import PersonCompare from "./PersonCompare";
 import { selectionEmpty } from "./personCompareRows";
+import { isLink } from "../../../lib/typedLink";
 import {
   candidateKey,
-  isLink,
   type LinkRefusal,
   type PersonFetchFlow,
   usePersonFetchFlow,

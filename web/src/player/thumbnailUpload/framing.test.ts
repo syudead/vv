@@ -27,6 +27,10 @@ describe("frameAspect", () => {
     expect(frameAspect({ width: 0, height: 100 })).toBeNull();
     expect(frameAspect({})).toBeNull();
   });
+
+  it("バーチャルな動画はサーバーと同じ 16:9 にする", () => {
+    expect(frameAspect({ virtual: true })).toBeCloseTo(16 / 9);
+  });
 });
 
 describe("frameSize", () => {

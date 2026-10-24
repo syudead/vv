@@ -14,6 +14,7 @@ import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents
 function item(id: number): Video {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: false,
     sizeBytes: 1024,

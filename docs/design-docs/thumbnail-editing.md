@@ -246,6 +246,26 @@ A person's face upload uses the same body budget, limits and check, and holds
 the same gate while it decodes and fits
 ([people.md](people.md#a-face-is-one-fitted-jpeg-in-sqlite)).
 
+### A virtual video's thumbnail is only an uploaded image
+
+A virtual video
+([catalog-organization.md](catalog-organization.md#identity-and-recovery)) has no
+frames, so an uploaded image is its only thumbnail. The upload takes the same
+route and `Ingest.ApplyThumbnailImage`, fits the image to 16:9, the card's
+frame, and stores it in `thumbnail_images` under the user key. The thumbnail
+is `done` while that row exists; without it the card shows the placeholder.
+
+| Operation | Virtual video |
+| --- | --- |
+| `DELETE /api/videos/{id}/thumbnail-image` | Removes the row and the files under the generation lock, opening no media file, and returns the thumbnail to `pending` |
+| Frame position and edit start | `409 virtual_video` |
+| A missing file | Startup republishes it from the row, because no thumbnail job exists for a virtual video |
+| Deleting the video | The deletion event releases its files, as for removed content |
+
+Serving the stored image from the database was rejected: thumbnail files and
+their poster have one owner, `internal/artifacts`, and a list would send the
+full upload for each card.
+
 ### The page frames the image before it is sent
 
 Picking a file does not upload it. The page decodes the file and draws it on a

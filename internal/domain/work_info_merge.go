@@ -114,7 +114,7 @@ func (m *workInfoMerger) replaceText(field WorkInfoField, value string, at func(
 	if err != nil {
 		shown := value
 		if field == WorkInfoFieldDescription {
-			shown = truncateRunes(value, SkippedDescriptionMaxRunes)
+			shown = TruncateRunes(value, SkippedDescriptionMaxRunes)
 		}
 		m.skip(field, shown, SkippedWorkInfoInvalid)
 		return

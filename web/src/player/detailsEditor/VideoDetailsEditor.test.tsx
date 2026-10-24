@@ -14,6 +14,7 @@ import VideoDetailsEditor from "./VideoDetailsEditor";
 
 const video: Video = {
   id: 7,
+  virtual: false,
   title: "テスト動画",
   public: false,
   sizeBytes: 1_000,

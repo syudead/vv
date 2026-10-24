@@ -14,6 +14,7 @@ import {
 function item(id: number, isPublic = false): Video {
   return {
     id,
+    virtual: false,
     title: `動画 ${String(id)}`,
     public: isPublic,
     sizeBytes: 1024,

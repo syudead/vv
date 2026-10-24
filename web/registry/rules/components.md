@@ -388,6 +388,13 @@ narrow-width drawer it is `SidebarMenuBadge` at the end of the row in
 `destructive`; at 0 it draws nothing. Upstream's `SidebarMenuBadge` alone is
 hidden on the icon rail, which vv's rail always is.
 
+A rare owner action that belongs to no one screen, such as `New virtual video`,
+is a `SidebarMenuButton` without `asChild` in its own `SidebarGroup` with
+`mt-auto`, at the bottom of `SidebarContent`; it closes the drawer before it
+opens its dialog. Upstream clips `SidebarContent` on the icon rail, so pass
+`group-data-[collapsible=icon]:overflow-auto` to keep that action reachable on
+a short screen.
+
 Do not add a second sidebar or put page controls in it; they belong in the
 toolbar.
 
@@ -405,11 +412,13 @@ Do not use it for forms or details; use `Dialog`.
 Item `video-thumbnail`. The 16:9 thumbnail frame shared by video, group and
 folder cards and list rows. Put the image (or `VideoThumbnailImage`, or a
 hover preview) as children, then the overlays it needs:
-`VideoThumbnailDuration` bottom right (a versions mark and a public mark may come first),
+`VideoThumbnailDuration` bottom right (a versions mark and a public mark may come first;
+a virtual video, which has no file, shows `VirtualMark` there instead of a duration),
 `VideoThumbnailProgress` on the bottom edge for the share watched,
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
 a person's `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame
-when the video cannot play. `selected` rings the frame in `primary`.
+when the video cannot play. A virtual video has no progress, notice or hover
+preview. `selected` rings the frame in `primary`.
 
 A video card's credits sit in a `VideoThumbnailLayer`, a frame-sized layer
 laid over the thumbnail from outside the card's link, so the face links in it
@@ -420,7 +429,8 @@ selection check while the check shows, and the performers' `PersonFace`
 `mark`s and the label at `bottom-start`.
 
 Do not draw a thumbnail with its own frame, badge or progress bar, and do not
-put text other than the duration, the notice and the credits on the image.
+put text other than the duration (or the virtual mark in its place), the
+notice and the credits on the image.
 
 ### FavoriteToggle
 

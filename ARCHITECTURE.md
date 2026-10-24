@@ -147,9 +147,13 @@ public flags, favorites, playlist items, groups and their items, smart
 folders, owner edits, applied thumbnail images, work information, the pairs of
 videos the owner marked as different, removed from a version bundle or held
 back from automatic judging, and the activity log are keyed by values a rescan
-reproduces (the content key, a version bundle's key, a folder's absolute path)
-or by their own ids, never by `videos.id`, and carry no foreign key to
-`videos`. People and organizations are entities with ids of their own that
+reproduces (the content key, a version bundle's key, a folder's absolute path,
+a virtual video's key) or by their own ids, never by `videos.id`, and carry no
+foreign key to `videos`. A virtual video, a video with no file, is user data;
+its location-less `videos` row is recreated from it at startup and is never
+swept as an orphan
+([catalog organization](docs/design-docs/catalog-organization.md#identity-and-recovery)).
+People and organizations are entities with ids of their own that
 work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 

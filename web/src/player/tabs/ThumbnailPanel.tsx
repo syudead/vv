@@ -5,14 +5,15 @@ import type { Video } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { formatDuration } from "../../lib/format";
-import { ImageUploadDialog } from "../../ui/ImageUploadDialog";
 import { ScrubFrame } from "../../ui/ScrubPreview";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { Button } from "../../ui/shadcn/button";
 import { Separator } from "../../ui/shadcn/separator";
 import type { ThumbnailCapture } from "../playerLayers";
-import type { useThumbnailUpload } from "../thumbnailUpload/UploadEntry";
-import { UPLOAD_TYPES, uploadRefusal } from "../thumbnailUpload/uploadRules";
+import {
+  ThumbnailUploadDialog,
+  type useThumbnailUpload,
+} from "../thumbnailUpload/UploadEntry";
 import { FailureLine, PanelSection } from "./panelParts";
 import SeekSpriteSheets from "./SeekSpriteSheets";
 import type { useThumbnailPosition } from "./useThumbnailPosition";
@@ -106,19 +107,6 @@ export default function ThumbnailPanel({
     },
   });
 
-  /** Refuse by type or size inside the dialog; a readable file closes it and opens the preview. */
-  const take = (file: File) => {
-    const refusal = uploadRefusal(file);
-    if (refusal !== null) {
-      return refusal === "type"
-        ? t.player.thumbnailUpload.refusedType
-        : t.player.thumbnailUpload.refusedSize;
-    }
-    setUploading(false);
-    upload.choose(file);
-    return null;
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-6 md:flex-row">
@@ -199,13 +187,10 @@ export default function ThumbnailPanel({
                 )}
               />
             </ul>
-            <ImageUploadDialog
+            <ThumbnailUploadDialog
               open={uploading}
               onOpenChange={setUploading}
-              title={t.player.thumbnailUpload.uploadTitle}
-              description={t.player.thumbnailUpload.uploadHint}
-              accept={UPLOAD_TYPES}
-              onFile={take}
+              onFile={upload.choose}
             />
           </PanelSection>
         </div>
@@ -216,7 +201,7 @@ export default function ThumbnailPanel({
 }
 
 /** The stored thumbnail; the empty frame while there is none or it fails to load. */
-function ThumbnailImage({
+export function ThumbnailImage({
   url,
   className,
 }: {
@@ -238,7 +223,7 @@ function ThumbnailImage({
 }
 
 /** A row's small preview frame; dashed and unfilled for a way that has no image yet. */
-function WayPreview({
+export function WayPreview({
   dashed = false,
   children,
 }: {
@@ -258,14 +243,14 @@ function WayPreview({
   );
 }
 
-interface WayState {
+export interface WayState {
   sending: boolean;
   /** Another way is sending, so this one does nothing when pressed. */
   waiting: boolean;
   onPress: () => void;
 }
 
-function WayButton({
+export function WayButton({
   variant,
   label,
   className,
@@ -295,7 +280,7 @@ function WayButton({
 }
 
 /** A way: its preview, title and note, then its pill; below `sm` the pill moves under the note. */
-function WayRow({
+export function WayRow({
   preview,
   title,
   note,

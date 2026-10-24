@@ -327,8 +327,8 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		{"addedDesc のカーソルを random に", domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: added}},
 		{"random のカーソルを addedDesc に", domain.VideoQuery{Sort: domain.SortAddedDesc, Cursor: random}},
 		{"random のカーソルを別の seed に", domain.VideoQuery{Sort: domain.SortRandom, Seed: 2, Cursor: random}},
-		{"値の無いカーソルを値の必ずある並びに", domain.VideoQuery{Sort: domain.SortSizeAsc,
-			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f1\x1f1\x1f"))}},
+		{"値の無いカーソルを値の必ずある並びに", domain.VideoQuery{Sort: domain.SortAddedAsc,
+			Cursor: base64.RawURLEncoding.EncodeToString([]byte("addedAsc\x1f\x1f1\x1f1\x1f"))}},
 		{"数でない値", domain.VideoQuery{Sort: domain.SortSizeAsc,
 			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f0\x1f1\x1fabc"))}},
 	} {

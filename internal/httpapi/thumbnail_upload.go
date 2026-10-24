@@ -55,8 +55,9 @@ func (s *server) UploadThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	if !ok {
 		return
 	}
-	// Reject stale preview content before acquiring the decode gate or generation lock.
-	if video.ContentKey == "" || contentVersion != thumbnailVersion(video.ContentKey) {
+	// Reject stale preview content before acquiring the decode gate or generation lock; compare the contentVersion the
+	// detail sends, which is a virtual video's whole key.
+	if video.ContentKey == "" || contentVersion != domain.ContentVersion(video.ContentKey) {
 		s.thumbnailUploadError(w, domain.ErrContentChanged)
 		return
 	}

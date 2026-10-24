@@ -142,7 +142,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	}
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
 	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)`
-	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() {
+	// Stored group values count every member, so a kind that drops some members must count the matched ones.
+	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
 		whole = storedWholeGroupsSQL(spec, roots)
 	}
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
@@ -164,12 +165,12 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 ` + groupSQL.values + `,
 	items as (
 		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
-			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
-			loc.title_key as title_key,
+			videos.added_at as added_at, ` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at,
+			` + locationTitleKeyExpr("loc") + ` as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
 			fav.favorited_at as favorited_at
-		from matched join videos on videos.id = matched.video_id
-		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
+		from matched join videos on videos.id = matched.video_id` +
+		chosenLocationJoin("matched.path", "videos") + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
 		where matched.video_id not in (select video_id from carded)` + videoFavorite + `
 		union all
@@ -405,8 +406,8 @@ func videosAtLocations(ctx context.Context, tx *sql.Tx, pairs [][2]any) (map[int
 	}
 	rows, err := tx.QueryContext(ctx, `with chosen(video_id, path) as (
 			select json_extract(value, '$[0]'), json_extract(value, '$[1]') from json_each(?))
-		select `+listColumns+` from chosen join videos on videos.id = chosen.video_id
-		join video_locations loc on loc.path = chosen.path`, string(encoded))
+		select `+listColumns+` from chosen join videos on videos.id = chosen.video_id`+
+		chosenLocationJoin("chosen.path", "videos"), string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read item videos: %w", err)
 	}

@@ -80,7 +80,7 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 		s.internalError(w, "Thumbnail editing is not configured.", nil)
 		return
 	}
-	video, ok := s.lookupVideo(w, r, id)
+	video, ok := s.lookupFrameVideo(w, r, id)
 	if !ok {
 		return
 	}
@@ -123,7 +123,7 @@ func (s *server) StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Requ
 		s.internalError(w, "Thumbnail editing is not configured.", nil)
 		return
 	}
-	video, ok := s.lookupVideo(w, r, id)
+	video, ok := s.lookupFrameVideo(w, r, id)
 	if !ok {
 		return
 	}

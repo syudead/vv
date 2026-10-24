@@ -32,7 +32,8 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 		{"person with a repeated source", `"kind":"person","operations":["search","fetch"],"sources":["a","b","a"]}`, "sources[2]"},
 		{"person with only fetch", `"kind":"person","operations":["fetch"],"sources":["a"]}`, "operations"},
 		{"work with sources", `"operations":["fetch"],"sources":["a"]}`, "sources"},
-		{"work with domains", `"operations":["fetch"],"domains":["example.com"]}`, "domains"},
+		{"work with domains and only search", `"operations":["search"],"domains":["example.com"]}`, "operations"},
+		{"work with the any-link domain", `"operations":["fetch"],"domains":["*"]}`, "domains[0]"},
 		{"person with empty domains", personOps + `"domains":[]}`, "domains"},
 		{"person with 11 domains", personOps + `"domains":[` + strings.Join(elevenDomains, ",") + `]}`, "domains"},
 		{"person with an uppercase domain", personOps + `"domains":["Example.com"]}`, "domains[0]"},
@@ -64,6 +65,11 @@ func TestCheckWorkInfoPluginManifestReadsKindSourcesAndDomains(t *testing.T) {
 		`"kind":"person","operations":["fetch","search"],"sources":["fanza","wiki"]}`))
 	if rejection != nil || person.Kind != WorkInfoPluginKindPerson || !reflect.DeepEqual(person.Sources, []string{"fanza", "wiki"}) {
 		t.Fatalf("person manifest = %+v, %v", person, rejection)
+	}
+	linked, rejection := CheckWorkInfoPluginManifest([]byte(personManifestHead +
+		`"operations":["fetch"],"domains":["example.com"]}`))
+	if rejection != nil || linked.Kind != WorkInfoPluginKindWork || !slices.Equal(linked.Domains, []string{"example.com"}) {
+		t.Fatalf("work manifest with domains = %+v, %v; want kind work with the domain", linked, rejection)
 	}
 	tenDomains := make([]string, 10)
 	for i := range tenDomains {

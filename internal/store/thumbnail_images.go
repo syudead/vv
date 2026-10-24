@@ -28,11 +28,11 @@ func (s *OverrideStore) ApplyThumbnailImage(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	keys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{videoID})
+	key, err := writableContentKeyOf(ctx, tx, videoID)
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if len(keys) == 0 || keys[0] != contentKey {
+	if key != contentKey {
 		return domain.Video{}, domain.ErrContentChanged
 	}
 	now := time.Now()
@@ -78,14 +78,72 @@ func (s *OverrideStore) RevertThumbnailImage(ctx context.Context, videoID int64)
 	return s.finishThumbnailImageChange(ctx, tx, videoID, keys[0], time.Now())
 }
 
+// RemoveVirtualThumbnailImage removes a virtual video's uploaded image and returns its thumbnail to the placeholder
+// state; contentKey is the key read under the generation lock. A missing video is ErrNotFound, a file video
+// ErrNotVirtual and another key ErrContentChanged.
+func (s *OverrideStore) RemoveVirtualThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string,
+) (domain.Video, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Video{}, fmt.Errorf("cannot remove the thumbnail image: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	key, err := virtualKeyFor(ctx, tx, videoID, contentKey)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	if _, err := deleteThumbnailImage(ctx, tx, key); err != nil {
+		return domain.Video{}, err
+	}
+	now := time.Now()
+	if _, err := tx.ExecContext(ctx, `update videos set thumbnail_state = ?, indexed_at = ? where content_key = ?`,
+		string(domain.ThumbnailStatePending), now.Unix(), key); err != nil {
+		return domain.Video{}, fmt.Errorf("cannot record the thumbnail state: %w", err)
+	}
+	return s.commitThumbnailImageChange(ctx, tx, videoID, key, now, false)
+}
+
+// VirtualThumbnailKeys lists the virtual videos that have an uploaded thumbnail image.
+func (s *IngestStore) VirtualThumbnailKeys(ctx context.Context) ([]string, error) {
+	keys, err := queryStrings(ctx, s.db.sql, `select ti.content_key from thumbnail_images ti
+		join virtual_videos vv on vv.user_key = ti.content_key order by vv.id`)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the virtual video thumbnails: %w", err)
+	}
+	return keys, nil
+}
+
+// writableContentKeyOf returns the content key of a registered file video or a virtual video, and "" for any other video.
+func writableContentKeyOf(ctx context.Context, tx *sql.Tx, videoID int64) (string, error) {
+	var key string
+	err := tx.QueryRowContext(ctx, `select v.content_key from videos v where v.id = ? and v.content_key <> '' and (`+
+		registeredVideoCondition("v")+` or exists (select 1 from virtual_videos vv where vv.user_key = v.content_key))`,
+		videoID).Scan(&key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("cannot read the video's content key: %w", err)
+	}
+	return key, nil
+}
+
 func (s *OverrideStore) finishThumbnailImageChange(
 	ctx context.Context, tx *sql.Tx, videoID int64, key string, now time.Time,
 ) (domain.Video, error) {
-	if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
-		return domain.Video{}, err
-	}
 	issuesCleared, err := markThumbnailDoneForContent(ctx, tx, key, now)
 	if err != nil {
+		return domain.Video{}, err
+	}
+	return s.commitThumbnailImageChange(ctx, tx, videoID, key, now, issuesCleared)
+}
+
+func (s *OverrideStore) commitThumbnailImageChange(
+	ctx context.Context, tx *sql.Tx, videoID int64, key string, now time.Time, issuesCleared bool,
+) (domain.Video, error) {
+	if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
 		return domain.Video{}, err
 	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)
@@ -179,6 +237,12 @@ func (s *IngestStore) ApplyThumbnailImage(
 
 func (s *IngestStore) RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error) {
 	return (&OverrideStore{db: s.db}).RevertThumbnailImage(ctx, videoID)
+}
+
+func (s *IngestStore) RemoveVirtualThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string,
+) (domain.Video, error) {
+	return (&OverrideStore{db: s.db}).RemoveVirtualThumbnailImage(ctx, videoID, contentKey)
 }
 
 func (s *IngestStore) ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error) {
