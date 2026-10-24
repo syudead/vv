@@ -374,7 +374,8 @@ export default function VideoTags({
             )}
           </li>
         ))}
-        <li>
+        {/* Without tags, pull the quiet field's inner padding back so its text lines up with the title. */}
+        <li className="first:-ml-1.5">
           <TagCommand
             layout="dropdown"
             label={t.player.tags.add}
