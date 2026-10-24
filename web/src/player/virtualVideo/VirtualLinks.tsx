@@ -1,42 +1,68 @@
 import { ExternalLink } from "lucide-react";
 
-import type { WorkInfo } from "../../api/workInfo";
 import { t } from "../../i18n";
 import { Button } from "../../ui/shadcn/button";
-import { Description, withoutScheme } from "../WorkInfo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui/shadcn/dropdown-menu";
+import { withoutScheme } from "../WorkInfo";
+
+/** Three rows fit a 16:9 frame at 360px, so a fourth link turns the third row into the rest's menu. */
+const maxRows = 3;
 
 /**
- * A virtual video has nothing to play, so its links take the main action's form under the title,
- * followed by its description. Both are absent when empty.
+ * Where to watch a virtual video, as the media frame's main content: one button per link on the
+ * `overlay` scrim, which keeps them readable over any image, each opening in a new tab.
  */
-export default function VirtualLinks({
-  videoId,
-  info,
-}: {
-  videoId: number;
-  info: WorkInfo | undefined;
-}) {
-  const urls = info?.urls ?? [];
-  const description = info?.description;
-  if (urls.length === 0 && description === undefined) return null;
+export default function VirtualLinks({ urls }: { urls: readonly string[] }) {
+  const shown = urls.length <= maxRows ? urls : urls.slice(0, maxRows - 1);
+  const rest = urls.slice(shown.length);
   return (
-    <div className="flex flex-col gap-4">
-      {urls.length > 0 && (
-        <ul aria-label={t.player.virtual.links} className="flex flex-wrap gap-2">
-          {urls.map((url) => (
-            <li key={url} className="max-w-full min-w-0">
-              <Button asChild variant="outline" className="max-w-full">
+    <div className="absolute inset-0 flex items-center justify-center p-4">
+      <div className="flex w-full max-w-sm min-w-0 flex-col gap-2 rounded-lg bg-overlay p-3">
+        <ul aria-label={t.player.virtual.links} className="flex flex-col gap-2">
+          {shown.map((url, index) => (
+            <li key={url} className="min-w-0">
+              <Button
+                asChild
+                variant={index === 0 ? "default" : "secondary"}
+                className="w-full"
+              >
                 <a href={url} title={url} target="_blank" rel="noreferrer">
                   <ExternalLink aria-hidden="true" />
-                  <span className="max-w-xs min-w-0 truncate">{withoutScheme(url)}</span>
+                  <span className="min-w-0 truncate">{withoutScheme(url)}</span>
                 </a>
               </Button>
             </li>
           ))}
         </ul>
-      )}
-      {/* Keyed by video so expansion does not carry over to the next video. */}
-      {description !== undefined && <Description key={videoId} text={description} />}
+        {rest.length > 0 && <MoreLinks urls={rest} />}
+      </div>
     </div>
+  );
+}
+
+function MoreLinks({ urls }: { urls: readonly string[] }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="secondary" className="w-full">
+          {t.player.virtual.moreLinks(urls.length)}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center">
+        {urls.map((url) => (
+          <DropdownMenuItem key={url} asChild>
+            <a href={url} title={url} target="_blank" rel="noreferrer">
+              <ExternalLink aria-hidden="true" />
+              <span className="max-w-3xs min-w-0 truncate">{withoutScheme(url)}</span>
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
