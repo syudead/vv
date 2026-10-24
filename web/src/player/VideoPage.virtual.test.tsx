@@ -190,7 +190,7 @@ describe("VideoPage for a virtual video", () => {
     await openPage("guest");
     expect(screen.getByText("No thumbnail")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Upload an image…" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Edit details" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -256,7 +256,7 @@ describe("VideoPage for a virtual video", () => {
     server.details.mockReturnValue(failure(404, "not_found", "video_not_found"));
     await openPage();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("link", { name: "Edit details" }));
+    await user.click(screen.getByRole("link", { name: "Edit" }));
     const title = await screen.findByRole("textbox", { name: "Title" });
     await user.clear(title);
     await user.type(title, "新しい題名");

@@ -2,6 +2,7 @@ import type { Video } from "../api/client";
 import type { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import AutoTagButton from "./AutoTagButton";
+import DetailsEntry from "./detailsEditor/DetailsEntry";
 import type { usePageHandoff } from "./detailsEditor/handoff";
 import GroupLine from "./GroupLine";
 import PlaylistLine from "./PlaylistLine";
@@ -17,6 +18,8 @@ import VideoTitle from "./VideoTitle";
 import type { VirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
 import LinkFetchLine from "./virtualVideo/LinkFetchLine";
 import VirtualLinks from "./virtualVideo/VirtualLinks";
+import VirtualMoreMenu from "./virtualVideo/VirtualMoreMenu";
+import VisibilitySwitch from "./VisibilitySwitch";
 
 type Detail = ReturnType<typeof useVideoDetail>;
 type Related = ReturnType<typeof useRelatedVideos>;
@@ -76,68 +79,94 @@ export default function VideoPageDetails({
   return (
     <>
       <CreatingLine video={video} />
-      <div className="flex flex-col gap-2">
-        {playlist.context.status === "ready" && playback !== undefined && (
-          <PlaylistLine
-            playlistId={playlist.playlistId}
-            name={playback.playlist.name}
-            position={playback.position}
-            count={playback.count}
-            backTo={backTo}
+      {/* The title unit and the tabs stand apart; the strip's border is the one divider. */}
+      <div className="flex flex-col gap-8 sm:gap-10">
+        <div className="flex flex-col gap-3">
+          {playlist.context.status === "ready" && playback !== undefined && (
+            <PlaylistLine
+              playlistId={playlist.playlistId}
+              name={playback.playlist.name}
+              position={playback.position}
+              count={playback.count}
+              backTo={backTo}
+            />
+          )}
+          {video.smartFolder !== undefined && (
+            <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
+          )}
+          {video.group !== undefined && (
+            <GroupLine
+              group={video.group}
+              videoId={video.id}
+              owner={owner}
+              backTo={backTo}
+              // Fall back to the smallest remaining group ID, or ordinary video navigation.
+              onChanged={onGroupChanged}
+            />
+          )}
+          <TitleRow
+            key={`title-row:${String(video.id)}`}
+            video={video}
+            onFavorite={owner ? setFavorite : undefined}
+            title={<VideoTitle video={video} owner={owner} />}
+            actions={
+              <>
+                <DetailsEntry
+                  video={video}
+                  owner={owner}
+                  // Preserve navigation history and restore focus to the metadata editor's entry point.
+                  details={{
+                    linkState: { from: backTo, trail },
+                    focusEntry: handoff.focusEntry(video.id),
+                  }}
+                />
+                {video.virtual && (
+                  <VirtualMoreMenu
+                    video={video}
+                    onStale={reread}
+                    onDeleted={onDeleted}
+                    onMerged={onMerged}
+                  />
+                )}
+                <div className="ml-auto">
+                  <VisibilitySwitch
+                    // Key by video ID so errors do not survive navigation.
+                    key={`visibility:${String(video.id)}`}
+                    videoId={video.id}
+                    isPublic={video.public}
+                    onChanged={reread}
+                  />
+                </div>
+              </>
+            }
           />
-        )}
-        {video.smartFolder !== undefined && (
-          <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
-        )}
-        {video.group !== undefined && (
-          <GroupLine
-            group={video.group}
-            videoId={video.id}
-            owner={owner}
-            backTo={backTo}
-            // Fall back to the smallest remaining group ID, or ordinary video navigation.
-            onChanged={onGroupChanged}
-          />
-        )}
-        <TitleRow
-          key={`title-row:${String(video.id)}`}
+          {owner && <OwnerTags video={video} reread={reread} />}
+          {owner && <LinkFetchLine video={video} />}
+          {/* A virtual video has nothing to play, so its links and description take the main action's place. */}
+          {video.virtual && <VirtualLinks videoId={video.id} info={video.workInfo} />}
+        </div>
+        <VideoPageTabs
           video={video}
-          onFavorite={owner ? setFavorite : undefined}
-          title={<VideoTitle video={video} owner={owner} />}
+          owner={owner}
+          capture={capture}
+          player={player}
+          onChanged={(saved, mark) => {
+            replace(saved, mark, "keep");
+            // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
+            related.rethumb(saved);
+            related.rename(saved);
+          }}
+          onStale={reread}
+          onEditingChange={onEditingThumbnail}
+          state={tabState}
+          versions={{
+            navigation: { backTo, autoplay },
+            // Refetch: the removed video's own work info replaces the bundle's.
+            onReplace: (removed, mark) => replace(removed, mark, "refetch"),
+          }}
+          thumbnail={thumbnail}
         />
-        {owner && <OwnerTags video={video} reread={reread} />}
-        {owner && <LinkFetchLine video={video} />}
       </div>
-      {/* A virtual video has nothing to play, so its links and description take the main action's place. */}
-      {video.virtual && <VirtualLinks videoId={video.id} info={video.workInfo} />}
-      <VideoPageTabs
-        video={video}
-        owner={owner}
-        capture={capture}
-        player={player}
-        onChanged={(saved, mark) => {
-          replace(saved, mark, "keep");
-          // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
-          related.rethumb(saved);
-          related.rename(saved);
-        }}
-        onStale={reread}
-        onEditingChange={onEditingThumbnail}
-        // Preserve navigation history and restore focus to the metadata editor's entry point.
-        details={{
-          linkState: { from: backTo, trail },
-          focusEntry: handoff.focusEntry(video.id),
-        }}
-        state={tabState}
-        versions={{
-          navigation: { backTo, autoplay },
-          // Refetch: the removed video's own work info replaces the bundle's.
-          onReplace: (removed, mark) => replace(removed, mark, "refetch"),
-        }}
-        thumbnail={thumbnail}
-        onDeleted={onDeleted}
-        onMerged={onMerged}
-      />
     </>
   );
 }

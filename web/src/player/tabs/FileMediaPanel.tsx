@@ -10,7 +10,7 @@ import { useToast } from "../../ui/Toast";
 import MediaInfoGroups from "../MediaInfoGroups";
 import RescanVideoButton from "../RescanVideoButton";
 import { useOpenFileRequest } from "../useOpenFile";
-import { DateTimeValue, FailureLine, PanelColumns, PanelSection } from "./panelParts";
+import { DateValue, FailureLine, PanelColumns, PanelSection } from "./panelParts";
 
 /** Guest responses omit the location, so a guest sees Media and File only. */
 export default function FileMediaPanel({
@@ -57,22 +57,34 @@ export default function FileMediaPanel({
               {
                 id: "added",
                 term: f.added,
-                value: <DateTimeValue value={video.addedAt} />,
+                value: <DateValue label={f.added} value={video.addedAt} precise />,
               },
               {
                 id: "edited",
                 term: f.edited,
-                value: <DateTimeValue value={video.updatedAt} />,
+                value: <DateValue label={f.edited} value={video.updatedAt} precise />,
               },
               {
                 id: "created",
                 term: text.fileCreated,
-                value: <DateTimeValue value={video.fileCreatedAt} />,
+                value: (
+                  <DateValue
+                    label={text.fileCreated}
+                    value={video.fileCreatedAt}
+                    precise
+                  />
+                ),
               },
               {
                 id: "modified",
                 term: text.fileModified,
-                value: <DateTimeValue value={video.fileModifiedAt} />,
+                value: (
+                  <DateValue
+                    label={text.fileModified}
+                    value={video.fileModifiedAt}
+                    precise
+                  />
+                ),
               },
             ]}
           />

@@ -249,7 +249,7 @@ test.describe.serial("video page tabs", () => {
       await openVideo(page, shared);
       await expect(tabs(page)).toHaveText(["Overview", "File & media"]);
       await expect(page.getByRole("switch")).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Edit details" })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Edit" })).toHaveCount(0);
       await expect(page.getByRole("combobox", { name: "Add tag" })).toHaveCount(0);
 
       await tabs(page).filter({ hasText: "File & media" }).click();

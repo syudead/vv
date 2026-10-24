@@ -88,22 +88,22 @@ export function ReadFailure({ text, onRetry }: { text: UiText; onRetry: () => vo
 }
 
 /**
- * The full date and the time with seconds (and milliseconds when the value has them); the two
- * halves wrap as units in a narrow column.
+ * The date alone; the time is in `title` and in the popover the date opens, `precise` with seconds
+ * (and milliseconds when the value has them).
  */
-export function DateTimeValue({ value }: { value: string }) {
-  return (
-    <time dateTime={value} className="text-foreground">
-      <span className="whitespace-nowrap">{formatDate(value)}</span>{" "}
-      <span className="whitespace-nowrap">{formatPreciseTime(value)}</span>
-    </time>
-  );
-}
-
-/** The date alone; the time is in `title` and in the popover the date opens. */
-export function DateValue({ label, value }: { label: UiText; value: string }) {
+export function DateValue({
+  label,
+  value,
+  precise = false,
+}: {
+  label: UiText;
+  value: string;
+  precise?: boolean;
+}) {
   const date = formatDate(value);
-  const dateTime = formatDateTime(value);
+  const dateTime = precise
+    ? `${date} ${formatPreciseTime(value)}`
+    : formatDateTime(value);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -114,7 +114,7 @@ export function DateValue({ label, value }: { label: UiText; value: string }) {
           title={t.player.facts.dateDetail(label, dateTime)}
           className={cn(factTrigger, "font-mono text-xs text-foreground tabular-nums")}
         >
-          {date}
+          <time dateTime={value}>{date}</time>
         </Button>
       </PopoverTrigger>
       <PopoverContent

@@ -536,7 +536,7 @@ describe("PlaylistPage", () => {
     expect(await screen.findByText("No items yet")).toBeDefined();
     expect(
       screen.getByText(
-        "Add videos and groups with Add to playlist on a card, on the video page, or in the selection bar.",
+        "Add videos and groups with Add to playlist on a card or in the selection bar, or with Playlist on the video page.",
       ),
     ).toBeDefined();
     expect(screen.queryByRole("link", { name: /from the top/ })).toBeNull();
