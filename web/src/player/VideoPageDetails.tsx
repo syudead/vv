@@ -66,62 +66,65 @@ export default function VideoPageDetails({
   return (
     <>
       <CreatingLine video={video} />
-      <div className="flex flex-col gap-2">
-        {playlist.context.status === "ready" && playback !== undefined && (
-          <PlaylistLine
-            playlistId={playlist.playlistId}
-            name={playback.playlist.name}
-            position={playback.position}
-            count={playback.count}
-            backTo={backTo}
+      {/* The title unit and the tabs stand apart; the strip's border is the one divider. */}
+      <div className="flex flex-col gap-8 sm:gap-10">
+        <div className="flex flex-col gap-3">
+          {playlist.context.status === "ready" && playback !== undefined && (
+            <PlaylistLine
+              playlistId={playlist.playlistId}
+              name={playback.playlist.name}
+              position={playback.position}
+              count={playback.count}
+              backTo={backTo}
+            />
+          )}
+          {video.smartFolder !== undefined && (
+            <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
+          )}
+          {video.group !== undefined && (
+            <GroupLine
+              group={video.group}
+              videoId={video.id}
+              owner={owner}
+              backTo={backTo}
+              // Fall back to the smallest remaining group ID, or ordinary video navigation.
+              onChanged={onGroupChanged}
+            />
+          )}
+          <TitleRow
+            key={`title-row:${String(video.id)}`}
+            video={video}
+            onFavorite={owner ? setFavorite : undefined}
+            title={<VideoTitle video={video} owner={owner} />}
           />
-        )}
-        {video.smartFolder !== undefined && (
-          <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
-        )}
-        {video.group !== undefined && (
-          <GroupLine
-            group={video.group}
-            videoId={video.id}
-            owner={owner}
-            backTo={backTo}
-            // Fall back to the smallest remaining group ID, or ordinary video navigation.
-            onChanged={onGroupChanged}
-          />
-        )}
-        <TitleRow
-          key={`title-row:${String(video.id)}`}
+          {owner && <OwnerTags video={video} reread={reread} />}
+        </div>
+        <VideoPageTabs
           video={video}
-          onFavorite={owner ? setFavorite : undefined}
-          title={<VideoTitle video={video} owner={owner} />}
+          owner={owner}
+          capture={capture}
+          player={player}
+          onChanged={(saved, mark) => {
+            replace(saved, mark, "keep");
+            // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
+            related.rethumb(saved);
+            related.rename(saved);
+          }}
+          onStale={reread}
+          onEditingChange={onEditingThumbnail}
+          // Preserve navigation history and restore focus to the metadata editor's entry point.
+          details={{
+            linkState: { from: backTo, trail },
+            focusEntry: handoff.focusEntry(video.id),
+          }}
+          state={tabState}
+          versions={{
+            navigation: { backTo, autoplay },
+            // Refetch: the removed video's own work info replaces the bundle's.
+            onReplace: (removed, mark) => replace(removed, mark, "refetch"),
+          }}
         />
-        {owner && <OwnerTags video={video} reread={reread} />}
       </div>
-      <VideoPageTabs
-        video={video}
-        owner={owner}
-        capture={capture}
-        player={player}
-        onChanged={(saved, mark) => {
-          replace(saved, mark, "keep");
-          // Keep the group row's thumbnail and title in sync; metadata updates may rename the video.
-          related.rethumb(saved);
-          related.rename(saved);
-        }}
-        onStale={reread}
-        onEditingChange={onEditingThumbnail}
-        // Preserve navigation history and restore focus to the metadata editor's entry point.
-        details={{
-          linkState: { from: backTo, trail },
-          focusEntry: handoff.focusEntry(video.id),
-        }}
-        state={tabState}
-        versions={{
-          navigation: { backTo, autoplay },
-          // Refetch: the removed video's own work info replaces the bundle's.
-          onReplace: (removed, mark) => replace(removed, mark, "refetch"),
-        }}
-      />
     </>
   );
 }

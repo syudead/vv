@@ -244,8 +244,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
     <Tabs
       value={current}
       onValueChange={(next) => select(next as VideoTab)}
-      // The panel sits gap-3 under the strip, as the page's children stack.
-      className="gap-3"
+      className="gap-6"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:border-b sm:border-border">
         <div
@@ -272,7 +271,7 @@ export default function VideoPageTabs(props: VideoPageTabsProps) {
           </div>
         )}
       </div>
-      <TabsContent value={current} className="pt-2">
+      <TabsContent value={current}>
         {panel(current, props, {
           workPlugin: state.workPlugin,
           operations,
