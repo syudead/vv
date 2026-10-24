@@ -103,11 +103,8 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 		return domain.ErrAccountNotConfigured
 	}
 
-	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
-		return fmt.Errorf("cannot delete sessions: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
-		return fmt.Errorf("cannot delete API tokens: %w", err)
+	if err := revokeAllAccess(ctx, tx); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot commit the account update: %w", err)
@@ -143,17 +140,25 @@ func (s *AuthStore) ReplaceCredentials(
 		return fmt.Errorf("cannot update the account: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
-		return fmt.Errorf("cannot delete sessions: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
-		return fmt.Errorf("cannot delete API tokens: %w", err)
+	if err := revokeAllAccess(ctx, tx); err != nil {
+		return err
 	}
 	if err := insertSession(ctx, tx, newSessionToken, version, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot commit the account update: %w", err)
+	}
+	return nil
+}
+
+// revokeAllAccess removes every session and API token after a credential change.
+func revokeAllAccess(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
+		return fmt.Errorf("cannot delete sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
+		return fmt.Errorf("cannot delete API tokens: %w", err)
 	}
 	return nil
 }
