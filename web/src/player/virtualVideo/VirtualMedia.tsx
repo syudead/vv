@@ -1,15 +1,38 @@
-import { SquareDashed } from "lucide-react";
+import { ExternalLink, SquareDashed } from "lucide-react";
 import { useState } from "react";
 
 import type { Video } from "../../api/client";
 import { t } from "../../i18n";
+import { hostOf } from "../workInfoFetch/fetchRules";
 
 /**
  * The player frame's content for a virtual video: its image, as a file video's frame shows its thumbnail, or a quiet
- * placeholder without one. Nothing plays, so there is no play button, control bar or cursor change; links and the
- * description read where a file video's do.
+ * placeholder without one. Where a file video's frame starts playback, this one opens the video's first link in a
+ * new tab; without a link it does nothing.
  */
 export default function VirtualMedia({ video }: { video: Video }) {
+  const link = video.workInfo?.urls[0];
+  if (link === undefined) return <FrameImage video={video} />;
+  return (
+    <a
+      href={link}
+      target="_blank"
+      rel="noreferrer"
+      title={link}
+      aria-label={t.player.virtual.openLink(hostOf(link))}
+      className="group absolute inset-0 cursor-pointer"
+    >
+      <FrameImage video={video} />
+      <span className="absolute inset-0 flex items-center justify-center">
+        <span className="flex size-16 items-center justify-center rounded-full bg-overlay text-foreground opacity-80 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none">
+          <ExternalLink className="size-6" aria-hidden="true" />
+        </span>
+      </span>
+    </a>
+  );
+}
+
+function FrameImage({ video }: { video: Video }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   const url = video.thumbnailUrl;
   if (url !== undefined && url !== brokenUrl)

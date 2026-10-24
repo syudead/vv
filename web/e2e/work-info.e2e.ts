@@ -276,7 +276,12 @@ test.describe.serial("work information", () => {
     try {
       await openVideo(page, virtual.id, virtual.title);
       await expect(page.getByText("Virtual video", { exact: true })).toBeVisible();
-      await expect(page.locator("[data-player-frame]").getByRole("link")).toHaveCount(0);
+      // The frame opens the first link, as a file video's frame plays.
+      await expect(
+        page
+          .locator("[data-player-frame]")
+          .getByRole("link", { name: "Open on 127.0.0.1:15173" }),
+      ).toHaveAttribute("href", link);
       const button = await workLink(page, link);
       const opened = page.context().waitForEvent("page");
       await button.click();

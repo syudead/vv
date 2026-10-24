@@ -2137,6 +2137,7 @@ export const en = {
       },
       noThumbnailYet: "No thumbnail yet",
       noThumbnail: "No thumbnail",
+      openLink: (host: string) => `Open on ${host}`,
       removeImage: "Remove image",
       delete: "Delete…",
       deleteTitle: (title: string) => `Delete "${title}"?`,

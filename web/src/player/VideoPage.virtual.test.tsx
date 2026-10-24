@@ -151,7 +151,10 @@ describe("VideoPage for a virtual video", () => {
     expect(screen.queryByText("Getting ready to play")).toBeNull();
     const frame = container.querySelector<HTMLElement>("[data-player-frame]")!;
     expect(within(frame).getByText("No thumbnail")).toBeDefined();
-    expect(within(frame).queryByRole("link")).toBeNull();
+    // Where a file video's frame plays, this one opens the first link in a new tab.
+    const open = within(frame).getByRole("link", { name: "Open on example.com" });
+    expect(open.getAttribute("href")).toBe(link);
+    expect(open.getAttribute("target")).toBe("_blank");
     expect(within(frame).queryByRole("button")).toBeNull();
     // The description is read once, in Overview, as for a file video.
     expect(
@@ -204,8 +207,15 @@ describe("VideoPage for a virtual video", () => {
 
   it("ゲストには作成、編集、マージ、削除の操作が無く、事実は Added だけ", async () => {
     server.video = withoutLinks;
-    await openPage("guest");
+    const { container } = renderPage("guest");
+    await screen.findByRole("heading", { level: 1, name: server.video.title });
     expect(screen.getByText("No thumbnail")).toBeDefined();
+    // Without a link the frame has nothing to open.
+    expect(
+      within(container.querySelector<HTMLElement>("[data-player-frame]")!).queryByRole(
+        "link",
+      ),
+    ).toBeNull();
     expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
