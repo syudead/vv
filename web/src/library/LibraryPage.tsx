@@ -91,7 +91,6 @@ import { draftParams, useFilterDraft } from "./useFilterDraft";
 import { type LibraryFilterPick, pickParams } from "./filterPicks";
 import { useSearchSuggestions } from "./searchSuggestions";
 import EmptyLibrary from "./EmptyLibrary";
-import NewVirtualVideoButton from "./NewVirtualVideoButton";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
   DraggableGroupRow,
@@ -166,25 +165,15 @@ function idFilterCount(
   );
 }
 
-/**
- * The owner's header actions. With filters the results header holds them, saving the filter
- * first, and the home header has none.
- */
-function libraryActions(
-  header: "home" | "results",
+function saveSmartFolderAction(
   owner: boolean,
   conditioned: boolean,
   filter: LibraryFilter,
   sort: VideoSort,
-  backTo: string,
 ): ReactNode {
-  if (!owner || conditioned !== (header === "results")) return undefined;
-  return (
-    <>
-      {conditioned && <SaveSmartFolderButton filter={filter} sort={sort} />}
-      <NewVirtualVideoButton backTo={backTo} />
-    </>
-  );
+  return owner && conditioned ? (
+    <SaveSmartFolderButton filter={filter} sort={sort} />
+  ) : undefined;
 }
 
 /** Retired parameters (versions, addedWithin, minDuration, maxDuration) are dropped on the next write. */
@@ -820,20 +809,7 @@ export default function LibraryPage() {
     // Group mutations can remove top-level items; refresh the list in place.
     <GroupChangedContext value={refreshInPlace}>
       <ListPage
-        header={
-          <PageHeader
-            title={t.home.title}
-            titleHidden
-            actions={libraryActions(
-              "home",
-              owner,
-              conditioned,
-              smartFolderFilter,
-              sort,
-              listUrl,
-            )}
-          />
-        }
+        header={<PageHeader title={t.home.title} titleHidden />}
         toolbar={
           <TopBarPortal>
             <LibraryToolbar
@@ -914,14 +890,7 @@ export default function LibraryPage() {
             <PageHeader
               title={t.library.resultsLabel}
               headingLevel={2}
-              actions={libraryActions(
-                "results",
-                owner,
-                conditioned,
-                smartFolderFilter,
-                sort,
-                listUrl,
-              )}
+              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
               count={
                 initialLoadFailed ? undefined : (
                   <span
