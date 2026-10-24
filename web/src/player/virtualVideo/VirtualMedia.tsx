@@ -5,21 +5,36 @@ import type { Video } from "../../api/client";
 import { t } from "../../i18n";
 import { Button } from "../../ui/shadcn/button";
 import type { VirtualThumbnail } from "./useVirtualThumbnail";
+import VirtualLinks from "./VirtualLinks";
 
-/**
- * The player frame's content for a virtual video: its uploaded image, or a placeholder. Nothing here
- * plays, so there is no play button, control bar or cursor change; only the owner's upload button
- * can be pressed.
- */
-export default function VirtualMedia({
-  video,
-  owner,
-  thumbnail,
-}: {
+interface MediaProps {
   video: Video;
   owner: boolean;
   thumbnail: VirtualThumbnail;
-}) {
+}
+
+/**
+ * The player frame's content for a virtual video: its links over its uploaded image, or a
+ * placeholder when it has neither. Nothing here plays, so there is no play button, control bar or
+ * cursor change.
+ */
+export default function VirtualMedia(props: MediaProps) {
+  const urls = props.video.workInfo?.urls ?? [];
+  return (
+    <>
+      <FrameImage {...props} withLinks={urls.length > 0} />
+      {urls.length > 0 && <VirtualLinks urls={urls} />}
+    </>
+  );
+}
+
+/** The links take the placeholder's place, so the owner then uploads from the Thumbnail tab. */
+function FrameImage({
+  video,
+  owner,
+  thumbnail,
+  withLinks,
+}: MediaProps & { withLinks: boolean }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   const url = video.thumbnailUrl;
   if (url !== undefined && url !== brokenUrl)
@@ -31,6 +46,7 @@ export default function VirtualMedia({
         className="absolute inset-0 size-full object-contain"
       />
     );
+  if (withLinks) return null;
   const words = t.player.virtual;
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center">

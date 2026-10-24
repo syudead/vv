@@ -267,17 +267,36 @@ test.describe.serial("work information", () => {
     }
   });
 
-  test("受け入れ条件 2: バーチャルな動画のページのリンクは新しいタブで開く", async ({
+  test("受け入れ条件 2: バーチャルな動画のリンクはスクロールせずに見えるプレーヤーの枠に収まり、新しいタブで開く", async ({
     page,
     request,
   }) => {
     const link = `${origin}/settings?virtual=${run}`;
-    const virtual = await createVirtual(request, `作品e2eバーチャル${run}`, [link]);
+    // Four links: two buttons and the rest's menu, the most the frame holds.
+    const links = [
+      link,
+      ...[2, 3, 4].map((n) => `${origin}/settings?virtual${String(n)}=${run}`),
+    ];
+    const virtual = await createVirtual(request, `作品e2eバーチャル${run}`, links);
     try {
-      await page.setViewportSize({ width: 1280, height: 800 });
-      await openVideo(page, virtual.id, virtual.title);
+      const frame = page.locator("[data-player-frame]");
+      const more = frame.getByRole("button", { name: "+2 more" });
+      for (const [width, height] of [
+        [360, 740],
+        [768, 1024],
+        [1280, 800],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await openVideo(page, virtual.id, virtual.title);
+        await expect(more).toBeInViewport({ ratio: 1 });
+        const box = (await frame.boundingBox())!;
+        const last = (await more.boundingBox())!;
+        expect(last.y + last.height, `${String(width)}px`).toBeLessThanOrEqual(
+          box.y + box.height,
+        );
+      }
       await expect(page.getByText("Virtual video", { exact: true })).toBeVisible();
-      const button = page
+      const button = frame
         .getByRole("list", { name: "Links" })
         .getByRole("link", { name: link.replace(/^http:\/\//, "") });
       const opened = page.context().waitForEvent("page");
@@ -296,14 +315,19 @@ test.describe.serial("work information", () => {
     browser,
     request,
   }) => {
-    const shown = await createVirtual(request, `作品e2e公開${run}`, []);
+    const link = `${origin}/settings?guest=${run}`;
+    const shown = await createVirtual(request, `作品e2e公開${run}`, [link]);
     const hidden = await createVirtual(request, `作品e2e非公開${run}`, []);
     const context = await guestPage(browser);
     try {
       await setPublic(request, shown, true);
       const page = await context.newPage();
       await openVideo(page, shown.id, shown.title);
-      await expect(page.getByText("No thumbnail", { exact: true })).toBeVisible();
+      await expect(
+        page
+          .locator("[data-player-frame]")
+          .getByRole("link", { name: link.replace(/^http:\/\//, "") }),
+      ).toBeInViewport();
       await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
 
       await page.goto(`/videos/${String(hidden.id)}`);
