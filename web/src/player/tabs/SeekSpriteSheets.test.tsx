@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,10 +14,10 @@ vi.mock("../../api/client", async (importOriginal) => ({
   fetchSeekThumbnailSheet: vi.fn(),
 }));
 
-/** Seven 10 s frames on two sheets of four. */
+/** Two sheets of four 10 s frames each. */
 const sprite: SeekThumbnailSprite = {
   intervalMs: 10_000,
-  frameCount: 7,
+  frameCount: 8,
   columns: 2,
   rows: 2,
   frameWidth: 320,
@@ -25,44 +25,9 @@ const sprite: SeekThumbnailSprite = {
   sheets: ["/sheet/0", "/sheet/1"],
 };
 
-/** The one observer the list creates; `enter` reports a sheet as visible. */
-const observer = {
-  callback: undefined as IntersectionObserverCallback | undefined,
-  observed: [] as Element[],
-  unobserved: [] as Element[],
-};
-
-function enter(index: number) {
-  const item = screen.getAllByRole("listitem")[index]!;
-  act(() =>
-    observer.callback?.(
-      [{ target: item, isIntersecting: true } as unknown as IntersectionObserverEntry],
-      {} as IntersectionObserver,
-    ),
-  );
-}
-
 let sheetResult: () => Promise<Blob>;
 
 beforeEach(() => {
-  observer.callback = undefined;
-  observer.observed = [];
-  observer.unobserved = [];
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      constructor(callback: IntersectionObserverCallback) {
-        observer.callback = callback;
-      }
-      observe(element: Element) {
-        observer.observed.push(element);
-      }
-      unobserve(element: Element) {
-        observer.unobserved.push(element);
-      }
-      disconnect() {}
-    },
-  );
   vi.stubGlobal(
     "URL",
     class extends URL {
@@ -85,47 +50,36 @@ function sheetUrls(): string[] {
   return vi.mocked(fetchSeekThumbnailSheet).mock.calls.map(([url]) => url);
 }
 
-async function renderSheets() {
-  render(<SeekSpriteSheets spriteUrl="/sprite" />);
-  await screen.findByRole("list", { name: "Seek preview" });
+function openSprite() {
+  fireEvent.click(screen.getByRole("button", { name: "View seek sprite" }));
+  return screen.findByRole("dialog", { name: "Seek sprite" });
 }
 
 describe("SeekSpriteSheets", () => {
-  it("空きコマを除いたコマを時刻順に並べ、シートは見えてから一度だけ読み、押すとそのコマをダイアログで大きく出す", async () => {
-    await renderSheets();
-    // Seven frames on two sheets of four: the sheet's last cell is padding.
-    expect(screen.getAllByRole("listitem")).toHaveLength(7);
-    expect(sheetUrls()).toEqual([]);
+  it("押すまで何も読まず、押すとスプライトと全シートを一度ずつ読んでダイアログに出す", async () => {
+    render(<SeekSpriteSheets spriteUrl="/sprite" />);
+    expect(fetchSeekThumbnailSprite).not.toHaveBeenCalled();
 
-    enter(5);
-    enter(6);
-    expect(sheetUrls()).toEqual(["/sheet/1"]);
-    const frame = screen.getByRole("button", { name: "Show the frame at 0:50 large" });
-    await vi.waitFor(() => expect(frame.hasAttribute("disabled")).toBe(false));
-    expect(
-      screen
-        .getByRole("button", { name: "Show the frame at 0:00 large" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-
-    fireEvent.click(frame);
-    const dialog = await screen.findByRole("dialog", { name: "Frame at 0:50" });
-    const image = within(dialog).getByRole("img", { name: "Frame at 0:50" });
-    expect(image.style.backgroundImage).toBe('url("blob:sheet")');
-    // Frame 5 is the second cell of sheet 2's first row.
-    expect(image.style.backgroundPosition).toBe("100% 0%");
+    const dialog = await openSprite();
+    const images = await within(dialog).findAllByRole("img");
+    expect(images.map((image) => image.getAttribute("alt"))).toEqual([
+      "Seek sprite sheet 1 of 2",
+      "Seek sprite sheet 2 of 2",
+    ]);
+    expect(images[0]!.getAttribute("src")).toBe("blob:sheet");
+    expect(sheetUrls()).toEqual(["/sheet/0", "/sheet/1"]);
   });
 
   it("読めなかったシートは理由と Retry を出し、Retry でそのシートを読み直す", async () => {
     sheetResult = () => Promise.reject(new Error("network"));
-    await renderSheets();
-    enter(0);
-    const failure = await screen.findByRole("alert");
-    expect(failure.textContent).toContain("Couldn't load the seek preview");
+    render(<SeekSpriteSheets spriteUrl="/sprite" />);
+    const dialog = await openSprite();
+    const failure = await within(dialog).findByRole("alert");
+    expect(failure.textContent).toContain("Couldn't load the seek sprite");
 
     sheetResult = () => Promise.resolve(new Blob());
     fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
-    expect(sheetUrls()).toEqual(["/sheet/0", "/sheet/0"]);
-    await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await vi.waitFor(() => expect(within(dialog).queryByRole("alert")).toBeNull());
+    expect(sheetUrls()).toEqual(["/sheet/0", "/sheet/1", "/sheet/0", "/sheet/1"]);
   });
 });
