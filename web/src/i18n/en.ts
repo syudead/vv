@@ -2139,6 +2139,7 @@ export const en = {
       noThumbnail: "No thumbnail",
       uploadImage: "Upload an image…",
       links: "Links",
+      moreLinks: (count: number) => `+${formatNumber(count)} more`,
       removeImage: "Remove image",
       delete: "Delete…",
       deleteTitle: (title: string) => `Delete "${title}"?`,

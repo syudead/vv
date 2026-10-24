@@ -17,9 +17,9 @@ import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
 import type { VirtualThumbnail } from "./virtualVideo/useVirtualThumbnail";
 import LinkFetchLine from "./virtualVideo/LinkFetchLine";
-import VirtualLinks from "./virtualVideo/VirtualLinks";
 import VirtualMoreMenu from "./virtualVideo/VirtualMoreMenu";
 import VisibilitySwitch from "./VisibilitySwitch";
+import { Description } from "./WorkInfo";
 
 type Detail = ReturnType<typeof useVideoDetail>;
 type Related = ReturnType<typeof useRelatedVideos>;
@@ -142,8 +142,10 @@ export default function VideoPageDetails({
           />
           {owner && <OwnerTags video={video} reread={reread} />}
           {owner && <LinkFetchLine video={video} />}
-          {/* A virtual video has nothing to play, so its links and description take the main action's place. */}
-          {video.virtual && <VirtualLinks videoId={video.id} info={video.workInfo} />}
+          {/* A virtual video's links are in the media frame; keyed by video so expansion does not carry over. */}
+          {video.virtual && video.workInfo?.description !== undefined && (
+            <Description key={video.id} text={video.workInfo.description} />
+          )}
         </div>
         <VideoPageTabs
           video={video}

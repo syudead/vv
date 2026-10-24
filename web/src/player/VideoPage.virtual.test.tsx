@@ -40,6 +40,11 @@ const virtualVideo: Video = {
   },
 };
 
+const withoutLinks: Video = {
+  ...virtualVideo,
+  workInfo: { ...virtualVideo.workInfo!, urls: [] },
+};
+
 // Unplayable keeps the real player out of tests that only land on a file video's page.
 const mergeTarget: Video = {
   ...virtualVideo,
@@ -139,17 +144,22 @@ describe("VideoPage for a virtual video", () => {
     vi.restoreAllMocks();
   });
 
-  it("プレーヤーの代わりにサムネイルの枠を置き、リンクは新しいタブで開くボタンにする", async () => {
-    await openPage();
+  it("プレーヤーの枠にリンクを新しいタブで開くボタンとして置き、説明は枠の外に一度だけ出す", async () => {
+    const { container } = renderPage();
+    await screen.findByRole("heading", { level: 1, name: virtualVideo.title });
     expect(screen.getByText("Virtual video")).toBeDefined();
-    expect(screen.getByText("No thumbnail yet")).toBeDefined();
     expect(screen.queryByText("Getting ready to play")).toBeNull();
-    const links = screen.getByRole("list", { name: "Links" });
+    const frame = container.querySelector<HTMLElement>("[data-player-frame]")!;
+    const links = within(frame).getByRole("list", { name: "Links" });
     const anchor = within(links).getByRole("link", { name: "example.com/watch?v=1" });
     expect(anchor.getAttribute("href")).toBe(link);
     expect(anchor.getAttribute("target")).toBe("_blank");
     expect(anchor.getAttribute("rel")).toBe("noreferrer");
-    // The description is under the links, once: Overview does not repeat it.
+    // The links take the placeholder's place and are not repeated below the title.
+    expect(within(frame).queryByText("No thumbnail yet")).toBeNull();
+    expect(screen.getAllByRole("list", { name: "Links" })).toHaveLength(1);
+    // The description stays outside the frame, once: Overview does not repeat it.
+    expect(within(frame).queryByText("配信の告知")).toBeNull();
     expect(screen.getAllByText("配信の告知")).toHaveLength(1);
     // No file: no Versions or File & media tab, and no size or length among the facts.
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
@@ -187,6 +197,7 @@ describe("VideoPage for a virtual video", () => {
   });
 
   it("ゲストには作成、編集、マージ、削除の操作が無く、事実は Added だけ", async () => {
+    server.video = withoutLinks;
     await openPage("guest");
     expect(screen.getByText("No thumbnail")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Upload an image…" })).toBeNull();
@@ -199,12 +210,19 @@ describe("VideoPage for a virtual video", () => {
     const overview = within(screen.getByRole("tabpanel", { name: "Overview" }));
     expect(overview.getAllByRole("button")).toHaveLength(1);
     expect(overview.getByRole("button", { name: /^Added / })).toBeDefined();
-    expect(
-      within(screen.getByRole("list", { name: "Links" })).getAllByRole("link"),
-    ).toHaveLength(1);
   });
 
-  it("Thumbnail タブの Upload… と枠の Upload an image… は、メニューを開かずに同じアップロードダイアログを開く", async () => {
+  it("ゲストにも枠のリンクを見せる", async () => {
+    await openPage("guest");
+    expect(
+      within(screen.getByRole("list", { name: "Links" })).getByRole("link", {
+        name: "example.com/watch?v=1",
+      }),
+    ).toBeDefined();
+  });
+
+  it("Thumbnail タブの Upload… とリンクの無い枠の Upload an image… は、メニューを開かずに同じアップロードダイアログを開く", async () => {
+    server.video = withoutLinks;
     await openPage();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Upload an image…" }));
