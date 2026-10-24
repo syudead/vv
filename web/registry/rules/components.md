@@ -391,7 +391,9 @@ hidden on the icon rail, which vv's rail always is.
 A rare owner action that belongs to no one screen, such as `New virtual video`,
 is a `SidebarMenuButton` without `asChild` in its own `SidebarGroup` with
 `mt-auto`, at the bottom of `SidebarContent`; it closes the drawer before it
-opens its dialog.
+opens its dialog. Upstream clips `SidebarContent` on the icon rail, so pass
+`group-data-[collapsible=icon]:overflow-auto` to keep that action reachable on
+a short screen.
 
 Do not add a second sidebar or put page controls in it; they belong in the
 toolbar.

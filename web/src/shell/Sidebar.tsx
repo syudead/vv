@@ -156,7 +156,8 @@ export default function Sidebar() {
         overlayClassName="top-navbar"
       >
         <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
-          <SidebarContent>
+          {/* Upstream clips the icon rail; scroll it so the bottom action stays reachable on short screens. */}
+          <SidebarContent className="group-data-[collapsible=icon]:overflow-auto">
             <SidebarGroup className={railPadding}>
               <nav>
                 <SidebarMenu className={railItems}>
