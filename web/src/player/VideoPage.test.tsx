@@ -2212,7 +2212,7 @@ describe("VideoPage", () => {
       expect(button.getAttribute("aria-pressed")).toBe("false");
       expect(button.getAttribute("data-state")).toBe("off");
       // The three title actions are labelled pills, never ghost words.
-      for (const name of ["Favorite", "Add to playlist", "Add to group"]) {
+      for (const name of ["Favorite", "Playlist", "Group"]) {
         expect(screen.getByRole("button", { name }).getAttribute("data-shape")).toBe(
           "pill",
         );
@@ -2474,12 +2474,12 @@ describe("VideoPage", () => {
       });
       renderPage();
       await ready();
-      const buttons = screen.getAllByRole("button", { name: "Add to playlist" });
+      const buttons = screen.getAllByRole("button", { name: "Playlist" });
       expect(buttons).toHaveLength(1);
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      const addToGroup = screen.getByRole("button", { name: "Add to group" });
+      const addToGroup = screen.getByRole("button", { name: "Group" });
       expect(add.nextElementSibling).toBe(addToGroup);
 
       fireEvent.click(add);
@@ -2492,7 +2492,7 @@ describe("VideoPage", () => {
       server.videos.set(7, [{ ...video, location: undefined, public: true }]);
       renderPage("7", undefined, "guest");
       await ready();
-      expect(screen.queryByRole("button", { name: "Add to playlist" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Playlist" })).toBeNull();
       expect(
         fetchMock.mock.calls.some(([input]) =>
           String(input).startsWith("/api/playlists"),

@@ -45,12 +45,12 @@ export default function TitleRow({
           />
           <AddToPlaylistButton
             variant="page"
-            label={t.playlists.add.label}
+            label={t.player.facts.playlist}
             videoIds={[video.id]}
           />
           <AddToGroupButton
             variant="page"
-            label={t.groups.add.label}
+            label={t.player.facts.group}
             videoIds={[video.id]}
           />
           {actions}

@@ -215,8 +215,8 @@ describe("VideoPage tabs", () => {
     expect(selectedTab()).toBe("Overview");
     for (const control of [
       screen.getByRole("button", { name: "Favorite" }),
-      screen.getByRole("button", { name: "Add to playlist" }),
-      screen.getByRole("button", { name: "Add to group" }),
+      screen.getByRole("button", { name: "Playlist" }),
+      screen.getByRole("button", { name: "Group" }),
       screen.getByRole("link", { name: "Edit" }),
     ]) {
       expect(control.textContent).not.toBe("");

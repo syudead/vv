@@ -2169,6 +2169,8 @@ export const en = {
       //
       favorite: "Favorite",
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
+      playlist: "Playlist",
+      group: "Group",
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
@@ -3218,7 +3220,7 @@ export const en = {
       empty: {
         title: "No items yet",
         description:
-          "Add videos and groups with Add to playlist on a card, on the video page, or in the selection bar.",
+          "Add videos and groups with Add to playlist on a card or in the selection bar, or with Playlist on the video page.",
         action: "Open library",
       },
       gone: {
