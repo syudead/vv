@@ -374,10 +374,13 @@ export default function VideoTags({
             )}
           </li>
         ))}
-        <li>
+        {/* Without tags, pull the quiet field's inner padding back so its text lines up with the title. */}
+        <li className="first:-ml-1.5">
           <TagCommand
             layout="dropdown"
             label={t.player.tags.add}
+            // A quiet "+ Add tag" until pointed at or focused.
+            frameClassName="w-combobox border-transparent bg-transparent hover:border-input focus-within:border-input focus-within:bg-muted"
             value={inputValue}
             onValueChange={setInputValue}
             choices={options}

@@ -251,7 +251,7 @@ test.describe.serial("work information", () => {
     const link = `${origin}/settings?from=${run}`;
     try {
       await openVideo(page, c.id, c.title);
-      await page.getByRole("link", { name: "Edit details" }).click();
+      await page.getByRole("link", { name: "Edit" }).click();
       await page.getByRole("textbox", { name: "Description" }).fill(`説明${run}`);
       await page.getByRole("button", { name: "Add link" }).click();
       await page.getByRole("textbox", { name: "Link" }).fill(link);

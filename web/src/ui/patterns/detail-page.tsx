@@ -53,7 +53,7 @@ export function DetailPage({
           >
             <div
               data-slot="detail-page-content"
-              className={cn("flex flex-col gap-4 lg:mx-auto lg:w-full", contentClassName)}
+              className={cn("flex flex-col gap-6 lg:mx-auto lg:w-full", contentClassName)}
             >
               {media}
               {/* Room under the last child, so it is not read against the window's edge. */}

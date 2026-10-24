@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan, Video } from "../../api/client";
-import { formatPreciseTime } from "../../i18n";
 import { ScanProvider } from "../../shell/ScanProvider";
 import { OwnerAudience } from "../../testing/audience";
 import { ToastProvider } from "../../ui/Toast";
@@ -72,7 +71,7 @@ describe("FileMediaPanel", () => {
     fetchMock.mockReset();
   });
 
-  it("所在と Media の節を置き、File の列はサイズと 4 つの日時を秒まで、ミリ秒を持つ値はミリ秒まで出す", () => {
+  it("所在と Media の節を置き、File の列はサイズと 4 つの日付を出し、日付の詳しい時刻は秒まで、ミリ秒を持つ値はミリ秒まで出す", () => {
     renderPanel(video);
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
@@ -80,15 +79,19 @@ describe("FileMediaPanel", () => {
     expect(screen.getByText("/media/a/b.mp4")).toBeDefined();
     expect(fileFacts()).toEqual([
       "Size 80.4 MB",
-      `Added Sep 20, 2026 ${formatPreciseTime(added)}`,
-      `Edited in vv Sep 27, 2026 ${formatPreciseTime(edited)}`,
-      `File created Jul 3, 2026 ${formatPreciseTime(created)}`,
-      `File modified Jul 4, 2026 ${formatPreciseTime(modified)}`,
+      "Added Sep 20, 2026",
+      "Edited in vv Sep 27, 2026",
+      "File created Jul 3, 2026",
+      "File modified Jul 4, 2026",
     ]);
-    expect(formatPreciseTime(edited)).toMatch(/^3:04:00\s?PM$/);
-    expect(formatPreciseTime(modified)).toMatch(/^8:15:30\.250\s?AM$/);
-    const modifiedTime = screen.getByText(/8:15:30/).closest("time");
-    expect(modifiedTime?.getAttribute("datetime")).toBe(modified);
+    // The precise time sits in the date's title and popover, which OverviewPanel's tests open.
+    const editedDate = screen.getByRole("button", { name: "Edited in vv Sep 27, 2026" });
+    expect(editedDate.title).toMatch(/^Edited in vv Sep 27, 2026 3:04:00\s?PM$/);
+    const modifiedDate = screen.getByRole("button", {
+      name: "File modified Jul 4, 2026",
+    });
+    expect(modifiedDate.title).toMatch(/^File modified Jul 4, 2026 8:15:30\.250\s?AM$/);
+    expect(modifiedDate.querySelector("time")?.getAttribute("datetime")).toBe(modified);
   });
 
   it("開けないときは「ファイルを開く」を出さず、コピーを置く", () => {
@@ -104,9 +107,7 @@ describe("FileMediaPanel", () => {
     renderPanel(video, false);
     expect(screen.queryByRole("region", { name: "Location" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
-    expect(fileFacts()).toContain(
-      `File modified Jul 4, 2026 ${formatPreciseTime(modified)}`,
-    );
+    expect(fileFacts()).toContain("File modified Jul 4, 2026");
   });
 
   it("安全でない接続（clipboard が無い）では、選んだ文字をコピーする方法に切り替える", () => {

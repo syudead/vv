@@ -17,8 +17,8 @@ import { useToast } from "../../ui/Toast";
 import MergeDialog from "./MergeDialog";
 
 /**
- * A virtual video's rare and irreversible actions, one step below the record's actions at the
- * tab strip's end: merging into a file video and deleting.
+ * A virtual video's rare and irreversible actions, after `Edit` on the title row's action line:
+ * merging into a file video and deleting.
  */
 export default function VirtualMoreMenu({
   video,
