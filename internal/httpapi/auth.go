@@ -140,6 +140,7 @@ var accessRoutes = map[string]access{
 	"GET /api/peer/handshake":                     accessPublic,
 	"POST /api/peer/related":                      accessGuest,
 	"GET /api/peer/videos/{id}/clues":             accessGuest,
+	"POST /api/peer/rule-counts":                  accessGuest,
 }
 
 // Use ServeMux for access matching so wildcard and GET/HEAD semantics match actual routing.

@@ -28,7 +28,7 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	cards := make([]domain.SmartFolderCard, len(targets))
 	for i, target := range targets {
 		cards[i] = domain.SmartFolderCard{SmartFolderSummary: target.summary, WatchState: domain.WatchStateUnwatched,
-			Previews: []domain.Video{}, Tags: []domain.VideoTag{}}
+			Previews: []domain.Video{}, Tags: []domain.VideoTag{}, PathRules: target.rules}
 	}
 	if err := readSmartFolderCardValues(ctx, tx, audience, targets, cards); err != nil {
 		return nil, err
@@ -113,9 +113,9 @@ func readSmartFolderCardValues(ctx context.Context, tx *sql.Tx, audience domain.
 		return fmt.Errorf("cannot read the smart folder cards: %w", err)
 	}
 	for index, earlier := range query.same {
-		summary := cards[index].SmartFolderSummary
+		summary, rules := cards[index].SmartFolderSummary, cards[index].PathRules
 		cards[index] = cards[earlier]
-		cards[index].SmartFolderSummary = summary
+		cards[index].SmartFolderSummary, cards[index].PathRules = summary, rules
 		previews[index] = previews[earlier]
 	}
 	return loadSmartCardPreviews(ctx, tx, audience, previews, cards)
@@ -224,6 +224,68 @@ func loadSmartCardPreviews(ctx context.Context, tx *sql.Tx, audience domain.Audi
 		for _, id := range list {
 			cards[index].Previews = append(cards[index].Previews, byID[id])
 		}
+	}
+	return nil
+}
+
+// SmartRuleCounts counts the visible videos matching each query as a smart folder's rule would, with the
+// owner's search fields; a tag, kind, person or organization name this node lacks matches nothing.
+func (s *SmartFolderStore) SmartRuleCounts(ctx context.Context, audience domain.Audience, rules []domain.VideoQuery) ([]domain.SmartRuleCount, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start counting the smart rules: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	targets := make([]smartFolderTarget, len(rules))
+	for i, rule := range rules {
+		filters, err := resolveListFilters(ctx, tx, rule)
+		if err != nil {
+			return nil, err
+		}
+		spec := filters.narrow(libraryListSpec(audience, rule, filters.tagIDs))
+		spec.ownerSearch = true
+		targets[i] = smartFolderTarget{sort: domain.SortAddedDesc, spec: spec, missing: filters.nothing}
+	}
+	query := smartFolderBranches(targets, func(query *smartFolderQuery, index int, _ smartFolderTarget, match smartMatch) {
+		m := `m` + strconv.Itoa(index)
+		query.ctes = append(query.ctes, m+` as materialized (select videos.* from smart_base videos where `+match.condition+`)`)
+		query.cteArgs = append(query.cteArgs, match.args...)
+		query.parts = append(query.parts,
+			`select `+strconv.Itoa(index)+`, count(*), coalesce(sum(size_bytes), 0), sum(duration_ms) from `+m)
+	})
+	counts := make([]domain.SmartRuleCount, len(rules))
+	if err := readSmartRuleCounts(ctx, tx, audience, query, counts); err != nil {
+		return nil, err
+	}
+	for index, earlier := range query.same {
+		counts[index] = counts[earlier]
+	}
+	return counts, tx.Commit()
+}
+
+func readSmartRuleCounts(ctx context.Context, tx *sql.Tx, audience domain.Audience, query smartFolderQuery, counts []domain.SmartRuleCount) error {
+	rows, err := query.run(ctx, tx, audience)
+	if err != nil {
+		return fmt.Errorf("cannot count the smart rules: %w", err)
+	}
+	if rows == nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var index int
+		var count domain.SmartRuleCount
+		var duration sql.NullInt64
+		if err := rows.Scan(&index, &count.VideoCount, &count.SizeBytes, &duration); err != nil {
+			return fmt.Errorf("cannot count the smart rules: %w", err)
+		}
+		if duration.Valid {
+			count.DurationMs = &duration.Int64
+		}
+		counts[index] = count
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("cannot count the smart rules: %w", err)
 	}
 	return nil
 }
