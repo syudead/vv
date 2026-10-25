@@ -97,6 +97,10 @@ type WorkInfoPluginStore struct{ sql, read *sql.DB }
 // VirtualVideoStore owns virtual videos and their projected rows, publishing changes after commit.
 type VirtualVideoStore struct{ db *DB }
 
+// AssistantStore owns the assistant's proposals, each transition one UPDATE guarded by the previous status, with
+// the assistant_run entry written in the same transaction and AssistantChanged published after commit.
+type AssistantStore struct{ db *DB }
+
 // ActivityStore owns reads and startup recovery; other roles write activity through private helpers in their own transactions.
 type ActivityStore struct{ db *DB }
 
@@ -129,7 +133,8 @@ func (db *DB) VideoEdits() *VideoEditStore     { return &VideoEditStore{db: db} 
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
 	return &WorkInfoPluginStore{sql: db.sql, read: db.read}
 }
-func (db *DB) Activity() *ActivityStore { return &ActivityStore{db: db} }
+func (db *DB) Activity() *ActivityStore   { return &ActivityStore{db: db} }
+func (db *DB) Assistant() *AssistantStore { return &AssistantStore{db: db} }
 func (db *DB) VirtualVideos() *VirtualVideoStore {
 	return &VirtualVideoStore{db: db}
 }

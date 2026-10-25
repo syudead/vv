@@ -1122,6 +1122,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the assistant's active proposals
+         * @description Owner-only. Lists, newest first, the proposals that are approved or running and those finished within the last hour, so the panel shows them when it opens. active=true is the only filter and is required.
+         */
+        get: operations["listAssistantProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/proposals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one assistant proposal
+         * @description Owner-only. The panel reads it again on each assistant event. A missing or expired proposal returns 404 not_found.
+         */
+        get: operations["getAssistantProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/proposals/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an assistant proposal for execution
+         * @description Owner-only; no body. Moves a proposed proposal to approved and returns it with 202; the assistant worker then executes exactly its stored plan in the background, in batches of 500 videos, and the progress follows assistant events. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field.
+         */
+        post: operations["executeAssistantProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/comfyui": {
         parameters: {
             query?: never;
@@ -3498,7 +3558,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group and smartFolder; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3722,6 +3782,85 @@ export interface components {
         OllamaModel: {
             /** @description Model name as Ollama lists it, such as qwen3:8b. */
             name: string;
+        };
+        AssistantProposalList: {
+            items: components["schemas"]["AssistantProposal"][];
+        };
+        /** @description A write the assistant proposed, with what the confirmation card shows and the run's progress. */
+        AssistantProposal: {
+            /** Format: int64 */
+            id: number;
+            status: components["schemas"]["AssistantProposalStatus"];
+            /** @description The owner's text, as untranslated user data. */
+            request: string;
+            /** @description The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add. */
+            operation: string;
+            /** @description From the catalog row; the card marks the change as one that cannot be undone. */
+            irreversible: boolean;
+            targets: components["schemas"]["AssistantProposalTargets"];
+            /** @description The arguments after resolution, one per argument, in the order the card shows them. */
+            change: components["schemas"]["AssistantChange"][];
+            /** @description Names the operation creates, such as a tag to attach that does not exist yet. */
+            created: string[];
+            impact?: components["schemas"]["AssistantImpact"];
+            counts: components["schemas"]["AssistantProposalCounts"];
+            error?: components["schemas"]["AssistantProposalError"];
+            /**
+             * Format: int64
+             * @description The assistant_run activity entry, present once the proposal is approved.
+             */
+            activityId?: number;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
+        /**
+         * @description proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
+         * @enum {string}
+         */
+        AssistantProposalStatus: "proposed" | "approved" | "running" | "done" | "partial" | "stale" | "failed" | "discarded";
+        AssistantProposalTargets: {
+            /** @description The catalog row's target kind; empty for a row that acts on its arguments alone. */
+            kind: string;
+            /** @description Videos for a video target, otherwise the named entities. */
+            count: number;
+            /** @description The first 10 targets the card names. */
+            labels: components["schemas"]["AssistantLabel"][];
+        };
+        AssistantLabel: {
+            /** @enum {string} */
+            kind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot";
+            /**
+             * Format: int64
+             * @description The entity's id when the card showed it; absent when unknown.
+             */
+            id?: number;
+            /** @description The name the card showed, as untranslated user data. */
+            name: string;
+        };
+        AssistantChange: {
+            /** @description The argument name of the action outcome, such as tagNames or enabled. */
+            argument: string;
+            /** @description The entities the argument names after resolution. */
+            labels?: components["schemas"]["AssistantLabel"][];
+            /** @description A literal value, such as a boolean, a number or a date. */
+            value?: unknown;
+        };
+        /** @description Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored. */
+        AssistantImpact: {
+            videos: number;
+        };
+        /** @description In videos for a batched operation, otherwise 0 or 1 for the one call. */
+        AssistantProposalCounts: {
+            total: number;
+            applied: number;
+            failed: number;
+        };
+        /** @description The first failed call's screen API code and reason, or the code interrupted after a restart. */
+        AssistantProposalError: {
+            code: string;
+            reason?: string;
         };
         /** @description Whether a turn can run; reason is present only when ready is false. */
         AssistantReadiness: {
@@ -6802,12 +6941,12 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "pipeline" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "assistant_run" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
          */
-        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition";
+        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition" | "assistant";
         /**
          * @description Record status.
          * @enum {string}
@@ -6822,7 +6961,7 @@ export interface components {
          * @description Outcome of done records.
          * @enum {string}
          */
-        ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted";
+        ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted" | "partial" | "stale";
         /**
          * @description Actor responsible for the recorded decision, otherwise the actor that started processing.
          * @enum {string}
@@ -6858,6 +6997,7 @@ export interface components {
             media_folders: number;
             organize: number;
             face_recognition: number;
+            assistant: number;
         };
         /** @description One activity record. */
         ActivityEntry: components["schemas"]["ActivityEntryFields"];
@@ -6982,7 +7122,7 @@ export interface components {
         /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
             /** @enum {string} */
-            kind: "video" | "pair" | "scan" | "folder" | "person";
+            kind: "video" | "pair" | "scan" | "folder" | "person" | "proposal";
             items: components["schemas"]["ActivitySubjectItem"][];
         };
         ActivitySubjectItem: {
@@ -7057,7 +7197,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -7075,6 +7215,7 @@ export interface components {
             settingKeys?: string[];
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
+            proposal?: components["schemas"]["AssistantProposal"];
         };
         /**
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -7175,6 +7316,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Assistant proposal ID */
+        AssistantProposalId: number;
         /** @description Activity record ID */
         ActivityId: number;
         /** @description Thumbnail-edit session ID */
@@ -9246,6 +9389,92 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAssistantProposals: {
+        parameters: {
+            query: {
+                /** @description Must be true. */
+                active: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active proposals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposalList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAssistantProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant proposal ID */
+                id: components["parameters"]["AssistantProposalId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposal"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    executeAssistantProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant proposal ID */
+                id: components["parameters"]["AssistantProposalId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approved proposal */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantProposal"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The proposal is not pending (`proposal_not_pending`); proposal carries it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getComfyUISettings: {

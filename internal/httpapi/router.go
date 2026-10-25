@@ -300,6 +300,8 @@ type Options struct {
 	VersionReview  VersionJudgeReview
 
 	Ollama OllamaConnection
+	// Nil Assistant makes the assistant proposal routes fail with 500.
+	Assistant AssistantProposals
 
 	ComfyUI ComfyUIConnection
 
@@ -391,6 +393,7 @@ type server struct {
 	versionJudging    VersionJudging
 	versionReview     VersionJudgeReview
 	ollama            OllamaConnection
+	assistant         AssistantProposals
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
@@ -483,6 +486,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		versionJudging:         opts.VersionJudging,
 		versionReview:          opts.VersionReview,
 		ollama:                 opts.Ollama,
+		assistant:              opts.Assistant,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,

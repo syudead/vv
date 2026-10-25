@@ -119,18 +119,21 @@ func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction,
 	if !action.Valid() {
 		return domain.TagImpact{}, fmt.Errorf("unknown tag impact action %q", action)
 	}
-	unique := uniqueTagIDs(ids)
-	if len(unique) == 0 {
-		return domain.TagImpact{}, nil
-	}
-
 	// Read eligible tags and video counts from one snapshot.
 	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.TagImpact{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	return tagImpact(ctx, tx, action, ids)
+}
 
+// tagImpact is TagImpact inside the caller's snapshot; the assistant counts a tag merge's videos with it.
+func tagImpact(ctx context.Context, tx *sql.Tx, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
+	unique := uniqueTagIDs(ids)
+	if len(unique) == 0 {
+		return domain.TagImpact{}, nil
+	}
 	targets, err := tagBatchTargets(ctx, tx, unique)
 	if err != nil {
 		return domain.TagImpact{}, err

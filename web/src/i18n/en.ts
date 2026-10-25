@@ -246,6 +246,7 @@ const errorCodes = {
   smart_folder_cycle:
     "A smart folder can't be put inside itself or inside one of its children.",
   ollama_unreachable: "Ollama can't be reached at the saved URL",
+  proposal_not_pending: "This proposal was already handled",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -3076,6 +3077,7 @@ export const en = {
       media_folders: "Media folders",
       organize: "Drag and drop",
       face_recognition: "Face recognition",
+      assistant: "Assistant",
     } satisfies Record<ActivityFeature, string>,
     deciderValue: {
       ai: "AI",
@@ -3114,6 +3116,7 @@ export const en = {
       organize_undo: "Drag and drop undone",
       face_analysis: "Face analysis",
       face_merge: "Person merged",
+      assistant_run: "Assistant run",
       pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,
