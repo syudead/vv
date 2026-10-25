@@ -124,17 +124,24 @@ type listSpec struct {
 
 // ListVideos uses keyset pagination and one snapshot for tag existence, counts and rows; callers validate audience filter permissions.
 func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
+	return s.listTaggedVideoPage(ctx, q.TagIDs, func(tagIDs []int64) listSpec {
+		return libraryListSpec(audience, q, tagIDs)
+	})
+}
+
+// listTaggedVideoPage drops unknown tag IDs and reads the page in the same snapshot, reporting the dropped IDs.
+func (s *LibraryStore) listTaggedVideoPage(ctx context.Context, requested []int64, spec func(tagIDs []int64) listSpec) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("cannot start reading the list: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
+	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, requested)
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := listVideoPageTx(ctx, tx, libraryListSpec(audience, q, tagIDs))
+	page, err := listVideoPageTx(ctx, tx, spec(tagIDs))
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
@@ -146,21 +153,25 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 }
 
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
-	spec := listSpec{
-		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
-	}
+	spec := filteredListSpec(libraryScope(audience), q, tagIDs)
 	spec.scope.videoKind = q.Kind
 	return spec
 }
 
-// ListFolderVideos uses ListVideos semantics within the requested folder scope, taking titles from matching locations.
+// filteredListSpec applies q's search, filters, sort and paging within scope.
+func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) listSpec {
+	return listSpec{
+		scope: scope, expr: domain.ParseSearchQuery(q.Query),
+		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
+		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
+		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+	}
+}
+
+// ListFolderVideos uses ListVideos semantics and filters within the requested folder scope, taking titles from matching locations.
 func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
-	return s.listVideoPage(ctx, listSpec{
-		scope: folderScope(q.Dir, q.Scope, audience), expr: domain.ParseSearchQuery(q.Query),
-		favoriteOnly: q.FavoriteOnly, sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+	return s.listTaggedVideoPage(ctx, q.TagIDs, func(tagIDs []int64) listSpec {
+		return filteredListSpec(folderScope(q.Dir, q.Scope, audience), q.VideoQuery, tagIDs)
 	})
 }
 
@@ -287,24 +298,6 @@ func countVideosWith(ctx context.Context, db queryRower, spec listSpec) (int, er
 
 func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, error) {
 	return countVideosWith(ctx, s.db.sql, spec)
-}
-
-// Read counts and page rows from one snapshot so concurrent ingestion cannot make them disagree.
-func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
-	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("cannot start reading the list: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	page, err := listVideoPageTx(ctx, tx, spec)
-	if err != nil {
-		return domain.VideoPage{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
-	}
-	return page, nil
 }
 
 // The caller owns the transaction, allowing tag existence and page data to share a snapshot.

@@ -36,7 +36,7 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 	if n, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByOwner); err != nil || n != 2 {
 		t.Fatalf("QueueLibrary = %d, %v", n, err)
 	}
-	// The first video creates the provisional person; the second links the same face to it.
+	// Each video creates a provisional person of the same face; the owner merges the second into the first.
 	for range 2 {
 		job, err := db.Faces().Claim(ctx)
 		if err != nil {
@@ -49,7 +49,11 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 			t.Fatal(err)
 		}
 	}
-	f.provisional = faceAppearances(t, db)[0].personID
+	appearances := faceAppearances(t, db)
+	f.provisional = appearances[0].personID
+	if _, err := db.Credits().Merge(ctx, domain.CreditPerson, f.provisional, []int64{appearances[1].personID}); err != nil {
+		t.Fatal(err)
+	}
 	if targetOnA {
 		// Added after the analysis, which would otherwise merge the provisional person by the cast rule.
 		info := domain.WorkInfo{People: []domain.WorkPerson{performer(f.target), performer(f.provisional)}}

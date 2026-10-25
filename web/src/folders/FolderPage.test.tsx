@@ -418,12 +418,56 @@ describe("FolderPage", () => {
     expect(
       child.compareDocumentPosition(movie) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByRole("checkbox")).toBeNull();
 
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
     expect(headings).toEqual(["Folders 1", "Videos 1"]);
+  });
+
+  it("所有者はフォルダの動画を選ぶと選択バーが出て、Escape で解け、ゲストには選択が無い", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderFolders("/folders/3/A");
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "x"' }));
+    expect(screen.getByText("1 video selected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("1 video selected")).toBeNull();
+    unmount();
+
+    renderFolders("/folders/3/A", "guest");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("最上位の検索結果でも動画を選べ、Shift でチェックすると間の動画も選ぶ", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "x"' }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select "z"' }));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByText("3 videos selected")).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: 'Select "y"' }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("リスト表示に切り替えると動画を表の行で出し、行のチェックでも選べる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    await user.click(screen.getByRole("button", { name: "View and sort" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("radio", { name: "List" }),
+    );
+    await user.keyboard("{Escape}");
+
+    const table = screen.getByRole("table");
+    expect(screen.getAllByRole("link", { name: "x" })).toHaveLength(1);
+    expect(within(table).getByRole("link", { name: "x" })).toBeTruthy();
+    await user.click(within(table).getByRole("checkbox", { name: 'Select "x"' }));
+    expect(screen.getByText("1 video selected")).toBeTruthy();
   });
 
   it("パンくずに現在地までの段を出し、現在地はリンクにしない", async () => {
@@ -986,24 +1030,54 @@ describe("FolderPage", () => {
     );
   });
 
-  it("URL の tag は読まず、絞り込みを変えると tag が URL から消える（issue 269）", async () => {
+  it("URL のタグと人物で動画を絞り、お気に入りに切り替えても絞り込みを URL に残す", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?tag=1&person=2");
+    await screen.findByRole("link", { name: "x" });
+    const sent = requests.find((url) => url.startsWith("/api/folders/3/videos?path=A"));
+    const params = new URL(sent ?? "", "http://localhost").searchParams;
+    expect(params.getAll("tag")).toEqual(["1"]);
+    expect(params.get("person")).toBe("2");
+
+    await user.click(screen.getByRole("button", { name: /^Filter/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain("fav=1"),
+    );
+    const location = screen.getByTestId("location").textContent ?? "";
+    expect(location).toContain("tag=1");
+    expect(location).toContain("person=2");
+  });
+
+  it("タグの絞り込みだけを外しても一覧の先頭へ戻る", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?tag=1");
     await screen.findByRole("link", { name: "x" });
-    expect(
-      requests.some(
-        (url) => url.startsWith("/api/folders/3/videos?path=A") && url.includes("tag="),
-      ),
-    ).toBe(false);
+    const scrollTo = vi.mocked(window.scrollTo);
+    scrollTo.mockClear();
 
-    await user.click(screen.getByRole("button", { name: "Filter" }));
-    await user.click(screen.getByRole("checkbox", { name: "Favorites only" }));
-    await user.click(screen.getByRole("button", { name: "Apply" }));
-    await waitFor(() => {
-      const location = screen.getByTestId("location").textContent ?? "";
-      expect(location).toContain("fav=1");
-      expect(location).not.toContain("tag=");
-    });
+    await user.click(screen.getByRole("button", { name: /^Filter/ }));
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).not.toContain("tag="),
+    );
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+  });
+
+  it("配下の検索結果をリスト表示にしても、行に置き場所を出す", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=京都");
+    await screen.findByRole("link", { name: /^y/ });
+    await user.click(screen.getByRole("button", { name: "View and sort" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("radio", { name: "List" }),
+    );
+    await user.keyboard("{Escape}");
+
+    const row = within(screen.getByRole("table")).getByRole("link", { name: /^y/ });
+    expect(row.getAttribute("aria-label")).not.toBe("y");
+    expect(row.closest("td")?.textContent).toContain("B");
   });
 
   it("検索語があると子フォルダを出さず、配下の検索結果に置き場所を添える。消すと元に戻る", async () => {
@@ -1035,7 +1109,7 @@ describe("FolderPage", () => {
     renderFolders("/folders/3/A");
     await screen.findByRole("link", { name: "x" });
 
-    const box = screen.getByRole("searchbox", { name: "Search in A" });
+    const box = screen.getByRole("combobox", { name: "Search in A" });
     await user.type(box, "京都");
     await user.tab();
     expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
@@ -1056,7 +1130,7 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=gone");
     await screen.findByText("This folder wasn't found");
-    const box = screen.getByRole("searchbox");
+    const box = screen.getByRole("combobox");
     await user.clear(box);
     await user.type(box, "broken{Enter}");
     expect(await screen.findByText("Couldn't load the list")).toBeDefined();
@@ -1278,7 +1352,7 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A");
     await screen.findByRole("link", { name: "x" });
-    const box = screen.getByRole("searchbox", { name: "Search in A" });
+    const box = screen.getByRole("combobox", { name: "Search in A" });
     expect(document.activeElement).not.toBe(box);
 
     await user.keyboard("/");
@@ -1965,7 +2039,7 @@ describe("FolderPage の英語の画面", () => {
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
     ).toEqual(["Folders 1", "Videos 2"]);
-    expect(screen.getByRole("searchbox", { name: "Search in 旅行" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Search in 旅行" })).toBeDefined();
   });
 
   it("疑似ロケールで、最上位・フォルダ・まとめ方のメニューの文言がカタログから出る", async () => {

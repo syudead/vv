@@ -18,35 +18,10 @@ type FaceCandidate struct {
 	Similarity float64
 }
 
-// FaceMatchKind is what a main person's vector does among the stored people.
-type FaceMatchKind int
-
-const (
-	// FaceMatchNew creates a provisional person, which Candidates are then offered with.
-	FaceMatchNew FaceMatchKind = iota
-	// FaceMatchLink links the appearance to PersonID.
-	FaceMatchLink
-)
-
-// FaceMatch is the result of comparing one vector with every stored person.
-type FaceMatch struct {
-	Kind       FaceMatchKind
-	PersonID   int64
-	Similarity float64
-	// Candidates are, for a new person, every person at or above Candidate; for a link, the other people at or above
-	// Link, who are likely the linked person stored twice. Most similar first.
-	Candidates []FaceCandidate
-}
-
-// MatchFace links v to the most similar person at or above Link, offering the others at or above Link as that
-// person's candidates, or creates a provisional person offered with every person at or above Candidate.
-func MatchFace(th FaceThresholds, v []float32, vectors []FacePersonVector) FaceMatch {
-	best := bestFaceSimilarities(v, vectors)
-	if len(best) > 0 && best[0].Similarity >= th.Link {
-		return FaceMatch{Kind: FaceMatchLink, PersonID: best[0].PersonID, Similarity: best[0].Similarity,
-			Candidates: atLeast(best[1:], th.Link)}
-	}
-	return FaceMatch{Kind: FaceMatchNew, Candidates: atLeast(best, th.Candidate)}
+// FaceCandidates returns every person at or above Candidate, most similar first. A main person is never linked to a
+// stored person by vector: wrong links to strangers outweighed the right ones, so the owner confirms each pair.
+func FaceCandidates(th FaceThresholds, v []float32, vectors []FacePersonVector) []FaceCandidate {
+	return atLeast(bestFaceSimilarities(v, vectors), th.Candidate)
 }
 
 // FaceSiblingPair is two provisional people created by one analysis whose faces may be one person.
@@ -117,13 +92,13 @@ type StoredFaceAppearance struct {
 type FaceAppearancePlan struct {
 	// CarriedFrom is the stored appearance this one replaces, keeping its id, person and dropped mark; 0 when new.
 	CarriedFrom int64
-	// Match is the vector match of a new appearance; unset when carried over.
-	Match FaceMatch
+	// Candidates are the people a new appearance's provisional person is offered with; unset when carried over.
+	Candidates []FaceCandidate
 }
 
-// PlanFaceAppearances carries stored appearances over to the new main people of the same video and matches
-// the rest by vector. A carried-over appearance keeps its person and is not matched again, so a dropped one is
-// neither linked nor made a new provisional person.
+// PlanFaceAppearances carries stored appearances over to the new main people of the same video; the rest become
+// provisional people offered with their candidates. A carried-over appearance keeps its person, so a dropped one is
+// not made a new provisional person.
 func PlanFaceAppearances(th FaceThresholds, stored []StoredFaceAppearance, people []MainPerson, vectors []FacePersonVector) []FaceAppearancePlan {
 	spans := make([][]FaceSpan, len(people))
 	for i, p := range people {
@@ -136,7 +111,7 @@ func PlanFaceAppearances(th FaceThresholds, stored []StoredFaceAppearance, peopl
 			plans[i].CarriedFrom = carried[i]
 			continue
 		}
-		plans[i].Match = MatchFace(th, p.Centroid, vectors)
+		plans[i].Candidates = FaceCandidates(th, p.Centroid, vectors)
 	}
 	return plans
 }

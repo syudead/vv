@@ -110,10 +110,7 @@ func TestSplitFaceAppearanceMakesAProvisionalPersonOfTheFace(t *testing.T) {
 func TestSplitFaceAppearanceKeepsTheCreditAnotherAppearanceStillLinks(t *testing.T) {
 	f := newFaceFixture(t)
 	ctx := context.Background()
-	named := createPerson(t, f.db, "Named").ID
-	setFaceVector(t, f.db, named, faceBasis(0))
-	crop := string(jpegCrop(t))
-	f.analyse(t, facePerson(0.25, 0, faceBasis(0), crop), facePerson(0.75, 0, faceBasis(0), crop))
+	named := f.analyseOnePersonTwice(t, string(jpegCrop(t)))
 	appearances := faceAppearances(t, f.db)
 	if len(appearances) != 2 || appearances[0].personID != named || appearances[1].personID != named {
 		t.Fatalf("appearances = %+v, want both linked to the named person", appearances)

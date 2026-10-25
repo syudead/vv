@@ -14,9 +14,7 @@ export interface VideosCriteria {
   seed?: number;
   /** Folder-only scope; omitted equals direct. */
   scope?: FolderScope;
-  /** Do not pass tag filters to folder listings. */
   tag?: number[];
-  /** Do not pass credit filters to folder listings. */
   person?: number;
   /** Requires person. */
   personRole?: WorkPersonRole;

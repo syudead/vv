@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -214,10 +215,7 @@ func TestListFolderVideosPassesQueryAndReturnsPage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if want := (domain.FolderVideoQuery{
-		Dir: "/a/movies/A", Scope: domain.FolderScopeDirect,
-		Sort: domain.SortTitleAsc, Cursor: "abc", Limit: domain.MaxLimit,
-	}); folders.lastQuery != want {
+	if want := (domain.FolderVideoQuery{Dir: "/a/movies/A", Scope: domain.FolderScopeDirect, VideoQuery: domain.VideoQuery{Sort: domain.SortTitleAsc, Cursor: "abc", Limit: domain.MaxLimit}}); !reflect.DeepEqual(folders.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
 	}
 	page := decode[gen.VideoPage](t, rec)
@@ -228,6 +226,27 @@ func TestListFolderVideosPassesQueryAndReturnsPage(t *testing.T) {
 	do(t, handler, http.MethodGet, "/api/folders/3/videos")
 	if folders.lastQuery.Dir != "/a/movies" || folders.lastQuery.Sort != domain.SortAddedDesc || folders.lastQuery.Limit != domain.DefaultLimit {
 		t.Errorf("default query = %+v", folders.lastQuery)
+	}
+}
+
+func TestListFolderVideosPassesListFilters(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	folders := folderFixture()
+	handler := newTestServer(t, Options{Folders: folders})
+
+	rec := do(t, handler, http.MethodGet,
+		"/api/folders/3/videos?path=A&tag=5&tag=8&person=2&personRole=director&organization=4&tagKind=6")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	want := domain.FolderVideoQuery{Dir: "/a/movies/A", Scope: domain.FolderScopeDirect, VideoQuery: domain.VideoQuery{Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit, TagIDs: []int64{5, 8}, Person: 2, PersonRole: domain.PersonRole("director"), Organization: 4, TagKindID: 6}}
+	if !reflect.DeepEqual(folders.lastQuery, want) {
+		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
+	}
+	if rec := do(t, handler, http.MethodGet, "/api/folders/3/videos?personRole=director"); rec.Code != http.StatusBadRequest {
+		t.Errorf("personRole without person: status = %d, want 400", rec.Code)
 	}
 }
 
@@ -310,11 +329,8 @@ func TestListFolderVideosSearchesSubtree(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	want := domain.FolderVideoQuery{
-		Dir: "/a/movies/A", Scope: domain.FolderScopeSubtree, Query: "京都",
-		Sort: domain.SortRandom, Seed: domain.MaxShuffleSeed, Limit: domain.DefaultLimit,
-	}
-	if folders.lastQuery != want {
+	want := domain.FolderVideoQuery{Dir: "/a/movies/A", Scope: domain.FolderScopeSubtree, VideoQuery: domain.VideoQuery{Query: "京都", Sort: domain.SortRandom, Seed: domain.MaxShuffleSeed, Limit: domain.DefaultLimit}}
+	if !reflect.DeepEqual(folders.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
 	}
 

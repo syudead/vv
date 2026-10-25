@@ -1,24 +1,31 @@
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { Video } from "../api/client";
 import { isOrganizable, itemKey, itemVideo, itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import type { Zoom } from "../preferences/viewPreferences";
+import { LibraryTableHeader } from "../library/LibraryPage";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { CardGrid } from "../ui/patterns/card-grid";
+import { DataTable } from "../ui/patterns/data-table";
+import { TableBody } from "../ui/shadcn/table";
 import { CardDragLayer, DraggableCard } from "../videoList/cardDrag";
+import { liftedKeys } from "../videoList/cardDragRules";
 import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 
-/** Folders have no selection, so dragging lifts only the pressed card. */
-function single(key: string): readonly string[] {
-  return [key];
-}
-
 export default function FolderVideoGrid(props: FolderVideoGridProps) {
   const owner = useAudience() === "owner";
+  if (props.view === "list") {
+    return (
+      <DataTable label={t.folders.videos}>
+        <LibraryTableHeader owner={owner} />
+        <TableBody>{itemVideos(props.videos.items).map(props.card)}</TableBody>
+      </DataTable>
+    );
+  }
   if (!owner) {
     return (
       <CardGrid size={props.zoom}>
@@ -31,13 +38,26 @@ export default function FolderVideoGrid(props: FolderVideoGridProps) {
 
 interface FolderVideoGridProps {
   videos: VideosState;
+  view: ViewMode;
   zoom: Zoom;
+  /** A card in the grid, a row in the list. */
   card: (video: Video) => ReactNode;
+  /** Keys of the selected videos; pressing one lifts them all in display order. */
+  selectedKeys: readonly string[];
   /** Called on lift to stop hover previews. */
   onLift: () => void;
+  /** Called after a drop is accepted, to clear the selection. */
+  onAccepted: () => void;
 }
 
-function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridProps) {
+function OwnerFolderVideoGrid({
+  videos,
+  zoom,
+  card,
+  selectedKeys,
+  onLift,
+  onAccepted,
+}: FolderVideoGridProps) {
   const { refreshInPlace } = videos;
   const undo = useUndoToast(refreshInPlace);
   const drops = useVideoDrops({
@@ -47,16 +67,21 @@ function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridPro
     from: null,
     groupItem: null,
     reread: refreshInPlace,
+    onAccepted,
     undo,
   });
   const shown = drops.shown;
   // Narrow the type to draggable items; folders never receive smart-folder entries.
   const organizable = useMemo(() => shown.filter(isOrganizable), [shown]);
   const { order, nameOf, preview } = useOrderedItemDrag(organizable, itemKey, false);
+  const liftedFor = useCallback(
+    (key: string) => liftedKeys(order, key, selectedKeys),
+    [order, selectedKeys],
+  );
   return (
     <CardDragLayer
       order={order}
-      liftedFor={single}
+      liftedFor={liftedFor}
       reorder={false}
       onto={drops.onto}
       nameOf={nameOf}

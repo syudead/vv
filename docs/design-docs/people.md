@@ -49,7 +49,7 @@ person page reads the profile without a join. Organizations have no profile;
 | `bloodType`                        | `A`, `B`, `O`, `AB`, in any case                                                         | `work_info_out_of_range`                                             |
 | `careerStartYear`, `careerEndYear` | 1900–9999, the end not before the start                                                  | `work_info_out_of_range`                                             |
 | `bio`                              | 1–5,000 code points; line breaks kept                                                    | `work_info_too_long`                                                 |
-| `links`                            | Up to 20 unique HTTP(S) URLs, as work URLs                                               | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
+| `links`                            | Up to 100 unique HTTP(S) URLs, as work URLs                                              | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
 
 Owners and plugins often know a date only to the year, so a date keeps its own
 precision instead of being padded to a full date.
@@ -202,9 +202,14 @@ fractions of the frame's long side, as face recognition samples them.
 The faces are read page by page until 48 can be framed or none are left, so faces
 whose video is gone do not crowd them out. A frame read for another face or
 moment counts as still loading, so `Set as face` waits for the chosen one.
-`Set as face` cuts the outline out of the frame at the frame's own pixels and
-sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
-the same fitting as an upload and the dialog shows its refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
+`Set as face` cuts the outline out of the frame, resamples it to 800 px on its
+long side with high-quality smoothing, and sends it to
+`PUT /api/people/{id}/image` as a JPEG, so the face goes through the same
+fitting as an upload and the dialog shows its refusals
+([`faceFrameImage.ts`](../../web/src/credits/person/faceFrameImage.ts)). A
+Retina profile shows the face at about 480 × 720 device pixels; a cut kept at
+its own pixels, often near 230 px wide, would be enlarged on screen together
+with its JPEG blocks. The framing of an upload saves the same way. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
 long side with `private, max-age=3600`, and reports a position outside the
 video, an unreadable file and a frame that does not decode as the thumbnail
 position endpoint does.
@@ -405,7 +410,7 @@ shows many faces at once, so a face that is not the person stands out, where a
 list of rows led with titles.
 
 Each crop carries a `Not this person` icon button in its `PersonFaceMark`
-`top-end`, for a face the analysis linked to the wrong person. It splits the
+`top-end`, for a face merged into the wrong person. It splits the
 face into a new unnamed person with no confirmation: the tile stays, dimmed,
 with `Split into #12` and `Undo`, which merges the new person back into the
 shown one (`POST /api/people/{id}/merge`); a person who had no face is left

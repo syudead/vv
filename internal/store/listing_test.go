@@ -203,7 +203,7 @@ func TestListingScopes(t *testing.T) {
 
 	folder := func(scope domain.FolderScope, query string) []string {
 		t.Helper()
-		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Scope: scope, Query: query, Limit: domain.MaxLimit})
+		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Scope: scope, VideoQuery: domain.VideoQuery{Query: query, Limit: domain.MaxLimit}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -557,14 +557,14 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 		if got := slices.Contains(titlesOf(page), "猫"); got != want {
 			t.Errorf("ライブラリで %q = %v, want %v", query, got, want)
 		}
-		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Query: query})
+		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), VideoQuery: domain.VideoQuery{Query: query}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got := slices.Contains(titlesOf(direct), "猫"); got != want {
 			t.Errorf("フォルダ直下で %q = %v, want %v", query, got, want)
 		}
-		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, Query: query})
+		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, VideoQuery: domain.VideoQuery{Query: query}})
 		if err != nil {
 			t.Fatal(err)
 		}

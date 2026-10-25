@@ -101,7 +101,6 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 
 	query := domain.FolderVideoQuery{
 		Dir: domain.FolderDir(root.Path, rel), Scope: domain.FolderScopeDirect,
-		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
 	audience := audienceFrom(r.Context())
 	if rel != "" || !audience.IsOwner() {
@@ -123,28 +122,15 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		}
 		query.Scope = scope
 	}
-	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
-		return
-	}
-	filters, ok := s.parseListFilters(w, listFilterParams{sort: params.Sort, seed: params.Seed})
+	filters, ok := s.parseVideoQuery(w, audience, videoQueryParams{
+		query: params.Query, sort: params.Sort, seed: params.Seed, cursor: params.Cursor,
+		limit: params.Limit, tag: params.Tag, favorite: params.Favorite, person: params.Person,
+		organization: params.Organization, tagKind: params.TagKind, personRole: params.PersonRole,
+	})
 	if !ok {
 		return
 	}
-	query.Sort, query.Seed = filters.sort, filters.seed
-	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
-	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Sort: query.Sort, FavoriteOnly: query.FavoriteOnly}) {
-		return
-	}
-	if params.Limit != nil {
-		if *params.Limit < 1 {
-			s.invalidRequest(w, "limit must be at least 1.")
-			return
-		}
-		query.Limit = min(*params.Limit, domain.MaxLimit)
-	}
-	if params.Cursor != nil {
-		query.Cursor = *params.Cursor
-	}
+	query.VideoQuery = filters
 
 	page, err := s.folders.ListFolderVideos(r.Context(), audience, query)
 	switch {

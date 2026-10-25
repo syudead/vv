@@ -213,6 +213,37 @@ describe("FolderPage drag a video onto a video", () => {
     ]);
   });
 
+  it("選んだカードを持ち上げると、選んだ全部を表示の順で落とし、受け付けたら選択を解く", async () => {
+    server.videos = [video(1, "x"), video(2, "y"), video(3, "z")];
+    layoutCards();
+    renderFolder();
+    await screen.findByRole("link", { name: "z" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: 'Select "y"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "x"' }));
+
+    lift("y", 1);
+    moveTo(2);
+    release(2);
+    await user.click(
+      within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
+    );
+
+    await waitFor(() =>
+      expect(server.writes[0]).toEqual({
+        path: "/api/organize/group",
+        body: {
+          items: [
+            { kind: "video", id: 1 },
+            { kind: "video", id: 2 },
+          ],
+          target: 3,
+        },
+      }),
+    );
+    expect(screen.queryByText(/selected$/)).toBeNull();
+  });
+
   it("「Bundle as versions」は持ち上げたカードを消す", async () => {
     await open();
     await userEvent

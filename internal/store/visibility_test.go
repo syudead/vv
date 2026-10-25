@@ -207,7 +207,7 @@ func TestFoldersByAudience(t *testing.T) {
 		{owner, domain.FolderScopeSubtree, []string{"a", "b", "c", "d"}},
 	} {
 		page, err := db.Library().ListFolderVideos(ctx, tc.audience,
-			domain.FolderVideoQuery{Dir: fixturePath("/media/pub"), Scope: tc.scope, Limit: domain.MaxLimit})
+			domain.FolderVideoQuery{Dir: fixturePath("/media/pub"), Scope: tc.scope, VideoQuery: domain.VideoQuery{Limit: domain.MaxLimit}})
 		if err != nil {
 			t.Fatal(err)
 		}

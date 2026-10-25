@@ -7388,6 +7388,21 @@ type ListFolderVideosParams struct {
 
 	// Limit Page size
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Tag One parameter per tag ID (`tag=3&tag=8`), combined by AND. At most 16; more returns 400. Unknown IDs are removed from the filter and returned in `missingTagIds`.
+	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	PersonRole *PersonRoleFilter `form:"personRole,omitempty" json:"personRole,omitempty"`
+
+	// Organization Organization ID, matching any role; follows person filter semantics
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // ListGroupsParams defines parameters for ListGroups.
@@ -9519,6 +9534,71 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personRole" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personRole", r.URL.Query(), &params.PersonRole, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personRole"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personRole", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
 		}
 		return
 	}

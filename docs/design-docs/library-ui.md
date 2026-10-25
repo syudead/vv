@@ -276,9 +276,10 @@ owner-only recently played and date favorited. Date created sits
 with the other dates;
 date favorited follows recently played and sorts newest first.
 
-On folder, group and smart-folder pages the filter popover holds only
-`Favorites only` (URL `fav=1`). On the library it lists `Tags`, `Person`,
-`Organization` and `Favorites only`, in that order:
+On group and smart-folder pages the filter popover holds only
+`Favorites only` (URL `fav=1`). On the library and folder pages it lists
+`Tags`, `Person`, `Organization` and `Favorites only`, in that order, and the
+active filters show as chips above the list:
 
 | Control        | Picks                                                                                                            | URL                                                                                                              |
 | -------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -514,7 +515,7 @@ A group is refetched with `GET /api/groups/{id}`.
 
 ### List view and selection
 
-List view (library only) shows title, favorite (owner), add to playlist and
+List view (library, folder, group and smart-folder pages) shows title, favorite (owner), add to playlist and
 add to group (owner, from `sm`; below it the selection bar offers them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
@@ -522,7 +523,10 @@ title, `3 / 12` watched, total duration and size, empty quality. A virtual
 video's row shows the virtual mark in the duration cell, empty quality and size
 cells and its creation time as the date added.
 
-Selection is library- and owner-only. Its check shows on hover or focus in the
+Selection is owner-only, on the library, group, smart-folder and folder pages
+and in folder search results. A folder page selects only its videos, with the
+same checks, Shift ranges, drawn boxes and multi-card drags as the library, and
+clears the selection when its conditions change. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.
@@ -1049,8 +1053,9 @@ and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 
-The list routes (`GET /api/videos` and `GET /api/library`) take these
-conditions, each ANDed with the others:
+The list routes (`GET /api/videos`, `GET /api/library` and
+`GET /api/folders/{rootId}/videos`) take these conditions, each ANDed with the
+others:
 
 | Parameter      | Keeps                                                                                  | Guest                                             |
 | -------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -1058,7 +1063,7 @@ conditions, each ANDed with the others:
 | `tag`          | Videos that carry every listed tag                                                     | `400 guest_filter_not_allowed`                    |
 | `favorite`     | Favorite videos and favorite groups                                                    | `400 guest_filter_not_allowed`                    |
 | `person`       | Videos linked to that person in any role                                               | `400 guest_filter_not_allowed`                    |
-| `personRole`   | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed`                    |
+| `personRole`   | With `person`, only videos linked to that person in this role (not `GET /api/library`) | `400 guest_filter_not_allowed`                    |
 | `organization` | Videos linked to that organization in any role                                         | `400 guest_filter_not_allowed`                    |
 | `tagKind`      | Videos with at least one tag of that kind, manual or from the folder                   | `400 guest_filter_not_allowed`                    |
 

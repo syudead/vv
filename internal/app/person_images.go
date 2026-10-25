@@ -32,7 +32,8 @@ func NewPersonImages(store PersonImageStore, ingest *Ingest) *PersonImages {
 	return &PersonImages{store: store, uploads: ingest.uploads}
 }
 
-const personImageJPEGQuality = 85
+// personImageJPEGQuality keeps a face's JPEG blocks out of sight when a Retina profile enlarges it.
+const personImageJPEGQuality = 92
 
 // UploadPersonImage decodes, fits and stores a face whatever face recognition finds in it. A body over the byte
 // limit returns ThumbnailUploadTooLargeError and any other unreadable image ErrPersonImageInvalid; nothing is written

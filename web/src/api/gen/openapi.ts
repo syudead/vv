@@ -2347,7 +2347,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected items of a person fetch
-         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
          */
         post: operations["applyPersonPluginFetch"];
         delete?: never;
@@ -3010,7 +3010,7 @@ export interface paths {
         };
         /**
          * List folder videos
-         * @description scope selects direct locations (default, excluding descendants) or the entire subtree. Query matching considers only locations in that scope; pagination, filtering and sorting follow listVideos. title and sizeBytes use the lexicographically first matching location path in scope, deduplicating videos with multiple locations. Missing folders return 404 regardless of scope/query. Version bundles appear only when their effective representative has a location in scope; other versions never appear individually. Bundle queries may match any version location, but title and sizeBytes use the first representative location in scope. Guests see public videos only; folders with no public-video locations, including roots, return 404. Guest watch filters other than all, played/favorited sorts and favorite=true return 400 invalid_request.
+         * @description scope selects direct locations (default, excluding descendants) or the entire subtree. Query matching considers only locations in that scope; pagination, filtering (including tag, person, personRole, organization and tagKind) and sorting follow listVideos. title and sizeBytes use the lexicographically first matching location path in scope, deduplicating videos with multiple locations. Missing folders return 404 regardless of scope/query. Version bundles appear only when their effective representative has a location in scope; other versions never appear individually. Bundle queries may match any version location, but title and sizeBytes use the first representative location in scope. Guests see public videos only; folders with no public-video locations, including roots, return 404. Guest watch filters other than all, played/favorited sorts, favorite=true, tag, person, organization and tagKind return 400 invalid_request.
          */
         get: operations["listFolderVideos"];
         put?: never;
@@ -12347,6 +12347,16 @@ export interface operations {
                 cursor?: string;
                 /** @description Page size */
                 limit?: number;
+                /** @description One parameter per tag ID (`tag=3&tag=8`), combined by AND. At most 16; more returns 400. Unknown IDs are removed from the filter and returned in `missingTagIds`. */
+                tag?: number[];
+                /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
+                person?: components["parameters"]["PersonFilter"];
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                personRole?: components["parameters"]["PersonRoleFilter"];
+                /** @description Organization ID, matching any role; follows person filter semantics */
+                organization?: components["parameters"]["OrganizationFilter"];
+                /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
             path: {

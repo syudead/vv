@@ -70,9 +70,7 @@ func TestVirtualVideoInLibraryReads(t *testing.T) {
 		t.Errorf("公開のときゲストの詳細 = %+v, err = %v", got, err)
 	}
 
-	page, err := db.Library().ListFolderVideos(ctx, owner, domain.FolderVideoQuery{
-		Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, Limit: domain.MaxLimit,
-	})
+	page, err := db.Library().ListFolderVideos(ctx, owner, domain.FolderVideoQuery{Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, VideoQuery: domain.VideoQuery{Limit: domain.MaxLimit}})
 	if err != nil {
 		t.Fatal(err)
 	}
