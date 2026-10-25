@@ -410,6 +410,18 @@ const errorReasons = {
     "The two descriptions together are too long. Shorten one and try again.",
   too_many_urls:
     "The two videos have more than 20 links together. Remove some and try again.",
+  peer_unknown: "The other VVMDM no longer knows this one.",
+  peer_not_allowed: "The other VVMDM can't use this operation.",
+  invalid_address:
+    "Enter an address starting with http:// or https://, with a host and no path.",
+  invalid_code:
+    "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
+  already_paired:
+    "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
+  unsupported_version:
+    "The two VVMDMs run different versions. Update both to the same version.",
+  peer_unreachable: "Couldn't reach the other VVMDM",
+  certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

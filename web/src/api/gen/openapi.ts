@@ -1466,6 +1466,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/peer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the pairing state
+         * @description Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds.
+         */
+        get: operations["getPeer"];
+        put?: never;
+        post?: never;
+        /**
+         * Unpair from the peer
+         * @description Deletes the peer record and nothing else, which also clears a revoked state. Without a peer it also returns 204.
+         */
+        delete: operations["unpairPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue this node's pairing code
+         * @description Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired.
+         */
+        post: operations["issuePairingCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pair with the node whose code the owner typed
+         * @description Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         */
+        post: operations["pairPeer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the peer's address
+         * @description Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found.
+         */
+        put: operations["updatePeerAddress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a pairing from another node
+         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake and stores the pairing only after that succeeds. An unknown, used or expired code returns 400 invalid_request with invalid_code; malformed values 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify 409 certificate_untrusted with fingerprint.
+         */
+        post: operations["acceptPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/handshake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return this node's identity to the peer
+         * @description Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown.
+         */
+        get: operations["peerHandshake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pairings/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete the record of a peer that unpaired
+         * @description Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204.
+         */
+        delete: operations["forgetPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins": {
         parameters: {
             query?: never;
@@ -6986,6 +7130,76 @@ export interface components {
              */
             id: number;
         };
+        PeerNode: {
+            /** @description Node id, a UUID created on first start */
+            id: string;
+            /** @description Host name */
+            name: string;
+            /** @description Release version, as getHealth reports it */
+            version: string;
+        };
+        PeerInfo: {
+            /** @description The peer's host name at pairing */
+            name: string;
+            /** @description The peer's base URL */
+            address: string;
+            /** @description The peer version last seen; with reason version, the one that differs */
+            version?: string;
+        };
+        /** @description Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity. */
+        PeerState: {
+            /** @enum {string} */
+            state: "unpaired" | "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "version" | "certificate";
+            peer?: components["schemas"]["PeerInfo"];
+            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
+            fingerprint?: string;
+            node?: components["schemas"]["PeerNode"];
+        };
+        PairingCode: {
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        PairPeerRequest: {
+            /** @description The other node's base URL, http or https, without a path */
+            address: string;
+            /** @description The code the other node's Pairing page shows */
+            code: string;
+            /** @description This node's base URL as the other node can reach it */
+            ownAddress: string;
+            /** @description The SPKI fingerprint the owner confirmed after certificate_untrusted */
+            fingerprint?: string;
+        };
+        UpdatePeerAddressRequest: {
+            address: string;
+        };
+        PairingRequestNode: {
+            id: string;
+            /** @description 1 to 100 code points */
+            name: string;
+            /** @description The sender's base URL as the receiver can reach it */
+            address: string;
+            version: string;
+        };
+        PairingRequest: {
+            code: string;
+            node: components["schemas"]["PairingRequestNode"];
+            /** @description What the receiver will present to the sender: vvp_ and 43 base64url characters */
+            secret: string;
+        };
+        PairingAnswer: {
+            node: components["schemas"]["PeerNode"];
+            /** @description What the sender presents to the receiver */
+            secret: string;
+        };
+        PeerHandshake: {
+            node: components["schemas"]["PeerNode"];
+        };
         Error: {
             /**
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
@@ -7007,6 +7221,12 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
+            /** @description Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted. */
+            fingerprint?: string;
+            /** @description This node's release version; only for unsupported_version. */
+            localVersion?: string;
+            /** @description The other node's release version; only for unsupported_version. */
+            peerVersion?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
         };
@@ -7014,7 +7234,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "certificate_untrusted";
     };
     responses: {
         /** @description Resource not found */
@@ -9727,6 +9947,197 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pairing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+        };
+    };
+    unpairPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unpaired */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    issuePairingCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pairing code */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingCode"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    pairPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairPeerRequest"];
+            };
+        };
+        responses: {
+            /** @description Paired; the state is connected */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updatePeerAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePeerAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Pairing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    acceptPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingRequest"];
+            };
+        };
+        responses: {
+            /** @description Paired; secret is what the sender presents to this node */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingAnswer"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    peerHandshake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerHandshake"];
+                };
+            };
+            /** @description Unknown secret */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    forgetPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The caller's node id */
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forgotten */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listWorkInfoPlugins: {

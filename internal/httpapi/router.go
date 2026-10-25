@@ -335,6 +335,8 @@ type Options struct {
 	APITokens APITokens
 
 	ExternalVideos ExternalVideos
+	// Nil Pairing fails the pairing routes with 500 and refuses every peer credential.
+	Pairing Pairing
 	// SessionRecheck defaults to thirty seconds when zero.
 	SessionRecheck time.Duration
 	// Nil Now uses time.Now for cookie Max-Age.
@@ -412,6 +414,7 @@ type server struct {
 	auth            Authenticator
 	apiTokens       APITokens
 	externalVideos  ExternalVideos
+	pairing         Pairing
 	sessions        *sessionLedger
 
 	guests *guestLedger
@@ -494,6 +497,7 @@ func NewRouter(opts Options) http.Handler {
 		auth:                   opts.Auth,
 		apiTokens:              opts.APITokens,
 		externalVideos:         opts.ExternalVideos,
+		pairing:                opts.Pairing,
 		sessions:               newSessionLedger(opts.SessionRecheck, logger),
 		guests:                 newGuestLedger(),
 		now:                    opts.Now,
@@ -569,9 +573,10 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			// Origin checks protect automatic cookie credentials; Bearer routes ignore cookies and need no
-			// Origin restriction.
-			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
+			// Origin checks protect automatic cookie credentials; Bearer routes and peer requests ignore
+			// cookies and need no Origin restriction.
+			if class, _ := classifyRequest(r); class != accessBearer && !isPeerRequest(r.Context()) &&
+				!s.acceptsSameOrigin(w, r) {
 				return
 			}
 		}
@@ -615,7 +620,8 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
-		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete":
+		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
+		"/api/peer/pair", "/api/peer/pairings":
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
@@ -666,6 +672,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":          true,
 	"/api/settings/version-judging":  true,
 	"/api/onboarding":                true,
+	"/api/peer/address":              true,
 }
 
 func requiresPutJSONBody(path string) bool {

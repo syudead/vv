@@ -641,11 +641,13 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for ErrorReason.
 const (
+	ErrorReasonAlreadyPaired                 ErrorReason = "already_paired"
 	ErrorReasonApiTokenNameControlCharacters ErrorReason = "api_token_name_control_characters"
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
 	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
 	ErrorReasonBlockedAddress                ErrorReason = "blocked_address"
+	ErrorReasonCertificateUntrusted          ErrorReason = "certificate_untrusted"
 	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
@@ -667,6 +669,8 @@ const (
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
 	ErrorReasonInsufficientCredits           ErrorReason = "insufficient_credits"
+	ErrorReasonInvalidAddress                ErrorReason = "invalid_address"
+	ErrorReasonInvalidCode                   ErrorReason = "invalid_code"
 	ErrorReasonInvalidCursor                 ErrorReason = "invalid_cursor"
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
 	ErrorReasonInvalidTitle                  ErrorReason = "invalid_title"
@@ -689,6 +693,9 @@ const (
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
+	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
+	ErrorReasonPeerUnreachable               ErrorReason = "peer_unreachable"
 	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
 	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
 	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
@@ -726,6 +733,7 @@ const (
 	ErrorReasonUndoConflict                  ErrorReason = "undo_conflict"
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
+	ErrorReasonUnsupportedVersion            ErrorReason = "unsupported_version"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
 	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
@@ -746,6 +754,8 @@ const (
 // Valid indicates whether the value is a known member of the ErrorReason enum.
 func (e ErrorReason) Valid() bool {
 	switch e {
+	case ErrorReasonAlreadyPaired:
+		return true
 	case ErrorReasonApiTokenNameControlCharacters:
 		return true
 	case ErrorReasonApiTokenNameEmpty:
@@ -755,6 +765,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonAutoTaggingOff:
 		return true
 	case ErrorReasonBlockedAddress:
+		return true
+	case ErrorReasonCertificateUntrusted:
 		return true
 	case ErrorReasonComfyuiApiKeyMissing:
 		return true
@@ -797,6 +809,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonGuestFilterNotAllowed:
 		return true
 	case ErrorReasonInsufficientCredits:
+		return true
+	case ErrorReasonInvalidAddress:
+		return true
+	case ErrorReasonInvalidCode:
 		return true
 	case ErrorReasonInvalidCursor:
 		return true
@@ -841,6 +857,12 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOutputTooLarge:
 		return true
 	case ErrorReasonPasswordLength:
+		return true
+	case ErrorReasonPeerNotAllowed:
+		return true
+	case ErrorReasonPeerUnknown:
+		return true
+	case ErrorReasonPeerUnreachable:
 		return true
 	case ErrorReasonPersonImageInvalid:
 		return true
@@ -916,6 +938,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonUnreachable:
 		return true
+	case ErrorReasonUnsupportedVersion:
+		return true
 	case ErrorReasonUsernameLength:
 		return true
 	case ErrorReasonVersionJudgingOff:
@@ -971,22 +995,22 @@ func (e FaceRecognizer) Valid() bool {
 
 // Defines values for FaceRuntimeReason.
 const (
-	Disk         FaceRuntimeReason = "disk"
-	HashMismatch FaceRuntimeReason = "hash_mismatch"
-	HelperStart  FaceRuntimeReason = "helper_start"
-	Network      FaceRuntimeReason = "network"
+	FaceRuntimeReasonDisk         FaceRuntimeReason = "disk"
+	FaceRuntimeReasonHashMismatch FaceRuntimeReason = "hash_mismatch"
+	FaceRuntimeReasonHelperStart  FaceRuntimeReason = "helper_start"
+	FaceRuntimeReasonNetwork      FaceRuntimeReason = "network"
 )
 
 // Valid indicates whether the value is a known member of the FaceRuntimeReason enum.
 func (e FaceRuntimeReason) Valid() bool {
 	switch e {
-	case Disk:
+	case FaceRuntimeReasonDisk:
 		return true
-	case HashMismatch:
+	case FaceRuntimeReasonHashMismatch:
 		return true
-	case HelperStart:
+	case FaceRuntimeReasonHelperStart:
 		return true
-	case Network:
+	case FaceRuntimeReasonNetwork:
 		return true
 	default:
 		return false
@@ -1323,6 +1347,51 @@ func (e OrganizeRefKind) Valid() bool {
 	case OrganizeRefKindGroup:
 		return true
 	case OrganizeRefKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerStateReason.
+const (
+	PeerStateReasonCertificate PeerStateReason = "certificate"
+	PeerStateReasonNetwork     PeerStateReason = "network"
+	PeerStateReasonVersion     PeerStateReason = "version"
+)
+
+// Valid indicates whether the value is a known member of the PeerStateReason enum.
+func (e PeerStateReason) Valid() bool {
+	switch e {
+	case PeerStateReasonCertificate:
+		return true
+	case PeerStateReasonNetwork:
+		return true
+	case PeerStateReasonVersion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerStateState.
+const (
+	PeerStateStateConnected   PeerStateState = "connected"
+	PeerStateStateRevoked     PeerStateState = "revoked"
+	PeerStateStateUnpaired    PeerStateState = "unpaired"
+	PeerStateStateUnreachable PeerStateState = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the PeerStateState enum.
+func (e PeerStateState) Valid() bool {
+	switch e {
+	case PeerStateStateConnected:
+		return true
+	case PeerStateStateRevoked:
+		return true
+	case PeerStateStateUnpaired:
+		return true
+	case PeerStateStateUnreachable:
 		return true
 	default:
 		return false
@@ -3569,6 +3638,9 @@ type Error struct {
 	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
+	// Fingerprint Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted.
+	Fingerprint *string `json:"fingerprint,omitempty"`
+
 	// Host Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons.
 	Host *string `json:"host,omitempty"`
 
@@ -3578,8 +3650,14 @@ type Error struct {
 	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
 	Links *[]string `json:"links,omitempty"`
 
+	// LocalVersion This node's release version; only for unsupported_version.
+	LocalVersion *string `json:"localVersion,omitempty"`
+
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
+
+	// PeerVersion The other node's release version; only for unsupported_version.
+	PeerVersion *string `json:"peerVersion,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -4788,6 +4866,102 @@ type OrganizeUndo struct {
 	// Token undoToken from the operation response.
 	Token string `json:"token"`
 }
+
+// PairPeerRequest defines model for PairPeerRequest.
+type PairPeerRequest struct {
+	// Address The other node's base URL, http or https, without a path
+	Address string `json:"address"`
+
+	// Code The code the other node's Pairing page shows
+	Code string `json:"code"`
+
+	// Fingerprint The SPKI fingerprint the owner confirmed after certificate_untrusted
+	Fingerprint *string `json:"fingerprint,omitempty"`
+
+	// OwnAddress This node's base URL as the other node can reach it
+	OwnAddress string `json:"ownAddress"`
+}
+
+// PairingAnswer defines model for PairingAnswer.
+type PairingAnswer struct {
+	Node PeerNode `json:"node"`
+
+	// Secret What the sender presents to the receiver
+	Secret string `json:"secret"`
+}
+
+// PairingCode defines model for PairingCode.
+type PairingCode struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// PairingRequest defines model for PairingRequest.
+type PairingRequest struct {
+	Code string             `json:"code"`
+	Node PairingRequestNode `json:"node"`
+
+	// Secret What the receiver will present to the sender: vvp_ and 43 base64url characters
+	Secret string `json:"secret"`
+}
+
+// PairingRequestNode defines model for PairingRequestNode.
+type PairingRequestNode struct {
+	// Address The sender's base URL as the receiver can reach it
+	Address string `json:"address"`
+	Id      string `json:"id"`
+
+	// Name 1 to 100 code points
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// PeerHandshake defines model for PeerHandshake.
+type PeerHandshake struct {
+	Node PeerNode `json:"node"`
+}
+
+// PeerInfo defines model for PeerInfo.
+type PeerInfo struct {
+	// Address The peer's base URL
+	Address string `json:"address"`
+
+	// Name The peer's host name at pairing
+	Name string `json:"name"`
+
+	// Version The peer version last seen; with reason version, the one that differs
+	Version *string `json:"version,omitempty"`
+}
+
+// PeerNode defines model for PeerNode.
+type PeerNode struct {
+	// Id Node id, a UUID created on first start
+	Id string `json:"id"`
+
+	// Name Host name
+	Name string `json:"name"`
+
+	// Version Release version, as getHealth reports it
+	Version string `json:"version"`
+}
+
+// PeerState Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity.
+type PeerState struct {
+	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
+	Fingerprint *string   `json:"fingerprint,omitempty"`
+	Node        *PeerNode `json:"node,omitempty"`
+	Peer        *PeerInfo `json:"peer,omitempty"`
+
+	// Reason Present with unreachable
+	Reason *PeerStateReason `json:"reason,omitempty"`
+	State  PeerStateState   `json:"state"`
+}
+
+// PeerStateReason Present with unreachable
+type PeerStateReason string
+
+// PeerStateState defines model for PeerState.State.
+type PeerStateState string
 
 // PeopleCleared defines model for PeopleCleared.
 type PeopleCleared struct {
@@ -6028,6 +6202,11 @@ type UpdateOllamaSettingsRequest struct {
 
 	// Model Ollama model name.
 	Model string `json:"model"`
+}
+
+// UpdatePeerAddressRequest defines model for UpdatePeerAddressRequest.
+type UpdatePeerAddressRequest struct {
+	Address string `json:"address"`
 }
 
 // UpdatePluginProxySettingsRequest defines model for UpdatePluginProxySettingsRequest.
@@ -7972,6 +8151,15 @@ type OrganizeReorderJSONRequestBody = OrganizeReorder
 // OrganizeUndoJSONRequestBody defines body for OrganizeUndo for application/json ContentType.
 type OrganizeUndoJSONRequestBody = OrganizeUndo
 
+// UpdatePeerAddressJSONRequestBody defines body for UpdatePeerAddress for application/json ContentType.
+type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
+
+// PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
+type PairPeerJSONRequestBody = PairPeerRequest
+
+// AcceptPairingJSONRequestBody defines body for AcceptPairing for application/json ContentType.
+type AcceptPairingJSONRequestBody = PairingRequest
+
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = CreditInput
 
@@ -8340,6 +8528,30 @@ type ServerInterface interface {
 	// OrganizeUndo Undo a drag operation
 	// (POST /api/organize/undo)
 	OrganizeUndo(w http.ResponseWriter, r *http.Request)
+	// UnpairPeer Unpair from the peer
+	// (DELETE /api/peer)
+	UnpairPeer(w http.ResponseWriter, r *http.Request)
+	// GetPeer Return the pairing state
+	// (GET /api/peer)
+	GetPeer(w http.ResponseWriter, r *http.Request)
+	// UpdatePeerAddress Change the peer's address
+	// (PUT /api/peer/address)
+	UpdatePeerAddress(w http.ResponseWriter, r *http.Request)
+	// IssuePairingCode Issue this node's pairing code
+	// (POST /api/peer/code)
+	IssuePairingCode(w http.ResponseWriter, r *http.Request)
+	// PeerHandshake Return this node's identity to the peer
+	// (GET /api/peer/handshake)
+	PeerHandshake(w http.ResponseWriter, r *http.Request)
+	// PairPeer Pair with the node whose code the owner typed
+	// (POST /api/peer/pair)
+	PairPeer(w http.ResponseWriter, r *http.Request)
+	// AcceptPairing Accept a pairing from another node
+	// (POST /api/peer/pairings)
+	AcceptPairing(w http.ResponseWriter, r *http.Request)
+	// ForgetPeer Delete the record of a peer that unpaired
+	// (DELETE /api/peer/pairings/{nodeId})
+	ForgetPeer(w http.ResponseWriter, r *http.Request, nodeId string)
 	// ClearPeople Delete every person and all face data
 	// (DELETE /api/people)
 	ClearPeople(w http.ResponseWriter, r *http.Request)
@@ -10687,6 +10899,130 @@ func (siw *ServerInterfaceWrapper) OrganizeUndo(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OrganizeUndo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnpairPeer operation middleware
+func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnpairPeer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPeer operation middleware
+func (siw *ServerInterfaceWrapper) GetPeer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPeer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePeerAddress operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePeerAddress(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssuePairingCode operation middleware
+func (siw *ServerInterfaceWrapper) IssuePairingCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssuePairingCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PeerHandshake operation middleware
+func (siw *ServerInterfaceWrapper) PeerHandshake(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PeerHandshake(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PairPeer operation middleware
+func (siw *ServerInterfaceWrapper) PairPeer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PairPeer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptPairing operation middleware
+func (siw *ServerInterfaceWrapper) AcceptPairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptPairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForgetPeer operation middleware
+func (siw *ServerInterfaceWrapper) ForgetPeer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForgetPeer(w, r, nodeId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15507,6 +15843,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer", wrapper.UnpairPeer)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer", wrapper.GetPeer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/code", wrapper.IssuePairingCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/address", wrapper.UpdatePeerAddress)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pairings", wrapper.AcceptPairing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)

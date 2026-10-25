@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`."
 servers:
   - url: /
     description: "Served by the application"
@@ -2214,6 +2214,158 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/peer:
+    get:
+      operationId: getPeer
+      security:
+        - sessionCookie: []
+        - {}
+      summary: "Return the pairing state"
+      description: "Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds."
+      responses:
+        "200":
+          description: "Pairing state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerState"
+    delete:
+      operationId: unpairPeer
+      summary: "Unpair from the peer"
+      description: "Deletes the peer record and nothing else, which also clears a revoked state. Without a peer it also returns 204."
+      responses:
+        "204":
+          description: "Unpaired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/peer/code:
+    post:
+      operationId: issuePairingCode
+      summary: "Issue this node's pairing code"
+      description: "Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired."
+      responses:
+        "201":
+          description: "Pairing code"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingCode"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/peer/pair:
+    post:
+      operationId: pairPeer
+      summary: "Pair with the node whose code the owner typed"
+      description: "Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairPeerRequest"
+      responses:
+        "201":
+          description: "Paired; the state is connected"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerState"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/peer/address:
+    put:
+      operationId: updatePeerAddress
+      summary: "Change the peer's address"
+      description: "Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePeerAddressRequest"
+      responses:
+        "200":
+          description: "Pairing state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerState"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/pairings:
+    post:
+      operationId: acceptPairing
+      security: []
+      summary: "Accept a pairing from another node"
+      description: "Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake and stores the pairing only after that succeeds. An unknown, used or expired code returns 400 invalid_request with invalid_code; malformed values 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify 409 certificate_untrusted with fingerprint."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairingRequest"
+      responses:
+        "201":
+          description: "Paired; secret is what the sender presents to this node"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingAnswer"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/peer/handshake:
+    get:
+      operationId: peerHandshake
+      security: []
+      summary: "Return this node's identity to the peer"
+      description: "Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown."
+      responses:
+        "200":
+          description: "This node"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerHandshake"
+        "401":
+          description: "Unknown secret"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/peer/pairings/{nodeId}:
+    delete:
+      operationId: forgetPeer
+      summary: "Delete the record of a peer that unpaired"
+      description: "Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204."
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          description: "The caller's node id"
+          schema:
+            type: string
+      responses:
+        "204":
+          description: "Forgotten"
 
   /api/work-info-plugins:
     get:
@@ -12119,6 +12271,132 @@ components:
           format: int64
           description: "Identifier of the video whose state changed."
 
+    PeerNode:
+      type: object
+      required: [id, name, version]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: "Node id, a UUID created on first start"
+        name:
+          type: string
+          description: "Host name"
+        version:
+          type: string
+          description: "Release version, as getHealth reports it"
+    PeerInfo:
+      type: object
+      required: [name, address]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "The peer's host name at pairing"
+        address:
+          type: string
+          description: "The peer's base URL"
+        version:
+          type: string
+          description: "The peer version last seen; with reason version, the one that differs"
+    PeerState:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          enum: [unpaired, connected, unreachable, revoked]
+        reason:
+          type: string
+          enum: [network, version, certificate]
+          description: "Present with unreachable"
+        peer:
+          $ref: "#/components/schemas/PeerInfo"
+        fingerprint:
+          type: string
+          description: "With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only."
+        node:
+          $ref: "#/components/schemas/PeerNode"
+      description: "Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity."
+    PairingCode:
+      type: object
+      required: [code, expiresAt]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    PairPeerRequest:
+      type: object
+      required: [address, code, ownAddress]
+      additionalProperties: false
+      properties:
+        address:
+          type: string
+          description: "The other node's base URL, http or https, without a path"
+        code:
+          type: string
+          description: "The code the other node's Pairing page shows"
+        ownAddress:
+          type: string
+          description: "This node's base URL as the other node can reach it"
+        fingerprint:
+          type: string
+          description: "The SPKI fingerprint the owner confirmed after certificate_untrusted"
+    UpdatePeerAddressRequest:
+      type: object
+      required: [address]
+      additionalProperties: false
+      properties:
+        address:
+          type: string
+    PairingRequestNode:
+      type: object
+      required: [id, name, address, version]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: "1 to 100 code points"
+        address:
+          type: string
+          description: "The sender's base URL as the receiver can reach it"
+        version:
+          type: string
+    PairingRequest:
+      type: object
+      required: [code, node, secret]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        node:
+          $ref: "#/components/schemas/PairingRequestNode"
+        secret:
+          type: string
+          description: "What the receiver will present to the sender: vvp_ and 43 base64url characters"
+    PairingAnswer:
+      type: object
+      required: [node, secret]
+      additionalProperties: false
+      properties:
+        node:
+          $ref: "#/components/schemas/PeerNode"
+        secret:
+          type: string
+          description: "What the sender presents to the receiver"
+    PeerHandshake:
+      type: object
+      required: [node]
+      additionalProperties: false
+      properties:
+        node:
+          $ref: "#/components/schemas/PeerNode"
     Error:
       type: object
       required: [code, message]
@@ -12199,6 +12477,15 @@ components:
           description: "Required setting keys without values, in declaration order; only for plugin_settings_missing."
           items:
             type: string
+        fingerprint:
+          type: string
+          description: "Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted."
+        localVersion:
+          type: string
+          description: "This node's release version; only for unsupported_version."
+        peerVersion:
+          type: string
+          description: "The other node's release version; only for unsupported_version."
         links:
           type: array
           description: "The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous."
@@ -12308,3 +12595,11 @@ components:
         - virtual_video
         - description_too_long
         - too_many_urls
+        - peer_unknown
+        - peer_not_allowed
+        - invalid_address
+        - invalid_code
+        - already_paired
+        - unsupported_version
+        - peer_unreachable
+        - certificate_untrusted
