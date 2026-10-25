@@ -183,7 +183,7 @@ under `assistant`, `settings.ollama`, `library.activeTags`,
 | Change | {Argument}: {values} | `text-sm`; values as `secondary` `Badge`s, dates and numbers as text; one line per argument |
 | Will be created | New | `outline` `Badge` with `Plus` before the name, inside the change line; `aria-label` `New tag {name}` |
 | Irreversible | Can’t be undone | `warning` line: `TriangleAlert` `size-4` and `text-sm font-medium text-warning`, above the buttons |
-| Irreversible detail, merges | {n} videos move to “{name}” | Under the line, `text-sm text-muted-foreground`, from `targets.count` |
+| Irreversible detail, merges | {n} videos move to “{name}” | Under the line, `text-sm text-muted-foreground`; `{n}` is the proposal's `impact.videos`, not `targets.count`, which counts the one destination; `1 video moves` |
 | Execute | Execute | `default` `sm` `Button`; `destructive` on an irreversible card; `Executing…` with a `Spinner` while the request runs |
 | Dismiss | Dismiss | `ghost` `sm` |
 | `approved`, `running` | Running · {applied} of {total} | `Spinner`, `Progress` with `max={total}`; for an unbatched operation `Running…` |
