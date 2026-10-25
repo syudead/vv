@@ -329,3 +329,20 @@ func TestGroupItemsSearchBeforePagingIncludesDescendants(t *testing.T) {
 		t.Fatalf("guest search = %+v", guest)
 	}
 }
+
+func TestGroupVideoIDsExpandsChildGroupsOnce(t *testing.T) {
+	db, ids := itemsFixture(t)
+	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
+	child := insertGroup(t, db, "child", itemKeyOf("/media/solo.mp4"))
+	parent := insertGroup(t, db, "parent", child, itemKeyOf("/media/mixed/x.mp4"))
+
+	got, err := db.Library().GroupVideoIDs(context.Background(), []int64{parent, child, 9999})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int64{solo, x}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("GroupVideoIDs = %v, want %v", got, want)
+	}
+}

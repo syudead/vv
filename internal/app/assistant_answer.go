@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -70,7 +71,8 @@ func (t *assistantTurn) entity(
 	return domain.AssistantLabel{}, false, nil
 }
 
-// video resolves "current" to the open video and any other name by a title search that must find one video.
+// video resolves "current" to the open video and any other name by a title search that must find one video, or
+// that finds the video pinned in a clarification among the candidates it offers.
 func (t *assistantTurn) video(ctx context.Context, name string) (domain.AssistantLabel, bool, error) {
 	if name == "" || name == "current" {
 		return t.entityVideo(ctx)
@@ -79,8 +81,11 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 	if err != nil {
 		return domain.AssistantLabel{}, false, fmt.Errorf("cannot find the video by title: %w", err)
 	}
-	if page.Total == 1 {
-		v := page.Items[0]
+	v, ok := t.pinnedVideo(page.Items)
+	if !ok && page.Total == 1 && len(page.Items) == 1 {
+		v, ok = page.Items[0], true
+	}
+	if ok {
 		return domain.AssistantLabel{Kind: domain.AssistantLabelVideo, ID: v.ID, Key: v.UserKey, Name: v.Title}, true, nil
 	}
 	candidates := make([]domain.AssistantCandidate, len(page.Items))
@@ -89,6 +94,19 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 	}
 	t.clarify("target", candidates, name)
 	return domain.AssistantLabel{}, false, nil
+}
+
+// pinnedVideo is the found video a clarification pinned.
+func (t *assistantTurn) pinnedVideo(found []domain.Video) (domain.Video, bool) {
+	for _, pin := range t.input.Context.Pinned {
+		if pin.Kind != domain.AssistantLabelVideo {
+			continue
+		}
+		if i := slices.IndexFunc(found, func(v domain.Video) bool { return v.ID == pin.ID }); i >= 0 {
+			return found[i], true
+		}
+	}
+	return domain.Video{}, false
 }
 
 func (t *assistantTurn) entityVideo(ctx context.Context) (domain.AssistantLabel, bool, error) {

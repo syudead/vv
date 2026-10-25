@@ -37,12 +37,13 @@ type AssistantStore interface {
 
 type AssistantOptions struct {
 	Store AssistantStore
-	// Generator, Vocabulary and Videos are required by Turn; History by the recent question and SmartFolders by
-	// targets that expand smart folders.
+	// Generator, Vocabulary and Videos are required by Turn; History by the recent question, SmartFolders by
+	// targets that expand smart folders and Groups by favorites on selected groups.
 	Generator    StructuredGenerator
 	Vocabulary   AssistantVocabulary
 	Videos       AssistantVideos
 	SmartFolders AssistantSmartFolders
+	Groups       AssistantGroups
 	History      AssistantHistory
 	// Reviews and Classifier are required by review runs; without Reviews an organize request is unsupported.
 	Reviews    AssistantReviewStore
@@ -61,6 +62,7 @@ type Assistant struct {
 	vocabulary   AssistantVocabulary
 	videos       AssistantVideos
 	smartFolders AssistantSmartFolders
+	groups       AssistantGroups
 	history      AssistantHistory
 	reviews      AssistantReviewStore
 	classifier   Classifier
@@ -85,7 +87,7 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 	}
 	return &Assistant{
 		store: opts.Store, generator: opts.Generator, vocabulary: opts.Vocabulary, videos: opts.Videos,
-		smartFolders: opts.SmartFolders, history: opts.History, reviews: opts.Reviews, classifier: opts.Classifier,
+		smartFolders: opts.SmartFolders, groups: opts.Groups, history: opts.History, reviews: opts.Reviews, classifier: opts.Classifier,
 		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
 		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1),

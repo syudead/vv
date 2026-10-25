@@ -15,8 +15,10 @@ type planDraft struct {
 	req  *domain.AssistantActionRequest
 	args domain.AssistantArguments
 	plan domain.AssistantPlan
-	// groupIDs are groups an operation that takes groups receives instead of their videos.
-	groupIDs []int64
+	// groupIDs and folderIDs (smart folders) are collections an operation that takes them receives instead of
+	// their videos.
+	groupIDs  []int64
+	folderIDs []int64
 }
 
 func (d *planDraft) body(field string, value any) {
@@ -191,7 +193,7 @@ func (d *planDraft) videoCountFits() bool {
 	case domain.AssistantTargetVideoPair:
 		return videos == 2
 	case domain.AssistantTargetVideosOrGroups:
-		return videos > 0 || len(d.groupIDs) > 0
+		return videos > 0 || len(d.groupIDs) > 0 || len(d.folderIDs) > 0
 	default:
 		return videos > 0
 	}
@@ -245,8 +247,8 @@ func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTarget
 	}
 }
 
-// selectionIDs are the list's selected videos and smart folders, or the open video; selected groups go to an
-// operation that takes groups.
+// selectionIDs are the list's selected videos and smart folders, or the open video; an operation that takes
+// collections receives the selected groups and smart folders themselves instead.
 func (d *planDraft) selectionIDs(ctx context.Context) ([]int64, bool, error) {
 	c := d.t.input.Context
 	ids := slices.Clone(c.SelectedVideoIDs)
@@ -254,21 +256,41 @@ func (d *planDraft) selectionIDs(ctx context.Context) ([]int64, bool, error) {
 		c.Route == domain.AssistantRouteVideo && c.RouteID > 0 {
 		ids = []int64{c.RouteID}
 	}
-	if len(c.SelectedSmartFolderIDs) > 0 {
-		members, err := d.smartFolderIDs(ctx, c.SelectedSmartFolderIDs)
-		if err != nil {
-			return nil, false, err
-		}
+	var err error
+	if d.row.Target == domain.AssistantTargetVideosOrGroups {
+		ids, err = d.collectionSelection(ctx, ids)
+	} else if len(c.SelectedSmartFolderIDs) > 0 {
+		var members []int64
+		members, err = d.smartFolderIDs(ctx, c.SelectedSmartFolderIDs)
 		ids = append(ids, members...)
 	}
-	if d.row.Target == domain.AssistantTargetVideosOrGroups {
-		d.groupIDs = slices.Clone(c.SelectedGroupIDs)
+	if err != nil {
+		return nil, false, err
 	}
-	if len(ids) == 0 && len(d.groupIDs) == 0 {
+	if len(ids) == 0 && len(d.groupIDs) == 0 && len(d.folderIDs) == 0 {
 		d.t.clarify("target", nil)
 		return nil, false, nil
 	}
 	return ids, true, nil
+}
+
+// collectionSelection keeps the selected groups and smart folders as collections and drops the selected videos that
+// only stand for a selected group's members, as the library's favorite action does.
+func (d *planDraft) collectionSelection(ctx context.Context, ids []int64) ([]int64, error) {
+	c := d.t.input.Context
+	d.groupIDs = slices.Clone(c.SelectedGroupIDs)
+	d.folderIDs = slices.Clone(c.SelectedSmartFolderIDs)
+	if len(d.groupIDs) == 0 || len(ids) == 0 {
+		return ids, nil
+	}
+	if d.t.a.groups == nil {
+		return nil, fmt.Errorf("the assistant cannot read group members: it is not configured")
+	}
+	members, err := d.t.a.groups.GroupVideoIDs(ctx, d.groupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the group videos: %w", err)
+	}
+	return slices.DeleteFunc(ids, func(id int64) bool { return slices.Contains(members, id) }), nil
 }
 
 func (d *planDraft) smartFolderIDs(ctx context.Context, folders []int64) ([]int64, error) {
@@ -289,6 +311,10 @@ func (d *planDraft) currentIDs(ctx context.Context) ([]int64, bool, error) {
 	case domain.AssistantRouteVideo:
 		return []int64{c.RouteID}, c.RouteID > 0, nil
 	case domain.AssistantRouteSmartFolder:
+		if d.row.Target == domain.AssistantTargetVideosOrGroups {
+			d.folderIDs = []int64{c.RouteID}
+			return nil, true, nil
+		}
 		ids, err := d.smartFolderIDs(ctx, []int64{c.RouteID})
 		return ids, err == nil, err
 	case domain.AssistantRouteGroup:

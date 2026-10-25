@@ -166,6 +166,33 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	return out, nil
 }
 
+// GroupVideoIDs returns the distinct owner-visible member videos of the groups, child groups expanded; missing groups
+// contribute nothing.
+func (s *LibraryStore) GroupVideoIDs(ctx context.Context, ids []int64) ([]int64, error) {
+	videoIDs := []int64{}
+	if len(ids) == 0 {
+		return videoIDs, nil
+	}
+	encoded, _ := json.Marshal(ids) // A slice of integers always encodes.
+	rows, err := s.db.sql.QueryContext(ctx, `with `+groupDescendantsCTE(`select value as id from json_each(?)`,
+		domain.AudienceOwner)+` select distinct video_id from gdesc order by video_id`, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the group videos: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("cannot read the group videos: %w", err)
+		}
+		videoIDs = append(videoIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the group videos: %w", err)
+	}
+	return videoIDs, nil
+}
+
 // Group returns the first item page and valid parent trail; hidden and missing groups both return domain.ErrNotFound.
 func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query domain.VideoQuery) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {

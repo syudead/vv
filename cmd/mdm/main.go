@@ -256,7 +256,7 @@ func run(opts runOptions) error {
 	// executes approved proposals through the screen API; its runner is registered once the HTTP server exists.
 	assistant := app.NewAssistant(app.AssistantOptions{
 		Store: db.Assistant(), Generator: ollama.NewGenerator(settingsStore), Vocabulary: db.Assistant(),
-		Videos: libraryStore, SmartFolders: db.SmartFolders(), History: playbackStore,
+		Videos: libraryStore, SmartFolders: db.SmartFolders(), Groups: libraryStore, History: playbackStore,
 		Reviews: db.Assistant(), Classifier: classifier, Logger: logger,
 	})
 	if err := assistant.Recover(backgroundCtx); err != nil {
