@@ -16,6 +16,8 @@ type OllamaSettingsStore interface {
 // Check endpoint and model availability without classification.
 type OllamaProbe interface {
 	Check(ctx context.Context) error
+	// Models lists the model names at the saved endpoint in the provider's order.
+	Models(ctx context.Context) ([]string, error)
 }
 
 // Provider settings remain independent of feature enablement; see docs/design-docs/ai-layer.md.
@@ -62,4 +64,18 @@ func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.Oll
 // never supply arbitrary probe URLs.
 func (o *OllamaConnection) Check(ctx context.Context) error {
 	return o.probe.Check(ctx)
+}
+
+// Models lists the names at the saved endpoint only, so a request never chooses where the server connects.
+func (o *OllamaConnection) Models(ctx context.Context) ([]string, error) {
+	return o.probe.Models(ctx)
+}
+
+// AssistantReadiness reads the saved connection without contacting Ollama.
+func (o *OllamaConnection) AssistantReadiness(ctx context.Context) (domain.AssistantNotReady, error) {
+	settings, saved, err := o.store.SavedOllamaSettings(ctx)
+	if err != nil {
+		return domain.AssistantReady, err
+	}
+	return domain.AssistantReadiness(settings, saved), nil
 }

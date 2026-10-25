@@ -91,6 +91,7 @@ export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type UpdateOllamaSettings = components["schemas"]["UpdateOllamaSettingsRequest"];
+export type OllamaModelList = components["schemas"]["OllamaModelList"];
 export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];
@@ -899,7 +900,7 @@ export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings>
   return request<OllamaSettings>("/api/settings/ollama", { signal });
 }
 
-/** Send only endpoint and model; the server rejects response-only fields. */
+/** Send only the request fields; the server rejects response-only fields. */
 export function updateOllamaSettings(
   settings: UpdateOllamaSettings,
   signal?: AbortSignal,
@@ -907,6 +908,9 @@ export function updateOllamaSettings(
   const body: UpdateOllamaSettings = {
     endpoint: settings.endpoint,
     model: settings.model,
+    ...(settings.generationModel === undefined
+      ? {}
+      : { generationModel: settings.generationModel }),
   };
   return request<OllamaSettings>("/api/settings/ollama", {
     method: "PUT",
@@ -914,6 +918,11 @@ export function updateOllamaSettings(
     body: JSON.stringify(body),
     signal,
   });
+}
+
+/** Model names at the saved endpoint, in Ollama's order; 409 ollama_unreachable when it can't be listed. */
+export function listOllamaModels(signal?: AbortSignal): Promise<OllamaModelList> {
+  return request<OllamaModelList>("/api/settings/ollama/models", { signal });
 }
 
 /** Check the saved endpoint/model without running classification. */

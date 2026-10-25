@@ -245,6 +245,7 @@ const errorCodes = {
   smart_folder_not_found: "That smart folder no longer exists.",
   smart_folder_cycle:
     "A smart folder can't be put inside itself or inside one of its children.",
+  ollama_unreachable: "Ollama can't be reached at the saved URL",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -410,6 +411,8 @@ const errorReasons = {
     "The two descriptions together are too long. Shorten one and try again.",
   too_many_urls:
     "The two videos have more than 20 links together. Remove some and try again.",
+  connection: "Ollama can't be reached at the saved URL",
+  not_ollama: "The server at the saved URL isn't Ollama",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -4036,17 +4039,30 @@ export const en = {
     ollama: {
       heading: "Ollama",
       description:
-        "Where VVMDM reaches Ollama and which model it uses. Auto-tagging and duplicate judging use it; the test works whether they are on or off.",
+        "Where VVMDM reaches Ollama and which models it uses. The decision model answers auto-tagging and duplicate judging; the generation model answers the assistant.",
       endpoint: "Ollama URL",
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
-      model: "Model",
+      model: "Decision model",
       modelHint: "clef-flash is fast; clef is larger and more accurate.",
+      generationModel: "Generation model",
+      generationModelHint:
+        "A chat model the assistant uses to read your requests, such as a Japanese-capable instruct model. Leave empty to turn the assistant off.",
+      none: "None",
+      modelSearch: "Search or type a model name",
+      modelsLoading: "Loading the models…",
+      modelsFailed: (reason: string) =>
+        `Couldn’t list the models: ${reason}. Type the name.`,
+      modelsEmpty: "No models match. Type the full name.",
+      useTyped: (name: string) => `Use “${name}”`,
       save: "Save",
       saving: "Saving…",
       saved: "Ollama settings saved",
       check: "Save and test connection",
       checking: "Testing…",
       checkOk: "Ollama is running and has the model.",
+      checkOkBoth: "Ollama is running and has both models.",
+      generationModelMissing: (model: string) =>
+        `Ollama is running but doesn’t have the generation model “${model}”.`,
       checkFailed: (reason: string) => `The connection test failed: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loading: "Loading the Ollama settings",

@@ -28,7 +28,12 @@ function autoTagging(change: Partial<AutoTaggingSettings> = {}): AutoTaggingSett
 }
 
 function ollama(saved: boolean) {
-  return { endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved };
+  return {
+    endpoint: "http://127.0.0.1:11434",
+    model: "clef-flash",
+    generationModel: "",
+    saved,
+  };
 }
 
 const switchNames = ["Use auto-tagging", "Tag new videos automatically"];
