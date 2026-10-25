@@ -123,6 +123,41 @@ describe("CodeEditor", () => {
     ]);
   });
 
+  it("shows a typed value over 100 code points as the cut value Apply sends", async () => {
+    const { user, onApply } = renderEditor([
+      row(1, { fileTitle: "x", code: "A".repeat(99) }),
+    ]);
+    const cut = `${"A".repeat(99)}B`;
+
+    await user.type(codeInput(1), "BC");
+
+    expect(codeInput(1).value).toBe(cut);
+    expect(within(stateCell(1)).getByText("Cut to 100")).toBeTruthy();
+    await user.click(applyButton());
+    expect(onApply).toHaveBeenCalledWith([
+      { videoId: 1, contentVersion: "v1", code: cut },
+    ]);
+  });
+
+  it("keeps the caret where the owner types inside a value cut to 100 code points", async () => {
+    const { user, onApply } = renderEditor([
+      row(1, { fileTitle: "x", code: "A".repeat(100) }),
+    ]);
+    const cut = `AAXY${"A".repeat(96)}`;
+
+    await user.type(codeInput(1), "XY", {
+      initialSelectionStart: 2,
+      initialSelectionEnd: 2,
+    });
+
+    expect(codeInput(1).value).toBe(cut);
+    expect(codeInput(1).selectionStart).toBe(4);
+    await user.click(applyButton());
+    expect(onApply).toHaveBeenCalledWith([
+      { videoId: 1, contentVersion: "v1", code: cut },
+    ]);
+  });
+
   it("disables Apply to 0 videos when only virtual videos are selected", async () => {
     const { user, onApply } = renderEditor([row(1, {}), row(2, {})]);
 
