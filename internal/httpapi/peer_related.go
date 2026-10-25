@@ -249,6 +249,10 @@ func cluesBody(clues domain.RelatedClues) gen.RelatedClues {
 func cluesFrom(body gen.RelatedClues) (domain.RelatedClues, error) {
 	clues := domain.RelatedClues{TagNames: body.Tags, Words: body.Words, AddedAt: body.AddedAt}
 	if body.Fingerprint != nil {
+		// Scoring compares every frame with every candidate's, so a longer fingerprint from the peer is refused.
+		if len(body.Fingerprint.Frames) > domain.MaxFingerprintBytes {
+			return domain.RelatedClues{}, fmt.Errorf("%w: %d bytes", domain.ErrInvalidFingerprint, len(body.Fingerprint.Frames))
+		}
 		fingerprint, err := domain.DecodeFingerprint(body.Fingerprint.Frames, body.Fingerprint.Version, body.Fingerprint.IntervalMs)
 		if err != nil {
 			return domain.RelatedClues{}, err
@@ -302,10 +306,13 @@ func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, ex
 const remoteGroupPage = domain.MaxGroupMemberPage
 
 // group reads the group of the peer's video peerID in the opened context. On the first page head holds the
-// peer's group window and neighbours, rewritten. exclude is the video and every member of its group, in the
-// peer's ids, which the related list leaves out.
+// peer's group window and neighbours, rewritten. exclude is the video, its bundle and every member of its
+// group, in the peer's ids, which the related list leaves out.
 func (p *relatedPeer) group(ctx context.Context, peerID int64, opened url.Values, first bool) (head gen.RelatedVideos, exclude []int64, err error) {
-	exclude = []int64{peerID}
+	exclude, err = p.bundle(ctx, peerID)
+	if err != nil {
+		return gen.RelatedVideos{}, nil, err
+	}
 	if first {
 		query := cloneValues(opened)
 		query.Set("limit", "1")
@@ -338,6 +345,20 @@ func (p *relatedPeer) group(ctx context.Context, peerID int64, opened url.Values
 			return head, exclude, nil
 		}
 	}
+}
+
+// bundle is the peer's video peerID and the other versions of its bundle, in the peer's ids. The peer scores
+// with no reference video, so it cannot leave out the bundle's representative itself.
+func (p *relatedPeer) bundle(ctx context.Context, peerID int64) ([]int64, error) {
+	var versions gen.VideoVersions
+	if err := p.call(ctx, http.MethodGet, peerVideoPath(peerID, "/versions", nil), nil, &versions); err != nil {
+		return nil, err
+	}
+	ids := []int64{peerID, versions.RepresentativeId}
+	for _, version := range versions.Items {
+		ids = append(ids, version.Id)
+	}
+	return ids, nil
 }
 
 func cloneValues(values url.Values) url.Values {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -101,6 +102,41 @@ func TestRelatedVideosOfARemoteVideoScoreLocalVideos(t *testing.T) {
 	}
 	if related.NextId == nil || *related.NextId != a.remoteID("b") {
 		t.Errorf("nextId = %v, want %d", related.NextId, a.remoteID("b"))
+	}
+}
+
+func TestRelatedVideosOfARemoteVersionLeaveOutItsBundle(t *testing.T) {
+	a, _, screens := relatedNodes(t)
+	if _, err := a.env.db.Versions().Bundle(context.Background(), []int64{a.ids["a"], a.ids["b"]}, a.ids["b"]); err != nil {
+		t.Fatal(err)
+	}
+
+	// a's a is now a version of a's b, which the peer lists as the bundle's representative.
+	related, ids := relatedIDs(t, screens.owner(http.MethodGet, a.remotePath("a", "/related"), ""))
+	if slices.Contains(ids, a.remoteID("b")) {
+		t.Errorf("開いている版の代表が一覧にある: %v", ids)
+	}
+	if related.NextId != nil && *related.NextId == a.remoteID("b") {
+		t.Errorf("nextId = 開いている版の代表 %d", *related.NextId)
+	}
+}
+
+func TestCluesFromRefusesAFingerprintLongerThanASprite(t *testing.T) {
+	frameBytes := domain.MaxFingerprintBytes / domain.SeekSpriteMaxFrames
+	for _, tc := range []struct {
+		frames int
+		ok     bool
+	}{{domain.SeekSpriteMaxFrames, true}, {domain.SeekSpriteMaxFrames + 1, false}} {
+		body := gen.RelatedClues{Fingerprint: &gen.RelatedFingerprint{
+			Version: domain.FingerprintVersion, IntervalMs: 1000, Frames: make([]byte, tc.frames*frameBytes),
+		}}
+		clues, err := cluesFrom(body)
+		if tc.ok && (err != nil || clues.Fingerprint == nil || len(clues.Fingerprint.Frames) != tc.frames) {
+			t.Errorf("%d フレーム: clues = %+v, err = %v, want 受理", tc.frames, clues.Fingerprint, err)
+		}
+		if !tc.ok && !errors.Is(err, domain.ErrInvalidFingerprint) {
+			t.Errorf("%d フレーム: err = %v, want ErrInvalidFingerprint", tc.frames, err)
+		}
 	}
 }
 
