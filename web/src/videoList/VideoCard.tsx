@@ -335,11 +335,7 @@ function VideoCard(props: VideoCardProps) {
       <Link
         to={to ?? `/videos/${String(video.id)}`}
         state={cardLinkState(backTo, autoplay)}
-        aria-label={
-          location === undefined
-            ? video.title
-            : t.list.card.withLocation(video.title, location.label)
-        }
+        aria-label={linkLabel(video, location)}
         aria-describedby={describedBy(video, versions, versionsId, virtualId)}
         onClick={(event) => {
           previewCoordinator?.reset();
@@ -406,19 +402,7 @@ function VideoCard(props: VideoCardProps) {
           >
             {video.title}
           </h3>
-          {location !== undefined && (
-            <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              <Folder aria-hidden="true" className="size-3 shrink-0" />
-              {/* Preserve path suffixes visually; title retains the full path. */}
-              <span
-                dir="rtl"
-                title={location.title}
-                className="min-w-0 truncate text-left"
-              >
-                <bdi dir="ltr">{location.label}</bdi>
-              </span>
-            </p>
-          )}
+          {location !== undefined && <LocationLine location={location} />}
         </div>
       </Link>
       {/* Keep the credit links outside the card link, in checkbox, link, credits, tags DOM order. */}
@@ -436,8 +420,28 @@ function VideoCard(props: VideoCardProps) {
 
 export default memo(VideoCard);
 
+type CardLocation = NonNullable<VideoCardProps["location"]>;
+
+function linkLabel(video: Video, location: CardLocation | undefined) {
+  return location === undefined
+    ? video.title
+    : t.list.card.withLocation(video.title, location.label);
+}
+
+function LocationLine({ location }: { location: CardLocation }) {
+  return (
+    <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+      <Folder aria-hidden="true" className="size-3 shrink-0" />
+      {/* Preserve path suffixes visually; title retains the full path. */}
+      <span dir="rtl" title={location.title} className="min-w-0 truncate text-left">
+        <bdi dir="ltr">{location.label}</bdi>
+      </span>
+    </p>
+  );
+}
+
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
-  const { video, backTo, to, selected, selectionMode, onSelect, drag } = props;
+  const { video, backTo, to, selected, selectionMode, onSelect, drag, location } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
@@ -485,6 +489,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         <Link
           to={to ?? `/videos/${String(video.id)}`}
           state={{ from: backTo }}
+          aria-label={linkLabel(video, location)}
           onClick={(event) => {
             if (selectionMode) {
               event.preventDefault();
@@ -498,6 +503,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         >
           {video.title}
         </Link>
+        {location !== undefined && <LocationLine location={location} />}
         {unplayable !== null && (
           <span className="mt-0.5 flex items-center gap-1 text-xs text-warning">
             <AlertTriangle aria-hidden="true" className="size-3" />

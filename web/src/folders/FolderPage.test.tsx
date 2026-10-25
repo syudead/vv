@@ -1050,6 +1050,36 @@ describe("FolderPage", () => {
     expect(location).toContain("person=2");
   });
 
+  it("タグの絞り込みだけを外しても一覧の先頭へ戻る", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?tag=1");
+    await screen.findByRole("link", { name: "x" });
+    const scrollTo = vi.mocked(window.scrollTo);
+    scrollTo.mockClear();
+
+    await user.click(screen.getByRole("button", { name: /^Filter/ }));
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).not.toContain("tag="),
+    );
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+  });
+
+  it("配下の検索結果をリスト表示にしても、行に置き場所を出す", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=京都");
+    await screen.findByRole("link", { name: /^y/ });
+    await user.click(screen.getByRole("button", { name: "View and sort" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("radio", { name: "List" }),
+    );
+    await user.keyboard("{Escape}");
+
+    const row = within(screen.getByRole("table")).getByRole("link", { name: /^y/ });
+    expect(row.getAttribute("aria-label")).not.toBe("y");
+    expect(row.closest("td")?.textContent).toContain("B");
+  });
+
   it("検索語があると子フォルダを出さず、配下の検索結果に置き場所を添える。消すと元に戻る", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=京都");

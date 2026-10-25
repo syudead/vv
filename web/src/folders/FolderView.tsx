@@ -27,6 +27,7 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { criteriaKey } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { useVideoSelection } from "../videoList/useVideoSelection";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
@@ -109,6 +110,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     searchField,
   });
   const filtered = filters.conditioned;
+  // useConditions resets scroll for the shared criteria; the tag and credit filters need the same.
+  useScrollTopOnChange(filters.signature);
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = useCallback(
     (next: typeof zoom) => {
