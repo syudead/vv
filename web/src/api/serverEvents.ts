@@ -8,6 +8,7 @@ import {
 import type { components } from "./gen/openapi";
 
 type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
+type PeerState = components["schemas"]["PeerState"];
 
 /** Events invalidate local data; group IDs include ancestors. Reconnected opens require refresh because disconnected clients miss changes. */
 export interface ServerEventHandlers {
@@ -18,6 +19,8 @@ export interface ServerEventHandlers {
   candidates?: () => void;
   activity?: () => void;
   onboarding?: () => void;
+  /** The pairing state in the viewer's shape, on every change and once on connection. */
+  peer?: (state: PeerState) => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -78,6 +81,10 @@ function connect(): void {
   current.addEventListener("smartFolder", (event) => {
     const changed = parse<SmartFolderChanged>(event);
     if (changed !== undefined) dispatch("smartFolder", changed.ids);
+  });
+  current.addEventListener("peer", (event) => {
+    const state = parse<PeerState>(event);
+    if (state !== undefined) dispatch("peer", state);
   });
   current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("activity", () => dispatch("activity"));
