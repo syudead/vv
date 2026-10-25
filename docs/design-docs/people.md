@@ -202,9 +202,14 @@ fractions of the frame's long side, as face recognition samples them.
 The faces are read page by page until 48 can be framed or none are left, so faces
 whose video is gone do not crowd them out. A frame read for another face or
 moment counts as still loading, so `Set as face` waits for the chosen one.
-`Set as face` cuts the outline out of the frame at the frame's own pixels and
-sends it to `PUT /api/people/{id}/image` as a JPEG, so the face goes through
-the same fitting as an upload and the dialog shows its refusals. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
+`Set as face` cuts the outline out of the frame, resamples it to 800 px on its
+long side with high-quality smoothing, and sends it to
+`PUT /api/people/{id}/image` as a JPEG, so the face goes through the same
+fitting as an upload and the dialog shows its refusals
+([`faceFrameImage.ts`](../../web/src/credits/person/faceFrameImage.ts)). A
+Retina profile shows the face at about 480 × 720 device pixels; a cut kept at
+its own pixels, often near 230 px wide, would be enlarged on screen together
+with its JPEG blocks. The framing of an upload saves the same way. The frame endpoint is owner-only, answers a PNG at most 2048 px on its
 long side with `private, max-age=3600`, and reports a position outside the
 video, an unreadable file and a frame that does not decode as the thumbnail
 position endpoint does.
