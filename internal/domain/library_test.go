@@ -80,6 +80,11 @@ func TestVideoQueryListsSmartFolders(t *testing.T) {
 		{FavoriteOnly: true, TagIDs: []int64{1}},
 		{Kind: VideoKindFile},
 		{Kind: VideoKindVirtual},
+		{VideoConditions: VideoConditions{MinDurationMs: 1}},
+		{VideoConditions: VideoConditions{MaxDurationMs: 1}},
+		{VideoConditions: VideoConditions{AddedFrom: "2025-01-01"}},
+		{VideoConditions: VideoConditions{AddedTo: "2025-01-01"}},
+		{VideoConditions: VideoConditions{WatchState: WatchStateWatched}},
 	} {
 		if q.ListsSmartFolders() {
 			t.Errorf("%+v.ListsSmartFolders() = true, want false", q)

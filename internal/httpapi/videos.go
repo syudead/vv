@@ -31,6 +31,10 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		tagKind: params.TagKind, personRole: params.PersonRole,
+		conditions: conditionParams{
+			minDurationMs: params.MinDurationMs, maxDurationMs: params.MaxDurationMs,
+			addedFrom: params.AddedFrom, addedTo: params.AddedTo, watchState: params.WatchState,
+		},
 	})
 	if !ok {
 		return
@@ -71,6 +75,34 @@ type videoQueryParams struct {
 	tagKind      *int64
 	// personRole is accepted only by listVideos and requires person.
 	personRole *gen.WorkPersonRole
+	conditions conditionParams
+}
+
+// conditionParams carries the duration, added-day and watch-state filters.
+type conditionParams struct {
+	minDurationMs, maxDurationMs *int64
+	addedFrom, addedTo           *string
+	watchState                   *gen.WatchState
+}
+
+func (p conditionParams) conditions() domain.VideoConditions {
+	var c domain.VideoConditions
+	if p.minDurationMs != nil {
+		c.MinDurationMs = *p.minDurationMs
+	}
+	if p.maxDurationMs != nil {
+		c.MaxDurationMs = *p.maxDurationMs
+	}
+	if p.addedFrom != nil {
+		c.AddedFrom = domain.CalendarDay(*p.addedFrom)
+	}
+	if p.addedTo != nil {
+		c.AddedTo = domain.CalendarDay(*p.addedTo)
+	}
+	if p.watchState != nil {
+		c.WatchState = domain.WatchState(*p.watchState)
+	}
+	return c
 }
 
 // parseVideoQuery writes 400 and returns false for invalid or audience-restricted filters.
@@ -108,6 +140,12 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
+	conditions := params.conditions.conditions()
+	if err := conditions.Validate(); err != nil {
+		s.invalidRequest(w, "Duration, added-date or watch filters are out of range or out of order.")
+		return domain.VideoQuery{}, false
+	}
+	query.VideoConditions = conditions
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}

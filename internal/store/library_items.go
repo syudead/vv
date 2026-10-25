@@ -25,8 +25,41 @@ func matchConditions(spec listSpec) ([]string, []any) {
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
 		works, workArgs := workInfoConditions(level, userKey)
-		conditions = append(append(conditions, tags...), works...)
-		args = append(append(args, tagArgs...), workArgs...)
+		videoConds, videoArgs := videoConditionClauses(level.conditions, userKey)
+		conditions = append(append(append(conditions, tags...), works...), videoConds...)
+		args = append(append(append(args, tagArgs...), workArgs...), videoArgs...)
+	}
+	return conditions, args
+}
+
+// Watch states follow videoWatchStateExpr through a subquery, since not every caller joins playback_progress; unidentified content is unwatched.
+var watchStateConditions = map[domain.WatchState]string{
+	domain.WatchStateUnwatched: `not exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and (wp.completed = 1 or wp.position_ms <> 0))`,
+	domain.WatchStateInProgress: `exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and wp.completed <> 1 and wp.position_ms <> 0)`,
+	domain.WatchStateWatched: `exists (select 1 from playback_progress wp where wp.content_key = {key} and videos.content_key <> ''
+		and wp.completed = 1)`,
+}
+
+// Compare durations against videos.duration_ms, which is null when unknown, and days against added_at in Unix seconds.
+func videoConditionClauses(c domain.VideoConditions, userKey string) ([]string, []any) {
+	var conditions []string
+	var args []any
+	if c.MinDurationMs > 0 {
+		conditions, args = append(conditions, `videos.duration_ms >= ?`), append(args, c.MinDurationMs)
+	}
+	if c.MaxDurationMs > 0 {
+		conditions, args = append(conditions, `videos.duration_ms <= ?`), append(args, c.MaxDurationMs)
+	}
+	if c.AddedFrom != "" {
+		conditions, args = append(conditions, `videos.added_at >= ?`), append(args, c.AddedFrom.Start().Unix())
+	}
+	if c.AddedTo != "" {
+		conditions, args = append(conditions, `videos.added_at < ?`), append(args, c.AddedTo.End().Unix())
+	}
+	if clause, ok := watchStateConditions[c.WatchState]; ok {
+		conditions = append(conditions, strings.ReplaceAll(clause, "{key}", userKey))
 	}
 	return conditions, args
 }

@@ -1,5 +1,6 @@
 import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { t } from "../i18n";
+import { videoConditionChips } from "../library/videoConditions";
 
 export type RefKind = SmartRuleRef["kind"];
 
@@ -27,7 +28,7 @@ function textChip(key: string, text: string): ConditionChip {
 }
 
 /**
- * Preserve editor field order, omit empty conditions and mark missing references from both folder
+ * Preserve editor field order with the video conditions last, omit empty conditions and mark missing references from both folder
  * and ancestor settings.
  */
 export function conditionChips(
@@ -47,6 +48,8 @@ export function conditionChips(
   if (rule.organization !== undefined) {
     chips.push(refChip("organization", rule.organization, missing));
   }
+  for (const chip of videoConditionChips(rule))
+    chips.push(textChip(chip.kind, chip.text));
   return chips;
 }
 
