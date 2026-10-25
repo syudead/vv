@@ -2,11 +2,12 @@
 
 VVMDM reads a video's title, description, date and image from any video link
 with its bundled work-info plugin `vv.link`, tries the plugins that declare
-domains in an order the owner sets, and fills the empty fields of a virtual
-video created from a link. The rules are in
+domains in an order the owner sets, fills the empty fields of a virtual
+video created from a link, and fills a selection's empty fields from the
+works the owner confirms. The rules are in
 [`link_plugin.go`](../../internal/domain/link_plugin.go), the bundled plugin in
 [`link.go`](../../internal/wasmplugin/link.go) and
-[`link_page.go`](../../internal/wasmplugin/link_page.go), and the fill in
+[`link_page.go`](../../internal/wasmplugin/link_page.go), and the link fill in
 [`link_fetch.go`](../../internal/app/link_fetch.go). The sandbox and network
 rules it shares are in [work-info-plugins.md](work-info-plugins.md).
 
@@ -150,3 +151,76 @@ worker belonged to the previous process.
 | A job in the jobs table | Jobs are content work claimed by workers with ffmpeg; one in-memory queue serves a fetch that ends within a minute |
 | Overwriting with the fetched values | The owner's typed title or description would be lost to a site's |
 | Trying only the first matching plugin | A site plugin that fails, such as one needing a login, would leave the video empty although the generic plugin can read it |
+
+## A selection fills its empty fields after a review
+
+`Fill info…` on the list selection bar
+([library-ui.md, Selection bar](library-ui.md#selection-bar)) asks for one
+approved work-info plugin that searches and fetches, then lists for each
+selected video the works found and the chosen one's code and release date,
+and fills the video's empty fields from the results the owner kept. The
+dialog is in [`web/src/library/fillInfo/`](../../web/src/library/fillInfo); the server
+side is the list in
+[`work_info_fill.go`](../../internal/app/work_info_fill.go) and the single
+fetch and apply.
+
+The diagram shows one review from the selection bar to the filled videos.
+
+```mermaid
+sequenceDiagram
+  participant P as Fill dialog
+  participant H as API
+  participant R as Plugin runs
+  P->>H: POST /api/work-info-fill-targets
+  H-->>P: one video per user-data key, title, search words
+  loop each video, one at a time
+    P->>H: POST search with the code, or the title
+    H->>R: search
+    H-->>P: candidates, match
+    opt a work is chosen
+      P->>H: GET the video, POST work-info-fetches
+      H->>R: fetch
+      H-->>P: held result
+      P->>P: plan of the empty fields it fills
+    end
+  end
+  P->>P: owner keeps, changes or drops each choice
+  loop each kept plan
+    P->>H: POST apply with the plan's selection
+  end
+```
+
+`POST /api/work-info-fill-targets` resolves the selection's smart folders and
+returns the first video of each user-data key with its title and its search
+words: the key's work code, or the title without one. The versions of a
+bundle share one code and one user-data key and are listed once. The dialog
+then runs one search or fetch at a time, since the runtime has one run slot,
+and shows each video as its result arrives; closing the dialog stops the rest.
+
+The search response carries `match`, the candidate the dialog preselects
+(`domain.MatchWorkInfoCandidate`): the first whose title or ID equals the
+search words once case, width, spaces and punctuation are ignored, or the only
+candidate. A video without a match starts as `Don't fill`; the owner can pick
+any candidate, change a preselected one or drop it.
+
+Each chosen work is fetched with the single fetch, which holds the result for
+10 minutes, and the dialog builds a plan from it and the video (`fillPlan`):
+the title while a file video has no display name, since its file title is only
+a fallback; the tags when the video has none; each empty code, description
+and date; each role, link and ID list the video has no entry in; and the first
+cover when no image is applied. The row shows only the fetched code and
+release date, which are enough to tell whether the right work was found, and
+`Fill N videos` sends each plan as the selection of the single apply, one
+video at a time, so the owner gets the result that was reviewed. A plan that
+writes nothing is shown as such and not applied; a failed apply
+stays on its row with the reason, and the dialog stays open.
+
+| Rejected | Why |
+| --- | --- |
+| Filling in the background without a review | The owner could not see what matched, and a wrong fill cannot be rolled back |
+| Showing only the works found | The owner could not tell a wrong work with a similar title |
+| Listing every value each plan writes | Across many videos the descriptions, tags and links buried the code and date that tell a wrong work |
+| Fetching again on the server when applying | The result could differ from the one the owner reviewed |
+| Fetching by the code as the work's ID | Most sites' IDs are not the work's code, so most fills failed |
+| Searching on the server for the whole selection | The request would wait for every search; the dialog shows each result as it arrives and stops when closed |
+| Overwriting the selection's values | The owner's tags and details would be lost to a site's |

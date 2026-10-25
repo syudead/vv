@@ -15,6 +15,7 @@ import BulkEditor from "./bulkEdit/BulkEditor";
 import EditCodesAction from "./codeEdit/EditCodesAction";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
+import FillInfoAction from "./fillInfo/FillInfoAction";
 import {
   DisabledReason,
   disabledProps,
@@ -249,6 +250,12 @@ export default function SelectionBar({
             disabledReason={reasons.codes}
             blocked={removeFromGroup?.pending ?? false}
             onBusyChange={setCodesBusy}
+          />
+
+          <FillInfoAction
+            videoIds={selectedIds}
+            smartFolderIds={smartFolderIds}
+            disabledReason={reasons.tag}
           />
 
           <FavoriteMenu

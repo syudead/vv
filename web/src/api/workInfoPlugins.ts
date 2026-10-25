@@ -1,6 +1,7 @@
 import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
+import { smartFolderField } from "./smartFolderChanges";
 import { afterTagsAppliedByName } from "./tags";
 
 // Owner-only plugin changes emit no events; refresh the list after mutations.
@@ -27,6 +28,8 @@ export type WorkInfoMatch = components["schemas"]["WorkInfoMatch"];
 export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
 export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
 export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
+export type WorkInfoFillTarget = components["schemas"]["WorkInfoFillTarget"];
+export type WorkInfoSearchResult = components["schemas"]["WorkInfoSearchResult"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -135,11 +138,39 @@ export async function searchWorkInfo(
   query: string,
   signal?: AbortSignal,
 ): Promise<WorkInfoCandidate[]> {
-  const result = await request<components["schemas"]["WorkInfoSearchResult"]>(
-    `${pluginPath(id)}/search`,
-    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ query }), signal },
+  return (await searchWorkInfoMatch(id, query, signal)).candidates;
+}
+
+/** Search like searchWorkInfo, with the index of the candidate a fill preselects in `match`. */
+export function searchWorkInfoMatch(
+  id: number,
+  query: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoSearchResult> {
+  return request<WorkInfoSearchResult>(`${pluginPath(id)}/search`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ query }),
+    signal,
+  });
+}
+
+/** One video per user-data key among the videos and smart folders, with its title and search words. */
+export async function listWorkInfoFillTargets(
+  videoIds: readonly number[],
+  smartFolderIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<WorkInfoFillTarget[]> {
+  const list = await request<components["schemas"]["WorkInfoFillTargetList"]>(
+    "/api/work-info-fill-targets",
+    {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ videoIds, ...smartFolderField(smartFolderIds) }),
+      signal,
+    },
   );
-  return result.candidates;
+  return list.targets;
 }
 
 /** Treat id as opaque even when URL-shaped; plugins build URLs. Fetch results last ten minutes without modifying the video. */

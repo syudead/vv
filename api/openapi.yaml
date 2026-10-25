@@ -2675,6 +2675,29 @@ paths:
         "504":
           $ref: "#/components/responses/PluginTimedOut"
 
+  /api/work-info-fill-targets:
+    post:
+      operationId: listWorkInfoFillTargets
+      summary: "List the videos a selection fill searches for"
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoFillTargetsRequest"
+      responses:
+        "200":
+          description: "Fill targets"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoFillTargetList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/work-info-plugins/{id}/person-search:
     post:
       operationId: searchPeopleWithPlugin
@@ -7598,6 +7621,9 @@ components:
           description: "First 50 candidates in plugin order."
           items:
             $ref: "#/components/schemas/WorkInfoCandidate"
+        match:
+          type: integer
+          description: "Index in candidates of the one a selection fill takes by default: the first whose title or id equals the query ignoring case, width, spaces and punctuation, or the only candidate. Absent when none matches."
 
     WorkInfoFetchRequest:
       type: object
@@ -9935,6 +9961,51 @@ components:
           items:
             type: integer
             format: int64
+
+    WorkInfoFillTargetsRequest:
+      type: object
+      required: [videoIds]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          description: "Video IDs to fill. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    WorkInfoFillTargetList:
+      type: object
+      required: [targets]
+      additionalProperties: false
+      properties:
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkInfoFillTarget"
+
+    WorkInfoFillTarget:
+      type: object
+      required: [videoId, title, query]
+      additionalProperties: false
+      properties:
+        videoId:
+          type: integer
+          format: int64
+        title:
+          type: string
+          description: "The video's title as the owner sees it."
+        query:
+          type: string
+          description: "The work code, or the title without one; it may exceed searchWorkInfo's 200 characters."
 
     VideoTagsSummaryItem:
       type: object

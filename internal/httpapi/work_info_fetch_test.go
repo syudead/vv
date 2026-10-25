@@ -30,9 +30,16 @@ type scriptedPlugins struct {
 	selection  domain.WorkInfoSelection
 	pageCover  bool
 	ids        []string
+	fillQuery  []domain.WorkInfoFillQuery
+	fillIDs    []int64
 	// covers and personImages map an index to its kept image.
 	covers       map[int]domain.WorkInfoCover
 	personImages map[int]domain.WorkInfoCover
+}
+
+func (p *scriptedPlugins) WorkInfoFillQueries(_ context.Context, videoIDs []int64) ([]domain.WorkInfoFillQuery, error) {
+	p.fillIDs = videoIDs
+	return p.fillQuery, nil
 }
 
 func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
@@ -176,8 +183,13 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	status, body := e.post(searchPath, `{"query":"w"}`, e.owner)
 	var search gen.WorkInfoSearchResult
 	if status != http.StatusOK || json.Unmarshal(body, &search) != nil || len(search.Candidates) != 2 ||
-		search.Candidates[0].Id != "w-1" || search.Candidates[0].Url != "https://e.test/1" || search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" {
+		search.Candidates[0].Id != "w-1" || search.Candidates[0].Url != "https://e.test/1" || search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" ||
+		search.Match != nil {
 		t.Fatalf("search = %d %s", status, body)
+	}
+	status, body = e.post(searchPath, `{"query":"two"}`, e.owner)
+	if status != http.StatusOK || json.Unmarshal(body, &search) != nil || search.Match == nil || *search.Match != 1 {
+		t.Fatalf("search with a matching title = %d %s; want match 1", status, body)
 	}
 
 	e.plugins.fetch = domain.WorkInfoFetchResult{ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), Tags: []string{}}
@@ -206,6 +218,19 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	}
 	if e.plugins.calls != calls {
 		t.Fatal("an incomplete request reached the registry")
+	}
+}
+
+// The targets list answers each video's title and search words.
+func TestWorkInfoFillTargetsAnswer(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	e.plugins.fillQuery = []domain.WorkInfoFillQuery{{VideoID: 7, Title: "Trip", Query: "ABC-1"}}
+	status, body := e.post("/api/work-info-fill-targets", `{"videoIds":[7,8]}`, e.owner)
+	var targets gen.WorkInfoFillTargetList
+	if status != http.StatusOK || json.Unmarshal(body, &targets) != nil || len(targets.Targets) != 1 ||
+		targets.Targets[0] != (gen.WorkInfoFillTarget{VideoId: 7, Title: "Trip", Query: "ABC-1"}) ||
+		!slices.Equal(e.plugins.fillIDs, []int64{7, 8}) {
+		t.Fatalf("targets = %d %s (ids %v)", status, body, e.plugins.fillIDs)
 	}
 }
 
