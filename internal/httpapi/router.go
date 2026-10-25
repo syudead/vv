@@ -188,6 +188,14 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
+	// MergedRelatedVideos is RelatedVideos over both nodes; a nil or failing peer is skipped.
+	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// RemoteRelatedVideos is the related list over both nodes of a peer video with clues; exclude holds peer ids.
+	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent.
+	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)
+	// RelatedClues reports false for a video the audience cannot see.
+	RelatedClues(ctx context.Context, audience domain.Audience, id int64) (domain.RelatedClues, bool, error)
 	// VideoGroup returns visible playback order and reads detail only inside window; false means no
 	// group context.
 	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
@@ -630,7 +638,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
-		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate":
+		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related":
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {

@@ -24,6 +24,8 @@ type RelatedCandidate struct {
 	// TagIDs includes confirmed, tentative, and folder-derived tags without distinction.
 	TagIDs      []int64
 	Fingerprint *Fingerprint
+	// Words, when not nil, replace the words of Title and Path; clues from the other node carry them.
+	Words []string
 }
 
 // RelatedScore uses fixed-point units to keep ties and cursors independent of floating-point drift.
@@ -59,6 +61,12 @@ func (ContentRelatedness) For(self RelatedCandidate) func(RelatedCandidate) Rela
 	selfDir := filepath.Dir(self.Path)
 	selfTags := uniqueIDs(self.TagIDs)
 	selfWords := titleWords(self.Title, self.Path)
+	if self.Words != nil {
+		selfWords = make(map[string]struct{}, len(self.Words))
+		for _, word := range self.Words {
+			selfWords[word] = struct{}{}
+		}
+	}
 	selfScenes := sceneHashes(self.Fingerprint)
 	return func(other RelatedCandidate) RelatedScore {
 		points := relatedFingerprintPoints*sceneOverlap(selfScenes, sceneHashes(other.Fingerprint)) +

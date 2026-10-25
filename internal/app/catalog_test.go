@@ -27,6 +27,7 @@ type fakeCatalogStore struct {
 	retried []int64
 
 	candidates []domain.RelatedCandidate
+	tagNames   map[int64]string
 	videos     map[int64]domain.Video
 	groups     map[int64]domain.VideoGroup
 	windows    []domain.GroupWindow
@@ -81,6 +82,26 @@ func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audien
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeCatalogStore) RelatedTagNames(_ context.Context, ids []int64) (map[int64]string, error) {
+	names := map[int64]string{}
+	for _, id := range ids {
+		if name, ok := f.tagNames[id]; ok {
+			names[id] = name
+		}
+	}
+	return names, nil
+}
+
+func (f *fakeCatalogStore) RelatedTagIDs(_ context.Context, names []string) (map[string]int64, error) {
+	ids := map[string]int64{}
+	for id, name := range f.tagNames {
+		if slices.Contains(names, name) {
+			ids[name] = id
+		}
+	}
+	return ids, nil
 }
 
 // Return IDs from all members but details only within the requested window, matching storage.

@@ -295,3 +295,60 @@ func groupMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids
 	}
 	return members, nil
 }
+
+// RelatedTagNames returns the canonical names of the tags with ids, for the clues sent to the peer.
+func (s *LibraryStore) RelatedTagNames(ctx context.Context, ids []int64) (map[int64]string, error) {
+	names := make(map[int64]string, len(ids))
+	err := s.scanJSONArgument(ctx, ids, `select tag_id, name from tag_names
+		where canonical = 1 and tag_id in (select value from json_each(?))`, func(rows *sql.Rows) error {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return err
+		}
+		names[id] = name
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the names of related video tags: %w", err)
+	}
+	return names, nil
+}
+
+// RelatedTagIDs resolves the tag names of the peer's clues, synonyms included, to this node's tag ids.
+func (s *LibraryStore) RelatedTagIDs(ctx context.Context, names []string) (map[string]int64, error) {
+	ids := make(map[string]int64, len(names))
+	err := s.scanJSONArgument(ctx, names, `select name, tag_id from tag_names
+		where name in (select value from json_each(?))`, func(rows *sql.Rows) error {
+		var name string
+		var id int64
+		if err := rows.Scan(&name, &id); err != nil {
+			return err
+		}
+		ids[name] = id
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve the tags of related video clues: %w", err)
+	}
+	return ids, nil
+}
+
+// scanJSONArgument runs query with values as its one JSON array argument and scans every row.
+func (s *LibraryStore) scanJSONArgument(ctx context.Context, values any, query string, scan func(*sql.Rows) error) error {
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	rows, err := s.db.sql.QueryContext(ctx, query, string(encoded))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		if err := scan(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
