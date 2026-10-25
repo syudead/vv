@@ -12,7 +12,7 @@ import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 
-/** Folders have no selection, so dragging lifts only the pressed card. */
+/** A folder drag lifts only the pressed card, even while videos are selected. */
 function single(key: string): readonly string[] {
   return [key];
 }

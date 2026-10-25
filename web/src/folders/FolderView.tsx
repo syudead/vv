@@ -24,8 +24,9 @@ import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
-import { hasConditions } from "../videoList/listCriteria";
+import { criteriaKey, hasConditions } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import { useVideoSelection } from "../videoList/useVideoSelection";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
@@ -149,6 +150,10 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const { reload: reloadListing } = listing;
   const { reload: reloadVideos, refreshInPlace: refreshVideos } = videos;
   const { refresh: refreshListing } = listing;
+  const selection = useVideoSelection(videos.items, owner, refreshVideos);
+  const { clear: clearSelection } = selection;
+  const listKey = criteriaKey(criteria);
+  useEffect(() => clearSelection(), [clearSelection, listKey]);
   // Refresh in place after automatic imports, retaining visible rows.
   const refreshOpenLists = useCallback(() => {
     refreshListing();
@@ -277,6 +282,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
+        selection={selection.cardProps}
         tagsRow={tagsRow}
       />
     );
@@ -307,6 +313,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
+        selection={selection.cardProps}
         tagsRow={tagsRow}
         groupingMenu={groupingMenu}
       />
@@ -353,6 +360,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
           />
         </TopBarPortal>
       }
+      selectionBar={selection.bar}
     >
       {/* Snapshot immediately before navigation; display: contents preserves the layout's spacing. */}
       <div ref={listRef} onClick={saveSnapshot} className="contents">

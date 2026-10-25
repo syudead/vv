@@ -9,6 +9,7 @@ import { CardGrid } from "../ui/patterns/card-grid";
 import FolderVideoGrid from "./FolderVideoGrid";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
+import type { CardSelection } from "../videoList/useVideoSelection";
 import VideoCard from "../videoList/VideoCard";
 import FolderCard from "./FolderCard";
 import { Section } from "./layout";
@@ -22,6 +23,7 @@ export default function FolderContents({
   zoom,
   backTo,
   preview,
+  selection,
   tagsRow,
   groupingMenu,
 }: {
@@ -34,6 +36,7 @@ export default function FolderContents({
   backTo: string;
   /** Coordinate previews so only one plays at a time. */
   preview: PreviewCardProps;
+  selection: CardSelection;
   tagsRow: (video: Video) => ReactNode;
   /** Owners only: grouping menu at the end of the video heading. */
   groupingMenu?: ReactNode;
@@ -98,8 +101,7 @@ export default function FolderContents({
                       key={video.id}
                       video={video}
                       backTo={backTo}
-                      selected={false}
-                      selectionMode={false}
+                      {...selection(video.id)}
                       {...preview}
                       tagsRow={tagsRow}
                     />

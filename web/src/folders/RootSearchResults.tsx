@@ -8,14 +8,16 @@ import {
 } from "../api/listSnapshot";
 import { itemVideos } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
+import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
-import type { ListCriteria } from "../videoList/listCriteria";
+import { criteriaKey, type ListCriteria } from "../videoList/listCriteria";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { resultCountText } from "../videoList/listSummary";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import { useVideoSelection } from "../videoList/useVideoSelection";
 import VideoCard from "../videoList/VideoCard";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
@@ -57,6 +59,11 @@ export default function RootSearchResults({
   } = useVideos(criteria, restored);
 
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
+  const owner = useAudience() === "owner";
+  const selection = useVideoSelection(items, owner, refreshInPlace);
+  const { clear: clearSelection } = selection;
+  const listKey = criteriaKey(criteria);
+  useEffect(() => clearSelection(), [clearSelection, listKey]);
   const tagsRow = useFolderTagsRow();
   useEffect(() => {
     resetPreview();
@@ -157,8 +164,7 @@ export default function RootSearchResults({
                     key={video.id}
                     video={video}
                     backTo={backTo}
-                    selected={false}
-                    selectionMode={false}
+                    {...selection.cardProps(video.id)}
                     {...preview}
                     tagsRow={tagsRow}
                     location={
@@ -182,6 +188,7 @@ export default function RootSearchResults({
         </>
       )}
       <div ref={sentinel} aria-hidden="true" className="h-px" />
+      {selection.bar}
     </div>
   );
 }

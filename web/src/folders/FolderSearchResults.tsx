@@ -7,6 +7,7 @@ import type { Zoom } from "../preferences/viewPreferences";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { resultCountText } from "../videoList/listSummary";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
+import type { CardSelection } from "../videoList/useVideoSelection";
 import VideoCard from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
 import FolderVideoGrid from "./FolderVideoGrid";
@@ -18,6 +19,7 @@ export default function FolderSearchResults({
   zoom,
   backTo,
   preview,
+  selection,
   tagsRow,
 }: {
   folder: FolderRef;
@@ -25,6 +27,7 @@ export default function FolderSearchResults({
   zoom: Zoom;
   backTo: string;
   preview: PreviewCardProps;
+  selection: CardSelection;
   tagsRow: (video: Video) => ReactNode;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
@@ -57,8 +60,7 @@ export default function FolderSearchResults({
                     key={video.id}
                     video={video}
                     backTo={backTo}
-                    selected={false}
-                    selectionMode={false}
+                    {...selection(video.id)}
                     {...preview}
                     tagsRow={tagsRow}
                     location={
