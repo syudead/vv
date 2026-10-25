@@ -83,13 +83,19 @@ func (s *server) forwardRemoteVideo(w http.ResponseWriter, r *http.Request, id i
 		s.notFound(w, "This operation is not available for a video of the other VVMDM.")
 		return
 	}
-	if s.peerLink == nil {
-		s.peerUnreachable(w)
-		return
-	}
-	out, err := remoteRequest(r, remoteVideoPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest)
+	out, err := remoteRequest(r, remoteVideoPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
+		return
+	}
+	s.forward(w, r, out, op)
+}
+
+// forward sends out, made from r, to the peer as r's viewer and answers with the peer's answer, rewritten by op
+// when it succeeded.
+func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Request, op remoteOperation) {
+	if s.peerLink == nil {
+		s.peerUnreachable(w)
 		return
 	}
 	guest := audienceFrom(r.Context()) != domain.AudienceOwner
@@ -113,9 +119,8 @@ func (s *server) forwardRemoteVideo(w http.ResponseWriter, r *http.Request, id i
 	}
 }
 
-// remoteRequest is r for the peer at path, keeping the query with only the remote context ids.
-func remoteRequest(r *http.Request, path string) (*http.Request, error) {
-	query := r.URL.Query()
+// remoteRequest is r for the peer at path with query, keeping only the remote context ids.
+func remoteRequest(r *http.Request, path string, query url.Values) (*http.Request, error) {
 	for _, name := range remoteContextParams {
 		if !query.Has(name) {
 			continue
