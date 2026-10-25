@@ -6953,6 +6953,38 @@ type WorkInfoFetchedPerson struct {
 // WorkInfoField Fetched fields applicable to the video, in comparison-row order.
 type WorkInfoField string
 
+// WorkInfoFillItem defines model for WorkInfoFillItem.
+type WorkInfoFillItem struct {
+	VideoId int64 `json:"videoId"`
+
+	// WorkId The chosen candidate's id from searchWorkInfo.
+	WorkId string `json:"workId"`
+}
+
+// WorkInfoFillTarget defines model for WorkInfoFillTarget.
+type WorkInfoFillTarget struct {
+	// Query The work code, or the title without one; it may exceed searchWorkInfo's 200 characters.
+	Query string `json:"query"`
+
+	// Title The video's title as the owner sees it.
+	Title   string `json:"title"`
+	VideoId int64  `json:"videoId"`
+}
+
+// WorkInfoFillTargetList defines model for WorkInfoFillTargetList.
+type WorkInfoFillTargetList struct {
+	Targets []WorkInfoFillTarget `json:"targets"`
+}
+
+// WorkInfoFillTargetsRequest defines model for WorkInfoFillTargetsRequest.
+type WorkInfoFillTargetsRequest struct {
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to fill. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
+}
+
 // WorkInfoFillsQueued defines model for WorkInfoFillsQueued.
 type WorkInfoFillsQueued struct {
 	// Queued User-data keys whose fill was queued.
@@ -6961,11 +6993,7 @@ type WorkInfoFillsQueued struct {
 
 // WorkInfoFillsRequest defines model for WorkInfoFillsRequest.
 type WorkInfoFillsRequest struct {
-	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored.
-	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
-
-	// VideoIds Video IDs to fill. May be empty when smartFolderIds is not.
-	VideoIds []int64 `json:"videoIds"`
+	Items []WorkInfoFillItem `json:"items"`
 }
 
 // WorkInfoInput Full work-info replacement with the seven WorkInfo properties; each may be omitted or null, either of which clears it.
@@ -7136,6 +7164,9 @@ type WorkInfoSearchRequest struct {
 type WorkInfoSearchResult struct {
 	// Candidates First 50 candidates in plugin order.
 	Candidates []WorkInfoCandidate `json:"candidates"`
+
+	// Match Index in candidates of the one a selection fill takes by default: the first whose title or id equals the query ignoring case, width, spaces and punctuation, or the only candidate. Absent when none matches.
+	Match *int `json:"match,omitempty"`
 }
 
 // WorkOrganization defines model for WorkOrganization.
@@ -8116,6 +8147,9 @@ type CreateVirtualVideoJSONRequestBody = VirtualVideoCreate
 // MergeVirtualVideoJSONRequestBody defines body for MergeVirtualVideo for application/json ContentType.
 type MergeVirtualVideoJSONRequestBody = VirtualVideoMerge
 
+// ListWorkInfoFillTargetsJSONRequestBody defines body for ListWorkInfoFillTargets for application/json ContentType.
+type ListWorkInfoFillTargetsJSONRequestBody = WorkInfoFillTargetsRequest
+
 // UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
 type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 
@@ -8736,6 +8770,9 @@ type ServerInterface interface {
 	// DeleteWatchHistoryEntry Delete a watch-history entry
 	// (DELETE /api/watch-history/{id})
 	DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id WatchHistoryEntryId)
+	// ListWorkInfoFillTargets List the videos a selection fill searches for
+	// (POST /api/work-info-fill-targets)
+	ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 	// ListWorkInfoPlugins List work-info plugins
 	// (GET /api/work-info-plugins)
 	ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request)
@@ -8754,7 +8791,7 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
-	// StartWorkInfoFills Fill selected videos' empty fields from a work-info plugin's search
+	// StartWorkInfoFills Fill videos' empty fields from chosen works
 	// (POST /api/work-info-plugins/{id}/fills)
 	StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
@@ -15020,6 +15057,20 @@ func (siw *ServerInterfaceWrapper) DeleteWatchHistoryEntry(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorkInfoFillTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkInfoFillTargets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkInfoPlugins operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request) {
 
@@ -15487,6 +15538,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-fill-targets", wrapper.ListWorkInfoFillTargets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/fills", wrapper.StartWorkInfoFills)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/person-search", wrapper.SearchPeopleWithPlugin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)

@@ -17,19 +17,32 @@ type WorkInfoFillTarget struct {
 	Code       string
 }
 
-// MatchWorkInfoCandidate picks the first candidate whose title or ID equals query ignoring case, width, spaces and
-// punctuation, or the only candidate; a fill applies nothing else, since no owner looks at the choice.
-func MatchWorkInfoCandidate(candidates []WorkInfoCandidate, query string) (WorkInfoCandidate, bool) {
+// WorkInfoFillQuery is a fill target as the owner reviews it: the video's title and the words its search uses.
+type WorkInfoFillQuery struct {
+	VideoID int64
+	Title   string
+	Query   string
+}
+
+// WorkInfoFillItem is one fill the owner confirmed: the video and the ID of the work chosen for it.
+type WorkInfoFillItem struct {
+	VideoID int64
+	WorkID  string
+}
+
+// MatchWorkInfoCandidate returns the index of the candidate a fill preselects: the first whose title or ID equals
+// query ignoring case, width, spaces and punctuation, or the only candidate.
+func MatchWorkInfoCandidate(candidates []WorkInfoCandidate, query string) (int, bool) {
 	key := candidateMatchKey(query)
-	for _, c := range candidates {
+	for i, c := range candidates {
 		if key != "" && (candidateMatchKey(c.Title) == key || candidateMatchKey(c.ID) == key) {
-			return c, true
+			return i, true
 		}
 	}
 	if len(candidates) == 1 {
-		return candidates[0], true
+		return 0, true
 	}
-	return WorkInfoCandidate{}, false
+	return 0, false
 }
 
 func candidateMatchKey(s string) string {

@@ -10,18 +10,18 @@ func TestMatchWorkInfoCandidateTakesOnlyAnEqualOrSoleCandidate(t *testing.T) {
 		name       string
 		candidates []WorkInfoCandidate
 		query      string
-		want       WorkInfoCandidate
+		want       int
 		ok         bool
 	}{
-		{"title ignoring case, width and punctuation", []WorkInfoCandidate{other, byTitle}, "the work part 1", byTitle, true},
-		{"id", []WorkInfoCandidate{other, byID}, "abc123", byID, true},
-		{"sole candidate", []WorkInfoCandidate{other}, "something else", other, true},
-		{"several without an equal one", []WorkInfoCandidate{other, byID}, "the work", WorkInfoCandidate{}, false},
-		{"none", nil, "the work", WorkInfoCandidate{}, false},
+		{"title ignoring case, width and punctuation", []WorkInfoCandidate{other, byTitle}, "the work part 1", 1, true},
+		{"id", []WorkInfoCandidate{other, byID}, "abc123", 1, true},
+		{"sole candidate", []WorkInfoCandidate{other}, "something else", 0, true},
+		{"several without an equal one", []WorkInfoCandidate{other, byID}, "the work", 0, false},
+		{"none", nil, "the work", 0, false},
 	} {
 		got, ok := MatchWorkInfoCandidate(tc.candidates, tc.query)
 		if got != tc.want || ok != tc.ok {
-			t.Errorf("%s: got %+v, %v; want %+v, %v", tc.name, got, ok, tc.want, tc.ok)
+			t.Errorf("%s: got %d, %v; want %d, %v", tc.name, got, ok, tc.want, tc.ok)
 		}
 	}
 }

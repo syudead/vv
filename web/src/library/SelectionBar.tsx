@@ -13,7 +13,7 @@ import BundleDialog from "../versions/BundleDialog";
 import BulkEditor from "./bulkEdit/BulkEditor";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
-import FillInfoAction from "./FillInfoAction";
+import FillInfoAction from "./fillInfo/FillInfoAction";
 import {
   DisabledReason,
   disabledProps,

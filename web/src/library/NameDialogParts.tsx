@@ -23,6 +23,7 @@ export function CreateDialogFrame({
   failure,
   initialFocus,
   submitDisabled,
+  size,
   onSubmit,
   onClose,
   children,
@@ -31,8 +32,9 @@ export function CreateDialogFrame({
   description?: ReactNode;
   pending: boolean;
   failure: UiText | null;
-  initialFocus: RefObject<HTMLElement | null>;
+  initialFocus?: RefObject<HTMLElement | null>;
   submitDisabled?: boolean;
+  size?: "default" | "wide";
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
   children: ReactNode;
@@ -55,6 +57,7 @@ export function CreateDialogFrame({
       }
       pending={pending}
       submitDisabled={submitDisabled}
+      size={size}
       initialFocus={initialFocus}
     >
       {children}

@@ -23,12 +23,15 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 		s.workInfoRunError(w, err, "The work-info plugin was not found.")
 		return
 	}
-	out := make([]gen.WorkInfoCandidate, 0, len(candidates))
+	out := gen.WorkInfoSearchResult{Candidates: make([]gen.WorkInfoCandidate, 0, len(candidates))}
 	for _, c := range candidates {
-		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+		out.Candidates = append(out.Candidates, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+	}
+	if match, ok := domain.MatchWorkInfoCandidate(candidates, query); ok {
+		out.Match = &match
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 // SearchPeopleWithPlugin answers a person plugin's search; its errors are SearchWorkInfo's.
@@ -106,9 +109,9 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
 }
 
-// StartWorkInfoFills answers once the fills are queued; their outcomes arrive as video events and fetch activity.
-func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
-	var body gen.WorkInfoFillsRequest
+// ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key.
+func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
+	var body gen.WorkInfoFillTargetsRequest
 	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
 		return
 	}
@@ -116,7 +119,37 @@ func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id g
 	if !ok {
 		return
 	}
-	queued, err := s.workInfoPlugins.StartWorkInfoFills(r.Context(), id, videoIDs)
+	queries, err := s.workInfoPlugins.WorkInfoFillQueries(r.Context(), videoIDs)
+	if err != nil {
+		s.internalError(w, "Could not list the videos to fill.", err)
+		return
+	}
+	targets := make([]gen.WorkInfoFillTarget, 0, len(queries))
+	for _, q := range queries {
+		targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.WorkInfoFillTargetList{Targets: targets}, s.logger)
+}
+
+// StartWorkInfoFills answers once the fills are queued; their outcomes arrive as video events and fetch activity.
+func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	var body gen.WorkInfoFillsRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if len(body.Items) == 0 || len(body.Items) > maxVideoTagsIDs {
+		s.tooManyVideos(w)
+		return
+	}
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	items := make([]domain.WorkInfoFillItem, 0, len(body.Items))
+	for _, item := range body.Items {
+		items = append(items, domain.WorkInfoFillItem{VideoID: item.VideoId, WorkID: item.WorkId})
+	}
+	queued, err := s.workInfoPlugins.StartWorkInfoFills(r.Context(), id, items)
 	if errors.Is(err, domain.ErrWorkInfoFillQueueFull) {
 		s.writeError(w, http.StatusServiceUnavailable, codeWorkInfoFillsBusy, "Too many fills are queued; try again later.")
 		return

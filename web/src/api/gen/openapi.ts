@@ -1614,6 +1614,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-fill-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List the videos a selection fill searches for
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one.
+         */
+        post: operations["listWorkInfoFillTargets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/fills": {
         parameters: {
             query?: never;
@@ -1624,8 +1644,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Fill selected videos' empty fields from a work-info plugin's search
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags, takes the first video of each user-data key, and queues one fill per key. Returns 202 at once with the number queued. Each fill runs in the background, one at a time on the worker that runs link fetches: it searches with the key's work code, or the video's title without one, fetches the candidate whose title or id equals the search words ignoring case, width, spaces and punctuation, or the only candidate, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, the title as the display name when a file video has none (a virtual video's only while it is still its link), and the first cover when the video has no image. Every fill is recorded as the video's work-info fetch activity, a search without a matching candidate as a failure. A missing plugin returns 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared search or fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing.
+         * Fill videos' empty fields from chosen works
+         * @description Owner-only. Queues one fill per item, 1–20,000 items, and returns 202 at once with the number queued. Each fill runs in the background, one at a time on the worker that runs link fetches: it fetches the item's workId, a trimmed 1–200 character id from searchWorkInfo, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, the title as the display name when a file video has none (a virtual video's only while it is still its link), and the first cover when the video has no image. Every fill is recorded as the video's work-info fetch activity; a video deleted meanwhile is skipped. No items or more than 20,000 return 400 too_many_videos, an invalid workId 400 invalid_request, a missing plugin 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing.
          */
         post: operations["startWorkInfoFills"];
         delete?: never;
@@ -3999,6 +4019,8 @@ export interface components {
         WorkInfoSearchResult: {
             /** @description First 50 candidates in plugin order. */
             candidates: components["schemas"]["WorkInfoCandidate"][];
+            /** @description Index in candidates of the one a selection fill takes by default: the first whose title or id equals the query ignoring case, width, spaces and punctuation, or the only candidate. Absent when none matches. */
+            match?: number;
         };
         /** @description Exactly one of id and link. */
         WorkInfoFetchRequest: {
@@ -5140,11 +5162,31 @@ export interface components {
             /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
             smartFolderIds?: number[];
         };
-        WorkInfoFillsRequest: {
+        WorkInfoFillTargetsRequest: {
             /** @description Video IDs to fill. May be empty when smartFolderIds is not. */
             videoIds: number[];
             /** @description Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored. */
             smartFolderIds?: number[];
+        };
+        WorkInfoFillTargetList: {
+            targets: components["schemas"]["WorkInfoFillTarget"][];
+        };
+        WorkInfoFillTarget: {
+            /** Format: int64 */
+            videoId: number;
+            /** @description The video's title as the owner sees it. */
+            title: string;
+            /** @description The work code, or the title without one; it may exceed searchWorkInfo's 200 characters. */
+            query: string;
+        };
+        WorkInfoFillsRequest: {
+            items: components["schemas"]["WorkInfoFillItem"][];
+        };
+        WorkInfoFillItem: {
+            /** Format: int64 */
+            videoId: number;
+            /** @description The chosen candidate's id from searchWorkInfo. */
+            workId: string;
         };
         WorkInfoFillsQueued: {
             /** @description User-data keys whose fill was queued. */
@@ -9945,6 +9987,32 @@ export interface operations {
             502: components["responses"]["PluginFailed"];
             503: components["responses"]["PluginBusy"];
             504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    listWorkInfoFillTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoFillTargetsRequest"];
+            };
+        };
+        responses: {
+            /** @description Fill targets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoFillTargetList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     startWorkInfoFills: {

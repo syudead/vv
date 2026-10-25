@@ -1,35 +1,33 @@
 import { FileSearch } from "lucide-react";
 import { type FormEvent, useId, useRef, useState } from "react";
 
-import { startWorkInfoFills, type WorkInfoPlugin } from "../api/workInfoPlugins";
-import { errorText, t, type UiText } from "../i18n";
+import type { WorkInfoPlugin } from "../../api/workInfoPlugins";
+import { t, type UiText } from "../../i18n";
 import {
   approvedWorkPlugins,
   canChooseFindBy,
   pluginLabel,
-} from "../player/workInfoFetch/fetchRules";
-import { useApprovedPlugins } from "../player/workInfoFetch/useApprovedPlugins";
-import { useToast } from "../ui/Toast";
-import { Field, FieldLabel } from "../ui/shadcn/field";
+} from "../../player/workInfoFetch/fetchRules";
+import { useApprovedPlugins } from "../../player/workInfoFetch/useApprovedPlugins";
+import { Field, FieldLabel } from "../../ui/shadcn/field";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui/shadcn/select";
-import { CreateDialogFrame } from "./NameDialogParts";
+} from "../../ui/shadcn/select";
+import { CreateDialogFrame } from "../NameDialogParts";
 import {
   DisabledReason,
   disabledProps,
   SelectionAction,
   WithTooltip,
-} from "./SelectionAction";
+} from "../SelectionAction";
+import FillReviewDialog from "./FillReviewDialog";
+import type { FillTargets } from "./useFillReview";
 
-interface Targets {
-  videoIds: readonly number[];
-  smartFolderIds: readonly number[];
-}
+type Targets = FillTargets;
 
 // A fill searches, then fetches the matching candidate.
 function fillPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
@@ -37,9 +35,8 @@ function fillPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
 }
 
 /**
- * Queue fills of the selection's empty fields from one plugin's search
- * (docs/design-docs/link-fetch.md). The server answers before any plugin runs, so the
- * selection stays and the cards update as each fill lands.
+ * Pick a plugin, review the works its search finds for each selected video, then queue fills of the kept ones
+ * (docs/design-docs/link-fetch.md). The selection stays and the cards update as each fill lands.
  */
 export default function FillInfoAction({
   videoIds,
@@ -68,39 +65,38 @@ export default function FillInfoAction({
 }
 
 function FillInfoDialog({ targets, onClose }: { targets: Targets; onClose: () => void }) {
+  const [pluginId, setPluginId] = useState<number | null>(null);
+  if (pluginId !== null) {
+    return <FillReviewDialog pluginId={pluginId} targets={targets} onClose={onClose} />;
+  }
+  return <PluginDialog onChosen={setPluginId} onClose={onClose} />;
+}
+
+function PluginDialog({
+  onChosen,
+  onClose,
+}: {
+  onChosen: (pluginId: number) => void;
+  onClose: () => void;
+}) {
   const words = t.library.selection.fillDialog;
-  const toast = useToast();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const { plugins, loaded } = useApprovedPlugins(fillPlugins);
   const [chosen, setChosen] = useState<number | undefined>(undefined);
   const plugin = plugins.find((item) => item.id === chosen) ?? plugins[0];
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || plugin === undefined) return;
-    setPending(true);
-    setFailure(null);
-    startWorkInfoFills(plugin.id, targets.videoIds, targets.smartFolderIds).then(
-      (queued) => {
-        toast(t.library.selection.fillsQueued(queued.queued));
-        onClose();
-      },
-      (error: unknown) => {
-        setPending(false);
-        setFailure(words.failed(errorText(error)));
-      },
-    );
+    if (plugin !== undefined) onChosen(plugin.id);
   }
 
   return (
     <CreateDialogFrame
       words={words}
       description={words.description}
-      pending={pending}
-      failure={failure}
+      pending={false}
+      failure={null}
       initialFocus={trigger}
       submitDisabled={plugin === undefined}
       onSubmit={submit}
@@ -114,7 +110,7 @@ function FillInfoDialog({ targets, onClose }: { targets: Targets; onClose: () =>
           <Select
             value={plugin === undefined ? "" : String(plugin.id)}
             onValueChange={(value) => setChosen(Number(value))}
-            disabled={pending || plugin === undefined}
+            disabled={plugin === undefined}
           >
             <SelectTrigger ref={trigger} id={id} size="sm">
               <SelectValue />

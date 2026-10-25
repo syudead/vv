@@ -29,6 +29,9 @@ export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
 export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
 export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
 export type WorkInfoFillsQueued = components["schemas"]["WorkInfoFillsQueued"];
+export type WorkInfoFillTarget = components["schemas"]["WorkInfoFillTarget"];
+export type WorkInfoFillItem = components["schemas"]["WorkInfoFillItem"];
+export type WorkInfoSearchResult = components["schemas"]["WorkInfoSearchResult"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -137,24 +140,51 @@ export async function searchWorkInfo(
   query: string,
   signal?: AbortSignal,
 ): Promise<WorkInfoCandidate[]> {
-  const result = await request<components["schemas"]["WorkInfoSearchResult"]>(
-    `${pluginPath(id)}/search`,
-    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ query }), signal },
-  );
-  return result.candidates;
+  return (await searchWorkInfoMatch(id, query, signal)).candidates;
 }
 
-/** Queue fills by work code for the videos and smart folders; the server answers before any plugin runs. */
-export function startWorkInfoFills(
-  pluginId: number,
+/** Search like searchWorkInfo, with the index of the candidate a fill preselects in `match`. */
+export function searchWorkInfoMatch(
+  id: number,
+  query: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoSearchResult> {
+  return request<WorkInfoSearchResult>(`${pluginPath(id)}/search`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ query }),
+    signal,
+  });
+}
+
+/** One video per user-data key among the videos and smart folders, with its title and search words. */
+export async function listWorkInfoFillTargets(
   videoIds: readonly number[],
   smartFolderIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<WorkInfoFillTarget[]> {
+  const list = await request<components["schemas"]["WorkInfoFillTargetList"]>(
+    "/api/work-info-fill-targets",
+    {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ videoIds, ...smartFolderField(smartFolderIds) }),
+      signal,
+    },
+  );
+  return list.targets;
+}
+
+/** Queue fills of each video from its chosen work; the server answers before any plugin runs. */
+export function startWorkInfoFills(
+  pluginId: number,
+  items: readonly WorkInfoFillItem[],
   signal?: AbortSignal,
 ): Promise<WorkInfoFillsQueued> {
   return request<WorkInfoFillsQueued>(`${pluginPath(pluginId)}/fills`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ videoIds, ...smartFolderField(smartFolderIds) }),
+    body: JSON.stringify({ items }),
     signal,
   });
 }

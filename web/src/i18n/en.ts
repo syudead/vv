@@ -1183,11 +1183,28 @@ export const en = {
       fillDialog: {
         title: "Fill empty info by search",
         description:
-          "Each video is searched for by its code, or by its title without one. Only a result whose title or ID matches the search, or a single result, is used, and only the video's empty name, tags, details and image are filled; a name you set stays. The fills run in the background, one at a time; videos without a match are listed as failed in Activity.",
+          "Each video is searched for by its code, or by its title without one. You check the works found before anything is filled.",
         plugin: "Plugin",
         noPlugin:
           "No approved plugin both searches and fetches works. Add or approve one in Settings.",
-        submit: "Start",
+        submit: "Search",
+        submitting: "Searching…",
+        failed: (reason: string) => `Couldn't search: ${reason}`,
+      },
+      fillReview: {
+        title: "Check the works found",
+        description:
+          "A work whose title or ID matches the search, or the only one found, is chosen for you. Only each video's empty name, tags, details and image are filled; a name you set stays.",
+        list: "Videos to fill",
+        listing: "Listing the videos…",
+        listFailed: (reason: string) => `Couldn't list the videos: ${reason}`,
+        noTargets: "None of the selected videos can be filled.",
+        waiting: "Waiting",
+        searching: "Searching…",
+        noResults: "Nothing found",
+        skip: "Don't fill",
+        choiceFor: (title: string) => `Work for ${title}`,
+        submit: (count: number) => `Fill ${videos(count)}`,
         submitting: "Starting…",
         failed: (reason: string) => `Couldn't start the fills: ${reason}`,
       },
