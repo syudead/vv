@@ -67,6 +67,8 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
@@ -245,6 +247,7 @@ export default function LibraryPage() {
   // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
+  useAssistantScreen(selectionScreen(selection));
   // Removing any member also removes the group's selected identity.
   const displayed = useRef<readonly LibraryItem[]>(items);
   const { select: selectRange, point: pointRange } = useRangeSelection(

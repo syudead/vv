@@ -82,6 +82,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `settings-page-example`    | Block         | Copy to start a settings page                                                |
 | `sheet`                    | Component     | Edge panel; only the sidebar's narrow-width drawer                           |
 | `shelf`                    | Section       | Every card of one kind, wrapping, under a heading with its count             |
+| `side-panel`               | Page skeleton | A column beside the page at the right edge, such as the assistant            |
+| `side-panel-example`       | Block         | Copy to start a side panel                                                   |
 | `sidebar`                  | Component     | The app's main navigation                                                    |
 | `skeleton`                 | Component     | Shapes of the final layout while loading                                     |
 | `slider`                   | Component     | A value on a range, such as the card size                                    |

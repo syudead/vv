@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import { Link } from "react-router";
 
 import type { VideoFolder } from "../api/client";
+import AssistantTrigger from "../assistant/AssistantTrigger";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
@@ -101,6 +102,9 @@ export default function VideoHeader({
         </Breadcrumb>
       )}
 
+      <div className="ml-auto flex shrink-0 items-center">
+        <AssistantTrigger />
+      </div>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -108,7 +112,7 @@ export default function VideoHeader({
             size="icon"
             aria-label={t.common.close}
             onClick={onClose}
-            className="ml-auto [&_svg]:size-5"
+            className="[&_svg]:size-5"
           >
             <X aria-hidden="true" />
           </Button>

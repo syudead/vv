@@ -789,6 +789,19 @@
       ]
     },
     {
+      "name": "side-panel",
+      "type": "registry:ui",
+      "title": "SidePanel",
+      "description": "Page pattern: a column at the viewport's right edge under the top bar, with a header, a scrolling body and a footer; in the page's flow from lg, a layer without a scrim below it.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#side-panel (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/side-panel.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "centered-form",
       "type": "registry:ui",
       "title": "CenteredForm",
@@ -1186,6 +1199,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/detail-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "side-panel-example",
+      "type": "registry:block",
+      "title": "Side panel example",
+      "description": "A working side panel: a button opens it, with a title and Close in the header, one exchange in the body and a composer in the footer.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#side-panel (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/side-panel-example.tsx",
           "type": "registry:component"
         }
       ]

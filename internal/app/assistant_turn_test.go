@@ -137,6 +137,39 @@ func TestTurnAsksWhenATagNameMatchesTwoTags(t *testing.T) {
 	}
 }
 
+func TestTurnPinnedCandidateSettlesAnAliasThatMatchedTwoTags(t *testing.T) {
+	other := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 4, Name: "Kitten", Count: 2}
+	f := newTurnFixture(tagAction("updateVideoTags.add", "neko"), map[string][]domain.AssistantCandidate{"neko": {catTag, other}})
+	in := selection(7)
+	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelTag, ID: catTag.ID, Name: catTag.Name}}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+	if tag, _ := f.store.created.Call.Body["tag"].(map[string]any); tag["id"] != catTag.ID {
+		t.Fatalf("body = %+v", f.store.created.Call.Body)
+	}
+}
+
+func TestTurnPinnedPersonSettlesANameATagAlsoHolds(t *testing.T) {
+	person := domain.AssistantCandidate{Kind: domain.AssistantLabelPerson, ID: 5, Name: "Mika", Count: 3}
+	tag := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 6, Name: "Mika", Count: 1}
+	f := newTurnFixture(`{"kind":"answer","answer":{"question":"appearances","entity":{"kind":"any","name":"mika"}}}`, nil)
+	f.a.vocabulary = fakeVocabulary{names: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
+		domain.AssistantLabelPerson: {"mika": {person}},
+		domain.AssistantLabelTag:    {"mika": {tag}},
+	}}
+	in := selection()
+	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelPerson, ID: person.ID, Name: person.Name}}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantTurnAnswer {
+		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+	if q := f.videos.queries[0]; q.Person != person.ID || len(q.TagIDs) != 0 {
+		t.Fatalf("query = %+v", q)
+	}
+}
+
 func TestTurnMarksAMissingTagToAttachAsCreated(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.add", "sunset"), nil)
 	result, err := f.a.Turn(context.Background(), selection(7))

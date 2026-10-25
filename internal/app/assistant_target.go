@@ -139,13 +139,11 @@ func (d *planDraft) collectionOrKind(
 	if kind != "" {
 		return d.t.one(ctx, kind, name, targetName)
 	}
-	var found []domain.AssistantCandidate
-	for _, k := range []domain.AssistantLabelKind{domain.AssistantLabelGroup, domain.AssistantLabelSmartFolder} {
-		matches, err := d.t.candidates(ctx, k, name)
-		if err != nil {
-			return domain.AssistantLabel{}, false, err
-		}
-		found = append(found, matches...)
+	found, err := d.t.kindsCandidates(
+		ctx, []domain.AssistantLabelKind{domain.AssistantLabelGroup, domain.AssistantLabelSmartFolder}, name,
+	)
+	if err != nil {
+		return domain.AssistantLabel{}, false, err
 	}
 	if len(found) != 1 {
 		d.t.clarify("target", found, name)
