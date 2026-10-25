@@ -104,3 +104,46 @@ func (s *LibraryStore) NameFilters(ctx context.Context, q domain.VideoQuery) (na
 	}
 	return named, true, nil
 }
+
+// VocabularyJoin reads this node's tags, tag kinds, people and organizations by canonical name, so the peer's
+// entity of the same name takes the local id. People share a spelling, so a name takes the lowest id.
+func (s *LibraryStore) VocabularyJoin(ctx context.Context) (domain.VocabularyJoin, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VocabularyJoin{}, fmt.Errorf("cannot start reading the vocabulary: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var join domain.VocabularyJoin
+	for _, read := range []struct {
+		query string
+		out   *map[string]int64
+	}{
+		{`select name, min(tag_id) from tag_names where canonical = 1 group by name`, &join.Tags},
+		{`select name, min(id) from tag_kinds group by name`, &join.TagKinds},
+		{`select name, min(person_id) from people_names where canonical = 1 group by name`, &join.People},
+		{`select name, min(organization_id) from organization_names where canonical = 1 group by name`, &join.Organizations},
+	} {
+		if *read.out, err = readNameIDs(ctx, tx, read.query); err != nil {
+			return domain.VocabularyJoin{}, err
+		}
+	}
+	return join, tx.Commit()
+}
+
+func readNameIDs(ctx context.Context, tx *sql.Tx, query string) (map[string]int64, error) {
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the names of the vocabulary: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int64{}
+	for rows.Next() {
+		var name string
+		var id int64
+		if err := rows.Scan(&name, &id); err != nil {
+			return nil, fmt.Errorf("cannot read the names of the vocabulary: %w", err)
+		}
+		out[name] = id
+	}
+	return out, rows.Err()
+}

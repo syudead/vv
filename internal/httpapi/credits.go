@@ -146,6 +146,14 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 	}
 	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
 	query.Provisional = params.Provisional
+	if s.mergesVocabulary(r.Context()) {
+		if api.kind == domain.CreditPerson {
+			listMergedCredits(s, w, r, api.kind, query, peopleMerge)
+		} else {
+			listMergedCredits(s, w, r, api.kind, query, organizationsMerge)
+		}
+		return
+	}
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):

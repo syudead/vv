@@ -40,6 +40,8 @@ type Library interface {
 	// NameFilters replaces q's tag, kind, person and organization IDs by names for the paired node; found is
 	// false when one names nothing.
 	NameFilters(ctx context.Context, q domain.VideoQuery) (named domain.VideoQuery, found bool, err error)
+	// VocabularyJoin holds this node's tags, kinds, people and organizations by name for the peer's answers.
+	VocabularyJoin(ctx context.Context) (domain.VocabularyJoin, error)
 }
 
 // Playback survives deleted video rows through content keys and writes history atomically when

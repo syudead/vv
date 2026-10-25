@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -9,11 +10,13 @@ import (
 
 // remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
 // an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
-// space, and without it the answer passes through. body, when set, turns the request body into the peer's ids.
+// space, and without it the answer passes through. body, when set, turns the request body into the peer's ids;
+// request, when set, does so with this node's and the peer's data, or answers r and reports false.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
 	body    remoteBody
+	request func(s *server, w http.ResponseWriter, r *http.Request) bool
 }
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
@@ -39,6 +42,19 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/thumbnail":              {media: true},
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}": {media: true},
 	"GET /api/videos/{id}/frame":                  {media: true},
+}
+
+// remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and
+// organizations.
+var remoteVocabularyOperations = map[string]remoteOperation{
+	"PATCH /api/tags/{id}":        {rewrite: rewriteAs(rewriteRemoteTag)},
+	"GET /api/people/{id}":        {rewrite: rewriteAs(rewriteRemotePerson)},
+	"PATCH /api/people/{id}":      {rewrite: rewriteAs(rewriteRemotePerson)},
+	"GET /api/people/{id}/image":  {},
+	"GET /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
+	"PATCH /api/organizations/{id}": {
+		rewrite: rewriteAs(rewriteRemoteOrganizationEntity), request: (*server).remoteOrganizationPatch,
+	},
 }
 
 // rewriteAs decodes the answer into the operation's generated type, so the type says which ids are videos and
@@ -90,9 +106,7 @@ func rewriteRemoteTags(tags []gen.VideoTag, join domain.VocabularyJoin) {
 	for i := range tags {
 		tag := &tags[i]
 		tag.Id = join.Tag(tag.Id, tag.Name)
-		if tag.Kind != nil {
-			tag.Kind.Id = join.TagKind(tag.Kind.Id, tag.Kind.Name)
-		}
+		rewriteRemoteKindRef(tag.Kind, join)
 	}
 }
 
@@ -220,6 +234,17 @@ func rewriteRemoteVideoPage(page *gen.VideoPage, join domain.VocabularyJoin) {
 	}
 }
 
+func rewriteRemoteTag(tag *gen.Tag, join domain.VocabularyJoin) {
+	tag.Id = join.Tag(tag.Id, tag.Name)
+	rewriteRemoteKindRef(tag.Kind, join)
+}
+
+func rewriteRemoteKindRef(kind *gen.TagKindRef, join domain.VocabularyJoin) {
+	if kind != nil {
+		kind.Id = join.TagKind(kind.Id, kind.Name)
+	}
+}
+
 func rewriteRemoteGroupList(page *gen.GroupListPage, join domain.VocabularyJoin) {
 	for i := range page.Groups {
 		rewriteRemoteGroup(&page.Groups[i], join)
@@ -254,9 +279,22 @@ func rewriteRemoteGroupItems(items []gen.GroupItem, join domain.VocabularyJoin) 
 
 func rewriteRemoteGroupTag(result *gen.GroupTagResult, join domain.VocabularyJoin) {
 	result.Tag.Id = join.Tag(result.Tag.Id, result.Tag.Name)
-	if kind := result.Tag.Kind; kind != nil {
-		kind.Id = join.TagKind(kind.Id, kind.Name)
-	}
+	rewriteRemoteKindRef(result.Tag.Kind, join)
+}
+
+func rewriteRemoteTagKind(kind *gen.TagKind, join domain.VocabularyJoin) {
+	kind.Id = join.TagKind(kind.Id, kind.Name)
+}
+
+// rewriteRemotePerson leaves out the favorite mark, which stays with each node.
+func rewriteRemotePerson(person *gen.Person, join domain.VocabularyJoin) {
+	person.Id = join.Person(person.Id, person.Name)
+	person.Favorite = false
+}
+
+func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain.VocabularyJoin) {
+	organization.Id = join.Organization(organization.Id, organization.Name)
+	rewriteRemoteOrganization(organization.Parent, join)
 }
 
 // rewriteRemoteOrganizeResult marks the peer's undo token so that its undo is forwarded too.

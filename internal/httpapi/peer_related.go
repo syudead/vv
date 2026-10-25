@@ -33,7 +33,10 @@ func (s *server) mergedRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	audience := audienceFrom(r.Context())
-	peer := s.relatedPeer(r)
+	peer, ok := s.relatedPeer(w, r)
+	if !ok {
+		return
+	}
 	related, err := s.catalog.MergedRelatedVideos(r.Context(), audience, video, page, peer)
 	if err != nil {
 		s.internalError(w, "Could not load related videos.", err)
@@ -58,7 +61,10 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	ctx := r.Context()
-	peer := s.relatedPeer(r)
+	peer, ok := s.relatedPeer(w, r)
+	if !ok {
+		return
+	}
 	peerID := domain.FromRemoteID(id)
 	var body gen.RelatedClues
 	if err := peer.call(ctx, http.MethodGet, peerCluesPath(peerID), nil, &body); err != nil {
@@ -267,13 +273,20 @@ func cluesFrom(body gen.RelatedClues) (domain.RelatedClues, error) {
 type relatedPeer struct {
 	link   PeerLink
 	guest  bool
+	join   domain.VocabularyJoin
 	videos map[int64]gen.Video
 }
 
-func (s *server) relatedPeer(r *http.Request) *relatedPeer {
-	return &relatedPeer{
-		link: s.peerLink, guest: audienceFrom(r.Context()) != domain.AudienceOwner, videos: map[int64]gen.Video{},
+func (s *server) relatedPeer(w http.ResponseWriter, r *http.Request) (*relatedPeer, bool) {
+	join, err := s.vocabularyJoin(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
+		return nil, false
 	}
+	return &relatedPeer{
+		link: s.peerLink, guest: audienceFrom(r.Context()) != domain.AudienceOwner, join: join,
+		videos: map[int64]gen.Video{},
+	}, true
 }
 
 func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
@@ -295,8 +308,7 @@ func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, ex
 		page.Items = append(page.Items, domain.RankedRelated{
 			Score: domain.RelatedScore(item.Score), AddedAt: video.AddedAt.Unix(), VideoID: video.Id,
 		})
-		// The vocabulary is not joined by name yet, as in the forwarded answers.
-		rewriteRemoteVideo(&video, domain.VocabularyJoin{})
+		rewriteRemoteVideo(&video, p.join)
 		p.videos[video.Id] = video
 	}
 	return page, nil
@@ -319,7 +331,7 @@ func (p *relatedPeer) group(ctx context.Context, peerID int64, opened url.Values
 		if err := p.call(ctx, http.MethodGet, peerVideoPath(peerID, "/related", query), nil, &head); err != nil {
 			return gen.RelatedVideos{}, nil, err
 		}
-		rewriteRemoteRelated(&head, domain.VocabularyJoin{})
+		rewriteRemoteRelated(&head, p.join)
 		if head.Group == nil {
 			return gen.RelatedVideos{}, exclude, nil
 		}

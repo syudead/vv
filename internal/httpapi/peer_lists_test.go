@@ -31,6 +31,7 @@ func mergedNodesWith(t *testing.T, extend func(db *store.DB, opts *Options)) (fa
 		var pairing *app.Pairing
 		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
 			pairing = withTestPairing(db, name, nil, opts)
+			opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
 			if extend != nil {
 				extend(db, opts)
 			}

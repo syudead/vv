@@ -41,12 +41,34 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
-// remoteVideoMerged are the operations for a remote id that this node answers itself, from both nodes.
-var remoteVideoMerged = map[string]bool{
-	"GET /api/videos/{id}/related": true,
+// remoteCollection is a collection whose path id names the peer's entity when it carries the offset.
+type remoteCollection struct {
+	prefix     string
+	noun       string
+	operations map[string]remoteOperation
+	// merged are the operations for a remote id that this node answers itself, from both nodes.
+	merged map[string]bool
+	mux    *http.ServeMux
 }
 
-var remoteVideoMux = operationMux(remoteVideoOperations, remoteVideoMerged)
+var remoteCollections = []remoteCollection{
+	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations, map[string]bool{
+		"GET /api/videos/{id}/related": true,
+	}),
+	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, nil),
+	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, nil),
+	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations, nil),
+}
+
+func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation, merged map[string]bool) remoteCollection {
+	own := map[string]remoteOperation{}
+	for pattern, op := range operations {
+		if strings.Contains(pattern, " "+prefix) {
+			own[pattern] = op
+		}
+	}
+	return remoteCollection{prefix: prefix, noun: noun, operations: own, merged: merged, mux: operationMux(own, merged)}
+}
 
 // operationMux matches the patterns of operations and of answered, the operations this node answers itself.
 func operationMux(operations map[string]remoteOperation, answered map[string]bool) *http.ServeMux {
@@ -60,17 +82,19 @@ func operationMux(operations map[string]remoteOperation, answered map[string]boo
 	return mux
 }
 
-// remoteBoundary forwards a request whose video or group id names the peer's entity to the peer; any other
-// request, and one of remoteVideoMerged from the screens, goes to next. An unclean path also goes to next,
-// whose redirect brings it back cleaned.
+// remoteBoundary forwards a request whose path id names the peer's entity to the peer; any other request,
+// and a merged operation from the screens, goes to next. An unclean path also goes to next, whose redirect
+// brings it back cleaned.
 func (s *server) remoteBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		escaped := r.URL.EscapedPath()
 		if path.Clean(escaped) == escaped {
-			if id, rest, ok := remotePath(escaped, remoteVideoPrefix); ok &&
-				(!remoteVideoMerged[routePattern(remoteVideoMux, r)] || isPeerRequest(r.Context())) {
-				s.forwardRemoteVideo(w, r, id, rest)
-				return
+			for _, collection := range remoteCollections {
+				id, rest, ok := remotePath(escaped, collection.prefix)
+				if ok && (!collection.merged[routePattern(collection.mux, r)] || isPeerRequest(r.Context())) {
+					s.forwardRemoteEntity(w, r, collection, id, rest)
+					return
+				}
 			}
 			if id, rest, ok := remotePath(escaped, remoteGroupPrefix); ok {
 				s.forwardRemoteGroup(w, r, id, rest)
@@ -95,16 +119,22 @@ func remotePath(path, prefix string) (id int64, rest string, ok bool) {
 	return id, rest, err == nil && domain.IsRemoteID(id)
 }
 
-func (s *server) forwardRemoteVideo(w http.ResponseWriter, r *http.Request, id int64, rest string) {
-	op, offered := remoteVideoOperations[routePattern(remoteVideoMux, r)]
-	// The peer's own request with a remote id names this node's video; forwarding it back would bounce.
+func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, collection remoteCollection, id int64, rest string) {
+	op, offered := collection.operations[routePattern(collection.mux, r)]
+	// The peer's own request with a remote id names this node's entity; forwarding it back would bounce.
 	if !offered || isPeerRequest(r.Context()) {
-		s.notFound(w, "This operation is not available for a video of the other VVMDM.")
+		s.notFound(w, "This operation is not available for a "+collection.noun+" of the other VVMDM.")
 		return
 	}
-	out, err := remoteRequest(r, remoteVideoPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
+	if op.request != nil && !op.request(s, w, r) {
+		return
+	}
+	out, err := remoteRequest(r, collection.prefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
+		return
+	}
+	if op.body != nil && !s.forwardedBody(w, r, out, op.body) {
 		return
 	}
 	s.forward(w, r, out, op)
@@ -134,7 +164,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
 	default:
-		s.writeRewritten(w, resp, op.rewrite)
+		s.writeRewritten(w, r, resp, op.rewrite)
 	}
 }
 
@@ -204,7 +234,7 @@ func writeRewrittenHead(w http.ResponseWriter, resp *http.Response) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewrite remoteRewrite) {
+func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *http.Response, rewrite remoteRewrite) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		s.peerUnreachable(w)
@@ -214,9 +244,12 @@ func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewr
 		s.internalError(w, "The answer of the other VVMDM is too large.", nil)
 		return
 	}
-	// The vocabulary is not joined by name yet, so the peer's tags, kinds, people and organizations take the
-	// offset.
-	value, err := rewrite(body, domain.VocabularyJoin{})
+	join, err := s.vocabularyJoin(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
+		return
+	}
+	value, err := rewrite(body, join)
 	if err != nil {
 		s.internalError(w, "The other VVMDM answered in an unexpected form.", err)
 		return
