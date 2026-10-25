@@ -181,7 +181,7 @@ func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	e := newActivityEnv(t)
 	for _, query := range []string{
 		"status=failed", "feature=undo", "decider=model", "since=yesterday", "limit=0", "limit=101", "q=",
-		"q=" + strings.Repeat("a", 201), strings.Repeat("feature=import&", 10) + "feature=scan",
+		"q=" + strings.Repeat("a", 201), strings.Repeat("feature=import&", 11) + "feature=scan",
 	} {
 		rec := e.serve(http.MethodGet, "/api/activity?"+query, "")
 		assertErrorBody(t, query, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})

@@ -38,6 +38,7 @@ func (e ActivityDecider) Valid() bool {
 
 // Defines values for ActivityFeature.
 const (
+	ActivityFeatureAssistant       ActivityFeature = "assistant"
 	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
 	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
 	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
@@ -53,6 +54,8 @@ const (
 // Valid indicates whether the value is a known member of the ActivityFeature enum.
 func (e ActivityFeature) Valid() bool {
 	switch e {
+	case ActivityFeatureAssistant:
+		return true
 	case ActivityFeatureAutoTagging:
 		return true
 	case ActivityFeatureDuplicateCheck:
@@ -80,6 +83,7 @@ func (e ActivityFeature) Valid() bool {
 
 // Defines values for ActivityKind.
 const (
+	ActivityKindAssistantRun       ActivityKind = "assistant_run"
 	ActivityKindAutoTag            ActivityKind = "auto_tag"
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
@@ -105,6 +109,8 @@ const (
 // Valid indicates whether the value is a known member of the ActivityKind enum.
 func (e ActivityKind) Valid() bool {
 	switch e {
+	case ActivityKindAssistantRun:
+		return true
 	case ActivityKindAutoTag:
 		return true
 	case ActivityKindBundle:
@@ -158,7 +164,9 @@ const (
 	ActivityOutcomeDifferent       ActivityOutcome = "different"
 	ActivityOutcomeFailed          ActivityOutcome = "failed"
 	ActivityOutcomeGone            ActivityOutcome = "gone"
+	ActivityOutcomePartial         ActivityOutcome = "partial"
 	ActivityOutcomeSame            ActivityOutcome = "same"
+	ActivityOutcomeStale           ActivityOutcome = "stale"
 	ActivityOutcomeSuperseded      ActivityOutcome = "superseded"
 )
 
@@ -177,7 +185,11 @@ func (e ActivityOutcome) Valid() bool {
 		return true
 	case ActivityOutcomeGone:
 		return true
+	case ActivityOutcomePartial:
+		return true
 	case ActivityOutcomeSame:
+		return true
+	case ActivityOutcomeStale:
 		return true
 	case ActivityOutcomeSuperseded:
 		return true
@@ -293,11 +305,12 @@ func (e ActivityStatus) Valid() bool {
 
 // Defines values for ActivitySubjectKind.
 const (
-	ActivitySubjectKindFolder ActivitySubjectKind = "folder"
-	ActivitySubjectKindPair   ActivitySubjectKind = "pair"
-	ActivitySubjectKindPerson ActivitySubjectKind = "person"
-	ActivitySubjectKindScan   ActivitySubjectKind = "scan"
-	ActivitySubjectKindVideo  ActivitySubjectKind = "video"
+	ActivitySubjectKindFolder   ActivitySubjectKind = "folder"
+	ActivitySubjectKindPair     ActivitySubjectKind = "pair"
+	ActivitySubjectKindPerson   ActivitySubjectKind = "person"
+	ActivitySubjectKindProposal ActivitySubjectKind = "proposal"
+	ActivitySubjectKindScan     ActivitySubjectKind = "scan"
+	ActivitySubjectKindVideo    ActivitySubjectKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the ActivitySubjectKind enum.
@@ -309,9 +322,86 @@ func (e ActivitySubjectKind) Valid() bool {
 		return true
 	case ActivitySubjectKindPerson:
 		return true
+	case ActivitySubjectKindProposal:
+		return true
 	case ActivitySubjectKindScan:
 		return true
 	case ActivitySubjectKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantLabelKind.
+const (
+	AssistantLabelKindFolderRoot   AssistantLabelKind = "folderRoot"
+	AssistantLabelKindGroup        AssistantLabelKind = "group"
+	AssistantLabelKindOrganization AssistantLabelKind = "organization"
+	AssistantLabelKindPerson       AssistantLabelKind = "person"
+	AssistantLabelKindPlaylist     AssistantLabelKind = "playlist"
+	AssistantLabelKindSmartFolder  AssistantLabelKind = "smartFolder"
+	AssistantLabelKindTag          AssistantLabelKind = "tag"
+	AssistantLabelKindTagKind      AssistantLabelKind = "tagKind"
+	AssistantLabelKindVideo        AssistantLabelKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantLabelKind enum.
+func (e AssistantLabelKind) Valid() bool {
+	switch e {
+	case AssistantLabelKindFolderRoot:
+		return true
+	case AssistantLabelKindGroup:
+		return true
+	case AssistantLabelKindOrganization:
+		return true
+	case AssistantLabelKindPerson:
+		return true
+	case AssistantLabelKindPlaylist:
+		return true
+	case AssistantLabelKindSmartFolder:
+		return true
+	case AssistantLabelKindTag:
+		return true
+	case AssistantLabelKindTagKind:
+		return true
+	case AssistantLabelKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantProposalStatus.
+const (
+	AssistantProposalStatusApproved  AssistantProposalStatus = "approved"
+	AssistantProposalStatusDiscarded AssistantProposalStatus = "discarded"
+	AssistantProposalStatusDone      AssistantProposalStatus = "done"
+	AssistantProposalStatusFailed    AssistantProposalStatus = "failed"
+	AssistantProposalStatusPartial   AssistantProposalStatus = "partial"
+	AssistantProposalStatusProposed  AssistantProposalStatus = "proposed"
+	AssistantProposalStatusRunning   AssistantProposalStatus = "running"
+	AssistantProposalStatusStale     AssistantProposalStatus = "stale"
+)
+
+// Valid indicates whether the value is a known member of the AssistantProposalStatus enum.
+func (e AssistantProposalStatus) Valid() bool {
+	switch e {
+	case AssistantProposalStatusApproved:
+		return true
+	case AssistantProposalStatusDiscarded:
+		return true
+	case AssistantProposalStatusDone:
+		return true
+	case AssistantProposalStatusFailed:
+		return true
+	case AssistantProposalStatusPartial:
+		return true
+	case AssistantProposalStatusProposed:
+		return true
+	case AssistantProposalStatusRunning:
+		return true
+	case AssistantProposalStatusStale:
 		return true
 	default:
 		return false
@@ -559,6 +649,7 @@ const (
 	ErrorCodePluginTooLarge              ErrorCode = "plugin_too_large"
 	ErrorCodePluginUnusable              ErrorCode = "plugin_unusable"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
+	ErrorCodeProposalNotPending          ErrorCode = "proposal_not_pending"
 	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
 	ErrorCodeSmartFolderCycle            ErrorCode = "smart_folder_cycle"
@@ -645,6 +736,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePluginUnusable:
 		return true
 	case ErrorCodeProbeNotFailed:
+		return true
+	case ErrorCodeProposalNotPending:
 		return true
 	case ErrorCodeProviderFailed:
 		return true
@@ -3047,6 +3140,7 @@ type ActivityFeature string
 
 // ActivityFeatureCounts Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 type ActivityFeatureCounts struct {
+	Assistant       int `json:"assistant"`
 	AutoTagging     int `json:"auto_tagging"`
 	DuplicateCheck  int `json:"duplicate_check"`
 	FaceRecognition int `json:"face_recognition"`
@@ -3379,6 +3473,106 @@ type ApproveWorkInfoPluginRequest struct {
 	Digest string `json:"digest"`
 }
 
+// AssistantChange defines model for AssistantChange.
+type AssistantChange struct {
+	// Argument The argument name of the action outcome, such as tagNames or enabled.
+	Argument string `json:"argument"`
+
+	// Labels The entities the argument names after resolution.
+	Labels *[]AssistantLabel `json:"labels,omitempty"`
+
+	// Value A literal value, such as a boolean, a number or a date.
+	Value interface{} `json:"value,omitempty"`
+}
+
+// AssistantImpact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
+type AssistantImpact struct {
+	Videos int `json:"videos"`
+}
+
+// AssistantLabel defines model for AssistantLabel.
+type AssistantLabel struct {
+	// Id The entity's id when the card showed it; absent when unknown.
+	Id   *int64             `json:"id,omitempty"`
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The name the card showed, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantLabelKind defines model for AssistantLabel.Kind.
+type AssistantLabelKind string
+
+// AssistantProposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+type AssistantProposal struct {
+	// ActivityId The assistant_run activity entry, present once the proposal is approved.
+	ActivityId *int64 `json:"activityId,omitempty"`
+
+	// Change The arguments after resolution, one per argument, in the order the card shows them.
+	Change []AssistantChange `json:"change"`
+
+	// Counts In videos for a batched operation, otherwise 0 or 1 for the one call.
+	Counts AssistantProposalCounts `json:"counts"`
+
+	// Created Names the operation creates, such as a tag to attach that does not exist yet.
+	Created []string `json:"created"`
+
+	// Error The first failed call's screen API code and reason, or the code interrupted after a restart.
+	Error      *AssistantProposalError `json:"error,omitempty"`
+	FinishedAt *time.Time              `json:"finishedAt,omitempty"`
+	Id         int64                   `json:"id"`
+
+	// Impact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
+	Impact *AssistantImpact `json:"impact,omitempty"`
+
+	// Irreversible From the catalog row; the card marks the change as one that cannot be undone.
+	Irreversible bool `json:"irreversible"`
+
+	// Operation The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.
+	Operation string `json:"operation"`
+
+	// Request The owner's text, as untranslated user data.
+	Request   string     `json:"request"`
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+
+	// Status proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
+	Status  AssistantProposalStatus  `json:"status"`
+	Targets AssistantProposalTargets `json:"targets"`
+}
+
+// AssistantProposalCounts In videos for a batched operation, otherwise 0 or 1 for the one call.
+type AssistantProposalCounts struct {
+	Applied int `json:"applied"`
+	Failed  int `json:"failed"`
+	Total   int `json:"total"`
+}
+
+// AssistantProposalError The first failed call's screen API code and reason, or the code interrupted after a restart.
+type AssistantProposalError struct {
+	Code   string  `json:"code"`
+	Reason *string `json:"reason,omitempty"`
+}
+
+// AssistantProposalList defines model for AssistantProposalList.
+type AssistantProposalList struct {
+	Items []AssistantProposal `json:"items"`
+}
+
+// AssistantProposalStatus proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
+type AssistantProposalStatus string
+
+// AssistantProposalTargets defines model for AssistantProposalTargets.
+type AssistantProposalTargets struct {
+	// Count Videos for a video target, otherwise the named entities.
+	Count int `json:"count"`
+
+	// Kind The catalog row's target kind; empty for a row that acts on its arguments alone.
+	Kind string `json:"kind"`
+
+	// Labels The first 10 targets the card names.
+	Labels []AssistantLabel `json:"labels"`
+}
+
 // AssistantReadiness Whether a turn can run; reason is present only when ready is false.
 type AssistantReadiness struct {
 	Ready bool `json:"ready"`
@@ -3663,6 +3857,9 @@ type Error struct {
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
+
+	// Proposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+	Proposal *AssistantProposal `json:"proposal,omitempty"`
 
 	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
 	Reason *ErrorReason `json:"reason,omitempty"`
@@ -7351,6 +7548,9 @@ type AddedFromFilter = string
 // AddedToFilter defines model for AddedToFilter.
 type AddedToFilter = string
 
+// AssistantProposalId defines model for AssistantProposalId.
+type AssistantProposalId = int64
+
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -7505,6 +7705,12 @@ type ListActivityParams struct {
 
 	// Limit Page size
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAssistantProposalsParams defines parameters for ListAssistantProposals.
+type ListAssistantProposalsParams struct {
+	// Active Must be true.
+	Active bool `form:"active" json:"active"`
 }
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
@@ -8370,6 +8576,15 @@ type ServerInterface interface {
 	// DeleteApiToken Revoke an API token
 	// (DELETE /api/api-tokens/{id})
 	DeleteApiToken(w http.ResponseWriter, r *http.Request, id APITokenId)
+	// ListAssistantProposals List the assistant's active proposals
+	// (GET /api/assistant/proposals)
+	ListAssistantProposals(w http.ResponseWriter, r *http.Request, params ListAssistantProposalsParams)
+	// GetAssistantProposal Read one assistant proposal
+	// (GET /api/assistant/proposals/{id})
+	GetAssistantProposal(w http.ResponseWriter, r *http.Request, id AssistantProposalId)
+	// ExecuteAssistantProposal Approve an assistant proposal for execution
+	// (POST /api/assistant/proposals/{id}/execute)
+	ExecuteAssistantProposal(w http.ResponseWriter, r *http.Request, id AssistantProposalId)
 	// GetAssistantReadiness Say whether the assistant can take a request
 	// (GET /api/assistant/readiness)
 	GetAssistantReadiness(w http.ResponseWriter, r *http.Request)
@@ -9287,6 +9502,91 @@ func (siw *ServerInterfaceWrapper) DeleteApiToken(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteApiToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssistantProposals operation middleware
+func (siw *ServerInterfaceWrapper) ListAssistantProposals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssistantProposalsParams
+
+	// ------------- Required query parameter "active" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "active", r.URL.Query(), &params.Active, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "active"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "active", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssistantProposals(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantProposal operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantProposal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantProposalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantProposal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExecuteAssistantProposal operation middleware
+func (siw *ServerInterfaceWrapper) ExecuteAssistantProposal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantProposalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExecuteAssistantProposal(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15826,6 +16126,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama/models", wrapper.ListOllamaModels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/readiness", wrapper.GetAssistantReadiness)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)
