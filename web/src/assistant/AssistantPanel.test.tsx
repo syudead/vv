@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AssistantOutcome, AssistantTurnRequest } from "../api/assistant";
+import type {
+  AssistantOutcome,
+  AssistantProposal,
+  AssistantTurnRequest,
+} from "../api/assistant";
+import * as events from "../api/serverEvents";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import VideoHeader from "../player/VideoHeader";
 import TopBar from "../shell/TopBar";
@@ -25,6 +30,12 @@ interface Server {
   readiness: () => Response;
   turn: (body: AssistantTurnRequest) => Promise<Response> | Response;
   turns: AssistantTurnRequest[];
+  execute: () => Promise<Response> | Response;
+  executes: string[];
+  proposal: () => Response;
+  list: () => Response;
+  /** Delivers an assistant event to every subscriber, as /api/events would. */
+  emit: () => void;
 }
 
 function installServer(): Server {
@@ -32,13 +43,38 @@ function installServer(): Server {
     readiness: () => json({ ready: true }),
     turn: () => json({ outcome: { kind: "unreadable" } }),
     turns: [],
+    execute: () => json({ code: "not_found", message: "not found" }, 404),
+    executes: [],
+    proposal: () => json({ code: "not_found", message: "not found" }, 404),
+    list: () => json({ items: [] }),
+    emit: () => undefined,
   };
   beforeEach(() => {
     server.readiness = () => json({ ready: true });
     server.turns = [];
+    server.executes = [];
+    server.list = () => json({ items: [] });
+    server.execute = () => json({ code: "not_found", message: "not found" }, 404);
+    server.proposal = () => json({ code: "not_found", message: "not found" }, 404);
+    const subscribers = new Set<events.ServerEventHandlers>();
+    server.emit = () => {
+      for (const handlers of subscribers) handlers.assistant?.();
+    };
+    vi.spyOn(events, "subscribeServerEvents").mockImplementation((handlers) => {
+      subscribers.add(handlers);
+      return () => subscribers.delete(handlers);
+    });
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/assistant/readiness") return Promise.resolve(server.readiness());
+      if (url === "/api/assistant/proposals?active=true")
+        return Promise.resolve(server.list());
+      if (url.endsWith("/execute") && init?.method === "POST") {
+        server.executes.push(url);
+        return Promise.resolve(server.execute());
+      }
+      if (url.startsWith("/api/assistant/proposals/"))
+        return Promise.resolve(server.proposal());
       if (url === "/api/assistant/turns" && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as AssistantTurnRequest;
         server.turns.push(body);
@@ -57,12 +93,38 @@ function installServer(): Server {
         }) as unknown as MediaQueryList,
     );
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
   return server;
 }
 
 function outcome(value: AssistantOutcome): Response {
   return json({ outcome: value });
+}
+
+function proposal(extra: Partial<AssistantProposal> = {}): AssistantProposal {
+  return {
+    id: 1,
+    status: "proposed",
+    request: "これに旅行タグを付けて",
+    operation: "updateVideoTags.add",
+    irreversible: false,
+    targets: {
+      kind: "videos",
+      count: 3,
+      labels: [
+        { kind: "video", id: 1, name: "a" },
+        { kind: "video", id: 2, name: "b" },
+        { kind: "video", id: 3, name: "c" },
+      ],
+    },
+    change: [{ argument: "tagNames", labels: [{ kind: "tag", id: 4, name: "旅行" }] }],
+    created: [],
+    counts: { total: 3, applied: 0, failed: 0 },
+    ...extra,
+  };
 }
 
 function LocationProbe() {
@@ -316,5 +378,187 @@ describe("AssistantPanel", () => {
       selectedVideoIds: [3, 5],
       selectedCollectionIds: { groups: [7], smartFolders: [9] },
     });
+  });
+
+  it("Execute を 2 回押しても要求は 1 回で、カードの状態は 409 の本文から来る", async () => {
+    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    let answer: (response: Response) => void = () => undefined;
+    server.execute = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+
+    await user.click(await within(panel()).findByRole("button", { name: "Execute" }));
+    const pressed = within(panel()).getByRole("button", { name: "Executing…" });
+    expect(pressed.getAttribute("aria-disabled")).toBe("true");
+    await user.click(pressed);
+    await act(async () =>
+      answer(
+        json(
+          {
+            code: "proposal_not_pending",
+            message: "The proposal is no longer waiting for approval.",
+            proposal: proposal({
+              status: "running",
+              counts: { total: 3, applied: 0, failed: 0 },
+            }),
+          },
+          409,
+        ),
+      ),
+    );
+
+    expect(server.executes).toEqual(["/api/assistant/proposals/1/execute"]);
+    expect(within(panel()).getByText("Running · 0 of 3")).toBeDefined();
+    expect(within(panel()).queryByRole("button", { name: /Execute/ })).toBeNull();
+  });
+
+  it("Dismiss は何も送らずにカードを畳む", async () => {
+    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+
+    await user.click(await within(panel()).findByRole("button", { name: "Dismiss" }));
+
+    expect(within(panel()).getByText("Dismissed · nothing changed")).toBeDefined();
+    expect(server.executes).toEqual([]);
+  });
+
+  it("追いの指示の答えで前のカードを置き換え、Execute は 1 つだけになる", async () => {
+    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+    await within(panel()).findByRole("button", { name: "Execute" });
+
+    server.turn = () =>
+      outcome({
+        kind: "proposal",
+        proposal: proposal({
+          id: 2,
+          targets: { kind: "videos", count: 2, labels: [] },
+          counts: { total: 2, applied: 0, failed: 0 },
+        }),
+      });
+    await user.type(field(), "長いのは除いて{Enter}");
+
+    expect(
+      await within(panel()).findByText("Replaced by the next request"),
+    ).toBeDefined();
+    expect(within(panel()).getByText("2 videos")).toBeDefined();
+    expect(within(panel()).queryByText("3 videos")).toBeNull();
+    expect(within(panel()).getAllByRole("button", { name: "Execute" })).toHaveLength(1);
+    expect(server.turns[1]?.previous).toMatchObject({
+      kind: "proposal",
+      proposal: { id: 1 },
+    });
+  });
+
+  it("assistant イベントで提案を読み直し、件数と結果の行を出す", async () => {
+    const big = { kind: "videos", count: 1200, labels: [] };
+    server.turn = () =>
+      outcome({
+        kind: "proposal",
+        proposal: proposal({
+          targets: big,
+          counts: { total: 1200, applied: 0, failed: 0 },
+        }),
+      });
+    server.execute = () =>
+      json(
+        proposal({
+          status: "approved",
+          targets: big,
+          counts: { total: 1200, applied: 0, failed: 0 },
+          activityId: 77,
+        }),
+        202,
+      );
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+    await user.click(await within(panel()).findByRole("button", { name: "Execute" }));
+    await within(panel()).findByText("Running · 0 of 1,200");
+
+    server.proposal = () =>
+      json(
+        proposal({
+          status: "running",
+          targets: big,
+          counts: { total: 1200, applied: 500, failed: 0 },
+          activityId: 77,
+        }),
+      );
+    act(() => server.emit());
+    expect(await within(panel()).findByText("Running · 500 of 1,200")).toBeDefined();
+
+    server.proposal = () =>
+      json(
+        proposal({
+          status: "done",
+          targets: big,
+          counts: { total: 1200, applied: 1200, failed: 0 },
+          activityId: 77,
+        }),
+      );
+    act(() => server.emit());
+    expect(await within(panel()).findByText("Done · 1,200 videos changed")).toBeDefined();
+    expect(
+      within(panel())
+        .getByRole("link", { name: "Open in Activity" })
+        .getAttribute("href"),
+    ).toBe("/activity/77");
+  });
+
+  it("stale の結果はもう一度頼む行を出す", async () => {
+    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.execute = () => json(proposal({ status: "approved" }), 202);
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+    await user.click(await within(panel()).findByRole("button", { name: "Execute" }));
+    await within(panel()).findByText("Running · 0 of 3");
+
+    server.proposal = () => json(proposal({ status: "stale" }));
+    act(() => server.emit());
+
+    expect(
+      await within(panel()).findByText(
+        "Something changed since this was proposed, so nothing was done. Ask again.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("開いたときに実行中と最近終わった実行を Recent runs に出す", async () => {
+    server.list = () =>
+      json({
+        items: [
+          proposal({
+            id: 5,
+            status: "running",
+            counts: { total: 3, applied: 0, failed: 0 },
+          }),
+          proposal({
+            id: 4,
+            operation: "startScan",
+            status: "done",
+            targets: { kind: "", count: 0, labels: [] },
+            change: [],
+            counts: { total: 1, applied: 1, failed: 0 },
+          }),
+        ],
+      });
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(trigger());
+
+    const runs = await within(panel()).findByRole("region", { name: "Recent runs" });
+    expect(
+      within(runs)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Add tagsRunning · 0 of 3", "Start a scanDone"]);
   });
 });

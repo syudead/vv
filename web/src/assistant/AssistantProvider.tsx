@@ -14,6 +14,7 @@ import {
   type AssistantCandidate,
   type AssistantOutcome,
   type AssistantPin,
+  type AssistantProposal,
   type AssistantReadinessReason,
   createAssistantTurn,
   getAssistantReadiness,
@@ -27,6 +28,7 @@ import {
   type Reply,
   turnFailure,
 } from "./thread";
+import { type Cards, useProposals } from "./useProposals";
 
 export type Readiness =
   | { state: "checking" }
@@ -38,6 +40,12 @@ export interface AssistantStore {
   open: boolean;
   exchanges: readonly Exchange[];
   waiting: boolean;
+  /** Confirmation cards by the exchange whose reply they are. */
+  cards: Cards;
+  /** Runs read when the panel opened that the thread does not show as cards. */
+  runs: readonly AssistantProposal[];
+  /** A turn waits or a run is approved or running. */
+  working: boolean;
   readiness: Readiness;
   draft: string;
   screen: AssistantScreen;
@@ -49,6 +57,8 @@ export interface AssistantStore {
   send: (text: string) => void;
   choose: (exchange: Exchange, candidate: AssistantCandidate) => void;
   clear: () => void;
+  execute: (exchangeId: number) => void;
+  dismiss: (exchangeId: number) => void;
   setDraft: (draft: string) => void;
   checkReadiness: () => void;
 }
@@ -98,6 +108,7 @@ interface SendOptions {
 function useThread(
   onApplied: (path: string) => void,
   onNotReady: (reason: AssistantReadinessReason) => void,
+  onOutcome: (exchangeId: number, outcome: AssistantOutcome) => void,
 ) {
   const location = useLocation();
   const latestLocation = useRef(location);
@@ -156,6 +167,7 @@ function useThread(
             outcome,
             ...(path !== undefined && { path }),
           });
+          onOutcome(exchange.id, outcome);
           if (path !== undefined) onApplied(path);
         },
         (error: unknown) => {
@@ -170,7 +182,7 @@ function useThread(
         },
       );
     },
-    [onApplied, onNotReady, settle],
+    [onApplied, onNotReady, onOutcome, settle],
   );
 
   const choose = useCallback(
@@ -243,7 +255,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const onNotReady = useCallback((reason: AssistantReadinessReason) => {
     setReadiness({ state: "notReady", reason });
   }, []);
-  const thread = useThread(onApplied, onNotReady);
+  const proposals = useProposals(open);
+  const thread = useThread(onApplied, onNotReady, proposals.settle);
+  const { loadRuns } = proposals;
 
   const latestOpen = useRef(open);
   latestOpen.current = open;
@@ -252,21 +266,32 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       const opening = !latestOpen.current;
       if (opening) {
         checkReadiness();
+        loadRuns();
         focusRequested.current = byPress;
       }
       setOpen(opening);
     },
-    [checkReadiness],
+    [checkReadiness, loadRuns],
   );
   const close = useCallback(() => setOpen(false), []);
   useEffect(() => () => readinessRead.current?.abort(), []);
 
-  const { screen, publish, exchanges, sendTurn, choose, clear } = thread;
+  const { screen, publish, exchanges, sendTurn, choose } = thread;
+  const clearThread = thread.clear;
+  const { cards, runs, running, execute, dismiss } = proposals;
+  const clearCards = proposals.clear;
+  const clear = useCallback(() => {
+    clearThread();
+    clearCards();
+  }, [clearThread, clearCards]);
   const store = useMemo<AssistantStore>(
     () => ({
       open,
       exchanges,
       waiting: isWaiting(exchanges),
+      cards,
+      runs,
+      working: isWaiting(exchanges) || running,
       readiness,
       draft,
       screen,
@@ -276,12 +301,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       send: (text) => sendTurn(text),
       choose,
       clear,
+      execute,
+      dismiss,
       setDraft,
       checkReadiness,
     }),
     [
       open,
       exchanges,
+      cards,
+      runs,
+      running,
       readiness,
       draft,
       screen,
@@ -291,6 +321,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       sendTurn,
       choose,
       clear,
+      execute,
+      dismiss,
       checkReadiness,
     ],
   );

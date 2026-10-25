@@ -10,7 +10,9 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { type AssistantStore, type Readiness, useAssistant } from "./AssistantProvider";
 import Composer from "./Composer";
+import ProposalCard, { RunRow } from "./ProposalCard";
 import ReplyView, { ConnectionsLink, WaitingRow } from "./ReplyView";
+import type { Exchange } from "./thread";
 
 export const assistantPanelId = "assistant-panel";
 
@@ -106,8 +108,53 @@ function CheckingThread() {
   );
 }
 
+function ExchangeReply({
+  store,
+  exchange,
+}: {
+  store: AssistantStore;
+  exchange: Exchange;
+}) {
+  const card = store.cards.get(exchange.id);
+  if (card !== undefined) {
+    return (
+      <ProposalCard
+        card={card}
+        onExecute={() => store.execute(exchange.id)}
+        onDismiss={() => store.dismiss(exchange.id)}
+      />
+    );
+  }
+  if (exchange.reply === undefined) return <WaitingRow startedAt={exchange.startedAt} />;
+  const { waiting, choose } = store;
+  return (
+    <ReplyView
+      exchange={exchange}
+      reply={exchange.reply}
+      onChoose={waiting ? undefined : (candidate) => choose(exchange, candidate)}
+    />
+  );
+}
+
+function RecentRuns({ store }: { store: AssistantStore }) {
+  if (store.runs.length === 0) return null;
+  const headingId = "assistant-recent-runs";
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
+        {t.assistant.recentRuns}
+      </h3>
+      <ul className="flex flex-col gap-3">
+        {store.runs.map((proposal) => (
+          <RunRow key={proposal.id} proposal={proposal} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Thread({ store }: { store: AssistantStore }) {
-  const { exchanges, waiting, choose } = store;
+  const { exchanges } = store;
   return (
     <div role="log" aria-live="polite" className="flex flex-col gap-4">
       {exchanges.map((exchange) => (
@@ -115,27 +162,31 @@ function Thread({ store }: { store: AssistantStore }) {
           <p className="max-w-5/6 self-end rounded-lg bg-secondary px-3 py-2 text-sm whitespace-pre-wrap text-secondary-foreground wrap-anywhere">
             {exchange.shown}
           </p>
-          {exchange.reply === undefined ? (
-            <WaitingRow startedAt={exchange.startedAt} />
-          ) : (
-            <ReplyView
-              exchange={exchange}
-              reply={exchange.reply}
-              onChoose={waiting ? undefined : (candidate) => choose(exchange, candidate)}
-            />
-          )}
+          <ExchangeReply store={store} exchange={exchange} />
         </div>
       ))}
     </div>
   );
 }
 
-function PanelBody({ store }: { store: AssistantStore }) {
+function ThreadBody({ store }: { store: AssistantStore }) {
   const { exchanges, readiness } = store;
   if (exchanges.length > 0) return <Thread store={store} />;
   if (readiness.state === "checking") return <CheckingThread />;
   if (readiness.state !== "ready") return null;
   return <EmptyThread onExample={store.setDraft} />;
+}
+
+function PanelBody({ store }: { store: AssistantStore }) {
+  if (store.runs.length === 0) return <ThreadBody store={store} />;
+  return (
+    <div className="flex min-h-full flex-col gap-4">
+      <RecentRuns store={store} />
+      <div className="flex-1">
+        <ThreadBody store={store} />
+      </div>
+    </div>
+  );
 }
 
 /** The assistant's side column, owner-only; it keeps no state of its own beyond the root store. */

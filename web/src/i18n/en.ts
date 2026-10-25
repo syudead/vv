@@ -152,6 +152,24 @@ function smartFolders(count: number): string {
   });
 }
 
+function counted(count: number, one: string, other: string): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} ${one}`,
+    other: `${formatNumber(count)} ${other}`,
+  });
+}
+
+/** An operation sentence with the name it acts on, or without one when the name is unknown. */
+function quoted(sentence: string, name: string | undefined, bare = sentence): string {
+  return name === undefined || name === "" ? bare : `${sentence} “${name}”`;
+}
+
+/** What an operation sentence reads from a proposal. */
+export interface OperationInput {
+  name?: string;
+  on?: boolean;
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -4012,6 +4030,187 @@ export const en = {
     },
     tooManyVideos: "That is more than 20,000 videos. Narrow the selection or the filter.",
     failed: (reason: string) => `Couldn’t ask the assistant: ${reason}`,
+    // One sentence per catalog row id; on is the change's public or enabled value when the row has one.
+    operation: {
+      "updateVideoTags.add": () => "Add tags",
+      "updateVideoTags.remove": () => "Remove tags",
+      "applyVideoEdits.add": () => "Add tags and credits",
+      "applyVideoEdits.remove": () => "Remove tags and credits",
+      applyVideoCodeEdits: () => "Set the work code",
+      updateVideoVisibility: ({ on }) =>
+        on === undefined ? "Change visibility" : on ? "Make public" : "Make private",
+      updateFavorites: ({ on }) =>
+        on === undefined
+          ? "Change favorites"
+          : on
+            ? "Add to favorites"
+            : "Remove from favorites",
+      setVideoDisplayName: ({ name }) =>
+        quoted("Rename the video to", name, "Rename the video"),
+      setVideoWorkInfo: () => "Set work information",
+      setVideoThumbnailPosition: () => "Set the thumbnail position",
+      reprobeVideo: () => "Read the video file again",
+      autoTagVideo: () => "Auto-tag the video",
+      confirmVideoTag: () => "Confirm tags",
+      rejectVideoTag: () => "Reject tags",
+      bundleVideos: () => "Bundle as versions of one video",
+      makeRepresentativeVersion: () => "Make the representative version",
+      unbundleVideo: () => "Take out of the bundle",
+      dismissVersionCandidate: () => "Dismiss the version candidate",
+      rejudgeVersionCandidate: () => "Judge the version candidate again",
+      createVirtualVideo: ({ name }) => quoted("Create virtual video", name),
+      mergeVirtualVideo: () => "Merge the virtual video into a file",
+      createTag: ({ name }) => quoted("Create tag", name),
+      renameTag: ({ name }) => quoted("Rename tag to", name, "Rename tag"),
+      deleteTag: ({ name }) => quoted("Delete tag", name),
+      mergeTag: ({ name }) => quoted("Merge tags into", name, "Merge tags"),
+      addTagSynonym: ({ name }) => quoted("Add a synonym to", name, "Add a synonym"),
+      removeTagSynonym: ({ name }) =>
+        quoted("Remove a synonym from", name, "Remove a synonym"),
+      confirmTag: ({ name }) => quoted("Confirm tag", name),
+      rejectTag: ({ name }) => quoted("Reject tag", name),
+      forgetRejectedTagName: ({ name }) => quoted("Forget the rejected name", name),
+      "batchTags.confirm": () => "Confirm tags",
+      "batchTags.reject": () => "Reject tags",
+      "batchTags.delete": () => "Delete tags",
+      "batchTags.setKind": () => "Set the tag kind",
+      "batchTags.clearKind": () => "Clear the tag kind",
+      createTagKind: ({ name }) => quoted("Create tag kind", name),
+      renameTagKind: ({ name }) => quoted("Rename tag kind to", name, "Rename tag kind"),
+      deleteTagKind: ({ name }) => quoted("Delete tag kind", name),
+      setTagKindCardFirst: ({ on }) =>
+        on === false
+          ? "Stop showing the tag kind first on cards"
+          : "Show the tag kind first on cards",
+      createPerson: ({ name }) => quoted("Add person", name),
+      updatePerson: () => "Edit the person",
+      deletePerson: ({ name }) => quoted("Delete person", name),
+      mergePeople: ({ name }) => quoted("Merge people into", name, "Merge people"),
+      deletePersonImage: () => "Delete the person’s image",
+      confirmFaceCandidate: () => "Confirm the face match",
+      dismissFaceCandidate: () => "Dismiss the face match",
+      reopenFaceCandidate: () => "Reopen the face match",
+      createOrganization: ({ name }) => quoted("Add organization", name),
+      updateOrganization: () => "Edit the organization",
+      deleteOrganization: ({ name }) => quoted("Delete organization", name),
+      mergeOrganizations: ({ name }) =>
+        quoted("Merge organizations into", name, "Merge organizations"),
+      createPlaylist: ({ name }) => quoted("Create playlist", name),
+      renamePlaylist: ({ name }) => quoted("Rename playlist to", name, "Rename playlist"),
+      deletePlaylist: ({ name }) => quoted("Delete playlist", name),
+      addPlaylistItems: ({ name }) => quoted("Add to playlist", name),
+      removePlaylistItem: ({ name }) => quoted("Remove from playlist", name),
+      movePlaylistItem: ({ name }) => quoted("Move in playlist", name),
+      createGroup: ({ name }) => quoted("Create group", name),
+      renameGroup: ({ name }) => quoted("Rename group to", name, "Rename group"),
+      dissolveGroup: ({ name }) => quoted("Dissolve group", name),
+      addGroupItems: ({ name }) => quoted("Add to group", name),
+      removeGroupItems: ({ name }) => quoted("Remove from group", name),
+      moveGroupItem: ({ name }) => quoted("Move in group", name),
+      tagGroup: ({ name }) =>
+        quoted("Tag the videos of group", name, "Tag the videos of the group"),
+      deleteCollections: () => "Delete groups and smart folders",
+      setFolderGrouping: () => "Change folder grouping",
+      createSmartFolder: ({ name }) => quoted("Create smart folder", name),
+      changeSmartFolder: () => "Change the smart folder",
+      deleteSmartFolder: ({ name }) => quoted("Delete smart folder", name),
+      updateAutoTaggingSettings: () => "Change auto-tagging settings",
+      startAutoTagging: () => "Start auto-tagging",
+      updateVersionJudgingSettings: () => "Change version judging settings",
+      updateFaceRecognitionSettings: () => "Change face recognition settings",
+      startFaceRecognition: () => "Start face recognition",
+      updateAutoImportSettings: () => "Change auto-import settings",
+      updateTranscodingSettings: () => "Change video conversion settings",
+      updateOllamaSettings: () => "Change Ollama settings",
+      updateComfyUISettings: () => "Change ComfyUI settings",
+      startScan: () => "Start a scan",
+      startRescan: () => "Start a rescan",
+    } satisfies Record<string, (input: OperationInput) => string>,
+    // A row this build does not know, such as one added to the catalog later.
+    otherOperation: "Change",
+    card: {
+      impact: {
+        video: (count: number) => counted(count, "video", "videos"),
+        tag: (count: number) => counted(count, "tag", "tags"),
+        tagKind: (count: number) => counted(count, "tag kind", "tag kinds"),
+        person: (count: number) => counted(count, "person", "people"),
+        organization: (count: number) => counted(count, "organization", "organizations"),
+        playlist: (count: number) => counted(count, "playlist", "playlists"),
+        group: (count: number) => counted(count, "group", "groups"),
+        smartFolder: (count: number) => counted(count, "smart folder", "smart folders"),
+        folderRoot: (count: number) => counted(count, "media folder", "media folders"),
+        items: (count: number) => counted(count, "item", "items"),
+        setting: "This setting",
+      },
+      more: (count: number) => `+${formatNumber(count)} more`,
+      argument: {
+        name: "Name",
+        newName: "New name",
+        names: "Names",
+        tagNames: "Tags",
+        tagKindName: "Tag kind",
+        personNames: "People",
+        organizationNames: "Organizations",
+        role: "Role",
+        synonym: "Synonym",
+        aliases: "Aliases",
+        code: "Work code",
+        url: "URL",
+        dateKind: "Date",
+        date: "Day",
+        enabled: "Switch",
+        number: "Value",
+        public: "Visibility",
+        model: "Model",
+        encoder: "Encoder",
+        provider: "Provider",
+        sort: "Sort",
+        parentName: "Parent",
+        scope: "Scope",
+      } as Readonly<Record<string, string>>,
+      mergeFrom: "Merge from",
+      created: "Creates",
+      on: "On",
+      off: "Off",
+      public: "Public",
+      private: "Private",
+      newMark: "New",
+      newNamed: (kind: string, name: string) => `New ${kind} ${name}`,
+      irreversible: "Can’t be undone",
+      moves: (count: number, name: string) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video moves to “${name}”`,
+          other: `${formatNumber(count)} videos move to “${name}”`,
+        }),
+      execute: "Execute",
+      executing: "Executing…",
+      dismiss: "Dismiss",
+      executeFailed: (reason: string) => `Couldn’t execute: ${reason}`,
+      running: (applied: number, total: number) =>
+        `Running · ${formatNumber(applied)} of ${formatNumber(total)}`,
+      runningOnce: "Running…",
+      done: (applied: number) =>
+        selectPlural(applied, {
+          one: `Done · ${formatNumber(applied)} video changed`,
+          other: `Done · ${formatNumber(applied)} videos changed`,
+        }),
+      doneOnce: "Done",
+      partial: (applied: number, failed: number, reason: string) =>
+        `${formatNumber(applied)} changed · ${formatNumber(failed)} failed: ${reason}`,
+      stale: "Something changed since this was proposed, so nothing was done. Ask again.",
+      failed: (reason: string) => `Failed: ${reason} · nothing changed`,
+      interrupted: (applied: number) =>
+        `Stopped by a restart. ${formatNumber(applied)} changed · ask again for the rest.`,
+      expired: "This proposal expired. Ask again.",
+      replaced: "Replaced by the next request",
+      dismissed: "Dismissed · nothing changed",
+      openInActivity: "Open in Activity",
+      progress: "Progress of the run",
+    },
+    recentRuns: "Recent runs",
+    // The Activity entry's result for a run, after its operation sentence.
+    runCounts: (applied: number, failed: number) =>
+      `${formatNumber(applied)} changed · ${formatNumber(failed)} failed`,
   },
   settings: {
     title: "Settings",
