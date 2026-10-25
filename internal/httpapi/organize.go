@@ -28,7 +28,7 @@ type Organizer interface {
 
 func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeReorder
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.reordersLocally(w, r, &body) {
 		return
 	}
 	switch {
@@ -55,7 +55,7 @@ func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeGroup
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.organizesGroupLocally(w, r, &body) {
 		return
 	}
 	videoIDs, ok := s.organizeVideoIDs(w, body.Items)
@@ -92,7 +92,7 @@ func (s *server) organizeVideoIDs(w http.ResponseWriter, items gen.OrganizeRefs)
 
 func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeMove
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.movesLocally(w, r, &body) {
 		return
 	}
 	items, problem := organizeRefs(body.Items)
@@ -125,7 +125,7 @@ func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeBundle
-	if !s.readJSONBody(w, r, &body) {
+	if !s.readJSONBody(w, r, &body) || !s.organizesBundleLocally(w, r, &body) {
 		return
 	}
 	ids := uniqueInt64s(append([]int64{body.Target}, body.VideoIds...))
@@ -197,7 +197,7 @@ func optionalID(id *int64) int64 {
 
 func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeMerge
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.mergesLocally(w, r, &body) {
 		return
 	}
 	items, problem := organizeRefs(body.Items)
@@ -226,7 +226,7 @@ func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) OrganizeUndo(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeUndo
-	if !s.readJSONBody(w, r, &body) {
+	if !s.readJSONBody(w, r, &body) || !s.undoesLocally(w, r, &body) {
 		return
 	}
 	if body.Token == "" {

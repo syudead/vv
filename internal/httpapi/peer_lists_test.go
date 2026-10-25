@@ -20,19 +20,29 @@ import (
 // a's server.
 func mergedNodes(t *testing.T) (fa, fb *guestFixture, b *peerNode, stopA func()) {
 	t.Helper()
+	fa, fb, _, b, stopA = mergedNodesWith(t, nil)
+	return fa, fb, b, stopA
+}
+
+// mergedNodesWith is mergedNodes with extend applied to both nodes' options.
+func mergedNodesWith(t *testing.T, extend func(db *store.DB, opts *Options)) (fa, fb *guestFixture, a, b *peerNode, stopA func()) {
+	t.Helper()
 	node := func(name string) (*guestFixture, *peerNode, func()) {
 		var pairing *app.Pairing
 		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
 			pairing = withTestPairing(db, name, nil, opts)
+			if extend != nil {
+				extend(db, opts)
+			}
 		})
 		server := httptest.NewServer(f.env.handler)
 		t.Cleanup(server.Close)
 		return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
 	}
-	fa, a, stopA := node("node-a")
+	fa, a, stopA = node("node-a")
 	fb, b, _ = node("node-b")
 	pairNodes(t, a, b)
-	return fa, fb, b, stopA
+	return fa, fb, a, b, stopA
 }
 
 // listLabel names a listed video by node and title, such as "a:e" for a's video e seen from b.

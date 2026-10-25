@@ -424,6 +424,8 @@ const errorReasons = {
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  mixed_nodes:
+    "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

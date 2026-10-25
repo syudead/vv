@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -124,29 +125,61 @@ func peerQuery(original url.Values, sort domain.VideoSort, filters url.Values) u
 
 var errPeerAnswer = errors.New("the other VVMDM did not answer the list")
 
+// peerRefusal is a peer answer other than 200, with the peer's reason when it gave one.
+type peerRefusal struct {
+	status int
+	reason *gen.ErrorReason
+}
+
+func (e *peerRefusal) Error() string { return fmt.Sprintf("%v: status %d", errPeerAnswer, e.status) }
+
+func (e *peerRefusal) Unwrap() error { return errPeerAnswer }
+
 // peerGet reads path from the peer as the viewer and decodes a 200 answer into out.
 func (s *server) peerGet(r *http.Request, path string, query url.Values, out any) error {
+	return s.peerCall(r, http.MethodGet, path, query, nil, out)
+}
+
+// peerCall sends body, when set, as JSON to path on the peer as the viewer and decodes a 200 answer into out;
+// any other answer is a *peerRefusal.
+func (s *server) peerCall(r *http.Request, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
 	}
+	var payload io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		payload = bytes.NewReader(raw)
+	}
 	target := url.URL{Path: path, RawQuery: query.Encode()}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target.String(), nil)
+	req, err := http.NewRequestWithContext(r.Context(), method, target.String(), payload)
 	if err != nil {
 		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := s.peerLink.Forward(req, audienceFrom(r.Context()) != domain.AudienceOwner, false)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK || len(body) > maxForwardedJSON {
-		return fmt.Errorf("%w: status %d", errPeerAnswer, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK || len(answer) > maxForwardedJSON {
+		refusal := &peerRefusal{status: resp.StatusCode}
+		var problem gen.Error
+		if json.Unmarshal(answer, &problem) == nil {
+			refusal.reason = problem.Reason
+		}
+		return refusal
 	}
-	return json.Unmarshal(body, out)
+	return json.Unmarshal(answer, out)
 }
 
 // mergedRead is one merged list: how each node reads its part, and the request's filters split between them.
