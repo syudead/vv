@@ -32,16 +32,19 @@ export function ConditionChip({
   deleted,
   removeLabel,
   onRemove,
+  variant = "secondary",
 }: {
   icon: ReactNode;
   name: string | undefined;
   deleted?: UiText;
   removeLabel: UiText;
   onRemove: () => void;
+  /** The smart folder dialog draws read-only conditions as outline chips. */
+  variant?: "secondary" | "outline";
 }) {
   return (
     <Badge
-      variant={deleted === undefined ? "secondary" : "warning"}
+      variant={deleted === undefined ? variant : "warning"}
       title={deleted ?? name}
       className="max-w-full justify-start gap-0 pr-0 font-normal"
     >

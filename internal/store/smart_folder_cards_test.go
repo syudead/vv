@@ -185,3 +185,22 @@ func TestSmartFolderCardTagsOfABundleMatchTheLibraryItem(t *testing.T) {
 		t.Errorf("カードのタグ = %+v, ライブラリのタグ = %+v, want どちらも X（フォルダ由来）だけ", cards[0].Tags, library)
 	}
 }
+
+// A card carries only its own rule's conditions, also when it shares another folder's match.
+func TestSmartFolderCardsCarryTheirOwnRuleConditions(t *testing.T) {
+	db := migratedDB(t)
+	own := domain.VideoConditions{MaxDurationMs: new(int64(0)), WatchState: domain.WatchStateWatched}
+	parent := newSmartFolder(t, db, "parent", domain.SmartRule{VideoConditions: own}, domain.SortAddedDesc, 0)
+	child := newSmartFolder(t, db, "child", domain.SmartRule{}, domain.SortAddedDesc, parent)
+
+	cards := smartFolderCards(t, db, domain.AudienceOwner, parent, child)
+	if len(cards) != 2 {
+		t.Fatalf("cards = %+v, want parent and child", cards)
+	}
+	if !reflect.DeepEqual(cards[0].Conditions, own) {
+		t.Errorf("parent conditions = %+v, want %+v", cards[0].Conditions, own)
+	}
+	if cards[1].Conditions.HasCondition() {
+		t.Errorf("child conditions = %+v, want none", cards[1].Conditions)
+	}
+}

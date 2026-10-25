@@ -5709,7 +5709,27 @@ export interface components {
              * @description Organization IDs linked in any role.
              */
             organization?: number;
+            /**
+             * Format: int64
+             * @description Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`.
+             */
+            minDurationMs?: number;
+            /**
+             * Format: int64
+             * @description Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule.
+             */
+            maxDurationMs?: number;
+            /** @description First `YYYY-MM-DD` day added, in the server's local time zone. */
+            addedFrom?: string;
+            /** @description Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule. */
+            addedTo?: string;
+            watchState?: components["schemas"]["WatchState"];
         };
+        /**
+         * @description unwatched without a started position, watched when complete, otherwise inProgress.
+         * @enum {string}
+         */
+        WatchState: "unwatched" | "inProgress" | "watched";
         /** @description Entities referenced by filters that no longer exist. */
         SmartRuleRef: {
             /** @enum {string} */
@@ -5781,6 +5801,19 @@ export interface components {
             tags: components["schemas"]["VideoTag"][];
             /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
+            conditions?: components["schemas"]["SmartFolderConditions"];
+        };
+        /** @description The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them. */
+        SmartFolderConditions: {
+            /** Format: int64 */
+            minDurationMs?: number;
+            /** Format: int64 */
+            maxDurationMs?: number;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedFrom?: string;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedTo?: string;
+            watchState?: components["schemas"]["WatchState"];
         };
         /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {
@@ -7336,6 +7369,16 @@ export interface components {
         OrganizationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
+        /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+        MinDurationFilter: number;
+        /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+        MaxDurationFilter: number;
+        /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+        AddedFromFilter: string;
+        /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+        AddedToFilter: string;
+        /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        WatchStateFilter: components["schemas"]["WatchState"];
         /** @description Media folder ID */
         MediaFolderId: number;
         /** @description API token ID */
@@ -7641,6 +7684,16 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+                minDurationMs?: components["parameters"]["MinDurationFilter"];
+                /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+                maxDurationMs?: components["parameters"]["MaxDurationFilter"];
+                /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+                addedFrom?: components["parameters"]["AddedFromFilter"];
+                /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+                addedTo?: components["parameters"]["AddedToFilter"];
+                /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                watchState?: components["parameters"]["WatchStateFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
                 kind?: "all" | "file" | "virtual";
             };
@@ -7685,6 +7738,16 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request. */
+                minDurationMs?: components["parameters"]["MinDurationFilter"];
+                /** @description Videos at most this long, in milliseconds; a video of unknown duration never matches. */
+                maxDurationMs?: components["parameters"]["MaxDurationFilter"];
+                /** @description Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request. */
+                addedFrom?: components["parameters"]["AddedFromFilter"];
+                /** @description Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone. */
+                addedTo?: components["parameters"]["AddedToFilter"];
+                /** @description Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                watchState?: components["parameters"]["WatchStateFilter"];
             };
             header?: never;
             path?: never;

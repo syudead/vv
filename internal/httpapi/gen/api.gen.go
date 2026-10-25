@@ -2571,6 +2571,27 @@ func (e WatchHistoryFilter) Valid() bool {
 	}
 }
 
+// Defines values for WatchState.
+const (
+	WatchStateInProgress WatchState = "inProgress"
+	WatchStateUnwatched  WatchState = "unwatched"
+	WatchStateWatched    WatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the WatchState enum.
+func (e WatchState) Valid() bool {
+	switch e {
+	case WatchStateInProgress:
+		return true
+	case WatchStateUnwatched:
+		return true
+	case WatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkDateKind.
 const (
 	Published WorkDateKind = "published"
@@ -4431,6 +4452,9 @@ type LibrarySmartFolder struct {
 	// AddedAt Latest addition timestamp; omitted if there are no videos.
 	AddedAt *time.Time `json:"addedAt,omitempty"`
 
+	// Conditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+	Conditions *SmartFolderConditions `json:"conditions,omitempty"`
+
 	// DurationMs Sum of known video durations; omitted if none are known.
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
@@ -5806,6 +5830,20 @@ type SmartFolderChanged struct {
 	Ids []int64 `json:"ids"`
 }
 
+// SmartFolderConditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+type SmartFolderConditions struct {
+	// AddedFrom `YYYY-MM-DD` day in the server's local time zone.
+	AddedFrom *string `json:"addedFrom,omitempty"`
+
+	// AddedTo `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo       *string `json:"addedTo,omitempty"`
+	MaxDurationMs *int64  `json:"maxDurationMs,omitempty"`
+	MinDurationMs *int64  `json:"minDurationMs,omitempty"`
+
+	// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+	WatchState *WatchState `json:"watchState,omitempty"`
+}
+
 // SmartFolderCreate POST /api/smart-folders body.
 type SmartFolderCreate struct {
 	// Name 1-100 characters after trimming.
@@ -5894,8 +5932,20 @@ type SmartFolderSummary struct {
 
 // SmartRule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
 type SmartRule struct {
+	// AddedFrom First `YYYY-MM-DD` day added, in the server's local time zone.
+	AddedFrom *string `json:"addedFrom,omitempty"`
+
+	// AddedTo Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule.
+	AddedTo *string `json:"addedTo,omitempty"`
+
 	// Favorite Restrict to favorite videos.
 	Favorite *bool `json:"favorite,omitempty"`
+
+	// MaxDurationMs Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule.
+	MaxDurationMs *int64 `json:"maxDurationMs,omitempty"`
+
+	// MinDurationMs Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`.
+	MinDurationMs *int64 `json:"minDurationMs,omitempty"`
 
 	// Organization Organization IDs linked in any role.
 	Organization *int64 `json:"organization,omitempty"`
@@ -5911,6 +5961,9 @@ type SmartRule struct {
 
 	// Tags Distinct tag IDs that every matching video must carry.
 	Tags *[]int64 `json:"tags,omitempty"`
+
+	// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+	WatchState *WatchState `json:"watchState,omitempty"`
 }
 
 // SmartRuleRef Entities referenced by filters that no longer exist.
@@ -7097,6 +7150,9 @@ type WatchHistoryPage struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
+// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+type WatchState string
+
 // WorkDate defines model for WorkDate.
 type WorkDate struct {
 	// Date YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid.
@@ -7486,6 +7542,12 @@ type APITokenId = int64
 // ActivityId defines model for ActivityId.
 type ActivityId = int64
 
+// AddedFromFilter defines model for AddedFromFilter.
+type AddedFromFilter = string
+
+// AddedToFilter defines model for AddedToFilter.
+type AddedToFilter = string
+
 // AssistantProposalId defines model for AssistantProposalId.
 type AssistantProposalId = int64
 
@@ -7522,8 +7584,14 @@ type GroupId = int64
 // GroupItemId defines model for GroupItemId.
 type GroupItemId = int64
 
+// MaxDurationFilter defines model for MaxDurationFilter.
+type MaxDurationFilter = int64
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// MinDurationFilter defines model for MinDurationFilter.
+type MinDurationFilter = int64
 
 // OrganizationFilter defines model for OrganizationFilter.
 type OrganizationFilter = int64
@@ -7575,6 +7643,9 @@ type VideoTagId = int64
 
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
+
+// WatchStateFilter unwatched without a started position, watched when complete, otherwise inProgress.
+type WatchStateFilter = WatchState
 
 // WorkInfoFetchId defines model for WorkInfoFetchId.
 type WorkInfoFetchId = string
@@ -7790,6 +7861,21 @@ type ListLibraryParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// MinDurationMs Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request.
+	MinDurationMs *MinDurationFilter `form:"minDurationMs,omitempty" json:"minDurationMs,omitempty"`
+
+	// MaxDurationMs Videos at most this long, in milliseconds; a video of unknown duration never matches.
+	MaxDurationMs *MaxDurationFilter `form:"maxDurationMs,omitempty" json:"maxDurationMs,omitempty"`
+
+	// AddedFrom Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request.
+	AddedFrom *AddedFromFilter `form:"addedFrom,omitempty" json:"addedFrom,omitempty"`
+
+	// AddedTo Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo *AddedToFilter `form:"addedTo,omitempty" json:"addedTo,omitempty"`
+
+	// WatchState Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed.
+	WatchState *WatchStateFilter `form:"watchState,omitempty" json:"watchState,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -8023,6 +8109,21 @@ type ListVideosParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// MinDurationMs Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request.
+	MinDurationMs *MinDurationFilter `form:"minDurationMs,omitempty" json:"minDurationMs,omitempty"`
+
+	// MaxDurationMs Videos at most this long, in milliseconds; a video of unknown duration never matches.
+	MaxDurationMs *MaxDurationFilter `form:"maxDurationMs,omitempty" json:"maxDurationMs,omitempty"`
+
+	// AddedFrom Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request.
+	AddedFrom *AddedFromFilter `form:"addedFrom,omitempty" json:"addedFrom,omitempty"`
+
+	// AddedTo Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo *AddedToFilter `form:"addedTo,omitempty" json:"addedTo,omitempty"`
+
+	// WatchState Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed.
+	WatchState *WatchStateFilter `form:"watchState,omitempty" json:"watchState,omitempty"`
 
 	// Kind Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both.
 	Kind *ListVideosParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
@@ -10625,6 +10726,71 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDurationMs", r.URL.Query(), &params.MinDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDurationMs", r.URL.Query(), &params.MaxDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedFrom", r.URL.Query(), &params.AddedFrom, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedTo", r.URL.Query(), &params.AddedTo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watchState" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watchState", r.URL.Query(), &params.WatchState, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watchState"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watchState", Err: err})
 		}
 		return
 	}
@@ -13881,6 +14047,71 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDurationMs", r.URL.Query(), &params.MinDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDurationMs", r.URL.Query(), &params.MaxDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedFrom", r.URL.Query(), &params.AddedFrom, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedTo", r.URL.Query(), &params.AddedTo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watchState" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watchState", r.URL.Query(), &params.WatchState, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watchState"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watchState", Err: err})
 		}
 		return
 	}

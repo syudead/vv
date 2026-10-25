@@ -9,7 +9,13 @@ import {
   type TagKind,
 } from "../api/tagKinds";
 import { t, type UiText } from "../i18n";
-import { CreditFilterField, TagFilterField } from "../library/FilterFields";
+import { conditionIcon } from "../library/conditionIcon";
+import {
+  ConditionChip,
+  CreditFilterField,
+  TagFilterField,
+} from "../library/FilterFields";
+import { dropVideoCondition, videoConditionChips } from "../library/videoConditions";
 import {
   FieldDescription,
   FieldError,
@@ -78,6 +84,7 @@ export default function ConditionsFields({
             onChange={(id) => change({ [kind]: id })}
           />
         ))}
+        <AssistantConditions rule={rule} onChange={onChange} />
       </div>
       {error !== null && <FieldError id={errorId}>{error}</FieldError>}
     </FieldSet>
@@ -148,5 +155,46 @@ function TagsField({
       isTagMissing={(id) => isMissing("tag", id)}
       kindMissing={kindGone}
     />
+  );
+}
+
+/**
+ * The duration, added-day and watch conditions have no picker; the assistant or the library URL sets
+ * them, and here they can only be removed. The row is absent while the rule has none.
+ */
+function AssistantConditions({
+  rule,
+  onChange,
+}: {
+  rule: SmartRule;
+  onChange: (rule: SmartRule) => void;
+}) {
+  const labelId = useId();
+  const descriptionId = useId();
+  const chips = videoConditionChips(rule);
+  if (chips.length === 0) return null;
+  const words = t.library.conditions;
+  return (
+    <Field>
+      <FieldLabel id={labelId}>{words.assistantLegend}</FieldLabel>
+      <FieldDescription id={descriptionId}>{words.assistantDescription}</FieldDescription>
+      <ul
+        aria-labelledby={labelId}
+        aria-describedby={descriptionId}
+        className="flex flex-wrap gap-1"
+      >
+        {chips.map((chip) => (
+          <li key={chip.kind} className="max-w-full">
+            <ConditionChip
+              variant="outline"
+              icon={conditionIcon(chip.kind, rule)}
+              name={chip.text}
+              removeLabel={chip.remove}
+              onRemove={() => onChange(dropVideoCondition(rule, chip.kind))}
+            />
+          </li>
+        ))}
+      </ul>
+    </Field>
   );
 }

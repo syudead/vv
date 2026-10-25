@@ -303,7 +303,8 @@ export interface ListFilterParams {
 
 export const MAX_TAG_FILTER_COUNT = 16;
 
-export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
+export interface ListVideosParams
+  extends ListFilterParams, CreditFilterParams, VideoConditionParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
   /** Omitted lists every video; file leaves out virtual videos. */
@@ -318,6 +319,31 @@ export interface CreditFilterParams {
   organization?: number;
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
+}
+
+/** Duration, added-day and watch-state filters; the library URL and smart-folder rules use the same names. */
+export interface VideoConditionParams {
+  minDurationMs?: number;
+  maxDurationMs?: number;
+  /** YYYY-MM-DD in the server's local time zone. */
+  addedFrom?: string;
+  addedTo?: string;
+  watchState?: components["schemas"]["WatchState"];
+}
+
+export const videoConditionNames = [
+  "minDurationMs",
+  "maxDurationMs",
+  "addedFrom",
+  "addedTo",
+  "watchState",
+] as const satisfies readonly (keyof VideoConditionParams)[];
+
+function setVideoConditions(query: URLSearchParams, params: VideoConditionParams): void {
+  for (const name of videoConditionNames) {
+    const value = params[name];
+    if (value !== undefined) query.set(name, String(value));
+  }
 }
 
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
@@ -355,6 +381,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setVideoConditions(query, params);
   if (params.kind !== undefined) query.set("kind", params.kind);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
@@ -400,6 +427,7 @@ export async function listLibrary(
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setVideoConditions(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },

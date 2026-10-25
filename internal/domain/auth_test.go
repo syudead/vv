@@ -146,6 +146,7 @@ func TestCheckVideoQuery(t *testing.T) {
 		defaults,
 		{Sort: SortTitleAsc, Query: "cat"},
 		{Sort: SortRandom, Seed: 5},
+		{VideoConditions: VideoConditions{MinDurationMs: new(int64(1)), AddedFrom: "2025-01-01"}},
 	}
 	denied := []VideoQuery{
 		{Sort: SortPlayedDesc},
@@ -157,6 +158,7 @@ func TestCheckVideoQuery(t *testing.T) {
 		{Person: 1},
 		{Organization: 1},
 		{TagKindID: 1},
+		{VideoConditions: VideoConditions{WatchState: WatchStateUnwatched}},
 	}
 	for _, q := range allowed {
 		if err := AudienceGuest.CheckVideoQuery(q); err != nil {

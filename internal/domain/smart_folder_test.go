@@ -53,6 +53,35 @@ func TestEmptySmartRuleMatchesEverything(t *testing.T) {
 	}
 }
 
+func TestParseSmartRuleAcceptsVideoConditions(t *testing.T) {
+	raw := `{"minDurationMs":600000,"maxDurationMs":1800000,"addedFrom":"2025-01-01","addedTo":"2025-12-31","watchState":"inProgress"}`
+	rule, err := ParseSmartRule([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseSmartRule() error = %v", err)
+	}
+	want := VideoConditions{
+		MinDurationMs: new(int64(600000)), MaxDurationMs: new(int64(1800000)), AddedFrom: "2025-01-01", AddedTo: "2025-12-31",
+		WatchState: WatchStateInProgress,
+	}
+	if !reflect.DeepEqual(rule.VideoConditions, want) || !reflect.DeepEqual(rule.Query().VideoConditions, want) {
+		t.Fatalf("conditions = %+v, query = %+v, want %+v", rule.VideoConditions, rule.Query().VideoConditions, want)
+	}
+	if encoded, err := rule.Encode(); err != nil || encoded != raw {
+		t.Fatalf("Encode() = %s, %v", encoded, err)
+	}
+	// One day is a valid range, as is a lone bound; an explicit 0 bound survives encoding.
+	for _, raw := range []string{`{"addedFrom":"2025-03-01","addedTo":"2025-03-01"}`, `{"maxDurationMs":60000}`, `{"maxDurationMs":0}`} {
+		rule, err := ParseSmartRule([]byte(raw))
+		if err != nil {
+			t.Errorf("ParseSmartRule(%s) error = %v", raw, err)
+			continue
+		}
+		if encoded, err := rule.Encode(); err != nil || encoded != raw {
+			t.Errorf("ParseSmartRule(%s).Encode() = %s, %v", raw, encoded, err)
+		}
+	}
+}
+
 func TestParseSmartRuleRejectsOutOfRangeMembers(t *testing.T) {
 	sixteen := "[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
 	cases := map[string]string{
@@ -81,6 +110,14 @@ func TestParseSmartRuleRejectsOutOfRangeMembers(t *testing.T) {
 		"tagKind zero":      `{"tagKind":0}`,
 		"person negative":   `{"person":-3}`,
 		"organization zero": `{"organization":0}`,
+		"negative duration": `{"minDurationMs":-1}`,
+		"reversed duration": `{"minDurationMs":2000,"maxDurationMs":1000}`,
+		"reversed to zero":  `{"minDurationMs":1,"maxDurationMs":0}`,
+		"day not a day":     `{"addedFrom":"2025-02-30"}`,
+		"day not iso":       `{"addedTo":"2025/01/01"}`,
+		"reversed days":     `{"addedFrom":"2025-03-02","addedTo":"2025-03-01"}`,
+		"unknown watch":     `{"watchState":"seen"}`,
+		"addedFrom null":    `{"addedFrom":null}`,
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {

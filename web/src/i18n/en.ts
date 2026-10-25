@@ -1017,6 +1017,26 @@ export const en = {
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
+    conditions: {
+      minutes: (count: number) => `${formatNumber(count)} min`,
+      hours: (count: number) => `${formatNumber(count)} h`,
+      hoursMinutes: (hours: number, minutes: number) =>
+        `${formatNumber(hours)} h ${formatNumber(minutes)} min`,
+      durationRange: (min: string, max: string) => `${min}–${max}`,
+      durationAtLeast: (min: string) => `${min} or longer`,
+      durationUpTo: (max: string) => `Up to ${max}`,
+      addedRange: (from: string, to: string) => `Added ${from}–${to}`,
+      addedSince: (from: string) => `Added since ${from}`,
+      addedUntil: (to: string) => `Added until ${to}`,
+      unwatched: "Unwatched",
+      removeDuration: "Remove the duration filter",
+      removeAdded: "Remove the added-date filter",
+      removeWatch: "Remove the watch filter",
+      assistantLegend: "Set by the assistant",
+      assistantDescription:
+        "Remove a chip to drop that condition. The assistant can set it again.",
+      outOfOrder: "A duration or date here is out of order",
+    },
     tagFilter: {
       kindHint: "Tag kind",
       kindOption: (name: string) => `Tag kind ${name}`,

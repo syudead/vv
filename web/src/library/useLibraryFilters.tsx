@@ -1,7 +1,7 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router";
 
-import type { TagRef } from "../api/client";
+import { type TagRef, videoConditionNames } from "../api/client";
 import type { CreditKind } from "../api/credits";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { t } from "../i18n";
@@ -35,6 +35,16 @@ import {
 } from "./tagCriteria";
 import { draftParams, useFilterDraft } from "./useFilterDraft";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
+import {
+  clearedVideoConditions,
+  hasVideoConditions,
+  useVideoConditions,
+  type VideoConditionKind,
+  videoConditionChips,
+  type VideoConditions,
+  videoConditionsSignature,
+  withoutVideoCondition,
+} from "./videoConditions";
 
 /** URL parameters useListCriteria must keep for the tag, kind and credit filters. */
 export const libraryFilterParams = [
@@ -44,17 +54,27 @@ export const libraryFilterParams = [
   TAG_KIND_PARAM,
 ];
 
-/** Each tag, the kind, the person and the organization count as one applied filter. */
-function idFilterCount(tagIds: readonly number[], credits: CreditFilter): number {
+/** The library also keeps the video conditions, which folder listings do not take. */
+export const libraryPageParams = [...libraryFilterParams, ...videoConditionNames];
+
+const noConditions: VideoConditions = {};
+
+/** Each tag, the kind, the person, the organization and each condition chip count as one applied filter. */
+function idFilterCount(
+  tagIds: readonly number[],
+  credits: CreditFilter,
+  conditions: VideoConditions,
+): number {
   return (
     tagIds.length +
     [credits.tagKind, credits.person, credits.organization].filter(
       (id) => id !== undefined,
-    ).length
+    ).length +
+    videoConditionChips(conditions).length
   );
 }
 
-/** The tag and credit filters in the URL; guests get none. */
+/** The tag, credit and video-condition filters in the URL; guests get none. */
 export function useLibraryFilterValues(owner: boolean) {
   const location = useLocation();
   // Preserve tag-array identity across unrelated URL changes so card callbacks and memoization remain stable.
@@ -66,7 +86,8 @@ export function useLibraryFilterValues(owner: boolean) {
     [owner, rawTagKey],
   );
   const credits = useCreditFilter(location.search, owner);
-  return { tagIds, credits };
+  const conditions = useVideoConditions(location.search, owner);
+  return { tagIds, credits, conditions };
 }
 
 interface Options {
@@ -75,6 +96,8 @@ interface Options {
   apply: ListCriteriaState["apply"];
   tagIds: readonly number[];
   credits: CreditFilter;
+  /** Omitted on folder pages, whose listing does not take them. */
+  conditions?: VideoConditions;
   /** Tags the last response dropped as deleted; they leave the URL once per response. */
   missingTagIds: readonly number[];
   /** Whether the list came from a snapshot, which skips the request that reports deleted tags. */
@@ -93,6 +116,7 @@ export function useLibraryFilters({
   apply,
   tagIds,
   credits,
+  conditions = noConditions,
   missingTagIds,
   restored,
   resetPreview,
@@ -105,6 +129,7 @@ export function useLibraryFilters({
     apply(cleared.criteria, "push", {
       [TAG_PARAM]: serializeTagIds(cleared.tag),
       ...clearedCredits,
+      ...clearedVideoConditions,
     });
   }, [apply, criteria, resetPreview]);
 
@@ -121,6 +146,13 @@ export function useLibraryFilters({
     (kind: CreditKind) => {
       resetPreview();
       apply(latestConditions.current.criteria, "push", withoutCredit(kind));
+    },
+    [apply, resetPreview],
+  );
+  const removeCondition = useCallback(
+    (kind: VideoConditionKind) => {
+      resetPreview();
+      apply(latestConditions.current.criteria, "push", withoutVideoCondition(kind));
     },
     [apply, resetPreview],
   );
@@ -268,27 +300,34 @@ export function useLibraryFilters({
         ))}
       </>
     ),
-    extraFilterCount: idFilterCount(tagIds, credits),
+    extraFilterCount: idFilterCount(tagIds, credits, conditions),
     onFilterOpen: openFilter,
     suggestions,
   };
 
-  const activeFilters = hasFilterChips(tagIds, credits) ? (
-    <ActiveTagFilters
-      tagIds={tagIds}
-      onRemove={removeActiveTag}
-      credits={credits}
-      onRemoveCredit={removeCredit}
-      onCreditGone={creditGone}
-      tagKindName={tagKinds.name}
-      onRemoveTagKind={removeTagKind}
-      searchFieldRef={searchField}
-    />
-  ) : null;
+  const activeFilters =
+    hasFilterChips(tagIds, credits) || hasVideoConditions(conditions) ? (
+      <ActiveTagFilters
+        tagIds={tagIds}
+        onRemove={removeActiveTag}
+        credits={credits}
+        onRemoveCredit={removeCredit}
+        onCreditGone={creditGone}
+        tagKindName={tagKinds.name}
+        onRemoveTagKind={removeTagKind}
+        conditions={conditions}
+        onRemoveCondition={removeCondition}
+        searchFieldRef={searchField}
+      />
+    ) : null;
 
   return {
-    conditioned: hasTagConditions(criteria, tagIds, credits),
-    signature: [tagIds.join(","), creditSignature(credits)].join("\u0000"),
+    conditioned: hasTagConditions(criteria, tagIds, credits, conditions),
+    signature: [
+      tagIds.join(","),
+      creditSignature(credits),
+      videoConditionsSignature(conditions),
+    ].join("\u0000"),
     clearAll,
     pressTag,
     toolbar,
