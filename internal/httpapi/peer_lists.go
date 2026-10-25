@@ -249,6 +249,10 @@ func optionalIDs(ids *[]int64) []int64 {
 
 func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q domain.VideoQuery) {
 	ctx := r.Context()
+	join, err := s.vocabularyJoin(ctx)
+	if !s.checkListRead(w, err) {
+		return
+	}
 	page, err := readMerged(s, r, q, mergedRead[gen.Video]{
 		path: "/api/videos",
 		local: func(q domain.VideoQuery) (listPart[gen.Video], error) {
@@ -267,7 +271,7 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 			if err := s.peerGet(r, "/api/videos", query, &answer); err != nil {
 				return listPart[gen.Video]{}, err
 			}
-			rewriteRemoteVideos(answer.Items, domain.VocabularyJoin{})
+			rewriteRemoteVideos(answer.Items, join)
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.Video]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err
 		},
@@ -283,6 +287,10 @@ func (s *server) listMergedVideos(w http.ResponseWriter, r *http.Request, q doma
 
 func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q domain.VideoQuery) {
 	ctx := r.Context()
+	join, err := s.vocabularyJoin(ctx)
+	if !s.checkListRead(w, err) {
+		return
+	}
 	page, err := readMerged(s, r, q, mergedRead[gen.LibraryItem]{
 		path: "/api/library",
 		local: func(q domain.VideoQuery) (listPart[gen.LibraryItem], error) {
@@ -305,7 +313,7 @@ func (s *server) listMergedLibrary(w http.ResponseWriter, r *http.Request, q dom
 				return listPart[gen.LibraryItem]{}, err
 			}
 			for i := range answer.Items {
-				rewriteRemoteLibraryItem(&answer.Items[i], domain.VocabularyJoin{})
+				rewriteRemoteLibraryItem(&answer.Items[i], join)
 			}
 			side, err := peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 			return listPart[gen.LibraryItem]{side: side, total: answer.Total, missing: optionalIDs(answer.MissingTagIds)}, err

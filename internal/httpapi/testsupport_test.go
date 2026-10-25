@@ -395,6 +395,10 @@ func (f *fakeLibrary) NameFilters(_ context.Context, q domain.VideoQuery) (domai
 	return q, true, nil
 }
 
+func (f *fakeLibrary) VocabularyJoin(context.Context) (domain.VocabularyJoin, error) {
+	return domain.VocabularyJoin{}, nil
+}
+
 func (f *fakeLibrary) KeyframeSpacing(context.Context, int64) (domain.KeyframeProbe, error) {
 	return domain.KeyframeProbe{}, nil
 }

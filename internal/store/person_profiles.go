@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -94,17 +93,12 @@ func writePersonProfile(ctx context.Context, tx *sql.Tx, id int64, profile domai
 	return nil
 }
 
-// birthKeyArg sorts a normalized partial date as its first possible day: YYYYMMDD with missing parts as 00.
+// birthKeyArg is domain.BirthKey, or null for an unknown date.
 func birthKeyArg(date string) any {
-	digits := strings.ReplaceAll(date, "-", "")
-	if digits == "" {
-		return nil
+	if key, ok := domain.BirthKey(date); ok {
+		return key
 	}
-	key, err := strconv.ParseInt((digits + "0000")[:8], 10, 64)
-	if err != nil {
-		return nil
-	}
-	return key
+	return nil
 }
 
 // addPersonProfiles reads the profiles, favorite marks, image revisions and links of a page of people in two statements.

@@ -69,7 +69,7 @@ func TestRemoteVideoIsForwardedWithRemoteIDsAndURLs(t *testing.T) {
 	if video.Folder == nil || video.Folder.RootId != domain.ToRemoteID(f.rootID) {
 		t.Errorf("folder = %+v, want rootId %d", video.Folder, domain.ToRemoteID(f.rootID))
 	}
-	// The vocabulary is not joined by name yet, so the peer's tag takes the offset.
+	// b holds no tag of that name, so the peer's tag takes the offset.
 	if len(video.Tags) != 1 || video.Tags[0].Id != domain.ToRemoteID(f.tagID) || video.Tags[0].Name != guestSecretTag {
 		t.Errorf("tags = %+v, want id %d の %s", video.Tags, domain.ToRemoteID(f.tagID), guestSecretTag)
 	}

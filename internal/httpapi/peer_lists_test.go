@@ -24,6 +24,7 @@ func mergedNodes(t *testing.T) (fa, fb *guestFixture, b *peerNode, stopA func())
 		var pairing *app.Pairing
 		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
 			pairing = withTestPairing(db, name, nil, opts)
+			opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
 		})
 		server := httptest.NewServer(f.env.handler)
 		t.Cleanup(server.Close)

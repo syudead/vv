@@ -41,30 +41,49 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
-var remoteVideoMux = func() *http.ServeMux {
-	mux := http.NewServeMux()
-	for pattern := range remoteVideoOperations {
-		mux.Handle(pattern, http.NotFoundHandler())
-	}
-	return mux
-}()
+// remoteCollection is a collection whose path id names the peer's entity when it carries the offset.
+type remoteCollection struct {
+	prefix     string
+	noun       string
+	operations map[string]remoteOperation
+	mux        *http.ServeMux
+}
 
-// remoteBoundary forwards a request whose video id names the peer's video to the peer; any other request
-// goes to next. An unclean path also goes to next, whose redirect brings it back cleaned.
+var remoteCollections = []remoteCollection{
+	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations),
+	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations),
+	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations),
+	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations),
+}
+
+func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation) remoteCollection {
+	mux := http.NewServeMux()
+	for pattern := range operations {
+		if strings.Contains(pattern, " "+prefix) {
+			mux.Handle(pattern, http.NotFoundHandler())
+		}
+	}
+	return remoteCollection{prefix: prefix, noun: noun, operations: operations, mux: mux}
+}
+
+// remoteBoundary forwards a request whose path id names the peer's entity to the peer; any other request goes
+// to next. An unclean path also goes to next, whose redirect brings it back cleaned.
 func (s *server) remoteBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		escaped := r.URL.EscapedPath()
-		if id, rest, ok := remoteVideoPath(escaped); ok && path.Clean(escaped) == escaped {
-			s.forwardRemoteVideo(w, r, id, rest)
-			return
+		for _, collection := range remoteCollections {
+			if id, rest, ok := remoteEntityPath(collection.prefix, escaped); ok && path.Clean(escaped) == escaped {
+				s.forwardRemoteEntity(w, r, collection, id, rest)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// remoteVideoPath splits /api/videos/{id}... into a remote id and the escaped rest of the path.
-func remoteVideoPath(path string) (id int64, rest string, ok bool) {
-	tail, found := strings.CutPrefix(path, remoteVideoPrefix)
+// remoteEntityPath splits prefix{id}... into a remote id and the escaped rest of the path.
+func remoteEntityPath(prefix, path string) (id int64, rest string, ok bool) {
+	tail, found := strings.CutPrefix(path, prefix)
 	if !found {
 		return 0, "", false
 	}
@@ -76,14 +95,14 @@ func remoteVideoPath(path string) (id int64, rest string, ok bool) {
 	return id, rest, err == nil && domain.IsRemoteID(id)
 }
 
-func (s *server) forwardRemoteVideo(w http.ResponseWriter, r *http.Request, id int64, rest string) {
-	op, offered := remoteVideoOperations[routePattern(remoteVideoMux, r)]
-	// The peer's own request with a remote id names this node's video; forwarding it back would bounce.
+func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, collection remoteCollection, id int64, rest string) {
+	op, offered := collection.operations[routePattern(collection.mux, r)]
+	// The peer's own request with a remote id names this node's entity; forwarding it back would bounce.
 	if !offered || isPeerRequest(r.Context()) {
-		s.notFound(w, "This operation is not available for a video of the other VVMDM.")
+		s.notFound(w, "This operation is not available for a "+collection.noun+" of the other VVMDM.")
 		return
 	}
-	out, err := remoteRequest(r, remoteVideoPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
+	out, err := remoteRequest(r, collection.prefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return
@@ -115,7 +134,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
 	default:
-		s.writeRewritten(w, resp, op.rewrite)
+		s.writeRewritten(w, r, resp, op.rewrite)
 	}
 }
 
@@ -179,7 +198,7 @@ func writeRewrittenHead(w http.ResponseWriter, resp *http.Response) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewrite remoteRewrite) {
+func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *http.Response, rewrite remoteRewrite) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		s.peerUnreachable(w)
@@ -189,9 +208,12 @@ func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewr
 		s.internalError(w, "The answer of the other VVMDM is too large.", nil)
 		return
 	}
-	// The vocabulary is not joined by name yet, so the peer's tags, kinds, people and organizations take the
-	// offset.
-	value, err := rewrite(body, domain.VocabularyJoin{})
+	join, err := s.vocabularyJoin(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
+		return
+	}
+	value, err := rewrite(body, join)
 	if err != nil {
 		s.internalError(w, "The other VVMDM answered in an unexpected form.", err)
 		return

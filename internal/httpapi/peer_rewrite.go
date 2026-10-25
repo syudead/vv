@@ -38,6 +38,17 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/frame":                  {media: true},
 }
 
+// remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and
+// organizations.
+var remoteVocabularyOperations = map[string]remoteOperation{
+	"PATCH /api/tags/{id}":          {rewrite: rewriteAs(rewriteRemoteTag)},
+	"GET /api/people/{id}":          {rewrite: rewriteAs(rewriteRemotePerson)},
+	"PATCH /api/people/{id}":        {rewrite: rewriteAs(rewriteRemotePerson)},
+	"GET /api/people/{id}/image":    {},
+	"GET /api/organizations/{id}":   {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
+	"PATCH /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
+}
+
 // rewriteAs decodes the answer into the operation's generated type, so the type says which ids are videos and
 // which are tags.
 func rewriteAs[T any](rewrite func(*T, domain.VocabularyJoin)) remoteRewrite {
@@ -87,9 +98,7 @@ func rewriteRemoteTags(tags []gen.VideoTag, join domain.VocabularyJoin) {
 	for i := range tags {
 		tag := &tags[i]
 		tag.Id = join.Tag(tag.Id, tag.Name)
-		if tag.Kind != nil {
-			tag.Kind.Id = join.TagKind(tag.Kind.Id, tag.Kind.Name)
-		}
+		rewriteRemoteKindRef(tag.Kind, join)
 	}
 }
 
@@ -213,4 +222,30 @@ func rewriteRemoteVideoPage(page *gen.VideoPage, join domain.VocabularyJoin) {
 			(*page.MissingTagIds)[i] = domain.ToRemoteID(id)
 		}
 	}
+}
+
+func rewriteRemoteTag(tag *gen.Tag, join domain.VocabularyJoin) {
+	tag.Id = join.Tag(tag.Id, tag.Name)
+	rewriteRemoteKindRef(tag.Kind, join)
+}
+
+func rewriteRemoteKindRef(kind *gen.TagKindRef, join domain.VocabularyJoin) {
+	if kind != nil {
+		kind.Id = join.TagKind(kind.Id, kind.Name)
+	}
+}
+
+func rewriteRemoteTagKind(kind *gen.TagKind, join domain.VocabularyJoin) {
+	kind.Id = join.TagKind(kind.Id, kind.Name)
+}
+
+// rewriteRemotePerson leaves out the favorite mark, which stays with each node.
+func rewriteRemotePerson(person *gen.Person, join domain.VocabularyJoin) {
+	person.Id = join.Person(person.Id, person.Name)
+	person.Favorite = false
+}
+
+func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain.VocabularyJoin) {
+	organization.Id = join.Organization(organization.Id, organization.Name)
+	rewriteRemoteOrganization(organization.Parent, join)
 }

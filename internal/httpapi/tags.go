@@ -23,6 +23,10 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	if s.mergesVocabulary(r.Context()) {
+		s.listMergedTags(w, r, query)
+		return
+	}
 	page, err := s.tags.ListTags(r.Context(), query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
