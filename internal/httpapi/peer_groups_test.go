@@ -95,6 +95,39 @@ func TestPeerGroupIsListedAndOpensWithRemoteIDs(t *testing.T) {
 	}
 }
 
+// A remote group's page keeps the reader's favorites and play history local, as the merged lists do.
+func TestPeerGroupReadUsesNoneOfThePeersFavorites(t *testing.T) {
+	fa, _, a, b, _ := groupNodes(t)
+	group := createGroup(t, a, "g", fa.ids["b"], fa.ids["c"])
+	if rec := a.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fa.ids["b"]})); rec.Code != http.StatusOK {
+		t.Fatalf("favorite on the peer: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	// c is newer than b, so the peer's addedDesc order lists c first and its favoritedDesc order lists b first.
+	for _, tc := range []struct {
+		query string
+		want  []int64
+	}{
+		{"favorite=true", nil},
+		{"sort=favoritedDesc", remoteIDs(fa.ids["c"], fa.ids["b"])},
+	} {
+		for _, path := range []string{"", "/items"} {
+			rec := b.owner(http.MethodGet, groupPath(domain.ToRemoteID(group))+path+"?"+tc.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s%s: status = %d: %s", path, tc.query, rec.Code, rec.Body)
+			}
+			page := decode[gen.GroupItemPage](t, rec)
+			var got []int64
+			for _, item := range page.Items {
+				got = append(got, item.Video.Id)
+			}
+			if !slices.Equal(got, tc.want) || page.NextCursor != nil {
+				t.Errorf("%s?%s = %v, next %v, want %v", path, tc.query, got, page.NextCursor, tc.want)
+			}
+		}
+	}
+}
+
 func TestPeerGroupRefusesVideosOfBothNodes(t *testing.T) {
 	fa, fb, a, b, _ := groupNodes(t)
 	group := createGroup(t, a, "g", fa.ids["b"])

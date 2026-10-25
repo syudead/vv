@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,7 +48,8 @@ var (
 )
 
 func (s *server) forwardRemoteGroup(w http.ResponseWriter, r *http.Request, id int64, rest string) {
-	op, offered := remoteGroupOperations[routePattern(remoteGroupMux, r)]
+	pattern := routePattern(remoteGroupMux, r)
+	op, offered := remoteGroupOperations[pattern]
 	// The peer's own request with a remote id names this node's group; forwarding it back would bounce.
 	if !offered || isPeerRequest(r.Context()) {
 		s.notFound(w, "The group does not exist.")
@@ -62,6 +64,9 @@ func (s *server) forwardRemoteGroup(w http.ResponseWriter, r *http.Request, id i
 	if query.Has("trail") {
 		query.Set("trail", peerTrail(query.Get("trail")))
 	}
+	if favoriteRead, read := remoteFavoriteReads[pattern]; read && peerGroupRead(query) {
+		op = favoriteRead
+	}
 	out, err := remoteRequest(r, remoteGroupPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, query)
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
@@ -71,6 +76,32 @@ func (s *server) forwardRemoteGroup(w http.ResponseWriter, r *http.Request, id i
 		return
 	}
 	s.forward(w, r, out, op)
+}
+
+// remoteFavoriteReads answer a favorites-only read of the peer's group: favorites stay with each node, so
+// none of the peer's items is this node's favorite.
+var remoteFavoriteReads = map[string]remoteOperation{
+	"GET /api/groups/{id}": {rewrite: rewriteAs(func(detail *gen.GroupDetail, join domain.VocabularyJoin) {
+		rewriteRemoteGroupDetail(detail, join)
+		detail.Items, detail.NextCursor = []gen.GroupItem{}, nil
+	})},
+	"GET /api/groups/{id}/items": {rewrite: rewriteAs(func(page *gen.GroupItemPage, _ domain.VocabularyJoin) {
+		page.Items, page.NextCursor = []gen.GroupItem{}, nil
+	})},
+}
+
+// peerGroupRead keeps favorites and play history out of a read the peer answers, as a merged list does: the
+// peer lists in domain.PeerSort's order without the favorite filter. It reports a favorites-only read.
+func peerGroupRead(query url.Values) bool {
+	if sort := query.Get("sort"); sort != "" {
+		query.Set("sort", string(domain.PeerSort(domain.VideoSort(sort))))
+	}
+	favoriteOnly, err := strconv.ParseBool(query.Get("favorite"))
+	if err != nil {
+		return false
+	}
+	query.Del("favorite")
+	return favoriteOnly
 }
 
 // peerGroupItemPath turns the item id of /items/{itemId}/move into the peer's; false when it names a local item.
