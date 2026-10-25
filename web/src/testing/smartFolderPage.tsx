@@ -49,6 +49,9 @@ export const server = {
   /** Capture card values at request time and hold delivery so tests control response order. */
   holdCards: false,
   heldCards: [] as (() => void)[],
+  /** Hold smart-folder detail reads, as a slow network would, so the page shows its loading state. */
+  holdDetail: false,
+  heldDetail: [] as (() => void)[],
   failCards: false,
   failDetail: false,
   failPage: false,
@@ -119,6 +122,8 @@ function folderResponse(url: URL): Response | undefined {
     : json(stored);
 }
 
+const detailPath = /^\/api\/smart-folders\/\d+$/;
+
 function install() {
   const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const url = new URL(String(input), "http://localhost");
@@ -139,6 +144,11 @@ function install() {
     if (answer !== undefined && server.holdCards && url.pathname.endsWith("/cards")) {
       return new Promise<Response>((resolve) => {
         server.heldCards.push(() => resolve(answer));
+      });
+    }
+    if (answer !== undefined && server.holdDetail && detailPath.test(url.pathname)) {
+      return new Promise<Response>((resolve) => {
+        server.heldDetail.push(() => resolve(answer));
       });
     }
     if (answer !== undefined) return Promise.resolve(answer);
@@ -211,6 +221,8 @@ export function setUpSmartFolderServer() {
     server.failPage = false;
     server.holdCards = false;
     server.heldCards = [];
+    server.holdDetail = false;
+    server.heldDetail = [];
     server.failCards = false;
     FakeObserver.all = new Set();
     vi.stubGlobal("IntersectionObserver", FakeObserver);

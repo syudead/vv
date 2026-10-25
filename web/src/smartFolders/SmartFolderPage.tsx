@@ -199,10 +199,11 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   );
   const { clear } = selection;
   useEffect(() => clear(), [controls.key, clear]);
+  // Refresh in place: a loading state would unmount the bar and its partial-result dialog.
   const afterBulk = useCallback(() => {
     clear();
-    reload();
-  }, [clear, reload]);
+    refresh();
+  }, [clear, refresh]);
 
   return (
     <SmartFolderCardsProvider>
@@ -238,7 +239,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
               favoriteGroupIds={favorites.groupIds}
               smartFolderIds={favorites.smartFolderIds}
               onClear={selection.clear}
-              onTagRemoved={reload}
+              onTagRemoved={refresh}
               onBundled={afterBulk}
               onCollectionsDeleted={afterBulk}
               onRetain={selection.retain}

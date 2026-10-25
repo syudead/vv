@@ -10,30 +10,27 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router";
 
-import type { FolderRef, FolderScope } from "../api/client";
+import type { FolderListing, FolderRef, FolderScope } from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import { useFolderListing, useRootFolderName } from "../api/useFolderListing";
-import { useVideos } from "../api/useVideos";
+import { type FolderListingState, useFolderListing } from "../api/useFolderListing";
+import { useVideos, type VideosState } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
-import { isRemoteId } from "../lib/remoteId";
-import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { Button } from "../ui/shadcn/button";
 import { criteriaKey } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { useVideoSelection } from "../videoList/useVideoSelection";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
-import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
+import FolderHeader from "./FolderHeader";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
 import TopBarPortal from "../shell/TopBarPortal";
@@ -43,10 +40,11 @@ import {
   useLibraryFilters,
   useLibraryFilterValues,
 } from "../library/useLibraryFilters";
-import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
+import { folderKey } from "./folderPath";
 import { FolderEmpty, FolderNotFound, LoadFailed } from "./states";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
+import { useFolderNames } from "./useFolderNames";
 import { useFolderTagsRow } from "./useFolderTagsRow";
 
 export default function FolderView({ folder }: { folder: FolderRef }) {
@@ -125,28 +123,10 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   const tagsRow = useFolderTagsRow();
 
-  const summary = listing.data?.folder;
-  const children = listing.data?.folders ?? [];
-  // Guest child-folder responses omit the registered root's name because they have no absolute path.
-  // Fetch the registered root separately for its display name.
-  const knownFromSummary =
-    summary !== undefined && (summary.rootPath !== undefined || folder.path === "");
-  const rootLookup = useRootFolderName(
-    folder.rootId,
-    summary !== undefined && !knownFromSummary,
+  const { summary, children, rootName, rootNameFailed, name } = useFolderNames(
+    folder,
+    listing,
   );
-  const rootName =
-    summary === undefined
-      ? undefined
-      : knownFromSummary
-        ? rootFolderName(summary)
-        : rootLookup.status === "ready"
-          ? rootLookup.name
-          : undefined;
-  // Omit an unavailable root name instead of leaving a permanent skeleton.
-  const rootNameFailed = !knownFromSummary && rootLookup.status === "failed";
-  const name =
-    summary?.name ?? (folder.path === "" ? rootName : folder.path.split("/").at(-1));
   const backTo = `${location.pathname}${location.search}`;
 
   const pendingScroll = useRef(restored?.scrollY);
@@ -292,15 +272,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
-  const noVideosAtAll =
-    !listing.loading &&
-    !videos.loading &&
-    summary !== undefined &&
-    !searching &&
-    !filtered &&
-    children.length === 0 &&
-    videos.items.length === 0 &&
-    videos.error === null;
+  const noVideosAtAll = isEmptyFolder({
+    listing,
+    videos,
+    loaded: summary !== undefined,
+    searching,
+    filtered,
+    childCount: children.length,
+  });
 
   let body: ReactNode;
   if (listing.notFound || videos.notFound) {
@@ -359,27 +338,17 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   return (
     <ListPage
       header={
-        <>
-          <Breadcrumbs
-            crumbs={
-              // Omit the root crumb when a missing folder leaves its name unknown.
-              listing.notFound ||
-              videos.notFound ||
-              listing.error !== null ||
-              rootNameFailed
-                ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
-                : breadcrumbsFor(folder, rootName)
-            }
-            suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
-          />
-          {/* Breadcrumbs show the location visually; keep the title screen-reader-only. */}
-          <PageHeader
-            titleHidden
-            titleRef={heading}
-            title={name ?? t.folders.title}
-            count={isRemoteId(folder.rootId) ? <RemoteCountLine remote /> : undefined}
-          />
-        </>
+        <FolderHeader
+          folder={folder}
+          rootName={rootName}
+          listingNotFound={listing.notFound}
+          videosNotFound={videos.notFound}
+          listingFailed={listing.error !== null}
+          rootNameFailed={rootNameFailed}
+          searching={searching}
+          name={name}
+          heading={heading}
+        />
       }
       toolbar={
         <TopBarPortal>
@@ -418,5 +387,33 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       {selection.marqueeBox}
       <div ref={sentinel} aria-hidden="true" className="h-px" />
     </ListPage>
+  );
+}
+
+/** The folder has nothing to list: it loaded with no child folders or videos and no search or filter narrows it. */
+function isEmptyFolder({
+  listing,
+  videos,
+  loaded,
+  searching,
+  filtered,
+  childCount,
+}: {
+  listing: FolderListingState<FolderListing>;
+  videos: VideosState;
+  loaded: boolean;
+  searching: boolean;
+  filtered: boolean;
+  childCount: number;
+}): boolean {
+  return (
+    !listing.loading &&
+    !videos.loading &&
+    loaded &&
+    !searching &&
+    !filtered &&
+    childCount === 0 &&
+    videos.items.length === 0 &&
+    videos.error === null
   );
 }
