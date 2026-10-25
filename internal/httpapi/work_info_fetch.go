@@ -23,12 +23,15 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 		s.workInfoRunError(w, err, "The work-info plugin was not found.")
 		return
 	}
-	out := make([]gen.WorkInfoCandidate, 0, len(candidates))
+	out := gen.WorkInfoSearchResult{Candidates: make([]gen.WorkInfoCandidate, 0, len(candidates))}
 	for _, c := range candidates {
-		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+		out.Candidates = append(out.Candidates, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+	}
+	if match, ok := domain.MatchWorkInfoCandidate(candidates, query); ok {
+		out.Match = &match
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 // SearchPeopleWithPlugin answers a person plugin's search; its errors are SearchWorkInfo's.
@@ -104,6 +107,29 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
+}
+
+// ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key.
+func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
+	var body gen.WorkInfoFillTargetsRequest
+	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	if !ok {
+		return
+	}
+	queries, err := s.workInfoPlugins.WorkInfoFillQueries(r.Context(), videoIDs)
+	if err != nil {
+		s.internalError(w, "Could not list the videos to fill.", err)
+		return
+	}
+	targets := make([]gen.WorkInfoFillTarget, 0, len(queries))
+	for _, q := range queries {
+		targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.WorkInfoFillTargetList{Targets: targets}, s.logger)
 }
 
 // Use empty arrays for absent lists; omit absent code and description.

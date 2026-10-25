@@ -199,4 +199,5 @@ mark, so no schema gains a `remote` field. The shell shows a notice from
 `GET /api/peer` and the `peer` event while the peer is paired but not
 connected; guests see the state without the name. Favorite, playlist,
 open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them.
+the server does not offer them; the selection bar also hides `Fill info…` for
+a selection with remote items, because plugin fetches run on the local node.

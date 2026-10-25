@@ -1858,6 +1858,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-fill-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List the videos a selection fill searches for
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one.
+         */
+        post: operations["listWorkInfoFillTargets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/person-search": {
         parameters: {
             query?: never;
@@ -4263,6 +4283,8 @@ export interface components {
         WorkInfoSearchResult: {
             /** @description First 50 candidates in plugin order. */
             candidates: components["schemas"]["WorkInfoCandidate"][];
+            /** @description Index in candidates of the one a selection fill takes by default: the first whose title or id equals the query ignoring case, width, spaces and punctuation, or the only candidate. Absent when none matches. */
+            match?: number;
         };
         /** @description Exactly one of id and link. */
         WorkInfoFetchRequest: {
@@ -5444,6 +5466,23 @@ export interface components {
             videoIds: number[];
             /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
             smartFolderIds?: number[];
+        };
+        WorkInfoFillTargetsRequest: {
+            /** @description Video IDs to fill. May be empty when smartFolderIds is not. */
+            videoIds: number[];
+            /** @description Smart-folder IDs resolved at request time to their current member videos and added to videoIds, as in VideoTagsSummaryRequest. Missing folders are ignored. */
+            smartFolderIds?: number[];
+        };
+        WorkInfoFillTargetList: {
+            targets: components["schemas"]["WorkInfoFillTarget"][];
+        };
+        WorkInfoFillTarget: {
+            /** Format: int64 */
+            videoId: number;
+            /** @description The video's title as the owner sees it. */
+            title: string;
+            /** @description The work code, or the title without one; it may exceed searchWorkInfo's 200 characters. */
+            query: string;
         };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
@@ -10788,6 +10827,32 @@ export interface operations {
             502: components["responses"]["PluginFailed"];
             503: components["responses"]["PluginBusy"];
             504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    listWorkInfoFillTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoFillTargetsRequest"];
+            };
+        };
+        responses: {
+            /** @description Fill targets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoFillTargetList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     searchPeopleWithPlugin: {
