@@ -4,11 +4,12 @@ import { encodeFaceFrame } from "./faceFrameImage";
 
 /** jsdom has no canvas, so a fake records the cut and answers toBlob with what the test chooses. */
 function fakeCanvas(blob: Blob | null) {
-  const drawImage = vi.fn();
+  const context = { drawImage: vi.fn(), imageSmoothingQuality: "low" };
+  const drawImage = context.drawImage;
   const canvas = {
     width: 0,
     height: 0,
-    getContext: () => ({ drawImage }),
+    getContext: () => context,
     toBlob: (done: (value: Blob | null) => void, type: string, quality: number) => {
       canvas.encoded = { type, quality };
       done(blob);
@@ -19,7 +20,7 @@ function fakeCanvas(blob: Blob | null) {
   vi.spyOn(document, "createElement").mockImplementation((tag: string) =>
     tag === "canvas" ? (canvas as unknown as HTMLCanvasElement) : create(tag),
   );
-  return { canvas, drawImage };
+  return { canvas, context, drawImage };
 }
 
 afterEach(() => {
@@ -27,9 +28,9 @@ afterEach(() => {
 });
 
 describe("encodeFaceFrame", () => {
-  it("cuts the rect out of the frame at its own pixels as a JPEG", async () => {
+  it("enlarges a small cut to 800 px on its long side, smoothly, as a JPEG", async () => {
     const jpeg = new Blob(["face"], { type: "image/jpeg" });
-    const { canvas, drawImage } = fakeCanvas(jpeg);
+    const { canvas, context, drawImage } = fakeCanvas(jpeg);
     const image = {} as HTMLImageElement;
 
     const blob = await encodeFaceFrame(image, {
@@ -40,9 +41,23 @@ describe("encodeFaceFrame", () => {
     });
 
     expect(blob).toBe(jpeg);
-    expect([canvas.width, canvas.height]).toEqual([100, 151]);
-    expect(drawImage).toHaveBeenCalledWith(image, 10, 20, 100.4, 150.6, 0, 0, 100, 151);
+    expect([canvas.width, canvas.height]).toEqual([533, 800]);
+    expect(drawImage).toHaveBeenCalledWith(image, 10, 20, 100.4, 150.6, 0, 0, 533, 800);
+    expect(context.imageSmoothingQuality).toBe("high");
     expect(canvas.encoded?.type).toBe("image/jpeg");
+  });
+
+  it("reduces a large cut to 800 px on its long side", async () => {
+    const { canvas } = fakeCanvas(new Blob(["face"], { type: "image/jpeg" }));
+
+    await encodeFaceFrame({} as HTMLImageElement, {
+      x: 0,
+      y: 0,
+      width: 1200,
+      height: 1800,
+    });
+
+    expect([canvas.width, canvas.height]).toEqual([533, 800]);
   });
 
   it("rejects when the frame cannot be encoded", async () => {

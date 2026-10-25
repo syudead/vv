@@ -26,10 +26,8 @@ type FaceThresholds struct {
 	// Join and above joins two clusters of one video that passed the cutoff; a centroid of many faces is steadier
 	// than the single faces Cluster compares, and one video holds few people.
 	Join float64
-	// Candidate up to Link offers the pair to the owner.
+	// Candidate and above offers the pair to the owner; a main person is never linked to a stored person without them.
 	Candidate float64
-	// Link and above links a main person to a person of the library without the owner.
-	Link float64
 	// Merge and above merges a provisional person into a named person whose face image matches.
 	Merge float64
 }
@@ -42,18 +40,17 @@ type FaceRecognizerSpec struct {
 	Thresholds FaceThresholds
 }
 
-// The SFace values are the POC's; the ArcFace values give the same false rates on LFW. Link equals Merge because
-// a link is as unattended as a merge, and the looser Join rate named strangers in real libraries (face-recognition.md).
+// The SFace values are the POC's; the ArcFace values give the same false rates on LFW (face-recognition.md).
 var faceRecognizers = []FaceRecognizerSpec{
 	{
 		Recognizer: FaceRecognizerSFaceInt8,
 		Dimensions: 128,
-		Thresholds: FaceThresholds{Track: 0.45, TrackFar: 0.6, Cluster: 0.45, Join: 0.45, Candidate: 0.363, Link: 0.55, Merge: 0.55},
+		Thresholds: FaceThresholds{Track: 0.45, TrackFar: 0.6, Cluster: 0.45, Join: 0.45, Candidate: 0.363, Merge: 0.55},
 	},
 	{
 		Recognizer: FaceRecognizerArcFaceR50,
 		Dimensions: 512,
-		Thresholds: FaceThresholds{Track: 0.288, TrackFar: 0.614, Cluster: 0.288, Join: 0.288, Candidate: 0.205, Link: 0.545, Merge: 0.545},
+		Thresholds: FaceThresholds{Track: 0.288, TrackFar: 0.614, Cluster: 0.288, Join: 0.288, Candidate: 0.205, Merge: 0.545},
 	},
 }
 
