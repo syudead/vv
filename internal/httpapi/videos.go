@@ -27,7 +27,12 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	}
 
 	audience := audienceFrom(r.Context())
-	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
+	// The paired VVMDM filters for its guests the videos it adds to a smart folder; its credential is the owner's.
+	filterAudience := audience
+	if isPeerRequest(r.Context()) {
+		filterAudience = domain.AudienceOwner
+	}
+	query, ok := s.parseVideoQuery(w, filterAudience, videoQueryParams{
 		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
