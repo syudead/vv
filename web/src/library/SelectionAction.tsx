@@ -1,22 +1,33 @@
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, createContext, type ReactNode, useContext } from "react";
 
 import type { UiText } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+
+/** True while a bar action waits on the server; every action under it is disabled meanwhile. */
+export const SelectionBusyContext = createContext(false);
 
 /** Keep action labels visible without hover; forward props for asChild popover/menu triggers. */
 export function SelectionAction({
   icon,
   label,
   after,
+  disabled,
   ...props
 }: Omit<ComponentProps<typeof Button>, "children"> & {
   icon: ReactNode;
   label: UiText;
   after?: ReactNode;
 }) {
+  const busy = useContext(SelectionBusyContext);
   return (
-    <Button variant="ghost" size="sm" aria-label={label} {...props}>
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-label={label}
+      disabled={disabled === true || busy}
+      {...props}
+    >
       {icon}
       <span>{label}</span>
       {after}
