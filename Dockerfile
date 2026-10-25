@@ -2,7 +2,7 @@
 
 # Build SPA and Go stages on the builder architecture to cross-compile without emulation; the final stage runs the published image.
 
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS web
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS web
 WORKDIR /src/web
 # Cache dependency downloads independently of source changes and retain npm downloads across lockfile updates.
 COPY web/package.json web/package-lock.json ./
@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY web/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 # Reuse module and build cache mounts in every Go step; mounts are not persisted in layers.
@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /out/mdm ./cmd/mdm
 
 # Include ffmpeg and ffprobe for startup checks.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 RUN apk add --no-cache ffmpeg ca-certificates tzdata \
     && mkdir -p /media /data
 COPY --from=build /out/mdm /usr/local/bin/mdm
