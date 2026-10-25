@@ -478,8 +478,8 @@ func (s *server) peerSmartFolderVideos(r *http.Request, read *smartFolderRead, c
 	return side
 }
 
-// readPeerVideos reads the peer's videos matching rule after the read's peer cursor; the rule and the search
-// together longer than a list takes leave the peer's part empty.
+// readPeerVideos reads the peer's videos matching rule after the read's peer cursor; a rule and search that do
+// not join into one search a list takes leave the peer's part empty.
 func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read *smartFolderRead, sort domain.VideoSort) (domain.MergeSide[gen.SmartFolderItem], error) {
 	values := url.Values{"limit": {strconv.Itoa(read.limit)}, "sort": {string(domain.PeerSort(sort))}}
 	if read.cursor.Peer != "" {
@@ -489,10 +489,11 @@ func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read 
 		values.Set("seed", strconv.FormatInt(read.query.Seed, 10))
 	}
 	q := queryByName(rule)
-	if search := strings.TrimSpace(q.Query + " " + read.query.Query); search != "" {
-		if utf8.RuneCountInString(search) > maxQueryLength {
-			return domain.MergeSide[gen.SmartFolderItem]{}, nil
-		}
+	search, joins := domain.JoinSearches(q.Query, read.query.Query)
+	if !joins || utf8.RuneCountInString(search) > maxQueryLength {
+		return domain.MergeSide[gen.SmartFolderItem]{}, nil
+	}
+	if search != "" {
 		values.Set("query", search)
 	}
 	for _, name := range q.TagNames {
@@ -542,9 +543,10 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 	if read.query.Query != "" {
 		values.Set("query", read.query.Query)
 	}
-	// Later pages read the detail for the rule alone.
+	// Once a page has taken the peer's items, later pages read the detail for the rule alone; until then its
+	// items are the peer's first page.
 	detailValues := maps.Clone(values)
-	if !read.first {
+	if read.cursor.Peer != "" {
 		detailValues.Set("limit", "1")
 	}
 	var detail gen.SmartFolderDetail
@@ -600,8 +602,8 @@ func (s *server) remoteSmartFolderAnswer(w http.ResponseWriter, err error) bool 
 	return false
 }
 
-// remoteFolderSide is the peer's own items of its folder: the detail's on the first page, then the items after
-// the peer's cursor. A favorites read keeps the peer's part empty, since favorites stay with each node.
+// remoteFolderSide is the peer's own items of its folder: the detail's until a page has taken one of them, then
+// the items after the peer's cursor. A favorites read keeps the peer's part empty, since favorites stay with each node.
 func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read smartFolderRead, path string, values url.Values,
 	detail gen.SmartFolderDetail, favorites bool,
 ) (domain.MergeSide[gen.SmartFolderItem], bool) {
@@ -609,7 +611,7 @@ func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read s
 		return domain.MergeSide[gen.SmartFolderItem]{}, true
 	}
 	items, peerItems, next := detail.Items, detail.PeerItems, detail.NextCursor
-	if !read.first {
+	if read.cursor.Peer != "" {
 		values.Set("cursor", read.cursor.Peer)
 		var page gen.SmartFolderItemPage
 		if !s.remoteSmartFolderAnswer(w, s.peerGet(r, path+"/items", values, &page)) {
@@ -642,7 +644,11 @@ func (s *server) localMatches(r *http.Request, read smartFolderRead, rule *gen.P
 		return domain.MergeSide[gen.SmartFolderItem]{}, nil
 	}
 	q := queryByName(*rule.Match)
-	q.Query = strings.TrimSpace(q.Query + " " + read.query.Query)
+	search, joins := domain.JoinSearches(q.Query, read.query.Query)
+	if !joins {
+		return domain.MergeSide[gen.SmartFolderItem]{}, nil
+	}
+	q.Query = search
 	q.FavoriteOnly = rule.Favorite || read.query.FavoriteOnly
 	q.Sort, q.Seed, q.Cursor, q.Limit = sort, read.query.Seed, read.cursor.Local, read.limit
 	ctx := r.Context()

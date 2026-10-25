@@ -136,6 +136,19 @@ func TestSmartFolderListsTheTaggedVideosOfBothNodes(t *testing.T) {
 	}
 }
 
+func TestRemoteSmartFolderReadsThePeerAfterALocalFirstPage(t *testing.T) {
+	fa, fb, a, b, _ := smartFolderNodes(t)
+	tagOn(t, fb, "猫", "e", "d")
+	peerCat := tagOn(t, fa, "猫", "c", "b")
+	remote := domain.ToRemoteID(createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, peerCat.ID)))
+	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
+
+	// b's matches are newer, so the first page of two takes none of a's.
+	if got, want := pageSmartFolder(t, fa, fb, owner, remote), []string{"b:e", "b:d", "a:c", "a:b"}; !slices.Equal(got, want) {
+		t.Errorf("remote folder = %v, want %v", got, want)
+	}
+}
+
 func TestSmartFolderShowsAGuestThePublicMatchesOfBothNodes(t *testing.T) {
 	fa, fb, _, b, _ := smartFolderNodes(t)
 	// Public videos are a and d on each node.

@@ -30,6 +30,10 @@ func TestSmartPathQueryRefusesAPathNoOneQueryHolds(t *testing.T) {
 		"two kinds":         {{TagKind: 1}, {TagKind: 2}},
 		"two organizations": {{Organization: 1}, {Organization: 2}},
 		"seventeen tags":    {{Tags: sixteen}, {Tags: []int64{99}}},
+		// Each level parses its own search, so a join that drops or merges a term matches other videos.
+		"seventeen search terms": {{Q: "a b c d e f g h i j k l m n o p"}, {Q: "z"}},
+		"an OR into the child":   {{Q: "a OR"}, {Q: "z"}},
+		"a quote into the child": {{Q: `a "b`}, {Q: `z"`}},
 	} {
 		if q, ok := SmartPathQuery(rules); ok {
 			t.Errorf("%s: SmartPathQuery() = %+v, want refused", name, q)
