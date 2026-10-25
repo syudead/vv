@@ -195,8 +195,9 @@ export function useReviewPage(id: number): ReviewPage {
       (page) => {
         if (!alive.current) return;
         setLoad((previous) => {
-          if (previous.kind !== "ready" || previous.nextCursor !== cursor)
-            return previous;
+          if (previous.kind !== "ready") return previous;
+          // A re-read from the start moved the cursor; drop this page so the next read can go.
+          if (previous.nextCursor !== cursor) return { ...previous, more: "idle" };
           const known = new Set(previous.read.map((candidate) => candidate.id));
           return {
             ...previous,

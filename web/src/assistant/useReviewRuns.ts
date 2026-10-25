@@ -39,10 +39,18 @@ export function useReviewRuns(): ReviewRunsStore {
 
   const clear = useCallback(() => setReviews(new Map()), []);
 
-  const reviewing = useMemo(() => [...reviews.values()].some(isRunning), [reviews]);
+  const runningIds = useMemo(
+    () =>
+      [...reviews.values()]
+        .filter(isRunning)
+        .map((run) => run.id)
+        .join(","),
+    [reviews],
+  );
+  const reviewing = runningIds !== "";
 
   useEffect(() => {
-    if (!reviewing) return;
+    if (runningIds === "") return;
     const refresh = () => {
       for (const run of latest.current.values()) {
         if (!isRunning(run)) continue;
@@ -53,13 +61,16 @@ export function useReviewRuns(): ReviewRunsStore {
         );
       }
     };
-    return subscribeServerEvents({
+    const unsubscribe = subscribeServerEvents({
       assistant: refresh,
       open: (reconnected) => {
         if (reconnected) refresh();
       },
     });
-  }, [reviewing]);
+    // A run can move or finish before the turn that returned it reaches the thread.
+    refresh();
+    return unsubscribe;
+  }, [runningIds]);
 
   return { reviews, reviewing, settle, clear };
 }

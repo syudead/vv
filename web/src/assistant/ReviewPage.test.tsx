@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -76,6 +76,8 @@ interface Server {
   reject: (ids: number[]) => Response;
   proposals: Map<number, AssistantProposal>;
   posted: { url: string; ids: number[] }[];
+  /** Runs other than 7, by id; any id missing here answers 404. */
+  others: Map<number, { run: AssistantReviewRun; items: AssistantReviewCandidate[] }>;
   emit: () => void;
 }
 
@@ -87,6 +89,7 @@ function installServer(): Server {
     reject: (ids) => json({ rejectedIds: ids, skippedIds: [] }),
     proposals: new Map(),
     posted: [],
+    others: new Map(),
     emit: () => undefined,
   };
   beforeEach(() => {
@@ -94,6 +97,7 @@ function installServer(): Server {
     server.items = [];
     server.posted = [];
     server.proposals = new Map();
+    server.others = new Map();
     server.reject = (ids) => {
       server.items = server.items.map((item) =>
         ids.includes(item.id) ? { ...item, state: "rejected" } : item,
@@ -119,6 +123,9 @@ function installServer(): Server {
       if (url.startsWith("/api/assistant/review-runs/7")) {
         return Promise.resolve(json({ run: server.run, items: server.items }));
       }
+      const other = /^\/api\/assistant\/review-runs\/(\d+)/.exec(url);
+      const page = other === null ? undefined : server.others.get(Number(other[1]));
+      if (page !== undefined) return Promise.resolve(json(page));
       if (url.startsWith("/api/assistant/review-runs/")) {
         return Promise.resolve(json({ code: "not_found", message: "not found" }, 404));
       }
@@ -142,6 +149,7 @@ function renderPage(id = 7) {
       <ToastProvider>
         <TooltipProvider>
           <AssistantProvider>
+            <Link to="/assistant/reviews/9">Another review</Link>
             <Routes>
               <Route path="/assistant/reviews/:id" element={<ReviewPage />} />
             </Routes>
@@ -300,6 +308,43 @@ describe("ReviewPage", () => {
     expect(
       await screen.findByText("Rejected 1 candidate. It won’t be listed again."),
     ).toBeDefined();
+  });
+
+  it("別の run の一覧へ移ると、前の run の進み具合と採用した行を持ち込まない", async () => {
+    server.items = [tagPair(1, 0.97, ["selfie", "selfy"])];
+    server.adopt = () => {
+      server.items = [tagPair(1, 0.97, ["selfie", "selfy"], "adopted")];
+      return json({ proposals: [mergeProposal(11, "approved")], skippedIds: [] }, 202);
+    };
+    server.others.set(9, {
+      run: run({
+        id: 9,
+        kind: "people",
+        status: "running",
+        total: 10,
+        judged: 2,
+        listed: 0,
+      }),
+      items: [],
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select selfie and selfy" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Adopt selected" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Merge 1 tag pair?" });
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    await waitFor(() => expect(rowsWith("Adopted")).toEqual(["selfie"]));
+
+    await user.click(screen.getByRole("link", { name: "Another review" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Review: duplicate people" }),
+    ).toBeDefined();
+    expect(screen.getByText("Judged 2 of 10 · 0 listed")).toBeDefined();
+    expect(screen.queryByText("selfie")).toBeNull();
   });
 
   it("見つからない run は ErrorState を出す", async () => {

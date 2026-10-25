@@ -1,5 +1,5 @@
 import { CircleAlert, ListChecks, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import {
@@ -21,6 +21,7 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import { Progress } from "../ui/shadcn/progress";
 import { useToast } from "../ui/Toast";
+import { useDocumentTitle } from "../videoList/pageHooks";
 import { useAssistant } from "./AssistantProvider";
 import { proposalsByCandidate } from "./review";
 import ReviewTable from "./ReviewTable";
@@ -47,16 +48,6 @@ function useRunRequest(id: number): string | undefined {
     if (reply?.kind === "outcome" && reply.outcome.run?.id === id) return exchange.text;
   }
   return undefined;
-}
-
-function useDocumentTitle(title: string): void {
-  useEffect(() => {
-    const previous = document.title;
-    document.title = title;
-    return () => {
-      document.title = previous;
-    };
-  }, [title]);
 }
 
 function AssistantLink() {
@@ -434,6 +425,12 @@ function LoadingPage() {
 export default function ReviewPage() {
   const params = useParams();
   const id = Number(params.id);
+  // The route keeps the page across run ids; a fresh instance per run drops the previous run's
+  // rows, adoptions and selection, and ignores its late reads.
+  return <RunReviewPage key={id} id={id} />;
+}
+
+function RunReviewPage({ id }: { id: number }) {
   const page = useReviewPage(id);
   const load = page.load;
   const title =

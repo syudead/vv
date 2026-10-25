@@ -556,6 +556,28 @@ describe("AssistantPanel", () => {
     expect(await within(panel()).findByText("3 candidates to review")).toBeDefined();
   });
 
+  it("答えが届く前に終わった review は、イベントを待たずに読み直した結果を出す", async () => {
+    const started = {
+      id: 7,
+      kind: "tags",
+      status: "running",
+      total: 0,
+      judged: 0,
+      listed: 0,
+      startedAt: new Date().toISOString(),
+    } satisfies AssistantReviewRun;
+    server.turn = () => outcome({ kind: "review", run: started });
+    // The run's last event went out before the turn answered, so no further event comes.
+    server.reviewRun = () => json({ run: { ...started, status: "done" }, items: [] });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "タグを整理して");
+
+    expect(
+      await within(panel()).findByText("Nothing looked like a duplicate"),
+    ).toBeDefined();
+  });
+
   it("同じ種類の review が実行中なら、そのことと同じ進み具合を出す", async () => {
     server.turn = () =>
       outcome({
