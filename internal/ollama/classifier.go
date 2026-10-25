@@ -1,15 +1,12 @@
 package ollama
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -113,40 +110,17 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 	for _, q := range questions {
 		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Text}
 	}
-	encoded, err := json.Marshal(body)
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
-	}
-
-	url := strings.TrimRight(settings.Endpoint, "/") + "/v1/systemone"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(encoded))
-	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("cannot reach Ollama at %s: %w", settings.Endpoint, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the classifier response: %w", err)
+		return nil, err
 	}
 	var decoded responseBody
 	decodeErr := json.Unmarshal(raw, &decoded)
-	if resp.StatusCode != http.StatusOK {
-		// Expose only Ollama's structured error message; raw responses could reveal content from an
-		// unrelated service.
-		message := strings.TrimSpace(decoded.Error)
-		if decodeErr != nil || message == "" {
-			return nil, fmt.Errorf("ollama answered %d", resp.StatusCode)
+	if status != http.StatusOK {
+		if decodeErr != nil {
+			decoded.Error = ""
 		}
-		if len(message) > 300 {
-			message = message[:300]
-		}
-		return nil, fmt.Errorf("ollama answered %d: %s", resp.StatusCode, message)
+		return nil, errors.New(statusMessage(status, decoded.Error))
 	}
 	if decodeErr != nil {
 		return nil, fmt.Errorf("cannot read the classifier response: %w", decodeErr)
