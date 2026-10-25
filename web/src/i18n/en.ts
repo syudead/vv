@@ -1183,7 +1183,7 @@ export const en = {
       fillDialog: {
         title: "Fill empty info by search",
         description:
-          "Each video is searched for by its code, or by its title without one. Only a result whose title or ID matches the search, or a single result, is used, and only the video's empty tags, details and image are filled. The fills run in the background, one at a time; videos without a match are listed as failed in Activity.",
+          "Each video is searched for by its code, or by its title without one. Only a result whose title or ID matches the search, or a single result, is used, and only the video's empty name, tags, details and image are filled; a name you set stays. The fills run in the background, one at a time; videos without a match are listed as failed in Activity.",
         plugin: "Plugin",
         noPlugin:
           "No approved plugin both searches and fetches works. Add or approve one in Settings.",

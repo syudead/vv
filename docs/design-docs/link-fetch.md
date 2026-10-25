@@ -134,7 +134,7 @@ the owner made during the fetch stays:
 
 | Field | Written when |
 | --- | --- |
-| Title | `title_from_link` is still set: no title was given and none was saved since |
+| Title | `title_from_link` is still set: no title was given and none was saved since; for a file video filled from a selection, it has no display name |
 | Tags | The video has none |
 | A detail field (code, description, a date kind, a role, links, external IDs) | It is empty |
 | Cover | The video still has no image, checked under the generation lock every image write takes (`Ingest.FillThumbnailImage`); the first cover of at most 4096×4096 by its header, since no owner chose it and a page could name an image that decodes to hundreds of megabytes |
@@ -198,10 +198,11 @@ video's failed work-info fetch, so Activity lists the videos left for
 `Fetch info…`; every other fill is recorded as a fetch too.
 
 The fill writes the empty fields of the
-[link fill table](#a-virtual-video-created-from-a-link-fills-its-empty-fields)
-except the title: a file video always shows its file title and a virtual video
-named by the owner has its own, so a title is never empty in that sense. The
-versions of a bundle share one code and one user-data key and are filled once,
+[link fill table](#a-virtual-video-created-from-a-link-fills-its-empty-fields).
+A file video's title counts as empty while it has no display name, since its
+file title is only a fallback: the fetched title becomes its display name,
+decided inside the apply's transaction, and a display name the owner set
+stays. The versions of a bundle share one code and one user-data key and are filled once,
 through the first version selected.
 
 The plugin is checked before anything is queued: a plugin that is not an
