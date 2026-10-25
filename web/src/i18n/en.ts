@@ -1139,6 +1139,10 @@ export const en = {
       discardText: "The changes in the editor aren't applied yet.",
     },
     codeEdit: {
+      action: "Edit codes",
+      needsVideo: "Select a video",
+      summaryFailed: (reason: string) => `Couldn't read the selected videos: ${reason}`,
+      applied: (count: number) => `Set the code of ${videos(count)}`,
       title: "Edit codes",
       suggestions: "Suggestions",
       hint: "Rows without a code show their file name. The pattern and the option change those rows only.",

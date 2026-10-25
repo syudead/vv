@@ -1,8 +1,9 @@
 # Bulk editing: the editor over a selection
 
 - Status: adopted
-- Scope: the `Edit` action of the list selection bar, the editor it opens, and
-  the `/api/video-edits` operations behind it
+- Scope: the `Edit` and `Edit codes` actions of the list selection bar, the
+  editors they open, and the `/api/video-edits` and `/api/video-code-edits`
+  operations behind them
 
 `Edit` on the selection bar opens one full-screen editor that shows what the
 selected videos carry and applies every change in one request. It holds the
@@ -93,4 +94,71 @@ filter makes the page clear the selection and reload.
 | Rejected | Why |
 | --- | --- |
 | One request per field from the client | A failure halfway leaves part of the edit applied, and the toast cannot say what happened |
-| Codes, descriptions, links and external IDs in the editor | They belong to one video; setting one value on many videos is not an edit anyone makes |
+| Descriptions, links and external IDs in the editor | They belong to one video; setting one value on many videos is not an edit anyone makes |
+
+## Codes are edited in a table, one value per video
+
+`Edit codes` on the selection bar opens a second editor, a table with one row
+per selected video, because a code differs per video and the `Edit` editor
+sets one value on all of them. A row without a code shows its file name
+without the extension as a suggestion; a regular expression, a replacement and
+an upper-case option shape the suggestions, and `Apply to N videos` writes
+every suggested or changed row's code in one transaction. The client is in
+[`web/src/library/codeEdit/`](../../web/src/library/codeEdit) and the store
+in [`video_code_edits.go`](../../internal/store/video_code_edits.go).
+
+The diagram shows one edit from the bar to the refreshed cards.
+
+```mermaid
+flowchart LR
+  bar[Selection bar Edit codes] -->|videoIds, smartFolderIds| summary[POST /api/video-code-edits/summary]
+  summary -->|over 1,000| toast[Toast with the reason]
+  summary -->|rows| editor[Table editor]
+  editor -->|pattern, upper case, typing| values[Row values]
+  values -->|Apply| apply[POST /api/video-code-edits]
+  apply --> tx[One transaction]
+  tx --> events[video events]
+  events --> cards[Cards read their credits again]
+```
+
+The summary resolves the selection on the server into one row per user-data
+key, shown as the bundle's representative, with the key's current code. The
+bar reads it before opening the editor, so a selection over 1,000 distinct
+videos (counted before bundling, smart folders resolved) gets a toast and no
+dialog ([library-ui.md, Selection bar](library-ui.md#selection-bar)).
+
+A row is in one of four states. Only a suggested row follows the pattern and
+the upper-case option; a row the owner typed in leaves their reach until
+`Restore`. An empty value is never sent, so this editor never clears a code.
+
+| Row | Value | Written on Apply |
+| --- | --- | --- |
+| Existing | The current code | No |
+| Suggested | The file name through the pattern, then upper case | Yes, when not empty |
+| Blank (virtual video) | Empty | No |
+| Edited | What the owner typed, trimmed | Yes, when not empty and different from the current code |
+
+The pattern is a JavaScript `RegExp` (`u` flag) run in the browser: an empty
+replacement takes group 1, else the whole match; a replacement uses `$1`
+references. A name the pattern does not match keeps its suggestion, and an
+invalid pattern shows its error and keeps the last valid values. Upper case is
+locale independent. Values over 100 code points are cut and marked; equal
+values on two rows are marked and still written.
+
+Each item carries the row's `contentVersion`. A missing or merged video
+answers `404 video_not_found` and a reused ID `409 content_changed`; either
+writes nothing, and the editor keeps every value and marks the row the error's
+`field` names. The code itself is not versioned: the last write wins. After
+`200` the editor closes with a toast, the selection stays, list snapshots are
+cleared and the selected smart-folder cards are re-read; the written cards
+read their credits again on their `video` events. Like the single work-info
+write, the edit records no activity entry.
+
+| Rejected | Why |
+| --- | --- |
+| A `codes` part in `POST /api/video-edits` | That request sets one value on every target and counts values; this one carries a value per video and has its own limit |
+| One row per video of a bundle | The code belongs to the user-data key, so two rows would write the same code twice |
+| Opening the editor in a loading state, as `Edit` does | An over-limit selection would open an empty dialog |
+| Evaluating the pattern on the server | A preview per keystroke would be a request per keystroke, and Go's RE2 lacks look-around |
+| Skipping missing videos, as `POST /api/video-edits` does | The owner may have typed that row's value by hand; dropping it would lose it silently |
+| Virtualized rows | The cap is 1,000 fixed-height rows; a virtualizer breaks Tab order and the browser's find |
