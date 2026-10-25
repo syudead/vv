@@ -410,7 +410,7 @@ shows many faces at once, so a face that is not the person stands out, where a
 list of rows led with titles.
 
 Each crop carries a `Not this person` icon button in its `PersonFaceMark`
-`top-end`, for a face the analysis linked to the wrong person. It splits the
+`top-end`, for a face merged into the wrong person. It splits the
 face into a new unnamed person with no confirmation: the tile stays, dimmed,
 with `Split into #12` and `Undo`, which merges the new person back into the
 shown one (`POST /api/people/{id}/merge`); a person who had no face is left

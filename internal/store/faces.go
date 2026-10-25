@@ -254,17 +254,15 @@ func writeFaceAppearances(
 			}
 			continue
 		}
-		link, performerAdded, err := linkFaceAppearance(ctx, tx, result, person, plan.Match, userKey, now)
+		link, performerAdded, err := linkFaceAppearance(ctx, tx, result, person, plan.Candidates, userKey, now)
 		if err != nil {
 			return nil, false, err
 		}
 		links = append(links, link)
-		if link.created {
-			created = append(created, domain.FacePersonVector{PersonID: link.personID, Vector: person.Centroid})
-		}
+		created = append(created, domain.FacePersonVector{PersonID: link.personID, Vector: person.Centroid})
 		added = added || performerAdded
 	}
-	// People made by this one analysis are not in vectors, so the match could not offer them to each other.
+	// People made by this one analysis are not in vectors, so their candidates could not include each other.
 	for _, pair := range domain.SiblingFacePairs(spec.Thresholds, created) {
 		candidate := []domain.FaceCandidate{{PersonID: pair.PersonID, Similarity: pair.Similarity}}
 		if err := writeFaceCandidates(ctx, tx, pair.ProvisionalID, candidate, now); err != nil {
@@ -308,8 +306,7 @@ func storedFaceAppearances(ctx context.Context, tx *sql.Tx, contentKey string) (
 }
 
 // facePersonVectors reads each person's one vector of the recognizer, that of their current face image. Appearance
-// centroids are left out, so a person seen in many videos is not matched more often, and a wrong link does not widen
-// the person it was made to.
+// centroids are left out, so a person seen in many videos is not offered more often.
 func facePersonVectors(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer) ([]domain.FacePersonVector, error) {
 	rows, err := tx.QueryContext(ctx, `
 		select v.person_id, v.vector from person_face_vectors v join people p on p.id = v.person_id
@@ -351,33 +348,22 @@ func carryFaceAppearance(
 	return nil
 }
 
-// linkFaceAppearance stores a new appearance linked to its matched person, offered with the other people as close,
-// or to a new provisional person whose face is the crop, and makes that person a performer of the video.
+// linkFaceAppearance stores a new appearance linked to a new provisional person whose face is the crop, offered with
+// the candidates, and makes that person a performer of the video.
 func linkFaceAppearance(
-	ctx context.Context, tx *sql.Tx, result domain.FaceAnalysis, p domain.FaceAnalysedPerson, match domain.FaceMatch,
-	userKey string, now time.Time,
+	ctx context.Context, tx *sql.Tx, result domain.FaceAnalysis, p domain.FaceAnalysedPerson,
+	candidates []domain.FaceCandidate, userKey string, now time.Time,
 ) (faceLink, bool, error) {
-	link := faceLink{personID: match.PersonID}
-	if match.Kind == domain.FaceMatchNew {
-		id, err := createFacePerson(ctx, tx, p.Crop, now)
-		if err != nil {
-			return faceLink{}, false, err
-		}
-		link.personID, link.created = id, true
-		if err := storeCreatedFaceVector(ctx, tx, id, result.Recognizer, p); err != nil {
-			return faceLink{}, false, err
-		}
-		if err := writeFaceCandidates(ctx, tx, id, match.Candidates, now); err != nil {
-			return faceLink{}, false, err
-		}
+	id, err := createFacePerson(ctx, tx, p.Crop, now)
+	if err != nil {
+		return faceLink{}, false, err
 	}
-	if match.Kind == domain.FaceMatchLink {
-		// Another person this close is most likely the linked one stored twice; the owner joins them.
-		for _, c := range match.Candidates {
-			if err := offerFacePair(ctx, tx, c.PersonID, match.PersonID, c.Similarity, now); err != nil {
-				return faceLink{}, false, err
-			}
-		}
+	link := faceLink{personID: id, created: true}
+	if err := storeCreatedFaceVector(ctx, tx, id, result.Recognizer, p); err != nil {
+		return faceLink{}, false, err
+	}
+	if err := writeFaceCandidates(ctx, tx, id, candidates, now); err != nil {
+		return faceLink{}, false, err
 	}
 	tracks, err := encodeFaceTracks(p.Spans)
 	if err != nil {
@@ -418,7 +404,7 @@ func createFacePerson(ctx context.Context, tx *sql.Tx, crop domain.PersonImage, 
 }
 
 // storeCreatedFaceVector stores the vector of the crop's face as the new person's face vector, so the face worker
-// does not embed the crop again and the next video already matches the person.
+// does not embed the crop again and the next video already offers the person as a candidate.
 func storeCreatedFaceVector(
 	ctx context.Context, tx *sql.Tx, personID int64, recognizer domain.FaceRecognizer, p domain.FaceAnalysedPerson,
 ) error {

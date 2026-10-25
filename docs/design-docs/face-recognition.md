@@ -1,7 +1,8 @@
 # Face recognition
 
-vv finds the main people of each video by face and matches them to the
-people in the library. Faces are detected and embedded by a helper process,
+vv finds the main people of each video by face and offers the people in the
+library who look alike; it never links a face to a stored person without the
+owner. Faces are detected and embedded by a helper process,
 `mdm-face` ([`cmd/mdm-face`](../../cmd/mdm-face)), that runs onnxruntime
 outside `mdm` and arrives in a face runtime archive that vv publishes; the
 rules that turn its faces into people are pure functions in
@@ -213,9 +214,8 @@ flowchart LR
   main --> plan[PlanFaceAppearances]
   stored[Stored appearances of the video] --> plan
   plan -->|carried over| keep[Keeps its person and dropped mark]
-  plan -->|new| match[MatchFace]
-  match --> link[Link]
-  match --> prov[New provisional person and candidates]
+  plan -->|new| prov[New provisional person]
+  prov --> cand[FaceCandidates: candidate pairs]
   image[Face image of a person] --> imageRule[DecideFaceImageMerge]
   cast[Performers of a video] --> castRule[DecideCastMerge]
 ```
@@ -295,7 +295,6 @@ them.
 | `Cluster`   | Join clusters of tracks                    | 0.45       | 0.288       |
 | `Join`      | Join split clusters of one video           | 0.45       | 0.288       |
 | `Candidate` | Offer a pair to the owner                  | 0.363      | 0.205       |
-| `Link`      | Link a main person to a person             | 0.55       | 0.545       |
 | `Merge`     | Merge a provisional person on a face image | 0.55       | 0.545       |
 
 The SFace values are the upstream same-person threshold and the POC's. The
@@ -303,7 +302,7 @@ ArcFace values give the same error rates as SFace on LFW (13,233 images of
 5,749 people), measured with the POC's protocol on vectors from the same
 detection and alignment:
 
-- **Late linking** (`Candidate`, `Join`, `Link`, `Merge`): 70% of the people with two
+- **Late linking** (`Candidate`, `Join`, `Merge`): 70% of the people with two
   or more images are registered with one random image each; every other image
   is named by its most similar registered person when the similarity reaches
   the threshold. A correct naming is a registered person's image given their
@@ -315,69 +314,57 @@ detection and alignment:
 The measured rates, with the 4,950 registered and 7,107 unregistered images
 of a draw and the 87,307,271 pairs of different people:
 
-| Threshold                | SFace int8: value, rate           | ArcFace r50: value, rate          |
-| ------------------------ | --------------------------------- | --------------------------------- |
-| `Candidate`              | 0.363: 98.3% correct, 61.6% false | 0.205: 99.8% correct, 61.3% false |
-| `Join`, the first `Link` | 0.45: 96.0% correct, 3.43% false  | 0.288: 99.7% correct, 3.42% false |
-| `Link`, `Merge`          | 0.55: 83.9% correct, 0.17% false  | 0.545: 90.4% correct, 0.17% false |
-| `Track`, `Cluster`       | 0.45: 4,482 pairs (0.0051%)       | 0.288: 4,442 pairs                |
-| `TrackFar`               | 0.6: 88 pairs (0.0001%)           | 0.614: 87 pairs                   |
+| Threshold          | SFace int8: value, rate           | ArcFace r50: value, rate          |
+| ------------------ | --------------------------------- | --------------------------------- |
+| `Candidate`        | 0.363: 98.3% correct, 61.6% false | 0.205: 99.8% correct, 61.3% false |
+| `Join`             | 0.45: 96.0% correct, 3.43% false  | 0.288: 99.7% correct, 3.42% false |
+| `Merge`            | 0.55: 83.9% correct, 0.17% false  | 0.545: 90.4% correct, 0.17% false |
+| `Track`, `Cluster` | 0.45: 4,482 pairs (0.0051%)       | 0.288: 4,442 pairs                |
+| `TrackFar`         | 0.6: 88 pairs (0.0001%)           | 0.614: 87 pairs                   |
 
 At equal false rates ArcFace names more people correctly, most of all at
 `Merge`. An unregistered image named at `Candidate` is why that threshold only
 offers a pair and never links.
 
-`Link` takes the value of `Merge`, the 0.17% false rate, because a link is made
-without the owner as a merge is. At the first values (0.45 and 0.288, the 3.4%
-rate), the maintainer's library had most new people linked to strangers; video
-faces are smaller and blurrier than LFW's. A face between `Candidate` and `Link`
-becomes a provisional person offered with the near people, which the owner
-confirms with "Same person?". `Join` keeps the first value, because it compares
-the clusters of one video, where few people compete.
+A face at `Candidate` or more is only offered to the owner, who confirms it
+with "Same person?". `Join` compares the clusters of one video, where few
+people compete.
 
-| Rejected                      | Why                                                                                                           |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `Link` at the 3.4% false rate | Most new people were linked to strangers in the maintainer's library, and every wrong link widened its person |
+| Rejected                                        | Why                                                                                                                                                                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A `Link` threshold that links without the owner | At 0.45 and 0.288 (3.4% false) most new people were linked to strangers in the maintainer's library; at 0.55 and 0.545 (0.17% false) wrong links still outweighed the right ones, and each one widened its person |
 
-## A person is matched by their face alone
+## A person is offered by their face alone
 
-Each person has one vector, that of their face image, and a main person's
-centroid is compared with it
-([`MatchFace`](../../internal/domain/face_match.go),
-[`facePersonVectors`](../../internal/store/faces.go)).
-
-| Similarity               | Result                                                                                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `Link` or more           | Linked to the most similar person, and each other person at `Link` or more is offered with that person as a candidate |
-| `Candidate` up to `Link` | A new provisional person, offered with each such person as a candidate                                                |
-| Below `Candidate`        | A new provisional person                                                                                              |
+Each new main person becomes a provisional person, and each person whose one
+vector, that of their face image, reaches `Candidate` with the main person's
+centroid is offered with them as a candidate, most similar first
+([`FaceCandidates`](../../internal/domain/face_match.go),
+[`facePersonVectors`](../../internal/store/faces.go)). The same face in two
+videos therefore makes two provisional people offered with each other; the
+owner joins them by confirming the pair.
 
 A person made by an analysis gets the crop of their best face as their face
 image and the vector of that face, taken from its frame, as its vector, in the
 transaction that creates them; the face worker finds the vector current and
 does not embed the crop again. The face changes only when the owner replaces
 it, or a merge gives a target without a face the source's, and the vector
-follows the face. Links never change it.
+follows the face.
 
-Two people at `Link` or more are nearly always one person stored twice, as when
-an earlier video of them stayed under `Link` and made a provisional person:
-strangers reach `Link` for 0.17% of faces.
-
-| Rejected                                                             | Why                                                                                                                                               |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linking only when the most similar person leads the next by a margin | One person stored twice never leads, so every video of them made one more provisional person                                                      |
-| Every appearance's centroid as a vector of its person                | A person seen in many videos had as many chances to match a stranger, and each wrong link widened the person, so a few people took every new face |
-| One averaged vector per person                                       | Each link would move it, and a wrong link would pull it towards the stranger                                                                      |
-| Embedding the crop of a new person in the face worker                | The JPEG crop gives a vector other than its frame's, and the next video could not match the person until the worker ran                           |
-| A nearest-neighbour index                                            | 10,000 vectors of 512 values are 20 MB, and a full scan in memory takes milliseconds                                                              |
+| Rejected                                              | Why                                                                                                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Every appearance's centroid as a vector of its person | A person seen in many videos had as many chances to reach a stranger, and the owner would be offered the same wrong pair from each video |
+| One averaged vector per person                        | Each confirmed pair would move it towards whatever the owner merged                                                                      |
+| Embedding the crop of a new person in the face worker | The JPEG crop gives a vector other than its frame's, and the next video could not offer the person until the worker ran                  |
+| A nearest-neighbour index                             | 10,000 vectors of 512 values are 20 MB, and a full scan in memory takes milliseconds                                                     |
 
 ## A re-analysis carries appearances over by track time and position
 
 A re-analysed video keeps each stored appearance by passing it to the one new
 appearance holding more than half of its matched track seconds
 ([`CarryOverFaceAppearances`](../../internal/domain/face_match.go)); a
-carried-over appearance keeps its person and dropped mark and is not matched by
-vector again.
+carried-over appearance keeps its person and dropped mark and is not offered
+again.
 
 ```mermaid
 flowchart TD
@@ -397,12 +384,13 @@ The detector is the same for every recognizer, so a recognizer switch finds the
 same faces at the same times and places, while vectors of two recognizers
 cannot be compared. Position separates people on screen together, and the
 smaller width keeps a small face beside a large one from claiming the large
-one's track. A new appearance nothing is carried over to is matched by vector.
+one's track. A new appearance nothing is carried over to becomes a new
+provisional person.
 
 | Rejected                                      | Why                                                                                                              |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Time overlap alone                            | Two people on screen together overlap each other's spans, so their people could swap                             |
-| Matching the carried-over centroid again      | After a switch the other videos' vectors still belong to the old recognizer, and links the owner kept would move |
+| Treating the carried-over appearance as new   | After a switch the other videos' vectors still belong to the old recognizer, and links the owner kept would move |
 | A fixed fraction of the frame as the distance | A close-up and a wide shot need different distances; the face width scales with the shot                         |
 
 ## A face image merges only one provisional person
@@ -879,7 +867,7 @@ answers `201` with the new person:
 | Pair       | The pair of the two people is marked `dismissed`, added when it has no row, so neither the cast rule nor the face-image rule merges them again and no candidate offers it                                                                      |
 
 A re-analysis carries the appearance over by its tracks and keeps its
-`person_id`, so it stays with the new person. A later video matches the new
+`person_id`, so it stays with the new person. A later video offers the new
 person by their face, the crop, once the face worker embeds it. A person without that appearance, an appearance that is dropped and
 one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
@@ -917,9 +905,9 @@ one's crop; any appearance the person lacks splits none.
 
 ## Tests that cross the worker and the store live in `cmd/mdm`
 
-The analysis of two videos of one person into one provisional person, a short
-face that makes nobody, and a face image that merges the provisional person of
-both videos cross the face worker and the store. `depguard` keeps
+The analysis of two videos of one person into two provisional people offered
+with each other, a short face that makes nobody, and a face image that merges
+the provisional person the owner joined from both videos cross the face worker and the store. `depguard` keeps
 `internal/app` tests from importing `internal/store`, so these run in
 [`cmd/mdm/face_analysis_test.go`](../../cmd/mdm/face_analysis_test.go) with the
 real store, the event bus wiring and the worker, and with frames and the helper
