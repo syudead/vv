@@ -76,7 +76,11 @@ func verifyPeer(host, pinned string, roots *x509.CertPool) func(tls.ConnectionSt
 		}
 		leaf := state.PeerCertificates[0]
 		fingerprint := Fingerprint(leaf)
-		if pinned != "" && fingerprint == pinned {
+		// A confirmed pin replaces the roots: a changed certificate stops until the owner confirms it again.
+		if pinned != "" {
+			if fingerprint != pinned {
+				return &domain.CertificateUntrustedError{Fingerprint: fingerprint}
+			}
 			return nil
 		}
 		intermediates := x509.NewCertPool()

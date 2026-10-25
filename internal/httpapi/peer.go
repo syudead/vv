@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -36,10 +37,24 @@ type Pairing interface {
 
 type peerRequestKey struct{}
 
+// peerLedgerKey tracks every peer-credential request under one key, since a node has at most one peer;
+// the colon namespace cannot collide with base64url session IDs.
+const peerLedgerKey = "peer:"
+
 // isPeerRequest reports a request the auth boundary accepted with the peer credential.
 func isPeerRequest(ctx context.Context) bool {
-	peer, _ := ctx.Value(peerRequestKey{}).(bool)
-	return peer
+	return peerRequestFrom(ctx) != nil
+}
+
+func peerRequestFrom(ctx context.Context) *trackedRequest {
+	tracked, _ := ctx.Value(peerRequestKey{}).(*trackedRequest)
+	return tracked
+}
+
+// revokePeerRequests cancels the in-flight peer-credential requests after the record is deleted,
+// except the request asking for the deletion, which still has to answer.
+func (s *server) revokePeerRequests(ctx context.Context) {
+	s.sessions.revokeExcept(peerLedgerKey, peerRequestFrom(ctx))
 }
 
 // peerSecret reads one Authorization header with the VV-Peer scheme; present is true whenever that
@@ -59,8 +74,8 @@ func peerSecret(r *http.Request) (secret string, present bool) {
 	return secret, present
 }
 
-// peerBoundary classifies a request carrying the peer credential: no cookie, no session ledger and,
-// through the context flag, no same-origin check.
+// peerBoundary classifies a request carrying the peer credential: no cookie and, through the context
+// value, no same-origin check. Like an API token it registers before validating, so unpairing cancels it.
 func (s *server) peerBoundary(
 	w http.ResponseWriter, r *http.Request, next http.Handler, class access, secret string,
 	setAudience func(domain.Audience),
@@ -70,10 +85,19 @@ func (s *server) peerBoundary(
 		s.peerUnknown(w)
 		return
 	}
-	valid, err := s.pairing.Authenticate(r.Context(), secret)
+	check := func(ctx context.Context) (bool, error) { return s.pairing.Authenticate(ctx, secret) }
+	ctx, tracked, release := s.sessions.openWith(r.Context(), w, peerLedgerKey, check)
+	defer release()
+	valid, err := check(ctx)
+	if tracked.revoked() {
+		valid, err = false, nil
+	}
 	if err != nil {
 		s.internalError(w, "Could not check the peer credential.", err)
 		return
+	}
+	if valid {
+		ctx, valid = s.sessions.serve(ctx, tracked, time.Time{})
 	}
 	if !valid {
 		s.peerUnknown(w)
@@ -98,7 +122,7 @@ func (s *server) peerBoundary(
 		return
 	}
 	setAudience(audience)
-	ctx := context.WithValue(withAudience(r.Context(), audience), peerRequestKey{}, true)
+	ctx = context.WithValue(withAudience(ctx, audience), peerRequestKey{}, tracked)
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -164,6 +188,7 @@ func (s *server) UnpairPeer(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not unpair.", err)
 		return
 	}
+	s.revokePeerRequests(r.Context())
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -280,6 +305,7 @@ func (s *server) ForgetPeer(w http.ResponseWriter, r *http.Request, nodeID strin
 		s.internalError(w, "Could not unpair.", err)
 		return
 	}
+	s.revokePeerRequests(r.Context())
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
 }

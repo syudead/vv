@@ -35,6 +35,11 @@ func TestVersionVerifiesTheCertificate(t *testing.T) {
 	if version, err := New(Options{RootCAs: roots}).Version(ctx, domain.PeerTarget{Address: server.URL}); err != nil || version != "1.2.0" {
 		t.Errorf("信頼したルートで Version = %q, %v", version, err)
 	}
+	// A pin the certificate no longer matches refuses it even though the roots verify it.
+	_, err = New(Options{RootCAs: roots}).Version(ctx, domain.PeerTarget{Address: server.URL, PinnedSPKI: "changed"})
+	if !errors.As(err, &untrusted) || untrusted.Fingerprint != fingerprint {
+		t.Errorf("一致しない固定と信頼したルートでの err = %v, want 指紋 %s の CertificateUntrustedError", err, fingerprint)
+	}
 }
 
 func TestRefusalMapsThePeerReason(t *testing.T) {

@@ -823,10 +823,17 @@ func (l *sessionLedger) serve(
 }
 
 func (l *sessionLedger) revoke(token string) {
+	l.revokeExcept(token, nil)
+}
+
+// revokeExcept leaves keep running, for a request that revokes its own credential and must still answer.
+func (l *sessionLedger) revokeExcept(token string, keep *trackedRequest) {
 	l.mu.Lock()
 	requests := make([]*trackedRequest, 0, len(l.requests[token]))
 	for req := range l.requests[token] {
-		requests = append(requests, req)
+		if req != keep {
+			requests = append(requests, req)
+		}
 	}
 	l.mu.Unlock()
 	for _, req := range requests {

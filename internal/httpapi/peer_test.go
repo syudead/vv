@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
@@ -23,13 +24,36 @@ type audienceLibrary struct {
 	*fakeLibrary
 	mu   sync.Mutex
 	seen []domain.Audience
+	// held, when set, keeps the next listing open until its request is canceled and reports why it ended.
+	held *heldListing
 }
 
-func (l *audienceLibrary) ListVideos(_ context.Context, audience domain.Audience, _ domain.VideoQuery) (domain.VideoPage, error) {
+type heldListing struct {
+	entered chan struct{}
+	ended   chan error
+}
+
+func (l *audienceLibrary) ListVideos(ctx context.Context, audience domain.Audience, _ domain.VideoQuery) (domain.VideoPage, error) {
+	l.mu.Lock()
+	l.seen = append(l.seen, audience)
+	held := l.held
+	l.held = nil
+	l.mu.Unlock()
+	if held != nil {
+		close(held.entered)
+		<-ctx.Done()
+		held.ended <- ctx.Err()
+		return domain.VideoPage{}, ctx.Err()
+	}
+	return domain.VideoPage{Items: []domain.Video{}}, nil
+}
+
+func (l *audienceLibrary) hold() *heldListing {
+	held := &heldListing{entered: make(chan struct{}), ended: make(chan error, 1)}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.seen = append(l.seen, audience)
-	return domain.VideoPage{Items: []domain.Video{}}, nil
+	l.held = held
+	return held
 }
 
 func (l *audienceLibrary) audiences() []domain.Audience {
@@ -215,11 +239,20 @@ func TestPeerHandshakeAndForget(t *testing.T) {
 		status: http.StatusUnauthorized, code: gen.ErrorCodeUnauthenticated, reason: gen.ErrorReasonPeerUnknown,
 	})
 
+	// Over a real connection: deleting the record revokes the peer's requests but must still answer this one.
 	record, _, _ := a.env.db.Peers().Peer(context.Background())
-	rec = a.env.serve(authRequest{method: http.MethodDelete, target: "/api/peer/pairings/" + record.NodeID,
-		header: map[string]string{"Authorization": "VV-Peer " + secret}})
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("削除: status = %d: %s", rec.Code, rec.Body)
+	req, err := http.NewRequest(http.MethodDelete, a.url+"/api/peer/pairings/"+record.NodeID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "VV-Peer "+secret)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("削除: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("削除: status = %d", res.StatusCode)
 	}
 	state, _ := decodePeerState(t, a.owner(http.MethodGet, "/api/peer", ""))
 	if state.State != gen.PeerStateStateUnpaired {
@@ -230,6 +263,30 @@ func TestPeerHandshakeAndForget(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("削除後の資格情報: status = %d, want 401", rec.Code)
 	}
+}
+
+func TestUnpairCancelsInFlightPeerRequests(t *testing.T) {
+	a, b := pairTestNodes(t)
+	held := a.library.hold()
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		done <- a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
+			header: map[string]string{"Authorization": "VV-Peer " + b.outgoingSecret(t)}})
+	}()
+	<-held.entered
+
+	if rec := a.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("解除: status = %d: %s", rec.Code, rec.Body)
+	}
+	select {
+	case err := <-held.ended:
+		if err == nil {
+			t.Fatal("解除で進行中の要求が打ち切られなかった")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("解除で進行中の要求が打ち切られなかった")
+	}
+	<-done
 }
 
 func TestPairRejectsInvalidAddress(t *testing.T) {
