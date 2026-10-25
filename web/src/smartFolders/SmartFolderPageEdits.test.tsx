@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
 import { __resetTagKindsForTest } from "../api/tagKinds";
 import { __resetTagsForTest } from "../api/tags";
+import { remoteIdOffset } from "../lib/remoteId";
 import { group, json } from "../testing/groupPage";
 import {
   folderCard,
@@ -415,6 +416,49 @@ describe("動画とグループの選択", () => {
 
     await user.keyboard("{Escape}");
     expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it("相手が消さなかったグループは、読み直した後もダイアログで名指しする", async () => {
+    const user = userEvent.setup();
+    withGroup();
+    const stored = server.folders.get(1);
+    if (stored === undefined) throw new Error("no folder");
+    const remoteGroupId = remoteIdOffset + 20;
+    stored.items = stored.items.map((item) =>
+      item.kind === "group"
+        ? { kind: "group", group: group(remoteGroupId, "Season") }
+        : item,
+    );
+    server.writeAnswer = () =>
+      json({
+        dissolvedGroups: 0,
+        deletedSmartFolders: 0,
+        remote: {
+          applied: 0,
+          failedVideoIds: [remoteGroupId],
+          reason: "peer_unreachable",
+        },
+      });
+    renderPage("/smart-folders/1");
+    await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
+
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "Season"' }));
+    await user.click(screen.getByRole("button", { name: "Delete…" }));
+    const confirm = await screen.findByRole("alertdialog");
+    server.holdDetail = true;
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Not deleted on Other VVMDM",
+    });
+    expect(within(dialog).getByRole("list").textContent).toBe("Season");
+    await waitFor(() => expect(server.heldDetail).toHaveLength(1));
+    // Deliver the held refresh, as revealCards does for card reads.
+    await act(async () => {
+      server.heldDetail[0]?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(within(dialog).getByRole("list").textContent).toBe("Season");
   });
 });
 

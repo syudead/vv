@@ -19,6 +19,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
+import { remoteIdOffset } from "../lib/remoteId";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlaybackFailureKind } from "./playbackRecovery";
@@ -1941,6 +1942,32 @@ describe("VideoPage", () => {
       const texts = screen.getAllByRole("status").map((status) => status.textContent);
       expect(texts).toContain("Loading");
       expect(texts).toContain("Slow connection is interrupting playback");
+    });
+  });
+
+  describe("ペアの台の動画", () => {
+    const remoteId = remoteIdOffset + 7;
+
+    it("台の名前を帯に出し、お気に入り・プレイリスト・ファイル操作を出さず、再生位置を送らない", async () => {
+      server.videos.set(remoteId, [{ ...video, id: remoteId }]);
+      renderPage(String(remoteId));
+      await ready();
+      expect(screen.getByRole("banner").textContent).toContain("Other VVMDM");
+      expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Playlist" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Group" })).toBeDefined();
+      openTab("File & media");
+      expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Rescan" })).toBeNull();
+
+      await act(async () => {
+        player().onProgress(12_345, true);
+        await Promise.resolve();
+      });
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).endsWith("/progress")),
+      ).toBe(false);
     });
   });
 

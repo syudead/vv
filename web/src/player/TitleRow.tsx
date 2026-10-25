@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import type { Video } from "../api/client";
 import AddToGroupButton from "../groups/AddToGroupButton";
 import { t, type UiText } from "../i18n";
+import { isRemoteId } from "../lib/remoteId";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { FailureLine } from "./tabs/panelParts";
@@ -27,27 +28,33 @@ export default function TitleRow({
   const [failure, setFailure] = useState<UiText | null>(null);
   if (onFavorite === undefined) return title;
   const favorite = video.favorite === true;
+  // Favorites and playlists stay on each node, so the paired VVMDM's video offers neither.
+  const remote = isRemoteId(video.id);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-col gap-3">
         {title}
         <div className="flex flex-wrap items-center gap-2">
-          <FavoriteToggle
-            variant="page"
-            favorite={favorite}
-            label={t.player.facts.favorite}
-            onToggle={async () => {
-              setFailure(null);
-              // Confirm the state from refreshed data; the toggle blocks presses until then.
-              await onFavorite(!favorite);
-            }}
-            onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
-          />
-          <AddToPlaylistButton
-            variant="page"
-            label={t.player.facts.playlist}
-            videoIds={[video.id]}
-          />
+          {!remote && (
+            <FavoriteToggle
+              variant="page"
+              favorite={favorite}
+              label={t.player.facts.favorite}
+              onToggle={async () => {
+                setFailure(null);
+                // Confirm the state from refreshed data; the toggle blocks presses until then.
+                await onFavorite(!favorite);
+              }}
+              onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
+            />
+          )}
+          {!remote && (
+            <AddToPlaylistButton
+              variant="page"
+              label={t.player.facts.playlist}
+              videoIds={[video.id]}
+            />
+          )}
           <AddToGroupButton
             variant="page"
             label={t.player.facts.group}

@@ -1,5 +1,5 @@
 import { FolderSearch } from "lucide-react";
-import { memo, type ReactNode, useState } from "react";
+import { memo, type ReactNode, useId, useState } from "react";
 import { Link } from "react-router";
 
 import type { SmartFolderSummary, VideoTag } from "../api/client";
@@ -8,6 +8,7 @@ import { smartFolderKey } from "../api/libraryItems";
 import type { LibrarySmartFolder } from "../api/smartFolders";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { isRemoteId } from "../lib/remoteId";
 import {
   CollectionCheck,
   CollectionName,
@@ -23,6 +24,7 @@ import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
+import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useSmartFolderCardValue } from "./cardValues";
@@ -142,9 +144,11 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     selectionMode,
     videoPath: (id) => videoInSmartFolderPath(id, folder.id),
   });
+  const remoteId = useId();
   if (gone) return null;
   const empty = values?.videoCount === 0;
   const tags = values?.tags ?? [];
+  const remote = isRemoteId(folder.id);
 
   const card = (
     <article
@@ -165,6 +169,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       )}
       <Link
         {...linkProps}
+        aria-describedby={remote ? remoteId : undefined}
         onClick={(event) => {
           props.previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
@@ -184,6 +189,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
           ratio={facts.ratio}
           face={
             <>
+              {remote && <ItemRemoteMark id={remoteId} />}
               <SmartFolderMark />
               {values === undefined ? (
                 <Skeleton aria-hidden="true" className="h-3 w-16" />
@@ -222,6 +228,8 @@ export const SmartFolderRow = memo(function SmartFolderRow({
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
+  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  const remote = isRemoteId(folder.id);
   return (
     <TableRow
       ref={ref}
@@ -274,16 +282,19 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
+          {!remote && (
+            <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
+          )}
         </TableCell>
       )}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
-          <SmartFolderAddToPlaylist folder={folder} variant="row" />
+          {!remote && <SmartFolderAddToPlaylist folder={folder} variant="row" />}
         </TableCell>
       )}
       {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
+        remote={remote}
         state={facts.state}
         watchedCount={facts.watchedCount}
         videoCount={values?.videoCount ?? 0}

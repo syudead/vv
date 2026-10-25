@@ -10,7 +10,11 @@ import {
   type SeekThumbnailSprite,
   type Video,
 } from "../api/client";
+import type { PeerState } from "../api/peer";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import { remoteIdOffset } from "../lib/remoteId";
+import { StaticPeer } from "../shell/PeerProvider";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { createPreviewCoordinator } from "./usePreviewCoordination";
 import { HOVER_OPEN_DELAY_MS } from "../library/useHoverOpen";
 import VideoCard, { type VideoCardProps, VideoRow } from "./VideoCard";
@@ -1167,5 +1171,71 @@ describe("VideoCard の作品情報と操作", () => {
     const face = screen.getByRole("link", { name: "出演者A" });
     expect(face.getAttribute("tabindex")).toBe("-1");
     expect(face.className).toContain("pointer-events-none");
+  });
+});
+
+describe("VideoCard のリモートの印", () => {
+  afterEach(() => cleanup());
+
+  const peer: PeerState = {
+    state: "connected",
+    peer: { name: "studio-pc", address: "http://pc:8080", version: "1" },
+  };
+  const remote = video({ id: remoteIdOffset + 1 });
+
+  function renderRemote(row: boolean) {
+    return render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <StaticPeer state={peer}>
+            <AudienceProvider audience="owner">
+              {row ? (
+                <table>
+                  <tbody>
+                    <VideoRow
+                      video={remote}
+                      backTo="/"
+                      selected={false}
+                      selectionMode={false}
+                    />
+                  </tbody>
+                </table>
+              ) : (
+                <VideoCard
+                  video={remote}
+                  backTo="/"
+                  selected={false}
+                  selectionMode={false}
+                />
+              )}
+            </AudienceProvider>
+          </StaticPeer>
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("時間の面の先頭に台の印を置き、リンクの説明で台の名前を読ませる", () => {
+    const { container } = renderCard(video());
+    expect(container.querySelector('[data-slot="remote-mark"]')).toBeNull();
+    cleanup();
+
+    renderRemote(false);
+    const text = screen.getByText("On studio-pc");
+    expect(text.className).toContain("sr-only");
+    const face = text.parentElement!;
+    expect(face.firstElementChild?.getAttribute("data-slot")).toBe("remote-mark");
+    const link = screen.getByRole("link", { name: "動画 1" });
+    expect(link.getAttribute("aria-describedby")).toBe(text.id);
+  });
+
+  it("行ではお気に入りとプレイリストを出さず、時間のセルに印を出す", () => {
+    renderRemote(true);
+    expect(screen.queryByRole("button", { name: 'Favorite "動画 1"' })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: 'Add "動画 1" to a group' })).toBeDefined();
+    expect(screen.getByText("On studio-pc").parentElement!.textContent).toContain("1:00");
   });
 });

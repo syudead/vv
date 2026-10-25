@@ -613,7 +613,11 @@ export const en = {
         anyTime: "Any time",
         today: "Today",
       },
-      thumbnail: { duration: "49:10", watched: "Share of the video watched" },
+      thumbnail: {
+        duration: "49:10",
+        watched: "Share of the video watched",
+        remote: "On studio-pc",
+      },
       favoriteOff: "Add to favorites",
       favoriteOn: "Remove from favorites",
       tentativeTag: "kyoto",
@@ -983,6 +987,12 @@ export const en = {
       watched: "Watched",
       noImage: "No image",
       preparing: "Preparing",
+      // `name` is the peer's host name, which guests do not receive.
+      remote: {
+        on: (name: string | undefined) =>
+          name === undefined ? "On the other VVMDM" : `On ${name}`,
+        name: (name: string | undefined) => name ?? "Other VVMDM",
+      },
     },
   },
   library: {
@@ -1206,6 +1216,18 @@ export const en = {
           ? `${smartFolders(folderCount)} selected`
           : `${videos(videoCount)} and ${smartFolders(folderCount)} selected`,
       smartFoldersUnsupported: "Not available for smart folders",
+      mixedNodes: "Select videos from one VVMDM to do this",
+      remotePartial: {
+        changedTitle: (name: string) => `Not changed on ${name}`,
+        changed: (count: number, name: string, reason: string) =>
+          `${videos(count)} on ${name} ${count === 1 ? "wasn't" : "weren't"} changed: ${reason}. The others were saved.`,
+        changedList: "Videos not changed",
+        deletedTitle: (name: string) => `Not deleted on ${name}`,
+        deleted: (count: number, name: string, reason: string) =>
+          `${formatNumber(count)} on ${name} ${count === 1 ? "wasn't" : "weren't"} deleted: ${reason}. The others were.`,
+        deletedList: "Groups and smart folders not deleted",
+        close: "Close",
+      },
       clear: "Clear selection (Esc)",
       addTag: "Add tag",
       removeTag: "Remove tag",
@@ -3533,6 +3555,7 @@ export const en = {
       label: "Add to group",
       search: "Search or create a group",
       list: "Groups",
+      peerHeading: (name: string) => `Groups on ${name}`,
       create: (name: string) => `Create "${name}"`,
       none: "No groups yet. Type a name to create one.",
       nameTooLong: "Use a name of up to 100 characters",
@@ -3790,6 +3813,20 @@ export const en = {
       logoutFailed: "Couldn't sign out",
       menu: "Menu",
       closeMenu: "Close menu",
+    },
+    peer: {
+      networkTitle: (name: string) => `Can't reach ${name}`,
+      networkBody: "Its videos, groups and smart folders are hidden until it answers.",
+      versionTitle: (name: string) => `Can't connect to ${name}`,
+      versionBody: (theirs: string, ours: string) =>
+        `It runs VVMDM ${theirs} and this one ${ours}.`,
+      certificateTitle: (name: string) => `${name}'s certificate changed`,
+      certificateBody: "Confirm it in Pairing to reconnect.",
+      revokedTitle: (name: string) => `Unpaired by ${name}`,
+      revokedBody: "It no longer shares its library with this VVMDM.",
+      guestTitle: "The other library isn't available right now",
+      guestBody: "Some videos aren't shown until it is.",
+      openPairing: "Open Pairing",
     },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,

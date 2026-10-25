@@ -41,6 +41,7 @@ import {
 import { useScanControls } from "../shell/ScanProvider";
 import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
 import { SmartFolderCard, SmartFolderRow } from "../smartFolders/SmartFolderCard";
+import { loadedVideoIds } from "../smartFolders/pageRules";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -81,6 +82,7 @@ import LibraryToolbar from "./LibraryToolbar";
 import { MarqueeBox } from "./MarqueeBox";
 import {
   emptySelection,
+  retainVideos,
   favoriteTargets,
   selectionTargets,
   type LibrarySelection,
@@ -281,6 +283,15 @@ export default function LibraryPage() {
     pointRange(null);
     setSelection(emptySelection);
   }, [pointRange]);
+  // The library keeps selected ids it no longer lists, so narrow to the failed videos still listed.
+  const retainSelection = useCallback(
+    (kept: ReadonlySet<number>) => {
+      const listed = loadedVideoIds(items);
+      const shown = new Set([...kept].filter((id) => listed.has(id)));
+      setSelection((current) => retainVideos(current, shown));
+    },
+    [items],
+  );
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);
@@ -659,6 +670,7 @@ export default function LibraryPage() {
               onTagRemoved={onTagRemoved}
               onBundled={onBundled}
               onCollectionsDeleted={onCollectionsDeleted}
+              onRetain={retainSelection}
             />
           )
         }

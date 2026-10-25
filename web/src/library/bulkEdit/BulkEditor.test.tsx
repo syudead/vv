@@ -73,7 +73,7 @@ const targets: SelectionTarget[] = [
 
 function renderEditor() {
   const onClose = vi.fn<() => void>();
-  const onApplied = vi.fn<(removed: readonly number[]) => void>();
+  const onApplied = vi.fn<(removed: readonly number[], partial: unknown) => void>();
   render(
     <ToastProvider>
       <TooltipProvider>
@@ -125,7 +125,7 @@ describe("BulkEditor", () => {
       credits: [{ kind: "person", role: "performer", remove: [7] }],
       public: true,
     });
-    expect(onApplied).toHaveBeenCalledWith([1]);
+    expect(onApplied).toHaveBeenCalledWith([1], null);
     expect(await screen.findByText("Updated 3 videos")).toBeTruthy();
   });
 

@@ -111,6 +111,10 @@ export function useSmartFolderPage(
   useEffect(() => {
     // Subscribe before reading so changes after the snapshot are not lost.
     const unsubscribe = subscribeServerEvents({
+      // The peer's matches enter or leave the folder when it connects or drops.
+      peerItems: () => {
+        if (stateRef.current.kind === "ready") refresh();
+      },
       smartFolder: (ids) => {
         if (id !== null && ids.includes(id) && stateRef.current.kind !== "gone") {
           refresh();
