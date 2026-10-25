@@ -423,6 +423,12 @@ type server struct {
 // NewRouter registers generated UI/external APIs and Bearer-only MCP, returns JSON 404 for unknown
 // API paths, and falls back to the SPA elsewhere.
 func NewRouter(opts Options) http.Handler {
+	handler, _ := NewServer(opts)
+	return handler
+}
+
+// NewServer returns NewRouter's handler and the assistant's runner over the same handlers.
+func NewServer(opts Options) (http.Handler, *ActionRunner) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -512,8 +518,14 @@ func NewRouter(opts Options) http.Handler {
 
 	registerExternalAPI(mux, srv)
 	mux.Handle(mcpPath, newMCPHandler(srv))
-	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
-		BaseRouter: mux,
+	generated := gen.HandlerWithOptions(srv, generatedOptions(mux, logger))
+	runner := &ActionRunner{api: gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger))}
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated)))), runner
+}
+
+func generatedOptions(base *http.ServeMux, logger *slog.Logger) gen.StdHTTPServerOptions {
+	return gen.StdHTTPServerOptions{
+		BaseRouter: base,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			w.Header().Set("Cache-Control", cacheNoStore)
 			writeJSON(w, http.StatusBadRequest, gen.Error{
@@ -521,8 +533,7 @@ func NewRouter(opts Options) http.Handler {
 				Message: err.Error(),
 			}, logger)
 		},
-	})
-	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated))))
+	}
 }
 
 // Set no-store at write time for all 4xx/5xx, including ServeContent Range errors that bypass
