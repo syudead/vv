@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -225,11 +226,44 @@ func (s *server) passThrough(w http.ResponseWriter, resp *http.Response) {
 			w.Header().Set(name, value)
 		}
 	}
+	confinePeerContent(w.Header())
 	w.WriteHeader(resp.StatusCode)
 	_ = http.NewResponseController(w).Flush()
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		s.logger.Debug("the forwarded response ended early", slog.Any("error", err))
 	}
+}
+
+// confinePeerContent keeps the peer's answer from running as a page of this node's origin, where it would act
+// with the owner's session: only media, subtitles, images, JSON and plain text keep their type, anything else
+// downloads, and none may sniff its type or run script.
+func confinePeerContent(header http.Header) {
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	if !passableContentType(header.Get("Content-Type")) {
+		header.Set("Content-Type", "application/octet-stream")
+		header.Set("Content-Disposition", "attachment")
+	}
+}
+
+func passableContentType(value string) bool {
+	if value == "" {
+		return true
+	}
+	media, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return false
+	}
+	for _, prefix := range []string{"video/", "audio/", "image/"} {
+		if strings.HasPrefix(media, prefix) {
+			return true
+		}
+	}
+	switch media {
+	case "text/vtt", "text/plain", "application/json", "application/octet-stream":
+		return true
+	}
+	return false
 }
 
 // writeRewrittenHead answers a HEAD of a rewritten answer, which has no body to rewrite; the peer's length is

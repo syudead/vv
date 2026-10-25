@@ -42,6 +42,14 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/thumbnail":              {media: true},
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}": {media: true},
 	"GET /api/videos/{id}/frame":                  {media: true},
+	"PUT /api/videos/{id}/work-info": {
+		rewrite: rewriteAs(rewriteRemoteVideo),
+		request: peerWorkInfoBody("", func(body **gen.WorkInfoInput) *gen.WorkInfoInput { return *body }),
+	},
+	"PUT /api/videos/{id}/details": {
+		rewrite: rewriteAs(rewriteRemoteVideo),
+		request: peerWorkInfoBody("workInfo", func(body *remoteDetailsInput) *gen.WorkInfoInput { return body.WorkInfo }),
+	},
 }
 
 // remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and

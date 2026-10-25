@@ -96,6 +96,9 @@ func TestRemoteVideoMediaPassesThrough(t *testing.T) {
 	if got := stream.Header().Get("Content-Range"); got != "bytes 0-99/4096" {
 		t.Errorf("Content-Range = %q, want bytes 0-99/4096", got)
 	}
+	if got := stream.Header().Get("Content-Security-Policy"); got != "default-src 'none'; sandbox" {
+		t.Errorf("stream の CSP = %q, want 中継応答を閉じ込める CSP", got)
+	}
 
 	subtitles := decode[gen.SubtitleTrackList](t, b.owner(http.MethodGet, f.remotePath("a", "/subtitles"), ""))
 	if len(subtitles.Subtitles) != 1 || subtitles.Subtitles[0].File != "a.srt" {
@@ -243,5 +246,23 @@ func TestRemoteThumbnailPositionWaitsForThePeersExtraction(t *testing.T) {
 	// The peer extracts the frame before it answers, which may take longer than a call's response timeout.
 	if len(link.media) != 1 || !link.media[0] {
 		t.Errorf("転送の media = %v, want [true]（応答の時間制限なし）", link.media)
+	}
+}
+
+// The forwarding wiring is checked by the CSP assertion of TestRemoteVideoMediaPassesThrough.
+func TestPeerContentCannotRunAsAPageOfThisNode(t *testing.T) {
+	for _, tc := range []struct{ peerType, wantType, wantDisposition string }{
+		{"text/html; charset=utf-8", "application/octet-stream", "attachment"},
+		{"video/mp4", "video/mp4", ""},
+	} {
+		header := http.Header{"Content-Type": {tc.peerType}}
+		confinePeerContent(header)
+		if header.Get("Content-Type") != tc.wantType || header.Get("Content-Disposition") != tc.wantDisposition {
+			t.Errorf("%s: Content-Type = %q, Content-Disposition = %q, want %s と %q",
+				tc.peerType, header.Get("Content-Type"), header.Get("Content-Disposition"), tc.wantType, tc.wantDisposition)
+		}
+		if header.Get("X-Content-Type-Options") != "nosniff" || header.Get("Content-Security-Policy") != "default-src 'none'; sandbox" {
+			t.Errorf("%s: nosniff = %q, CSP = %q", tc.peerType, header.Get("X-Content-Type-Options"), header.Get("Content-Security-Policy"))
+		}
 	}
 }
