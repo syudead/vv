@@ -527,6 +527,7 @@ const (
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
 	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
+	ErrorCodeServiceUnavailable          ErrorCode = "service_unavailable"
 	ErrorCodeSmartFolderCycle            ErrorCode = "smart_folder_cycle"
 	ErrorCodeSmartFolderNotFound         ErrorCode = "smart_folder_not_found"
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
@@ -613,6 +614,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeProviderFailed:
 		return true
 	case ErrorCodeScanInProgress:
+		return true
+	case ErrorCodeServiceUnavailable:
 		return true
 	case ErrorCodeSmartFolderCycle:
 		return true

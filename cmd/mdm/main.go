@@ -361,7 +361,7 @@ func run(opts runOptions) error {
 	}
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
-	pairing := newPairing(db.Peers(), build, bus, logger)
+	pairing, peerLink := newPairing(db.Peers(), build, bus, logger)
 	stopPairing := startPairingConnection(pairing)
 	defer stopPairing()
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
@@ -433,6 +433,7 @@ func run(opts runOptions) error {
 		Auth:              httpAuthenticator,
 		APITokens:         apiTokens,
 		Pairing:           pairing,
+		PeerLink:          peerLink,
 		TrustedProxies:    cfg.TrustedProxies,
 	})
 

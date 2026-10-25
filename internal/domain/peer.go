@@ -314,13 +314,6 @@ func InitialPeerState(record *PeerRecord) (PeerConnection, PeerUnreachableReason
 // ErrFingerprintChanged answers a certificate confirmation whose fingerprint is not the one waiting.
 var ErrFingerprintChanged = errors.New("the certificate fingerprint changed")
 
-// PeerIDOffset is added to the peer's ids of videos, groups and smart folders; local ids stay below it,
-// and 2^40 stays below JavaScript's safe integer.
-const PeerIDOffset int64 = 1 << 40
-
-// ToRemoteID is the id under which this node addresses the peer's entity with peerID.
-func ToRemoteID(peerID int64) int64 { return peerID + PeerIDOffset }
-
 // The reconnect loop waits PeerRetryFirst after the first failure and doubles up to PeerRetryMax.
 const (
 	PeerRetryFirst = 5 * time.Second

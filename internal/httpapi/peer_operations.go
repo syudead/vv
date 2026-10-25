@@ -29,6 +29,7 @@ var peerOperations = []string{
 	"GET /api/videos/{id}/thumbnail",
 	"GET /api/videos/{id}/seek-thumbnail",
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}",
+	"GET /api/videos/{id}/frame",
 	"GET /api/folders",
 	"GET /api/folders/{rootId}",
 	"GET /api/folders/{rootId}/videos",
@@ -98,7 +99,12 @@ var peerOperationMux = func() *http.ServeMux {
 
 // peerAllowed runs after classifyRequest accepted the path as an API route.
 func peerAllowed(r *http.Request) bool {
+	return routePattern(peerOperationMux, r) != ""
+}
+
+// routePattern is the pattern of mux that r's method and cleaned path match, or empty.
+func routePattern(mux *http.ServeMux, r *http.Request) string {
 	probe := &http.Request{Method: r.Method, URL: &url.URL{Path: path.Clean("/" + r.URL.Path)}, Host: r.Host}
-	_, pattern := peerOperationMux.Handler(probe)
-	return pattern != ""
+	_, pattern := mux.Handler(probe)
+	return pattern
 }

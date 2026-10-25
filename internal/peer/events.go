@@ -31,7 +31,7 @@ func (c *Client) Watch(
 ) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	resp, err := c.send(ctx, target, http.MethodGet, "/api/events", secret, nil, 0)
+	resp, err := c.send(ctx, target, http.MethodGet, "/api/events", secret, nil, streamLimits)
 	if err != nil {
 		return err
 	}

@@ -49,9 +49,23 @@ func Fingerprint(cert *x509.Certificate) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// httpClient is built per target because the pin is part of the TLS check. A zero timeout leaves the
-// response body unbounded, as the event stream needs.
-func (c *Client) httpClient(target domain.PeerTarget, host string, timeout time.Duration) *http.Client {
+// limits bound one request: total covers the whole response and header its headers; zero leaves either
+// unbounded.
+type limits struct {
+	total, header time.Duration
+}
+
+var (
+	// A call reads one small answer.
+	callLimits = limits{total: responseTimeout, header: responseTimeout}
+	// The event stream stays open, but the peer answers its headers at once.
+	streamLimits = limits{header: responseTimeout}
+	// Media has no response timeout: a live transcode answers its headers only after the first output.
+	mediaLimits = limits{}
+)
+
+// httpClient is built per target because the pin is part of the TLS check.
+func (c *Client) httpClient(target domain.PeerTarget, host string, bounds limits) *http.Client {
 	dialer := &net.Dialer{Timeout: connectTimeout}
 	transport := &http.Transport{
 		DialContext:         dialer.DialContext,
@@ -64,10 +78,10 @@ func (c *Client) httpClient(target domain.PeerTarget, host string, timeout time.
 			InsecureSkipVerify: true,
 			VerifyConnection:   verifyPeer(host, target.PinnedSPKI, c.roots),
 		},
-		ResponseHeaderTimeout: responseTimeout,
+		ResponseHeaderTimeout: bounds.header,
 		DisableKeepAlives:     true,
 	}
-	return &http.Client{Transport: transport, Timeout: timeout}
+	return &http.Client{Transport: transport, Timeout: bounds.total}
 }
 
 func verifyPeer(host, pinned string, roots *x509.CertPool) func(tls.ConnectionState) error {
@@ -148,7 +162,7 @@ func (c *Client) Forget(ctx context.Context, target domain.PeerTarget, secret, n
 func (c *Client) call(
 	ctx context.Context, target domain.PeerTarget, method, path, secret string, in, out any, accepted ...int,
 ) error {
-	resp, err := c.send(ctx, target, method, path, secret, in, responseTimeout)
+	resp, err := c.send(ctx, target, method, path, secret, in, callLimits)
 	if err != nil {
 		return err
 	}
@@ -179,7 +193,7 @@ func (c *Client) call(
 // send returns the peer's response with any status; a request that got no response answers the
 // domain's pairing error.
 func (c *Client) send(
-	ctx context.Context, target domain.PeerTarget, method, path, secret string, in any, timeout time.Duration,
+	ctx context.Context, target domain.PeerTarget, method, path, secret string, in any, bounds limits,
 ) (*http.Response, error) {
 	base, err := url.Parse(target.Address)
 	if err != nil || base.Host == "" {
@@ -201,9 +215,14 @@ func (c *Client) send(
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if secret != "" {
-		req.Header.Set("Authorization", "VV-Peer "+secret)
+		req.Header.Set("Authorization", peerScheme+" "+secret)
 	}
-	resp, err := c.httpClient(target, base.Hostname(), timeout).Do(req)
+	return c.do(req, target, bounds)
+}
+
+// do answers the domain's pairing error for a request that got no response.
+func (c *Client) do(req *http.Request, target domain.PeerTarget, bounds limits) (*http.Response, error) {
+	resp, err := c.httpClient(target, req.URL.Hostname(), bounds).Do(req)
 	if err != nil {
 		var untrusted *domain.CertificateUntrustedError
 		if errors.As(err, &untrusted) {
