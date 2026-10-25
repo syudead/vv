@@ -18,8 +18,10 @@ import (
 // connection that died without closing still counts as lost.
 const streamIdleTimeout = 75 * time.Second
 
-// maxEventLine bounds one line of the event stream; the forwarded events carry ids only.
-const maxEventLine = 1 << 20
+// maxEvent bounds one line and the data of one event; the forwarded events carry ids only.
+const maxEvent = 1 << 20
+
+var errEventTooLarge = errors.New("an event of the stream is too large")
 
 // Watch holds the peer's /api/events open with secret. It calls opened once the peer answered 200 and
 // changed for each video, group and smartFolder event, with the ids in remote form. It returns when the
@@ -59,10 +61,11 @@ func (c *Client) Watch(
 
 var errStreamIdle = errors.New("the event stream sent nothing for too long")
 
-// readEvents parses Server-Sent Events, calling line for every line read and dispatch for each event.
+// readEvents parses Server-Sent Events, calling line for every line read and dispatch for each event. It
+// ends with errEventTooLarge when one event's data lines exceed maxEvent together.
 func readEvents(body io.Reader, line func(), dispatch func(name string, data []byte)) error {
 	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 4096), maxEventLine)
+	scanner.Buffer(make([]byte, 0, 4096), maxEvent)
 	var (
 		name    string
 		data    []byte
@@ -85,6 +88,9 @@ func readEvents(body io.Reader, line func(), dispatch func(name string, data []b
 			case "event":
 				name = string(value)
 			case "data":
+				if len(data)+1+len(value) > maxEvent {
+					return errEventTooLarge
+				}
 				if hasData {
 					data = append(data, '\n')
 				}

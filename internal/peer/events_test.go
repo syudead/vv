@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -79,6 +80,17 @@ func TestWatchForwardsEventsWithRemoteIDs(t *testing.T) {
 	if _, opened, err := watchUntil(t, New(Options{}), domain.PeerTarget{Address: server.URL}, "vvp_other", 1); opened ||
 		!errors.Is(err, domain.ErrPeerUnknown) {
 		t.Errorf("知られていない資格情報: opened = %v, err = %v, want ErrPeerUnknown", opened, err)
+	}
+}
+
+// Small data lines that never end their event cannot grow the buffered event past maxEvent.
+func TestReadEventsBoundsOneEventsData(t *testing.T) {
+	dataLine := "data: " + strings.Repeat("7", 1000) + "\n"
+	body := strings.NewReader(strings.Repeat(dataLine, maxEvent/1000+1))
+	dispatched := 0
+	err := readEvents(body, func() {}, func(string, []byte) { dispatched++ })
+	if !errors.Is(err, errEventTooLarge) || dispatched != 0 {
+		t.Errorf("err = %v, 配信 %d 件, want errEventTooLarge と 0 件", err, dispatched)
 	}
 }
 

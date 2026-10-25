@@ -17,6 +17,8 @@ type fakePeerStore struct {
 	nodeID       string
 	record       *domain.PeerRecord
 	incomingHash [32]byte
+	// beforeAdd, when set, runs as AddPeer starts, before the record is stored.
+	beforeAdd func(incoming string)
 }
 
 func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (string, error) {
@@ -38,6 +40,9 @@ func (f *fakePeerStore) Peer(context.Context) (domain.PeerRecord, bool, error) {
 }
 
 func (f *fakePeerStore) AddPeer(_ context.Context, record domain.PeerRecord, incoming string) error {
+	if f.beforeAdd != nil {
+		f.beforeAdd(incoming)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.record != nil {
@@ -333,8 +338,14 @@ func TestHandshakeAcceptsOnlyKnownSecrets(t *testing.T) {
 	if _, err := n.a.Handshake(ctx, "vvp_unknown"); !errors.Is(err, domain.ErrPeerUnknown) {
 		t.Errorf("記録の無い Handshake err = %v, want ErrPeerUnknown", err)
 	}
+	// A's connection loop may hand the sent secret back before B stored its record.
+	var beforeStored error
+	n.storeB.beforeAdd = func(incoming string) { _, beforeStored = n.b.Handshake(ctx, incoming) }
 	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
 		t.Fatal(err)
+	}
+	if beforeStored != nil {
+		t.Errorf("B の保存前の Handshake err = %v, want nil", beforeStored)
 	}
 	// The secret B sent was accepted only while its pairing ran; afterwards only the stored credential is.
 	onB := n.storeB.stored()

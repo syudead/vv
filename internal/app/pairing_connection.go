@@ -56,11 +56,13 @@ func (p *Pairing) publish(event domain.Event) {
 // interrupt ends the running connection attempt and, with retry, also the loop's wait. It returns the
 // new generation, under which the caller sets the state.
 func (p *Pairing) interrupt(retry bool) uint64 {
+	p.revokeMu.Lock()
 	p.mu.Lock()
 	p.generation++
 	generation := p.generation
 	stop := p.stopAttempt
 	p.mu.Unlock()
+	p.revokeMu.Unlock()
 	if stop != nil {
 		stop()
 	}
@@ -151,6 +153,7 @@ func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 			opened = true
 			p.setStatus(generation, peerStatus{state: domain.PeerConnected})
 		}, func(changed domain.PeerChanged) { p.publish(changed) })
+		err = p.confirmUnknown(attempt, record, err)
 	}
 	if ctx.Err() == nil {
 		p.fail(ctx, generation, record, err)
@@ -167,13 +170,27 @@ func (p *Pairing) checkPeerNode(record domain.PeerRecord, node domain.PeerNode) 
 }
 
 // ReportFailure records a failed request to the peer: the state becomes unreachable at once, or revoked
-// on domain.ErrPeerUnknown, and the stream is reopened by the loop alone.
+// on domain.ErrPeerUnknown that the handshake confirms, and the stream is reopened by the loop alone.
 func (p *Pairing) ReportFailure(ctx context.Context, err error) {
 	record, found, readErr := p.store.Peer(ctx)
 	if readErr != nil || !found || record.IncomingRevoked {
 		return
 	}
-	p.fail(ctx, p.interrupt(false), record, err)
+	generation := p.interrupt(false)
+	p.fail(ctx, generation, record, p.confirmUnknown(ctx, record, err))
+}
+
+// confirmUnknown asks the handshake again when another request answered domain.ErrPeerUnknown. A peer
+// that requested the pairing accepts the secret at its handshake alone until it has stored its record, so
+// only a refused handshake means the peer no longer knows this node.
+func (p *Pairing) confirmUnknown(ctx context.Context, record domain.PeerRecord, err error) error {
+	if !errors.Is(err, domain.ErrPeerUnknown) {
+		return err
+	}
+	if _, err := p.link.Handshake(ctx, peerTarget(record), record.OutgoingSecret); err != nil {
+		return err
+	}
+	return &domain.PeerUnreachableError{Message: "The other VVMDM has not stored the pairing yet."}
 }
 
 func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.PeerRecord, err error) {
@@ -199,8 +216,17 @@ func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.Pee
 }
 
 // revoke clears the incoming secret before the state shows revoked, so the peer that no longer knows this
-// node cannot use its credential here.
+// node cannot use its credential here. An interrupted attempt revokes nothing, and an interruption waits
+// until a running revocation has set its state.
 func (p *Pairing) revoke(ctx context.Context, generation uint64, record domain.PeerRecord) {
+	p.revokeMu.Lock()
+	defer p.revokeMu.Unlock()
+	p.mu.Lock()
+	current := generation == p.generation
+	p.mu.Unlock()
+	if !current {
+		return
+	}
 	if err := p.store.RevokeIncomingSecret(ctx, record.NodeID); err != nil {
 		p.logger.Warn("could not revoke the paired VVMDM's credential", slog.Any("error", err))
 		p.setStatus(generation, peerStatus{state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork})

@@ -76,6 +76,9 @@ type Pairing struct {
 
 	// pairMu serializes pairing and acceptance, which each call the other node before storing.
 	pairMu sync.Mutex
+	// revokeMu makes revoking the incoming secret and interrupting the loop exclusive, so an interrupted
+	// attempt cannot revoke the record its interrupter acts on.
+	revokeMu sync.Mutex
 
 	mu      sync.Mutex
 	nodeID  string
@@ -195,12 +198,13 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	// The other node calls this one back with incoming before it answers.
+	// The other node calls this one back with incoming before it answers, and its connection loop may
+	// handshake again before this node stores the record, so incoming stays pending until then.
 	release := p.expectHandshake(incoming)
+	defer release()
 	answer, err := p.link.RequestPairing(ctx, target, domain.PairingRequest{
 		Code: input.Code, Node: node, Address: ownAddress, Secret: incoming,
 	})
-	release()
 	if err != nil {
 		return domain.PeerState{}, err
 	}

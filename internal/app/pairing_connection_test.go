@@ -31,8 +31,10 @@ type watchAttempt struct {
 
 // streamLink is the peer seen by the connection loop: a handshake answer and scripted streams.
 type streamLink struct {
-	mu        sync.Mutex
-	node      domain.PeerNode
+	mu   sync.Mutex
+	node domain.PeerNode
+	// handshake, when set, answers each handshake's error in place of nil.
+	handshake func(ctx context.Context, target domain.PeerTarget) error
 	steps     []watchStep
 	attempts  []watchAttempt
 	end       chan error
@@ -54,10 +56,32 @@ func (l *streamLink) RequestPairing(context.Context, domain.PeerTarget, domain.P
 	return domain.PairingAnswer{}, errors.New("not used")
 }
 
-func (l *streamLink) Handshake(context.Context, domain.PeerTarget, string) (domain.PeerNode, error) {
+func (l *streamLink) Handshake(ctx context.Context, target domain.PeerTarget, _ string) (domain.PeerNode, error) {
+	l.mu.Lock()
+	node, handshake := l.node, l.handshake
+	l.mu.Unlock()
+	if handshake != nil {
+		if err := handshake(ctx, target); err != nil {
+			return domain.PeerNode{}, err
+		}
+	}
+	return node, nil
+}
+
+func (l *streamLink) refuseHandshake(err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.node, nil
+	l.handshake = func(context.Context, domain.PeerTarget) error { return err }
+}
+
+func (l *streamLink) attemptTargets() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	targets := make([]string, len(l.attempts))
+	for i, attempt := range l.attempts {
+		targets[i] = attempt.target.Address
+	}
+	return targets
 }
 
 func (l *streamLink) Watch(
@@ -251,6 +275,8 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 			t.Errorf("再接続までの待ち = %v, want 5s", times[1].Sub(lost))
 		}
 
+		// The peer forgot this node, so its handshake refuses the credential too.
+		node.link.refuseHandshake(domain.ErrPeerUnknown)
 		node.link.end <- domain.ErrPeerUnknown
 		synctest.Wait()
 		assertStates(t, "401 peer_unknown", node.events, "connected", "unreachable/network", "connected", "revoked")
@@ -334,6 +360,52 @@ func TestReportFailureMarksUnreachableAtOnce(t *testing.T) {
 		assertStates(t, "ループの再接続", node.events, "connected", "unreachable/network", "connected")
 		if times := node.link.attemptTimes(); len(times) != 2 || times[1].Sub(reported) != domain.PeerRetryFirst {
 			t.Errorf("試行 = %v, want 報告の 5 秒後に 2 回目", times)
+		}
+	})
+}
+
+// A peer that requested the pairing accepts the secret at its handshake before it stores the record, so its
+// event stream refusing the secret then is not a revocation.
+func TestConnectionWaitsForThePeerStoringThePairing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		node := startConnection(t, newStreamLink(watchStep{err: domain.ErrPeerUnknown}, watchStep{open: true}))
+		if record := node.store.stored(); record == nil || record.IncomingRevoked {
+			t.Fatalf("記録 = %+v, want 受け取る secret が残る", record)
+		}
+		time.Sleep(domain.PeerRetryFirst)
+		synctest.Wait()
+		assertStates(t, "相手の保存後の再接続", node.events, "connected")
+	})
+}
+
+// An attempt that an address change interrupted cannot revoke the record with the corrected address.
+func TestInterruptedAttemptRevokesNothing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const corrected = "http://peer-new.local:8080"
+		answered := make(chan struct{})
+		link := newStreamLink(watchStep{open: true})
+		link.handshake = func(_ context.Context, target domain.PeerTarget) error {
+			if target.Address == corrected {
+				return nil
+			}
+			// The node at the old address refuses after the address was already changed.
+			<-answered
+			return domain.ErrPeerUnknown
+		}
+		node := startConnection(t, link)
+
+		if _, err := node.pairing.ChangeAddress(context.Background(), corrected); err != nil {
+			t.Fatal(err)
+		}
+		close(answered)
+		synctest.Wait()
+
+		if record := node.store.stored(); record == nil || record.IncomingRevoked {
+			t.Fatalf("記録 = %+v, want 受け取る secret が残る", record)
+		}
+		assertStates(t, "直したアドレスで接続", node.events, "connected")
+		if targets := link.attemptTargets(); len(targets) != 1 || targets[0] != corrected {
+			t.Errorf("ストリームの相手 = %v, want [%s]", targets, corrected)
 		}
 	})
 }
