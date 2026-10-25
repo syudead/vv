@@ -93,6 +93,8 @@ var peerOperations = []string{
 	"POST /api/peer/pairings",
 	"GET /api/peer/handshake",
 	"DELETE /api/peer/pairings/{nodeId}",
+	"POST /api/peer/related",
+	"GET /api/peer/videos/{id}/clues",
 }
 
 // Match with ServeMux, as accessMux does, so wildcards and GET/HEAD agree with routing.

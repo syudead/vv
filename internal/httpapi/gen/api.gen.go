@@ -4993,6 +4993,36 @@ type PeerNode struct {
 	Version string `json:"version"`
 }
 
+// PeerRelatedItem defines model for PeerRelatedItem.
+type PeerRelatedItem struct {
+	// Score The scorer's points in millionths
+	Score int64 `json:"score"`
+
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	Video Video `json:"video"`
+}
+
+// PeerRelatedPage defines model for PeerRelatedPage.
+type PeerRelatedPage struct {
+	Items []PeerRelatedItem `json:"items"`
+
+	// NextCursor Value for the next cursor; omitted at the end
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// PeerRelatedRequest defines model for PeerRelatedRequest.
+type PeerRelatedRequest struct {
+	// Clues What the node holding a video sends so the other node can score its own videos against it; no directory.
+	Clues RelatedClues `json:"clues"`
+
+	// Cursor Previous `nextCursor`; omit to start at the beginning
+	Cursor *string `json:"cursor,omitempty"`
+
+	// Exclude This node's video ids to leave out: the open video and its group members when held here
+	Exclude *[]int64 `json:"exclude,omitempty"`
+	Limit   *int     `json:"limit,omitempty"`
+}
+
 // PeerState Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity.
 type PeerState struct {
 	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
@@ -5418,6 +5448,26 @@ type RejectedTagNameList struct {
 
 	// Total Total rejected-name count.
 	Total int `json:"total"`
+}
+
+// RelatedClues What the node holding a video sends so the other node can score its own videos against it; no directory.
+type RelatedClues struct {
+	AddedAt     time.Time           `json:"addedAt"`
+	Fingerprint *RelatedFingerprint `json:"fingerprint,omitempty"`
+
+	// Tags Names of the video's confirmed, tentative and folder-name tags
+	Tags []string `json:"tags"`
+
+	// Words The words the scorer takes from the title and the file name
+	Words []string `json:"words"`
+}
+
+// RelatedFingerprint defines model for RelatedFingerprint.
+type RelatedFingerprint struct {
+	// Frames The encoded frame hashes, as stored
+	Frames     []byte `json:"frames"`
+	IntervalMs int64  `json:"intervalMs"`
+	Version    int    `json:"version"`
 }
 
 // RelatedGroup Reference video's group context from the group query; see docs/design-docs/catalog-organization.md. Members follow group playback order, public videos only for guests.
@@ -8280,6 +8330,9 @@ type PairPeerJSONRequestBody = PairPeerRequest
 // AcceptPairingJSONRequestBody defines body for AcceptPairing for application/json ContentType.
 type AcceptPairingJSONRequestBody = PairingRequest
 
+// RankPeerRelatedJSONRequestBody defines body for RankPeerRelated for application/json ContentType.
+type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
+
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = CreditInput
 
@@ -8675,6 +8728,12 @@ type ServerInterface interface {
 	// ForgetPeer Delete the record of a peer that unpaired
 	// (DELETE /api/peer/pairings/{nodeId})
 	ForgetPeer(w http.ResponseWriter, r *http.Request, nodeId string)
+	// RankPeerRelated Score this node's videos against a video of the other node
+	// (POST /api/peer/related)
+	RankPeerRelated(w http.ResponseWriter, r *http.Request)
+	// GetPeerRelatedClues Return the related-video clues of one video
+	// (GET /api/peer/videos/{id}/clues)
+	GetPeerRelatedClues(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearPeople Delete every person and all face data
 	// (DELETE /api/people)
 	ClearPeople(w http.ResponseWriter, r *http.Request)
@@ -11277,6 +11336,46 @@ func (siw *ServerInterfaceWrapper) ForgetPeer(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ForgetPeer(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RankPeerRelated operation middleware
+func (siw *ServerInterfaceWrapper) RankPeerRelated(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RankPeerRelated(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPeerRelatedClues operation middleware
+func (siw *ServerInterfaceWrapper) GetPeerRelatedClues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPeerRelatedClues(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16158,6 +16257,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pairings", wrapper.AcceptPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/related", wrapper.RankPeerRelated)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)

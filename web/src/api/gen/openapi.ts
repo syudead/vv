@@ -241,7 +241,7 @@ export interface paths {
         };
         /**
          * Return related videos
-         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`.
+         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out.
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -1625,6 +1625,46 @@ export interface paths {
          * @description Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204.
          */
         delete: operations["forgetPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Score this node's videos against a video of the other node
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Scores the visible videos of this node, except `exclude`, against `clues` with the related-video scorer and returns one page in the related order (score, then newer addedAt, then larger id) after `cursor`. The clues carry no directory, so the same-directory clue is 0. See docs/design-docs/related-videos.md.
+         */
+        post: operations["rankPeerRelated"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/videos/{id}/clues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the related-video clues of one video
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. A video the request's audience cannot see, or a missing one, returns 404.
+         */
+        get: operations["getPeerRelatedClues"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7244,6 +7284,48 @@ export interface components {
         PeerHandshake: {
             node: components["schemas"]["PeerNode"];
         };
+        /** @description What the node holding a video sends so the other node can score its own videos against it; no directory. */
+        RelatedClues: {
+            fingerprint?: components["schemas"]["RelatedFingerprint"];
+            /** @description Names of the video's confirmed, tentative and folder-name tags */
+            tags: string[];
+            /** @description The words the scorer takes from the title and the file name */
+            words: string[];
+            /** Format: date-time */
+            addedAt: string;
+        };
+        RelatedFingerprint: {
+            version: number;
+            /** Format: int64 */
+            intervalMs: number;
+            /**
+             * Format: byte
+             * @description The encoded frame hashes, as stored
+             */
+            frames: string;
+        };
+        PeerRelatedRequest: {
+            clues: components["schemas"]["RelatedClues"];
+            /** @description This node's video ids to leave out: the open video and its group members when held here */
+            exclude?: number[];
+            /** @description Previous `nextCursor`; omit to start at the beginning */
+            cursor?: string;
+            /** @default 30 */
+            limit: number;
+        };
+        PeerRelatedPage: {
+            items: components["schemas"]["PeerRelatedItem"][];
+            /** @description Value for the next cursor; omitted at the end */
+            nextCursor?: string;
+        };
+        PeerRelatedItem: {
+            /**
+             * Format: int64
+             * @description The scorer's points in millionths
+             */
+            score: number;
+            video: components["schemas"]["Video"];
+        };
         Error: {
             /**
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
@@ -10234,6 +10316,56 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    rankPeerRelated: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerRelatedRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of scored videos */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerRelatedPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPeerRelatedClues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video's clues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedClues"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listWorkInfoPlugins: {

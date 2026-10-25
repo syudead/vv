@@ -39,7 +39,7 @@ var remoteGroupOperations = map[string]remoteOperation{
 	"POST /api/groups/{id}/tag":                 {rewrite: rewriteAs(rewriteRemoteGroupTag)},
 }
 
-var remoteGroupMux = operationMux(remoteGroupOperations)
+var remoteGroupMux = operationMux(remoteGroupOperations, nil)
 
 var (
 	remoteGroupAnswer    = remoteOperation{rewrite: rewriteAs(rewriteRemoteGroup)}
