@@ -9,7 +9,7 @@ import { DetailPageExample } from "./blocks/detail-page-example";
 import { EditorDialogExample } from "./blocks/editor-dialog-example";
 import { FaceGridExample } from "./blocks/face-grid-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
-import { FormPageExample } from "./blocks/form-page-example";
+import { FormPageDialogExample, FormPageExample } from "./blocks/form-page-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
@@ -197,6 +197,9 @@ export default function Patterns() {
         items={["form-page", "form-page-example"]}
       >
         <FormPageExample />
+        <div className="border-t border-border p-4">
+          <FormPageDialogExample />
+        </div>
       </Pattern>
       <Pattern
         id="profile-page"

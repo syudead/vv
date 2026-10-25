@@ -328,18 +328,18 @@ border and `bg-background/90 backdrop-blur-md`, holds the `title` (the page's
 Under the
 band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 
-| Width      | Layout                                                                                                                                                                                                         |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| From `lg`  | `grid-cols-form-page`: the `aside` a column `form-page-aside` wide at the left, then the two panels in the ratio 5:6, `gap-6` apart. The page keeps the viewport's height and each panel scrolls inside itself |
-| Below `lg` | The aside and the panels stack in that order, `gap-6` apart, and the page scrolls as one under the band                                                                                                        |
+| Width      | Layout                                                                                                                                                                                                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | `grid-cols-form-page`: the `aside` a column `form-page-aside` wide at the left, then the two panels in the ratio 5:6, `gap-6` apart; a sole panel spans both panel columns, with or without the aside. The page keeps the viewport's height and each panel scrolls inside itself |
+| Below `lg` | The aside and the panels stack in that order, `gap-6` apart, and the page scrolls as one under the band                                                                                                                                                                          |
 
-| Slot      | Put in it                                                                                                                               | Never                                         |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `actions` | `Cancel` (`ghost` `sm`) then the one `default` `sm` button that saves                                                                   | A close `×`, a logo or a breadcrumb           |
-| `notice`  | The failure line of the save (`role="alert"`, `text-sm text-destructive`), so it stays under the band that holds the save               | Field errors; they go under their field       |
-| `aside`   | What is being edited, read only: an image, a name and its facts, and the link back; named by `asideLabel`                               | Inputs                                        |
-| `panels`  | Up to two, each a `legend` and its `content`: the fields in the order they are filled; the skeleton wraps each in a `FieldSet`, `gap-4` | A card or a border around a panel             |
-| `status`  | A state block (`ErrorState`) in place of the columns when the values could not be loaded                                                | The loading layout; draw `Skeleton`s in place |
+| Slot      | Put in it                                                                                                                                                                                                                                            | Never                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `actions` | `Cancel` (`ghost` `sm`) then the one `default` `sm` button that saves                                                                                                                                                                                | A close `×`, a logo or a breadcrumb           |
+| `notice`  | The failure line of the save (`role="alert"`, `text-sm text-destructive`), so it stays under the band that holds the save                                                                                                                            | Field errors; they go under their field       |
+| `aside`   | What is being edited, read only: an image, a name and its facts, and the link back; named by `asideLabel`. In `FormPageDialog` only, also inputs that are not saved themselves but derive the panel's values, followed by the counts of their result | Inputs saved by the form                      |
+| `panels`  | Up to two, each a `legend` and its `content`: the fields in the order they are filled; the skeleton wraps each in a `FieldSet`, `gap-4`                                                                                                              | A card or a border around a panel             |
+| `status`  | A state block (`ErrorState`) in place of the columns when the values could not be loaded                                                                                                                                                             | The loading layout; draw `Skeleton`s in place |
 
 Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
@@ -349,7 +349,10 @@ with unsaved changes asks first with a `ConfirmDialog`.
 form whose screen must stay as it is under it, such as the bulk editor over a
 list and its selection. Esc and `Cancel` call `onClose`, the focus returns to
 the element that had it, and the aside may hold the targets with a control to
-leave each out, since they are what the form edits.
+leave each out, since they are what the form edits. Its aside may also hold
+inputs that shape the panel without being saved, such as a pattern that
+derives the values of a table of fields, with the counts of their result
+under them, so they stay in view while the panel scrolls.
 
 ## Profile page
 
