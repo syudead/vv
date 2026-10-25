@@ -558,8 +558,8 @@ The actions sit at the right end; those that do not fit move to the right end
 of the next line.
 
 `Fill info…` shares `Edit`'s limit and opens a dialog that picks a work-info
-plugin, lists for each video the works its search finds and what the chosen
-one writes into the empty fields, and applies the plans the owner keeps
+plugin, lists for each video the works its search finds with the chosen one's
+code and release date, and fills the empty fields from the works the owner keeps
 ([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-after-a-review)).
 A toast counts the videos filled; the selection stays.
 

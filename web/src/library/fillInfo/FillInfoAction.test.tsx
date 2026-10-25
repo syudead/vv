@@ -36,7 +36,13 @@ const searches: Record<string, unknown> = {
 };
 
 const fetches: Record<string, unknown> = {
-  "abc-1": fetchResult({ fetchId: "F1", title: "Work one", tags: ["drama"] }),
+  "abc-1": fetchResult({
+    fetchId: "F1",
+    title: "Work one",
+    tags: ["drama"],
+    code: "ABC-1",
+    dates: [{ kind: "release", date: "2024-05-01" }],
+  }),
   "s-2": fetchResult({ fetchId: "F2", title: "Trip", description: "notes" }),
 };
 
@@ -99,7 +105,7 @@ afterEach(() => {
 });
 
 describe("FillInfoAction", () => {
-  it("一致した作品と選んだ作品で空欄に入る値を示し、示した結果だけを反映する", async () => {
+  it("選んだ作品を品番と発売日で示し、確認した結果を反映する", async () => {
     const user = userEvent.setup();
     const writes = install([
       { ...works, id: 5, name: "fetch only", operations: ["fetch"] },
@@ -116,18 +122,15 @@ describe("FillInfoAction", () => {
     const list = await screen.findByRole("list", { name: "Videos to fill" });
     const [episode, trip] = within(list).getAllByRole("listitem");
     if (episode === undefined || trip === undefined) throw new Error("two rows expected");
-    await within(episode).findByText("Work one", { selector: "dd" });
-    expect(within(episode).getByText("drama").tagName).toBe("DD");
+    await within(episode).findByText("ABC-1 · 2024-05-01");
+    expect(within(episode).queryByText("drama")).toBeNull();
     const unmatched = await within(trip).findByRole("combobox", {
       name: "Work for Summer trip",
     });
     expect(unmatched.textContent).toBe("Don't fill");
     await user.click(unmatched);
     await user.click(await screen.findByRole("option", { name: "Trip" }));
-    await within(trip).findByText("notes");
-    expect(within(trip).queryByText("Trip", { selector: "dd" })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "Fill 2 videos" }));
+    await user.click(await screen.findByRole("button", { name: "Fill 2 videos" }));
     await screen.findByText("Filled 2 videos");
     expect(writes).toEqual([
       {
@@ -136,7 +139,7 @@ describe("FillInfoAction", () => {
       },
       {
         url: "/api/videos/1/work-info-fetches/F1/apply",
-        body: { fields: ["title", "tags"], tags: ["drama"] },
+        body: { fields: ["title", "code", "dates.release", "tags"], tags: ["drama"] },
       },
       {
         url: "/api/videos/2/work-info-fetches/F2/apply",
