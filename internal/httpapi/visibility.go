@@ -26,8 +26,8 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if !validVideoTargetCounts(body.VideoIds, body.SmartFolderIds) {
-		s.tooManyVideos(w)
+	if !validVideoTargetCounts(body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs) {
+		s.tooManyVideos(w, maxVideoTagsIDs)
 		return
 	}
 	if body.Public == nil {
@@ -39,7 +39,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Visibility storage is not configured.", nil)
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds)
+	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}

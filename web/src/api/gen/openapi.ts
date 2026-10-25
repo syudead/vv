@@ -2508,6 +2508,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-code-edits/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List the code rows of selected videos
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`.
+         */
+        post: operations["summarizeVideoCodeEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-code-edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write one code per selected video
+         * @description Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`.
+         */
+        post: operations["applyVideoCodeEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/collections/delete": {
         parameters: {
             query?: never;
@@ -5071,6 +5111,34 @@ export interface components {
             applied: number;
             /** @description The tags of tags.add as resolved, in request order without repeats. */
             tags: components["schemas"]["TagRef"][];
+        };
+        VideoCodeEditSummary: {
+            /** @description One row per user-data key, in the order the resolved videos were first listed. */
+            rows: components["schemas"]["VideoCodeEditRow"][];
+        };
+        VideoCodeEditRow: {
+            video: components["schemas"]["Video"];
+            /** @description The key's current code; absent when it has none. */
+            code?: string;
+        };
+        VideoCodeEditRequest: {
+            /** @description One item per row to write. A videoId listed twice, or two items on one user-data key, returns 400 invalid_request. */
+            items: components["schemas"]["VideoCodeEditItem"][];
+        };
+        VideoCodeEditItem: {
+            /**
+             * Format: int64
+             * @description The row's shown video; a bundle member writes its bundle's key.
+             */
+            videoId: number;
+            /** @description The row's video.contentVersion from summarizeVideoCodeEdits; another value returns 409 content_changed, as when SQLite reused a deleted video's ID. */
+            contentVersion: string;
+            /** @description The new code, with WorkInfo.code's rules: trimmed, 1–100 code points, no control characters. */
+            code: string;
+        };
+        VideoCodeEditResponse: {
+            /** @description Number of user-data keys whose code changed; a key that already had the item's code is not counted. */
+            applied: number;
         };
         VideoEditSummary: {
             total: number;
@@ -11530,6 +11598,76 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             /** @description A tag or credit no longer exists (tag_not_found, person_not_found or organization_not_found) */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    summarizeVideoCodeEdits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoTagsSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCodeEditSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    applyVideoCodeEdits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCodeEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Applied result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCodeEditResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description A video no longer exists (video_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A video's content changed (content_changed) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

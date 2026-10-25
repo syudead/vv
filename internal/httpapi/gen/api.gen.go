@@ -6384,6 +6384,45 @@ type VideoChanged struct {
 	Id int64 `json:"id"`
 }
 
+// VideoCodeEditItem defines model for VideoCodeEditItem.
+type VideoCodeEditItem struct {
+	// Code The new code, with WorkInfo.code's rules: trimmed, 1–100 code points, no control characters.
+	Code string `json:"code"`
+
+	// ContentVersion The row's video.contentVersion from summarizeVideoCodeEdits; another value returns 409 content_changed, as when SQLite reused a deleted video's ID.
+	ContentVersion string `json:"contentVersion"`
+
+	// VideoId The row's shown video; a bundle member writes its bundle's key.
+	VideoId int64 `json:"videoId"`
+}
+
+// VideoCodeEditRequest defines model for VideoCodeEditRequest.
+type VideoCodeEditRequest struct {
+	// Items One item per row to write. A videoId listed twice, or two items on one user-data key, returns 400 invalid_request.
+	Items []VideoCodeEditItem `json:"items"`
+}
+
+// VideoCodeEditResponse defines model for VideoCodeEditResponse.
+type VideoCodeEditResponse struct {
+	// Applied Number of user-data keys whose code changed; a key that already had the item's code is not counted.
+	Applied int `json:"applied"`
+}
+
+// VideoCodeEditRow defines model for VideoCodeEditRow.
+type VideoCodeEditRow struct {
+	// Code The key's current code; absent when it has none.
+	Code *string `json:"code,omitempty"`
+
+	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage, cardCredits and every workInfo field but description and urls, and return empty tags. A virtual video omits location, folder, fileTitle, durationMs, media fields, previewUrl, seekThumbnailUrl, versions and mediaInfo.
+	Video Video `json:"video"`
+}
+
+// VideoCodeEditSummary defines model for VideoCodeEditSummary.
+type VideoCodeEditSummary struct {
+	// Rows One row per user-data key, in the order the resolved videos were first listed.
+	Rows []VideoCodeEditRow `json:"rows"`
+}
+
 // VideoCreditEdit Changes one role on every target: remove drops the IDs, then add appends the IDs a video lacks after its own credits of the role. Together they hold at least one ID, each ID once.
 type VideoCreditEdit struct {
 	// Add At most the role's limit (100 people, 20 organizations); a role that would exceed it on any video returns 400 work_info_too_many at credits[i].add.
@@ -8047,6 +8086,12 @@ type RejudgeVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
+// ApplyVideoCodeEditsJSONRequestBody defines body for ApplyVideoCodeEdits for application/json ContentType.
+type ApplyVideoCodeEditsJSONRequestBody = VideoCodeEditRequest
+
+// SummarizeVideoCodeEditsJSONRequestBody defines body for SummarizeVideoCodeEdits for application/json ContentType.
+type SummarizeVideoCodeEditsJSONRequestBody = VideoTagsSummaryRequest
+
 // ApplyVideoEditsJSONRequestBody defines body for ApplyVideoEdits for application/json ContentType.
 type ApplyVideoEditsJSONRequestBody = VideoEditRequest
 
@@ -8571,6 +8616,12 @@ type ServerInterface interface {
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
+	// ApplyVideoCodeEdits Write one code per selected video
+	// (POST /api/video-code-edits)
+	ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request)
+	// SummarizeVideoCodeEdits List the code rows of selected videos
+	// (POST /api/video-code-edits/summary)
+	SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request)
 	// ApplyVideoEdits Apply one bulk edit to selected videos
 	// (POST /api/video-edits)
 	ApplyVideoEdits(w http.ResponseWriter, r *http.Request)
@@ -13174,6 +13225,34 @@ func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ApplyVideoCodeEdits operation middleware
+func (siw *ServerInterfaceWrapper) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyVideoCodeEdits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SummarizeVideoCodeEdits operation middleware
+func (siw *ServerInterfaceWrapper) SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SummarizeVideoCodeEdits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ApplyVideoEdits operation middleware
 func (siw *ServerInterfaceWrapper) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 
@@ -15494,6 +15573,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits/summary", wrapper.SummarizeVideoEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits", wrapper.ApplyVideoEdits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-code-edits/summary", wrapper.SummarizeVideoCodeEdits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-code-edits", wrapper.ApplyVideoCodeEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/collections/delete", wrapper.DeleteCollections)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists", wrapper.ListPlaylists)

@@ -281,7 +281,7 @@ func NormalizeWorkInfo(input WorkInfo) (WorkInfo, bool, error) {
 	var out WorkInfo
 	var err error
 	limits := WorkInfoLimits
-	if out.Code, err = normalizeWorkInfoText("code", input.Code, limits.CodeMaxLength, false); err != nil {
+	if out.Code, err = NormalizeWorkCode(input.Code); err != nil {
 		return WorkInfo{}, false, err
 	}
 	if out.Description, err = normalizeWorkInfoText("description", DescriptionLineBreaks(input.Description), limits.DescriptionMaxLength, true); err != nil {
@@ -304,6 +304,11 @@ func NormalizeWorkInfo(input WorkInfo) (WorkInfo, bool, error) {
 	}
 	SortExternalIDs(out.ExternalIDs)
 	return out, out.IsEmpty(), nil
+}
+
+// NormalizeWorkCode applies WorkInfo.code's text rule at field "code"; an empty result is left to the caller.
+func NormalizeWorkCode(input string) (string, error) {
+	return normalizeWorkInfoText("code", input, WorkInfoLimits.CodeMaxLength, false)
 }
 
 func normalizeWorkDates(dates []WorkDate) ([]WorkDate, error) {
