@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -58,5 +60,25 @@ func TestRemoteVideoWorkInfoIsSavedOnThePeerInItsIDs(t *testing.T) {
 	onA = decode[gen.Video](t, fa.env.get(fa.videoPath("a", ""), fa.owner))
 	if onA.WorkInfo == nil || len(onA.WorkInfo.Organizations) != 1 || onA.WorkInfo.Organizations[0].Organization.Id != studioOnA {
 		t.Errorf("a's organizations = %+v, want スタジオ %d", onA.WorkInfo, studioOnA)
+	}
+}
+
+// A forwarded save missing a required nested field is refused here: re-encoding would fill it with a zero value
+// that the peer then accepts, dropping the date and clearing the dates it already has.
+func TestRemoteWorkInfoMissingARequiredFieldIsNotForwarded(t *testing.T) {
+	for _, tc := range []struct{ operation, body, want string }{
+		{"PUT /api/videos/{id}/details", `{"displayName":"x","workInfo":{"dates":[{"kind":"release"}]}}`,
+			"dates[0].date is required."},
+		{"PUT /api/videos/{id}/work-info", `{"externalIds":[{"source":"fanza","value":null}]}`,
+			"externalIds[0].value is required."},
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/videos/1", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		forward := remoteVideoOperations[tc.operation].request(&server{logger: discardLogger()}, rec, req)
+		if forward || rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Message != tc.want {
+			t.Errorf("%s: forward = %v, status = %d, body = %s, want 400 and %q",
+				tc.operation, forward, rec.Code, rec.Body, tc.want)
+		}
 	}
 }

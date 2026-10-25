@@ -96,6 +96,9 @@ func TestRemoteVideoMediaPassesThrough(t *testing.T) {
 	if got := stream.Header().Get("Content-Range"); got != "bytes 0-99/4096" {
 		t.Errorf("Content-Range = %q, want bytes 0-99/4096", got)
 	}
+	if got := stream.Header().Get("Content-Security-Policy"); got != "default-src 'none'; sandbox" {
+		t.Errorf("stream の CSP = %q, want 中継応答を閉じ込める CSP", got)
+	}
 
 	subtitles := decode[gen.SubtitleTrackList](t, b.owner(http.MethodGet, f.remotePath("a", "/subtitles"), ""))
 	if len(subtitles.Subtitles) != 1 || subtitles.Subtitles[0].File != "a.srt" {
@@ -246,39 +249,17 @@ func TestRemoteThumbnailPositionWaitsForThePeersExtraction(t *testing.T) {
 	}
 }
 
-// typedPeerLink answers every forwarded request with a script body of one content type.
-type typedPeerLink struct{ contentType string }
-
-func (l typedPeerLink) Forward(req *http.Request, _, _ bool) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": {l.contentType}},
-		Body:       io.NopCloser(strings.NewReader("<script>fetch('/api/tokens')</script>")),
-		Request:    req,
-	}, nil
-}
-
-func TestRemoteMediaCannotRunAsAPageOfThisNode(t *testing.T) {
-	for _, tc := range []struct {
-		peerType, wantType, wantDisposition string
-	}{
+// The forwarding wiring is checked by the CSP assertion of TestRemoteVideoMediaPassesThrough.
+func TestPeerContentCannotRunAsAPageOfThisNode(t *testing.T) {
+	for _, tc := range []struct{ peerType, wantType, wantDisposition string }{
 		{"text/html; charset=utf-8", "application/octet-stream", "attachment"},
 		{"video/mp4", "video/mp4", ""},
 	} {
-		env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
-			return Options{Videos: &audienceLibrary{fakeLibrary: sampleLibrary()}, PeerLink: typedPeerLink{tc.peerType}}
-		})
-		cookie := env.setup()
-
-		rec := env.serve(authRequest{
-			method: http.MethodGet, target: "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(5), 10) + "/stream",
-			cookies: []*http.Cookie{cookie},
-		})
-		header := rec.Header()
-		if rec.Code != http.StatusOK || header.Get("Content-Type") != tc.wantType ||
-			header.Get("Content-Disposition") != tc.wantDisposition {
-			t.Errorf("%s: status = %d, Content-Type = %q, Content-Disposition = %q, want %s と %q",
-				tc.peerType, rec.Code, header.Get("Content-Type"), header.Get("Content-Disposition"), tc.wantType, tc.wantDisposition)
+		header := http.Header{"Content-Type": {tc.peerType}}
+		confinePeerContent(header)
+		if header.Get("Content-Type") != tc.wantType || header.Get("Content-Disposition") != tc.wantDisposition {
+			t.Errorf("%s: Content-Type = %q, Content-Disposition = %q, want %s と %q",
+				tc.peerType, header.Get("Content-Type"), header.Get("Content-Disposition"), tc.wantType, tc.wantDisposition)
 		}
 		if header.Get("X-Content-Type-Options") != "nosniff" || header.Get("Content-Security-Policy") != "default-src 'none'; sandbox" {
 			t.Errorf("%s: nosniff = %q, CSP = %q", tc.peerType, header.Get("X-Content-Type-Options"), header.Get("Content-Security-Policy"))

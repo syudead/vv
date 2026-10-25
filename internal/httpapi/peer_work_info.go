@@ -20,15 +20,23 @@ type remoteDetailsInput struct {
 }
 
 // peerWorkInfoBody gives the peer a work-info save in its own person and organization ids; workInfo picks the
-// work information out of the body. A person or organization the peer lacks is created there by name, as a bulk
-// edit does.
-func peerWorkInfoBody[T any](workInfo func(*T) *gen.WorkInfoInput) func(*server, http.ResponseWriter, *http.Request) bool {
+// work information out of the body, and field names its property, or is empty for a body that is the work
+// information. A person or organization the peer lacks is created there by name, as a bulk edit does.
+func peerWorkInfoBody[T any](
+	field string, workInfo func(*T) *gen.WorkInfoInput,
+) func(*server, http.ResponseWriter, *http.Request) bool {
 	return func(s *server, w http.ResponseWriter, r *http.Request) bool {
 		var body T
-		if _, ok := s.readJSONBodyRaw(w, r, &body); !ok {
+		raw, ok := s.readJSONBodyRaw(w, r, &body)
+		if !ok {
 			return false
 		}
 		if info := workInfo(&body); info != nil {
+			// Re-encoding turns a missing required field into its zero value, which the peer would then accept.
+			if message, ok := workInfoInputRequiredPresent(rawProperty(raw, field)); !ok {
+				s.invalidRequest(w, message)
+				return false
+			}
 			if err := translateWorkInfoCredits(info, s.peerEditVocabulary(r)); err != nil {
 				s.writeSplitEditError(w, err)
 				return false
@@ -42,6 +50,17 @@ func peerWorkInfoBody[T any](workInfo func(*T) *gen.WorkInfoInput) func(*server,
 		r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(raw)), int64(len(raw))
 		return true
 	}
+}
+
+// rawProperty is the value of the property name of the JSON object raw, or raw itself when name is empty.
+func rawProperty(raw []byte, name string) json.RawMessage {
+	if name == "" {
+		return raw
+	}
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &fields)
+	value, _ := jsonProperty(fields, name)
+	return value
 }
 
 // translateWorkInfoCredits turns the people and organizations of info into v's node's ids.
