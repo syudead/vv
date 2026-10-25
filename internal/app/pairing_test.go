@@ -76,6 +76,25 @@ func (f *fakePeerStore) DeletePeer(_ context.Context, nodeID string) (bool, erro
 	return true, nil
 }
 
+func (f *fakePeerStore) RevokeIncomingSecret(_ context.Context, nodeID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record != nil && f.record.NodeID == nodeID {
+		f.record.IncomingRevoked, f.incomingHash = true, [32]byte{}
+	}
+	return nil
+}
+
+func (f *fakePeerStore) PinPeerCertificate(_ context.Context, nodeID, spki string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record == nil || f.record.NodeID != nodeID {
+		return domain.ErrNotFound
+	}
+	f.record.PinnedSPKI = spki
+	return nil
+}
+
 func (f *fakePeerStore) stored() *domain.PeerRecord {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -126,6 +145,20 @@ func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, se
 		return domain.PeerNode{}, err
 	}
 	return node.Handshake(ctx, secret)
+}
+
+// The pairing tests do not run the connection loop, so the stream never opens.
+func (l *directLink) Watch(ctx context.Context, _ domain.PeerTarget, _ string, _ func(), _ func(domain.PeerChanged)) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (l *directLink) Forget(ctx context.Context, target domain.PeerTarget, _, nodeID string) error {
+	node, err := l.node(target)
+	if err != nil {
+		return err
+	}
+	return node.Forget(ctx, nodeID)
 }
 
 const (

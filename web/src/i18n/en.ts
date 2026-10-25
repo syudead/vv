@@ -422,6 +422,7 @@ const errorReasons = {
     "The two VVMDMs run different versions. Update both to the same version.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
+  fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

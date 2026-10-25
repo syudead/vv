@@ -347,6 +347,17 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if pending := sub.take(); !slices.Equal(pending.smartFolders, []int64{2, 4, 5}) || len(pending.groups) != 0 {
 		t.Fatalf("SmartFoldersChanged: %+v, want smartFolders [2 4 5]", pending)
 	}
+	events.Handle(domain.PeerChanged{VideoIDs: []int64{domain.ToRemoteID(1)}, GroupIDs: []int64{domain.ToRemoteID(2)},
+		SmartFolderIDs: []int64{domain.ToRemoteID(3)}})
+	if pending := sub.take(); !slices.Equal(pending.videos, []int64{domain.ToRemoteID(1)}) ||
+		!slices.Equal(pending.groups, []int64{domain.ToRemoteID(2)}) ||
+		!slices.Equal(pending.smartFolders, []int64{domain.ToRemoteID(3)}) || pending.peer {
+		t.Fatalf("PeerChanged: %+v, want 相手の video, group, smartFolder", pending)
+	}
+	events.Handle(domain.PeerStateChanged{})
+	if pending := sub.take(); !pending.peer || pending.scan || len(pending.videos) != 0 {
+		t.Fatalf("PeerStateChanged: %+v, want peer only", pending)
+	}
 	// Drain prior readiness before asserting that empty-ID changes do not signal.
 	select {
 	case <-sub.ready:

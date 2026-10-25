@@ -26,6 +26,8 @@ type Pairing interface {
 	Pair(ctx context.Context, input domain.PairInput) (domain.PeerState, error)
 	// ChangeAddress answers domain.ErrNotFound without a peer.
 	ChangeAddress(ctx context.Context, address string) (domain.PeerState, error)
+	// ConfirmCertificate answers domain.ErrFingerprintChanged unless fingerprint is the one waiting.
+	ConfirmCertificate(ctx context.Context, fingerprint string) (domain.PeerState, error)
 	Unpair(ctx context.Context) error
 	Accept(ctx context.Context, req domain.PairingRequest) (domain.PairingAnswer, error)
 	// Handshake answers domain.ErrPeerUnknown for a secret that is neither the credential nor pending.
@@ -248,6 +250,43 @@ func (s *server) UpdatePeerAddress(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, peerStateBody(state, domain.AudienceOwner), s.logger)
+}
+
+func (s *server) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePairing(w) {
+		return
+	}
+	var body gen.PeerCertificateRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxPeerBodyBytes)
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	state, err := s.pairing.ConfirmCertificate(r.Context(), body.Fingerprint)
+	switch {
+	case errors.Is(err, domain.ErrFingerprintChanged):
+		s.fingerprintChanged(w, r)
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, "This VVMDM is not paired.")
+		return
+	case err != nil:
+		s.internalError(w, "Could not trust the certificate.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, peerStateBody(state, domain.AudienceOwner), s.logger)
+}
+
+// fingerprintChanged names the fingerprint now waiting, so the page can show it in place of the old one.
+func (s *server) fingerprintChanged(w http.ResponseWriter, r *http.Request) {
+	body := gen.Error{
+		Code: codeConflict, Reason: reasonRef(gen.ErrorReasonFingerprintChanged),
+		Message: "The certificate of the other VVMDM changed again.",
+	}
+	if state, err := s.pairing.State(r.Context()); err == nil && state.Fingerprint != "" {
+		body.Fingerprint = &state.Fingerprint
+	}
+	s.writeErrorBody(w, http.StatusConflict, body)
 }
 
 func (s *server) AcceptPairing(w http.ResponseWriter, r *http.Request) {

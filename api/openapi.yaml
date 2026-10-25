@@ -2222,7 +2222,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Return the pairing state"
-      description: "Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds."
+      description: "Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the peer is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the peer's node id and version (reason version when either differs); a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the peer revokes its credential here and gives revoked."
       responses:
         "200":
           description: "Pairing state"
@@ -2233,7 +2233,7 @@ paths:
     delete:
       operationId: unpairPeer
       summary: "Unpair from the peer"
-      description: "Deletes the peer record and nothing else, which also clears a revoked state. Without a peer it also returns 204."
+      description: "Tells the peer through its forgetPeer, best effort, then deletes the peer record and nothing else, which also clears a revoked state. A peer that could not be told learns it from the 401 peer_unknown its next request receives. Without a peer it also returns 204."
       responses:
         "204":
           description: "Unpaired"
@@ -2306,6 +2306,33 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/peer/certificate:
+    post:
+      operationId: confirmPeerCertificate
+      summary: "Trust the peer's changed certificate"
+      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerCertificateRequest"
+      responses:
+        "200":
+          description: "Pairing state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerState"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/peer/pairings:
     post:
@@ -5592,7 +5619,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates and activity are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -12353,6 +12380,14 @@ components:
       properties:
         address:
           type: string
+    PeerCertificateRequest:
+      type: object
+      required: [fingerprint]
+      additionalProperties: false
+      properties:
+        fingerprint:
+          type: string
+          description: "The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI"
     PairingRequestNode:
       type: object
       required: [id, name, address, version]
@@ -12603,3 +12638,4 @@ components:
         - unsupported_version
         - peer_unreachable
         - certificate_untrusted
+        - fingerprint_changed
