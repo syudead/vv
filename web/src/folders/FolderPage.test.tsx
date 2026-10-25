@@ -418,12 +418,39 @@ describe("FolderPage", () => {
     expect(
       child.compareDocumentPosition(movie) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByRole("checkbox")).toBeNull();
 
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
     expect(headings).toEqual(["Folders 1", "Videos 1"]);
+  });
+
+  it("所有者はフォルダの動画を選ぶと選択バーが出て、Escape で解け、ゲストには選択が無い", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderFolders("/folders/3/A");
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "x"' }));
+    expect(screen.getByText("1 video selected")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("1 video selected")).toBeNull();
+    unmount();
+
+    renderFolders("/folders/3/A", "guest");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("最上位の検索結果でも動画を選べ、Shift でチェックすると間の動画も選ぶ", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "x"' }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select "z"' }));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByText("3 videos selected")).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: 'Select "y"' }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("パンくずに現在地までの段を出し、現在地はリンクにしない", async () => {
