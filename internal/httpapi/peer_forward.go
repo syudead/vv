@@ -103,11 +103,14 @@ func (s *server) forwardRemoteVideo(w http.ResponseWriter, r *http.Request, id i
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if op.rewrite == nil || resp.StatusCode != http.StatusOK {
+	switch {
+	case op.rewrite == nil || resp.StatusCode != http.StatusOK:
 		s.passThrough(w, resp)
-		return
+	case r.Method == http.MethodHead:
+		writeRewrittenHead(w, resp)
+	default:
+		s.writeRewritten(w, resp, op.rewrite)
 	}
-	s.writeRewritten(w, resp, op.rewrite)
 }
 
 // remoteRequest is r for the peer at path, keeping the query with only the remote context ids.
@@ -158,6 +161,17 @@ func (s *server) passThrough(w http.ResponseWriter, resp *http.Response) {
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		s.logger.Debug("the forwarded response ended early", slog.Any("error", err))
 	}
+}
+
+// writeRewrittenHead answers a HEAD of a rewritten answer, which has no body to rewrite; the peer's length is
+// not the rewritten one, so it is left out.
+func writeRewrittenHead(w http.ResponseWriter, resp *http.Response) {
+	for _, name := range []string{"Content-Type", "Cache-Control"} {
+		if value := resp.Header.Get(name); value != "" {
+			w.Header().Set(name, value)
+		}
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewrite remoteRewrite) {

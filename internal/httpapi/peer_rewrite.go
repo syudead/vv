@@ -7,8 +7,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout; rewrite,
-// when set, turns a 200 answer into this node's id space, and without it the answer passes through.
+// remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
+// an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
+// space, and without it the answer passes through.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
@@ -27,7 +28,7 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/subtitles":              {},
 	"GET /api/videos/{id}/transcode-start":        {},
 	"PUT /api/videos/{id}/display-name":           {rewrite: rewriteAs(rewriteRemoteVideo)},
-	"PUT /api/videos/{id}/thumbnail-position":     {rewrite: rewriteAs(rewriteRemoteVideo)},
+	"PUT /api/videos/{id}/thumbnail-position":     {media: true, rewrite: rewriteAs(rewriteRemoteVideo)},
 	"GET /api/videos/{id}/stream":                 {media: true},
 	"GET /api/videos/{id}/preview":                {media: true},
 	"GET /api/videos/{id}/transcode.mp4":          {media: true},

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -196,4 +197,51 @@ func TestRemoteVideoWithAStoppedPeerIsUnavailable(t *testing.T) {
 	// While unreachable, the request is refused without trying the peer.
 	again := b.owner(http.MethodGet, f.remotePath("a", "/thumbnail"), "")
 	assertErrorBody(t, "届かない間のサムネイル", again.Code, again.Body.Bytes(), unavailable)
+}
+
+func TestRemoteVideoHeadAnswersWithoutABody(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+
+	rec := b.owner(http.MethodHead, f.remotePath("a", ""), "")
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+		t.Fatalf("リモートの詳細の HEAD: status = %d, body = %q", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
+		t.Errorf("Content-Type = %q, want %s", got, contentTypeJSON)
+	}
+}
+
+// recordingPeerLink answers every forwarded request with one video and keeps whether it had a response timeout.
+type recordingPeerLink struct {
+	media []bool
+}
+
+func (l *recordingPeerLink) Forward(req *http.Request, _, media bool) (*http.Response, error) {
+	l.media = append(l.media, media)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {contentTypeJSON}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":5,"title":"x"}`)),
+		Request:    req,
+	}, nil
+}
+
+func TestRemoteThumbnailPositionWaitsForThePeersExtraction(t *testing.T) {
+	link := &recordingPeerLink{}
+	env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
+		return Options{Videos: &audienceLibrary{fakeLibrary: sampleLibrary()}, PeerLink: link}
+	})
+	cookie := env.setup()
+
+	rec := env.serve(authRequest{
+		method: http.MethodPut, target: "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(5), 10) + "/thumbnail-position",
+		body: `{"positionMs":1000}`, cookies: []*http.Cookie{cookie},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("サムネイル位置: status = %d: %s", rec.Code, rec.Body)
+	}
+	// The peer extracts the frame before it answers, which may take longer than a call's response timeout.
+	if len(link.media) != 1 || !link.media[0] {
+		t.Errorf("転送の media = %v, want [true]（応答の時間制限なし）", link.media)
+	}
 }
