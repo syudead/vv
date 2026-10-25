@@ -92,7 +92,7 @@ sequenceDiagram
 ## Proposals
 
 A proposal is `{ id, status, request, operation, irreversible, targets,
-change, created, counts, startedAt?, finishedAt?, error? }`.
+change, created, impact?, counts, startedAt?, finishedAt?, error? }`.
 
 | Field | Meaning |
 | --- | --- |
@@ -102,6 +102,7 @@ change, created, counts, startedAt?, finishedAt?, error? }`.
 | `targets` | `{ kind, count, labels: [{ kind, id, name }] }`: what the card names, with up to 10 labels and the count |
 | `change` | The arguments after resolution, with names and ids |
 | `created` | Names that will be created |
+| `impact` | `{ videos }`, present on `mergeTag`, `mergePeople` and `mergeOrganizations` only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted by the server when the proposal is stored; the card shows it as the number of videos that move, since `targets.count` is the one destination |
 | `counts` | `{ total, applied, failed }` in user keys for batched operations, otherwise `0`/`1` |
 
 ### `POST /api/assistant/proposals/{id}/execute`

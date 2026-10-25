@@ -24,7 +24,7 @@ to `videos`, and are never rebuilt.
 | `id` | integer primary key | No | The proposal |
 | `status` | text | No | `proposed`, `approved`, `running`, `done`, `partial`, `stale`, `failed`, `discarded` |
 | `request` | text | No | The owner's text, or for an adopted candidate the run's `request`; the activity entry's label |
-| `plan` | text (JSON) | No | `domain.AssistantPlan`: the operation, the resolved ids with the labels the card showed, the arguments, the user keys of video targets |
+| `plan` | text (JSON) | No | `domain.AssistantPlan`: the operation, the resolved ids with the labels the card showed, the arguments, the user keys of video targets, and for a merge the `impact` video count the card showed |
 | `total`, `applied`, `failed` | integer | No | Counts in user keys, or 0 and 1 for an operation without video targets |
 | `error` | text | Yes | The first failed batch's `code` and `reason` |
 | `activity_id` | integer | Yes | The `assistant_run` entry, set on approval |
