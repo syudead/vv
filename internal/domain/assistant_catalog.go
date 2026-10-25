@@ -256,7 +256,7 @@ var assistantExclusions = slices.Concat(
 	excluded("Two operations in one", false, "setVideoDetails"),
 	excluded("Reads and tests sent as POST", false,
 		"summarizeVideoTags", "summarizeVideoEdits", "summarizeVideoCodeEdits", "tagImpact", "checkOllama",
-		"checkComfyUI", "checkAutoTaggingClassifier"),
+		"checkComfyUI", "checkAutoTaggingClassifier", "listWorkInfoFillTargets"),
 )
 
 // AssistantExcludedPathPrefix holds the assistant's own operations, which it never calls.

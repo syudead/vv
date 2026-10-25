@@ -264,5 +264,5 @@ classified when it is added.
 | Activity log actions | `retryActivity`, `undoActivity` | They act on an entry chosen in the log |
 | Playback and the server PC | `putVideoProgress`, `openVideoFile` | Playback state belongs to the player; opening an app is loopback only |
 | Two operations in one | `setVideoDetails` | `setVideoDisplayName` and `setVideoWorkInfo` cover it |
-| Reads and tests sent as `POST` | `summarizeVideoTags`, `summarizeVideoEdits`, `summarizeVideoCodeEdits`, `tagImpact`, `checkOllama`, `checkComfyUI`, `checkAutoTaggingClassifier` | They write nothing |
+| Reads and tests sent as `POST` | `summarizeVideoTags`, `summarizeVideoEdits`, `summarizeVideoCodeEdits`, `tagImpact`, `checkOllama`, `checkComfyUI`, `checkAutoTaggingClassifier`, `listWorkInfoFillTargets` | They write nothing |
 | The assistant's own operations | `/api/assistant/*` | The assistant does not call itself |
