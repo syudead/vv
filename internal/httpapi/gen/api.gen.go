@@ -534,6 +534,72 @@ func (e AssistantReadinessReason) Valid() bool {
 	}
 }
 
+// Defines values for AssistantReviewCandidateState.
+const (
+	AssistantReviewCandidateStateAdopted  AssistantReviewCandidateState = "adopted"
+	AssistantReviewCandidateStateListed   AssistantReviewCandidateState = "listed"
+	AssistantReviewCandidateStateRejected AssistantReviewCandidateState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewCandidateState enum.
+func (e AssistantReviewCandidateState) Valid() bool {
+	switch e {
+	case AssistantReviewCandidateStateAdopted:
+		return true
+	case AssistantReviewCandidateStateListed:
+		return true
+	case AssistantReviewCandidateStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReviewRunKind.
+const (
+	AssistantReviewRunKindPeople AssistantReviewRunKind = "people"
+	AssistantReviewRunKindTags   AssistantReviewRunKind = "tags"
+	AssistantReviewRunKindWorks  AssistantReviewRunKind = "works"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewRunKind enum.
+func (e AssistantReviewRunKind) Valid() bool {
+	switch e {
+	case AssistantReviewRunKindPeople:
+		return true
+	case AssistantReviewRunKindTags:
+		return true
+	case AssistantReviewRunKindWorks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReviewRunStatus.
+const (
+	AssistantReviewRunStatusDone        AssistantReviewRunStatus = "done"
+	AssistantReviewRunStatusFailed      AssistantReviewRunStatus = "failed"
+	AssistantReviewRunStatusInterrupted AssistantReviewRunStatus = "interrupted"
+	AssistantReviewRunStatusRunning     AssistantReviewRunStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewRunStatus enum.
+func (e AssistantReviewRunStatus) Valid() bool {
+	switch e {
+	case AssistantReviewRunStatusDone:
+		return true
+	case AssistantReviewRunStatusFailed:
+		return true
+	case AssistantReviewRunStatusInterrupted:
+		return true
+	case AssistantReviewRunStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssistantRouteKind.
 const (
 	AssistantRouteKindDuplicates   AssistantRouteKind = "duplicates"
@@ -616,6 +682,7 @@ const (
 	AssistantTurnOutcomeKindFilter      AssistantTurnOutcomeKind = "filter"
 	AssistantTurnOutcomeKindNavigate    AssistantTurnOutcomeKind = "navigate"
 	AssistantTurnOutcomeKindProposal    AssistantTurnOutcomeKind = "proposal"
+	AssistantTurnOutcomeKindReview      AssistantTurnOutcomeKind = "review"
 	AssistantTurnOutcomeKindUnreadable  AssistantTurnOutcomeKind = "unreadable"
 	AssistantTurnOutcomeKindUnsupported AssistantTurnOutcomeKind = "unsupported"
 )
@@ -632,6 +699,8 @@ func (e AssistantTurnOutcomeKind) Valid() bool {
 	case AssistantTurnOutcomeKindNavigate:
 		return true
 	case AssistantTurnOutcomeKindProposal:
+		return true
+	case AssistantTurnOutcomeKindReview:
 		return true
 	case AssistantTurnOutcomeKindUnreadable:
 		return true
@@ -3901,6 +3970,87 @@ type AssistantReadiness struct {
 // AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
 type AssistantReadinessReason string
 
+// AssistantReviewAdoption defines model for AssistantReviewAdoption.
+type AssistantReviewAdoption struct {
+	// Proposals The approved proposals, in the order of ids.
+	Proposals  []AssistantProposal `json:"proposals"`
+	SkippedIds []int64             `json:"skippedIds"`
+}
+
+// AssistantReviewCandidate defines model for AssistantReviewCandidate.
+type AssistantReviewCandidate struct {
+	Id int64 `json:"id"`
+
+	// Members Two tags or two people, or two or more videos.
+	Members []AssistantReviewMember `json:"members"`
+
+	// Probability The classifier's probability that the set is one entity or one work, 0.5 or more.
+	Probability float64                       `json:"probability"`
+	State       AssistantReviewCandidateState `json:"state"`
+}
+
+// AssistantReviewCandidateState defines model for AssistantReviewCandidate.State.
+type AssistantReviewCandidateState string
+
+// AssistantReviewCandidateIds defines model for AssistantReviewCandidateIds.
+type AssistantReviewCandidateIds struct {
+	Ids []int64 `json:"ids"`
+}
+
+// AssistantReviewMember defines model for AssistantReviewMember.
+type AssistantReviewMember struct {
+	// Count Videos the tag is on or the person is credited on; 0 for a video.
+	Count int `json:"count"`
+
+	// Id The tag or person, or a current library video of the member.
+	Id   int64              `json:"id"`
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The current name, or the video's title when the set was judged, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantReviewRejection defines model for AssistantReviewRejection.
+type AssistantReviewRejection struct {
+	RejectedIds []int64 `json:"rejectedIds"`
+	SkippedIds  []int64 `json:"skippedIds"`
+}
+
+// AssistantReviewRun A search for candidate sets of one kind and their judging by the classifier, one question per set.
+type AssistantReviewRun struct {
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Id         int64      `json:"id"`
+
+	// Judged Sets judged so far.
+	Judged int                    `json:"judged"`
+	Kind   AssistantReviewRunKind `json:"kind"`
+
+	// Listed Sets judged at 0.5 or more and listed.
+	Listed    int       `json:"listed"`
+	StartedAt time.Time `json:"startedAt"`
+
+	// Status interrupted was stopped by a restart.
+	Status AssistantReviewRunStatus `json:"status"`
+
+	// Total Candidate sets found.
+	Total int `json:"total"`
+}
+
+// AssistantReviewRunKind defines model for AssistantReviewRun.Kind.
+type AssistantReviewRunKind string
+
+// AssistantReviewRunStatus interrupted was stopped by a restart.
+type AssistantReviewRunStatus string
+
+// AssistantReviewRunPage defines model for AssistantReviewRunPage.
+type AssistantReviewRunPage struct {
+	Items      []AssistantReviewCandidate `json:"items"`
+	NextCursor *string                    `json:"nextCursor,omitempty"`
+
+	// Run A search for candidate sets of one kind and their judging by the classifier, one question per set.
+	Run AssistantReviewRun `json:"run"`
+}
+
 // AssistantRoute defines model for AssistantRoute.
 type AssistantRoute struct {
 	// Id The entity the screen shows, for the kinds that show one.
@@ -3934,7 +4084,7 @@ type AssistantTurnContext struct {
 	Sort *VideoSort `json:"sort,omitempty"`
 }
 
-// AssistantTurnOutcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+// AssistantTurnOutcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
 type AssistantTurnOutcome struct {
 	About      *AssistantTurnOutcomeAbout `json:"about,omitempty"`
 	Candidates *[]AssistantCandidate      `json:"candidates,omitempty"`
@@ -3958,6 +4108,9 @@ type AssistantTurnOutcome struct {
 	Proposal *AssistantProposal            `json:"proposal,omitempty"`
 	Question *AssistantTurnOutcomeQuestion `json:"question,omitempty"`
 
+	// Run A search for candidate sets of one kind and their judging by the classifier, one question per set.
+	Run *AssistantReviewRun `json:"run,omitempty"`
+
 	// Total The count the screens show for the same filter or entity.
 	Total *int `json:"total,omitempty"`
 }
@@ -3976,7 +4129,7 @@ type AssistantTurnRequest struct {
 	// Context The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
 	Context AssistantTurnContext `json:"context"`
 
-	// Previous One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+	// Previous One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
 	Previous *AssistantTurnOutcome `json:"previous,omitempty"`
 
 	// Text The owner's request, as untranslated user data; at most 500 characters.
@@ -3985,7 +4138,7 @@ type AssistantTurnRequest struct {
 
 // AssistantTurnResponse defines model for AssistantTurnResponse.
 type AssistantTurnResponse struct {
-	// Outcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+	// Outcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
 	Outcome AssistantTurnOutcome `json:"outcome"`
 }
 
@@ -7956,6 +8109,9 @@ type AddedToFilter = string
 // AssistantProposalId defines model for AssistantProposalId.
 type AssistantProposalId = int64
 
+// AssistantReviewRunId defines model for AssistantReviewRunId.
+type AssistantReviewRunId = int64
+
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -8116,6 +8272,14 @@ type ListActivityParams struct {
 type ListAssistantProposalsParams struct {
 	// Active Must be true.
 	Active bool `form:"active" json:"active"`
+}
+
+// GetAssistantReviewRunParams defines parameters for GetAssistantReviewRun.
+type GetAssistantReviewRunParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Candidates per page; 50 when omitted.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
@@ -8685,6 +8849,12 @@ type UndoActivityJSONRequestBody = ActivityUndoRequest
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
 
+// AdoptAssistantReviewCandidatesJSONRequestBody defines body for AdoptAssistantReviewCandidates for application/json ContentType.
+type AdoptAssistantReviewCandidatesJSONRequestBody = AssistantReviewCandidateIds
+
+// RejectAssistantReviewCandidatesJSONRequestBody defines body for RejectAssistantReviewCandidates for application/json ContentType.
+type RejectAssistantReviewCandidatesJSONRequestBody = AssistantReviewCandidateIds
+
 // CreateAssistantTurnJSONRequestBody defines body for CreateAssistantTurn for application/json ContentType.
 type CreateAssistantTurnJSONRequestBody = AssistantTurnRequest
 
@@ -8996,6 +9166,15 @@ type ServerInterface interface {
 	// GetAssistantReadiness Say whether the assistant can take a request
 	// (GET /api/assistant/readiness)
 	GetAssistantReadiness(w http.ResponseWriter, r *http.Request)
+	// GetAssistantReviewRun Read a review run and a page of its candidates
+	// (GET /api/assistant/review-runs/{id})
+	GetAssistantReviewRun(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId, params GetAssistantReviewRunParams)
+	// AdoptAssistantReviewCandidates Adopt review candidates
+	// (POST /api/assistant/review-runs/{id}/candidates/adopt)
+	AdoptAssistantReviewCandidates(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId)
+	// RejectAssistantReviewCandidates Reject review candidates
+	// (POST /api/assistant/review-runs/{id}/candidates/reject)
+	RejectAssistantReviewCandidates(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId)
 	// CreateAssistantTurn Interpret one request into one outcome
 	// (POST /api/assistant/turns)
 	CreateAssistantTurn(w http.ResponseWriter, r *http.Request)
@@ -10012,6 +10191,113 @@ func (siw *ServerInterfaceWrapper) GetAssistantReadiness(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssistantReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantReviewRun operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantReviewRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssistantReviewRunParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantReviewRun(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdoptAssistantReviewCandidates operation middleware
+func (siw *ServerInterfaceWrapper) AdoptAssistantReviewCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdoptAssistantReviewCandidates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectAssistantReviewCandidates operation middleware
+func (siw *ServerInterfaceWrapper) RejectAssistantReviewCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectAssistantReviewCandidates(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16555,6 +16841,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/review-runs/{id}", wrapper.GetAssistantReviewRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/review-runs/{id}/candidates/adopt", wrapper.AdoptAssistantReviewCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/review-runs/{id}/candidates/reject", wrapper.RejectAssistantReviewCandidates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)

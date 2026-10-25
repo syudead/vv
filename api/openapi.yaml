@@ -1914,6 +1914,94 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/assistant/review-runs/{id}:
+    get:
+      operationId: getAssistantReviewRun
+      summary: "Read a review run and a page of its candidates"
+      description: "Owner-only. Returns the run with its progress and its listed, adopted and rejected candidate sets, most probable first, each member with its current name and count. A candidate whose member no longer exists, such as the source of a merged tag, is left out, so a page may hold fewer than limit items. A missing run returns 404 not_found; an unknown cursor 400 invalid_request."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: "Candidates per page; 50 when omitted."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: "The run and one page of candidates"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewRunPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/review-runs/{id}/candidates/adopt:
+    post:
+      operationId: adoptAssistantReviewCandidates
+      summary: "Adopt review candidates"
+      description: "Owner-only. Stores one approved proposal per chosen candidate, in the order of ids, each running the set's one operation: mergeTag or mergePeople into the member with more videos, or createGroup of the videos named by their common title. The assistant worker executes them like any approved proposal. skippedIds lists the ids that are not listed in the run or whose member no longer exists. A missing run returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantReviewCandidateIds"
+      responses:
+        "202":
+          description: "The approved proposals"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewAdoption"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/review-runs/{id}/candidates/reject:
+    post:
+      operationId: rejectAssistantReviewCandidates
+      summary: "Reject review candidates"
+      description: "Owner-only. Marks the listed candidates among ids rejected and remembers their sets, which later runs of the kind do not judge again. skippedIds lists the ids that are not listed in the run. A missing run returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantReviewCandidateIds"
+      responses:
+        "200":
+          description: "The rejected and skipped ids"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewRejection"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/settings/comfyui:
     get:
       operationId: getComfyUISettings
@@ -5616,6 +5704,14 @@ components:
         type: string
 
   parameters:
+    AssistantReviewRunId:
+      name: id
+      in: path
+      required: true
+      description: "Assistant review run ID"
+      schema:
+        type: integer
+        format: int64
     AssistantProposalId:
       name: id
       in: path
@@ -6470,11 +6566,11 @@ components:
       type: object
       required: [kind]
       additionalProperties: false
-      description: "One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing."
+      description: "One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing."
       properties:
         kind:
           type: string
-          enum: [filter, navigate, answer, proposal, clarify, unsupported, unreadable]
+          enum: [filter, navigate, answer, proposal, review, clarify, unsupported, unreadable]
         criteria:
           $ref: "#/components/schemas/AssistantCriteria"
         destination:
@@ -6494,6 +6590,8 @@ components:
           $ref: "#/components/schemas/AssistantAnswerLink"
         proposal:
           $ref: "#/components/schemas/AssistantProposal"
+        run:
+          $ref: "#/components/schemas/AssistantReviewRun"
         about:
           type: string
           enum: [operation, target, value]
@@ -6583,6 +6681,137 @@ components:
     AssistantLabelKind:
       type: string
       enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot]
+
+    AssistantReviewRun:
+      type: object
+      required: [id, kind, status, total, judged, listed, startedAt]
+      additionalProperties: false
+      description: "A search for candidate sets of one kind and their judging by the classifier, one question per set."
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum: [tags, people, works]
+        status:
+          type: string
+          enum: [running, done, failed, interrupted]
+          description: "interrupted was stopped by a restart."
+        total:
+          type: integer
+          description: "Candidate sets found."
+        judged:
+          type: integer
+          description: "Sets judged so far."
+        listed:
+          type: integer
+          description: "Sets judged at 0.5 or more and listed."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    AssistantReviewRunPage:
+      type: object
+      required: [run, items]
+      additionalProperties: false
+      properties:
+        run:
+          $ref: "#/components/schemas/AssistantReviewRun"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantReviewCandidate"
+        nextCursor:
+          type: string
+
+    AssistantReviewCandidate:
+      type: object
+      required: [id, probability, members, state]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        probability:
+          type: number
+          format: double
+          description: "The classifier's probability that the set is one entity or one work, 0.5 or more."
+        members:
+          type: array
+          minItems: 2
+          description: "Two tags or two people, or two or more videos."
+          items:
+            $ref: "#/components/schemas/AssistantReviewMember"
+        state:
+          type: string
+          enum: [listed, adopted, rejected]
+
+    AssistantReviewMember:
+      type: object
+      required: [kind, id, name, count]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        id:
+          type: integer
+          format: int64
+          description: "The tag or person, or a current library video of the member."
+        name:
+          type: string
+          description: "The current name, or the video's title when the set was judged, as untranslated user data."
+        count:
+          type: integer
+          description: "Videos the tag is on or the person is credited on; 0 for a video."
+
+    AssistantReviewCandidateIds:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: integer
+            format: int64
+
+    AssistantReviewAdoption:
+      type: object
+      required: [proposals, skippedIds]
+      additionalProperties: false
+      properties:
+        proposals:
+          type: array
+          description: "The approved proposals, in the order of ids."
+          items:
+            $ref: "#/components/schemas/AssistantProposal"
+        skippedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    AssistantReviewRejection:
+      type: object
+      required: [rejectedIds, skippedIds]
+      additionalProperties: false
+      properties:
+        rejectedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        skippedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
 
     AssistantProposalList:
       type: object

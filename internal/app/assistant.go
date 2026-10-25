@@ -44,6 +44,9 @@ type AssistantOptions struct {
 	Videos       AssistantVideos
 	SmartFolders AssistantSmartFolders
 	History      AssistantHistory
+	// Reviews and Classifier are required by review runs; without Reviews an organize request is unsupported.
+	Reviews    AssistantReviewStore
+	Classifier Classifier
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 	// Nil uses time.Now.
@@ -59,9 +62,12 @@ type Assistant struct {
 	videos       AssistantVideos
 	smartFolders AssistantSmartFolders
 	history      AssistantHistory
+	reviews      AssistantReviewStore
+	classifier   Classifier
 	logger       *slog.Logger
 	now          func() time.Time
 	wake         chan struct{}
+	reviewWake   chan struct{}
 
 	runnerMu sync.RWMutex
 	runner   ActionRunner
@@ -79,10 +85,10 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 	}
 	return &Assistant{
 		store: opts.Store, generator: opts.Generator, vocabulary: opts.Vocabulary, videos: opts.Videos,
-		smartFolders: opts.SmartFolders, history: opts.History,
+		smartFolders: opts.SmartFolders, history: opts.History, reviews: opts.Reviews, classifier: opts.Classifier,
 		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
-		wake: make(chan struct{}, 1),
+		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1),
 	}
 }
 
@@ -111,18 +117,27 @@ func (a *Assistant) Wake() {
 // Propose stores a resolved plan for the card. A merge also stores the number of videos it moves; no other
 // operation carries an impact.
 func (a *Assistant) Propose(ctx context.Context, request string, plan domain.AssistantPlan) (domain.AssistantProposal, error) {
+	plan, err := a.withImpact(ctx, plan)
+	if err != nil {
+		return domain.AssistantProposal{}, err
+	}
+	return a.store.CreateProposal(ctx, request, plan, a.now())
+}
+
+// withImpact checks the plan's operation and sets the number of videos a merge moves.
+func (a *Assistant) withImpact(ctx context.Context, plan domain.AssistantPlan) (domain.AssistantPlan, error) {
 	if _, ok := plan.Action(); !ok {
-		return domain.AssistantProposal{}, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, plan.ActionID)
+		return plan, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, plan.ActionID)
 	}
 	plan.Impact = nil
 	if target, sources, ok := plan.MergeSources(); ok {
 		videos, err := a.store.MergeImpact(ctx, target, sources)
 		if err != nil {
-			return domain.AssistantProposal{}, err
+			return plan, err
 		}
 		plan.Impact = &domain.AssistantImpact{Videos: videos}
 	}
-	return a.store.CreateProposal(ctx, request, plan, a.now())
+	return plan, nil
 }
 
 // Approve moves the proposal to approved and wakes the worker; see AssistantStore.ApproveProposal for the errors.
@@ -144,8 +159,12 @@ func (a *Assistant) ActiveProposals(ctx context.Context) ([]domain.AssistantProp
 	return a.store.ActiveProposals(ctx, a.now().Add(-domain.AssistantProposalTTL))
 }
 
-// Recover must run before Run: proposals whose thread is gone are deleted and runs a restart stopped fail.
+// Recover must run before Run and RunReviews: proposals whose thread is gone are deleted, proposals a restart
+// stopped fail and review runs it stopped are interrupted.
 func (a *Assistant) Recover(ctx context.Context) error {
+	if err := a.recoverReviews(ctx); err != nil {
+		return err
+	}
 	recovered, err := a.store.RecoverProposals(ctx, a.now())
 	if err != nil {
 		return err

@@ -93,12 +93,13 @@ func (t *assistantTurn) interpret(ctx context.Context, o domain.AssistantOutcome
 		result, err = t.answer(ctx, o.Answer)
 	case domain.AssistantOutcomeAction:
 		result, err = t.action(ctx, o.Action)
+	case domain.AssistantOutcomeOrganize:
+		return t.organize(ctx, o.Organize)
 	case domain.AssistantOutcomeClarify:
 		return domain.AssistantTurnResult{
 			Kind: domain.AssistantTurnClarify, Clarify: &domain.AssistantClarification{About: o.Clarify.About},
 		}, nil
 	default:
-		// organize answers unsupported until review runs exist.
 		return domain.AssistantTurnResult{Kind: domain.AssistantTurnUnsupported}, nil
 	}
 	if err != nil {

@@ -10,8 +10,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// AssistantProposals interprets requests and approves and reads the assistant's write proposals; app.Assistant
-// implements it.
+// AssistantProposals interprets requests, approves and reads the assistant's write proposals, and reads and
+// decides its review runs; app.Assistant implements it.
 type AssistantProposals interface {
 	// Turn returns domain.ErrAssistantTooManyVideos for a target over the selection limit, and the generator's
 	// domain.ErrOllama* causes when the model cannot answer.
@@ -21,6 +21,12 @@ type AssistantProposals interface {
 	Approve(ctx context.Context, id int64) (domain.AssistantProposal, error)
 	Proposal(ctx context.Context, id int64) (domain.AssistantProposal, error)
 	ActiveProposals(ctx context.Context) ([]domain.AssistantProposal, error)
+	// ReviewPage returns domain.ErrNotFound for a missing run and domain.ErrInvalidCursor for a cursor it did not
+	// issue.
+	ReviewPage(ctx context.Context, runID int64, cursor string, limit int) (domain.AssistantReviewPage, error)
+	// AdoptReviewCandidates and RejectReviewCandidates return domain.ErrNotFound for a missing run.
+	AdoptReviewCandidates(ctx context.Context, runID int64, ids []int64) ([]domain.AssistantProposal, []int64, error)
+	RejectReviewCandidates(ctx context.Context, runID int64, ids []int64) ([]int64, []int64, error)
 }
 
 // assistantCardLabels is how many targets the card names.

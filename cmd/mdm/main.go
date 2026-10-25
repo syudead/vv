@@ -252,11 +252,12 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
-	// The assistant interprets requests with the generation model and executes approved proposals through the
-	// screen API; its runner is registered once the HTTP server exists.
+	// The assistant interprets requests with the generation model, judges review sets with the classifier and
+	// executes approved proposals through the screen API; its runner is registered once the HTTP server exists.
 	assistant := app.NewAssistant(app.AssistantOptions{
 		Store: db.Assistant(), Generator: ollama.NewGenerator(settingsStore), Vocabulary: db.Assistant(),
-		Videos: libraryStore, SmartFolders: db.SmartFolders(), History: playbackStore, Logger: logger,
+		Videos: libraryStore, SmartFolders: db.SmartFolders(), History: playbackStore,
+		Reviews: db.Assistant(), Classifier: classifier, Logger: logger,
 	})
 	if err := assistant.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not recover the assistant proposals", slog.Any("error", err))
@@ -312,6 +313,7 @@ func run(opts runOptions) error {
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	workersDone.Go(func() { assistant.Run(backgroundCtx) })
+	workersDone.Go(func() { assistant.RunReviews(backgroundCtx) })
 	// Always stop scans and workers before closing the database, including listener failures and
 	// grace-period expiry. Register this defer after database cleanup so it runs first.
 	defer func() {
