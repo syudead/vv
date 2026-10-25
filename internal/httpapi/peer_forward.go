@@ -61,16 +61,25 @@ var remoteCollections = []remoteCollection{
 }
 
 func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation, merged map[string]bool) remoteCollection {
-	mux := http.NewServeMux()
-	for pattern := range operations {
+	own := map[string]remoteOperation{}
+	for pattern, op := range operations {
 		if strings.Contains(pattern, " "+prefix) {
-			mux.Handle(pattern, http.NotFoundHandler())
+			own[pattern] = op
 		}
 	}
-	for pattern := range merged {
+	return remoteCollection{prefix: prefix, noun: noun, operations: own, merged: merged, mux: operationMux(own, merged)}
+}
+
+// operationMux matches the patterns of operations and of answered, the operations this node answers itself.
+func operationMux(operations map[string]remoteOperation, answered map[string]bool) *http.ServeMux {
+	mux := http.NewServeMux()
+	for pattern := range operations {
 		mux.Handle(pattern, http.NotFoundHandler())
 	}
-	return remoteCollection{prefix: prefix, noun: noun, operations: operations, merged: merged, mux: mux}
+	for pattern := range answered {
+		mux.Handle(pattern, http.NotFoundHandler())
+	}
+	return mux
 }
 
 // remoteBoundary forwards a request whose path id names the peer's entity to the peer; any other request,
@@ -79,23 +88,25 @@ func newRemoteCollection(prefix, noun string, operations map[string]remoteOperat
 func (s *server) remoteBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		escaped := r.URL.EscapedPath()
-		for _, collection := range remoteCollections {
-			id, rest, ok := remoteEntityPath(collection.prefix, escaped)
-			if !ok || path.Clean(escaped) != escaped {
-				continue
+		if path.Clean(escaped) == escaped {
+			for _, collection := range remoteCollections {
+				id, rest, ok := remotePath(escaped, collection.prefix)
+				if ok && (!collection.merged[routePattern(collection.mux, r)] || isPeerRequest(r.Context())) {
+					s.forwardRemoteEntity(w, r, collection, id, rest)
+					return
+				}
 			}
-			if collection.merged[routePattern(collection.mux, r)] && !isPeerRequest(r.Context()) {
-				break
+			if id, rest, ok := remotePath(escaped, remoteGroupPrefix); ok {
+				s.forwardRemoteGroup(w, r, id, rest)
+				return
 			}
-			s.forwardRemoteEntity(w, r, collection, id, rest)
-			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// remoteEntityPath splits prefix{id}... into a remote id and the escaped rest of the path.
-func remoteEntityPath(prefix, path string) (id int64, rest string, ok bool) {
+// remotePath splits prefix{id}... into a remote id and the escaped rest of the path.
+func remotePath(path, prefix string) (id int64, rest string, ok bool) {
 	tail, found := strings.CutPrefix(path, prefix)
 	if !found {
 		return 0, "", false
@@ -123,6 +134,9 @@ func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, col
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return
 	}
+	if op.body != nil && !s.forwardedBody(w, r, out, op.body) {
+		return
+	}
 	s.forward(w, r, out, op)
 }
 
@@ -145,7 +159,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	}
 	defer func() { _ = resp.Body.Close() }()
 	switch {
-	case op.rewrite == nil || resp.StatusCode != http.StatusOK:
+	case op.rewrite == nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated):
 		s.passThrough(w, resp)
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
@@ -243,7 +257,7 @@ func (s *server) writeRewritten(w http.ResponseWriter, r *http.Request, resp *ht
 	if value := resp.Header.Get("Cache-Control"); value != "" {
 		w.Header().Set("Cache-Control", value)
 	}
-	writeJSON(w, http.StatusOK, value, s.logger)
+	writeJSON(w, resp.StatusCode, value, s.logger)
 }
 
 func (s *server) peerUnreachable(w http.ResponseWriter) {

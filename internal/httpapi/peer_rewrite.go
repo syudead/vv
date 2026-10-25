@@ -10,15 +10,19 @@ import (
 
 // remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
 // an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
-// space, and without it the answer passes through. request, when set, turns the request body into the peer's
-// id space, or answers r and reports false.
+// space, and without it the answer passes through. body, when set, turns the request body into the peer's ids;
+// request, when set, does so with this node's and the peer's data, or answers r and reports false.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
+	body    remoteBody
 	request func(s *server, w http.ResponseWriter, r *http.Request) bool
 }
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
+
+// remoteBody returns the body with the peer's own ids, or errMixedNodes when it names one of this node's.
+type remoteBody func(body []byte) ([]byte, error)
 
 // remoteVideoOperations are the operations under /api/videos/{id} offered for the peer's videos. Open,
 // progress, favorites, playlists, auto-tagging, probing and activity stay with each node and are absent.
@@ -180,10 +184,12 @@ func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin)
 			*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
 		}
 	}
-	group := item.Group
-	if group == nil {
-		return
+	if item.Group != nil {
+		rewriteRemoteGroup(item.Group, join)
 	}
+}
+
+func rewriteRemoteGroup(group *gen.LibraryGroup, join domain.VocabularyJoin) {
 	group.Id, group.OpenVideoId = domain.ToRemoteID(group.Id), domain.ToRemoteID(group.OpenVideoId)
 	group.Favorite, group.WatchState, group.WatchedCount, group.LastPlayedAt = nil, nil, nil, nil
 	for i := range group.VideoIds {
@@ -239,6 +245,43 @@ func rewriteRemoteKindRef(kind *gen.TagKindRef, join domain.VocabularyJoin) {
 	}
 }
 
+func rewriteRemoteGroupList(page *gen.GroupListPage, join domain.VocabularyJoin) {
+	for i := range page.Groups {
+		rewriteRemoteGroup(&page.Groups[i], join)
+	}
+}
+
+func rewriteRemoteGroupDetail(detail *gen.GroupDetail, join domain.VocabularyJoin) {
+	rewriteRemoteGroup(&detail.Group, join)
+	for i := range detail.Trail {
+		detail.Trail[i].Id = domain.ToRemoteID(detail.Trail[i].Id)
+	}
+	rewriteRemoteGroupItems(detail.Items, join)
+}
+
+func rewriteRemoteGroupItemPage(page *gen.GroupItemPage, join domain.VocabularyJoin) {
+	rewriteRemoteGroupItems(page.Items, join)
+}
+
+// rewriteRemoteGroupItems gives item ids the offset too, since moves and removals address items by them.
+func rewriteRemoteGroupItems(items []gen.GroupItem, join domain.VocabularyJoin) {
+	for i := range items {
+		item := &items[i]
+		item.Id = domain.ToRemoteID(item.Id)
+		if item.Video != nil {
+			rewriteRemoteVideo(item.Video, join)
+		}
+		if item.Group != nil {
+			rewriteRemoteGroup(item.Group, join)
+		}
+	}
+}
+
+func rewriteRemoteGroupTag(result *gen.GroupTagResult, join domain.VocabularyJoin) {
+	result.Tag.Id = join.Tag(result.Tag.Id, result.Tag.Name)
+	rewriteRemoteKindRef(result.Tag.Kind, join)
+}
+
 func rewriteRemoteTagKind(kind *gen.TagKind, join domain.VocabularyJoin) {
 	kind.Id = join.TagKind(kind.Id, kind.Name)
 }
@@ -252,4 +295,12 @@ func rewriteRemotePerson(person *gen.Person, join domain.VocabularyJoin) {
 func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain.VocabularyJoin) {
 	organization.Id = join.Organization(organization.Id, organization.Name)
 	rewriteRemoteOrganization(organization.Parent, join)
+}
+
+// rewriteRemoteOrganizeResult marks the peer's undo token so that its undo is forwarded too.
+func rewriteRemoteOrganizeResult(result *gen.OrganizeResult, _ domain.VocabularyJoin) {
+	result.UndoToken = remoteUndoPrefix + result.UndoToken
+	if result.GroupId != nil {
+		*result.GroupId = domain.ToRemoteID(*result.GroupId)
+	}
 }
