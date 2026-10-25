@@ -450,7 +450,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Return related videos"
-      description: "Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`."
+      description: "Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out."
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/VideoGroupContext"
@@ -2393,6 +2393,52 @@ paths:
       responses:
         "204":
           description: "Forgotten"
+
+  /api/peer/related:
+    post:
+      operationId: rankPeerRelated
+      security:
+        - sessionCookie: []
+        - {}
+      summary: "Score this node's videos against a video of the other node"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Scores the visible videos of this node, except `exclude`, against `clues` with the related-video scorer and returns one page in the related order (score, then newer addedAt, then larger id) after `cursor`. The clues carry no directory, so the same-directory clue is 0. See docs/design-docs/related-videos.md."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerRelatedRequest"
+      responses:
+        "200":
+          description: "One page of scored videos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerRelatedPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/videos/{id}/clues:
+    get:
+      operationId: getPeerRelatedClues
+      security:
+        - sessionCookie: []
+        - {}
+      summary: "Return the related-video clues of one video"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. A video the request's audience cannot see, or a missing one, returns 404."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: "The video's clues"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedClues"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/work-info-plugins:
     get:
@@ -12432,6 +12478,89 @@ components:
       properties:
         node:
           $ref: "#/components/schemas/PeerNode"
+    RelatedClues:
+      type: object
+      required: [tags, words, addedAt]
+      additionalProperties: false
+      description: "What the node holding a video sends so the other node can score its own videos against it; no directory."
+      properties:
+        fingerprint:
+          $ref: "#/components/schemas/RelatedFingerprint"
+        tags:
+          type: array
+          maxItems: 10000
+          description: "Names of the video's confirmed, tentative and folder-name tags"
+          items:
+            type: string
+        words:
+          type: array
+          maxItems: 10000
+          description: "The words the scorer takes from the title and the file name"
+          items:
+            type: string
+        addedAt:
+          type: string
+          format: date-time
+    RelatedFingerprint:
+      type: object
+      required: [version, intervalMs, frames]
+      additionalProperties: false
+      properties:
+        version:
+          type: integer
+        intervalMs:
+          type: integer
+          format: int64
+        frames:
+          type: string
+          format: byte
+          description: "The encoded frame hashes, as stored"
+    PeerRelatedRequest:
+      type: object
+      required: [clues]
+      additionalProperties: false
+      properties:
+        clues:
+          $ref: "#/components/schemas/RelatedClues"
+        exclude:
+          type: array
+          maxItems: 20000
+          description: "This node's video ids to leave out: the open video and its group members when held here"
+          items:
+            type: integer
+            format: int64
+        cursor:
+          type: string
+          description: "Previous `nextCursor`; omit to start at the beginning"
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+    PeerRelatedPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/PeerRelatedItem"
+        nextCursor:
+          type: string
+          description: "Value for the next cursor; omitted at the end"
+    PeerRelatedItem:
+      type: object
+      required: [score, video]
+      additionalProperties: false
+      properties:
+        score:
+          type: integer
+          format: int64
+          description: "The scorer's points in millionths"
+        video:
+          $ref: "#/components/schemas/Video"
     Error:
       type: object
       required: [code, message]

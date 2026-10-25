@@ -378,6 +378,25 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 	return f.related, f.relatedErr
 }
 
+// The related list over both nodes is tested with the real catalog (peer_related_test.go).
+var errFakeCatalogMerged = errors.New("the fake catalog has no related list over both nodes")
+
+func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+	return domain.MergedRelated{}, errFakeCatalogMerged
+}
+
+func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, []int64, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+	return domain.MergedRelated{}, errFakeCatalogMerged
+}
+
+func (f *fakeCatalog) PeerRelated(context.Context, domain.Audience, domain.RelatedClues, []int64, *domain.RelatedCursor, int) (domain.ScoredRelated, error) {
+	return domain.ScoredRelated{}, errFakeCatalogMerged
+}
+
+func (f *fakeCatalog) RelatedClues(context.Context, domain.Audience, int64) (domain.RelatedClues, bool, error) {
+	return domain.RelatedClues{}, false, errFakeCatalogMerged
+}
+
 func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.groupWindows = append(f.groupWindows, window)
 	f.groupContexts = append(f.groupContexts, opened.GroupID)

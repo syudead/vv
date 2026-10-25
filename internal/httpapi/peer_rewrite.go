@@ -21,7 +21,6 @@ type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
 // progress, favorites, playlists, auto-tagging, probing and activity stay with each node and are absent.
 var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}":                        {rewrite: rewriteAs(rewriteRemoteVideo)},
-	"GET /api/videos/{id}/related":                {rewrite: rewriteAs(rewriteRemoteRelated)},
 	"GET /api/videos/{id}/group-members":          {rewrite: rewriteAs(rewriteRemoteGroupMembers)},
 	"GET /api/videos/{id}/versions":               {rewrite: rewriteAs(rewriteRemoteVersions)},
 	"GET /api/videos/{id}/seek-thumbnail":         {rewrite: rewriteAs(rewriteRemoteSprite)},
