@@ -53,6 +53,7 @@ audience before paging ([authentication.md](authentication.md)).
 | The pairing code is 8 characters, one per node, valid 10 minutes, used once and kept in memory | A restart ending the code is the wanted behaviour |
 | A node has at most one peer; a second pairing answers `409 already_paired` | The owner unpairs first |
 | HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it | A public certificate rotates every 90 days; a self-signed one is pinned once |
+| A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
 | Rejected | Why |
 | --- | --- |

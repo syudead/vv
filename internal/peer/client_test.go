@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -34,6 +35,12 @@ func TestVersionVerifiesTheCertificate(t *testing.T) {
 	roots.AddCert(server.Certificate())
 	if version, err := New(Options{RootCAs: roots}).Version(ctx, domain.PeerTarget{Address: server.URL}); err != nil || version != "1.2.0" {
 		t.Errorf("信頼したルートで Version = %q, %v", version, err)
+	}
+	// The roots trust the certificate, but it does not name localhost.
+	byName := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+	_, err = New(Options{RootCAs: roots}).Version(ctx, domain.PeerTarget{Address: byName})
+	if !errors.As(err, &untrusted) || untrusted.Fingerprint != fingerprint {
+		t.Errorf("証明書にない名前での err = %v, want 指紋 %s の CertificateUntrustedError", err, fingerprint)
 	}
 	// A pin the certificate no longer matches refuses it even though the roots verify it.
 	_, err = New(Options{RootCAs: roots}).Version(ctx, domain.PeerTarget{Address: server.URL, PinnedSPKI: "changed"})

@@ -245,3 +245,43 @@ func TestRemoteThumbnailPositionWaitsForThePeersExtraction(t *testing.T) {
 		t.Errorf("転送の media = %v, want [true]（応答の時間制限なし）", link.media)
 	}
 }
+
+// typedPeerLink answers every forwarded request with a script body of one content type.
+type typedPeerLink struct{ contentType string }
+
+func (l typedPeerLink) Forward(req *http.Request, _, _ bool) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {l.contentType}},
+		Body:       io.NopCloser(strings.NewReader("<script>fetch('/api/tokens')</script>")),
+		Request:    req,
+	}, nil
+}
+
+func TestRemoteMediaCannotRunAsAPageOfThisNode(t *testing.T) {
+	for _, tc := range []struct {
+		peerType, wantType, wantDisposition string
+	}{
+		{"text/html; charset=utf-8", "application/octet-stream", "attachment"},
+		{"video/mp4", "video/mp4", ""},
+	} {
+		env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
+			return Options{Videos: &audienceLibrary{fakeLibrary: sampleLibrary()}, PeerLink: typedPeerLink{tc.peerType}}
+		})
+		cookie := env.setup()
+
+		rec := env.serve(authRequest{
+			method: http.MethodGet, target: "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(5), 10) + "/stream",
+			cookies: []*http.Cookie{cookie},
+		})
+		header := rec.Header()
+		if rec.Code != http.StatusOK || header.Get("Content-Type") != tc.wantType ||
+			header.Get("Content-Disposition") != tc.wantDisposition {
+			t.Errorf("%s: status = %d, Content-Type = %q, Content-Disposition = %q, want %s と %q",
+				tc.peerType, rec.Code, header.Get("Content-Type"), header.Get("Content-Disposition"), tc.wantType, tc.wantDisposition)
+		}
+		if header.Get("X-Content-Type-Options") != "nosniff" || header.Get("Content-Security-Policy") != "default-src 'none'; sandbox" {
+			t.Errorf("%s: nosniff = %q, CSP = %q", tc.peerType, header.Get("X-Content-Type-Options"), header.Get("Content-Security-Policy"))
+		}
+	}
+}

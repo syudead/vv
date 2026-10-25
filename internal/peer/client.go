@@ -65,46 +65,38 @@ var (
 )
 
 // httpClient is built per target because the pin is part of the TLS check.
-func (c *Client) httpClient(target domain.PeerTarget, host string, bounds limits) *http.Client {
+func (c *Client) httpClient(target domain.PeerTarget, bounds limits) *http.Client {
 	dialer := &net.Dialer{Timeout: connectTimeout}
 	transport := &http.Transport{
 		DialContext:         dialer.DialContext,
 		TLSHandshakeTimeout: connectTimeout,
 		// The peer is on the LAN; an environment proxy would not reach it.
-		Proxy: nil,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			// VerifyConnection below replaces the default check so a failure can name the fingerprint.
-			InsecureSkipVerify: true,
-			VerifyConnection:   verifyPeer(host, target.PinnedSPKI, c.roots),
-		},
+		Proxy:                 nil,
+		TLSClientConfig:       tlsConfig(target.PinnedSPKI, c.roots),
 		ResponseHeaderTimeout: bounds.header,
 		DisableKeepAlives:     true,
 	}
 	return &http.Client{Transport: transport, Timeout: bounds.total}
 }
 
-func verifyPeer(host, pinned string, roots *x509.CertPool) func(tls.ConnectionState) error {
+// tlsConfig verifies an unpinned peer with the roots and its host name. A confirmed pin replaces
+// the roots, so only a pinned peer skips the chain check, and VerifyConnection compares its SPKI.
+func tlsConfig(pinned string, roots *x509.CertPool) *tls.Config {
+	pinnedOnly := pinned != ""
+	config := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, InsecureSkipVerify: pinnedOnly}
+	if pinnedOnly {
+		config.VerifyConnection = verifyPin(pinned)
+	}
+	return config
+}
+
+func verifyPin(pinned string) func(tls.ConnectionState) error {
 	return func(state tls.ConnectionState) error {
 		if len(state.PeerCertificates) == 0 {
 			return errors.New("the peer presented no certificate")
 		}
-		leaf := state.PeerCertificates[0]
-		fingerprint := Fingerprint(leaf)
-		// A confirmed pin replaces the roots: a changed certificate stops until the owner confirms it again.
-		if pinned != "" {
-			if fingerprint != pinned {
-				return &domain.CertificateUntrustedError{Fingerprint: fingerprint}
-			}
-			return nil
-		}
-		intermediates := x509.NewCertPool()
-		for _, cert := range state.PeerCertificates[1:] {
-			intermediates.AddCert(cert)
-		}
-		if _, err := leaf.Verify(x509.VerifyOptions{
-			Roots: roots, Intermediates: intermediates, DNSName: host,
-		}); err != nil {
+		// A changed certificate stops until the owner confirms it again.
+		if fingerprint := Fingerprint(state.PeerCertificates[0]); fingerprint != pinned {
 			return &domain.CertificateUntrustedError{Fingerprint: fingerprint}
 		}
 		return nil
@@ -222,11 +214,16 @@ func (c *Client) send(
 
 // do answers the domain's pairing error for a request that got no response.
 func (c *Client) do(req *http.Request, target domain.PeerTarget, bounds limits) (*http.Response, error) {
-	resp, err := c.httpClient(target, req.URL.Hostname(), bounds).Do(req)
+	resp, err := c.httpClient(target, bounds).Do(req)
 	if err != nil {
 		var untrusted *domain.CertificateUntrustedError
 		if errors.As(err, &untrusted) {
 			return nil, untrusted
+		}
+		// The owner compares the fingerprint of a certificate the roots or the host name did not verify.
+		var unverified *tls.CertificateVerificationError
+		if errors.As(err, &unverified) && len(unverified.UnverifiedCertificates) > 0 {
+			return nil, &domain.CertificateUntrustedError{Fingerprint: Fingerprint(unverified.UnverifiedCertificates[0])}
 		}
 		return nil, &domain.PeerUnreachableError{
 			Message: "Could not reach the other VVMDM at " + target.Address + ".", Cause: err,
