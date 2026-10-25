@@ -26,6 +26,10 @@ type CatalogIndexStore interface {
 	// Return visible group members in playback order, loading details only within window; contextID
 	// zero means no opened group. See docs/design-docs/catalog-organization.md.
 	VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	// RelatedTagNames returns the names of the tags with ids; an id without a tag is absent.
+	RelatedTagNames(ctx context.Context, ids []int64) (map[int64]string, error)
+	// RelatedTagIDs resolves names, synonyms included, to tag ids; a name without a tag is absent.
+	RelatedTagIDs(ctx context.Context, names []string) (map[string]int64, error)
 }
 
 // Hover previews count as available only when manifest and file size agree.
@@ -127,39 +131,11 @@ func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, vide
 // ungrouped navigation uses the top related video and leaves previous navigation to the UI.
 func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error) {
 	first := page.After == nil
-	window := domain.GroupWindow{}
-	if first {
-		window = domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}
-	}
-	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, page.Context(), window)
+	ranking, err := c.rankRelated(ctx, audience, video, page.Context(), first)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	members := map[int64]struct{}{}
-	if grouped {
-		for _, member := range group.MemberIDs {
-			members[member] = struct{}{}
-		}
-	}
-
-	candidates, err := c.index.RelatedCandidates(ctx, audience, video.ID)
-	if err != nil {
-		return domain.RelatedVideos{}, err
-	}
-	var ranked []domain.RankedRelated
-	selfIndex := slices.IndexFunc(candidates, func(candidate domain.RelatedCandidate) bool {
-		return candidate.VideoID == video.ID
-	})
-	if selfIndex >= 0 {
-		self := candidates[selfIndex]
-		others := slices.DeleteFunc(slices.Clone(candidates), func(candidate domain.RelatedCandidate) bool {
-			_, member := members[candidate.VideoID]
-			return member
-		})
-		ranked = domain.RankRelated(c.scorer, self, others)
-	}
-
-	shown, next := domain.PageRelated(ranked, page.After, page.Limit)
+	shown, next := domain.PageRelated(ranking.ranked, page.After, page.Limit)
 	ids := make([]int64, 0, len(shown))
 	for _, item := range shown {
 		ids = append(ids, item.VideoID)
@@ -172,13 +148,60 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 	if !first {
 		return related, nil
 	}
-	if grouped {
-		related.PrevID, related.NextID = group.Neighbors(video.ID)
-		related.Group = &group
-	} else if len(ranked) > 0 {
-		related.NextID = ranked[0].VideoID
+	if ranking.grouped {
+		related.PrevID, related.NextID = ranking.group.Neighbors(video.ID)
+		related.Group = &ranking.group
+	} else if len(ranking.ranked) > 0 {
+		related.NextID = ranking.ranked[0].VideoID
 	}
 	return related, nil
+}
+
+// relatedRanking is the open video's context group and its ranked candidates; self is nil when the
+// audience cannot see the video.
+type relatedRanking struct {
+	ranked  []domain.RankedRelated
+	self    *domain.RelatedCandidate
+	group   domain.VideoGroup
+	grouped bool
+}
+
+// rankRelated loads the group window only on the first page, since later pages show no group.
+func (c *Catalog) rankRelated(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, first bool) (relatedRanking, error) {
+	window := domain.GroupWindow{}
+	if first {
+		window = domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}
+	}
+	var ranking relatedRanking
+	var err error
+	ranking.group, ranking.grouped, err = c.index.VideoGroup(ctx, audience, video.ID, opened, window)
+	if err != nil {
+		return relatedRanking{}, err
+	}
+	members := map[int64]struct{}{}
+	if ranking.grouped {
+		for _, member := range ranking.group.MemberIDs {
+			members[member] = struct{}{}
+		}
+	}
+
+	candidates, err := c.index.RelatedCandidates(ctx, audience, video.ID)
+	if err != nil {
+		return relatedRanking{}, err
+	}
+	selfIndex := slices.IndexFunc(candidates, func(candidate domain.RelatedCandidate) bool {
+		return candidate.VideoID == video.ID
+	})
+	if selfIndex >= 0 {
+		self := candidates[selfIndex]
+		others := slices.DeleteFunc(slices.Clone(candidates), func(candidate domain.RelatedCandidate) bool {
+			_, member := members[candidate.VideoID]
+			return member
+		})
+		ranking.ranked = domain.RankRelated(c.scorer, self, others)
+		ranking.self = &self
+	}
+	return ranking, nil
 }
 
 // RetryProbe atomically resets failed state and queues work; nonfailed or missing videos return

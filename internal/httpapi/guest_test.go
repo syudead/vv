@@ -578,13 +578,14 @@ func TestGuestOperationsRequireConfiguredAccount(t *testing.T) {
 			continue
 		}
 		target := strings.ReplaceAll(operationTarget(op), "/1", "/"+strconv.FormatInt(configured.ids["a"], 10))
-		rec := configured.env.get(target)
+		req := authRequest{method: op.method, target: target}
+		rec := configured.env.serve(req)
 		if rec.Code == http.StatusUnauthorized {
 			t.Errorf("設定済みの %s: 401: %s", target, rec.Body)
 		}
 		assertAudience(t, "設定済みの "+target, rec, "guest")
 
-		assertUnauthenticated(t, "未設定の "+target, unconfigured.env.get(target))
-		assertAudience(t, "未設定の "+target, unconfigured.env.get(target), "guest")
+		assertUnauthenticated(t, "未設定の "+target, unconfigured.env.serve(req))
+		assertAudience(t, "未設定の "+target, unconfigured.env.serve(req), "guest")
 	}
 }

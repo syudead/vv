@@ -41,24 +41,35 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
+// remoteVideoMerged are the operations for a remote id that this node answers itself, from both nodes.
+var remoteVideoMerged = map[string]bool{
+	"GET /api/videos/{id}/related": true,
+}
+
 var remoteVideoMux = func() *http.ServeMux {
 	mux := http.NewServeMux()
 	for pattern := range remoteVideoOperations {
 		mux.Handle(pattern, http.NotFoundHandler())
 	}
+	for pattern := range remoteVideoMerged {
+		mux.Handle(pattern, http.NotFoundHandler())
+	}
 	return mux
 }()
 
-// remoteBoundary forwards a request whose video id names the peer's video to the peer; any other request
-// goes to next. An unclean path also goes to next, whose redirect brings it back cleaned.
+// remoteBoundary forwards a request whose video id names the peer's video to the peer; any other request,
+// and one of remoteVideoMerged from the screens, goes to next. An unclean path also goes to next, whose
+// redirect brings it back cleaned.
 func (s *server) remoteBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		escaped := r.URL.EscapedPath()
-		if id, rest, ok := remoteVideoPath(escaped); ok && path.Clean(escaped) == escaped {
-			s.forwardRemoteVideo(w, r, id, rest)
+		id, rest, remote := remoteVideoPath(escaped)
+		if !remote || path.Clean(escaped) != escaped ||
+			remoteVideoMerged[routePattern(remoteVideoMux, r)] && !isPeerRequest(r.Context()) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		s.forwardRemoteVideo(w, r, id, rest)
 	})
 }
 
@@ -121,17 +132,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 
 // remoteRequest is r for the peer at path with query, keeping only the remote context ids.
 func remoteRequest(r *http.Request, path string, query url.Values) (*http.Request, error) {
-	for _, name := range remoteContextParams {
-		if !query.Has(name) {
-			continue
-		}
-		id, err := strconv.ParseInt(query.Get(name), 10, 64)
-		if err != nil || !domain.IsRemoteID(id) {
-			query.Del(name)
-			continue
-		}
-		query.Set(name, strconv.FormatInt(domain.FromRemoteID(id), 10))
-	}
+	keepRemoteContext(query, query)
 	target, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -152,6 +153,22 @@ func remoteRequest(r *http.Request, path string, query url.Values) (*http.Reques
 		}
 	}
 	return out, nil
+}
+
+// keepRemoteContext sets in out the context ids of query that name the peer's group or smart folder, as the
+// peer's ids, and deletes the others from out.
+func keepRemoteContext(query, out url.Values) {
+	for _, name := range remoteContextParams {
+		if !query.Has(name) {
+			continue
+		}
+		id, err := strconv.ParseInt(query.Get(name), 10, 64)
+		if err != nil || !domain.IsRemoteID(id) {
+			out.Del(name)
+			continue
+		}
+		out.Set(name, strconv.FormatInt(domain.FromRemoteID(id), 10))
+	}
 }
 
 // passThrough keeps the peer's status, error code and reason, and streams media as it arrives.
