@@ -9,6 +9,12 @@ information through
 External tools use only `/api/v1` and `/mcp`; the screens' `/api/*` changes
 without notice.
 
+`/api/v1` and `/mcp` read and write the videos, tags, people and
+organizations of the VVMDM they are called on. When it is
+[paired with another VVMDM](running-vv.md#pair-two-vvmdms), that VVMDM's
+videos are not listed, and a tag renamed, merged or deleted through the API
+changes this VVMDM only; call the other VVMDM's API for its library.
+
 ```mermaid
 flowchart LR
   tool[External tool] -->|Bearer token| v1["/api/v1"]

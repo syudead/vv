@@ -187,6 +187,35 @@ Docker Compose sets these for the container. Media folders are managed in
 Settings, not in a configuration file. All invalid values are reported
 together at startup.
 
+## Pair two VVMDMs
+
+Two VVMDMs of the same release on one LAN can be paired so that each shows
+both libraries ([peer-library.md](../design-docs/peer-library.md)). Pairing
+has no environment variable; the owner does it under Settings, Pairing.
+
+1. On VVMDM A, press **Show pairing code**.
+2. On VVMDM B, enter A's address, A's code and B's own address as A can reach
+   it, and press **Pair**.
+3. When B shows a certificate fingerprint, compare it with the certificate in
+   front of A and press **Trust and pair**.
+
+B confirms only the certificate of the address it enters. When B's own
+address is HTTPS with a certificate A cannot verify, such as a self-signed
+one, pairing from B fails with that certificate's fingerprint in the message;
+pair from A instead, entering B's address and B's code.
+
+| Requirement | Why |
+| --- | --- |
+| Each VVMDM reaches the other at the address entered, over `http://` or `https://` | Every merged list and every forwarded request calls the other VVMDM |
+| Both run the same release | A different version shows the pairing as not connected until both are updated |
+| The address has no path | VVMDM is served at the root of its address |
+
+A paired VVMDM that stops answering hides its videos, groups and smart folders
+and shows a notice until it is back. Changing the address under Pairing keeps
+the pairing; unpairing on either side ends it on both, and a side that was
+stopped at the time shows **Unpaired by the other side** until its owner
+removes the pairing.
+
 ## Account setup
 
 VVMDM has a single account, and until it exists the first person to reach the
@@ -373,7 +402,7 @@ that scanning cannot restore, next to an index that a scan rebuilds:
 | --- | --- | --- |
 | Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_keyframe_spacing`, `video_media_info`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
 | User data | `virtual_videos`, `playback_progress`, `watch_history`, `tags`, `tag_names`, `video_tags`, `auto_tag_rejections`, `rejected_tag_names`, `public_videos`, `video_overrides`, `thumbnail_images`, `video_edits`, `video_favorites`, `group_favorites`, `playlists`, `playlist_items`, `groups`, `group_items`, `group_exclusions`, `smart_folders`, `smart_folder_favorites`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `video_version_unbundles`, `video_version_judging_holds`, the activity log (`activity_entries`, `activity_entry_tags`, `activity_entry_keys`), `folder_group_overrides`, the work information (`video_work_info`, `video_work_dates`, `video_work_urls`, `video_work_external_ids`, `video_work_people`, `video_work_organizations`), people and organizations (`people`, `people_names`, `people_external_ids`, `people_links`, `person_images`, `person_favorites`, `organizations`, `organization_names`, `organization_external_ids`), and the work-info plugins with their setting values and last runs (`work_info_plugins`, `work_info_plugin_settings`, `work_info_plugin_runs`) | A backup only |
-| Configuration | `account`, `media_folders`, `settings`, `api_tokens` | A backup, or setting it up again |
+| Configuration | `account`, `media_folders`, `settings` (including this VVMDM's node id), `api_tokens`, `peer` (the paired VVMDM) | A backup, or setting it up again; a lost `peer` row is restored by pairing again |
 | Auto-tagging record | `auto_tag_queue` | Tagging the videos again under Settings, Auto-tagging; tags the owner removed can come back ([auto-tagging](../design-docs/auto-tagging.md)) |
 | Session | `sessions` | Logging in again |
 
