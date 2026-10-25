@@ -143,7 +143,7 @@ source and the link against the plugin it executes and answers
 | --- | --- |
 | The page picks the ID or the link and always sends it | The rule would live in Go and in TypeScript |
 | A lookup endpoint the page calls before every fetch | One request more on every fetch for a choice needed only when several links match |
-| Fetching every handled link and comparing the results | Up to 20 runs of 30 seconds each before the owner sees anything |
+| Fetching every handled link and comparing the results | Up to 100 runs of 30 seconds each before the owner sees anything |
 
 ## A link fetch is the fetch operation with a url
 
@@ -191,7 +191,7 @@ fetch.
 | `image` | The image at the request's `imageIndex` becomes the face after the commit, replacing a stored one |
 | `aliases` | Appends the chosen aliases the person does not have; those over 50 are skipped as `too_many` |
 | `externalIds` | Appends the chosen IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
-| `links` | Appends the chosen links the person does not have; those over 20 are skipped as `too_many` |
+| `links` | Appends the chosen links the person does not have; those over 100 are skipped as `too_many` |
 
 A value that would make the person invalid is skipped as `invalid`, and the
 rest applies. A `taken` ID never merges the two people: the owner merges them

@@ -11,7 +11,7 @@ const (
 	PersonBirthplaceMaxLength = 200
 	PersonBioMaxLength        = 5_000
 	PersonCupMaxLength        = 3
-	PersonLinksMaxCount       = 20
+	PersonLinksMaxCount       = 100
 	PersonHeightMinCm         = 50
 	PersonHeightMaxCm         = 300
 	PersonMeasurementMinCm    = 30

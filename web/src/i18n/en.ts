@@ -1970,6 +1970,7 @@ export const en = {
           taken: (name: string) => `already linked to ${name}`,
           tooManyAliases: "over the limit for aliases",
           tooManyIds: "over the limit for external IDs",
+          tooManyLinks: "over the limit for links",
           invalid: "too long or contains characters that can't be used",
         },
       },
