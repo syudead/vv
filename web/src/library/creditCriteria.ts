@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type { CreditKind } from "../api/credits";
 
-/** Keep library-only credit filters out of shared ListCriteria and folder URLs. */
+/** Credit filters stay out of shared ListCriteria; the library and folder pages keep them as extra URL parameters. */
 
 export const PERSON_PARAM = "person";
 

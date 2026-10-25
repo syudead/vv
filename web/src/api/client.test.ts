@@ -951,17 +951,22 @@ describe("list API client", () => {
     );
   });
 
-  it("does not send tag to the folder list even if a caller smuggles one in", async () => {
+  it("sends tag and credit filters to the folder list", async () => {
     const fetch = stubFetch();
-    // ListFolderVideosParams has no `tag` field, so a type-safe caller can't
-    // pass one. Bypass the type system to prove listFolderVideos itself never
-    // reads or forwards it; tag filtering is not supported on folder pages.
-    const params = {
+    await listFolderVideos({
       folder: { rootId: 3, path: "" },
       tag: [1, 2],
-    } as unknown as Parameters<typeof listFolderVideos>[0];
-    await listFolderVideos(params);
-    expect(requestedURL(fetch).searchParams.has("tag")).toBe(false);
+      person: 5,
+      personRole: "director",
+      organization: 6,
+      tagKind: 7,
+    });
+    const params = requestedURL(fetch).searchParams;
+    expect(params.getAll("tag")).toEqual(["1", "2"]);
+    expect(params.get("person")).toBe("5");
+    expect(params.get("personRole")).toBe("director");
+    expect(params.get("organization")).toBe("6");
+    expect(params.get("tagKind")).toBe("7");
   });
 
   it("listLibrary keeps smart folder items as summaries", async () => {

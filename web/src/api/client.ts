@@ -302,7 +302,6 @@ export interface ListFilterParams {
 
 export const MAX_TAG_FILTER_COUNT = 16;
 
-/** Tag filtering applies to the library, not folder-video listings. */
 export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
@@ -435,8 +434,10 @@ export function getFolder(
   });
 }
 
-export interface ListFolderVideosParams extends ListFilterParams {
+export interface ListFolderVideosParams extends ListFilterParams, CreditFilterParams {
   folder: FolderRef;
+  /** AND up to 16 tag IDs, as in listVideos. */
+  tag?: number[];
   /** direct includes immediate children; subtree includes descendants. Omit for the server default. */
   scope?: FolderScope;
 }
@@ -445,6 +446,8 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
   const query = folderQuery(params.folder);
   if (params.scope !== undefined) query.set("scope", params.scope);
   setListFilters(query, params);
+  setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   return request<VideoPage>(
     `/api/folders/${String(params.folder.rootId)}/videos?${query.toString()}`,
     { signal: params.signal },

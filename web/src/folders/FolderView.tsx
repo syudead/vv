@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,7 +25,7 @@ import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
-import { criteriaKey, hasConditions } from "../videoList/listCriteria";
+import { criteriaKey } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useVideoSelection } from "../videoList/useVideoSelection";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
@@ -33,7 +34,12 @@ import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
 import TopBarPortal from "../shell/TopBarPortal";
-import FolderToolbar from "./FolderToolbar";
+import LibraryToolbar from "../library/LibraryToolbar";
+import {
+  libraryFilterParams,
+  useLibraryFilters,
+  useLibraryFilterValues,
+} from "../library/useLibraryFilters";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
 import { FolderEmpty, FolderNotFound, LoadFailed } from "./states";
 import { useArrival } from "./useArrival";
@@ -48,13 +54,16 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     searchField,
     changeSort,
     shuffle,
-    changeFavorite,
     commitQuery,
-    clearAll,
+    apply,
+    view,
+    changeView,
     changeZoom: saveZoom,
-  } = useConditions();
+  } = useConditions(libraryFilterParams);
   const scan = useScanControls();
   const owner = useAudience() === "owner";
+  const { tagIds, credits } = useLibraryFilterValues(owner);
+  const filterKey = useMemo(() => ({ tags: tagIds, ...credits }), [tagIds, credits]);
   const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";
   // Search recursively when a query exists; otherwise filter only direct children.
@@ -64,7 +73,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   // Restore the cached list when returning from playback.
   const key = folderKey(folder);
   const [restored] = useState(() => {
-    const held = takeListSnapshot({ ...criteria, folder: key });
+    const held = takeListSnapshot({ ...criteria, ...filterKey, folder: key });
     return held?.folderListing === undefined ? undefined : held;
   });
   const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
@@ -76,6 +85,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       sort: criteria.sort,
       seed: criteria.seed,
       scope,
+      tag: tagIds,
+      ...credits,
     },
     restored,
     folder,
@@ -86,6 +97,18 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   useEffect(() => {
     resetPreview();
   }, [resetPreview, videos.items, zoom]);
+  const filters = useLibraryFilters({
+    owner,
+    criteria,
+    apply,
+    tagIds,
+    credits,
+    missingTagIds: videos.missingTagIds,
+    restored: restored !== undefined,
+    resetPreview,
+    searchField,
+  });
+  const filtered = filters.conditioned;
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = useCallback(
     (next: typeof zoom) => {
@@ -150,9 +173,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const { reload: reloadListing } = listing;
   const { reload: reloadVideos, refreshInPlace: refreshVideos } = videos;
   const { refresh: refreshListing } = listing;
-  const selection = useVideoSelection(videos.items, owner, refreshVideos);
+  const selection = useVideoSelection(
+    videos.items,
+    owner,
+    refreshVideos,
+    view === "grid",
+  );
   const { clear: clearSelection } = selection;
-  const listKey = criteriaKey(criteria);
+  const listKey = `${criteriaKey(criteria)}\u0000${filters.signature}`;
   useEffect(() => clearSelection(), [clearSelection, listKey]);
   // Refresh in place after automatic imports, retaining visible rows.
   const refreshOpenLists = useCallback(() => {
@@ -223,7 +251,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const saveSnapshot = useCallback(() => {
     if (listing.data === null || reloadPending.current) return;
     saveListSnapshot(
-      { ...criteria, folder: key },
+      { ...criteria, ...filterKey, folder: key },
       {
         items: videos.items,
         total: videos.total,
@@ -236,6 +264,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     );
   }, [
     criteria,
+    filterKey,
     key,
     listing.data,
     videos.cursor,
@@ -263,7 +292,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     !videos.loading &&
     summary !== undefined &&
     !searching &&
-    !hasConditions(criteria) &&
+    !filtered &&
     children.length === 0 &&
     videos.items.length === 0 &&
     videos.error === null;
@@ -279,6 +308,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       <FolderSearchResults
         folder={folder}
         videos={videos}
+        view={view}
         zoom={zoom}
         backTo={backTo}
         preview={preview}
@@ -306,10 +336,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   } else {
     body = (
       <FolderContents
-        criteria={criteria}
+        filtered={filtered}
         listingLoading={listing.loading}
         childFolders={children}
         videos={videos}
+        view={view}
         zoom={zoom}
         backTo={backTo}
         preview={preview}
@@ -342,7 +373,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       }
       toolbar={
         <TopBarPortal>
-          <FolderToolbar
+          <LibraryToolbar
             query={criteria.query}
             onQueryCommit={commitQuery}
             searchRef={searchField}
@@ -352,9 +383,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             onSortChange={changeSort}
             onShuffle={shuffle}
             favorite={criteria.favorite}
-            onFavoriteChange={changeFavorite}
-            canClear={hasConditions(criteria)}
-            onClear={clearAll}
+            {...filters.toolbar}
+            canClear={filtered}
+            onClear={filters.clearAll}
+            view={view}
+            onViewChange={(next) => {
+              resetPreview();
+              changeView(next);
+            }}
             zoom={zoom}
             onZoomChange={changeZoom}
           />
@@ -365,6 +401,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       {/* Snapshot immediately before navigation; display: contents preserves the layout's spacing. */}
       <div ref={listRef} onClick={saveSnapshot} className="contents">
         <div ref={selection.container} className="contents">
+          {filters.activeFilters}
           {body}
         </div>
       </div>

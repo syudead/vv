@@ -32,6 +32,8 @@ export function useVideoSelection(
   items: readonly LibraryItem[],
   owner: boolean,
   onChanged: () => void,
+  /** Boxes select grid cards only, so a list view turns them off. */
+  drawsBoxes = true,
 ) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const loaded = useMemo(
@@ -64,7 +66,7 @@ export function useVideoSelection(
   useMarqueeSelection({
     container,
     box,
-    enabled: owner,
+    enabled: owner && drawsBoxes,
     items,
     selection,
     setSelection,

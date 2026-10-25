@@ -2,7 +2,7 @@ import { LayoutGrid, List } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 
 import type { VideoSort } from "../api/client";
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
@@ -74,6 +74,9 @@ export function viewControls(
 
 export interface LibraryToolbarProps {
   nativeOrder?: NativeOrder;
+  /** Search field name and placeholder; omitted uses the library's. */
+  searchLabel?: UiText;
+  searchPlaceholder?: UiText;
   query: string;
   onQueryCommit: (next: string, mode: HistoryMode) => void;
   searchRef: RefObject<HTMLInputElement | null>;
@@ -116,6 +119,8 @@ export default function LibraryToolbar({
   onFilterOpen,
   nativeOrder,
   suggestions,
+  searchLabel,
+  searchPlaceholder,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
@@ -152,6 +157,8 @@ export default function LibraryToolbar({
           query={query}
           onCommit={onQueryCommit}
           inputRef={searchRef}
+          label={searchLabel}
+          placeholder={searchPlaceholder}
           suggestions={suggestions}
           commitOn="enter"
         />

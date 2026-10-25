@@ -154,8 +154,7 @@ export function useVideoPages({
           cursor: from,
           signal: controller.signal,
         };
-        // Folder listings do not accept library-only filters.
-        const listOnly = {
+        const filters = {
           tag: current.tag,
           person: current.person,
           personRole: current.personRole,
@@ -168,15 +167,16 @@ export function useVideoPages({
                 folder: target,
                 scope: current.scope,
                 ...params,
+                ...filters,
                 cursor: cursorFrom,
               })
             : libraryRef.current
               ? listLibrary({
                   ...params,
-                  ...listOnly,
+                  ...filters,
                   cursor: cursorFrom,
                 })
-              : listVideos({ ...params, ...listOnly, cursor: cursorFrom });
+              : listVideos({ ...params, ...filters, cursor: cursorFrom });
         const toPage = (fetched: Awaited<ReturnType<typeof fetchOne>>) => ({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {
