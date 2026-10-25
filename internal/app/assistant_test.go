@@ -21,6 +21,7 @@ type fakeAssistantStore struct {
 	finished    *domain.AssistantRunResult
 	gone        map[string]bool
 	currentRead int
+	discarded   []int64
 }
 
 func (f *fakeAssistantStore) CreateProposal(

@@ -247,6 +247,8 @@ const errorCodes = {
     "A smart folder can't be put inside itself or inside one of its children.",
   ollama_unreachable: "Ollama can't be reached at the saved URL",
   proposal_not_pending: "This proposal was already handled",
+  assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
+  assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -414,6 +416,12 @@ const errorReasons = {
     "The two videos have more than 20 links together. Remove some and try again.",
   connection: "Ollama can't be reached at the saved URL",
   not_ollama: "The server at the saved URL isn't Ollama",
+  model: "The generation model didn't answer. Check that Ollama has it.",
+  timeout: "The model took too long. Try a shorter request, or a smaller model.",
+  ollama_not_saved:
+    "Save the Ollama URL in Settings, Connections, then choose a generation model.",
+  generation_model_unset:
+    "Pick a generation model in Settings, Connections. The decision model used for tagging can't chat.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

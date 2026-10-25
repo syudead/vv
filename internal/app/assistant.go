@@ -18,6 +18,9 @@ type AssistantStore interface {
 	// Proposal returns domain.ErrNotFound for a missing proposal.
 	Proposal(ctx context.Context, id int64) (domain.AssistantProposal, error)
 	ActiveProposals(ctx context.Context, since time.Time) ([]domain.AssistantProposal, error)
+	// DiscardProposal returns domain.ErrNotFound for a missing proposal and domain.ErrAssistantProposalNotPending
+	// for any other status than proposed.
+	DiscardProposal(ctx context.Context, id int64, now time.Time) error
 	// ApproveProposal returns domain.ErrNotFound for a missing or discarded proposal, and the proposal with
 	// domain.ErrAssistantProposalNotPending for any other status than proposed.
 	ApproveProposal(ctx context.Context, id int64, now time.Time) (domain.AssistantProposal, error)
@@ -34,19 +37,31 @@ type AssistantStore interface {
 
 type AssistantOptions struct {
 	Store AssistantStore
+	// Generator, Vocabulary and Videos are required by Turn; History by the recent question and SmartFolders by
+	// targets that expand smart folders.
+	Generator    StructuredGenerator
+	Vocabulary   AssistantVocabulary
+	Videos       AssistantVideos
+	SmartFolders AssistantSmartFolders
+	History      AssistantHistory
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 	// Nil uses time.Now.
 	Now func() time.Time
 }
 
-// Assistant stores write proposals and executes the approved ones, one at a time, through the screen API's own
+// Assistant interprets requests into typed outcomes, stores write proposals and executes the approved ones, one at a time, through the screen API's own
 // operations, in batches of user keys.
 type Assistant struct {
-	store  AssistantStore
-	logger *slog.Logger
-	now    func() time.Time
-	wake   chan struct{}
+	store        AssistantStore
+	generator    StructuredGenerator
+	vocabulary   AssistantVocabulary
+	videos       AssistantVideos
+	smartFolders AssistantSmartFolders
+	history      AssistantHistory
+	logger       *slog.Logger
+	now          func() time.Time
+	wake         chan struct{}
 
 	runnerMu sync.RWMutex
 	runner   ActionRunner
@@ -63,7 +78,9 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 		now = time.Now
 	}
 	return &Assistant{
-		store: opts.Store, logger: logger.With(slog.String("component", "assistant")), now: now,
+		store: opts.Store, generator: opts.Generator, vocabulary: opts.Vocabulary, videos: opts.Videos,
+		smartFolders: opts.SmartFolders, history: opts.History,
+		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
 		wake: make(chan struct{}, 1),
 	}

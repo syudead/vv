@@ -162,10 +162,10 @@ func TestCheckComfyUIListsMissingItems(t *testing.T) {
 		t.Fatalf("check = %d %s", rec.Code, rec.Body)
 	}
 	node, model := (*got.Missing)[0], (*got.Missing)[1]
-	if node.Kind != gen.Node || node.Name != "Flux2Scheduler" || node.Folder != nil || node.Source != nil {
+	if node.Kind != gen.ComfyUIMissingItemKindNode || node.Name != "Flux2Scheduler" || node.Folder != nil || node.Source != nil {
 		t.Errorf("node = %+v", node)
 	}
-	if model.Kind != gen.Model || model.Name != "flux2-vae.safetensors" || model.Folder == nil || *model.Folder != "vae" ||
+	if model.Kind != gen.ComfyUIMissingItemKindModel || model.Name != "flux2-vae.safetensors" || model.Folder == nil || *model.Folder != "vae" ||
 		model.Source == nil || *model.Source != "https://example.test/vae" {
 		t.Errorf("model = %+v", model)
 	}

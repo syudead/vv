@@ -74,11 +74,11 @@ func TestAssistantReadiness(t *testing.T) {
 		}
 		return decode[gen.AssistantReadiness](t, rec)
 	}
-	if got := readiness(); got.Ready || got.Reason == nil || *got.Reason != gen.OllamaNotSaved {
+	if got := readiness(); got.Ready || got.Reason == nil || *got.Reason != gen.AssistantReadinessReasonOllamaNotSaved {
 		t.Fatalf("unsaved = %+v", got)
 	}
 	f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","generationModel":""}`)
-	if got := readiness(); got.Ready || got.Reason == nil || *got.Reason != gen.GenerationModelUnset {
+	if got := readiness(); got.Ready || got.Reason == nil || *got.Reason != gen.AssistantReadinessReasonGenerationModelUnset {
 		t.Fatalf("no generation model = %+v", got)
 	}
 	f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","generationModel":"qwen3:8b"}`)

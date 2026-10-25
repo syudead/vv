@@ -315,3 +315,55 @@ func TestAssistantMergeImpactCountsDistinctCreditedVideos(t *testing.T) {
 		t.Errorf("impact = %d, want 2", got)
 	}
 }
+
+func TestAssistantFindNamesFoldsAndReadsSynonymsAndAliases(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	tag, err := db.Tags().CreateTag(ctx, "ネコ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "Kitty", nil); err != nil {
+		t.Fatal(err)
+	}
+	person := createPerson(t, db, "山田花子", "Hanako Yamada")
+	tagMatch := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: tag.ID, Name: "ネコ"}
+	cases := []struct {
+		kind domain.AssistantLabelKind
+		name string
+		want domain.AssistantCandidate
+	}{
+		{domain.AssistantLabelTag, "ねこ", tagMatch},
+		{domain.AssistantLabelTag, "ＫＩＴＴＹ", tagMatch},
+		{domain.AssistantLabelPerson, "hanako yamada", domain.AssistantCandidate{
+			Kind: domain.AssistantLabelPerson, ID: person.ID, Name: "山田花子",
+		}},
+	}
+	for _, c := range cases {
+		got, err := db.Assistant().FindNames(ctx, c.kind, c.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0] != c.want {
+			t.Errorf("FindNames(%s, %q) = %+v, want %+v", c.kind, c.name, got, c.want)
+		}
+	}
+	if got, err := db.Assistant().FindNames(ctx, domain.AssistantLabelTag, "ねこちゃん"); err != nil || len(got) != 0 {
+		t.Errorf("an unrelated name matched %+v, %v", got, err)
+	}
+}
+
+func TestAssistantDiscardProposalOnlyWhileProposed(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	p := createProposal(t, db, batchedPlan("k1"), assistantNow)
+	if err := db.Assistant().DiscardProposal(ctx, p.ID, assistantNow); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Assistant().Proposal(ctx, p.ID); got.Status != domain.AssistantDiscarded {
+		t.Fatalf("status = %q, want discarded", got.Status)
+	}
+	if err := db.Assistant().DiscardProposal(ctx, p.ID, assistantNow); !errors.Is(err, domain.ErrAssistantProposalNotPending) {
+		t.Errorf("second discard: err = %v, want not pending", err)
+	}
+}
