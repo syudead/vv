@@ -23,7 +23,7 @@ to `videos`, and are never rebuilt.
 | --- | --- | --- | --- |
 | `id` | integer primary key | No | The proposal |
 | `status` | text | No | `proposed`, `approved`, `running`, `done`, `partial`, `stale`, `failed`, `discarded` |
-| `request` | text | No | The owner's text, the activity entry's label |
+| `request` | text | No | The owner's text, or for an adopted candidate the run's `request`; the activity entry's label |
 | `plan` | text (JSON) | No | `domain.AssistantPlan`: the operation, the resolved ids with the labels the card showed, the arguments, the user keys of video targets |
 | `total`, `applied`, `failed` | integer | No | Counts in user keys, or 0 and 1 for an operation without video targets |
 | `error` | text | Yes | The first failed batch's `code` and `reason` |
@@ -39,6 +39,7 @@ foreign key, as queue rows do.
 | --- | --- | --- | --- |
 | `id` | integer primary key | No | The run |
 | `kind` | text | No | `tags`, `people`, `works` |
+| `request` | text | No | The owner's text that started the run |
 | `status` | text | No | `running`, `done`, `failed`, `interrupted` |
 | `total`, `judged`, `listed` | integer | No | Candidate sets found, judged so far, and listed at or above 0.5 |
 | `error` | text | Yes | The classifier's message when the run failed |
@@ -54,7 +55,7 @@ foreign key, as queue rows do.
 | `set_key` | text | No | The members' ids sorted and joined, the dismissal key |
 | `probability` | real | No | The classifier's answer |
 | `state` | text | No | `listed`, `adopted`, `rejected` |
-| `proposal_id` | integer | Yes | The adoption's proposal |
+| `proposal_id` | integer | Yes | The proposal that adopting this set stored; one per set |
 
 **Relationships**: `run_id` references `assistant_review_runs` and cascades
 on delete. Members are checked for existence when the list is read.

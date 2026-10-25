@@ -144,14 +144,15 @@ longer exists is left out.
 
 ### `POST /api/assistant/review-runs/{id}/candidates/adopt`
 
-Stores one approved proposal with the chosen candidates and answers it.
+Stores one approved proposal per chosen candidate, each running the
+candidate's one operation, and answers them.
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `ids` | body | int64[], 1 to 1,000 | Yes | Candidate ids |
 
-**Response**: `202` `{ proposal, skippedIds }`: the proposal, and the ids
-that were not `listed` or whose member is gone.
+**Response**: `202` `{ proposals, skippedIds }`: the proposals in the
+order of `ids`, and the ids that were not `listed` or whose member is gone.
 
 ### `POST /api/assistant/review-runs/{id}/candidates/reject`
 

@@ -258,7 +258,7 @@ flowchart LR
 | A rejected set is remembered in `assistant_review_dismissals` by its members' ids and kind, and a later run of the kind skips it | Forgetting rejections | The next `タグを整理して` would list the same pair |
 | A set whose member was deleted or merged after judging is left out when the list is read | Deleting the candidate row when the entity changes | The entities have no foreign key to the candidate, and a read-time check needs no trigger |
 | One run of a kind at a time; a second `organize` of the same kind while one runs answers the running run | Queuing a second | Its candidates would repeat the first's |
-| Adoption stores one approved proposal per request with the chosen sets, executed by the assistant worker like any other | Merging inside the adopt request | One path writes activity entries and progress |
+| Adoption stores one approved proposal per chosen set, each one operation call of the set's row, executed by the assistant worker like any other | One proposal holding every chosen set; merging inside the adopt request | A plan holds one operation, and two adopted tag pairs are two `mergeTag` calls with different destinations; one path writes activity entries and progress |
 | The runs and the review candidates are owner data in SQLite, and the panel shows the progress from `assistant` events | Progress in memory | The owner may leave and return (the Issue's edge case) |
 
 ## Activity and events
@@ -421,9 +421,9 @@ the smart folder dialog
 
 **Scope**: `domain.AssistantCatalog` with the rows of
 [contracts/assistant-actions.md, Catalog](contracts/assistant-actions.md#catalog),
-each with its operation, arguments, target kind, batching and irreversible
-mark; the exclusion list; a Go test that every owner write operation of
-`api/openapi.yaml` is in one of the two lists; `app.ActionRunner` and its
+each with its id, operation, action, arguments, target kind, batching and
+irreversible mark; the exclusion list; a Go test that every owner write
+operation of `api/openapi.yaml` is in one of the two lists; `app.ActionRunner` and its
 implementation in `internal/httpapi`, which calls the operation's handler in
 process as the owner and maps the response to a result or a typed failure
 ([Proposals and execution](#proposals-and-execution)).
@@ -438,7 +438,10 @@ process as the owner and maps the response to a result or a typed failure
 - Adapter tests: a catalog row's call reaches its handler with the built
   body and the owner audience; a `404` and a `400` from the handler become
   typed failures carrying `code` and `reason`; a row whose operation is not
-  in the catalog is refused before any call.
+  in the catalog is refused before any call; `updateVideoTags.remove` and
+  `batchTags.reject` send the action their id names.
+- Domain test: row ids are unique, and `batchTags.reject` is marked
+  irreversible while `batchTags.confirm` is not.
 
 ### Proposals: store, approval and the execution worker
 
@@ -566,9 +569,9 @@ Assistant panel: input, thread and the outcomes that need no approval
 `assistant_review_dismissals` in `00081_assistant.sql`; the three finders in
 `AssistantStore` with their rules in `internal/domain`; the judging loop over
 `app.Classifier` with the three questions; the `organize` outcome starting a
-run; `GET /api/assistant/review-runs/{id}`, the adopt and reject operations
-storing an approved proposal per adoption ([Review runs](#review-runs),
-[contracts/assistant-api.md, Review runs](contracts/assistant-api.md#review-runs)).
+run; `GET /api/assistant/review-runs/{id}`, the adopt and reject operations,
+the adopt storing one approved proposal per chosen set
+([Review runs](#review-runs), [contracts/assistant-api.md, Review runs](contracts/assistant-api.md#review-runs)).
 
 **Dependencies**: Assistant action catalog and the in-process runner;
 Proposals: store, approval and the execution worker; Interpret a request
@@ -586,8 +589,8 @@ into a typed outcome
   merged is left out of the list.
 - Application tests with a fake classifier: a run judges every set, lists
   0.5 and drops 0.49, counts progress per set, and answers the running run
-  to a second `organize` of the kind; the adopt request stores one approved
-  proposal with the chosen sets.
+  to a second `organize` of the kind; adopting two tag pairs stores two
+  approved proposals, each a `mergeTag` with its own destination.
 
 ### Review list page
 
@@ -602,8 +605,8 @@ thread; Review runs: candidate finders and the judging worker
 
 - `task check SCOPE=web` passes for `src/assistant src/app src/api`.
 - Page tests with a fake server: the progress line follows the `assistant`
-  event; adopting two sets sends their ids and the row shows the resulting
-  run; rejecting removes the sets from the list; the thread row links to the
+  event; adopting two sets sends their ids and the rows show the resulting
+  runs; rejecting removes the sets from the list; the thread row links to the
   page.
 - The page is new, so the implementation owes a visual review at 360 px,
   768 px and 1280 px.

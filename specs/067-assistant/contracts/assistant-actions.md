@@ -67,7 +67,7 @@ watch history, or answers `clarify` when there is none.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `operation` | enum of the catalog ids | The operation to run |
+| `operation` | enum of the catalog row ids | The row to run ([Catalog](#catalog)) |
 | `target` | object | What it runs on, for rows with a target kind |
 | `target.kind` | enum | `selection` (the selected videos or the open video), `current` (the open group, smart folder, person, playlist or tag), `filter` (every video matching `target.filter`), `named` (`target.names` resolved by the row's target kind) |
 | `target.names` | string[] | Names for `named` |
@@ -116,18 +116,25 @@ resolves to several entities or to none
 
 ## Catalog
 
-Each row names the operation, what the target is, the arguments the row
-reads, whether video targets run in batches of 500 user keys, and whether
-the card marks the change as one that cannot be undone. A row without a
-target kind acts on the arguments alone.
+Each row names its id, what the target is, the arguments the row reads,
+whether video targets run in batches of 500 user keys, and whether the card
+marks the change as one that cannot be undone. A row without a target kind
+acts on the arguments alone.
+
+A row's id is the `operationId` it calls. An operation whose request picks
+one of several actions has one row per action, with the id
+`operationId.action` (`updateVideoTags.remove`, `batchTags.reject`), and the
+runner sends that action. The model therefore names the variant in
+`operation`, and the variant decides the request and the irreversible mark.
 
 ### Videos
 
 | Operation | Target | Arguments | Batches | Irreversible |
 | --- | --- | --- | --- | --- |
-| `updateVideoTags` (add) | videos | `tagNames` | Yes | No |
-| `updateVideoTags` (remove) | videos | `tagNames` | Yes | No |
-| `applyVideoEdits` | videos | `tagNames`, `personNames`, `role`, `organizationNames`, `dateKind`, `date`, `public` | Yes | No |
+| `updateVideoTags.add` | videos | `tagNames` | Yes | No |
+| `updateVideoTags.remove` | videos | `tagNames` | Yes | No |
+| `applyVideoEdits.add` | videos | `tagNames` and `personNames`, `role`, `organizationNames` to attach; `dateKind`, `date`, `public` to set | Yes | No |
+| `applyVideoEdits.remove` | videos | `tagNames` and `personNames`, `role`, `organizationNames` to detach | Yes | No |
 | `applyVideoCodeEdits` | videos | `code` | Yes | No |
 | `updateVideoVisibility` | videos | `public` | Yes | No |
 | `updateFavorites` | videos or groups | `enabled` | Yes | No |
@@ -159,7 +166,11 @@ target kind acts on the arguments alone.
 | `confirmTag` | one tag | none | No | No |
 | `rejectTag` | one tag | none | No | Yes |
 | `forgetRejectedTagName` | none | `name` | No | No |
-| `batchTags` (confirm, reject, delete, setKind, clearKind) | tags by name or by `filter` (`tentative`, `unused`, a kind) | `tagKindName` | No | Reject, delete and clearKind |
+| `batchTags.confirm` | tags by name or by `filter` (`tentative`, `unused`, a kind) | none | No | No |
+| `batchTags.reject` | tags as for `batchTags.confirm` | none | No | Yes |
+| `batchTags.delete` | tags as for `batchTags.confirm` | none | No | Yes |
+| `batchTags.setKind` | tags as for `batchTags.confirm` | `tagKindName` | No | No |
+| `batchTags.clearKind` | tags as for `batchTags.confirm` | none | No | Yes |
 | `createTagKind` | none | `name` | No | No |
 | `renameTagKind` | one tag kind | `newName` | No | No |
 | `deleteTagKind` | one tag kind | none | No | Yes |
@@ -221,9 +232,9 @@ target kind acts on the arguments alone.
 | `startScan` | none | none | No | No |
 | `startRescan` | none | `scope` (`all` or the current folder) | No | No |
 
-The catalog holds 74 operations. A settings row reads the current settings
-first and sends them back with the one changed field, so the card shows the
-field and its new value.
+The catalog holds 74 operations in 80 rows. A settings row reads the
+current settings first and sends them back with the one changed field, so
+the card shows the field and its new value.
 
 ## Excluded operations
 
