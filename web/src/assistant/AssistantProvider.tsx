@@ -29,6 +29,7 @@ import {
   turnFailure,
 } from "./thread";
 import { type Cards, useProposals } from "./useProposals";
+import { type ReviewRuns, useReviewRuns } from "./useReviewRuns";
 
 export type Readiness =
   | { state: "checking" }
@@ -44,7 +45,9 @@ export interface AssistantStore {
   cards: Cards;
   /** Runs read when the panel opened that the thread does not show as cards. */
   runs: readonly AssistantProposal[];
-  /** A turn waits or a run is approved or running. */
+  /** The review runs the thread's review rows follow, by run id. */
+  reviews: ReviewRuns;
+  /** A turn waits, a run is approved or running, or a review run is judging. */
   working: boolean;
   readiness: Readiness;
   draft: string;
@@ -256,7 +259,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setReadiness({ state: "notReady", reason });
   }, []);
   const proposals = useProposals(open);
-  const thread = useThread(onApplied, onNotReady, proposals.settle);
+  const reviewRuns = useReviewRuns();
+  const settleProposal = proposals.settle;
+  const settleReview = reviewRuns.settle;
+  const onOutcome = useCallback(
+    (exchangeId: number, outcome: AssistantOutcome) => {
+      settleProposal(exchangeId, outcome);
+      settleReview(outcome);
+    },
+    [settleProposal, settleReview],
+  );
+  const thread = useThread(onApplied, onNotReady, onOutcome);
   const { loadRuns } = proposals;
 
   const latestOpen = useRef(open);
@@ -280,10 +293,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const clearThread = thread.clear;
   const { cards, runs, running, execute, dismiss } = proposals;
   const clearCards = proposals.clear;
+  const { reviews, reviewing } = reviewRuns;
+  const clearReviews = reviewRuns.clear;
   const clear = useCallback(() => {
     clearThread();
     clearCards();
-  }, [clearThread, clearCards]);
+    clearReviews();
+  }, [clearThread, clearCards, clearReviews]);
   const store = useMemo<AssistantStore>(
     () => ({
       open,
@@ -291,7 +307,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       waiting: isWaiting(exchanges),
       cards,
       runs,
-      working: isWaiting(exchanges) || running,
+      reviews,
+      working: isWaiting(exchanges) || running || reviewing,
       readiness,
       draft,
       screen,
@@ -311,7 +328,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       exchanges,
       cards,
       runs,
+      reviews,
       running,
+      reviewing,
       readiness,
       draft,
       screen,

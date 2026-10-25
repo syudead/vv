@@ -79,6 +79,10 @@ const ActivityDetailPage = await deferredRoute(
   () => import("../activity/ActivityDetailPage"),
   (pathname) => matchesBelowPath(pathname, "/activity"),
 );
+const ReviewPage = await deferredRoute(
+  () => import("../assistant/ReviewPage"),
+  "/assistant/reviews",
+);
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,
@@ -242,6 +246,14 @@ function AppRoutes() {
             element={
               <Shell>
                 <ActivityDetailPage />
+              </Shell>
+            }
+          />
+          <Route
+            path="/assistant/reviews/:id"
+            element={
+              <Shell>
+                <ReviewPage />
               </Shell>
             }
           />

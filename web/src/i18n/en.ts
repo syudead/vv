@@ -4211,6 +4211,106 @@ export const en = {
     // The Activity entry's result for a run, after its operation sentence.
     runCounts: (applied: number, failed: number) =>
       `${formatNumber(applied)} changed · ${formatNumber(failed)} failed`,
+    review: {
+      kinds: {
+        tags: "duplicate tags",
+        people: "duplicate people",
+        works: "parts of one work",
+      } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
+      titles: {
+        tags: "Review: duplicate tags",
+        people: "Review: duplicate people",
+        works: "Review: parts of one work",
+      } satisfies Record<components["schemas"]["AssistantReviewRun"]["kind"], string>,
+      looking: (kind: string, judged: number, total: number) =>
+        `Looking for ${kind}… Judged ${formatNumber(judged)} of ${formatNumber(total)}`,
+      toReview: (listed: number) =>
+        listed === 0
+          ? "Nothing looked like a duplicate"
+          : selectPlural(listed, {
+              one: `${formatNumber(listed)} candidate to review`,
+              other: `${formatNumber(listed)} candidates to review`,
+            }),
+      // The run carries no failure reason; a restart is the one cause it names.
+      stopped: "The review stopped.",
+      stoppedByRestart: "The review stopped: the app restarted.",
+      openList: "Open the review list",
+      alreadyRunning: (kind: string) => `A review of ${kind} is already running`,
+      progress: "Progress of the review",
+      back: "Assistant",
+      request: (text: string) => `“${text}”`,
+      judged: (judged: number, total: number, listed: number) =>
+        `Judged ${formatNumber(judged)} of ${formatNumber(total)} · ${formatNumber(listed)} listed`,
+      summary: (listed: number, total: number, adopted: number, rejected: number) =>
+        [
+          `${formatNumber(listed)} of ${counted(total, "candidate", "candidates")} listed`,
+          ...(adopted > 0 ? [`${formatNumber(adopted)} adopted`] : []),
+          ...(rejected > 0 ? [`${formatNumber(rejected)} rejected`] : []),
+        ].join(" · "),
+      interruptedNotice: "The review was stopped by a restart. Ask again to run it.",
+      askAgain: "Ask again",
+      table: "Review candidates",
+      columns: {
+        candidates: "Candidates",
+        confidence: "Confidence",
+        state: "State",
+        result: "Result",
+      },
+      confidence: (percent: string) => `Confidence ${percent}`,
+      adopted: "Adopted",
+      selectAll: "Select all listed",
+      selectRow: (names: string) => `Select ${names}`,
+      both: (first: string, second: string) => `${first} and ${second}`,
+      selected: (count: number) => `${formatNumber(count)} selected`,
+      clearSelection: "Clear selection",
+      adoptSelected: "Adopt selected",
+      rejectSelected: "Reject selected",
+      mergeTagsTitle: (count: number) =>
+        selectPlural(count, {
+          one: `Merge ${formatNumber(count)} tag pair?`,
+          other: `Merge ${formatNumber(count)} tag pairs?`,
+        }),
+      mergeTagsDescription:
+        "Each pair’s less used tag is merged into the more used one, and the videos move with it. This can’t be undone.",
+      mergePeopleTitle: (count: number) =>
+        selectPlural(count, {
+          one: `Merge ${formatNumber(count)} people pair?`,
+          other: `Merge ${formatNumber(count)} people pairs?`,
+        }),
+      mergePeopleDescription:
+        "Each pair’s person with fewer credits is merged into the other. This can’t be undone.",
+      merge: "Merge",
+      creatingGroups: (count: number) =>
+        selectPlural(count, {
+          one: `Creating ${formatNumber(count)} group`,
+          other: `Creating ${formatNumber(count)} groups`,
+        }),
+      merging: (count: number) =>
+        selectPlural(count, {
+          one: `Merging ${formatNumber(count)} pair`,
+          other: `Merging ${formatNumber(count)} pairs`,
+        }),
+      rejectedToast: (count: number) =>
+        selectPlural(count, {
+          one: `Rejected ${formatNumber(count)} candidate. It won’t be listed again.`,
+          other: `Rejected ${formatNumber(count)} candidates. They won’t be listed again.`,
+        }),
+      adoptFailed: (reason: string) => `Couldn’t adopt: ${reason}`,
+      rejectFailed: (reason: string) => `Couldn’t reject: ${reason}`,
+      skipped: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} candidate was skipped because a tag or person changed`,
+          other: `${formatNumber(count)} candidates were skipped because a tag or person changed`,
+        }),
+      emptyTitle: "No candidates",
+      emptyDescription:
+        "Nothing looked like a duplicate. Candidates you rejected before aren’t listed.",
+      loadingCandidates: "Looking for candidates…",
+      notFound: "This review isn’t here any more.",
+      loadFailed: (reason: string) => `Couldn’t load the review: ${reason}`,
+      loadMoreFailed: "Couldn’t load more candidates",
+      loadingMore: "Loading more candidates",
+    },
   },
   settings: {
     title: "Settings",
