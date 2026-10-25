@@ -1,5 +1,6 @@
 import { Menu } from "lucide-react";
 
+import AssistantTrigger from "../assistant/AssistantTrigger";
 import { t } from "../i18n";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import { Button } from "../ui/shadcn/button";
@@ -34,6 +35,7 @@ export default function TopBar() {
       <BrandHomeLink />
 
       <div id="topbar-library-tools" className="flex min-w-0 flex-1 items-center" />
+      <AssistantTrigger />
     </header>
   );
 }

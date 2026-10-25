@@ -10,6 +10,8 @@ import {
 } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
 import type { GroupItem, GroupRef } from "../api/groups";
 import { useRootFolderName } from "../api/useFolderListing";
@@ -264,7 +266,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const selection = useGroupSelection(data, controls.filtered);
   const listUrl = `${location.pathname}${location.search}`;
 
-  useDocumentTitle(data?.group.name);
+  const groupName = data?.group.name;
+  useDocumentTitle(groupName);
+  useAssistantScreen(selectionScreen(selection.selection, groupName));
   useEffect(() => {
     resetPreview();
   }, [data, resetPreview, view, zoom]);

@@ -2,6 +2,8 @@ import { FolderSearch, TriangleAlert } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router";
 
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryGroup, LibraryItem, TagRef, Video } from "../api/client";
 import { itemKey } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
@@ -174,7 +176,9 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   const selection = useFolderSelection(data?.items ?? noItems);
   const listUrl = `${location.pathname}${location.search}`;
 
-  useDocumentTitle(data?.folder.name);
+  const folderName = data?.folder.name;
+  useDocumentTitle(folderName);
+  useAssistantScreen(selectionScreen(selection.selection, folderName));
   useEffect(() => {
     resetPreview();
   }, [data, resetPreview, view, zoom]);

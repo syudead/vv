@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "side-panel",
+  "title": "SidePanel",
+  "description": "Page pattern: a column at the viewport's right edge under the top bar, with a header, a scrolling body and a footer; in the page's flow from lg, a layer without a scrim below it.",
+  "files": [
+    {
+      "path": "src/ui/patterns/side-panel.tsx",
+      "content": "import type { KeyboardEvent, ReactNode, Ref } from \"react\";\n\nimport { isComposingNativeKeyEvent } from \"@/lib/ime\";\n\n// Side-panel skeleton; see web/registry/rules/patterns.md, Side panel.\n// From lg a spacer in the page's row takes the panel's width, so the page shrinks beside the fixed\n// column while the window keeps scrolling the page; below lg the column is a layer with no scrim.\n\nexport interface SidePanelProps {\n  id?: string;\n  /** The complementary region's accessible name. */\n  label: string;\n  /** The header's title, set as an h2. */\n  title: ReactNode;\n  /** `ghost` `icon-sm` buttons at the header's end, the close button last. */\n  actions?: ReactNode;\n  /** Stays at the bottom while the body scrolls. */\n  footer?: ReactNode;\n  children: ReactNode;\n  /** Called on Esc with the focus inside the panel. */\n  onClose: () => void;\n  bodyRef?: Ref<HTMLDivElement>;\n}\n\nexport function SidePanel({\n  id,\n  label,\n  title,\n  actions,\n  footer,\n  children,\n  onClose,\n  bodyRef,\n}: SidePanelProps) {\n  const closeOnEscape = (event: KeyboardEvent) => {\n    if (event.key !== \"Escape\" || event.defaultPrevented) return;\n    if (isComposingNativeKeyEvent(event.nativeEvent)) return;\n    event.preventDefault();\n    onClose();\n  };\n  return (\n    <>\n      <div\n        aria-hidden=\"true\"\n        data-slot=\"side-panel-space\"\n        className=\"hidden shrink-0 lg:block lg:w-assistant-panel\"\n      />\n      <aside\n        id={id}\n        aria-label={label}\n        data-slot=\"side-panel\"\n        onKeyDown={closeOnEscape}\n        className=\"fixed top-navbar right-0 bottom-0 z-30 flex w-full animate-slide-up flex-col border-l border-border bg-card text-card-foreground shadow-elevated motion-reduce:animate-none sm:w-assistant-panel lg:animate-none lg:shadow-none\"\n      >\n        <div\n          data-slot=\"side-panel-header\"\n          className=\"flex h-navbar shrink-0 items-center gap-1 border-b border-border pr-2 pl-3\"\n        >\n          <h2 className=\"min-w-0 flex-1 truncate text-sm font-semibold\">{title}</h2>\n          {actions}\n        </div>\n        <div\n          ref={bodyRef}\n          data-slot=\"side-panel-body\"\n          className=\"min-h-0 flex-1 overflow-y-auto overscroll-contain p-3\"\n        >\n          {children}\n        </div>\n        {footer !== undefined && (\n          <div\n            data-slot=\"side-panel-footer\"\n            className=\"shrink-0 border-t border-border p-3\"\n          >\n            {footer}\n          </div>\n        )}\n      </aside>\n    </>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#side-panel (item vv-rules).",
+  "type": "registry:ui"
+}

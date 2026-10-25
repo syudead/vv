@@ -97,3 +97,18 @@ describe("subscribeServerEvents の smartFolder", () => {
     unsubscribe();
   });
 });
+
+describe("subscribeServerEvents の assistant", () => {
+  beforeEach(() => installFakeEventSource());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("assistant の知らせを、中身を読まずに購読者へ渡す", () => {
+    const assistant = vi.fn();
+    const unsubscribe = subscribeServerEvents({ assistant });
+
+    currentEventSource().dispatch("assistant", {});
+
+    expect(assistant).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+});

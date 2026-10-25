@@ -238,6 +238,38 @@ switching changes one attribute and keeps the media mounted.
 | `media`  | The player or image                                                                                                                                                                 | Text or controls        |
 | children | The title, tags and controls about the item, then a `line` tab strip and its panel; the tab panel is set in `text-sm`, the library's type, under the page's viewing-density spacing | A card around a panel   |
 | `aside`  | A small heading and a plain list of related items                                                                                                                                   | Main actions; long text |
+| `panel`  | One `SidePanel`, beside the content row under the band                                                                                                                              | Any other element       |
+
+## Side panel
+
+Item `side-panel`. `SidePanel` is a column at the viewport's right edge under
+the top bar (under the header band on a `DetailPage`), `assistant-panel` wide,
+on `card` with a `border-l`. It holds a header `navbar` high with a bottom
+border, a body that scrolls by itself, and a footer with a top border that
+stays at the bottom. A screen passes it through the `panel` slot of
+`AppShell` or `DetailPage`, never inside a page's own slots.
+
+From `lg` the panel is part of the page's row: the page shrinks by its width,
+the window keeps scrolling the page, and only the panel's body scrolls. Below
+`lg` it is a layer over the page's right edge with `shadow-elevated` and
+`z-30` (under the top bar and the sidebar drawer, above the selection bar),
+without a scrim, so the page behind it stays scrollable and pressable; below
+`sm` it takes the full width. It opens with `animate-slide-up` below `lg` and
+without motion from `lg`. `Esc` with the focus inside closes it, and keyboard
+shortcuts of the page under it do not see the keys pressed inside it.
+
+| Prop      | Put in it                                                          | Never                        |
+| --------- | ------------------------------------------------------------------ | ---------------------------- |
+| `label`   | The `complementary` region's name                                  | A sentence                   |
+| `title`   | The panel's name, set as an `h2` in `text-sm font-semibold`        | A count or a status          |
+| `actions` | `ghost` `icon-sm` buttons with tooltips, the close button last     | A filled button              |
+| children  | The body: rows of the panel's own content                          | A page skeleton, a `Sheet`   |
+| `footer`  | The input the panel acts on, or the `Alert` that replaces it       | Navigation links             |
+| `onClose` | Close the panel and return the focus to the control that opened it | Leave the focus in the panel |
+
+Keep the open state above the routes, so the panel stays open from one page to
+the next. Choose a `Sheet` instead only for the sidebar's narrow-width drawer,
+and a `Dialog` for a task that must hide the page.
 
 ## Centered form
 

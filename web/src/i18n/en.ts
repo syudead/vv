@@ -606,6 +606,14 @@ export const en = {
       tentativeTag: "kyoto",
     },
     pattern: {
+      sidePanel: {
+        open: "Open the side panel",
+        title: "Assistant",
+        field: "Request",
+        send: "Send",
+        request: "Show the videos added last week",
+        reply: "Filtered the library",
+      },
       intro:
         "Each page skeleton with its sections and states, filled with sample data. Copy the block of the skeleton a new screen needs.",
       items: "Items",
@@ -624,6 +632,7 @@ export const en = {
         stepsPage: "Steps page",
         cardList: "Card list",
         recordPage: "Record page",
+        sidePanel: "Side panel",
         listState: (state: string) => `List page: ${state}`,
       },
       recordTitle:
@@ -3873,6 +3882,136 @@ export const en = {
       dismiss: "Hide the scan progress",
       progress: "Progress of the videos in this scan",
     },
+  },
+  assistant: {
+    title: "Assistant",
+    trigger: "Assistant",
+    working: "Assistant · working",
+    clearThread: "Clear thread",
+    field: "Request",
+    placeholder: "Ask or tell the assistant…",
+    hint: "Enter sends · Shift+Enter for a new line",
+    tooLong: (count: number) => `${formatNumber(count)} / 500`,
+    send: "Send",
+    context: {
+      selectedVideos: (count: number) =>
+        selectPlural(count, {
+          one: `Talking about ${formatNumber(count)} selected video`,
+          other: `Talking about ${formatNumber(count)} selected videos`,
+        }),
+      selectedItems: (count: number) =>
+        selectPlural(count, {
+          one: `Talking about ${formatNumber(count)} selected item`,
+          other: `Talking about ${formatNumber(count)} selected items`,
+        }),
+      filteredLibrary: "Talking about the filtered library",
+      video: (title: string) => `Talking about “${title}”`,
+      named: (name: string) => `Talking about ${name}`,
+      screen: "Talking about this screen",
+    },
+    empty:
+      "Ask in Japanese: filter the library, open a page, change tags, or tidy up. Writes are shown for approval first.",
+    // Sample requests in the language the assistant is asked in.
+    examples: {
+      filter: "去年追加した30分以上の未視聴",
+      count: "〇〇の出演作は何本？",
+      tidy: "タグを整理して",
+    },
+    readiness: {
+      ollamaNotSavedTitle: "The assistant needs Ollama",
+      ollamaNotSaved:
+        "Save the Ollama URL in Settings, Connections, then choose a generation model.",
+      modelUnsetTitle: "Choose a model for the assistant",
+      modelUnset:
+        "Pick a generation model in Settings, Connections. The decision model used for tagging can’t chat.",
+      openConnections: "Open Connections",
+      failed: (reason: string) => `Couldn’t check the assistant: ${reason}`,
+    },
+    waiting: "Asking the model… Loading it can take a few minutes.",
+    stillWaiting:
+      "Still waiting for the model. The request keeps running if you close the panel.",
+    filtered: "Filtered the library",
+    show: "Show",
+    saveSmartFolder: "Save as smart folder…",
+    opened: (name: string) => `Opened ${name}`,
+    open: "Open",
+    answer: {
+      videos: (count: number) =>
+        count === 0
+          ? "No videos match"
+          : selectPlural(count, {
+              one: `${formatNumber(count)} video`,
+              other: `${formatNumber(count)} videos`,
+            }),
+      videosWith: (count: number, name: string) =>
+        count === 0
+          ? "No videos match"
+          : selectPlural(count, {
+              one: `${formatNumber(count)} video with ${name}`,
+              other: `${formatNumber(count)} videos with ${name}`,
+            }),
+      showInLibrary: "Show in the library",
+      openNamed: (name: string) => `Open ${name}`,
+      recent: "Recently watched",
+      listed: (count: number, shown: number) =>
+        `${selectPlural(count, {
+          one: `${formatNumber(count)} video`,
+          other: `${formatNumber(count)} videos`,
+        })} · showing the first ${formatNumber(shown)}`,
+    },
+    clarify: {
+      operation: "What should the assistant do? Say the action and what it applies to.",
+      target: "Which videos or items? Select them, open their page, or name them.",
+      value: "Which value? Say the name, tag or date to use.",
+      which: (kind: string) => `Which ${kind} did you mean?`,
+      notFound: (name: string) => `Couldn’t find “${name}”. Check the name.`,
+      nothingSelected:
+        "Nothing is selected. Select videos, or open the video or page you mean.",
+      kinds: {
+        video: "video",
+        tag: "tag",
+        tagKind: "tag kind",
+        person: "person",
+        organization: "organization",
+        playlist: "playlist",
+        group: "group",
+        smartFolder: "smart folder",
+        folderRoot: "media folder",
+      } satisfies Record<components["schemas"]["AssistantLabelKind"], string>,
+    },
+    unsupported: "The assistant can’t do that.",
+    unsupportedKnown: (operation: string) =>
+      `The assistant can’t do that. ${operation} is done on its own page.`,
+    // Keyed by the excluded screen operation; the sentence names what the owner does on its own page.
+    excluded: {
+      createApiToken: "Creating API tokens",
+      deleteMediaFolder: "Deleting a media folder",
+      clearWatchHistory: "Deleting watch history",
+      deleteWatchHistoryEntry: "Deleting watch history",
+      updateAccount: "Changing the account",
+      uploadWorkInfoPlugin: "Changing plugins",
+      deleteWorkInfoPlugin: "Changing plugins",
+      approveWorkInfoPlugin: "Changing plugins",
+      revokeWorkInfoPluginApproval: "Changing plugins",
+      setWorkInfoPluginSettings: "Changing plugins",
+      setWorkInfoPluginLinkOrder: "Changing plugins",
+      updateNetworkSettings: "Changing network settings",
+      updatePluginProxySettings: "Changing network settings",
+      downloadFaceRuntime: "Downloading the face runtime",
+      updateOnboarding: "Onboarding",
+      pickOnboardingInterests: "Onboarding",
+    },
+    unreadable: "Couldn’t turn that into something to do. Try saying it another way.",
+    unavailable: {
+      connection: "Couldn’t reach Ollama. Check the URL in Settings, Connections.",
+      model: (model: string) =>
+        model === ""
+          ? "The generation model didn’t answer. Check that Ollama has it."
+          : `The generation model didn’t answer. Check that Ollama has “${model}”.`,
+      timeout: "The model took too long. Try a shorter request, or a smaller model.",
+    },
+    tooManyVideos: "That is more than 20,000 videos. Narrow the selection or the filter.",
+    failed: (reason: string) => `Couldn’t ask the assistant: ${reason}`,
   },
   settings: {
     title: "Settings",
