@@ -157,7 +157,7 @@ stateDiagram-v2
 | Rule | Why |
 | --- | --- |
 | A second Execute answers `409 proposal_not_pending` with the row | Two tabs can show the same card |
-| Before the first call the worker re-reads every label and video; a renamed or deleted entity, or a video gone, ends the run `stale` with no call | The owner approved what the card showed, not what the ids hold now |
+| Before the first call the worker re-reads every label and video; a renamed or deleted entity, or a video gone, ends the run `stale` with no call; a name the plan creates has nothing to re-read and is not checked | The owner approved what the card showed, not what the ids hold now |
 | Video targets run in batches of 500 user keys, one call per batch, with the counts written after each | Progress for a large selection, and a failed batch leaves the earlier ones applied with both counts shown |
 | Operations whose catalog row acts on a version (`makeRepresentativeVersion`, `unbundleVideo`) hold content keys and resolve to that version | A user key names the bundle, so it would act on another version |
 | A merge proposal carries `impact.videos`, the distinct videos carrying a source tag or credited to a source person or organization | `targets.count` of a merge is its one destination |

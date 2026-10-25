@@ -333,7 +333,7 @@ test.describe.serial("assistant", () => {
     expect(detail.settings.rule.watchState).toBe("unwatched");
   });
 
-  test("an attach request shows a card and changes nothing until Execute", async ({
+  test("an attach request changes nothing until Execute, which creates and attaches the tag", async ({
     page,
     request,
   }) => {
@@ -349,8 +349,18 @@ test.describe.serial("assistant", () => {
     await expect(panel(page).getByText("Add tags", { exact: true })).toBeVisible();
     await expect(panel(page).getByText("2 videos", { exact: true })).toBeVisible();
     await expect(panel(page).getByText(`New tag ${attachTag}`)).toBeAttached();
-    // The proposal is stored; only Execute would create the tag and attach it.
+    // The proposal is stored; only Execute creates the tag and attaches it.
     expect(await findTag(request, attachTag)).toBeUndefined();
+
+    await panel(page).getByRole("button", { name: "Execute" }).click();
+    await expect(panel(page).getByText("Done · 2 videos changed")).toBeVisible();
+    expect(await findTag(request, attachTag)).toBeDefined();
+    for (const title of ["助手確認C", "助手確認D"]) {
+      const detail = (await (
+        await request.get(`/api/videos/${String(video(title).id)}`)
+      ).json()) as { tags: { name: string }[] };
+      expect(detail.tags.map((tag) => tag.name)).toContain(attachTag);
+    }
   });
 
   test("a merge request marks the card irreversible with the videos that move", async ({

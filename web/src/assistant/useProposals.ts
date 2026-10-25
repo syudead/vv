@@ -106,37 +106,62 @@ export function useProposals(open: boolean): Proposals {
     });
   }, []);
 
-  const execute = useCallback((exchangeId: number) => {
-    const card = latestCards.current.get(exchangeId);
-    if (card === undefined || card.view !== "live" || card.proposal.status !== "proposed")
-      return;
-    // A second press before the answer sends nothing; the button is aria-disabled meanwhile.
-    if (executing.current.has(exchangeId)) return;
-    executing.current.add(exchangeId);
-    setCards((current) =>
-      withCard(current, exchangeId, (item) => ({
-        ...item,
-        executing: true,
-        error: undefined,
-      })),
-    );
-    const done = (change: (item: Card) => Card) => {
-      executing.current.delete(exchangeId);
-      setCards((current) =>
-        withCard(current, exchangeId, (item) => ({ ...change(item), executing: false })),
-      );
-    };
-    executeAssistantProposal(card.proposal.id).then(
-      (result) => {
-        if (result.kind === "expired") {
-          done((item) => ({ ...item, view: "expired" }));
-          return;
-        }
-        done((item) => ({ ...item, proposal: result.proposal }));
-      },
-      (error: unknown) => done((item) => ({ ...item, error })),
+  const reread = useCallback((id: number) => {
+    getAssistantProposal(id).then(
+      (proposal) => setCards((current) => withProposal(current, proposal)),
+      () => undefined,
     );
   }, []);
+
+  const execute = useCallback(
+    (exchangeId: number) => {
+      const card = latestCards.current.get(exchangeId);
+      if (
+        card === undefined ||
+        card.view !== "live" ||
+        card.proposal.status !== "proposed"
+      )
+        return;
+      // A second press before the answer sends nothing; the button is aria-disabled meanwhile.
+      if (executing.current.has(exchangeId)) return;
+      executing.current.add(exchangeId);
+      setCards((current) =>
+        withCard(current, exchangeId, (item) => ({
+          ...item,
+          executing: true,
+          error: undefined,
+        })),
+      );
+      const done = (change: (item: Card) => Card) => {
+        executing.current.delete(exchangeId);
+        setCards((current) =>
+          withCard(current, exchangeId, (item) => ({
+            ...change(item),
+            executing: false,
+          })),
+        );
+      };
+      executeAssistantProposal(card.proposal.id).then(
+        (result) => {
+          if (result.kind === "expired") {
+            done((item) => ({ ...item, view: "expired" }));
+            return;
+          }
+          done((item) => ({
+            ...item,
+            proposal: isNewer(result.proposal, item.proposal)
+              ? result.proposal
+              : item.proposal,
+          }));
+          // An assistant event that arrived before this answer found the card still proposed and skipped it, so a
+          // run that already finished would show as running until the next event.
+          if (isActive(result.proposal.status)) reread(result.proposal.id);
+        },
+        (error: unknown) => done((item) => ({ ...item, error })),
+      );
+    },
+    [reread],
+  );
 
   const dismiss = useCallback((exchangeId: number) => {
     setCards((current) =>
@@ -158,13 +183,8 @@ export function useProposals(open: boolean): Proposals {
     for (const card of latestCards.current.values()) {
       if (isActive(card.proposal.status)) ids.add(card.proposal.id);
     }
-    for (const id of ids) {
-      getAssistantProposal(id).then(
-        (proposal) => setCards((current) => withProposal(current, proposal)),
-        () => undefined,
-      );
-    }
-  }, []);
+    for (const id of ids) reread(id);
+  }, [reread]);
 
   const cardProposals = useMemo(
     () => [...cards.values()].map((card) => card.proposal),

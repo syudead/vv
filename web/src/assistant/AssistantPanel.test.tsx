@@ -604,6 +604,26 @@ describe("AssistantPanel", () => {
     ).toBeDefined();
   });
 
+  it("Execute の答えより先に実行が終わっても、カードは読み直した結果を出す", async () => {
+    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    let answer: (response: Response) => void = () => undefined;
+    server.execute = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "これに旅行タグを付けて");
+    await user.click(await within(panel()).findByRole("button", { name: "Execute" }));
+
+    server.proposal = () =>
+      json(proposal({ status: "done", counts: { total: 3, applied: 3, failed: 0 } }));
+    act(() => server.emit());
+    await act(async () => {
+      answer(json(proposal({ status: "approved" }), 202));
+      await Promise.resolve();
+    });
+
+    expect(await within(panel()).findByText("Done · 3 videos changed")).toBeDefined();
+  });
+
   it("stale の結果はもう一度頼む行を出す", async () => {
     server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
     server.execute = () => json(proposal({ status: "approved" }), 202);
