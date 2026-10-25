@@ -166,6 +166,19 @@ func (f *fakeTags) BatchTags(_ context.Context, req domain.TagBatchRequest, ids 
 	return f.batchOutcome, f.err
 }
 
+// The by-name operations run only while paired, which no test with fakeTags is.
+func (f *fakeTags) LookupTagName(context.Context, string) (domain.TagRef, bool, error) {
+	return domain.TagRef{}, false, errors.New("not used unpaired")
+}
+
+func (f *fakeTags) TagNames(context.Context, []int64) (map[int64]string, error) {
+	return nil, errors.New("not used unpaired")
+}
+
+func (f *fakeTags) ApplyTagByName(context.Context, domain.VocabularyChange) (domain.VocabularyOutcome, error) {
+	return domain.VocabularyOutcome{}, errors.New("not used unpaired")
+}
+
 func (f *fakeTags) TagImpact(_ context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
 	f.operation, f.lastImpactAction, f.lastIDs = "impact", action, ids
 	return f.impact, f.err

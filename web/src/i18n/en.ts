@@ -426,6 +426,13 @@ const errorReasons = {
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
   mixed_nodes:
     "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
+  tag_name_taken: ({ tagName }) =>
+    tagName === undefined
+      ? "A tag on the other VVMDM already has that name."
+      : `"${tagName}" is already a tag on the other VVMDM.`,
+  person_name_taken: "A person on this or the other VVMDM already has that name.",
+  organization_name_taken:
+    "An organization on this or the other VVMDM already has that name.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

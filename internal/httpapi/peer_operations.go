@@ -94,6 +94,7 @@ var peerOperations = []string{
 	"GET /api/peer/handshake",
 	"DELETE /api/peer/pairings/{nodeId}",
 	"POST /api/peer/related",
+	"POST /api/peer/vocabulary",
 	"GET /api/peer/videos/{id}/clues",
 	"POST /api/peer/rule-counts",
 }

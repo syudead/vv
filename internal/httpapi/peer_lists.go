@@ -125,10 +125,11 @@ func peerQuery(original url.Values, sort domain.VideoSort, filters url.Values) u
 
 var errPeerAnswer = errors.New("the other VVMDM did not answer the list")
 
-// peerRefusal is a peer answer other than 200, with the peer's reason when it gave one.
+// peerRefusal is a peer answer other than 200, with the peer's reason and error body when it gave one.
 type peerRefusal struct {
-	status int
-	reason *gen.ErrorReason
+	status  int
+	reason  *gen.ErrorReason
+	problem *gen.Error
 }
 
 func (e *peerRefusal) Error() string { return fmt.Sprintf("%v: status %d", errPeerAnswer, e.status) }
@@ -174,8 +175,8 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 	if resp.StatusCode != http.StatusOK || len(answer) > maxForwardedJSON {
 		refusal := &peerRefusal{status: resp.StatusCode}
 		var problem gen.Error
-		if json.Unmarshal(answer, &problem) == nil {
-			refusal.reason = problem.Reason
+		if json.Unmarshal(answer, &problem) == nil && problem.Code != "" {
+			refusal.reason, refusal.problem = problem.Reason, &problem
 		}
 		return refusal
 	}

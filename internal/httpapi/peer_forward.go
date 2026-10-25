@@ -55,9 +55,18 @@ var remoteCollections = []remoteCollection{
 	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations, map[string]bool{
 		"GET /api/videos/{id}/related": true,
 	}),
-	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, nil),
-	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, nil),
-	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations, nil),
+	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, vocabularyWrites("tags")),
+	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, vocabularyWrites("people")),
+	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations, vocabularyWrites("organizations")),
+}
+
+// vocabularyWrites are the deletion and merge of a collection's entry, which this node applies on both nodes by
+// name whichever node the id names.
+func vocabularyWrites(collection string) map[string]bool {
+	return map[string]bool{
+		"DELETE /api/" + collection + "/{id}":     true,
+		"POST /api/" + collection + "/{id}/merge": true,
+	}
 }
 
 func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation, merged map[string]bool) remoteCollection {

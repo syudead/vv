@@ -102,6 +102,12 @@ type Tags interface {
 
 	// BatchTags rejects nonexistent kind IDs without writes.
 	BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error)
+	// LookupTagName finds the tag holding the normalized name as its canonical name or a synonym.
+	LookupTagName(ctx context.Context, normalized string) (domain.TagRef, bool, error)
+	TagNames(ctx context.Context, ids []int64) (map[int64]string, error)
+	// ApplyTagByName applies a change of the paired node by canonical name, refusing a taken new name with
+	// *domain.TagNameConflict.
+	ApplyTagByName(ctx context.Context, change domain.VocabularyChange) (domain.VocabularyOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
@@ -638,7 +644,8 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
-		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/rule-counts":
+		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
+		"/api/peer/rule-counts":
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -41,6 +42,11 @@ type Credits interface {
 		ctx context.Context, personID int64, appearanceIDs []int64, targetID int64, restore []domain.FaceMoveCredit,
 	) (domain.FaceMove, error)
 	SimilarPeople(ctx context.Context, personID int64, appearanceIDs []int64, limit int) ([]domain.SimilarPerson, error)
+	// Names are the canonical names of the existing entries among ids; a provisional person has none.
+	Names(ctx context.Context, kind domain.CreditKind, ids []int64) (map[int64]string, error)
+	// ApplyByName applies a change of the paired node by canonical name, refusing a taken new name with
+	// *domain.CreditNameConflict.
+	ApplyByName(ctx context.Context, kind domain.CreditKind, change domain.VocabularyChange) (domain.VocabularyOutcome, error)
 }
 
 type creditKindAPI struct {
@@ -242,7 +248,7 @@ func creditInputOf(body gen.CreditInput, present func(name string) bool, kind do
 
 func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	patch, ok := s.readCreditPatch(w, r, api.kind)
-	if !ok || !s.creditsConfigured(w) {
+	if !ok || !s.creditsConfigured(w) || !s.renameCreditOnPeer(w, r, api.kind, id, patch.Name) {
 		return
 	}
 	credit, err := s.credits.Update(r.Context(), api.kind, id, patch)
@@ -365,7 +371,7 @@ func jsonProperty(fields map[string]json.RawMessage, name string) (json.RawMessa
 }
 
 func (s *server) deleteCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
-	if !s.creditsConfigured(w) {
+	if !s.creditsConfigured(w) || !s.deleteOnPeer(w, r, vocabularyKindOf(api.kind), id) {
 		return
 	}
 	if err := s.credits.Delete(r.Context(), api.kind, id); err != nil {
@@ -393,11 +399,30 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 	if !s.creditsConfigured(w) {
 		return
 	}
-	outcome, err := s.credits.Merge(r.Context(), api.kind, id, body.SourceIds)
+	// The peer merges first, so a self-merge is refused before it, not by storage.
+	propagate, ok := s.vocabularyPeer(w, r)
+	switch {
+	case !ok:
+		return
+	case propagate && slices.Contains(body.SourceIds, id):
+		s.writeCreditError(w, api, domain.ErrMergeSameCredit)
+		return
+	case propagate:
+		s.mergeOnBothNodes(w, r, id, body.SourceIds, s.creditMergeSide(api))
+		return
+	}
+	s.mergeCreditsHere(w, r, api, id, body.SourceIds, nil)
+}
+
+// mergeCreditsHere merges sources into target on this node and answers with the sources missing here or in
+// missing.
+func (s *server) mergeCreditsHere(w http.ResponseWriter, r *http.Request, api creditKindAPI, target int64, sources, missing []int64) {
+	outcome, err := s.credits.Merge(r.Context(), api.kind, target, sources)
 	if err != nil {
 		s.writeCreditError(w, api, err)
 		return
 	}
+	outcome.NotFoundIDs = unionIDs(missing, outcome.NotFoundIDs)
 	s.writeCreditBody(w, http.StatusOK, api.merged(outcome))
 }
 
