@@ -255,6 +255,7 @@ classified when it is added.
 | Excluded by this plan | Operations | Why |
 | --- | --- | --- |
 | Deleting every person | `clearPeople` | It sits in the Settings danger zone with the deletions the Issue excludes |
+| Deleting a video | `deleteVideo` | Deleting a video belongs on the video page with its `contentVersion` check; an irreversible delete is not offered from conversation |
 | Images the page sends | `uploadThumbnailImage`, `revertThumbnailImage`, `uploadPersonImage` | The input is a file, not a sentence |
 | Thumbnail edit sessions | `startThumbnailEdit`, `startThumbnailEditFromImage`, `discardThumbnailEdit`, `runThumbnailEdit`, `cancelThumbnailEdit`, `applyThumbnailEdit` | The owner judges the output image on the video page |
 | Plugin fetches | `searchWorkInfo`, `fetchWorkInfo`, `applyWorkInfoFetch`, `searchPeopleWithPlugin`, `fetchPersonWithPlugin`, `applyPersonPluginFetch` | The apply chooses among fetched candidates on a comparison screen |
