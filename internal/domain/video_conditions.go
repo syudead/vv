@@ -28,23 +28,28 @@ func (d CalendarDay) End() time.Time {
 	return d.Start().AddDate(0, 0, 1)
 }
 
-// VideoConditions are the duration, added-day and watch-state filters shared by VideoQuery and SmartRule; zero values do not filter.
+// VideoConditions are the duration, added-day and watch-state filters shared by VideoQuery and SmartRule; nil and empty values do not filter.
 type VideoConditions struct {
-	// Duration bounds are inclusive; an unknown duration never matches a bound.
-	MinDurationMs int64       `json:"minDurationMs,omitempty"`
-	MaxDurationMs int64       `json:"maxDurationMs,omitempty"`
+	// Duration bounds are inclusive and nil when unset, so an explicit 0 still filters; an unknown duration never matches a bound.
+	MinDurationMs *int64      `json:"minDurationMs,omitempty"`
+	MaxDurationMs *int64      `json:"maxDurationMs,omitempty"`
 	AddedFrom     CalendarDay `json:"addedFrom,omitempty"`
 	AddedTo       CalendarDay `json:"addedTo,omitempty"`
 	// WatchState follows ClassifyWatch.
 	WatchState WatchState `json:"watchState,omitempty"`
 }
 
+// HasCondition reports whether any condition is set.
+func (c VideoConditions) HasCondition() bool {
+	return c.MinDurationMs != nil || c.MaxDurationMs != nil || c.AddedFrom != "" || c.AddedTo != "" || c.WatchState != ""
+}
+
 // Validate rejects negative durations, days that do not parse, reversed bounds and unknown watch states with ErrInvalidVideoConditions.
 func (c VideoConditions) Validate() error {
-	if c.MinDurationMs < 0 || c.MaxDurationMs < 0 {
+	if (c.MinDurationMs != nil && *c.MinDurationMs < 0) || (c.MaxDurationMs != nil && *c.MaxDurationMs < 0) {
 		return fmt.Errorf("%w: a duration is negative", ErrInvalidVideoConditions)
 	}
-	if c.MinDurationMs > 0 && c.MaxDurationMs > 0 && c.MaxDurationMs < c.MinDurationMs {
+	if c.MinDurationMs != nil && c.MaxDurationMs != nil && *c.MaxDurationMs < *c.MinDurationMs {
 		return fmt.Errorf("%w: maxDurationMs is below minDurationMs", ErrInvalidVideoConditions)
 	}
 	for name, day := range map[string]CalendarDay{"addedFrom": c.AddedFrom, "addedTo": c.AddedTo} {

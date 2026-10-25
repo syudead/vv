@@ -46,11 +46,11 @@ var watchStateConditions = map[domain.WatchState]string{
 func videoConditionClauses(c domain.VideoConditions, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
-	if c.MinDurationMs > 0 {
-		conditions, args = append(conditions, `videos.duration_ms >= ?`), append(args, c.MinDurationMs)
+	if c.MinDurationMs != nil {
+		conditions, args = append(conditions, `videos.duration_ms >= ?`), append(args, *c.MinDurationMs)
 	}
-	if c.MaxDurationMs > 0 {
-		conditions, args = append(conditions, `videos.duration_ms <= ?`), append(args, c.MaxDurationMs)
+	if c.MaxDurationMs != nil {
+		conditions, args = append(conditions, `videos.duration_ms <= ?`), append(args, *c.MaxDurationMs)
 	}
 	if c.AddedFrom != "" {
 		conditions, args = append(conditions, `videos.added_at >= ?`), append(args, c.AddedFrom.Start().Unix())

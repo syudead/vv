@@ -5662,6 +5662,19 @@ export interface components {
             tags: components["schemas"]["VideoTag"][];
             /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
+            conditions?: components["schemas"]["SmartFolderConditions"];
+        };
+        /** @description The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them. */
+        SmartFolderConditions: {
+            /** Format: int64 */
+            minDurationMs?: number;
+            /** Format: int64 */
+            maxDurationMs?: number;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedFrom?: string;
+            /** @description `YYYY-MM-DD` day in the server's local time zone. */
+            addedTo?: string;
+            watchState?: components["schemas"]["WatchState"];
         };
         /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {

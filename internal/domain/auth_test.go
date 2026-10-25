@@ -146,7 +146,7 @@ func TestCheckVideoQuery(t *testing.T) {
 		defaults,
 		{Sort: SortTitleAsc, Query: "cat"},
 		{Sort: SortRandom, Seed: 5},
-		{VideoConditions: VideoConditions{MinDurationMs: 1, AddedFrom: "2025-01-01"}},
+		{VideoConditions: VideoConditions{MinDurationMs: new(int64(1)), AddedFrom: "2025-01-01"}},
 	}
 	denied := []VideoQuery{
 		{Sort: SortPlayedDesc},

@@ -43,9 +43,9 @@ type smartRuleInput struct {
 	TagKind      *int64   `json:"tagKind"`
 	Person       *int64   `json:"person"`
 	Organization *int64   `json:"organization"`
-	// Explicit nulls are rejected before decoding, so plain values suffice.
-	MinDurationMs int64       `json:"minDurationMs"`
-	MaxDurationMs int64       `json:"maxDurationMs"`
+	// Explicit nulls are rejected before decoding; the pointers keep an explicit 0 duration bound.
+	MinDurationMs *int64      `json:"minDurationMs"`
+	MaxDurationMs *int64      `json:"maxDurationMs"`
 	AddedFrom     CalendarDay `json:"addedFrom"`
 	AddedTo       CalendarDay `json:"addedTo"`
 	WatchState    WatchState  `json:"watchState"`
@@ -325,6 +325,8 @@ type SmartFolderCard struct {
 	Previews []Video
 	// Tags is the union of matching-video tags, empty for guests.
 	Tags []VideoTag
+	// Conditions are the folder's own rule's video conditions, which the card shows as chips.
+	Conditions VideoConditions
 }
 
 type SmartFolderPage struct {

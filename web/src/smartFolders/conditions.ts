@@ -6,7 +6,7 @@ export type RefKind = SmartRuleRef["kind"];
 
 /** Literal conditions use text; named references use ref, with missing marking deleted targets. */
 export type ConditionChip =
-  | { kind: "text"; key: string; text: string }
+  | { kind: "text"; key: string; text: string; uncapped?: boolean }
   | { kind: "ref"; key: string; ref: RefKind; id: number; missing: boolean };
 
 function refChip(
@@ -48,8 +48,9 @@ export function conditionChips(
   if (rule.organization !== undefined) {
     chips.push(refChip("organization", rule.organization, missing));
   }
+  // Duration, day and watch texts are short and built here, so they are not cut like names.
   for (const chip of videoConditionChips(rule))
-    chips.push(textChip(chip.kind, chip.text));
+    chips.push({ kind: "text", key: chip.kind, text: chip.text, uncapped: true });
   return chips;
 }
 

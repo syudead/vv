@@ -60,19 +60,24 @@ func TestParseSmartRuleAcceptsVideoConditions(t *testing.T) {
 		t.Fatalf("ParseSmartRule() error = %v", err)
 	}
 	want := VideoConditions{
-		MinDurationMs: 600000, MaxDurationMs: 1800000, AddedFrom: "2025-01-01", AddedTo: "2025-12-31",
+		MinDurationMs: new(int64(600000)), MaxDurationMs: new(int64(1800000)), AddedFrom: "2025-01-01", AddedTo: "2025-12-31",
 		WatchState: WatchStateInProgress,
 	}
-	if rule.VideoConditions != want || rule.Query().VideoConditions != want {
+	if !reflect.DeepEqual(rule.VideoConditions, want) || !reflect.DeepEqual(rule.Query().VideoConditions, want) {
 		t.Fatalf("conditions = %+v, query = %+v, want %+v", rule.VideoConditions, rule.Query().VideoConditions, want)
 	}
 	if encoded, err := rule.Encode(); err != nil || encoded != raw {
 		t.Fatalf("Encode() = %s, %v", encoded, err)
 	}
-	// One day is a valid range, as is a lone bound.
-	for _, raw := range []string{`{"addedFrom":"2025-03-01","addedTo":"2025-03-01"}`, `{"maxDurationMs":60000}`} {
-		if _, err := ParseSmartRule([]byte(raw)); err != nil {
+	// One day is a valid range, as is a lone bound; an explicit 0 bound survives encoding.
+	for _, raw := range []string{`{"addedFrom":"2025-03-01","addedTo":"2025-03-01"}`, `{"maxDurationMs":60000}`, `{"maxDurationMs":0}`} {
+		rule, err := ParseSmartRule([]byte(raw))
+		if err != nil {
 			t.Errorf("ParseSmartRule(%s) error = %v", raw, err)
+			continue
+		}
+		if encoded, err := rule.Encode(); err != nil || encoded != raw {
+			t.Errorf("ParseSmartRule(%s).Encode() = %s, %v", raw, encoded, err)
 		}
 	}
 }
@@ -107,6 +112,7 @@ func TestParseSmartRuleRejectsOutOfRangeMembers(t *testing.T) {
 		"organization zero": `{"organization":0}`,
 		"negative duration": `{"minDurationMs":-1}`,
 		"reversed duration": `{"minDurationMs":2000,"maxDurationMs":1000}`,
+		"reversed to zero":  `{"minDurationMs":1,"maxDurationMs":0}`,
 		"day not a day":     `{"addedFrom":"2025-02-30"}`,
 		"day not iso":       `{"addedTo":"2025/01/01"}`,
 		"reversed days":     `{"addedFrom":"2025-03-02","addedTo":"2025-03-01"}`,

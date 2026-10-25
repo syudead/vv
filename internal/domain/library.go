@@ -105,7 +105,7 @@ type VideoQuery struct {
 // ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.VideoConditions == (VideoConditions{}) && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
+		!q.HasCondition() && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
 }
 
 type VideoPage struct {

@@ -4255,6 +4255,9 @@ type LibrarySmartFolder struct {
 	// AddedAt Latest addition timestamp; omitted if there are no videos.
 	AddedAt *time.Time `json:"addedAt,omitempty"`
 
+	// Conditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+	Conditions *SmartFolderConditions `json:"conditions,omitempty"`
+
 	// DurationMs Sum of known video durations; omitted if none are known.
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
@@ -5628,6 +5631,20 @@ type SmartFolderChange struct {
 type SmartFolderChanged struct {
 	// Ids Smart-folder IDs whose contents or cards may have changed, ascending.
 	Ids []int64 `json:"ids"`
+}
+
+// SmartFolderConditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+type SmartFolderConditions struct {
+	// AddedFrom `YYYY-MM-DD` day in the server's local time zone.
+	AddedFrom *string `json:"addedFrom,omitempty"`
+
+	// AddedTo `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo       *string `json:"addedTo,omitempty"`
+	MaxDurationMs *int64  `json:"maxDurationMs,omitempty"`
+	MinDurationMs *int64  `json:"minDurationMs,omitempty"`
+
+	// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+	WatchState *WatchState `json:"watchState,omitempty"`
 }
 
 // SmartFolderCreate POST /api/smart-folders body.

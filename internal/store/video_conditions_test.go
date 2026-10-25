@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 	"time"
@@ -47,17 +48,19 @@ func assertConditionMatches(t *testing.T, db *DB, ids map[string]int64, c domain
 		wantIDs = append(wantIDs, ids[name])
 	}
 	slices.Sort(wantIDs)
+	// Print the values, not the duration pointers.
+	label, _ := json.Marshal(c)
 	q := domain.VideoQuery{Limit: 50, VideoConditions: c}
 	if got := listIDs(t, db, domain.AudienceOwner, q); !slices.Equal(got, wantIDs) {
-		t.Errorf("%+v: ListVideos = %v, want %v", c, got, wantIDs)
+		t.Errorf("%s: ListVideos = %v, want %v", label, got, wantIDs)
 	}
 	if library := itemVideoIDs(libraryPages(t, db, domain.AudienceOwner, q)); !slices.Equal(library, wantIDs) {
-		t.Errorf("%+v: ListLibrary = %v, want %v", c, library, wantIDs)
+		t.Errorf("%s: ListLibrary = %v, want %v", label, library, wantIDs)
 	}
 	folder := newSmartFolder(t, db, "f", domain.SmartRule{VideoConditions: c}, domain.SortAddedDesc, 0)
 	_, items := smartFolderPages(t, db, domain.AudienceOwner, folder, domain.MaxLimit)
 	if inFolder := itemVideoIDs(items); !slices.Equal(inFolder, wantIDs) {
-		t.Errorf("%+v: smart folder = %v, want %v", c, inFolder, wantIDs)
+		t.Errorf("%s: smart folder = %v, want %v", label, inFolder, wantIDs)
 	}
 }
 
@@ -74,17 +77,23 @@ func itemVideoIDs(items []domain.LibraryItem) []int64 {
 }
 
 func TestDurationConditionsIncludeBothBoundsAndSkipUnknown(t *testing.T) {
-	ms := func(v int64) *int64 { return &v }
 	db, ids := conditionFixture(t, []conditionVideo{
 		{name: "unknown"},
-		{name: "below", durationMs: ms(599_999)},
-		{name: "min", durationMs: ms(600_000)},
-		{name: "max", durationMs: ms(1_800_000)},
-		{name: "above", durationMs: ms(1_800_001)},
+		{name: "zero", durationMs: new(int64(0))},
+		{name: "below", durationMs: new(int64(599_999))},
+		{name: "min", durationMs: new(int64(600_000))},
+		{name: "max", durationMs: new(int64(1_800_000))},
+		{name: "above", durationMs: new(int64(1_800_001))},
 	})
-	assertConditionMatches(t, db, ids, domain.VideoConditions{MinDurationMs: 600_000, MaxDurationMs: 1_800_000}, "min", "max")
-	assertConditionMatches(t, db, ids, domain.VideoConditions{MinDurationMs: 600_000}, "min", "max", "above")
-	assertConditionMatches(t, db, ids, domain.VideoConditions{MaxDurationMs: 1_800_000}, "below", "min", "max")
+	bounds := func(min, max *int64) domain.VideoConditions {
+		return domain.VideoConditions{MinDurationMs: min, MaxDurationMs: max}
+	}
+	assertConditionMatches(t, db, ids, bounds(new(int64(600_000)), new(int64(1_800_000))), "min", "max")
+	assertConditionMatches(t, db, ids, bounds(new(int64(600_000)), nil), "min", "max", "above")
+	assertConditionMatches(t, db, ids, bounds(nil, new(int64(1_800_000))), "zero", "below", "min", "max")
+	// An explicit 0 bound still filters, so the unknown duration stays out.
+	assertConditionMatches(t, db, ids, bounds(nil, new(int64(0))), "zero")
+	assertConditionMatches(t, db, ids, bounds(new(int64(0)), nil), "zero", "below", "min", "max", "above")
 }
 
 func TestAddedDayConditionsUseLocalDayBounds(t *testing.T) {

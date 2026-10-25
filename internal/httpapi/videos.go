@@ -86,13 +86,7 @@ type conditionParams struct {
 }
 
 func (p conditionParams) conditions() domain.VideoConditions {
-	var c domain.VideoConditions
-	if p.minDurationMs != nil {
-		c.MinDurationMs = *p.minDurationMs
-	}
-	if p.maxDurationMs != nil {
-		c.MaxDurationMs = *p.maxDurationMs
-	}
+	c := domain.VideoConditions{MinDurationMs: p.minDurationMs, MaxDurationMs: p.maxDurationMs}
 	if p.addedFrom != nil {
 		c.AddedFrom = domain.CalendarDay(*p.addedFrom)
 	}

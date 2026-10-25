@@ -329,8 +329,9 @@ the `Created "{name}"` toast carries `Open` to the new folder's page.
 The dialog's conditions are the search text, `Favorites only`, tags and tag
 kind, person and organization, the same set as the library filter. A rule with
 duration, added-date or watch conditions lists them under `Set by the
-assistant` as chips that can only be removed, and the smart folder page shows
-them on its condition lines.
+assistant` as chips that can only be removed. The smart folder page shows
+them on its condition lines, and the owner's smart folder card shows the
+folder's own ones as chips after its tags.
 
 ### Scan entry and progress
 

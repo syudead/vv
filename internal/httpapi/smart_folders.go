@@ -378,11 +378,32 @@ func (s *server) toAPISmartFolderCard(ctx context.Context, audience domain.Audie
 		for _, tag := range card.Tags {
 			out.Tags = append(out.Tags, toAPIVideoTag(tag))
 		}
+		out.Conditions = toAPISmartFolderConditions(card.Conditions)
 	}
 	smartFolderOwnerValues{
 		state: card.WatchState, watched: card.WatchedCount, lastPlayedAt: card.LastPlayedAt, favorite: card.Favorite,
 	}.apply(audience, &out)
 	return out
+}
+
+// toAPISmartFolderConditions returns nil when the rule sets none of the conditions.
+func toAPISmartFolderConditions(c domain.VideoConditions) *gen.SmartFolderConditions {
+	if !c.HasCondition() {
+		return nil
+	}
+	return &gen.SmartFolderConditions{
+		MinDurationMs: c.MinDurationMs, MaxDurationMs: c.MaxDurationMs,
+		AddedFrom: optionalString(string(c.AddedFrom)), AddedTo: optionalString(string(c.AddedTo)),
+		WatchState: optionalWatchState(c.WatchState),
+	}
+}
+
+func optionalWatchState(state domain.WatchState) *gen.WatchState {
+	if state == "" {
+		return nil
+	}
+	out := gen.WatchState(state)
+	return &out
 }
 
 type smartFolderOwnerValues struct {
