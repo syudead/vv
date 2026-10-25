@@ -62,34 +62,9 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, err := canonicalNameByTagID(ctx, tx, id)
-	if err != nil {
+	if _, err := renameTagInTx(ctx, tx, id, normalized); err != nil {
 		return domain.Tag{}, err
 	}
-
-	if current != normalized {
-		lookup, found, err := lookupTagName(ctx, tx, normalized)
-		if err != nil {
-			return domain.Tag{}, err
-		}
-		if found {
-			return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
-		}
-		if _, err := tx.ExecContext(ctx, `
-			update tag_names set name = ?, search_key = ?, sort_key = ?, search_version = ?
-			 where tag_id = ? and canonical = 1`,
-			normalized, domain.FoldForMatch(normalized), domain.NaturalSortKey(normalized), domain.SearchKeyVersion, id,
-		); err != nil {
-			return domain.Tag{}, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
-		}
-		if err := forgetRejectedName(ctx, tx, normalized); err != nil {
-			return domain.Tag{}, err
-		}
-		if err := confirmTagInTx(ctx, tx, id); err != nil {
-			return domain.Tag{}, err
-		}
-	}
-
 	tag, err := tagByID(ctx, tx, id)
 	if err != nil {
 		return domain.Tag{}, err
@@ -98,6 +73,33 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 		return domain.Tag{}, fmt.Errorf("cannot rename the tag: %w", err)
 	}
 	return tag, nil
+}
+
+// renameTagInTx gives tag id the normalized canonical name and reports whether it changed; a tag holding the name,
+// even as id's own synonym, is a *domain.TagNameConflict.
+func renameTagInTx(ctx context.Context, tx *sql.Tx, id int64, normalized string) (bool, error) {
+	current, err := canonicalNameByTagID(ctx, tx, id)
+	if err != nil || current == normalized {
+		return false, err
+	}
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		return false, &domain.TagNameConflict{Tag: lookup.ref()}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		update tag_names set name = ?, search_key = ?, sort_key = ?, search_version = ?
+		 where tag_id = ? and canonical = 1`,
+		normalized, domain.FoldForMatch(normalized), domain.NaturalSortKey(normalized), domain.SearchKeyVersion, id,
+	); err != nil {
+		return false, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
+	}
+	if err := forgetRejectedName(ctx, tx, normalized); err != nil {
+		return false, err
+	}
+	return true, confirmTagInTx(ctx, tx, id)
 }
 
 // DeleteTag cascades names and all attachments, including those for videos outside the current library.

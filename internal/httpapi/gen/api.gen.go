@@ -694,6 +694,7 @@ const (
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
 	ErrorReasonNotVirtual                    ErrorReason = "not_virtual"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
+	ErrorReasonOrganizationNameTaken         ErrorReason = "organization_name_taken"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
@@ -704,6 +705,7 @@ const (
 	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
 	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
 	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
+	ErrorReasonPersonNameTaken               ErrorReason = "person_name_taken"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
@@ -716,6 +718,7 @@ const (
 	ErrorReasonTagKindNotFound               ErrorReason = "tag_kind_not_found"
 	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
 	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
+	ErrorReasonTagNameTaken                  ErrorReason = "tag_name_taken"
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
 	ErrorReasonThumbnailEditMaskInvalid      ErrorReason = "thumbnail_edit_mask_invalid"
 	ErrorReasonThumbnailEditNoResult         ErrorReason = "thumbnail_edit_no_result"
@@ -859,6 +862,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonOpenNotLocal:
 		return true
+	case ErrorReasonOrganizationNameTaken:
+		return true
 	case ErrorReasonOrganizationNotFound:
 		return true
 	case ErrorReasonOrganizationParentCycle:
@@ -878,6 +883,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonPersonImageNotFound:
 		return true
 	case ErrorReasonPersonImageTooLarge:
+		return true
+	case ErrorReasonPersonNameTaken:
 		return true
 	case ErrorReasonPersonNotFound:
 		return true
@@ -902,6 +909,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonTagNameControlCharacters:
 		return true
 	case ErrorReasonTagNameEmpty:
+		return true
+	case ErrorReasonTagNameTaken:
 		return true
 	case ErrorReasonTagNameTooLong:
 		return true
@@ -1401,6 +1410,48 @@ func (e PeerStateState) Valid() bool {
 	case PeerStateStateUnpaired:
 		return true
 	case PeerStateStateUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerVocabularyRequestAction.
+const (
+	PeerVocabularyRequestActionDelete PeerVocabularyRequestAction = "delete"
+	PeerVocabularyRequestActionMerge  PeerVocabularyRequestAction = "merge"
+	PeerVocabularyRequestActionRename PeerVocabularyRequestAction = "rename"
+)
+
+// Valid indicates whether the value is a known member of the PeerVocabularyRequestAction enum.
+func (e PeerVocabularyRequestAction) Valid() bool {
+	switch e {
+	case PeerVocabularyRequestActionDelete:
+		return true
+	case PeerVocabularyRequestActionMerge:
+		return true
+	case PeerVocabularyRequestActionRename:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerVocabularyRequestKind.
+const (
+	PeerVocabularyRequestKindOrganization PeerVocabularyRequestKind = "organization"
+	PeerVocabularyRequestKindPerson       PeerVocabularyRequestKind = "person"
+	PeerVocabularyRequestKindTag          PeerVocabularyRequestKind = "tag"
+)
+
+// Valid indicates whether the value is a known member of the PeerVocabularyRequestKind enum.
+func (e PeerVocabularyRequestKind) Valid() bool {
+	switch e {
+	case PeerVocabularyRequestKindOrganization:
+		return true
+	case PeerVocabularyRequestKindPerson:
+		return true
+	case PeerVocabularyRequestKindTag:
 		return true
 	default:
 		return false
@@ -5041,6 +5092,39 @@ type PeerStateReason string
 // PeerStateState defines model for PeerState.State.
 type PeerStateState string
 
+// PeerVocabularyRequest defines model for PeerVocabularyRequest.
+type PeerVocabularyRequest struct {
+	Action PeerVocabularyRequestAction `json:"action"`
+
+	// Into The merge destination, created when absent; required for merge
+	Into *string                   `json:"into,omitempty"`
+	Kind PeerVocabularyRequestKind `json:"kind"`
+
+	// Name The current canonical name; required for rename and delete
+	Name *string `json:"name,omitempty"`
+
+	// NewName Required for rename
+	NewName *string `json:"newName,omitempty"`
+
+	// Sources The names merged into `into`; required for merge
+	Sources *[]string `json:"sources,omitempty"`
+}
+
+// PeerVocabularyRequestAction defines model for PeerVocabularyRequest.Action.
+type PeerVocabularyRequestAction string
+
+// PeerVocabularyRequestKind defines model for PeerVocabularyRequest.Kind.
+type PeerVocabularyRequestKind string
+
+// PeerVocabularyResult defines model for PeerVocabularyResult.
+type PeerVocabularyResult struct {
+	// Changed False when the entry is absent on this node, or no source of a merge is
+	Changed bool `json:"changed"`
+
+	// Skipped The merge sources absent on this node
+	Skipped []string `json:"skipped"`
+}
+
 // PeopleCleared defines model for PeopleCleared.
 type PeopleCleared struct {
 	// Deleted People deleted
@@ -8333,6 +8417,9 @@ type AcceptPairingJSONRequestBody = PairingRequest
 // RankPeerRelatedJSONRequestBody defines body for RankPeerRelated for application/json ContentType.
 type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
 
+// ApplyPeerVocabularyJSONRequestBody defines body for ApplyPeerVocabulary for application/json ContentType.
+type ApplyPeerVocabularyJSONRequestBody = PeerVocabularyRequest
+
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = CreditInput
 
@@ -8734,6 +8821,9 @@ type ServerInterface interface {
 	// GetPeerRelatedClues Return the related-video clues of one video
 	// (GET /api/peer/videos/{id}/clues)
 	GetPeerRelatedClues(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
+	// (POST /api/peer/vocabulary)
+	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
 	// ClearPeople Delete every person and all face data
 	// (DELETE /api/people)
 	ClearPeople(w http.ResponseWriter, r *http.Request)
@@ -11376,6 +11466,20 @@ func (siw *ServerInterfaceWrapper) GetPeerRelatedClues(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPeerRelatedClues(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPeerVocabulary operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPeerVocabulary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16258,6 +16362,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/related", wrapper.RankPeerRelated)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/vocabulary", wrapper.ApplyPeerVocabulary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)

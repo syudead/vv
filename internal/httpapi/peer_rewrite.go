@@ -47,13 +47,18 @@ var remoteVideoOperations = map[string]remoteOperation{
 // remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and
 // organizations.
 var remoteVocabularyOperations = map[string]remoteOperation{
-	"PATCH /api/tags/{id}":        {rewrite: rewriteAs(rewriteRemoteTag)},
-	"GET /api/people/{id}":        {rewrite: rewriteAs(rewriteRemotePerson)},
-	"PATCH /api/people/{id}":      {rewrite: rewriteAs(rewriteRemotePerson)},
+	"PATCH /api/tags/{id}": {rewrite: rewriteAs(rewriteRemoteTag), request: (*server).checkRemoteTagRename},
+	"GET /api/people/{id}": {rewrite: rewriteAs(rewriteRemotePerson)},
+	"PATCH /api/people/{id}": {
+		rewrite: rewriteAs(rewriteRemotePerson), request: checkRemoteCreditRename(domain.CreditPerson),
+	},
 	"GET /api/people/{id}/image":  {},
 	"GET /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
 	"PATCH /api/organizations/{id}": {
-		rewrite: rewriteAs(rewriteRemoteOrganizationEntity), request: (*server).remoteOrganizationPatch,
+		rewrite: rewriteAs(rewriteRemoteOrganizationEntity),
+		request: func(s *server, w http.ResponseWriter, r *http.Request) bool {
+			return checkRemoteCreditRename(domain.CreditOrganization)(s, w, r) && s.remoteOrganizationPatch(w, r)
+		},
 	},
 }
 
