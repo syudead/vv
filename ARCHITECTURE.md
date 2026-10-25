@@ -66,7 +66,7 @@ flowchart LR
 | Layer | Packages | Owns | Must not import |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
-| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
+| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging, the assistant) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
 | Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
@@ -188,7 +188,8 @@ filesystem.
 | `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [authentication.md](docs/design-docs/authentication.md), [i18n.md](docs/design-docs/i18n.md) |
 | External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
-| `internal/app` (`Classifier`, `OllamaConnection`), `internal/ollama` | The AI layer: a task-agnostic classifier port, and the Ollama provider behind it with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`Classifier`, `StructuredGenerator`, `OllamaConnection`), `internal/ollama` | The AI layer: task-agnostic classifier and generation ports, and the Ollama provider behind them with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`Assistant`), `internal/store` (`AssistantStore`), `internal/httpapi` (`ActionRunner`) | The in-app assistant: one structured outcome per request from the generation port, names resolved by the server, write proposals that a worker runs through the screen API's handlers after the owner approves them, and review runs judged through the classifier port | [assistant.md](docs/design-docs/assistant.md) |
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title, tags and work details in one transaction that re-checks the plugin's approval, matches the fetched people and organizations again and creates only the entities the merge keeps | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
@@ -225,6 +226,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `app/` | Routes |
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
+| `assistant/` | The assistant's panel, mounted above the routes, its thread store and the review list page |
 | `credits/` | The people and organizations admin screens: one page that takes the kind, built from the tag admin screen's list pieces in `tags/` |
 | `videoList/` | List pieces the library and folder screens share |
 | `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |

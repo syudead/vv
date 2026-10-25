@@ -1,7 +1,8 @@
 # AI layer: classifier port and providers
 
-VVMDM's features reach a decision model only through one task-agnostic port,
-`app.Classifier`, and the provider behind it is an adapter chosen in
+VVMDM's features reach a model only through two task-agnostic ports,
+`app.Classifier` for yes/no decisions and `app.StructuredGenerator` for one
+structured value, and the provider behind each is an adapter chosen in
 `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
@@ -10,11 +11,16 @@ asks or what the questions mean.
 flowchart LR
   feature[Feature: AutoTagger] -->|domain.ClassifierRequest| port[app.Classifier]
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
+  assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
+  assistant -->|domain.GenerationRequest| gport[app.StructuredGenerator]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
+  gport -.->|implemented by| gen[internal/ollama.Generator]
   ollama -->|reads| settings[(ollama.* settings)]
+  gen -->|reads| settings
   ollama -->|/v1/systemone| server[Ollama]
+  gen -->|/api/chat| server
   conn[app.OllamaConnection] --> settings
-  conn -->|Check: version and model list| ollama
+  conn -->|Check and model list| ollama
 ```
 
 ## Port
@@ -38,20 +44,52 @@ facts and the question wording, and turns probabilities into decisions.
 | --- | --- | --- |
 | Auto-tagging | One question per candidate tag; the thumbnail, 8 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
 | Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
+| Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or aliases and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
+
+## Generation port
+
+The generation port takes a prompt and a JSON schema and returns one JSON
+value that satisfies the schema
+([`internal/app/generator.go`](../../internal/app/generator.go),
+[`internal/domain/generation.go`](../../internal/domain/generation.go)). The
+assistant is its one feature; it validates the value against its own schema
+again, since a provider may not enforce every keyword
+([assistant.md](assistant.md#one-structured-answer-per-turn)).
+
+Failures wrap one domain cause each, so a feature maps them without reading
+messages.
+
+| Cause | When |
+| --- | --- |
+| `ErrOllamaUnreachable` | The endpoint cannot be reached |
+| `ErrNotOllama` | The reply is not Ollama's |
+| `ErrOllamaModel` | No generation model is saved, or Ollama answers an `error` (a missing model, for one) |
+| `ErrOllamaTimeout` | No answer within the time limit |
+| `ErrGenerationUnreadable` | The answer is not JSON |
+
+| Rejected | Why |
+| --- | --- |
+| A text answer on the classifier port | The classifier answers yes/no questions with probabilities; a plan is one structured value, and the two calls' models and limits differ |
+| The name `app.Generator` | `internal/app` already uses it for ingest's probe and thumbnail port |
 
 ## Ollama provider
 
-[`internal/ollama`](../../internal/ollama) implements the port with Ollama's
-decision API (`POST /v1/systemone`) and a Clef model. It owns everything
-specific to that provider:
+[`internal/ollama`](../../internal/ollama) implements the classifier port
+with Ollama's decision API (`POST /v1/systemone`) and a Clef model, and the
+generation port with Ollama's chat API (`POST /api/chat`) and a chat model the
+owner chooses. It owns everything specific to that provider:
 
 | Concern | Rule |
 | --- | --- |
-| Connection | Reads the saved URL and model (`ollama.endpoint`, `ollama.model`) on every call, so a change takes effect without a restart |
-| Wire format | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
-| Batches | 16 questions per call, all with the same input; answers are merged |
+| Connection | Reads the saved URL and models (`ollama.endpoint`, `ollama.model`, `ollama.generation_model`) on every call, so a change takes effect without a restart |
+| Wire format, decisions | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
+| Wire format, generation | One user message, the schema in `format`, `stream: false`; Ollama's grammar holds the answer to the schema for any chat model from 0.5.0 on |
+| Batches | 16 questions per decision call, all with the same input; answers are merged. A generation call is never split or retried |
 | Time | Each call times out after 10 minutes; the model stays loaded for 10 minutes after it (`keep_alive`) |
 | Errors | Only the `error` text of an Ollama JSON reply is passed on; any other body is dropped |
+
+The decision model cannot chat and a chat model cannot answer the decision
+API, so the two models are separate settings.
 
 Ollama accepts 64 questions per request, but 64 questions and a thumbnail make
 about 7,400 input tokens, and Clef-flash on a 15 GB CPU machine was killed for
@@ -72,17 +110,27 @@ connection test does not depend on what the model is used for.
 
 | Test | Proves | Requests | Time |
 | --- | --- | --- | --- |
-| Connection (Settings, Ollama) | Ollama runs at the URL, and has the model (a name without a tag means `:latest`) | `GET /api/version`, `GET /api/tags` | Seconds; the model is not loaded |
+| Connection (Settings, Connections, Ollama) | Ollama runs at the URL, and has the decision model and, when one is saved, the generation model (a name without a tag means `:latest`) | `GET /api/version`, `GET /api/tags` | Seconds; no model is loaded |
 | Judging (Settings, Auto-tagging, "Test judging") | The classifier port answers a question with a probability | One question through `app.Classifier` | Up to minutes, as it loads the model |
 
 The connection test reports one of: Ollama cannot be reached, the server is not
-Ollama, or the model is missing. The judging test belongs to the feature that
-uses the port, so it works with whatever provider is behind it.
+Ollama, the decision model is missing, or the generation model is missing
+(`reason: generation_model_missing`). The judging test belongs to the feature
+that uses the port, so it works with whatever provider is behind it.
+
+The two model fields are pickers filled from `GET /api/settings/ollama/models`,
+which lists the names at the saved endpoint with the same two requests and
+answers `409 ollama_unreachable` (`connection` or `not_ollama`) when it cannot;
+a picker also saves a typed name that is not listed. `GET
+/api/assistant/readiness` answers whether a generation call can be made from
+the saved settings alone (`ollama_not_saved`, `generation_model_unset`),
+without a request to Ollama.
 
 | Setting | Default |
 | --- | --- |
 | Ollama URL | `http://127.0.0.1:11434` |
-| Model | `clef-flash` (`clef` is 27B and more accurate) |
+| Decision model | `clef-flash` (`clef` is 27B and more accurate) |
+| Generation model | None; the assistant is unavailable until the owner saves one. `PUT` with an empty string clears it, and omitting it keeps the saved value |
 
 ## Image-edit provider
 
@@ -158,7 +206,8 @@ body.
 ## Adding a provider
 
 A new provider is a new adapter package that implements
-`Classify(ctx, domain.ClassifierRequest)`, reads its own settings, and splits
+`Classify(ctx, domain.ClassifierRequest)` or
+`Generate(ctx, domain.GenerationRequest)`, reads its own settings, and splits
 requests to its own limits. `cmd/mdm` passes it to the features in place of
 `internal/ollama`; no feature changes. depguard keeps `internal/app` from
 importing a provider package ([.golangci.yml](../../.golangci.yml)).

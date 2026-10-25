@@ -167,7 +167,8 @@ type AssistantCurrent struct {
 	Videos map[string]int64
 }
 
-// Stale is true when a video is gone or a named entity was renamed or deleted since the card showed it.
+// Stale is true when a video is gone or a named entity was renamed or deleted since the card showed it. A label
+// without an id names an entity the plan creates, so it has no current name to compare.
 func (p AssistantPlan) Stale(current AssistantCurrent) bool {
 	for _, key := range p.Targets.VideoKeys {
 		if _, ok := current.Videos[key]; !ok {
@@ -179,6 +180,9 @@ func (p AssistantPlan) Stale(current AssistantCurrent) bool {
 			if _, ok := current.Videos[label.Key]; !ok {
 				return true
 			}
+			continue
+		}
+		if label.ID == 0 {
 			continue
 		}
 		name, ok := current.Names[AssistantLabelRef{Kind: label.Kind, ID: label.ID}]

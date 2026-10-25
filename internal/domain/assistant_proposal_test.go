@@ -67,6 +67,16 @@ func TestAssistantPlanStale(t *testing.T) {
 		t.Fatal("an unchanged plan is stale")
 	}
 
+	// A tag the plan creates has no id and no current name; it must not make the plan stale.
+	creates := plan
+	creates.Change = []AssistantChange{{Argument: AssistantArgTagNames, Labels: []AssistantLabel{
+		{Kind: AssistantLabelTag, Name: "Rewatch"},
+	}}}
+	creates.Created = []string{"Rewatch"}
+	if creates.Stale(current()) {
+		t.Error("a plan that creates its tag is stale")
+	}
+
 	renamed := current()
 	renamed.Names[AssistantLabelRef{Kind: AssistantLabelTag, ID: 7}] = "Animation"
 	deleted := current()
