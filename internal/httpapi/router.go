@@ -894,6 +894,7 @@ const (
 	codeLinkOrderChanged            = gen.ErrorCodeLinkOrderChanged
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
+	codeOllamaUnreachable           = gen.ErrorCodeOllamaUnreachable
 )
 
 // Error reasons likewise come from the schema; aliases distinguish generated unprefixed constants.

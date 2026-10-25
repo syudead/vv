@@ -1761,6 +1761,42 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/ollama/models:
+    get:
+      operationId: listOllamaModels
+      summary: "List the models at the saved Ollama endpoint"
+      description: "Uses only GET /api/version and GET /api/tags at the saved URL, never a request-supplied URL, without loading a model. Names come in the order Ollama lists them, for the decision and generation model pickers; see docs/design-docs/ai-layer.md."
+      responses:
+        "200":
+          description: "Model names"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaModelList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "ollama_unreachable: the saved endpoint cannot be reached (reason connection) or does not answer as Ollama (reason not_ollama)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/assistant/readiness:
+    get:
+      operationId: getAssistantReadiness
+      summary: "Say whether the assistant can take a request"
+      description: "Reads only the saved Ollama connection and generation model; sends no request to Ollama."
+      responses:
+        "200":
+          description: "Readiness"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReadiness"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/comfyui:
     get:
       operationId: getComfyUISettings
@@ -6127,7 +6163,7 @@ components:
 
     OllamaSettings:
       type: object
-      required: [endpoint, model, saved]
+      required: [endpoint, model, generationModel, saved]
       additionalProperties: false
       description: "Ollama connection; see docs/design-docs/ai-layer.md"
       properties:
@@ -6136,7 +6172,10 @@ components:
           description: "HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434"
         model:
           type: string
-          description: "Ollama model name; defaults to clef-flash"
+          description: "Decision model name for the Clef classifier; defaults to clef-flash"
+        generationModel:
+          type: string
+          description: "Chat model name the assistant generates with; empty until the owner saves one, and empty turns the assistant off"
         saved:
           type: boolean
           description: "Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true."
@@ -6151,7 +6190,40 @@ components:
           description: "Ollama base URL using HTTP or HTTPS."
         model:
           type: string
-          description: "Ollama model name."
+          description: "Decision model name."
+        generationModel:
+          type: string
+          description: "Generation model name; an empty string clears it and keeps the connection saved. Omitted keeps the saved value."
+    OllamaModelList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      description: "Models at the saved Ollama endpoint, in Ollama's order."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OllamaModel"
+    OllamaModel:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "Model name as Ollama lists it, such as qwen3:8b."
+    AssistantReadiness:
+      type: object
+      required: [ready]
+      additionalProperties: false
+      description: "Whether a turn can run; reason is present only when ready is false."
+      properties:
+        ready:
+          type: boolean
+        reason:
+          type: string
+          enum: [ollama_not_saved, generation_model_unset]
+          description: "ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved."
 
     ComfyUIProvider:
       type: string
@@ -6241,6 +6313,10 @@ components:
         message:
           type: string
           description: "Unavailability reason in English, possibly including the provider's JSON error message."
+        reason:
+          type: string
+          enum: [generation_model_missing]
+          description: "Ollama checks only: the decision model is listed but the saved generation model is not."
         missing:
           type: array
           description: "ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows."
@@ -12174,6 +12250,7 @@ components:
             - smart_folder_cycle
             - activity_not_retryable
             - activity_not_undoable
+            - ollama_unreachable
         message:
           type: string
           description: "English explanation for API clients and unknown-code fallback; the UI derives text from code and reason."
@@ -12308,3 +12385,5 @@ components:
         - virtual_video
         - description_too_long
         - too_many_urls
+        - connection
+        - not_ollama

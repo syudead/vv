@@ -2,6 +2,7 @@ package ollama
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,5 +68,42 @@ func TestCheckReportsWhyItFailed(t *testing.T) {
 	defer missing.Close()
 	if err := New(withModel(missing.URL, "clef")).Check(context.Background()); err == nil || !strings.Contains(err.Error(), "answered 404") {
 		t.Errorf("404: err = %v", err)
+	}
+}
+
+func TestCheckNamesMissingGenerationModel(t *testing.T) {
+	server := fakeOllama(t, `{"models":[{"name":"clef-flash:latest","model":"clef-flash:latest"},{"name":"qwen3:8b","model":"qwen3:8b"}]}`)
+	check := func(decision, generation string) error {
+		return New(fixedSettings{settings: domain.OllamaSettings{Endpoint: server.URL, Model: decision, GenerationModel: generation}}).
+			Check(context.Background())
+	}
+	if err := check("clef-flash", "qwen3:8b"); err != nil {
+		t.Errorf("both listed: %v", err)
+	}
+	if err := check("clef-flash", "gemma3"); !errors.Is(err, domain.ErrGenerationModelMissing) || !strings.Contains(err.Error(), `"gemma3"`) {
+		t.Errorf("generation missing: err = %v", err)
+	}
+	// The decision model is reported first, since auto-tagging depends on it.
+	if err := check("clef", "gemma3"); !errors.Is(err, domain.ErrOllamaModel) || errors.Is(err, domain.ErrGenerationModelMissing) {
+		t.Errorf("both missing: err = %v", err)
+	}
+}
+
+func TestModelsListsNamesInOllamaOrder(t *testing.T) {
+	server := fakeOllama(t, `{"models":[{"name":"qwen3:8b","model":"qwen3:8b"},{"name":"","model":"gemma3:4b"},{"name":"clef-flash:latest"}]}`)
+	names, err := New(withModel(server.URL, "clef")).Models(context.Background())
+	if err != nil || strings.Join(names, ",") != "qwen3:8b,gemma3:4b,clef-flash:latest" {
+		t.Fatalf("names = %v, %v", names, err)
+	}
+
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	if _, err := New(withModel(closed.URL, "clef")).Models(context.Background()); !errors.Is(err, domain.ErrOllamaUnreachable) {
+		t.Errorf("closed: err = %v", err)
+	}
+	other := httptest.NewServer(http.NotFoundHandler())
+	defer other.Close()
+	if _, err := New(withModel(other.URL, "clef")).Models(context.Background()); !errors.Is(err, domain.ErrNotOllama) {
+		t.Errorf("not Ollama: err = %v", err)
 	}
 }

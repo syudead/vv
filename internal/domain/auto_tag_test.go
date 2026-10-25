@@ -34,24 +34,29 @@ func TestValidateAutoTagSettings(t *testing.T) {
 }
 
 func TestNormalizeOllamaSettings(t *testing.T) {
-	got, err := NormalizeOllamaSettings(OllamaSettings{Endpoint: " http://gpu.local:11434/ ", Model: " clef "})
+	got, err := NormalizeOllamaSettings(OllamaSettings{Endpoint: " http://gpu.local:11434/ ", Model: " clef ", GenerationModel: " qwen3:8b "})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (OllamaSettings{Endpoint: "http://gpu.local:11434", Model: "clef"}); got != want {
+	if want := (OllamaSettings{Endpoint: "http://gpu.local:11434", Model: "clef", GenerationModel: "qwen3:8b"}); got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	// An empty generation model turns the assistant off and is valid.
+	if got, err := NormalizeOllamaSettings(OllamaSettings{Endpoint: "http://h", Model: "clef", GenerationModel: " "}); err != nil || got.GenerationModel != "" {
+		t.Fatalf("空の生成用のモデル = %+v, %v", got, err)
 	}
 	valid := DefaultOllamaSettings()
 	for name, change := range map[string]func(*OllamaSettings){
-		"空の URL":   func(s *OllamaSettings) { s.Endpoint = "" },
-		"http 以外":  func(s *OllamaSettings) { s.Endpoint = "ftp://host" },
-		"ホスト無し":    func(s *OllamaSettings) { s.Endpoint = "http://" },
-		"資格情報つき":   func(s *OllamaSettings) { s.Endpoint = "http://u:p@host" },
-		"空の問い合わせ":  func(s *OllamaSettings) { s.Endpoint = "http://host?" },
-		"空の断片":     func(s *OllamaSettings) { s.Endpoint = "http://host#" },
-		"空の模型名":    func(s *OllamaSettings) { s.Model = " " },
-		"空白を含む模型名": func(s *OllamaSettings) { s.Model = "clef flash" },
-		"長すぎる模型名":  func(s *OllamaSettings) { s.Model = strings.Repeat("m", ollamaMaxModelLength+1) },
+		"空の URL":        func(s *OllamaSettings) { s.Endpoint = "" },
+		"http 以外":       func(s *OllamaSettings) { s.Endpoint = "ftp://host" },
+		"ホスト無し":         func(s *OllamaSettings) { s.Endpoint = "http://" },
+		"資格情報つき":        func(s *OllamaSettings) { s.Endpoint = "http://u:p@host" },
+		"空の問い合わせ":       func(s *OllamaSettings) { s.Endpoint = "http://host?" },
+		"空の断片":          func(s *OllamaSettings) { s.Endpoint = "http://host#" },
+		"空の模型名":         func(s *OllamaSettings) { s.Model = " " },
+		"空白を含む模型名":      func(s *OllamaSettings) { s.Model = "clef flash" },
+		"長すぎる模型名":       func(s *OllamaSettings) { s.Model = strings.Repeat("m", ollamaMaxModelLength+1) },
+		"空白を含む生成用のモデル名": func(s *OllamaSettings) { s.GenerationModel = "qwen 3" },
 	} {
 		s := valid
 		change(&s)
