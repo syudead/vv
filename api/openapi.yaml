@@ -259,6 +259,10 @@ paths:
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/TagNameFilter"
+        - $ref: "#/components/parameters/TagKindNameFilter"
+        - $ref: "#/components/parameters/PersonNameFilter"
+        - $ref: "#/components/parameters/OrganizationNameFilter"
         - name: kind
           in: query
           description: "Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both."
@@ -336,6 +340,10 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/TagNameFilter"
+        - $ref: "#/components/parameters/TagKindNameFilter"
+        - $ref: "#/components/parameters/PersonNameFilter"
+        - $ref: "#/components/parameters/OrganizationNameFilter"
       responses:
         "200":
           description: "Item list"
@@ -4872,6 +4880,10 @@ paths:
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/TagNameFilter"
+        - $ref: "#/components/parameters/TagKindNameFilter"
+        - $ref: "#/components/parameters/PersonNameFilter"
+        - $ref: "#/components/parameters/OrganizationNameFilter"
       responses:
         "200":
           description: "Folder videos"
@@ -5739,7 +5751,7 @@ components:
     PersonRoleFilter:
       name: personRole
       in: query
-      description: "Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed."
+      description: "Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed."
       schema:
         $ref: "#/components/schemas/WorkPersonRole"
     OrganizationFilter:
@@ -5758,6 +5770,37 @@ components:
         type: integer
         format: int64
         minimum: 1
+    TagNameFilter:
+      name: tagName
+      in: query
+      description: "One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed."
+      schema:
+        type: array
+        maxItems: 16
+        items:
+          type: string
+          minLength: 1
+    TagKindNameFilter:
+      name: tagKindName
+      in: query
+      description: "Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video."
+      schema:
+        type: string
+        minLength: 1
+    PersonNameFilter:
+      name: personName
+      in: query
+      description: "Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video."
+      schema:
+        type: string
+        minLength: 1
+    OrganizationNameFilter:
+      name: organizationName
+      in: query
+      description: "Canonical organization name; follows `organization` semantics, and a name no organization has matches no video."
+      schema:
+        type: string
+        minLength: 1
     MediaFolderId:
       name: id
       in: path
@@ -9438,6 +9481,11 @@ components:
           items:
             type: integer
             format: int64
+        peerItems:
+          type: array
+          description: "Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential."
+          items:
+            $ref: "#/components/schemas/PeerListItem"
 
     LibraryPage:
       type: object
@@ -9460,6 +9508,24 @@ components:
           items:
             type: integer
             format: int64
+        peerItems:
+          type: array
+          description: "Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential."
+          items:
+            $ref: "#/components/schemas/PeerListItem"
+
+    PeerListItem:
+      type: object
+      required: [cursor, sortValue]
+      additionalProperties: false
+      description: "One listed item's place for merging lists of two paired VVMDMs."
+      properties:
+        cursor:
+          type: string
+          description: "Cursor that continues the list after this item."
+        sortValue:
+          type: [string, "null"]
+          description: "The item's value under the request's sort as the cursor encodes it; null sorts last."
 
     LibraryItem:
       type: object

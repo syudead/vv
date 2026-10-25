@@ -28,12 +28,18 @@ export function SaveStatus({
       )}
       {error !== null && (
         <div>
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{error}</AlertTitle>
-          </Alert>
+          <FailureAlert text={error} />
         </div>
       )}
     </>
+  );
+}
+
+export function FailureAlert({ text }: { text: UiText }) {
+  return (
+    <Alert variant="destructive">
+      <CircleAlert aria-hidden="true" />
+      <AlertTitle>{text}</AlertTitle>
+    </Alert>
   );
 }

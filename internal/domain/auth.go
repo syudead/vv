@@ -167,7 +167,8 @@ func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	case SortPlayedAsc, SortPlayedDesc, SortFavoritedAsc, SortFavoritedDesc:
 		return ErrGuestQueryNotAllowed
 	}
-	if len(q.TagIDs) > 0 || q.FavoriteOnly || q.Person != 0 || q.PersonRole != "" || q.Organization != 0 || q.TagKindID != 0 {
+	if len(q.TagIDs) > 0 || q.FavoriteOnly || q.Person != 0 || q.PersonRole != "" || q.Organization != 0 || q.TagKindID != 0 ||
+		q.ByName() {
 		return ErrGuestQueryNotAllowed
 	}
 	return nil

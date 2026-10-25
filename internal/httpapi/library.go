@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -28,22 +27,42 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		tagKind: params.TagKind,
+		tagKind: params.TagKind, tagName: params.TagName, tagKindName: params.TagKindName,
+		personName: params.PersonName, organizationName: params.OrganizationName,
 	})
 	if !ok {
 		return
 	}
-
-	page, err := s.library.ListLibrary(r.Context(), audience, query)
-	switch {
-	case errors.Is(err, domain.ErrInvalidCursor):
-		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
-		return
-	case err != nil:
-		s.internalError(w, "Could not load the list.", err)
+	if s.mergesLists(r.Context(), query) {
+		s.listMergedLibrary(w, r, query)
 		return
 	}
 
+	page, err := s.library.ListLibrary(r.Context(), audience, query)
+	if !s.checkListRead(w, err) {
+		return
+	}
+	items, err := s.libraryItems(r.Context(), page)
+	if err != nil {
+		s.internalError(w, "Could not load the list.", err)
+		return
+	}
+	payload := gen.LibraryPage{Items: items, Total: page.Total, PeerItems: peerItemsFor(r.Context(), page.ItemCursors)}
+	if page.NextCursor != "" {
+		next := page.NextCursor
+		payload.NextCursor = &next
+	}
+	if len(page.MissingTagIDs) > 0 {
+		missing := page.MissingTagIDs
+		payload.MissingTagIds = &missing
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// libraryItems is page's items in the viewer's shape.
+func (s *server) libraryItems(ctx context.Context, page domain.LibraryPage) ([]gen.LibraryItem, error) {
+	audience := audienceFrom(ctx)
 	// Use roots from the item read snapshot so concurrent unregistering cannot remove groups already counted by totals/cursors.
 	roots := page.Roots
 	// Compact group cards already carry their tag union; only ordinary videos need lookups.
@@ -56,39 +75,29 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 			tagged = append(tagged, item.Group.Members...)
 		}
 	}
-	lookup := s.itemLookups(r.Context(), shown, tagged)
+	lookup := s.itemLookups(ctx, shown, tagged)
 
-	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
+	items := make([]gen.LibraryItem, 0, len(page.Items))
 	for _, item := range page.Items {
 		if item.SmartFolder != nil {
 			// Smart-folder items contain summaries; cards are fetched separately.
 			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
+			items = append(items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
 			continue
 		}
 		if item.Video != nil {
-			video := lookup.video(r.Context(), audience, roots, *item.Video)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
+			video := lookup.video(ctx, audience, roots, *item.Video)
+			items = append(items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
 			continue
 		}
-		group, ok := lookup.group(r.Context(), audience, roots, *item.Group)
+		group, ok := lookup.group(ctx, audience, roots, *item.Group)
 		if !ok {
 			// Fail on groups without visible videos instead of silently dropping items and invalidating totals/cursors.
-			s.internalError(w, "Could not load the list.", fmt.Errorf("group %d has no video", item.Group.ID))
-			return
+			return nil, fmt.Errorf("group %d has no video", item.Group.ID)
 		}
-		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
+		items = append(items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
 	}
-	if page.NextCursor != "" {
-		next := page.NextCursor
-		payload.NextCursor = &next
-	}
-	if len(page.MissingTagIDs) > 0 {
-		missing := page.MissingTagIDs
-		payload.MissingTagIds = &missing
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
+	return items, nil
 }
 
 type itemLookup struct {

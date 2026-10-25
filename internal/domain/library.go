@@ -99,12 +99,23 @@ type VideoQuery struct {
 	TagKindID int64
 	// Kind narrows the listing to file or virtual videos; empty means VideoKindAll.
 	Kind VideoKind
+	// TagNames, TagKindName, PersonName and OrganizationName filter by name with the semantics of the ID
+	// filters beside them; a name no entity has matches nothing. The paired node sends its filters this way.
+	TagNames         []string
+	TagKindName      string
+	PersonName       string
+	OrganizationName string
+}
+
+// ByName reports whether q filters by any name.
+func (q VideoQuery) ByName() bool {
+	return len(q.TagNames) > 0 || q.TagKindName != "" || q.PersonName != "" || q.OrganizationName != ""
 }
 
 // ListsSmartFolders allows only unfiltered or favorite-only listings of every kind; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
+		!q.ByName() && q.Kind.IncludesFiles() && q.Kind.IncludesVirtual()
 }
 
 type VideoPage struct {
@@ -115,6 +126,8 @@ type VideoPage struct {
 	// Limit reports the effective, potentially clamped page size.
 	Limit         int
 	MissingTagIDs []int64
+	// ItemCursors holds each item's place in order, for merging with the paired node's list.
+	ItemCursors []ItemCursor
 }
 
 type ScanState string

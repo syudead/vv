@@ -4250,6 +4250,9 @@ type LibraryPage struct {
 	// NextCursor Next-page cursor; omitted when no more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
+	// PeerItems Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
+
 	// Total Filtered item/card count, independent of pagination.
 	Total int `json:"total"`
 }
@@ -4943,6 +4946,15 @@ type PeerInfo struct {
 
 	// Version The peer version last seen; with reason version, the one that differs
 	Version *string `json:"version,omitempty"`
+}
+
+// PeerListItem One listed item's place for merging lists of two paired VVMDMs.
+type PeerListItem struct {
+	// Cursor Cursor that continues the list after this item.
+	Cursor string `json:"cursor"`
+
+	// SortValue The item's value under the request's sort as the cursor encodes it; null sorts last.
+	SortValue *string `json:"sortValue"`
 }
 
 // PeerNode defines model for PeerNode.
@@ -6858,6 +6870,9 @@ type VideoPage struct {
 	// NextCursor Next-page cursor; omitted when no more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
+	// PeerItems Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
+
 	// Total Total after applying query, favorite and listFolderVideos scope, independent of pagination.
 	Total int `json:"total"`
 }
@@ -7496,11 +7511,17 @@ type OrganizationFilter = int64
 // OrganizationId defines model for OrganizationId.
 type OrganizationId = int64
 
+// OrganizationNameFilter defines model for OrganizationNameFilter.
+type OrganizationNameFilter = string
+
 // PersonFilter defines model for PersonFilter.
 type PersonFilter = int64
 
 // PersonId defines model for PersonId.
 type PersonId = int64
+
+// PersonNameFilter defines model for PersonNameFilter.
+type PersonNameFilter = string
 
 // PersonRoleFilter Person role in a video.
 type PersonRoleFilter = WorkPersonRole
@@ -7522,6 +7543,12 @@ type TagKindFilter = int64
 
 // TagKindId defines model for TagKindId.
 type TagKindId = int64
+
+// TagKindNameFilter defines model for TagKindNameFilter.
+type TagKindNameFilter = string
+
+// TagNameFilter defines model for TagNameFilter.
+type TagNameFilter = []string
 
 // ThumbnailEditId defines model for ThumbnailEditId.
 type ThumbnailEditId = string
@@ -7657,7 +7684,7 @@ type ListFolderVideosParams struct {
 	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
 
-	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
 	PersonRole *PersonRoleFilter `form:"personRole,omitempty" json:"personRole,omitempty"`
 
 	// Organization Organization ID, matching any role; follows person filter semantics
@@ -7665,6 +7692,18 @@ type ListFolderVideosParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// TagName One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed.
+	TagName *TagNameFilter `form:"tagName,omitempty" json:"tagName,omitempty"`
+
+	// TagKindName Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video.
+	TagKindName *TagKindNameFilter `form:"tagKindName,omitempty" json:"tagKindName,omitempty"`
+
+	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
+	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
+
+	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
 // ListGroupsParams defines parameters for ListGroups.
@@ -7749,6 +7788,18 @@ type ListLibraryParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// TagName One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed.
+	TagName *TagNameFilter `form:"tagName,omitempty" json:"tagName,omitempty"`
+
+	// TagKindName Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video.
+	TagKindName *TagKindNameFilter `form:"tagKindName,omitempty" json:"tagKindName,omitempty"`
+
+	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
+	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
+
+	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -7974,7 +8025,7 @@ type ListVideosParams struct {
 	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
 
-	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
 	PersonRole *PersonRoleFilter `form:"personRole,omitempty" json:"personRole,omitempty"`
 
 	// Organization Organization ID, matching any role; follows person filter semantics
@@ -7982,6 +8033,18 @@ type ListVideosParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// TagName One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed.
+	TagName *TagNameFilter `form:"tagName,omitempty" json:"tagName,omitempty"`
+
+	// TagKindName Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video.
+	TagKindName *TagKindNameFilter `form:"tagKindName,omitempty" json:"tagKindName,omitempty"`
+
+	// PersonName Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video.
+	PersonName *PersonNameFilter `form:"personName,omitempty" json:"personName,omitempty"`
+
+	// OrganizationName Canonical organization name; follows `organization` semantics, and a name no organization has matches no video.
+	OrganizationName *OrganizationNameFilter `form:"organizationName,omitempty" json:"organizationName,omitempty"`
 
 	// Kind Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both.
 	Kind *ListVideosParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
@@ -9919,6 +9982,58 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// ------------- Optional query parameter "tagName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagName", r.URL.Query(), &params.TagName, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKindName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKindName", r.URL.Query(), &params.TagKindName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKindName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKindName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personName", r.URL.Query(), &params.PersonName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organizationName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organizationName", r.URL.Query(), &params.OrganizationName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organizationName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organizationName", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFolderVideos(w, r, rootId, params)
 	}))
@@ -10518,6 +10633,58 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagName", r.URL.Query(), &params.TagName, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKindName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKindName", r.URL.Query(), &params.TagKindName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKindName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKindName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personName", r.URL.Query(), &params.PersonName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organizationName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organizationName", r.URL.Query(), &params.OrganizationName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organizationName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organizationName", Err: err})
 		}
 		return
 	}
@@ -13938,6 +14105,58 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagName", r.URL.Query(), &params.TagName, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKindName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKindName", r.URL.Query(), &params.TagKindName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKindName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKindName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personName", r.URL.Query(), &params.PersonName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personName", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organizationName" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organizationName", r.URL.Query(), &params.OrganizationName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organizationName"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organizationName", Err: err})
 		}
 		return
 	}

@@ -72,19 +72,23 @@ func rewriteRemoteVideo(v *gen.Video, join domain.VocabularyJoin) {
 	if v.Location != nil {
 		v.Location.Openable = false
 	}
-	for i := range v.Tags {
-		tag := &v.Tags[i]
-		tag.Id = join.Tag(tag.Id, tag.Name)
-		if tag.Kind != nil {
-			tag.Kind.Id = join.TagKind(tag.Kind.Id, tag.Kind.Name)
-		}
-	}
+	rewriteRemoteTags(v.Tags, join)
 	if v.CardCredits != nil {
 		rewriteRemoteCredits(v.CardCredits.Performers, nil, join)
 		rewriteRemoteOrganization(v.CardCredits.Organization, join)
 	}
 	if v.WorkInfo != nil {
 		rewriteRemoteCredits(v.WorkInfo.People, v.WorkInfo.Organizations, join)
+	}
+}
+
+func rewriteRemoteTags(tags []gen.VideoTag, join domain.VocabularyJoin) {
+	for i := range tags {
+		tag := &tags[i]
+		tag.Id = join.Tag(tag.Id, tag.Name)
+		if tag.Kind != nil {
+			tag.Kind.Id = join.TagKind(tag.Kind.Id, tag.Kind.Name)
+		}
 	}
 }
 
@@ -147,5 +151,65 @@ func rewriteRemoteVersions(versions *gen.VideoVersions, join domain.VocabularyJo
 func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoin) {
 	for i := range sprite.Sheets {
 		rewriteRemoteURL(&sprite.Sheets[i])
+	}
+}
+
+// rewriteRemoteLibraryItem leaves out the watch values and favorites of a group or smart folder, which stay
+// with each node like a video's.
+func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin) {
+	if item.Video != nil {
+		rewriteRemoteVideo(item.Video, join)
+	}
+	if folder := item.SmartFolder; folder != nil {
+		folder.Id, folder.Favorite = domain.ToRemoteID(folder.Id), nil
+		if folder.ParentId != nil {
+			*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
+		}
+	}
+	group := item.Group
+	if group == nil {
+		return
+	}
+	group.Id, group.OpenVideoId = domain.ToRemoteID(group.Id), domain.ToRemoteID(group.OpenVideoId)
+	group.Favorite, group.WatchState, group.WatchedCount, group.LastPlayedAt = nil, nil, nil, nil
+	for i := range group.VideoIds {
+		group.VideoIds[i] = domain.ToRemoteID(group.VideoIds[i])
+	}
+	rewriteRemotePreviews(group.Previews)
+	rewriteRemoteFolder(group.Folder)
+	rewriteRemoteTags(group.Tags, join)
+}
+
+func rewriteRemotePreviews(previews []gen.FolderPreview) {
+	for i := range previews {
+		preview := &previews[i]
+		preview.VideoId = domain.ToRemoteID(preview.VideoId)
+		preview.ThumbnailUrl = domain.RemoteVideoURL(preview.ThumbnailUrl)
+		rewriteRemoteURL(preview.PreviewUrl)
+	}
+}
+
+// rewriteRemoteFolderSummary leaves out the grouping, which is edited on the node that holds the folder.
+func rewriteRemoteFolderSummary(folder *gen.FolderSummary) {
+	folder.RootId = domain.ToRemoteID(folder.RootId)
+	folder.Grouping = nil
+	rewriteRemotePreviews(folder.Previews)
+}
+
+func rewriteRemoteFolderListing(listing *gen.FolderListing, _ domain.VocabularyJoin) {
+	rewriteRemoteFolderSummary(&listing.Folder)
+	for i := range listing.Folders {
+		rewriteRemoteFolderSummary(&listing.Folders[i])
+	}
+}
+
+// rewriteRemoteVideoPage drops the peer's item cursors, which only a merged list reads.
+func rewriteRemoteVideoPage(page *gen.VideoPage, join domain.VocabularyJoin) {
+	rewriteRemoteVideos(page.Items, join)
+	page.PeerItems = nil
+	if page.MissingTagIds != nil {
+		for i, id := range *page.MissingTagIds {
+			(*page.MissingTagIds)[i] = domain.ToRemoteID(id)
+		}
 	}
 }

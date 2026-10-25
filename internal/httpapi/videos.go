@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -30,7 +31,8 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		query: params.Query, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		tagKind: params.TagKind, personRole: params.PersonRole,
+		tagKind: params.TagKind, personRole: params.PersonRole, tagName: params.TagName,
+		tagKindName: params.TagKindName, personName: params.PersonName, organizationName: params.OrganizationName,
 	})
 	if !ok {
 		return
@@ -42,19 +44,30 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		}
 		query.Kind = domain.VideoKind(*params.Kind)
 	}
-
-	page, err := s.videos.ListVideos(r.Context(), audience, query)
-	switch {
-	case errors.Is(err, domain.ErrInvalidCursor):
-		// Reject invalid cursors: restarting would make infinite scrolling repeat the first page.
-		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
-		return
-	case err != nil:
-		s.internalError(w, "Could not load the list.", err)
+	if s.mergesLists(r.Context(), query) {
+		s.listMergedVideos(w, r, query)
 		return
 	}
 
+	page, err := s.videos.ListVideos(r.Context(), audience, query)
+	if !s.checkListRead(w, err) {
+		return
+	}
 	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
+}
+
+// checkListRead answers a failed list read; an invalid cursor is refused, since restarting would make infinite
+// scrolling repeat the first page.
+func (s *server) checkListRead(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return false
+	case err != nil:
+		s.internalError(w, "Could not load the list.", err)
+		return false
+	}
+	return true
 }
 
 // videoQueryParams is shared by listVideos and listLibrary.
@@ -69,8 +82,13 @@ type videoQueryParams struct {
 	person       *int64
 	organization *int64
 	tagKind      *int64
-	// personRole is accepted only by listVideos and requires person.
+	// personRole is accepted only by listVideos and requires person or personName.
 	personRole *gen.WorkPersonRole
+	// The name filters, which the paired node sends for its own tags, kinds, people and organizations.
+	tagName          *[]string
+	tagKindName      *string
+	personName       *string
+	organizationName *string
 }
 
 // parseVideoQuery writes 400 and returns false for invalid or audience-restricted filters.
@@ -105,6 +123,9 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
 		return domain.VideoQuery{}, false
 	}
+	if !s.parseNameFilters(w, params, &query) {
+		return domain.VideoQuery{}, false
+	}
 	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
@@ -136,11 +157,42 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 	}
 	if params.personRole != nil {
 		role := domain.PersonRole(*params.personRole)
-		if query.Person == 0 || !role.Valid() {
+		if (query.Person == 0 && query.PersonName == "") || !role.Valid() {
 			s.invalidRequest(w, "personRole must be a known role and requires person.")
 			return false
 		}
 		query.PersonRole = role
+	}
+	return true
+}
+
+// parseNameFilters holds tag names to the tag filter's limit together with tag IDs and refuses an empty name.
+func (s *server) parseNameFilters(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
+	if params.tagName != nil {
+		if len(query.TagIDs)+len(*params.tagName) > maxTagFilterCount {
+			s.invalidRequestLimit(w, reasonTooManyTagFilters, maxTagFilterCount,
+				fmt.Sprintf("Filter by at most %d tags.", maxTagFilterCount))
+			return false
+		}
+		query.TagNames = *params.tagName
+	}
+	empty := slices.Contains(query.TagNames, "")
+	for _, filter := range []struct {
+		value *string
+		out   *string
+	}{
+		{params.tagKindName, &query.TagKindName},
+		{params.personName, &query.PersonName},
+		{params.organizationName, &query.OrganizationName},
+	} {
+		if filter.value != nil {
+			*filter.out = *filter.value
+			empty = empty || *filter.value == ""
+		}
+	}
+	if empty {
+		s.invalidRequest(w, "A name filter must not be empty.")
+		return false
 	}
 	return true
 }
@@ -156,6 +208,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 		missing := page.MissingTagIDs
 		payload.MissingTagIds = &missing
 	}
+	payload.PeerItems = peerItemsFor(r.Context(), page.ItemCursors)
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)

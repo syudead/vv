@@ -410,6 +410,10 @@ func (f *fakeCatalog) RetryProbe(_ context.Context, video domain.Video) error {
 	return f.retry(video)
 }
 
+func (f *fakeLibrary) NameFilters(_ context.Context, q domain.VideoQuery) (domain.VideoQuery, bool, error) {
+	return q, true, nil
+}
+
 func (f *fakeLibrary) KeyframeSpacing(context.Context, int64) (domain.KeyframeProbe, error) {
 	return domain.KeyframeProbe{}, nil
 }
