@@ -17,6 +17,8 @@ type fakePeerStore struct {
 	nodeID       string
 	record       *domain.PeerRecord
 	incomingHash [32]byte
+	// beforeAdd, when set, runs as AddPeer starts, before the record is stored.
+	beforeAdd func(incoming string)
 }
 
 func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (string, error) {
@@ -38,6 +40,9 @@ func (f *fakePeerStore) Peer(context.Context) (domain.PeerRecord, bool, error) {
 }
 
 func (f *fakePeerStore) AddPeer(_ context.Context, record domain.PeerRecord, incoming string) error {
+	if f.beforeAdd != nil {
+		f.beforeAdd(incoming)
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.record != nil {
@@ -74,6 +79,25 @@ func (f *fakePeerStore) DeletePeer(_ context.Context, nodeID string) (bool, erro
 	}
 	f.record = nil
 	return true, nil
+}
+
+func (f *fakePeerStore) RevokeIncomingSecret(_ context.Context, nodeID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record != nil && f.record.NodeID == nodeID {
+		f.record.IncomingRevoked, f.incomingHash = true, [32]byte{}
+	}
+	return nil
+}
+
+func (f *fakePeerStore) PinPeerCertificate(_ context.Context, nodeID, spki string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record == nil || f.record.NodeID != nodeID {
+		return domain.ErrNotFound
+	}
+	f.record.PinnedSPKI = spki
+	return nil
 }
 
 func (f *fakePeerStore) stored() *domain.PeerRecord {
@@ -126,6 +150,20 @@ func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, se
 		return domain.PeerNode{}, err
 	}
 	return node.Handshake(ctx, secret)
+}
+
+// The pairing tests do not run the connection loop, so the stream never opens.
+func (l *directLink) Watch(ctx context.Context, _ domain.PeerTarget, _ string, _ func(), _ func(domain.PeerChanged)) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (l *directLink) Forget(ctx context.Context, target domain.PeerTarget, _, nodeID string) error {
+	node, err := l.node(target)
+	if err != nil {
+		return err
+	}
+	return node.Forget(ctx, nodeID)
 }
 
 const (
@@ -300,8 +338,14 @@ func TestHandshakeAcceptsOnlyKnownSecrets(t *testing.T) {
 	if _, err := n.a.Handshake(ctx, "vvp_unknown"); !errors.Is(err, domain.ErrPeerUnknown) {
 		t.Errorf("記録の無い Handshake err = %v, want ErrPeerUnknown", err)
 	}
+	// A's connection loop may hand the sent secret back before B stored its record.
+	var beforeStored error
+	n.storeB.beforeAdd = func(incoming string) { _, beforeStored = n.b.Handshake(ctx, incoming) }
 	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
 		t.Fatal(err)
+	}
+	if beforeStored != nil {
+		t.Errorf("B の保存前の Handshake err = %v, want nil", beforeStored)
 	}
 	// The secret B sent was accepted only while its pairing ran; afterwards only the stored credential is.
 	onB := n.storeB.stored()

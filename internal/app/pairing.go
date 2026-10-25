@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -24,6 +25,10 @@ type PeerStore interface {
 	// UpdatePeerAddress answers domain.ErrNotFound without a record.
 	UpdatePeerAddress(ctx context.Context, address string) (domain.PeerRecord, error)
 	DeletePeer(ctx context.Context, nodeID string) (bool, error)
+	// RevokeIncomingSecret clears the incoming secret hash, so the peer credential is refused.
+	RevokeIncomingSecret(ctx context.Context, nodeID string) error
+	// PinPeerCertificate stores the SPKI fingerprint the owner confirmed.
+	PinPeerCertificate(ctx context.Context, nodeID, spki string) error
 }
 
 // PeerLink calls the other node. A failed call answers *domain.PeerUnreachableError or
@@ -34,6 +39,11 @@ type PeerLink interface {
 	RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error)
 	// Handshake presents secret and returns the identity the node at target answers with.
 	Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error)
+	// Watch holds the peer's event stream open with secret: it calls opened once the stream is open and
+	// changed for each forwarded notification, and returns a non-nil error when the stream ends.
+	Watch(ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged)) error
+	// Forget tells the peer that the node nodeID unpaired.
+	Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error
 }
 
 type PairingOptions struct {
@@ -47,33 +57,52 @@ type PairingOptions struct {
 	Now func() time.Time
 	// Nil uses crypto/rand.Reader for node ids, codes and secrets.
 	Random io.Reader
+	// Publisher receives domain.PeerStateChanged and the peer's forwarded domain.PeerChanged; nil drops them.
+	Publisher Publisher
+	// Nil uses slog.Default.
+	Logger *slog.Logger
 }
 
 // Pairing owns the pairing code, the pairing in both directions, unpairing and the connection state.
 type Pairing struct {
-	store    PeerStore
-	link     PeerLink
-	version  string
-	nodeName string
-	now      func() time.Time
-	random   io.Reader
+	store     PeerStore
+	link      PeerLink
+	version   string
+	nodeName  string
+	now       func() time.Time
+	random    io.Reader
+	publisher Publisher
+	logger    *slog.Logger
 
 	// pairMu serializes pairing and acceptance, which each call the other node before storing.
 	pairMu sync.Mutex
+	// revokeMu makes revoking the incoming secret and interrupting the loop exclusive, so an interrupted
+	// attempt cannot revoke the record its interrupter acts on.
+	revokeMu sync.Mutex
 
 	mu      sync.Mutex
 	nodeID  string
 	code    domain.PairingCodeSlot
 	pending map[string]struct{}
 	loaded  bool
-	state   domain.PeerConnection
-	reason  domain.PeerUnreachableReason
+	status  peerStatus
+	// generation counts interruptions of the connection loop, so an attempt that was interrupted
+	// cannot overwrite the state its interrupter set.
+	generation uint64
+	// stopAttempt ends the running connection attempt; nil while none runs.
+	stopAttempt context.CancelFunc
+	// wake ends the loop's wait after pairing, an address change or a certificate confirmation.
+	wake chan struct{}
 }
 
 func NewPairing(opts PairingOptions) *Pairing {
 	p := &Pairing{
 		store: opts.Store, link: opts.Link, version: opts.Version, nodeName: opts.NodeName,
-		now: opts.Now, random: opts.Random, pending: map[string]struct{}{},
+		now: opts.Now, random: opts.Random, publisher: opts.Publisher, logger: opts.Logger,
+		pending: map[string]struct{}{}, wake: make(chan struct{}, 1),
+	}
+	if p.logger == nil {
+		p.logger = slog.Default()
 	}
 	if p.now == nil {
 		p.now = time.Now
@@ -114,18 +143,15 @@ func (p *Pairing) State(ctx context.Context) (domain.PeerState, error) {
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	var peer *domain.PeerRecord
 	if found {
 		peer = &record
 	}
-	if !p.loaded || peer == nil {
-		// Without a record the state is unpaired whatever was held; a first read derives it from the record.
-		p.state, p.reason = domain.InitialPeerState(peer)
-		p.loaded = true
-	}
-	return domain.PeerState{State: p.state, Reason: p.reason, Peer: peer, Node: node}, nil
+	status := p.loadStatus(peer)
+	return domain.PeerState{
+		State: status.state, Reason: status.reason, Peer: peer, PeerVersion: status.peerVersion,
+		Fingerprint: status.fingerprint, Node: node,
+	}, nil
 }
 
 // IssueCode replaces an unused code; a paired node answers domain.ErrAlreadyPaired.
@@ -172,12 +198,13 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	// The other node calls this one back with incoming before it answers.
+	// The other node calls this one back with incoming before it answers, and its connection loop may
+	// handshake again before this node stores the record, so incoming stays pending until then.
 	release := p.expectHandshake(incoming)
+	defer release()
 	answer, err := p.link.RequestPairing(ctx, target, domain.PairingRequest{
 		Code: input.Code, Node: node, Address: ownAddress, Secret: incoming,
 	})
-	release()
 	if err != nil {
 		return domain.PeerState{}, err
 	}
@@ -295,10 +322,10 @@ func (p *Pairing) expectHandshake(secret string) func() {
 
 func (p *Pairing) paired() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.code.Clear()
-	p.loaded = true
-	p.state, p.reason = domain.PeerConnected, ""
+	p.mu.Unlock()
+	generation := p.interrupt(true)
+	p.setStatus(generation, peerStatus{state: domain.PeerConnected})
 }
 
 // Handshake answers this node's identity to a caller presenting the peer credential, or the secret
@@ -337,16 +364,33 @@ func (p *Pairing) ChangeAddress(ctx context.Context, raw string) (domain.PeerSta
 	if _, err := p.store.UpdatePeerAddress(ctx, address); err != nil {
 		return domain.PeerState{}, err
 	}
+	p.interrupt(true)
 	return p.State(ctx)
 }
 
-// Unpair deletes the peer record, which also clears a revoked state; without a record it does nothing.
+// Unpair tells the peer, best effort, and deletes the peer record, which also clears a revoked state;
+// without a record it does nothing. A peer that was not told learns it from its next request's 401.
 func (p *Pairing) Unpair(ctx context.Context) error {
 	record, found, err := p.store.Peer(ctx)
 	if err != nil || !found {
 		return err
 	}
+	// Stop the stream first, so the peer dropping it while it forgets this node is not a lost connection.
+	p.interrupt(false)
+	if !record.IncomingRevoked {
+		p.tellPeerUnpaired(ctx, record)
+	}
 	return p.Forget(ctx, record.NodeID)
+}
+
+func (p *Pairing) tellPeerUnpaired(ctx context.Context, record domain.PeerRecord) {
+	node, err := p.Node(ctx)
+	if err == nil {
+		err = p.link.Forget(ctx, peerTarget(record), record.OutgoingSecret, node.ID)
+	}
+	if err != nil {
+		p.logger.Info("could not tell the paired VVMDM that this one unpaired", slog.Any("error", err))
+	}
 }
 
 // Forget deletes the record of nodeID, as the peer asks after it unpaired.
@@ -356,10 +400,8 @@ func (p *Pairing) Forget(ctx context.Context, nodeID string) error {
 		return fmt.Errorf("cannot unpair: %w", err)
 	}
 	if deleted {
-		p.mu.Lock()
-		p.loaded = true
-		p.state, p.reason = domain.PeerUnpaired, ""
-		p.mu.Unlock()
+		generation := p.interrupt(true)
+		p.setStatus(generation, peerStatus{state: domain.PeerUnpaired})
 	}
 	return nil
 }

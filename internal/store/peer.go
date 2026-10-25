@@ -102,6 +102,23 @@ func (s *PeerStore) RevokeIncomingSecret(ctx context.Context, nodeID string) err
 	return nil
 }
 
+// PinPeerCertificate stores the SPKI fingerprint the owner confirmed; without the record of nodeID it
+// answers domain.ErrNotFound.
+func (s *PeerStore) PinPeerCertificate(ctx context.Context, nodeID, spki string) error {
+	res, err := s.db.sql.ExecContext(ctx, `update peer set pinned_spki = ? where node_id = ?`, spki, nodeID)
+	if err != nil {
+		return fmt.Errorf("cannot pin the peer certificate: %w", err)
+	}
+	updated, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("cannot pin the peer certificate: %w", err)
+	}
+	if updated == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // UpdatePeerAddress answers domain.ErrNotFound when this node is not paired.
 func (s *PeerStore) UpdatePeerAddress(ctx context.Context, address string) (domain.PeerRecord, error) {
 	record, err := scanPeer(s.db.sql.QueryRowContext(ctx,

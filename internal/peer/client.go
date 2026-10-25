@@ -49,8 +49,9 @@ func Fingerprint(cert *x509.Certificate) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// httpClient is built per target because the pin is part of the TLS check.
-func (c *Client) httpClient(target domain.PeerTarget, host string) *http.Client {
+// httpClient is built per target because the pin is part of the TLS check. A zero timeout leaves the
+// response body unbounded, as the event stream needs.
+func (c *Client) httpClient(target domain.PeerTarget, host string, timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: connectTimeout}
 	transport := &http.Transport{
 		DialContext:         dialer.DialContext,
@@ -66,7 +67,7 @@ func (c *Client) httpClient(target domain.PeerTarget, host string) *http.Client 
 		ResponseHeaderTimeout: responseTimeout,
 		DisableKeepAlives:     true,
 	}
-	return &http.Client{Transport: transport, Timeout: responseTimeout}
+	return &http.Client{Transport: transport, Timeout: timeout}
 }
 
 func verifyPeer(host, pinned string, roots *x509.CertPool) func(tls.ConnectionState) error {
@@ -137,41 +138,19 @@ func nodeFrom(node gen.PeerNode) domain.PeerNode {
 	return domain.PeerNode{ID: node.Id, Name: node.Name, Version: node.Version}
 }
 
-// call sends one request and decodes a response whose status is in accepted into out.
+// Forget tells the peer that the node nodeID unpaired.
+func (c *Client) Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error {
+	return c.call(ctx, target, http.MethodDelete, "/api/peer/pairings/"+url.PathEscape(nodeID), secret, nil, nil,
+		http.StatusNoContent)
+}
+
+// call sends one request and decodes a response whose status is in accepted into out, unless out is nil.
 func (c *Client) call(
 	ctx context.Context, target domain.PeerTarget, method, path, secret string, in, out any, accepted ...int,
 ) error {
-	base, err := url.Parse(target.Address)
-	if err != nil || base.Host == "" {
-		return &domain.PeerUnreachableError{Message: "The address of the other VVMDM is not valid.", Cause: err}
-	}
-	var payload io.Reader
-	if in != nil {
-		encoded, err := json.Marshal(in)
-		if err != nil {
-			return fmt.Errorf("cannot encode the request to the peer: %w", err)
-		}
-		payload = bytes.NewReader(encoded)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, base.JoinPath(path).String(), payload)
+	resp, err := c.send(ctx, target, method, path, secret, in, responseTimeout)
 	if err != nil {
-		return &domain.PeerUnreachableError{Message: "The address of the other VVMDM is not valid.", Cause: err}
-	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", "VV-Peer "+secret)
-	}
-	resp, err := c.httpClient(target, base.Hostname()).Do(req)
-	if err != nil {
-		var untrusted *domain.CertificateUntrustedError
-		if errors.As(err, &untrusted) {
-			return untrusted
-		}
-		return &domain.PeerUnreachableError{
-			Message: "Could not reach the other VVMDM at " + target.Address + ".", Cause: err,
-		}
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
@@ -181,16 +160,60 @@ func (c *Client) call(
 		}
 	}
 	for _, status := range accepted {
-		if resp.StatusCode == status {
-			if err := json.Unmarshal(body, out); err != nil {
-				return &domain.PeerUnreachableError{
-					Message: "The other VVMDM at " + target.Address + " answered in an unexpected form.", Cause: err,
-				}
-			}
+		if resp.StatusCode != status {
+			continue
+		}
+		if out == nil {
 			return nil
 		}
+		if err := json.Unmarshal(body, out); err != nil {
+			return &domain.PeerUnreachableError{
+				Message: "The other VVMDM at " + target.Address + " answered in an unexpected form.", Cause: err,
+			}
+		}
+		return nil
 	}
 	return refusal(resp.StatusCode, body, target.Address)
+}
+
+// send returns the peer's response with any status; a request that got no response answers the
+// domain's pairing error.
+func (c *Client) send(
+	ctx context.Context, target domain.PeerTarget, method, path, secret string, in any, timeout time.Duration,
+) (*http.Response, error) {
+	base, err := url.Parse(target.Address)
+	if err != nil || base.Host == "" {
+		return nil, &domain.PeerUnreachableError{Message: "The address of the other VVMDM is not valid.", Cause: err}
+	}
+	var payload io.Reader
+	if in != nil {
+		encoded, err := json.Marshal(in)
+		if err != nil {
+			return nil, fmt.Errorf("cannot encode the request to the peer: %w", err)
+		}
+		payload = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, base.JoinPath(path).String(), payload)
+	if err != nil {
+		return nil, &domain.PeerUnreachableError{Message: "The address of the other VVMDM is not valid.", Cause: err}
+	}
+	if in != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", "VV-Peer "+secret)
+	}
+	resp, err := c.httpClient(target, base.Hostname(), timeout).Do(req)
+	if err != nil {
+		var untrusted *domain.CertificateUntrustedError
+		if errors.As(err, &untrusted) {
+			return nil, untrusted
+		}
+		return nil, &domain.PeerUnreachableError{
+			Message: "Could not reach the other VVMDM at " + target.Address + ".", Cause: err,
+		}
+	}
+	return resp, nil
 }
 
 // refusal maps the peer's error body to the domain error of the same meaning.

@@ -310,3 +310,42 @@ func InitialPeerState(record *PeerRecord) (PeerConnection, PeerUnreachableReason
 		return PeerUnreachable, PeerReasonNetwork
 	}
 }
+
+// ErrFingerprintChanged answers a certificate confirmation whose fingerprint is not the one waiting.
+var ErrFingerprintChanged = errors.New("the certificate fingerprint changed")
+
+// PeerIDOffset is added to the peer's ids of videos, groups and smart folders; local ids stay below it,
+// and 2^40 stays below JavaScript's safe integer.
+const PeerIDOffset int64 = 1 << 40
+
+// ToRemoteID is the id under which this node addresses the peer's entity with peerID.
+func ToRemoteID(peerID int64) int64 { return peerID + PeerIDOffset }
+
+// The reconnect loop waits PeerRetryFirst after the first failure and doubles up to PeerRetryMax.
+const (
+	PeerRetryFirst = 5 * time.Second
+	PeerRetryMax   = 60 * time.Second
+)
+
+// PeerRetryDelay is the wait after the given number of consecutive failures, counted from 1.
+func PeerRetryDelay(failures int) time.Duration {
+	delay := PeerRetryFirst
+	for i := 1; i < failures && delay < PeerRetryMax; i++ {
+		delay *= 2
+	}
+	return min(delay, PeerRetryMax)
+}
+
+// PeerStateChanged tells the screens to read the connection state again.
+type PeerStateChanged struct{}
+
+func (PeerStateChanged) event() {}
+
+// PeerChanged forwards the peer's change notifications to the screens, with remote ids.
+type PeerChanged struct {
+	VideoIDs       []int64
+	GroupIDs       []int64
+	SmartFolderIDs []int64
+}
+
+func (PeerChanged) event() {}

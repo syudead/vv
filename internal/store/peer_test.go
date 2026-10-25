@@ -141,6 +141,23 @@ func TestUpdatePeerAddressWithoutPeer(t *testing.T) {
 	}
 }
 
+func TestPinPeerCertificate(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	addTestPeer(t, db)
+
+	if err := db.Peers().PinPeerCertificate(ctx, testNodeID, "spki-confirmed"); err != nil {
+		t.Fatal(err)
+	}
+	if record, _, _ := db.Peers().Peer(ctx); record.PinnedSPKI != "spki-confirmed" {
+		t.Errorf("PinnedSPKI = %q, want spki-confirmed", record.PinnedSPKI)
+	}
+	err := db.Peers().PinPeerCertificate(ctx, "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b", "spki-other")
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("別の node id の PinPeerCertificate err = %v, want ErrNotFound", err)
+	}
+}
+
 func tableCounts(t *testing.T, db *DB) map[string]int {
 	t.Helper()
 	rows, err := db.sql.Query(`select name from sqlite_master where type = 'table' and name not like 'sqlite_%'`)

@@ -22,7 +22,7 @@ flowchart LR
   end
   subgraph stop[Shutdown]
     direction TB
-    t1[Close event streams] --> t2[Drain HTTP requests]
+    t1[Close event streams and the peer stream] --> t2[Drain HTTP requests]
     t2 --> t3[Stop workers]
     t3 --> t4[Stop auto-import]
     t4 --> t5[Wait for scan]
@@ -84,7 +84,7 @@ that has already stopped and a running job returns to the queue.
 
 ```mermaid
 flowchart LR
-  screen[Drop screen subscription] --> streams[Close event streams]
+  screen[Drop screen subscription] --> streams[Close event streams and the peer stream]
   streams --> drain[Drain requests, 10 s]
   drain --> wake[Drop worker wake-ups]
   wake --> auto[Stop auto-import]
@@ -95,7 +95,8 @@ flowchart LR
 ```
 
 The `/api/events` streams never end on their own, so they close before the
-10-second request grace starts. A cancelled job stays `running` and the next
+10-second request grace starts, and the stream this node holds open to its paired
+VVMDM closes with them. A cancelled job stays `running` and the next
 startup requeues it; a job is never lost between the queue and a worker.
 
 Auto-import stops before the scan is cancelled, so it removes its watches and

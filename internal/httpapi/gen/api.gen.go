@@ -664,6 +664,7 @@ const (
 	ErrorReasonFaceRecognitionOff            ErrorReason = "face_recognition_off"
 	ErrorReasonFaceRecognitionUnsupported    ErrorReason = "face_recognition_unsupported"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
+	ErrorReasonFingerprintChanged            ErrorReason = "fingerprint_changed"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
@@ -799,6 +800,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonFaceRecognitionUnsupported:
 		return true
 	case ErrorReasonFileUnavailable:
+		return true
+	case ErrorReasonFingerprintChanged:
 		return true
 	case ErrorReasonFolderNotFound:
 		return true
@@ -4916,6 +4919,12 @@ type PairingRequestNode struct {
 	Version string `json:"version"`
 }
 
+// PeerCertificateRequest defines model for PeerCertificateRequest.
+type PeerCertificateRequest struct {
+	// Fingerprint The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI
+	Fingerprint string `json:"fingerprint"`
+}
+
 // PeerHandshake defines model for PeerHandshake.
 type PeerHandshake struct {
 	Node PeerNode `json:"node"`
@@ -8154,6 +8163,9 @@ type OrganizeUndoJSONRequestBody = OrganizeUndo
 // UpdatePeerAddressJSONRequestBody defines body for UpdatePeerAddress for application/json ContentType.
 type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
 
+// ConfirmPeerCertificateJSONRequestBody defines body for ConfirmPeerCertificate for application/json ContentType.
+type ConfirmPeerCertificateJSONRequestBody = PeerCertificateRequest
+
 // PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
 type PairPeerJSONRequestBody = PairPeerRequest
 
@@ -8537,6 +8549,9 @@ type ServerInterface interface {
 	// UpdatePeerAddress Change the peer's address
 	// (PUT /api/peer/address)
 	UpdatePeerAddress(w http.ResponseWriter, r *http.Request)
+	// ConfirmPeerCertificate Trust the peer's changed certificate
+	// (POST /api/peer/certificate)
+	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request)
 	// IssuePairingCode Issue this node's pairing code
 	// (POST /api/peer/code)
 	IssuePairingCode(w http.ResponseWriter, r *http.Request)
@@ -10941,6 +10956,20 @@ func (siw *ServerInterfaceWrapper) UpdatePeerAddress(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePeerAddress(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmPeerCertificate operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmPeerCertificate(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15848,6 +15877,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/code", wrapper.IssuePairingCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/address", wrapper.UpdatePeerAddress)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/certificate", wrapper.ConfirmPeerCertificate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pairings", wrapper.AcceptPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)

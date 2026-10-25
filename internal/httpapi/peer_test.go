@@ -68,23 +68,54 @@ type peerNode struct {
 	url     string
 	cookie  *http.Cookie
 	library *audienceLibrary
+	pairing *app.Pairing
 }
 
 func newPeerNode(t *testing.T, name string) *peerNode {
 	t.Helper()
 	library := &audienceLibrary{fakeLibrary: sampleLibrary()}
+	var pairing *app.Pairing
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
+		events := NewEvents()
+		pairing = app.NewPairing(app.PairingOptions{
+			Store: db.Peers(), Link: peer.New(peer.Options{}), Version: testPeerVersion, NodeName: name,
+			Publisher: storePublisher{events: events},
+		})
 		return Options{
-			Build:  domain.BuildInfo{Version: testPeerVersion},
-			Videos: library,
-			Pairing: app.NewPairing(app.PairingOptions{
-				Store: db.Peers(), Link: peer.New(peer.Options{}), Version: testPeerVersion, NodeName: name,
-			}),
+			Build:   domain.BuildInfo{Version: testPeerVersion},
+			Videos:  library,
+			Events:  events,
+			Pairing: pairing,
 		}
 	})
 	server := httptest.NewServer(env.handler)
 	t.Cleanup(server.Close)
-	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library}
+	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library, pairing: pairing}
+}
+
+// runConnection starts the node's connection loop until the test ends.
+func (n *peerNode) runConnection(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		n.pairing.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+}
+
+// nextPeerEvent skips other events and returns the next peer event's state as JSON.
+func nextPeerEvent(t *testing.T, stream <-chan sseEvent) string {
+	t.Helper()
+	for {
+		if event := nextEvent(t, stream); event.name == "peer" {
+			return event.data
+		}
+	}
 }
 
 func (n *peerNode) owner(method, target, body string) *httptest.ResponseRecorder {
@@ -309,4 +340,51 @@ func TestPeerOperationsAreOpenAPIOperations(t *testing.T) {
 			t.Errorf("peerOperations の %q は openapi.yaml に無い", pattern)
 		}
 	}
+}
+
+func TestPeerEventsReachGuestsAndUnpairTellsThePeer(t *testing.T) {
+	a, b := pairTestNodes(t)
+	guest, _ := openEvents(t, a.env.handler)
+	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
+		t.Fatalf("接続時のゲストへの peer = %s, want connected だけ", got)
+	}
+
+	if rec := b.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("B の解除: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := nextPeerEvent(t, guest); got != `{"state":"unpaired"}` {
+		t.Errorf("B の解除の後のゲストへの peer = %s, want unpaired", got)
+	}
+	if _, found, _ := a.env.db.Peers().Peer(context.Background()); found {
+		t.Error("B の解除で A の記録が消えない")
+	}
+}
+
+func TestUntoldPeerRevokesOnItsNextRequest(t *testing.T) {
+	a, b := pairTestNodes(t)
+	credentialOfB := b.outgoingSecret(t)
+	stopped := httptest.NewServer(http.NotFoundHandler())
+	stopped.Close()
+	body, _ := json.Marshal(gen.UpdatePeerAddressRequest{Address: stopped.URL})
+	if rec := b.owner(http.MethodPut, "/api/peer/address", string(body)); rec.Code != http.StatusOK {
+		t.Fatalf("B のアドレスの変更: status = %d: %s", rec.Code, rec.Body)
+	}
+	// B cannot reach A, so A keeps its record until its own next request to B.
+	if rec := b.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("B の解除: status = %d: %s", rec.Code, rec.Body)
+	}
+	guest, _ := openEvents(t, a.env.handler)
+	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
+		t.Fatalf("A の状態 = %s, want connected のまま", got)
+	}
+
+	a.runConnection(t)
+	if got := nextPeerEvent(t, guest); got != `{"state":"revoked"}` {
+		t.Fatalf("A の次の要求の後の peer = %s, want revoked", got)
+	}
+	rec := a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
+		header: map[string]string{"Authorization": "VV-Peer " + credentialOfB}})
+	assertErrorBody(t, "revoked の後の B の資格情報", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusUnauthorized, code: gen.ErrorCodeUnauthenticated, reason: gen.ErrorReasonPeerUnknown,
+	})
 }
