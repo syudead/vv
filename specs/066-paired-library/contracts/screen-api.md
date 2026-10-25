@@ -104,7 +104,7 @@ an entity of the peer, whose own id is the value minus the offset
 | Operation on a remote id | Behaviour |
 | --- | --- |
 | Reads and single edits under `/api/videos/{id}`, `/api/groups/{id}`, `/api/smart-folders/{id}`, `/api/folders/{rootId}`, `/api/tags/{id}`, `/api/people/{id}`, `/api/organizations/{id}` | Forwarded; the answer's ids and URLs rewritten; `progress` and `favorite` absent from a remote `Video` |
-| `open`, `progress`, `auto-tag`, `probe`, favorites, playlists, watch history, activity | `404 not_found` |
+| `open`, `progress`, `auto-tag`, `probe`, favorites, playlists, watch history, activity, including a remote id in the body of a favorites or playlist write, alone or beside local ids | `404 not_found` |
 | Any forwarded operation while the peer is `unreachable` or `revoked` | `503 service_unavailable` with reason `peer_unreachable` |
 | Rename, merge, delete of a remote-only tag, person or organization | Applied on the peer after the local conflict check ([plan.md, Vocabulary by name](../plan.md#vocabulary-by-name)) |
 
@@ -126,11 +126,22 @@ counts the union of both nodes' resolved videos.
 
 | Status | `code` | `reason` | When |
 | --- | --- | --- | --- |
-| `400` | `invalid_request` | `mixed_nodes` | `POST /api/groups`, `/api/groups/{id}/items`, `/api/organize/*`, `/api/video-bundles` or a favorites or playlist write with videos of both nodes, or a remote video in a favorites or playlist write |
+| `400` | `invalid_request` | `mixed_nodes` | `POST /api/groups`, `/api/groups/{id}/items`, `/api/organize/*`, `/api/video-bundles` with videos of both nodes |
 | `400` | `invalid_request` | `provisional_person_remote` | A credit edit with a provisional person and a remote target |
 
 ## Smart folder cards
 
 `GET /api/smart-folders/cards` adds the peer's matches to `videoCount`,
 `durationMs` and `sizeBytes` of each folder while the peer is `connected`;
-covers, `watchedCount`, `watchState` and `lastPlayedAt` stay local.
+covers, `watchedCount`, `watchState` and `lastPlayedAt` stay local. A folder
+whose rule has `favorite` counts local favorites only: a local one adds
+nothing from the peer, and a remote one counts the local matches instead of
+the peer's.
+
+## Groups by node
+
+`GET /api/groups` takes `node`, `local` (default) or `peer`. With `peer` the
+request is forwarded with the peer's `nextCursor` passed through and the ids
+rewritten; the group picker sends it when the selected videos are remote.
+While the peer is not `connected`, `node=peer` answers `503
+service_unavailable` with reason `peer_unreachable`.

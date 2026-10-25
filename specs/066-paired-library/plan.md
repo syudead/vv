@@ -111,12 +111,14 @@ sequenceDiagram
 | A calls B back at the address B sent before storing anything, so a failed callback answers `409 peer_unreachable` and leaves A unpaired | Trusting B's address and discovering the failure later | Both directions must work before either node shows `connected` (acceptance 1) |
 | A node already paired answers `409 already_paired`; the owner unpairs first | Replacing the pairing | The Issue limits a node to one peer and names this as an edge case |
 | `X-VV-Peer-Audience: guest` lowers a peer request to the guest audience; without it the peer reads as the owner | A second credential per audience | One credential, and the audience is already a value every read takes |
+| The peer credential reaches only the operations one table in `internal/httpapi/peer_operations.go` allows (reads for merging and forwarding, media, the forwarded edits, operations over a selection, events and `/api/peer/*`); any other operation answers `403 forbidden` with reason `peer_not_allowed` | Every `/api/*` operation as the owner | A compromised peer must not reach media folders, scans, settings, the network page, the account or API tokens, which the Issue leaves on each node |
 | Pairing stores the node's name (host name) and address; the owner edits the address in Settings without pairing again | Re-pairing on an address change | Requirement 4 |
 | HTTPS verifies with the system roots; when that fails at pairing, the response names the certificate's SPKI fingerprint and the owner confirms it, which pins it; a pinned certificate that changes stops connections until confirmed again | Pinning every certificate | A reverse proxy with a public certificate rotates it every 90 days; a self-signed one is pinned once |
 
 Unpairing from either node deletes the local record and tells the peer; a
 peer that cannot be told learns it from the `401 peer_unknown` its next
-request receives ([Connection state](#connection-state)).
+request receives, and then revokes the incoming secret before it shows
+`revoked` ([Connection state](#connection-state)).
 
 ## Connection state
 
@@ -146,7 +148,8 @@ stateDiagram-v2
 | While `unreachable`, merged reads skip the peer without a request, and the reconnect loop alone tries again | Trying the peer on every read | Every list would wait 10 s per page while the peer is down |
 | A request failure during a read marks the node `unreachable` at once and the read answers with the local part | Failing the read | Requirement 15 and the paging edge case: the list continues with the local part and the screen shows the notice |
 | Forwarded peer events arrive as local events with remote ids | Dropping them | A tag added on the peer must refresh the remote card on this screen |
-| The state is in memory; a restart begins as `unreachable` until the stream opens | Persisting the state | The first connection decides it within seconds |
+| `401 peer_unknown` clears the row's incoming secret hash in one store write before the state becomes `revoked`, so the peer credential is refused from then on | Keeping the row intact until the owner clears it | A peer that no longer knows this node has no use for its credential, and a copy of that secret must not stay valid as the owner |
+| The state is in memory; a restart begins as `unreachable` until the stream opens, or as `revoked` when the row has no incoming secret hash | Persisting the state | The first connection decides it within seconds, and the cleared hash already records `revoked` |
 | The peer's `revoked` is derived from `401 peer_unknown`, which a reinstalled or wiped peer also answers | Distinguishing a wiped peer | Both need the owner to clear the record and pair again |
 
 ## Remote ids
@@ -268,8 +271,9 @@ flowchart LR
 | --- | --- | --- |
 | A smart folder's items are its own node's items plus the other node's videos matching its rule, sent as name filters, merged by the folder's sort; child folders stay those of the owning node | Evaluating only on the owning node | Requirement 14 |
 | Smart folder cards add the other node's `videoCount`, `durationMs` and `sizeBytes`, read in one `POST /api/peer/rule-counts` per cards request; covers and watch values stay local | One list request per card | Up to 60 cards per request |
+| A rule with `favorite` matches local favorites only: a local folder reads nothing from the peer, and a remote folder lists and counts the local videos matching its rule instead of the peer's items | Sending the rule to the peer without `favorite`, or listing the peer's favorites | `favorite=true` lists local videos only ([Merged lists](#merged-lists)); the peer's non-favorites would match, and the peer's favorites are out of scope |
 | A guest's smart folder page reads the rule from the peer as the owner and lists the other node's videos as the guest | Omitting the remote part for guests | The rule is not shown; only the matches are, filtered for the guest |
-| Creating a group or adding members with videos of both nodes is refused with `400 invalid_request` and `reason` `mixed_nodes`; a group picker lists the groups of the node the selected videos belong to | Groups across nodes | Out of scope by the Issue |
+| Creating a group or adding members with videos of both nodes is refused with `400 invalid_request` and `reason` `mixed_nodes`; a group picker lists the groups of the node the selected videos belong to, through `GET /api/groups?node=peer` forwarded with the peer's own cursor | Groups across nodes, or a merged group list | Out of scope by the Issue, and one node's list needs no composite cursor |
 | `organize` operations (reorder, group, move, merge, bundle, undo) and `POST /api/video-bundles` run on one node: all local as today, all remote forwarded, mixed refused with `mixed_nodes` | Forwarding part of a move | A move between nodes would be a copy, which the Issue does not ask for |
 | `POST /api/collections/delete` splits its ids by node and runs one transaction per node | One transaction | Two databases have no shared transaction; the local part is applied first and a peer failure reports the remaining ids |
 
@@ -339,7 +343,7 @@ specs/066-paired-library/
 
 | Boundary | Change |
 | --- | --- |
-| `api/openapi.yaml` | The `/api/peer/*` operations, the `peer` event, `peerItems`, the name filters, `remote` in selection results, `mixed_nodes` and `peer_unreachable` reasons; `task generate` |
+| `api/openapi.yaml` | The `/api/peer/*` operations, the `peer` event, `peerItems`, the name filters, `node` on `listGroups`, `remote` in selection results, `mixed_nodes`, `peer_unreachable` and `peer_not_allowed` reasons; `task generate` |
 | `internal/domain` | Remote id offset and rewrite rules, merged page and composite cursor, pairing state machine, pairing code rule, peer record type |
 | `internal/app` | `Pairing`: code, acceptance, unpairing, state and events, over `PeerStore` and `PeerLink` interfaces |
 | `internal/peer` (new) | HTTP client to the peer: credential, audience header, TLS pinning, event stream and reconnect loop, typed reads, byte proxy |
@@ -397,7 +401,9 @@ system roots ([Pairing and the peer credential](#pairing-and-the-peer-credential
   secrets.
 - HTTP tests with two in-process servers (the boundary under test): the
   handshake pairs both; a request with the peer credential is classified as
-  owner, with the header as guest, and without a valid secret as `401`;
+  owner, with the header as guest, and without a valid secret as `401`; the
+credential on media folders, settings or API tokens answers `403
+peer_not_allowed`;
   `GET /api/peer` answers the state for the owner and only the state for a
   guest; the owner-only classification test covers the new paths.
 
@@ -417,14 +423,14 @@ operation and the pin; shutdown order in `cmd/mdm`
 
 - Application tests with a fake link and virtual time: open → `connected`,
   failure → `unreachable` with its reason, retry after 5 s then 10 s up to
-  60 s, `401` → `revoked`, clear → `unpaired`; each change publishes one
-  `peer` event.
+  60 s, `401` → `revoked` with the incoming secret revoked first, clear →
+  `unpaired`; each change publishes one `peer` event.
 - Adapter tests with an `httptest` peer: a forwarded `video` event arrives
   with the offset; a changed pinned certificate stops with reason
   `certificate` and the fingerprint; the confirmation re-pins and connects.
 - HTTP tests: `/api/events` delivers `peer` to a guest; unpairing calls the
   peer's `DELETE` and, when that fails, the peer's next request answers
-  `401 peer_unknown`.
+  `401 peer_unknown`, after which the peer refuses this node's credential.
 
 ### Pair, watch and unpair on the Settings Pairing page
 
@@ -532,7 +538,7 @@ synonym added on A stays on A.
 ### List and edit the peer's groups
 
 **Scope**: Remote groups in the library list and `GET /api/groups` by the
-selection's node; forwarded group pages, items and edits; `mixed_nodes` for
+selection's node (`node=peer`); forwarded group pages, items and edits; `mixed_nodes` for
 `POST /api/groups`, `/api/groups/{id}/items`, `organize` operations and
 `POST /api/video-bundles`; `POST /api/collections/delete` split by node
 ([Collections](#collections)).
@@ -560,7 +566,8 @@ name
 tag rule lists A's and B's tagged videos in the folder's sort, paged without
 duplicates; B's folder appears in A's sidebar list and lists A's matches
 too; a guest sees only public matches of both; the card of A's folder counts
-both nodes; with B stopped the folder lists A's matches and the card counts
+both nodes; a `favorite` rule on A lists and counts A's favorites only, and
+B's `favorite` folder lists A's matching favorites; with B stopped the folder lists A's matches and the card counts
 A's.
 
 ### Rank related videos across both nodes

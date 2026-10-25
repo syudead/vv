@@ -12,11 +12,18 @@ screen operations the screens use for pairing are in
 A request with `Authorization: VV-Peer <secret>` on any `/api/*` path is
 classified by the auth boundary like a session: the secret is hashed and
 compared with `peer.incoming_secret_hash`, and the audience is the owner
-unless `X-VV-Peer-Audience: guest` is present.
+unless `X-VV-Peer-Audience: guest` is present. The credential reaches only
+the operations a table in `internal/httpapi/peer_operations.go` allows: the
+reads the merged lists and forwarding need, the media operations, the
+forwarded edits of videos, groups, smart folders, tags, people and
+organizations, the operations over a selection, `/api/events`, `/api/health`
+and `/api/peer/*`
+([plan.md, Pairing and the peer credential](../plan.md#pairing-and-the-peer-credential)).
 
 | Case | Response |
 | --- | --- |
-| Secret unknown, or no peer row | `401` `code: unauthenticated`, `reason: peer_unknown` |
+| Secret unknown, no peer row, or a row whose incoming secret was revoked | `401` `code: unauthenticated`, `reason: peer_unknown` |
+| Valid secret on an operation the table does not allow (media folders, scans, settings, network, account, API tokens, activity, favorites, playlists and the rest) | `403` `code: forbidden`, `reason: peer_not_allowed` |
 | `X-VV-Peer-Audience` with another value | `400 invalid_request` |
 | Valid secret on `/api/v1` or `/mcp` | `401` as today; the peer credential is not a bearer token |
 
@@ -101,7 +108,7 @@ caller and returns one page in the related order
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `clues` | body | `RelatedClues` | Yes | Fingerprint, tags by name, title words, `addedAt` of the open video; no directory |
+| `clues` | body | `RelatedClues` | Yes | Fingerprint, tags by name, the words the scorer takes from the title and the file name, `addedAt` of the open video; no directory |
 | `exclude` | body | int64[] | No | This node's ids to leave out (the open video and its bundle when held here) |
 | `cursor` | body | string | No | Previous `nextCursor` |
 | `limit` | body | integer | No | 1–100, default 30 |
@@ -122,7 +129,7 @@ smart folder cards ([plan.md, Collections](../plan.md#collections)).
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `rules` | body | `SmartRuleByName[]` | Yes | 1–60 rules with tags, kind, person and organization by name, `q` and no `favorite` |
+| `rules` | body | `SmartRuleByName[]` | Yes | 1–60 rules with tags, kind, person and organization by name, `q` and no `favorite`; the caller sends no rule of a folder with `favorite` |
 
 **Response**: `200` with `{ items: [{ videoCount, durationMs, sizeBytes }] }`
 in the order of `rules`.
@@ -130,8 +137,9 @@ in the order of `rules`.
 ## Per-item cursors
 
 A list response to a request with the peer credential carries
-`peerItems`, one entry per item in order, on `VideoPage`, `LibraryPage` and
-`GroupListPage`; other callers never receive it.
+`peerItems`, one entry per item in order, on `VideoPage` and `LibraryPage`;
+other callers never receive it. `GroupListPage` has none: the group picker
+reads one node's list ([screen-api.md, Groups by node](screen-api.md#groups-by-node)).
 
 | Field | Type | Meaning |
 | --- | --- | --- |

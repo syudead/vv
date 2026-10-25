@@ -19,7 +19,7 @@ One row at most: the node is paired with one peer or with none.
 | `name` | text | No | The peer's host name at pairing, shown on the screens |
 | `address` | text | No | The peer's base URL (`http://` or `https://`), edited by the owner |
 | `outgoing_secret` | text | No | The secret this node presents to the peer, in plain text |
-| `incoming_secret_hash` | text | No | Hexadecimal SHA-256 of the secret the peer presents, as `api_tokens.token_hash` |
+| `incoming_secret_hash` | text | Yes | Hexadecimal SHA-256 of the secret the peer presents, as `api_tokens.token_hash`; null once the peer answered `401 peer_unknown` |
 | `pinned_spki` | text | Yes | Base64 SHA-256 of the peer certificate's SPKI the owner confirmed; null when the system roots verify it or the address is `http://` |
 | `paired_at` | integer | No | Unix seconds |
 
@@ -40,14 +40,16 @@ to it.
 | The incoming secret is stored only as a hash | `PeerStore.AddPeer`; `PeerStore.PeerBySecret` hashes the presented value |
 | A credential change does not touch `peer` | `AuthStore` credential change leaves the table alone; the store test checks it |
 | Unpairing deletes the row and nothing else | `PeerStore.DeletePeer` |
+| `401 peer_unknown` from the peer revokes the incoming secret, and a row without it accepts no peer credential | `PeerStore.RevokeIncomingSecret`; `PeerStore.PeerBySecret` never matches a null hash |
 | A wiped peer answers `401 peer_unknown` | The absence of a row, or a `node_id` different from the one presented |
 
 ## State transitions
 
 The connection state is held in memory by `app.Pairing`
 ([plan.md, Connection state](plan.md#connection-state)) and is not stored; a
-start begins as `unreachable` with reason `network` when a row exists and
-`unpaired` otherwise.
+start begins as `revoked` when the row has no incoming secret hash,
+`unreachable` with reason `network` when a row has one, and `unpaired`
+otherwise.
 
 ## What does not change
 
