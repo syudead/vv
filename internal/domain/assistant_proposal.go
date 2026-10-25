@@ -79,7 +79,8 @@ type AssistantLabelRef struct {
 type AssistantPlanTargets struct {
 	Kind   AssistantTarget  `json:"kind"`
 	Labels []AssistantLabel `json:"labels,omitempty"`
-	// VideoKeys are the videos' user keys in plan order; batches follow this order.
+	// VideoKeys are the videos' user keys in plan order; batches follow this order. A plan whose operation acts on
+	// one version (see ByVersion) holds each version's content key instead, here and in its video labels.
 	VideoKeys []string `json:"videoKeys,omitempty"`
 }
 
@@ -121,10 +122,11 @@ func (p AssistantPlan) Action() (AssistantAction, bool) {
 	return LookupAssistantAction(p.ActionID)
 }
 
-// Batched is true when the plan's videos run in batches of AssistantBatchSize user keys.
+// Batched is true when the plan's videos run in batches of AssistantBatchSize user keys. A batching row whose plan
+// names no videos, such as updateFavorites on groups only, is one call like any other operation.
 func (p AssistantPlan) Batched() bool {
 	row, ok := p.Action()
-	return ok && row.Batches
+	return ok && row.Batches && len(p.Targets.VideoKeys) > 0
 }
 
 // Total is the proposal's count: user keys for a batched operation, otherwise one call.
@@ -228,6 +230,18 @@ func (p AssistantPlan) MergeSources() (AssistantTarget, []int64, bool) {
 }
 
 var assistantMergeOperations = map[string]bool{"mergeTag": true, "mergePeople": true, "mergeOrganizations": true}
+
+// ByVersion is true when the operation acts on the given version rather than on the user data its bundle shares,
+// so the worker resolves the plan's content keys to that version and not to any video of the bundle.
+func (p AssistantPlan) ByVersion() bool {
+	row, found := p.Action()
+	return found && assistantVersionOperations[row.Operation]
+}
+
+var assistantVersionOperations = map[string]bool{
+	"makeRepresentativeVersion": true, "unbundleVideo": true,
+	"dismissVersionCandidate": true, "rejudgeVersionCandidate": true,
+}
 
 // AssistantProposalError is the first failed call's screen API code and reason, or "interrupted" after a restart.
 type AssistantProposalError struct {

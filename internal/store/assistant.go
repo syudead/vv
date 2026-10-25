@@ -122,16 +122,18 @@ func (s *AssistantStore) ActiveProposals(ctx context.Context, since time.Time) (
 	return proposals, nil
 }
 
-// ApproveProposal moves a proposed proposal to approved and opens its assistant_run entry. A missing or discarded
-// proposal is domain.ErrNotFound; any other status returns the proposal with domain.ErrAssistantProposalNotPending.
+// ApproveProposal moves a proposed proposal to approved and opens its assistant_run entry. A missing, discarded or
+// expired proposal is domain.ErrNotFound; any other status returns the proposal with
+// domain.ErrAssistantProposalNotPending. The expiry is checked in the guarded UPDATE, so a proposal the worker has
+// not deleted yet still cannot be approved after domain.AssistantProposalTTL.
 func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time.Time) (domain.AssistantProposal, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot approve the assistant proposal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	moved, err := moveAssistantProposal(ctx, tx, id, domain.AssistantProposed, domain.AssistantApproved,
-		`approved_at = ?`, now.UnixMilli())
+	moved, err := moveAssistantProposalIf(ctx, tx, id, domain.AssistantProposed, domain.AssistantApproved,
+		`created_at >= ?`, []any{now.Add(-domain.AssistantProposalTTL).UnixMilli()}, `approved_at = ?`, now.UnixMilli())
 	if err != nil {
 		return domain.AssistantProposal{}, err
 	}
@@ -140,7 +142,8 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 		return domain.AssistantProposal{}, err
 	}
 	if !moved {
-		if p.Status == domain.AssistantDiscarded {
+		// A proposal still proposed here failed only the expiry guard.
+		if p.Status == domain.AssistantDiscarded || p.Status == domain.AssistantProposed {
 			return domain.AssistantProposal{}, domain.ErrNotFound
 		}
 		return p, domain.ErrAssistantProposalNotPending
@@ -170,11 +173,22 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 func moveAssistantProposal(
 	ctx context.Context, tx *sql.Tx, id int64, from, to domain.AssistantProposalStatus, set string, args ...any,
 ) (bool, error) {
+	return moveAssistantProposalIf(ctx, tx, id, from, to, "", nil, set, args...)
+}
+
+// moveAssistantProposalIf is moveAssistantProposal with an extra where condition; an empty guard adds none.
+func moveAssistantProposalIf(
+	ctx context.Context, tx *sql.Tx, id int64, from, to domain.AssistantProposalStatus,
+	guard string, guardArgs []any, set string, args ...any,
+) (bool, error) {
 	if !from.CanMove(to) {
 		return false, fmt.Errorf("an assistant proposal cannot move from %s to %s", from, to)
 	}
 	statement := `update assistant_proposals set status = ?, ` + set + ` where id = ? and status = ?`
-	values := append(append([]any{string(to)}, args...), id, string(from))
+	if guard != "" {
+		statement += ` and ` + guard
+	}
+	values := append(append(append([]any{string(to)}, args...), id, string(from)), guardArgs...)
 	result, err := tx.ExecContext(ctx, statement, values...)
 	if err != nil {
 		return false, fmt.Errorf("cannot move the assistant proposal %d to %s: %w", id, to, err)
@@ -441,7 +455,11 @@ func (s *AssistantStore) CurrentLabels(ctx context.Context, plan domain.Assistan
 			return domain.AssistantCurrent{}, err
 		}
 	}
-	if current.Videos, err = assistantVideoIDs(ctx, tx, keys); err != nil {
+	resolve := assistantVideoIDs
+	if plan.ByVersion() {
+		resolve = assistantVersionIDs
+	}
+	if current.Videos, err = resolve(ctx, tx, keys); err != nil {
 		return domain.AssistantCurrent{}, err
 	}
 	return current, nil
@@ -471,7 +489,8 @@ func readAssistantNames(
 	return nil
 }
 
-// VideoIDs maps the user keys still in the library to one current video id each; a gone key is absent.
+// VideoIDs maps the user keys still in the library to one current video id each; a gone key is absent. Only the
+// later batches of a batched operation use it, and no version operation is batched.
 func (s *AssistantStore) VideoIDs(ctx context.Context, keys []string) (map[string]int64, error) {
 	return assistantVideoIDs(ctx, s.db.read, keys)
 }
@@ -502,17 +521,42 @@ func assistantVideoIDs(ctx context.Context, q queryExecer, keys []string) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("cannot map user keys to videos: %w", err)
 	}
+	return scanAssistantVideoIDs(rows, ids)
+}
+
+// assistantVersionIDs maps each content key to its own library video, bundled or not; a bundle's user key names
+// no single version and is absent, so a plan holding one ends stale.
+func assistantVersionIDs(ctx context.Context, q queryExecer, keys []string) (map[string]int64, error) {
+	ids := map[string]int64{}
+	if len(keys) == 0 {
+		return ids, nil
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build content keys: %w", err)
+	}
+	rows, err := q.QueryContext(ctx, `select v.content_key, min(v.id) from videos v
+		 where v.content_key in (select value from json_each(?)) and v.content_key <> ''
+		   and `+libraryVideoCondition("v")+`
+		 group by v.content_key`, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("cannot map content keys to videos: %w", err)
+	}
+	return scanAssistantVideoIDs(rows, ids)
+}
+
+func scanAssistantVideoIDs(rows *sql.Rows, ids map[string]int64) (map[string]int64, error) {
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var key string
 		var id int64
 		if err := rows.Scan(&key, &id); err != nil {
-			return nil, fmt.Errorf("cannot map user keys to videos: %w", err)
+			return nil, fmt.Errorf("cannot map keys to videos: %w", err)
 		}
 		ids[key] = id
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot map user keys to videos: %w", err)
+		return nil, fmt.Errorf("cannot map keys to videos: %w", err)
 	}
 	return ids, nil
 }

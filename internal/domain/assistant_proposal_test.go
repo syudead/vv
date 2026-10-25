@@ -38,6 +38,15 @@ func TestAssistantPlanBatchesSplitVideoKeysInOrder(t *testing.T) {
 	if got := group.Batches(); len(got) != 1 || len(got[0]) != 1200 || group.Total() != 1 {
 		t.Errorf("createGroup: %d batches, total %d", len(got), group.Total())
 	}
+
+	// A batching operation on groups only still makes its one call.
+	groupsOnly := AssistantPlan{
+		ActionID: "updateFavorites",
+		Targets:  AssistantPlanTargets{Kind: AssistantTargetVideosOrGroups, Labels: []AssistantLabel{{Kind: AssistantLabelGroup, ID: 7, Name: "g"}}},
+	}
+	if got := groupsOnly.Batches(); len(got) != 1 || len(got[0]) != 0 || groupsOnly.Total() != 1 {
+		t.Errorf("updateFavorites on groups only: batches %v, total %d; want one empty batch and total 1", got, groupsOnly.Total())
+	}
 }
 
 func TestAssistantPlanStale(t *testing.T) {

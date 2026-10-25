@@ -63,6 +63,23 @@ func TestApproveAssistantProposalOnce(t *testing.T) {
 	}
 }
 
+func TestApproveExpiredAssistantProposalIsNotFound(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	p := createProposal(t, db, batchedPlan("k1"), assistantNow.Add(-domain.AssistantProposalTTL-time.Millisecond))
+
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("approval after the TTL: err = %v, want not found", err)
+	}
+	stored, err := db.Assistant().Proposal(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != domain.AssistantProposed || stored.ActivityID != 0 {
+		t.Errorf("stored = %+v, want it still proposed without an entry", stored)
+	}
+}
+
 func TestAssistantRunEntryFollowsTheRun(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -117,7 +134,7 @@ func TestExpireAssistantProposalsDeletesOldProposedOnly(t *testing.T) {
 	cutoff := assistantNow.Add(-domain.AssistantProposalTTL)
 	old := createProposal(t, db, batchedPlan("k1"), cutoff.Add(-time.Minute))
 	oldApproved := createProposal(t, db, batchedPlan("k1"), cutoff.Add(-time.Minute))
-	if _, err := db.Assistant().ApproveProposal(ctx, oldApproved.ID, assistantNow); err != nil {
+	if _, err := db.Assistant().ApproveProposal(ctx, oldApproved.ID, oldApproved.CreatedAt); err != nil {
 		t.Fatal(err)
 	}
 	recent := createProposal(t, db, batchedPlan("k1"), cutoff.Add(time.Minute))
@@ -240,6 +257,39 @@ func TestAssistantCurrentLabelsReadsNamesAndVideos(t *testing.T) {
 	}
 	if _, ok := current.Videos["gone"]; ok {
 		t.Error("a key without a video maps to one")
+	}
+}
+
+func TestAssistantCurrentLabelsResolvesAVersionByItsContentKey(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	first := upsertFolderVideo(t, db, fixturePath("/media/a.mp4"), "ka")
+	second := upsertFolderVideo(t, db, fixturePath("/media/b.mp4"), "kb")
+	rebuildIndexForTest(t, db)
+	if _, err := db.Versions().Bundle(ctx, []int64{first, second}, first); err != nil {
+		t.Fatal(err)
+	}
+	version := domain.AssistantPlan{
+		ActionID: "makeRepresentativeVersion",
+		Targets: domain.AssistantPlanTargets{Kind: domain.AssistantTargetVideo, Labels: []domain.AssistantLabel{
+			{Kind: domain.AssistantLabelVideo, Key: "kb", Name: "b"},
+		}},
+	}
+
+	current, err := db.Assistant().CurrentLabels(ctx, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, ok := current.Videos["kb"]; !ok || id != second {
+		t.Errorf("version videos = %v, want kb → %d, the version itself", current.Videos, second)
+	}
+	// Shared user data is written under the bundle's user key, so a member's content key no longer names it.
+	shared, err := db.Assistant().CurrentLabels(ctx, batchedPlan("kb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := shared.Videos["kb"]; ok {
+		t.Errorf("shared videos = %v, want the bundled content key absent", shared.Videos)
 	}
 }
 
