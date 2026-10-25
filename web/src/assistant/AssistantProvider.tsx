@@ -109,6 +109,7 @@ function useThread(
   const latestExchanges = useRef(exchanges);
   latestExchanges.current = exchanges;
   const nextId = useRef(1);
+  const turnRequest = useRef<AbortController | null>(null);
 
   const publish = useCallback<Publish>((next) => {
     setScreen(next);
@@ -137,12 +138,18 @@ function useThread(
       const previous = previousOutcome(current);
       const context = turnContext(latestLocation.current, latestScreen.current, pinned);
       setExchanges([...current, exchange]);
-      createAssistantTurn({
-        text,
-        context,
-        ...(previous !== undefined && { previous }),
-      }).then(
+      const controller = new AbortController();
+      turnRequest.current = controller;
+      createAssistantTurn(
+        {
+          text,
+          context,
+          ...(previous !== undefined && { previous }),
+        },
+        controller.signal,
+      ).then(
         (outcome) => {
+          if (controller.signal.aborted) return;
           const path = appliedPath(outcome);
           settle(exchange.id, {
             kind: "outcome",
@@ -152,6 +159,7 @@ function useThread(
           if (path !== undefined) onApplied(path);
         },
         (error: unknown) => {
+          if (controller.signal.aborted) return;
           const failure = turnFailure(error);
           if (failure.kind === "reply") {
             settle(exchange.id, failure.reply);
@@ -180,7 +188,13 @@ function useThread(
     [sendTurn],
   );
 
-  const clear = useCallback(() => setExchanges([]), []);
+  // Clearing abandons a running turn, so its late outcome neither changes the page nor blocks the next request.
+  const clear = useCallback(() => {
+    turnRequest.current?.abort();
+    turnRequest.current = null;
+    setExchanges([]);
+  }, []);
+  useEffect(() => () => turnRequest.current?.abort(), []);
   return { screen, publish, exchanges, sendTurn, choose, clear };
 }
 

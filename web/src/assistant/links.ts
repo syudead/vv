@@ -23,7 +23,7 @@ export function criteriaPath({ rule, sort }: AssistantCriteria): string {
   const query = normalizeQuery(rule.q ?? "");
   if (query !== "") params.set("q", query);
   if (rule.favorite === true) params.set("fav", "1");
-  if (sort !== undefined && sort !== "random") params.set("sort", sort);
+  if (sort !== undefined) params.set("sort", sort);
   for (const id of serializeTagIds(rule.tags ?? [])) params.append(TAG_PARAM, id);
   if (rule.tagKind !== undefined) params.set(TAG_KIND_PARAM, String(rule.tagKind));
   if (rule.person !== undefined) params.set(PERSON_PARAM, String(rule.person));

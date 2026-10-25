@@ -257,6 +257,32 @@ describe("AssistantPanel", () => {
     expect(within(panel()).getByText("The assistant can’t do that.")).toBeDefined();
   });
 
+  it("turn の途中でスレッドを消すと、遅れて届いた結果でページを変えず、次の依頼を送れる", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    server.turn = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp({ path: "/folders" });
+    await ask(user, "スキャンの設定を開いて");
+
+    await user.click(within(panel()).getByRole("button", { name: "Clear thread" }));
+    await act(async () =>
+      answer(
+        outcome({
+          kind: "navigate",
+          destination: { kind: "settings", settingsPage: "scan" },
+        }),
+      ),
+    );
+
+    expect(location().textContent).toBe("/folders");
+    server.turn = () => outcome({ kind: "unsupported" });
+    await user.type(field(), "何かして{Enter}");
+    expect(
+      await within(panel()).findByText("The assistant can’t do that."),
+    ).toBeDefined();
+    expect(server.turns).toHaveLength(2);
+  });
+
   it("IME の確定の Enter と 500 文字を超える依頼は送らない", async () => {
     const user = userEvent.setup();
     renderApp();

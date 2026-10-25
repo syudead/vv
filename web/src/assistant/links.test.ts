@@ -28,6 +28,12 @@ describe("criteriaPath", () => {
     );
     expect(showsCriteria("/", "?tag=3", { rule, labels: [] })).toBe(false);
   });
+
+  it("ランダムの並びも URL に残し、ライブラリの保存済みの並びに戻さない", () => {
+    expect(criteriaPath({ rule: { favorite: true }, labels: [], sort: "random" })).toBe(
+      "/?fav=1&sort=random",
+    );
+  });
 });
 
 describe("destinationPath", () => {

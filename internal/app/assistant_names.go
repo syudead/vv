@@ -30,38 +30,56 @@ func (t *assistantTurn) clarify(about string, candidates []domain.AssistantCandi
 	}
 }
 
-// candidates resolves one name of one kind: a pinned id first, then the vocabulary.
+// candidates resolves one name of one kind and reports whether a pinned id decided it. A pinned id wins when the
+// name still matches it or the pin carries this name, so choosing among an alias's matches is not asked again.
 func (t *assistantTurn) candidates(
 	ctx context.Context, kind domain.AssistantLabelKind, name string,
-) ([]domain.AssistantCandidate, error) {
+) ([]domain.AssistantCandidate, bool, error) {
+	found, err := t.a.vocabulary.FindNames(ctx, kind, name)
+	if err != nil {
+		return nil, false, err
+	}
 	key := domain.FoldForMatch(name)
 	for _, pin := range t.input.Context.Pinned {
-		if pin.Kind != kind || domain.FoldForMatch(pin.Name) != key {
+		if pin.Kind != kind {
+			continue
+		}
+		if i := slices.IndexFunc(found, func(c domain.AssistantCandidate) bool { return c.ID == pin.ID }); i >= 0 {
+			return found[i : i+1], true, nil
+		}
+		if domain.FoldForMatch(pin.Name) != key {
 			continue
 		}
 		names, err := t.a.vocabulary.EntityNames(ctx, kind, []int64{pin.ID})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if current, ok := names[pin.ID]; ok {
-			return []domain.AssistantCandidate{{Kind: kind, ID: pin.ID, Name: current}}, nil
+			return []domain.AssistantCandidate{{Kind: kind, ID: pin.ID, Name: current}}, true, nil
 		}
 	}
-	return t.a.vocabulary.FindNames(ctx, kind, name)
+	return found, false, nil
 }
 
-// anyKinds are the kinds a name of kind "any" may be, in the order they are tried.
+// anyKinds are the kinds a name of kind "any" may be, in the order they are tried; a name two kinds hold is
+// ambiguous.
 var anyKinds = []domain.AssistantLabelKind{
 	domain.AssistantLabelPerson, domain.AssistantLabelOrganization, domain.AssistantLabelTag,
 }
 
-// anyCandidates tries a person, an organization and a tag; a name that two kinds hold is ambiguous.
-func (t *assistantTurn) anyCandidates(ctx context.Context, name string) ([]domain.AssistantCandidate, error) {
+// kindsCandidates resolves a name over several kinds; a pinned id of any of them is the only candidate, so the
+// owner's choice also settles a name that other kinds hold.
+func (t *assistantTurn) kindsCandidates(
+	ctx context.Context, kinds []domain.AssistantLabelKind, name string,
+) ([]domain.AssistantCandidate, error) {
 	var found []domain.AssistantCandidate
-	for _, kind := range anyKinds {
-		matches, err := t.candidates(ctx, kind, name)
+	for _, kind := range kinds {
+		matches, pinned, err := t.candidates(ctx, kind, name)
 		if err != nil {
 			return nil, err
+		}
+		if pinned {
+			return matches, nil
 		}
 		found = append(found, matches...)
 	}
@@ -88,9 +106,9 @@ func (t *assistantTurn) one(
 	var found []domain.AssistantCandidate
 	var err error
 	if kind == "" {
-		found, err = t.anyCandidates(ctx, name)
+		found, err = t.kindsCandidates(ctx, anyKinds, name)
 	} else {
-		found, err = t.candidates(ctx, kind, name)
+		found, _, err = t.candidates(ctx, kind, name)
 	}
 	if err != nil {
 		return domain.AssistantLabel{}, false, err
