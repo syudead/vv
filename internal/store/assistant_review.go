@@ -497,9 +497,8 @@ func findTagReviewSets(ctx context.Context, tx *sql.Tx) ([]domain.AssistantRevie
 	for _, pair := range domain.AssistantNearPairs(named) {
 		pairs = append(pairs, [2]reviewEntity{entities[pair[0]], entities[pair[1]]})
 	}
-	return reviewPairSets(ctx, tx, domain.AssistantLabelTag, pairs, `select distinct l.title from video_tags vt
-		join videos v on v.content_key = vt.content_key and v.content_key <> ''
-		join video_locations l on l.video_id = v.id where vt.tag_id = ? order by l.title limit ?`)
+	return reviewPairSets(ctx, tx, domain.AssistantLabelTag, pairs,
+		`select content_key from video_tags where tag_id = ?`)
 }
 
 // findPeopleReviewSets pairs people sharing a folded name or alias, or one link to the same page.
@@ -530,9 +529,8 @@ func findPeopleReviewSets(ctx context.Context, tx *sql.Tx) ([]domain.AssistantRe
 		}
 		pairs = append(pairs, both)
 	}
-	return reviewPairSets(ctx, tx, domain.AssistantLabelPerson, pairs, `select distinct l.title from video_work_people wp
-		join videos v on v.content_key = wp.content_key and v.content_key <> ''
-		join video_locations l on l.video_id = v.id where wp.person_id = ? order by l.title limit ?`)
+	return reviewPairSets(ctx, tx, domain.AssistantLabelPerson, pairs,
+		`select content_key from video_work_people where person_id = ?`)
 }
 
 func samePersonPairs(ctx context.Context, tx *sql.Tx) ([][2]int64, error) {
@@ -561,17 +559,20 @@ func samePersonPairs(ctx context.Context, tx *sql.Tx) ([][2]int64, error) {
 	return pairs, nil
 }
 
-// reviewPairSets builds the sets of entity pairs with each member's titles, read by titlesQuery.
+// reviewPairSets builds the sets of entity pairs with the titles of each member's videos. keysQuery selects the user
+// keys labelled with the entity bound to its one argument; a bundle's user key reaches every version's titles.
 func reviewPairSets(
-	ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, pairs [][2]reviewEntity, titlesQuery string,
+	ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, pairs [][2]reviewEntity, keysQuery string,
 ) ([]domain.AssistantReviewSet, error) {
+	titlesQuery := `select distinct l.title from video_locations l where l.video_id in (` + userKeyVideosSQL(keysQuery) +
+		`) order by l.title limit ?`
 	titles := map[int64][]string{}
 	sets := make([]domain.AssistantReviewSet, 0, len(pairs))
 	for _, pair := range pairs {
 		set := domain.AssistantReviewSet{}
 		for _, e := range pair {
 			if _, ok := titles[e.id]; !ok {
-				read, err := queryStrings(ctx, tx, titlesQuery, e.id, domain.AssistantReviewFactTitles)
+				read, err := queryStrings(ctx, tx, titlesQuery, e.id, e.id, domain.AssistantReviewFactTitles)
 				if err != nil {
 					return nil, fmt.Errorf("cannot read the titles to review: %w", err)
 				}

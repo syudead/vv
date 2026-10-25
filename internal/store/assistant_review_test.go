@@ -63,6 +63,39 @@ func TestFindPeopleReviewSetsPairsAnEqualFoldedAliasOnly(t *testing.T) {
 	}
 }
 
+func TestFindReviewSetsReadTitlesThroughABundleUserKey(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for _, v := range []struct{ title, key string }{{"Trip 1", "k1"}, {"Trip 1 HD", "k2"}} {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/"+v.title+".mp4"), v.title, v.key, 10, 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execSQL(t, db, `insert into video_bundles (id, user_key, representative_key, created_at, updated_at) values (1, 'bundle:1', 'k1', 1, 1)`)
+	execSQL(t, db, `insert into video_bundle_members (content_key, bundle_id, added_at) values ('k1', 1, 1), ('k2', 1, 1)`)
+	tags := createTags(t, db, "selfie", "selfy")
+	execSQL(t, db, `insert into video_tags (content_key, tag_id, created_at) values ('bundle:1', ?, 1)`, tags[0])
+	hanako := createPerson(t, db, "Hanako")
+	createPerson(t, db, "ＨＡＮＡＫＯ")
+	execSQL(t, db, `insert into video_work_people (content_key, role, position, person_id) values ('bundle:1', 'performer', 0, ?)`,
+		hanako.ID)
+
+	for _, tc := range []struct {
+		kind domain.AssistantReviewKind
+		id   int64
+	}{{domain.AssistantReviewTags, tags[0]}, {domain.AssistantReviewPeople, hanako.ID}} {
+		sets, err := db.Assistant().FindReviewSets(ctx, tc.kind)
+		if err != nil || len(sets) != 1 {
+			t.Fatalf("%s sets = %+v, %v", tc.kind, sets, err)
+		}
+		for _, m := range sets[0].Members {
+			if m.ID == tc.id && !slices.Equal(m.Titles, []string{"Trip 1", "Trip 1 HD"}) {
+				t.Errorf("%s member %d titles = %v, want the bundled versions' titles", tc.kind, m.ID, m.Titles)
+			}
+		}
+	}
+}
+
 func TestFindWorkReviewSetsGroupsPartsOfUngroupedVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
