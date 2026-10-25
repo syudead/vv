@@ -549,7 +549,7 @@ so they read on devices without hover; the design-system bar
 (`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
 fit.
 
-Its items, in order, are clear, `N selected`, `Edit`, `Fill info…`,
+Its items, in order, are clear, `N selected`, `Edit`, `Edit codes`, `Fill info…`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
 There is no `Select all`: selection covers only the cards the viewer checks,
@@ -582,6 +582,12 @@ same action for their child groups and child smart folders.
 
 `Edit` opens the bulk editor for the tags, people, organizations, dates and
 visibility of the selection ([bulk-editing.md](bulk-editing.md)).
+`Edit codes` opens the table editor for the codes of the selected videos
+([bulk-editing.md, Codes are edited in a table](bulk-editing.md#codes-are-edited-in-a-table-one-value-per-video)).
+It is disabled with the limit message when the videos the client knows
+(selected videos and group members) pass 1,000. Pressing it reads
+the rows first; meanwhile it shows a spinner and the other actions and clear
+are disabled.
 
 While smart folders are selected, the count names them separately
 (`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`

@@ -44,7 +44,11 @@ describe("fillPlan", () => {
     };
     const plan = fillPlan(filled, fetched);
     expect(plan.lines.map((line) => line.field)).toEqual(["description"]);
-    expect(plan.selection).toMatchObject({ fields: ["description"], tags: [], cover: null });
+    expect(plan.selection).toMatchObject({
+      fields: ["description"],
+      tags: [],
+      cover: null,
+    });
   });
 
   it("仮想動画の題名は入れない", () => {

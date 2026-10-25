@@ -115,7 +115,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds)
+	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}

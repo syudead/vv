@@ -1,5 +1,6 @@
 import type { LibraryGroup, LibraryItem } from "../api/client";
 import { itemKey } from "../api/libraryItems";
+import type { VideoEditTargets } from "../api/videoEdits";
 
 /** Group identities used by favorite and playlist requests. */
 export interface SelectedGroup {
@@ -320,4 +321,15 @@ export function selectionTargets(
     });
   }
   return out;
+}
+
+/** The request a selection's cards send: their distinct videos, and smart folders for the server to resolve. */
+export function editTargetsOf(targets: readonly SelectionTarget[]): VideoEditTargets {
+  const videoIds = new Set<number>();
+  const smartFolderIds: number[] = [];
+  for (const target of targets) {
+    if (target.kind === "smartFolder") smartFolderIds.push(target.id);
+    for (const id of target.videoIds) videoIds.add(id);
+  }
+  return { videoIds: [...videoIds], smartFolderIds };
 }

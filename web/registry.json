@@ -857,7 +857,7 @@
       "name": "form-page",
       "type": "registry:ui",
       "title": "FormPage",
-      "description": "Page skeleton for many values saved together on a screen of its own: sticky header band with the actions, a notice line, an aside column and two panels that scroll on their own from lg. FormPageDialog shows it as a modal over the current screen. Uses field and dialog.",
+      "description": "Page skeleton for many values saved together on a screen of its own: sticky header band with the actions, a notice line, an aside column and up to two panels that scroll on their own from lg; a sole panel spans both panel columns. FormPageDialog shows it as a modal over the current screen, and its aside may hold inputs that derive the panel values. Uses field and dialog.",
       "docs": "Usage rules: web/registry/rules/patterns.md#form-page (item vv-rules).",
       "files": [
         {
@@ -1259,7 +1259,7 @@
       "name": "form-page-example",
       "type": "registry:block",
       "title": "Form page example",
-      "description": "A working form page: a band with Cancel and Save, an aside naming what is edited, and two panels of fields.",
+      "description": "A working form page: a band with Cancel and Save, an aside naming what is edited, and two panels of fields; FormPageDialogExample shows the dialog with an aside input that derives its one panel.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#form-page (item vv-rules).",
       "files": [
         {
