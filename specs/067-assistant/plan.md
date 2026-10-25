@@ -221,6 +221,7 @@ stateDiagram-v2
 | A proposal not approved within 1 hour is deleted by the worker, and `proposed` rows are deleted at startup | Keeping them | Nothing can approve a proposal whose thread is gone |
 | Every write of the catalog needs the card; `navigate`, `filter` and `answer` never write | A fast path for small writes | Requirement 8 |
 | The card's irreversible mark comes from the catalog row (merges, deletions, dissolving, rejecting a tag, clearing the kind of tags) | The model marks it | The catalog knows; the model does not |
+| A `mergeTag`, `mergePeople` or `mergeOrganizations` proposal carries `impact.videos`, the distinct videos carrying any source tag or credited to any source person or organization, counted by the server when the proposal is stored, from a turn or from an adoption; tags reuse the `merge` count of `tagImpact`, credits get one equivalent read | Showing `targets.count` as the number of videos | The target of a merge is its one destination, so `targets.count` is 1; acceptance 4 asks for the number of videos that move, as the merge dialogs show it |
 
 ## Review runs
 
@@ -448,8 +449,8 @@ process as the owner and maps the response to a result or a typed failure
 **Scope**: Migration `00081_assistant.sql` for `assistant_proposals`;
 `AssistantStore` with the guarded transitions and the `assistant_run` entry;
 `domain.AssistantProposal`, the batch rule and the stale rule;
-`app.Assistant.Propose`, `Approve`, the worker, the expiry and the startup
-recovery; `AssistantChanged` and the `assistant` event;
+`app.Assistant.Propose` with the merge impact count, `Approve`, the worker,
+the expiry and the startup recovery; `AssistantChanged` and the `assistant` event;
 `POST /api/assistant/proposals/{id}/execute`,
 `GET /api/assistant/proposals/{id}`, `GET /api/assistant/proposals`
 ([Proposals and execution](#proposals-and-execution),
@@ -468,7 +469,10 @@ recovery; `AssistantChanged` and the `assistant` event;
 - Store tests (SQLite): the second `approved` transition answers not
   pending; the run entry is `running` after the claim and `done`/`partial`
   with both counts after a failed batch; a `proposed` row older than an hour
-  is deleted; `AssistantChanged` is published after commit.
+  is deleted; `AssistantChanged` is published after commit; the merge impact
+  of two source people credited on one shared video and one other counts 2.
+- Application test: `Propose` stores `impact.videos` for `mergeTag` from the
+  sources only, and no `impact` for `updateVideoTags.add`.
 - Application tests with a fake runner: a run of three batches reports
   progress after each, stops at the first failed batch with the counts, and
   ends `stale` with zero calls when the first re-read differs.
@@ -554,8 +558,9 @@ Assistant panel: input, thread and the outcomes that need no approval
 
 - `task check SCOPE=web` passes for `src/assistant src/api`.
 - Component tests: the card shows the count, the change and the irreversible
-  mark from the proposal; `Execute` is the only primary button; a created
-  name is marked.
+  mark from the proposal; a merge proposal shows `impact.videos` as the
+  videos that move, not `targets.count`; `Execute` is the only primary
+  button; a created name is marked.
 - Page tests with a fake server: pressing `Execute` twice sends one request
   and the second state comes from the `409` body; a follow-up replaces the
   card; an `assistant` event re-reads the proposal and the row shows the
@@ -590,7 +595,8 @@ into a typed outcome
 - Application tests with a fake classifier: a run judges every set, lists
   0.5 and drops 0.49, counts progress per set, and answers the running run
   to a second `organize` of the kind; adopting two tag pairs stores two
-  approved proposals, each a `mergeTag` with its own destination.
+  approved proposals, each a `mergeTag` with its own destination and its
+  own `impact`.
 
 ### Review list page
 
@@ -632,4 +638,5 @@ thread; Review list page
   the unset model shows the guidance (9), the filter text narrows the
   library and the save button creates a smart folder (1), the attach text
   shows the card and no tag is attached until `Execute` (2, 3), the merge
-  text shows the irreversible mark with the count (4).
+  text shows the irreversible mark with `impact.videos` as the number of
+  videos that move (4).
