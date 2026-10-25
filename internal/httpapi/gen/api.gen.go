@@ -318,6 +318,24 @@ func (e ActivitySubjectKind) Valid() bool {
 	}
 }
 
+// Defines values for AssistantReadinessReason.
+const (
+	GenerationModelUnset AssistantReadinessReason = "generation_model_unset"
+	OllamaNotSaved       AssistantReadinessReason = "ollama_not_saved"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReadinessReason enum.
+func (e AssistantReadinessReason) Valid() bool {
+	switch e {
+	case GenerationModelUnset:
+		return true
+	case OllamaNotSaved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthSessionState.
 const (
 	Guest         AuthSessionState = "guest"
@@ -333,6 +351,21 @@ func (e AuthSessionState) Valid() bool {
 	case Owner:
 		return true
 	case SetupRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckResultReason.
+const (
+	GenerationModelMissing CheckResultReason = "generation_model_missing"
+)
+
+// Valid indicates whether the value is a known member of the CheckResultReason enum.
+func (e CheckResultReason) Valid() bool {
+	switch e {
+	case GenerationModelMissing:
 		return true
 	default:
 		return false
@@ -508,6 +541,7 @@ const (
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
+	ErrorCodeOllamaUnreachable           ErrorCode = "ollama_unreachable"
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
@@ -575,6 +609,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeMediaFoldersNotConfigured:
 		return true
 	case ErrorCodeNotFound:
+		return true
+	case ErrorCodeOllamaUnreachable:
 		return true
 	case ErrorCodeOpenUnavailable:
 		return true
@@ -648,6 +684,7 @@ const (
 	ErrorReasonBlockedAddress                ErrorReason = "blocked_address"
 	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
+	ErrorReasonConnection                    ErrorReason = "connection"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDescriptionTooLong            ErrorReason = "description_too_long"
@@ -683,6 +720,7 @@ const (
 	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
+	ErrorReasonNotOllama                     ErrorReason = "not_ollama"
 	ErrorReasonNotVirtual                    ErrorReason = "not_virtual"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
@@ -760,6 +798,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonComfyuiUrlInvalid:
 		return true
+	case ErrorReasonConnection:
+		return true
 	case ErrorReasonContentChanged:
 		return true
 	case ErrorReasonCrossOrigin:
@@ -829,6 +869,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonNoScan:
 		return true
 	case ErrorReasonNotBundled:
+		return true
+	case ErrorReasonNotOllama:
 		return true
 	case ErrorReasonNotVirtual:
 		return true
@@ -3337,6 +3379,17 @@ type ApproveWorkInfoPluginRequest struct {
 	Digest string `json:"digest"`
 }
 
+// AssistantReadiness Whether a turn can run; reason is present only when ready is false.
+type AssistantReadiness struct {
+	Ready bool `json:"ready"`
+
+	// Reason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
+	Reason *AssistantReadinessReason `json:"reason,omitempty"`
+}
+
+// AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
+type AssistantReadinessReason string
+
 // AuthRedirect defines model for AuthRedirect.
 type AuthRedirect struct {
 	// RedirectTo Server-validated same-origin navigation path
@@ -3410,7 +3463,13 @@ type CheckResult struct {
 
 	// Missing ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows.
 	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
+
+	// Reason Ollama checks only: the decision model is listed but the saved generation model is not.
+	Reason *CheckResultReason `json:"reason,omitempty"`
 }
+
+// CheckResultReason Ollama checks only: the decision model is listed but the saved generation model is not.
+type CheckResultReason string
 
 // CollectionsDeleteRequest defines model for CollectionsDeleteRequest.
 type CollectionsDeleteRequest struct {
@@ -4663,12 +4722,26 @@ type NetworkSettings struct {
 	Port int `json:"port"`
 }
 
+// OllamaModel defines model for OllamaModel.
+type OllamaModel struct {
+	// Name Model name as Ollama lists it, such as qwen3:8b.
+	Name string `json:"name"`
+}
+
+// OllamaModelList Models at the saved Ollama endpoint, in Ollama's order.
+type OllamaModelList struct {
+	Items []OllamaModel `json:"items"`
+}
+
 // OllamaSettings Ollama connection; see docs/design-docs/ai-layer.md
 type OllamaSettings struct {
 	// Endpoint HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434
 	Endpoint string `json:"endpoint"`
 
-	// Model Ollama model name; defaults to clef-flash
+	// GenerationModel Chat model name the assistant generates with; empty until the owner saves one, and empty turns the assistant off
+	GenerationModel string `json:"generationModel"`
+
+	// Model Decision model name for the Clef classifier; defaults to clef-flash
 	Model string `json:"model"`
 
 	// Saved Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true.
@@ -6062,7 +6135,10 @@ type UpdateOllamaSettingsRequest struct {
 	// Endpoint Ollama base URL using HTTP or HTTPS.
 	Endpoint string `json:"endpoint"`
 
-	// Model Ollama model name.
+	// GenerationModel Generation model name; an empty string clears it and keeps the connection saved. Omitted keeps the saved value.
+	GenerationModel *string `json:"generationModel,omitempty"`
+
+	// Model Decision model name.
 	Model string `json:"model"`
 }
 
@@ -8277,6 +8353,9 @@ type ServerInterface interface {
 	// DeleteApiToken Revoke an API token
 	// (DELETE /api/api-tokens/{id})
 	DeleteApiToken(w http.ResponseWriter, r *http.Request, id APITokenId)
+	// GetAssistantReadiness Say whether the assistant can take a request
+	// (GET /api/assistant/readiness)
+	GetAssistantReadiness(w http.ResponseWriter, r *http.Request)
 	// Login Sign in with a username and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -8571,6 +8650,9 @@ type ServerInterface interface {
 	// CheckOllama Check the saved Ollama connection and model availability
 	// (POST /api/settings/ollama/check)
 	CheckOllama(w http.ResponseWriter, r *http.Request)
+	// ListOllamaModels List the models at the saved Ollama endpoint
+	// (GET /api/settings/ollama/models)
+	ListOllamaModels(w http.ResponseWriter, r *http.Request)
 	// GetPluginProxySettings Return the work-info plugin proxy URL
 	// (GET /api/settings/plugin-proxy)
 	GetPluginProxySettings(w http.ResponseWriter, r *http.Request)
@@ -9188,6 +9270,20 @@ func (siw *ServerInterfaceWrapper) DeleteApiToken(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteApiToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantReadiness operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantReadiness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantReadiness(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12179,6 +12275,20 @@ func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckOllama(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOllamaModels operation middleware
+func (siw *ServerInterfaceWrapper) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOllamaModels(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -15697,6 +15807,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama/models", wrapper.ListOllamaModels)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/readiness", wrapper.GetAssistantReadiness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)
