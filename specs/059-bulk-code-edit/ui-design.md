@@ -35,8 +35,10 @@ stay in view from `lg` while the table scrolls, and the aside's counts sit
 under the controls that change them (`UI品質`, the regular expression's result
 visible while typing). Controls above the table were rejected: at 1,000 rows
 they scroll away with the header row, so changing the pattern after reading
-row 400 means scrolling back up. The counts are read-only text, which the
-aside is for.
+row 400 means scrolling back up. Holding inputs, this aside departs from
+the `form-page` slot rule, which keeps the aside read only; the rule changes
+for `FormPageDialog` as [Changes to the design system](#changes-to-the-design-system)
+records.
 
 A row is four readable things in one line, in the order the eye needs them:
 the thumbnail and the title say which video, the file name is the source,
@@ -47,11 +49,14 @@ same height and a wrong extraction is seen without reading the title at all.
 A card grid of inputs was rejected because it cannot line up the source
 and the result across rows; one `FormRow` per video was rejected in the plan.
 
-A state mark means "Apply writes this row". `Suggested` and `Changed` rows
-are the ones written; a row with the current code and nothing typed, and a
-virtual video's empty row, carry no mark, so the number of marked rows is the
-number on the `Apply` button and the owner can check one against the other
-by looking. A mark on every row (`Existing`, `Blank`) was rejected: in the
+A state mark means "Apply writes this row", and a row carries one exactly
+when it is in the request plan.md defines: `Suggested` on a suggested row
+with a non-empty value, `Changed` on an edited row whose value is not empty
+and differs from the current code. Every other row carries no mark: a row
+with the current code and nothing typed, a virtual video's empty row, and an
+edited row that is empty or was typed back to its current code. The number
+of marked rows is therefore the number on the `Apply` button, and the owner
+can check one against the other by looking. A mark on every row (`Existing`, `Blank`) was rejected: in the
 common case, a selection of videos without codes, every row would carry
 `Suggested`, and a column of 1,000 identical badges says nothing. The
 suggested value is further set apart from a typed or existing value by
@@ -100,7 +105,7 @@ dialog, as `Edit` does, was rejected in the plan.
 | Replacement field label | Replacement | `library.codeEdit.replacement`; `FieldDescription`: Optional. Use $1 for a group. |
 | Invalid pattern | Not a valid pattern: {message} | `FieldError` under the pattern, with the `RegExp` constructor's message; `aria-invalid` on the input |
 | Upper-case option | Upper case | `Checkbox` with its `Label`, `library.codeEdit.upperCase` |
-| Count line | Apply writes {N} of {M} videos | `library.codeEdit.willWrite`, `text-sm`; `N` is the number of marked rows with a non-empty value |
+| Count line | Apply writes {N} of {M} videos | `library.codeEdit.willWrite`, `text-sm`; `N` is the number of marked rows |
 | Duplicate line | {N} rows share a code | `library.codeEdit.duplicates`, `text-sm text-warning` with `TriangleAlert`; shown only while `N` is at least 2 |
 | Panel legend | Codes | `library.codeEdit.codes`; the `FieldLegend` of the one panel |
 | Column headers | Video · File name · Code · State | `library.codeEdit.columns.*`; the thumbnail column has an empty head, as the list view |
@@ -110,21 +115,22 @@ dialog, as `Edit` does, was rejected in the plan.
 | State mark, changed | Changed | `Badge` `soft` |
 | Warning mark, duplicate | Duplicate | `Badge` `warning` with `TriangleAlert` |
 | Warning mark, cut | Cut to 100 | `Badge` `warning` with `Scissors`; the value is 100 code points, as `WorkInfo.code` |
-| Restore button | Restore | `Tooltip` and `aria-label` of the `RotateCcw` button on a `Changed` row |
+| Restore button | Restore | `Tooltip` and `aria-label` of the `RotateCcw` button on an edited row, marked `Changed` or not |
 | Apply failed | Couldn't apply the codes: {reason} | The `notice` line, `library.codeEdit.failed`; the row the error's `field` names shows the reason again as `FieldError` under its input |
 | Applied | Set the code of {N} videos | Toast, `library.codeEdit.applied`, with the response's `applied` |
 | Discard | Discard these changes? · The codes in the editor aren't applied yet. | `bulkEdit.discardTitle` and `library.codeEdit.discardText`, with `Discard` and `Keep editing` |
 
 ## Changes to the design system
 
-The `form-page` pattern changes in one rule, in its registry item,
+The `form-page` pattern changes in two rules, in its registry item,
 [patterns.md, Form page](../../web/registry/rules/patterns.md#form-page) and
 its example block, by the "Show the code editor table" unit before the
-editor uses it.
+editor uses them.
 
 | Change | What it is |
 | --- | --- |
 | A sole panel spans both panel columns | From `lg`, when `panels` holds one panel it takes both columns of `grid-cols-form-page` whether or not an `aside` is passed; today it spans them only without an aside, which would leave the table at five elevenths of the body with an empty column beside it |
+| `FormPageDialog`'s aside may hold controls that shape the panel | The `aside` slot of `FormPage` stays read only. `FormPageDialog`'s aside may also hold inputs that are not saved themselves but derive the values of the panel's fields, followed by the counts of their result, as this editor's pattern, replacement and upper-case option; the slot table and the `FormPageDialog` paragraph say so, and the example block shows one such input. Without the change, the aside's `Inputs` prohibition and this design cannot both be followed |
 
 No colour token is added and nothing is added to `pairs` in
 `web/src/theme/tokens.test.ts`: the marks use the `Badge` variants, the
@@ -194,7 +200,7 @@ pattern is invalid the `FieldError` shows under it, the input is
 | Video | Video | The title, `text-sm font-medium text-foreground`, `line-clamp-2 break-all`; a bundle's row shows the representative's title and its `VersionsMark` after it |
 | File name | File name | `fileTitle` in `text-xs text-muted-foreground`, `line-clamp-2 break-all`, so the whole name is readable for composing the pattern; `No file` for a virtual video |
 | Code | Code | An `sm` `Input`, the column's full width, with the row's value; `text-muted-foreground` while the row is `Suggested`, `text-foreground` otherwise; `maxLength` is not set, so a long value is seen cut by the mark rather than refused at the keyboard |
-| State | State | The state mark, the warning marks and the `Restore` button in one line, `gap-1`, `whitespace-nowrap`; empty for an untouched existing row and an untouched virtual row |
+| State | State | The state mark, the warning marks and the `Restore` button in one line, `gap-1`, `whitespace-nowrap`; no state mark on a row Apply does not write, and empty for an untouched existing row and an untouched virtual row |
 
 The column widths are the table's own: the thumbnail and state columns fit
 their content, and the title, file name and code columns share the rest in
@@ -202,10 +208,12 @@ the ratio 2:3:3, so the file name and the code, the two things compared,
 are the widest. Cells are `p-2` as `Table` gives them; a row's height is the
 thumbnail's, and a two-line title or file name does not raise it.
 
-Tab moves down the code column from one input to the next, skipping the
-`Restore` buttons, which are reached with Shift+Tab from the next row's
-input; Enter in an input does nothing (the form is applied by the button
-only), so a thousand rows can be walked without an accidental Apply.
+The tab order is the document order with no key handler: Tab moves from a
+row's input to its `Restore` button when the row has one, then to the next
+row's input, and Shift+Tab walks the same stops back. Only edited rows have
+`Restore`, so walking a thousand rows stops on few of them. Enter in an
+input does nothing (the form is applied by the button only), so the rows can
+be walked without an accidental Apply.
 
 ### States
 
@@ -228,11 +236,11 @@ stateDiagram-v2
 
 | State | What the screen shows |
 | --- | --- |
-| Editing, nothing changed | Suggested rows marked and muted, existing rows unmarked with their code, virtual rows unmarked and empty; `Apply to N videos` with `N` the suggested rows; the count line |
+| Editing, nothing changed | Suggested rows marked and muted, existing rows unmarked with their code, virtual rows unmarked and empty; `Apply to N videos` with `N` the marked rows; the count line |
 | Editing, a pattern typed | Each `Suggested` row's input shows the pattern's result or, when the pattern does not match, the file name again; existing and `Changed` rows unchanged |
 | Invalid pattern | The `FieldError` under the pattern; the inputs keep the last valid values; `Apply` stays enabled |
 | A row typed in | The row's mark is `Changed`, its text `text-foreground`, `Restore` after the mark; the count line and the `Apply` number follow |
-| A row emptied | The mark stays (`Changed` for an existing or suggested row), the count line and the `Apply` number drop by one; the row is not written |
+| A row emptied, or typed back to its current code | The row is not written, so it carries no state mark; `Restore` stays; the count line and the `Apply` number drop by one if the row was marked |
 | Two rows with one value | Both rows carry `Duplicate`; the duplicate line in the aside counts them; `Apply` stays enabled |
 | A value over 100 code points | The input shows the cut value and the row carries `Cut to 100` |
 | Only virtual rows, nothing typed | Every row unmarked and empty; `Apply to 0 videos` disabled; the count line reads `Apply writes 0 of M videos` |
@@ -288,7 +296,8 @@ does not satisfy a criterion (Q-4).
 4. **States on the row**: a `Suggested` row, an untouched existing row, a
    `Changed` row, a `Duplicate` row and a `Cut to 100` row are told apart at
    a glance by the mark column and by the input's text colour, with the
-   screen's words, not by hovering; the suggested value reads as not yet
+   screen's words, not by hovering; an emptied row and a row typed back to
+   its current code carry no state mark; the suggested value reads as not yet
    confirmed and the typed value as confirmed (`UI品質`, the second point;
    requirement 5).
 5. **The pattern is live**: typing `[A-Z]+-\d+` in `Pattern` changes the
@@ -298,7 +307,7 @@ does not satisfy a criterion (Q-4).
    `Upper case` changes suggested rows only (`UI品質`, the third point;
    acceptance criteria 4 to 6).
 6. **Counts**: the number on `Apply to N videos` equals the number of marked
-   rows with a value, drops by one when a row is emptied, and reads 0 and
+   rows, drops by one with its mark when a row is emptied, and reads 0 and
    is disabled when only virtual rows are shown and nothing is typed; the
    count line in the aside says the same number (`UI品質`, the last point;
    acceptance criteria 7 and 9).
@@ -314,8 +323,8 @@ does not satisfy a criterion (Q-4).
    `text-sm font-medium`, file names `text-xs` muted, inputs `text-sm`;
    nothing in the table is larger than the band title.
 10. **Priority of actions**: `Apply` is the one filled button on the screen
-    and `Cancel` sits before it; `Restore` is found on a `Changed` row only
-    and never on a `Suggested` row; the bar's `Edit codes` reads as `Edit`'s
+    and `Cancel` sits before it; `Restore` is found on an edited row only
+    and never on a `Suggested` row, and Tab reaches it after its row's input; the bar's `Edit codes` reads as `Edit`'s
     sibling and is not mistaken for `Edit`.
 11. **Failure keeps the work**: after a `404`, `409` or `400` Apply, the
     notice names the reason, the named row is scrolled into view with its
@@ -329,7 +338,7 @@ does not satisfy a criterion (Q-4).
     controls sit above the table and scroll away; a suggested value looks
     like a typed value; every row carries a badge; a warning is a line that
     breaks the rows' rhythm; the file name is hidden at 768px; the `Apply`
-    number counts rows that are empty; the editor opens empty while the
+    number counts rows that are empty; a marked row that Apply does not write; the editor opens empty while the
     summary loads; the state column wraps to two lines.
 
 ## Accessibility
