@@ -77,20 +77,25 @@ func newPeerNode(t *testing.T, name string) *peerNode {
 	var pairing *app.Pairing
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		events := NewEvents()
-		pairing = app.NewPairing(app.PairingOptions{
-			Store: db.Peers(), Link: peer.New(peer.Options{}), Version: testPeerVersion, NodeName: name,
-			Publisher: storePublisher{events: events},
-		})
-		return Options{
-			Build:   domain.BuildInfo{Version: testPeerVersion},
-			Videos:  library,
-			Events:  events,
-			Pairing: pairing,
-		}
+		opts := Options{Videos: library, Events: events}
+		pairing = withTestPairing(db, name, storePublisher{events: events}, &opts)
+		return opts
 	})
 	server := httptest.NewServer(env.handler)
 	t.Cleanup(server.Close)
 	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library, pairing: pairing}
+}
+
+// withTestPairing gives opts the pairing, its forwarder and the version both test nodes share.
+func withTestPairing(db *store.DB, name string, publisher app.Publisher, opts *Options) *app.Pairing {
+	client := peer.New(peer.Options{})
+	pairing := app.NewPairing(app.PairingOptions{
+		Store: db.Peers(), Link: client, Version: testPeerVersion, NodeName: name, Publisher: publisher,
+	})
+	opts.Build = domain.BuildInfo{Version: testPeerVersion}
+	opts.Pairing = pairing
+	opts.PeerLink = peer.NewForwarder(client, pairing)
+	return pairing
 }
 
 // runConnection starts the node's connection loop until the test ends.
@@ -136,6 +141,13 @@ func (n *peerNode) outgoingSecret(t *testing.T) string {
 func pairTestNodes(t *testing.T) (a, b *peerNode) {
 	t.Helper()
 	a, b = newPeerNode(t, "node-a"), newPeerNode(t, "node-b")
+	pairNodes(t, a, b)
+	return a, b
+}
+
+// pairNodes pairs b with a from b's Pairing page, with a's code.
+func pairNodes(t *testing.T, a, b *peerNode) {
+	t.Helper()
 	rec := a.owner(http.MethodPost, "/api/peer/code", "")
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("コードの発行: status = %d: %s", rec.Code, rec.Body)
@@ -148,7 +160,6 @@ func pairTestNodes(t *testing.T) (a, b *peerNode) {
 	if rec := b.owner(http.MethodPost, "/api/peer/pair", string(body)); rec.Code != http.StatusCreated {
 		t.Fatalf("ペアリング: status = %d: %s", rec.Code, rec.Body)
 	}
-	return a, b
 }
 
 func decodePeerState(t *testing.T, rec *httptest.ResponseRecorder) (gen.PeerState, map[string]json.RawMessage) {

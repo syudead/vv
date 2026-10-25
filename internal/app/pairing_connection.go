@@ -169,6 +169,19 @@ func (p *Pairing) checkPeerNode(record domain.PeerRecord, node domain.PeerNode) 
 	return domain.CheckPeerVersions(p.version, node.Version)
 }
 
+// Connection returns how to reach the peer and the secret to present while it is connected; ok is false in
+// any other state, so a forwarded request does not wait on a peer the connection loop already lost.
+func (p *Pairing) Connection(ctx context.Context) (target domain.PeerTarget, secret string, ok bool, err error) {
+	record, found, err := p.store.Peer(ctx)
+	if err != nil || !found {
+		return domain.PeerTarget{}, "", false, err
+	}
+	if p.loadStatus(&record).state != domain.PeerConnected {
+		return domain.PeerTarget{}, "", false, nil
+	}
+	return peerTarget(record), record.OutgoingSecret, true, nil
+}
+
 // ReportFailure records a failed request to the peer: the state becomes unreachable at once, or revoked
 // on domain.ErrPeerUnknown that the handshake confirms, and the stream is reopened by the loop alone.
 func (p *Pairing) ReportFailure(ctx context.Context, err error) {
