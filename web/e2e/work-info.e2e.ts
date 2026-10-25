@@ -287,8 +287,8 @@ test.describe.serial("work information", () => {
       await button.click();
       const tab = await opened;
       await expect(tab).toHaveURL(link);
-      // The virtual video page stays where it was.
-      await expect(page).toHaveURL(`/videos/${String(virtual.id)}`);
+      // The virtual video page stays where it was, on the Work tab.
+      await expect(page).toHaveURL(`/videos/${String(virtual.id)}?tab=work`);
       await tab.close();
     } finally {
       await deleteVirtual(request, virtual);
