@@ -167,7 +167,8 @@ const CodeRow = memo(function CodeRow({
           aria-invalid={reason !== undefined || undefined}
           aria-describedby={reason === undefined ? undefined : errorId}
           aria-disabled={disabled || undefined}
-          value={typed ?? row.value}
+          // A cut value is shown as Apply sends it; otherwise the raw text keeps trimming off the caret.
+          value={row.cut ? row.value : (typed ?? row.value)}
           onChange={(event) => {
             if (!disabled) onType(video.id, event.target.value);
           }}
