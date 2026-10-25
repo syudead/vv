@@ -361,6 +361,7 @@ func run(opts runOptions) error {
 	}
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
+	pairing := newPairing(db.Peers(), build, logger)
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
 	// per execution so changes apply immediately.
 	pluginProxy := app.NewWorkInfoPluginProxy(settingsStore)
@@ -429,6 +430,7 @@ func run(opts runOptions) error {
 		Logger:            logger,
 		Auth:              httpAuthenticator,
 		APITokens:         apiTokens,
+		Pairing:           pairing,
 		TrustedProxies:    cfg.TrustedProxies,
 	})
 

@@ -135,6 +135,9 @@ var accessRoutes = map[string]access{
 	"GET /api/smart-folders/{id}":                 accessGuest,
 	"GET /api/smart-folders/{id}/items":           accessGuest,
 	"GET /api/events":                             accessGuest,
+	"GET /api/peer":                               accessGuest,
+	"POST /api/peer/pairings":                     accessPublic,
+	"GET /api/peer/handshake":                     accessPublic,
 }
 
 // Use ServeMux for access matching so wildcard and GET/HEAD semantics match actual routing.
@@ -243,6 +246,13 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		if class == accessBearer {
 			s.bearerBoundary(w, r, next, setAudience)
 			return
+		}
+		// Public routes ignore the peer credential; the handshake checks its secret itself.
+		if class != accessPublic {
+			if secret, present := peerSecret(r); present {
+				s.peerBoundary(w, r, next, class, secret, setAudience)
+				return
+			}
 		}
 
 		if s.auth == nil {
