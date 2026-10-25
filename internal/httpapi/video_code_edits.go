@@ -23,29 +23,44 @@ func (s *server) SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request)
 	if !s.readJSONBody(w, r, &body) || !s.videoCodeEditsConfigured(w) {
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, domain.VideoCodeEditsMaxItems)
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, domain.VideoCodeEditsMaxItems)
 	if !ok {
 		return
 	}
-	rows, err := s.codeEdits.CodeSummary(r.Context(), videoIDs)
-	if err != nil {
-		s.internalError(w, "Could not load the codes.", err)
-		return
+	out := gen.VideoCodeEditSummary{Rows: []gen.VideoCodeEditRow{}}
+	if len(sel.local) > 0 {
+		rows, err := s.codeEdits.CodeSummary(r.Context(), sel.local)
+		if err != nil {
+			s.internalError(w, "Could not load the codes.", err)
+			return
+		}
+		videos := make([]domain.Video, len(rows))
+		for i, row := range rows {
+			videos[i] = row.Video
+		}
+		items := s.listItems(r.Context(), videos, s.registeredRoots(r.Context()))
+		for i, row := range rows {
+			out.Rows = append(out.Rows, gen.VideoCodeEditRow{Video: items[i], Code: optionalString(row.Code)})
+		}
 	}
-	videos := make([]domain.Video, len(rows))
-	for i, row := range rows {
-		videos[i] = row.Video
-	}
-	items := s.listItems(r.Context(), videos, s.registeredRoots(r.Context()))
-	out := gen.VideoCodeEditSummary{Rows: make([]gen.VideoCodeEditRow, len(rows))}
-	for i, row := range rows {
-		out.Rows[i] = gen.VideoCodeEditRow{Video: items[i], Code: optionalString(row.Code)}
+	var peer gen.VideoCodeEditSummary
+	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-code-edits/summary", sel, &peer) {
+		join, err := s.vocabularyJoin(r.Context())
+		if err != nil {
+			s.internalError(w, "Could not load the codes.", err)
+			return
+		}
+		for _, row := range peer.Rows {
+			rewriteRemoteVideo(&row.Video, join)
+			out.Rows = append(out.Rows, row)
+		}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// ApplyVideoCodeEdits validates every item before the store resolves the videos.
+// ApplyVideoCodeEdits validates every item before the store resolves the videos. Items of the peer's videos are
+// applied there after the local items, which stay when the peer's fail.
 func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoCodeEditRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -63,13 +78,48 @@ func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	if !s.videoCodeEditsConfigured(w) {
 		return
 	}
-	applied, err := s.codeEdits.ApplyCodes(r.Context(), items)
-	if err != nil {
-		s.writeVideoCodeEditError(w, err)
-		return
+	local, positions, peer := splitCodeEdits(r.Context(), items)
+	var out gen.VideoCodeEditResponse
+	if len(local) > 0 {
+		if out.Applied, err = s.codeEdits.ApplyCodes(r.Context(), local); err != nil {
+			var at *domain.VideoCodeEditAtError
+			if errors.As(err, &at) {
+				err = &domain.VideoCodeEditAtError{Index: positions[at.Index], Err: at.Err}
+			}
+			s.writeVideoCodeEditError(w, err)
+			return
+		}
+	}
+	if len(peer.Items) > 0 {
+		var answer gen.VideoCodeEditResponse
+		err := s.peerCall(r, http.MethodPost, "/api/video-code-edits", nil, peer, &answer)
+		ids := make([]int64, len(peer.Items))
+		for i, item := range peer.Items {
+			ids[i] = item.VideoId
+		}
+		out.Remote = s.remoteSelectionResult(answer.Applied, ids, err)
+		out.Applied += out.Remote.Applied
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.VideoCodeEditResponse{Applied: applied}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
+// splitCodeEdits separates this node's items, with each one's index in items, from the peer's request; a request of
+// the peer keeps every item here.
+func splitCodeEdits(ctx context.Context, items []domain.VideoCodeEdit) ([]domain.VideoCodeEdit, []int, gen.VideoCodeEditRequest) {
+	var local []domain.VideoCodeEdit
+	var positions []int
+	peer := gen.VideoCodeEditRequest{}
+	for i, item := range items {
+		if !domain.IsRemoteID(item.VideoID) || isPeerRequest(ctx) {
+			local, positions = append(local, item), append(positions, i)
+			continue
+		}
+		peer.Items = append(peer.Items, gen.VideoCodeEditItem{
+			VideoId: domain.FromRemoteID(item.VideoID), ContentVersion: item.ContentVersion, Code: item.Code,
+		})
+	}
+	return local, positions, peer
 }
 
 // writeVideoCodeEditError names the failing item in field; every error leaves the codes unchanged.

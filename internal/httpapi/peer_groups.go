@@ -371,17 +371,10 @@ func (s *server) deletePeerCollections(r *http.Request, del domain.CollectionDel
 	err := s.peerCall(r, http.MethodPost, "/api/collections/delete", nil,
 		gen.CollectionsDeleteRequest{GroupIds: &del.GroupIDs, SmartFolderIds: &del.SmartFolderIDs}, &answer)
 	if err != nil {
-		failed := slices.Concat(del.GroupIDs, del.SmartFolderIDs)
-		for i, id := range failed {
-			failed[i] = domain.ToRemoteID(id)
-		}
-		reason := remoteFailureReason(err)
-		return domain.CollectionsDeleted{}, &gen.RemoteSelectionResult{FailedVideoIds: failed, Reason: &reason}
+		return domain.CollectionsDeleted{}, s.remoteSelectionResult(0, slices.Concat(del.GroupIDs, del.SmartFolderIDs), err)
 	}
 	deleted := domain.CollectionsDeleted{DissolvedGroups: answer.DissolvedGroups, DeletedSmartFolders: answer.DeletedSmartFolders}
-	return deleted, &gen.RemoteSelectionResult{
-		Applied: deleted.DissolvedGroups + deleted.DeletedSmartFolders, FailedVideoIds: []int64{},
-	}
+	return deleted, s.remoteSelectionResult(deleted.DissolvedGroups+deleted.DeletedSmartFolders, nil, nil)
 }
 
 // remoteFailureReason is the peer's reason for refusing, or peer_unreachable when it gave none.

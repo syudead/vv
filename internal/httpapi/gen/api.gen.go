@@ -708,6 +708,7 @@ const (
 	ErrorReasonPersonNameTaken               ErrorReason = "person_name_taken"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
+	ErrorReasonProvisionalPersonRemote       ErrorReason = "provisional_person_remote"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
 	ErrorReasonRepresentativeNotSelected     ErrorReason = "representative_not_selected"
 	ErrorReasonRunFailed                     ErrorReason = "run_failed"
@@ -889,6 +890,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonPersonNotFound:
 		return true
 	case ErrorReasonProbeInfoMissing:
+		return true
+	case ErrorReasonProvisionalPersonRemote:
 		return true
 	case ErrorReasonRelativeDirectoryPath:
 		return true
@@ -3579,7 +3582,7 @@ type CollectionsDeleteResponse struct {
 	// DissolvedGroups Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty.
 	DissolvedGroups int `json:"dissolvedGroups"`
 
-	// Remote The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails.
+	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
@@ -5651,7 +5654,7 @@ type RelatedVideos struct {
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
-// RemoteSelectionResult The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails.
+// RemoteSelectionResult The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
 type RemoteSelectionResult struct {
 	// Applied Videos or collections changed on the peer.
 	Applied int `json:"applied"`
@@ -6869,6 +6872,9 @@ type VideoCodeEditRequest struct {
 type VideoCodeEditResponse struct {
 	// Applied Number of user-data keys whose code changed; a key that already had the item's code is not counted.
 	Applied int `json:"applied"`
+
+	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
 // VideoCodeEditRow defines model for VideoCodeEditRow.
@@ -6981,6 +6987,9 @@ type VideoEditRequest struct {
 type VideoEditResponse struct {
 	// Applied Number of resolved videos currently in the library that any part changed.
 	Applied int `json:"applied"`
+
+	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 
 	// Tags The tags of tags.add as resolved, in request order without repeats.
 	Tags []TagRef `json:"tags"`
@@ -7156,6 +7165,9 @@ type VideoTagsResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library.
 	Applied int `json:"applied"`
 
+	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	Remote *RemoteSelectionResult `json:"remote,omitempty"`
+
 	// Tag One assigned tag; name is always the original name.
 	Tag TagRef `json:"tag"`
 }
@@ -7222,6 +7234,9 @@ type VideoVisibilityRequest struct {
 type VideoVisibilityResponse struct {
 	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state.
 	Applied int `json:"applied"`
+
+	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
+	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
 // VirtualLinkFetch The fetch started when a virtual video was created from a link; owner-only.

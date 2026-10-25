@@ -39,21 +39,33 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Visibility storage is not configured.", nil)
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}
 
-	keys, err := s.switchVisibility(r.Context(), public, func(ctx context.Context) ([]string, error) {
-		return s.visibility.SetVideosPublic(ctx, videoIDs, public)
-	})
-	if err != nil {
-		s.internalError(w, "Could not change the visibility.", err)
-		return
+	var out gen.VideoVisibilityResponse
+	if len(sel.local) > 0 {
+		keys, err := s.switchVisibility(r.Context(), public, func(ctx context.Context) ([]string, error) {
+			return s.visibility.SetVideosPublic(ctx, sel.local, public)
+		})
+		if err != nil {
+			s.internalError(w, "Could not change the visibility.", err)
+			return
+		}
+		out.Applied = len(keys)
+	}
+	if sel.hasPeer() {
+		ids, folders := sel.peerTargets()
+		var answer gen.VideoVisibilityResponse
+		err := s.peerCall(r, http.MethodPut, "/api/video-visibility", nil,
+			gen.VideoVisibilityRequest{VideoIds: ids, SmartFolderIds: folders, Public: public}, &answer)
+		out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
+		out.Applied += out.Remote.Applied
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.VideoVisibilityResponse{Applied: len(keys)}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 // switchVisibility runs commit, which returns the content keys of the changed videos, and ends their guest

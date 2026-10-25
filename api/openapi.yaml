@@ -4023,7 +4023,7 @@ paths:
     post:
       operationId: updateVideoTags
       summary: "Add or remove a video tag"
-      description: "Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic."
+      description: "Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed."
       requestBody:
         required: true
         content:
@@ -4050,7 +4050,7 @@ paths:
     post:
       operationId: summarizeVideoTags
       summary: "Summarize tags on selected videos"
-      description: "Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order."
+      description: "Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by tag name; when the peer does not answer, the summary covers this node's videos only."
       requestBody:
         required: true
         content:
@@ -4071,7 +4071,7 @@ paths:
     put:
       operationId: updateVideoVisibility
       summary: "Change video visibility"
-      description: "Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private."
+      description: "Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed."
       requestBody:
         required: true
         content:
@@ -4092,7 +4092,7 @@ paths:
     post:
       operationId: summarizeVideoEdits
       summary: "Summarize the editable values of selected videos"
-      description: "Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has."
+      description: "Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by the name of the tag, person or organization, a provisional person staying apart; when the peer does not answer, the summary covers this node's videos only."
       requestBody:
         required: true
         content:
@@ -4115,7 +4115,7 @@ paths:
     post:
       operationId: applyVideoEdits
       summary: "Apply one bulk edit to selected videos"
-      description: "Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints."
+      description: "Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed."
       requestBody:
         required: true
         content:
@@ -4144,7 +4144,7 @@ paths:
     post:
       operationId: summarizeVideoCodeEdits
       summary: "List the code rows of selected videos"
-      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`."
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's rows, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. This node's rows come first; when the peer does not answer, the rows cover this node's videos only."
       requestBody:
         required: true
         content:
@@ -4167,7 +4167,7 @@ paths:
     post:
       operationId: applyVideoCodeEdits
       summary: "Write one code per selected video"
-      description: "Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`."
+      description: "Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`. Items whose videoId is at or above 2^40 name the paired VVMDM's videos: the local items are applied first in one transaction, then the peer's in one forwarded request; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed."
       requestBody:
         required: true
         content:
@@ -8927,6 +8927,8 @@ components:
         applied:
           type: integer
           description: "Number of resolved videos (videoIds plus smart-folder members) currently in the library."
+        remote:
+          $ref: "#/components/schemas/RemoteSelectionResult"
 
     VideoVisibilityRequest:
       type: object
@@ -8986,7 +8988,7 @@ components:
       type: object
       required: [applied, failedVideoIds]
       additionalProperties: false
-      description: "The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails."
+      description: "The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails."
       properties:
         applied:
           type: integer
@@ -9277,6 +9279,8 @@ components:
           description: "The tags of tags.add as resolved, in request order without repeats."
           items:
             $ref: "#/components/schemas/TagRef"
+        remote:
+          $ref: "#/components/schemas/RemoteSelectionResult"
 
     VideoCodeEditSummary:
       type: object
@@ -9337,6 +9341,8 @@ components:
         applied:
           type: integer
           description: "Number of user-data keys whose code changed; a key that already had the item's code is not counted."
+        remote:
+          $ref: "#/components/schemas/RemoteSelectionResult"
 
     VideoEditSummary:
       type: object
@@ -9438,6 +9444,8 @@ components:
         applied:
           type: integer
           description: "Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state."
+        remote:
+          $ref: "#/components/schemas/RemoteSelectionResult"
 
     VideoTagsSummaryRequest:
       type: object
@@ -13056,6 +13064,7 @@ components:
         - unsupported_version
         - peer_unreachable
         - mixed_nodes
+        - provisional_person_remote
         - tag_name_taken
         - person_name_taken
         - organization_name_taken

@@ -2663,7 +2663,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -2683,7 +2683,7 @@ export interface paths {
         put?: never;
         /**
          * Summarize tags on selected videos
-         * @description Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order.
+         * @description Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by tag name; when the peer does not answer, the summary covers this node's videos only.
          */
         post: operations["summarizeVideoTags"];
         delete?: never;
@@ -2702,7 +2702,7 @@ export interface paths {
         get?: never;
         /**
          * Change video visibility
-         * @description Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private.
+         * @description Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         put: operations["updateVideoVisibility"];
         post?: never;
@@ -2723,7 +2723,7 @@ export interface paths {
         put?: never;
         /**
          * Summarize the editable values of selected videos
-         * @description Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has.
+         * @description Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by the name of the tag, person or organization, a provisional person staying apart; when the peer does not answer, the summary covers this node's videos only.
          */
         post: operations["summarizeVideoEdits"];
         delete?: never;
@@ -2743,7 +2743,7 @@ export interface paths {
         put?: never;
         /**
          * Apply one bulk edit to selected videos
-         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints.
+         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["applyVideoEdits"];
         delete?: never;
@@ -2763,7 +2763,7 @@ export interface paths {
         put?: never;
         /**
          * List the code rows of selected videos
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's rows, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. This node's rows come first; when the peer does not answer, the rows cover this node's videos only.
          */
         post: operations["summarizeVideoCodeEdits"];
         delete?: never;
@@ -2783,7 +2783,7 @@ export interface paths {
         put?: never;
         /**
          * Write one code per selected video
-         * @description Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`.
+         * @description Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`. Items whose videoId is at or above 2^40 name the paired VVMDM's videos: the local items are applied first in one transaction, then the peer's in one forwarded request; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["applyVideoCodeEdits"];
         delete?: never;
@@ -5205,6 +5205,7 @@ export interface components {
             tag: components["schemas"]["TagRef"];
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoVisibilityRequest: {
             /** @description Video IDs to change. May be empty when smartFolderIds is not. */
@@ -5227,7 +5228,7 @@ export interface components {
             deletedSmartFolders: number;
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
-        /** @description The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails. */
+        /** @description The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails. */
         RemoteSelectionResult: {
             /** @description Videos or collections changed on the peer. */
             applied: number;
@@ -5364,6 +5365,7 @@ export interface components {
             applied: number;
             /** @description The tags of tags.add as resolved, in request order without repeats. */
             tags: components["schemas"]["TagRef"][];
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoCodeEditSummary: {
             /** @description One row per user-data key, in the order the resolved videos were first listed. */
@@ -5392,6 +5394,7 @@ export interface components {
         VideoCodeEditResponse: {
             /** @description Number of user-data keys whose code changed; a key that already had the item's code is not counted. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoEditSummary: {
             total: number;
@@ -5434,6 +5437,7 @@ export interface components {
         VideoVisibilityResponse: {
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoTagsSummaryRequest: {
             /** @description Video IDs to summarize. May be empty when smartFolderIds is not. */
@@ -7469,7 +7473,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */

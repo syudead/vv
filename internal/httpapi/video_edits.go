@@ -23,20 +23,33 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSONBody(w, r, &body) || !s.videoEditsConfigured(w) {
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}
-	summary, err := s.videoEdits.Summary(r.Context(), videoIDs)
-	if err != nil {
-		s.internalError(w, "Could not load the edit summary.", err)
-		return
+	var summary domain.VideoEditSummary
+	if len(sel.local) > 0 {
+		var err error
+		if summary, err = s.videoEdits.Summary(r.Context(), sel.local); err != nil {
+			s.internalError(w, "Could not load the edit summary.", err)
+			return
+		}
+	}
+	var peer gen.VideoEditSummary
+	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-edits/summary", sel, &peer) {
+		join, err := s.vocabularyJoin(r.Context())
+		if err != nil {
+			s.internalError(w, "Could not load the edit summary.", err)
+			return
+		}
+		summary = domain.MergeVideoEditSummaries(summary, peerEditSummary(peer, join))
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toAPIVideoEditSummary(summary), s.logger)
 }
 
-// ApplyVideoEdits validates the whole edit before resolving smart folders, and ends guest streams of videos it makes private.
+// ApplyVideoEdits validates the whole edit before resolving smart folders, and ends guest streams of videos it makes
+// private. The local part is applied before the peer's, and stays when the peer's fails.
 func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoEditRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -54,21 +67,31 @@ func (s *server) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 	if !s.videoEditsConfigured(w) {
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}
-	result, err := s.applyVideoEdit(r.Context(), videoIDs, edit)
-	if err != nil {
-		s.writeVideoEditError(w, err)
+	parts, ok := s.splitVideoEdit(w, r, edit, sel)
+	if !ok {
 		return
 	}
-	tags := make([]gen.TagRef, 0, len(result.Tags))
-	for _, ref := range result.Tags {
-		tags = append(tags, toAPITagRef(ref))
+	out := gen.VideoEditResponse{Tags: []gen.TagRef{}}
+	if parts.local != nil {
+		result, err := s.applyVideoEdit(r.Context(), sel.local, *parts.local)
+		if err != nil {
+			s.writeVideoEditError(w, err)
+			return
+		}
+		out.Applied = result.Applied
+		for _, ref := range result.Tags {
+			out.Tags = append(out.Tags, toAPITagRef(ref))
+		}
+	}
+	if sel.hasPeer() {
+		s.editOnPeer(r, sel, parts, &out)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.VideoEditResponse{Applied: result.Applied, Tags: tags}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 func (s *server) applyVideoEdit(ctx context.Context, videoIDs []int64, edit domain.VideoEdit) (domain.VideoEditResult, error) {
