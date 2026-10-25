@@ -245,6 +245,7 @@ const errorCodes = {
   smart_folder_not_found: "That smart folder no longer exists.",
   smart_folder_cycle:
     "A smart folder can't be put inside itself or inside one of its children.",
+  service_unavailable: "This isn't available right now. Try again later.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {

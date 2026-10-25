@@ -364,6 +364,21 @@ func TestReportFailureMarksUnreachableAtOnce(t *testing.T) {
 	})
 }
 
+func TestConnectionOffersThePeerOnlyWhileConnected(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		node := startConnection(t, newStreamLink(watchStep{open: true}))
+
+		target, secret, ok, err := node.pairing.Connection(context.Background())
+		if err != nil || !ok || target.Address != connectionPeer || secret != "vvp_outgoing" {
+			t.Fatalf("接続中の Connection = %+v, %q, %v, %v", target, secret, ok, err)
+		}
+		node.pairing.ReportFailure(context.Background(), &domain.PeerUnreachableError{Message: "lost"})
+		if _, secret, ok, err := node.pairing.Connection(context.Background()); err != nil || ok || secret != "" {
+			t.Errorf("届かない間の Connection = %q, %v, %v, want ok なし", secret, ok, err)
+		}
+	})
+}
+
 // A peer that requested the pairing accepts the secret at its handshake before it stores the record, so its
 // event stream refusing the secret then is not a revocation.
 func TestConnectionWaitsForThePeerStoringThePairing(t *testing.T) {

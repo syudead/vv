@@ -337,6 +337,8 @@ type Options struct {
 	ExternalVideos ExternalVideos
 	// Nil Pairing fails the pairing routes with 500 and refuses every peer credential.
 	Pairing Pairing
+	// Nil PeerLink answers every request for a remote id as if the peer were unreachable.
+	PeerLink PeerLink
 	// SessionRecheck defaults to thirty seconds when zero.
 	SessionRecheck time.Duration
 	// Nil Now uses time.Now for cookie Max-Age.
@@ -415,6 +417,7 @@ type server struct {
 	apiTokens       APITokens
 	externalVideos  ExternalVideos
 	pairing         Pairing
+	peerLink        PeerLink
 	sessions        *sessionLedger
 
 	guests *guestLedger
@@ -498,6 +501,7 @@ func NewRouter(opts Options) http.Handler {
 		apiTokens:              opts.APITokens,
 		externalVideos:         opts.ExternalVideos,
 		pairing:                opts.Pairing,
+		peerLink:               opts.PeerLink,
 		sessions:               newSessionLedger(opts.SessionRecheck, logger),
 		guests:                 newGuestLedger(),
 		now:                    opts.Now,
@@ -526,7 +530,7 @@ func NewRouter(opts Options) http.Handler {
 			}, logger)
 		},
 	})
-	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated))))
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated)))))
 }
 
 // Set no-store at write time for all 4xx/5xx, including ServeContent Range errors that bypass
