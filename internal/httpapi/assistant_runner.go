@@ -109,7 +109,7 @@ var assistantRoutes = map[string]assistantRoute{
 	"updateAutoTaggingSettings":     settingsRoute("/api/settings/auto-tagging", "enabled", "afterImport", "threshold", "tentativeThreshold"),
 	"updateComfyUISettings":         settingsRoute("/api/settings/comfyui", "provider", "url", "model"),
 	"updateFaceRecognitionSettings": settingsRoute("/api/settings/face-recognition", "enabled", "recognizer"),
-	"updateOllamaSettings":          settingsRoute("/api/settings/ollama", "endpoint", "model"),
+	"updateOllamaSettings":          settingsRoute("/api/settings/ollama", "endpoint", "model", "generationModel"),
 	"updateTranscodingSettings":     settingsRoute("/api/settings/transcoding", "videoEncoder"),
 	"updateVersionJudgingSettings":  settingsRoute("/api/settings/version-judging", "enabled"),
 }
