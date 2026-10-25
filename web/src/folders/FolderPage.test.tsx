@@ -196,6 +196,12 @@ describe("FolderPage", () => {
       if (url === "/api/folders") return Promise.resolve(json(roots));
       if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
       if (url === "/api/folders/3") return Promise.resolve(json(folderRoot));
+      // The person filter's chip reads its person; a 404 would drop the filter from the URL.
+      if (url === "/api/people/2") {
+        return Promise.resolve(
+          json({ id: 2, name: "Aoi", aliases: [], externalIds: [], videoCount: 1 }),
+        );
+      }
       if (url.startsWith("/api/folders/3/videos?")) {
         const params = new URL(url, "http://localhost").searchParams;
         if (params.get("path") !== "A")
