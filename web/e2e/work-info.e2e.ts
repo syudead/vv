@@ -287,7 +287,7 @@ test.describe.serial("work information", () => {
       await button.click();
       const tab = await opened;
       await expect(tab).toHaveURL(link);
-      // The virtual video page stays where it was, on the Work tab its address names.
+      // The virtual video page stays where it was, on the Work tab.
       await expect(page).toHaveURL(`/videos/${String(virtual.id)}?tab=work`);
       await tab.close();
     } finally {
