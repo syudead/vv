@@ -142,8 +142,22 @@ The pattern is a JavaScript `RegExp` (`u` flag) run in the browser: an empty
 replacement takes group 1, else the whole match; a replacement uses `$1`
 references. A name the pattern does not match keeps its suggestion, and an
 invalid pattern shows its error and keeps the last valid values. Upper case is
-locale independent. Values over 100 code points are cut and marked; equal
-values on two rows are marked and still written.
+locale independent. Values over 100 code points are cut, and the input shows
+the cut value Apply sends; equal values on two rows are marked and still
+written.
+
+The editor is a `FormPageDialog` whose aside holds the pattern, the
+replacement, the upper-case option and the counts, so they stay in view while
+a long table scrolls; its single panel is the table, one row per key with the
+thumbnail, the title, the file name, the code input and the marks, so the
+source and the result sit side by side. Below `md` the table drops the
+thumbnail and file name columns and shows the file name under the title and
+the marks under the input, so the two remaining cells still put the file name
+beside its code. A state mark (`Suggested`,
+`Changed`) means Apply writes the row, so the marked rows add up to the number
+on `Apply to N videos`; the warnings (`Duplicate`, `Cut to 100`) are badges
+in the same column. A suggested value is muted until the owner types in it,
+and an edited row has `Restore` to return it to the suggestion or the code.
 
 Each item carries the row's `contentVersion`. A missing or merged video
 answers `404 video_not_found` and a reused ID `409 content_changed`; either
@@ -162,3 +176,5 @@ write, the edit records no activity entry.
 | Evaluating the pattern on the server | A preview per keystroke would be a request per keystroke, and Go's RE2 lacks look-around |
 | Skipping missing videos, as `POST /api/video-edits` does | The owner may have typed that row's value by hand; dropping it would lose it silently |
 | Virtualized rows | The cap is 1,000 fixed-height rows; a virtualizer breaks Tab order and the browser's find |
+| The pattern controls above the table | At 1,000 rows they scroll away, so changing the pattern after reading a far row means scrolling back |
+| A state mark on every row | When most rows are suggestions, a column of identical badges says nothing; a mark only where Apply writes is checkable against the button |
