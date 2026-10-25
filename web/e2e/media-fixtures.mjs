@@ -612,3 +612,50 @@ export function generateHomeFixtures(root) {
     path.join(root, `${HOME_IN_PROGRESS}.mp4`),
   ]);
 }
+
+/**
+ * One clip for the local node, and one for the paired node that is long enough to seek in and has a
+ * WebVTT sidecar whose cue covers the whole clip.
+ */
+export function generatePeerFixtures(root) {
+  const local = path.join(root, "local");
+  const remote = path.join(root, "remote");
+  mkdirSync(local, { recursive: true });
+  mkdirSync(remote, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=9:duration=4",
+    "-vf",
+    "hue=h=120",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(local, "pairing-local.mp4"),
+  ]);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=15:duration=30",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:sample_rate=48000:duration=30",
+    ...h264,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-shortest",
+    "-movflags",
+    "+faststart",
+    path.join(remote, "pairing-remote.mp4"),
+  ]);
+  writeFileSync(
+    path.join(remote, "pairing-remote.vtt"),
+    "WEBVTT\n\n00:00:00.500 --> 00:00:30.000\nRemote subtitle cue\n",
+  );
+}
