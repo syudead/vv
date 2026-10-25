@@ -205,7 +205,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List videos"
-      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md."
+      description: "Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`, except to the paired VVMDM's credential, which filters for its guests the videos it adds to a smart folder. See docs/design-docs/catalog-organization.md."
       parameters:
         - name: query
           in: query
@@ -2470,6 +2470,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedClues"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/rule-counts:
+    post:
+      operationId: countPeerRuleMatches
+      security:
+        - sessionCookie: []
+        - {}
+      summary: "Count this node's videos matching smart-folder rules given by name"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. For each rule, counts the videos of this node the request's audience can see that match it as a smart folder of this node would: q with the owner's search fields, and tags, kind, person and organization by canonical name, where a name this node lacks matches no video. Returns the counts in the order of rules."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerRuleCountsRequest"
+      responses:
+        "200":
+          description: "One count per rule"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerRuleCounts"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -10148,6 +10174,8 @@ components:
         favorite:
           type: boolean
           description: "Whether the owner favorited the folder; owner responses only."
+        peerRule:
+          $ref: "#/components/schemas/PeerSmartRule"
 
     SmartFolderCards:
       type: object
@@ -10216,6 +10244,11 @@ components:
         nextCursor:
           type: string
           description: "Included only when more results remain; pass to listSmartFolderItems."
+        peerItems:
+          type: array
+          description: "Requests with the paired VVMDM's credential only: one entry per video or group item, in order, after the child folders."
+          items:
+            $ref: "#/components/schemas/PeerListItem"
 
     SmartFolderItemPage:
       type: object
@@ -10230,6 +10263,11 @@ components:
         nextCursor:
           type: string
           description: "Included only when more results remain."
+        peerItems:
+          type: array
+          description: "Requests with the paired VVMDM's credential only: one entry per item, in order."
+          items:
+            $ref: "#/components/schemas/PeerListItem"
 
     SmartFolderCreate:
       type: object
@@ -12719,6 +12757,98 @@ components:
           description: "The scorer's points in millionths"
         video:
           $ref: "#/components/schemas/Video"
+    SmartRuleByName:
+      type: object
+      additionalProperties: false
+      description: "A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video."
+      properties:
+        q:
+          type: string
+          maxLength: 100
+          description: "Search input; the rules' inputs joined by spaces."
+        tagNames:
+          type: array
+          maxItems: 16
+          description: "Tags every matching video carries."
+          items:
+            type: string
+            minLength: 1
+        tagKindName:
+          type: string
+          minLength: 1
+        personName:
+          type: string
+          minLength: 1
+        organizationName:
+          type: string
+          minLength: 1
+    SmartRuleRefName:
+      type: object
+      required: [kind, id, name]
+      additionalProperties: false
+      description: "One entity a smart rule names, with its canonical name."
+      properties:
+        kind:
+          type: string
+          enum: [tag, tagKind, person, organization]
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+    PeerSmartRule:
+      type: object
+      required: [favorite]
+      additionalProperties: false
+      description: "Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder."
+      properties:
+        favorite:
+          type: boolean
+          description: "Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos."
+        match:
+          $ref: "#/components/schemas/SmartRuleByName"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        names:
+          type: array
+          description: "getSmartFolder only, with sort: the entities of this folder's own rule with their names; a missing one is left out."
+          items:
+            $ref: "#/components/schemas/SmartRuleRefName"
+    PeerRuleCountsRequest:
+      type: object
+      required: [rules]
+      additionalProperties: false
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 60
+          items:
+            $ref: "#/components/schemas/SmartRuleByName"
+    PeerRuleCounts:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: "In the order of rules."
+          items:
+            $ref: "#/components/schemas/PeerRuleCount"
+    PeerRuleCount:
+      type: object
+      required: [videoCount, sizeBytes]
+      additionalProperties: false
+      properties:
+        videoCount:
+          type: integer
+        durationMs:
+          type: integer
+          format: int64
+          description: "Sum of known durations; omitted when none is known."
+        sizeBytes:
+          type: integer
+          format: int64
     Error:
       type: object
       required: [code, message]

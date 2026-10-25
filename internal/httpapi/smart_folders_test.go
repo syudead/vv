@@ -411,6 +411,10 @@ func (failingSmartFolders) SmartFolderVideoIDs(context.Context, []int64) ([]int6
 	return nil, errSmartFolderStore
 }
 
+func (failingSmartFolders) SmartRuleCounts(context.Context, domain.Audience, []domain.VideoQuery) ([]domain.SmartRuleCount, error) {
+	return nil, errSmartFolderStore
+}
+
 func TestSmartFolderRoutesAnswerInternalErrors(t *testing.T) {
 	wantInternal := wantError{status: http.StatusInternalServerError, code: gen.ErrorCodeInternal}
 	routes := []struct{ method, target, body string }{

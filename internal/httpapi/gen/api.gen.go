@@ -1923,6 +1923,30 @@ func (e SmartRuleRefKind) Valid() bool {
 	}
 }
 
+// Defines values for SmartRuleRefNameKind.
+const (
+	SmartRuleRefNameKindOrganization SmartRuleRefNameKind = "organization"
+	SmartRuleRefNameKindPerson       SmartRuleRefNameKind = "person"
+	SmartRuleRefNameKindTag          SmartRuleRefNameKind = "tag"
+	SmartRuleRefNameKindTagKind      SmartRuleRefNameKind = "tagKind"
+)
+
+// Valid indicates whether the value is a known member of the SmartRuleRefNameKind enum.
+func (e SmartRuleRefNameKind) Valid() bool {
+	switch e {
+	case SmartRuleRefNameKindOrganization:
+		return true
+	case SmartRuleRefNameKindPerson:
+		return true
+	case SmartRuleRefNameKindTag:
+		return true
+	case SmartRuleRefNameKindTagKind:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StartAutoTaggingRequestScope.
 const (
 	StartAutoTaggingRequestScopeAll     StartAutoTaggingRequestScope = "all"
@@ -4354,6 +4378,9 @@ type LibrarySmartFolder struct {
 	// ParentId Parent folder ID; omitted for top-level folders.
 	ParentId *int64 `json:"parentId,omitempty"`
 
+	// PeerRule Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder.
+	PeerRule *PeerSmartRule `json:"peerRule,omitempty"`
+
 	// Previews Up to four generated video thumbnails in order.
 	Previews  []FolderPreview `json:"previews"`
 	SizeBytes int64           `json:"sizeBytes"`
@@ -5072,6 +5099,40 @@ type PeerRelatedRequest struct {
 	// Exclude This node's video ids to leave out: the open video and its group members when held here
 	Exclude *[]int64 `json:"exclude,omitempty"`
 	Limit   *int     `json:"limit,omitempty"`
+}
+
+// PeerRuleCount defines model for PeerRuleCount.
+type PeerRuleCount struct {
+	// DurationMs Sum of known durations; omitted when none is known.
+	DurationMs *int64 `json:"durationMs,omitempty"`
+	SizeBytes  int64  `json:"sizeBytes"`
+	VideoCount int    `json:"videoCount"`
+}
+
+// PeerRuleCounts defines model for PeerRuleCounts.
+type PeerRuleCounts struct {
+	// Items In the order of rules.
+	Items []PeerRuleCount `json:"items"`
+}
+
+// PeerRuleCountsRequest defines model for PeerRuleCountsRequest.
+type PeerRuleCountsRequest struct {
+	Rules []SmartRuleByName `json:"rules"`
+}
+
+// PeerSmartRule Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder.
+type PeerSmartRule struct {
+	// Favorite Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos.
+	Favorite bool `json:"favorite"`
+
+	// Match A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.
+	Match *SmartRuleByName `json:"match,omitempty"`
+
+	// Names getSmartFolder only, with sort: the entities of this folder's own rule with their names; a missing one is left out.
+	Names *[]SmartRuleRefName `json:"names,omitempty"`
+
+	// Sort Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
+	Sort *VideoSort `json:"sort,omitempty"`
 }
 
 // PeerState Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity.
@@ -5927,6 +5988,9 @@ type SmartFolderDetail struct {
 	// NextCursor Included only when more results remain; pass to listSmartFolderItems.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
+	// PeerItems Requests with the paired VVMDM's credential only: one entry per video or group item, in order, after the child folders.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
+
 	// Settings Folder filters and sort order; owner responses only.
 	Settings *SmartFolderSettings `json:"settings,omitempty"`
 
@@ -5959,6 +6023,9 @@ type SmartFolderItemPage struct {
 
 	// NextCursor Included only when more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PeerItems Requests with the paired VVMDM's credential only: one entry per item, in order.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
 }
 
 // SmartFolderList GET /api/smart-folders response.
@@ -6011,6 +6078,19 @@ type SmartRule struct {
 	Tags *[]int64 `json:"tags,omitempty"`
 }
 
+// SmartRuleByName A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.
+type SmartRuleByName struct {
+	OrganizationName *string `json:"organizationName,omitempty"`
+	PersonName       *string `json:"personName,omitempty"`
+
+	// Q Search input; the rules' inputs joined by spaces.
+	Q           *string `json:"q,omitempty"`
+	TagKindName *string `json:"tagKindName,omitempty"`
+
+	// TagNames Tags every matching video carries.
+	TagNames *[]string `json:"tagNames,omitempty"`
+}
+
 // SmartRuleRef Entities referenced by filters that no longer exist.
 type SmartRuleRef struct {
 	Id   int64            `json:"id"`
@@ -6019,6 +6099,16 @@ type SmartRuleRef struct {
 
 // SmartRuleRefKind defines model for SmartRuleRef.Kind.
 type SmartRuleRefKind string
+
+// SmartRuleRefName One entity a smart rule names, with its canonical name.
+type SmartRuleRefName struct {
+	Id   int64                `json:"id"`
+	Kind SmartRuleRefNameKind `json:"kind"`
+	Name string               `json:"name"`
+}
+
+// SmartRuleRefNameKind defines model for SmartRuleRefName.Kind.
+type SmartRuleRefNameKind string
 
 // StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
 type StartAutoTaggingRequest struct {
@@ -8417,6 +8507,9 @@ type AcceptPairingJSONRequestBody = PairingRequest
 // RankPeerRelatedJSONRequestBody defines body for RankPeerRelated for application/json ContentType.
 type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
 
+// CountPeerRuleMatchesJSONRequestBody defines body for CountPeerRuleMatches for application/json ContentType.
+type CountPeerRuleMatchesJSONRequestBody = PeerRuleCountsRequest
+
 // ApplyPeerVocabularyJSONRequestBody defines body for ApplyPeerVocabulary for application/json ContentType.
 type ApplyPeerVocabularyJSONRequestBody = PeerVocabularyRequest
 
@@ -8818,6 +8911,9 @@ type ServerInterface interface {
 	// RankPeerRelated Score this node's videos against a video of the other node
 	// (POST /api/peer/related)
 	RankPeerRelated(w http.ResponseWriter, r *http.Request)
+	// CountPeerRuleMatches Count this node's videos matching smart-folder rules given by name
+	// (POST /api/peer/rule-counts)
+	CountPeerRuleMatches(w http.ResponseWriter, r *http.Request)
 	// GetPeerRelatedClues Return the related-video clues of one video
 	// (GET /api/peer/videos/{id}/clues)
 	GetPeerRelatedClues(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -11440,6 +11536,20 @@ func (siw *ServerInterfaceWrapper) RankPeerRelated(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RankPeerRelated(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CountPeerRuleMatches operation middleware
+func (siw *ServerInterfaceWrapper) CountPeerRuleMatches(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CountPeerRuleMatches(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16364,6 +16474,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/related", wrapper.RankPeerRelated)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/vocabulary", wrapper.ApplyPeerVocabulary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/rule-counts", wrapper.CountPeerRuleMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)

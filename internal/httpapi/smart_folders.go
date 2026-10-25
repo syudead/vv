@@ -24,6 +24,9 @@ type SmartFolders interface {
 	SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error)
 	// SmartFolderVideoIDs returns the distinct owner-visible member videos of the folders; missing folders contribute nothing.
 	SmartFolderVideoIDs(ctx context.Context, ids []int64) ([]int64, error)
+	// SmartRuleCounts counts the visible videos matching each query by name as a smart folder's rule, for the
+	// paired node's cards.
+	SmartRuleCounts(ctx context.Context, audience domain.Audience, rules []domain.VideoQuery) ([]domain.SmartRuleCount, error)
 }
 
 const (
@@ -44,6 +47,9 @@ func (s *server) ListSmartFolders(w http.ResponseWriter, r *http.Request) {
 	out := gen.SmartFolderList{SmartFolders: make([]gen.SmartFolderSummary, 0, len(folders))}
 	for _, folder := range folders {
 		out.SmartFolders = append(out.SmartFolders, toAPISmartFolderSummary(audience, folder))
+	}
+	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+		out.SmartFolders = s.withPeerSmartFolders(r, out.SmartFolders)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
@@ -83,7 +89,7 @@ func (s *server) CreateSmartFolder(w http.ResponseWriter, r *http.Request) {
 	if body.ParentID != nil {
 		create.ParentID = *body.ParentID
 	}
-	if !s.smartFoldersConfigured(w) {
+	if !s.smartFoldersConfigured(w) || !s.createsSmartFolderLocally(w, r, create) {
 		return
 	}
 	folder, err := s.smartFolders.CreateSmartFolder(r.Context(), create)
@@ -109,7 +115,7 @@ func (s *server) ChangeSmartFolder(w http.ResponseWriter, r *http.Request, id ge
 		return
 	}
 	change, ok := s.smartFolderChange(w, body)
-	if !ok || !s.smartFoldersConfigured(w) {
+	if !ok || !s.smartFoldersConfigured(w) || !s.changesSmartFolderLocally(w, r, id, change) {
 		return
 	}
 	folder, err := s.smartFolders.ChangeSmartFolder(r.Context(), id, change)
@@ -149,7 +155,7 @@ func (s *server) smartFolderChange(w http.ResponseWriter, body smartFolderChange
 }
 
 func (s *server) DeleteSmartFolder(w http.ResponseWriter, r *http.Request, id gen.SmartFolderId) {
-	if !s.smartFoldersConfigured(w) {
+	if !s.smartFoldersConfigured(w) || !s.deletesSmartFolderLocally(w, r, id) {
 		return
 	}
 	if err := s.smartFolders.DeleteSmartFolder(r.Context(), id); err != nil {
@@ -170,17 +176,21 @@ func (s *server) GetSmartFolder(w http.ResponseWriter, r *http.Request, id gen.S
 		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
-	if !ok {
+	if !ok || s.readsBothNodes(w, r, id, "", limit, query) {
 		return
 	}
 	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, "", limit, query)
 	if !s.smartFolderReadOK(w, err) {
 		return
 	}
-	folder, items := s.presentSmartFolderPage(r.Context(), audience, page)
+	folder, items, cursors := s.presentSmartFolderPage(r.Context(), audience, page)
+	if folder.PeerRule, err = s.peerSmartRule(r.Context(), page.PathRules, &page.Folder); err != nil {
+		s.internalError(w, "Could not load the smart folder.", err)
+		return
+	}
 	payload := gen.SmartFolderDetail{
 		SmartFolder: folder, Trail: make([]gen.GroupRef, 0, len(page.Trail)), Items: items,
-		NextCursor: optionalCursor(page.NextCursor),
+		NextCursor: optionalCursor(page.NextCursor), PeerItems: peerItemsFor(r.Context(), cursors),
 	}
 	for _, ref := range page.Trail {
 		payload.Trail = append(payload.Trail, gen.GroupRef{Id: ref.ID, Name: ref.Name})
@@ -211,16 +221,18 @@ func (s *server) ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id
 		query: params.Query, favorite: params.Favorite,
 		sort: params.Sort, seed: params.Seed,
 	})
-	if !ok {
+	if !ok || s.readsBothNodes(w, r, id, params.Cursor, limit, query) {
 		return
 	}
 	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, params.Cursor, limit, query)
 	if !s.smartFolderReadOK(w, err) {
 		return
 	}
-	_, items := s.presentSmartFolderPage(r.Context(), audience, page)
+	_, items, cursors := s.presentSmartFolderPage(r.Context(), audience, page)
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.SmartFolderItemPage{Items: items, NextCursor: optionalCursor(page.NextCursor)}, s.logger)
+	writeJSON(w, http.StatusOK, gen.SmartFolderItemPage{
+		Items: items, NextCursor: optionalCursor(page.NextCursor), PeerItems: peerItemsFor(r.Context(), cursors),
+	}, s.logger)
 }
 
 // Card request limits count entries before deduplication.
@@ -232,6 +244,10 @@ func (s *server) ListSmartFolderCards(w http.ResponseWriter, r *http.Request, pa
 	if !s.smartFoldersConfigured(w) {
 		return
 	}
+	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+		s.listMergedSmartFolderCards(w, r, params.Ids)
+		return
+	}
 	audience := audienceFrom(r.Context())
 	cards, err := s.smartFolders.SmartFolderCards(r.Context(), audience, params.Ids)
 	if err != nil {
@@ -240,7 +256,12 @@ func (s *server) ListSmartFolderCards(w http.ResponseWriter, r *http.Request, pa
 	}
 	out := gen.SmartFolderCards{Cards: make([]gen.LibrarySmartFolder, 0, len(cards))}
 	for _, card := range cards {
-		out.Cards = append(out.Cards, s.toAPISmartFolderCard(r.Context(), audience, card))
+		apiCard := s.toAPISmartFolderCard(r.Context(), audience, card)
+		if apiCard.PeerRule, err = s.peerSmartRule(r.Context(), card.PathRules, nil); err != nil {
+			s.internalError(w, "Could not load the smart folder cards.", err)
+			return
+		}
+		out.Cards = append(out.Cards, apiCard)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
@@ -308,7 +329,8 @@ func (s *server) writeSmartFolderError(w http.ResponseWriter, err error, message
 	}
 }
 
-func (s *server) presentSmartFolderPage(ctx context.Context, audience domain.Audience, page domain.SmartFolderPage) (gen.LibrarySmartFolder, []gen.SmartFolderItem) {
+// presentSmartFolderPage also gives the cursors of the video and group items it keeps, in order.
+func (s *server) presentSmartFolderPage(ctx context.Context, audience domain.Audience, page domain.SmartFolderPage) (gen.LibrarySmartFolder, []gen.SmartFolderItem, []domain.ItemCursor) {
 	var shown []domain.Video
 	tagged := append([]domain.Video{}, page.SmartFolder.Members...)
 	for _, item := range page.Items {
@@ -322,21 +344,31 @@ func (s *server) presentSmartFolderPage(ctx context.Context, audience domain.Aud
 	}
 	lookup := s.itemLookups(ctx, shown, tagged)
 	items := make([]gen.SmartFolderItem, 0, len(page.Items))
+	var cursors []domain.ItemCursor
+	listed := 0
+	keep := func(item gen.SmartFolderItem) {
+		items = append(items, item)
+		if listed < len(page.ItemCursors) {
+			cursors = append(cursors, page.ItemCursors[listed])
+		}
+	}
 	for _, item := range page.Items {
 		switch {
 		case item.SmartFolder != nil:
 			child := toAPISmartFolderSummary(audience, *item.SmartFolder)
 			items = append(items, gen.SmartFolderItem{Kind: gen.SmartFolderItemKindSmartFolder, SmartFolder: &child})
+			continue
 		case item.Video != nil:
 			video := lookup.video(ctx, audience, page.Roots, *item.Video)
-			items = append(items, gen.SmartFolderItem{Kind: gen.SmartFolderItemKindVideo, Video: &video})
+			keep(gen.SmartFolderItem{Kind: gen.SmartFolderItemKindVideo, Video: &video})
 		case item.Group != nil:
 			if group, ok := lookup.group(ctx, audience, page.Roots, *item.Group); ok {
-				items = append(items, gen.SmartFolderItem{Kind: gen.SmartFolderItemKindGroup, Group: &group})
+				keep(gen.SmartFolderItem{Kind: gen.SmartFolderItemKindGroup, Group: &group})
 			}
 		}
+		listed++
 	}
-	return lookup.smartFolder(ctx, audience, page.SmartFolder), items
+	return lookup.smartFolder(ctx, audience, page.SmartFolder), items, cursors
 }
 
 // Empty owner-visible folders have zero count and omit addedAt/openVideoId.

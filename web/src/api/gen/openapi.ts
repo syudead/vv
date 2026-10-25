@@ -137,7 +137,7 @@ export interface paths {
         };
         /**
          * List videos
-         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`, except to the paired VVMDM's credential, which filters for its guests the videos it adds to a smart folder. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -1684,6 +1684,26 @@ export interface paths {
         get: operations["getPeerRelatedClues"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/rule-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count this node's videos matching smart-folder rules given by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. For each rule, counts the videos of this node the request's audience can see that match it as a smart folder of this node would: q with the owner's search fields, and tags, kind, person and organization by canonical name, where a name this node lacks matches no video. Returns the counts in the order of rules.
+         */
+        post: operations["countPeerRuleMatches"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5820,6 +5840,7 @@ export interface components {
             tags: components["schemas"]["VideoTag"][];
             /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
+            peerRule?: components["schemas"]["PeerSmartRule"];
         };
         /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {
@@ -5851,12 +5872,16 @@ export interface components {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description Included only when more results remain; pass to listSmartFolderItems. */
             nextCursor?: string;
+            /** @description Requests with the paired VVMDM's credential only: one entry per video or group item, in order, after the child folders. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description GET /api/smart-folders/{id}/items response. */
         SmartFolderItemPage: {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description Included only when more results remain. */
             nextCursor?: string;
+            /** @description Requests with the paired VVMDM's credential only: one entry per item, in order. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description POST /api/smart-folders body. */
         SmartFolderCreate: {
@@ -7365,6 +7390,50 @@ export interface components {
              */
             score: number;
             video: components["schemas"]["Video"];
+        };
+        /** @description A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video. */
+        SmartRuleByName: {
+            /** @description Search input; the rules' inputs joined by spaces. */
+            q?: string;
+            /** @description Tags every matching video carries. */
+            tagNames?: string[];
+            tagKindName?: string;
+            personName?: string;
+            organizationName?: string;
+        };
+        /** @description One entity a smart rule names, with its canonical name. */
+        SmartRuleRefName: {
+            /** @enum {string} */
+            kind: "tag" | "tagKind" | "person" | "organization";
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder. */
+        PeerSmartRule: {
+            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos. */
+            favorite: boolean;
+            match?: components["schemas"]["SmartRuleByName"];
+            sort?: components["schemas"]["VideoSort"];
+            /** @description getSmartFolder only, with sort: the entities of this folder's own rule with their names; a missing one is left out. */
+            names?: components["schemas"]["SmartRuleRefName"][];
+        };
+        PeerRuleCountsRequest: {
+            rules: components["schemas"]["SmartRuleByName"][];
+        };
+        PeerRuleCounts: {
+            /** @description In the order of rules. */
+            items: components["schemas"]["PeerRuleCount"][];
+        };
+        PeerRuleCount: {
+            videoCount: number;
+            /**
+             * Format: int64
+             * @description Sum of known durations; omitted when none is known.
+             */
+            durationMs?: number;
+            /** Format: int64 */
+            sizeBytes: number;
         };
         Error: {
             /**
@@ -10432,6 +10501,32 @@ export interface operations {
                     "application/json": components["schemas"]["RelatedClues"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    countPeerRuleMatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerRuleCountsRequest"];
+            };
+        };
+        responses: {
+            /** @description One count per rule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerRuleCounts"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
         };
     };

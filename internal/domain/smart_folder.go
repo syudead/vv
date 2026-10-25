@@ -311,6 +311,8 @@ type SmartFolderCard struct {
 	Previews []Video
 	// Tags is the union of matching-video tags, empty for guests.
 	Tags []VideoTag
+	// PathRules are the folder's rule and its ancestors', outermost first, for the paired node to match.
+	PathRules []SmartRule
 }
 
 type SmartFolderPage struct {
@@ -323,6 +325,11 @@ type SmartFolderPage struct {
 	// The first page places name-sorted child-folder summaries before library items.
 	Items      []LibraryItem
 	NextCursor string
+	// ItemCursors holds each video or group item's place in order, after the child folders, for merging with
+	// the paired node's videos.
+	ItemCursors []ItemCursor
+	// PathRules are the folder's rule and its ancestors', outermost first.
+	PathRules []SmartRule
 	// Roots shares the contents' read snapshot.
 	Roots []MediaFolder
 }
