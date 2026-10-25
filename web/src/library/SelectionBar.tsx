@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
+import { maxCodeEditVideos } from "../api/videoCodeEdits";
 import GroupPicker from "../groups/GroupPicker";
 import NewGroupDialog from "../groups/NewGroupDialog";
 import { t, type UiText } from "../i18n";
@@ -11,12 +12,14 @@ import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-ba
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
 import BulkEditor from "./bulkEdit/BulkEditor";
+import EditCodesAction from "./codeEdit/EditCodesAction";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
 import {
   DisabledReason,
   disabledProps,
   SelectionAction,
+  SelectionBusyContext,
   WithTooltip,
 } from "./SelectionAction";
 import type { SelectionTarget } from "./selection";
@@ -116,6 +119,13 @@ export function selectionReasons({
   const collectionCount = favoriteGroupIds.length + smartFolderIds.length;
   return {
     tag: count > maxVideoTagsSelection ? overLimitMessage() : undefined,
+    // Smart folders count on the server, which answers too_many_videos when they push it over.
+    codes:
+      count > maxCodeEditVideos
+        ? t.errors.reason.too_many_videos({ limit: maxCodeEditVideos })
+        : count === 0 && smartFolderIds.length === 0
+          ? t.library.codeEdit.needsVideo
+          : undefined,
     favorite,
     group,
     newGroup:
@@ -158,6 +168,7 @@ export default function SelectionBar({
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [codesBusy, setCodesBusy] = useState(false);
   const total = count + smartFolderIds.length;
   const reasons = selectionReasons({
     count,
@@ -184,6 +195,7 @@ export default function SelectionBar({
       setGroupOpen(false);
       setNewGroupOpen(false);
       setBundleOpen(false);
+      setCodesBusy(false);
     }
   }, [total]);
 
@@ -210,127 +222,139 @@ export default function SelectionBar({
         count={countText(count, smartFolderIds.length)}
         clearLabel={t.library.selection.clear}
         onClear={onClear}
+        clearDisabled={codesBusy}
       >
-        <WithTooltip label={reasons.tag ?? t.library.selection.edit}>
-          <SelectionAction
-            icon={<Pencil aria-hidden="true" />}
-            label={t.library.selection.edit}
-            {...disabledProps(reasons.tag, tagReasonId)}
-            onClick={() => setEditOpen(true)}
-          />
-        </WithTooltip>
-        <DisabledReason id={tagReasonId} reason={reasons.tag} />
-        {editOpen && (
-          <BulkEditor
+        <SelectionBusyContext.Provider value={codesBusy}>
+          <WithTooltip label={reasons.tag ?? t.library.selection.edit}>
+            <SelectionAction
+              icon={<Pencil aria-hidden="true" />}
+              label={t.library.selection.edit}
+              {...disabledProps(reasons.tag, tagReasonId)}
+              onClick={() => setEditOpen(true)}
+            />
+          </WithTooltip>
+          <DisabledReason id={tagReasonId} reason={reasons.tag} />
+          {editOpen && (
+            <BulkEditor
+              targets={targets}
+              onClose={() => setEditOpen(false)}
+              onApplied={(removed) => {
+                for (const tagId of removed) onTagRemoved(tagId);
+              }}
+            />
+          )}
+
+          <EditCodesAction
             targets={targets}
-            onClose={() => setEditOpen(false)}
-            onApplied={(removed) => {
-              for (const tagId of removed) onTagRemoved(tagId);
-            }}
+            disabledReason={reasons.codes}
+            blocked={removeFromGroup?.pending ?? false}
+            onBusyChange={setCodesBusy}
           />
-        )}
 
-        <FavoriteMenu
-          videoIds={favoriteVideoIds}
-          groupIds={favoriteGroupIds}
-          smartFolderIds={smartFolderIds}
-          overLimit={favoriteBlocked}
-          overLimitId={favoriteReasonId}
-        />
-        <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />
-
-        <PickerAction
-          icon={<ListPlus aria-hidden="true" />}
-          label={t.library.selection.addToPlaylist}
-          disabledReason={reasons.favorite}
-          reasonId={favoriteReasonId}
-          open={playlistOpen}
-          onOpenChange={setPlaylistOpen}
-        >
-          <PlaylistPicker
-            open={playlistOpen}
-            onOpenChange={setPlaylistOpen}
+          <FavoriteMenu
             videoIds={favoriteVideoIds}
             groupIds={favoriteGroupIds}
             smartFolderIds={smartFolderIds}
-            side="top"
-            align="start"
+            overLimit={favoriteBlocked}
+            overLimitId={favoriteReasonId}
           />
-        </PickerAction>
+          <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />
 
-        <WithTooltip label={reasons.newGroup ?? t.library.selection.newGroup}>
-          <SelectionAction
-            icon={<Group aria-hidden="true" />}
-            label={t.library.selection.newGroup}
-            {...disabledProps(reasons.newGroup, newGroupReasonId)}
-            onClick={() => setNewGroupOpen(true)}
-          />
-        </WithTooltip>
-        <DisabledReason id={newGroupReasonId} reason={reasons.newGroup} />
-        {newGroupOpen && (
-          <NewGroupDialog
-            videoIds={favoriteVideoIds}
-            groupIds={favoriteGroupIds}
-            onClose={() => setNewGroupOpen(false)}
-            onCreated={() => {
-              setNewGroupOpen(false);
-              onClear();
-            }}
-          />
-        )}
+          <PickerAction
+            icon={<ListPlus aria-hidden="true" />}
+            label={t.library.selection.addToPlaylist}
+            disabledReason={reasons.favorite}
+            reasonId={favoriteReasonId}
+            open={playlistOpen}
+            onOpenChange={setPlaylistOpen}
+          >
+            <PlaylistPicker
+              open={playlistOpen}
+              onOpenChange={setPlaylistOpen}
+              videoIds={favoriteVideoIds}
+              groupIds={favoriteGroupIds}
+              smartFolderIds={smartFolderIds}
+              side="top"
+              align="start"
+            />
+          </PickerAction>
 
-        <PickerAction
-          icon={<FolderPlus aria-hidden="true" />}
-          label={t.library.selection.addToGroup}
-          disabledReason={reasons.group}
-          reasonId={groupReasonId}
-          open={groupOpen}
-          onOpenChange={setGroupOpen}
-        >
-          <GroupPicker
-            open={groupOpen}
-            onOpenChange={setGroupOpen}
-            videoIds={favoriteVideoIds}
-            groupIds={favoriteGroupIds}
-            side="top"
-            align="start"
-          />
-        </PickerAction>
-        <DisabledReason id={groupReasonId} reason={reasons.group} />
-
-        {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
-
-        {canBundle && (
-          <WithTooltip label={t.library.selection.bundle}>
+          <WithTooltip label={reasons.newGroup ?? t.library.selection.newGroup}>
             <SelectionAction
-              icon={<Layers aria-hidden="true" />}
-              label={t.library.selection.bundle}
-              {...disabledProps(reasons.bundle, bundleReasonId)}
-              onClick={() => {
-                setBundleIds(selectedIds);
-                setBundleOpen(true);
-              }}
+              icon={<Group aria-hidden="true" />}
+              label={t.library.selection.newGroup}
+              {...disabledProps(reasons.newGroup, newGroupReasonId)}
+              onClick={() => setNewGroupOpen(true)}
             />
           </WithTooltip>
-        )}
-        {canBundle && <DisabledReason id={bundleReasonId} reason={reasons.bundle} />}
-        {bundleOpen && (
-          <BundleDialog
-            videoIds={bundleIds}
-            onClose={() => setBundleOpen(false)}
-            onBundled={(versions) => {
-              setBundleOpen(false);
-              onBundled(versions);
-            }}
-          />
-        )}
+          <DisabledReason id={newGroupReasonId} reason={reasons.newGroup} />
+          {newGroupOpen && (
+            <NewGroupDialog
+              videoIds={favoriteVideoIds}
+              groupIds={favoriteGroupIds}
+              onClose={() => setNewGroupOpen(false)}
+              onCreated={() => {
+                setNewGroupOpen(false);
+                onClear();
+              }}
+            />
+          )}
 
-        <DeleteCollectionsAction
-          groupIds={favoriteGroupIds}
-          smartFolderIds={smartFolderIds}
-          disabledReason={reasons.deleteCollections}
-          onDeleted={onCollectionsDeleted}
-        />
+          <PickerAction
+            icon={<FolderPlus aria-hidden="true" />}
+            label={t.library.selection.addToGroup}
+            disabledReason={reasons.group}
+            reasonId={groupReasonId}
+            open={groupOpen}
+            onOpenChange={setGroupOpen}
+          >
+            <GroupPicker
+              open={groupOpen}
+              onOpenChange={setGroupOpen}
+              videoIds={favoriteVideoIds}
+              groupIds={favoriteGroupIds}
+              side="top"
+              align="start"
+            />
+          </PickerAction>
+          <DisabledReason id={groupReasonId} reason={reasons.group} />
+
+          {removeFromGroup !== undefined && (
+            <RemoveFromGroupAction {...removeFromGroup} />
+          )}
+
+          {canBundle && (
+            <WithTooltip label={t.library.selection.bundle}>
+              <SelectionAction
+                icon={<Layers aria-hidden="true" />}
+                label={t.library.selection.bundle}
+                {...disabledProps(reasons.bundle, bundleReasonId)}
+                onClick={() => {
+                  setBundleIds(selectedIds);
+                  setBundleOpen(true);
+                }}
+              />
+            </WithTooltip>
+          )}
+          {canBundle && <DisabledReason id={bundleReasonId} reason={reasons.bundle} />}
+          {bundleOpen && (
+            <BundleDialog
+              videoIds={bundleIds}
+              onClose={() => setBundleOpen(false)}
+              onBundled={(versions) => {
+                setBundleOpen(false);
+                onBundled(versions);
+              }}
+            />
+          )}
+
+          <DeleteCollectionsAction
+            groupIds={favoriteGroupIds}
+            smartFolderIds={smartFolderIds}
+            disabledReason={reasons.deleteCollections}
+            onDeleted={onCollectionsDeleted}
+          />
+        </SelectionBusyContext.Provider>
       </SelectionBarSection>
     </div>
   );

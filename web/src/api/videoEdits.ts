@@ -18,7 +18,8 @@ export interface VideoEditTargets {
   smartFolderIds: readonly number[];
 }
 
-function targetFields(targets: VideoEditTargets) {
+/** The request fields of a selection, without `smartFolderIds` when there are none. */
+export function editTargetFields(targets: VideoEditTargets) {
   return {
     videoIds: Array.from(targets.videoIds),
     ...smartFolderField(targets.smartFolderIds),
@@ -32,7 +33,7 @@ export function summarizeVideoEdits(
   return request<VideoEditSummary>("/api/video-edits/summary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(targetFields(targets)),
+    body: JSON.stringify(editTargetFields(targets)),
     signal,
   });
 }
@@ -54,7 +55,7 @@ export async function applyVideoEdits(
   const result = await request<VideoEditResponse>("/api/video-edits", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...targetFields(targets), ...changes }),
+    body: JSON.stringify({ ...editTargetFields(targets), ...changes }),
     signal,
   }).catch(rethrowStaleTagError);
   const created = changes.tags?.add?.some((tag) => tag.name !== undefined) ?? false;

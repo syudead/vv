@@ -380,6 +380,7 @@ func run(opts runOptions) error {
 		MediaInfo:        libraryStore,
 		Visibility:       db.Visibility(),
 		VideoEdits:       db.VideoEdits(),
+		VideoCodeEdits:   db.VideoEdits(),
 		Favorites:        db.Favorites(),
 		Playlists:        db.Playlists(),
 		PlaylistPlayback: db.Playlists(),

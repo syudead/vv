@@ -3,11 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { createCredit } from "../../api/credits";
 import { currentTags, revalidateTags, subscribeTags, type Tag } from "../../api/tags";
-import {
-  applyVideoEdits,
-  type VideoEditSummary,
-  type VideoEditTargets,
-} from "../../api/videoEdits";
+import { applyVideoEdits, type VideoEditSummary } from "../../api/videoEdits";
 import {
   type WorkDateKind,
   workOrganizationRoles,
@@ -27,7 +23,7 @@ import { Skeleton } from "../../ui/shadcn/skeleton";
 import TagCommand from "../../ui/TagCommand";
 import { useToast } from "../../ui/Toast";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
-import type { SelectionTarget } from "../selection";
+import { editTargetsOf, type SelectionTarget } from "../selection";
 import { buildAddOptions } from "../tagChoices";
 import DateField from "./DateField";
 import {
@@ -79,16 +75,6 @@ const roleEntries: RoleEntry[] = [
     ...organizationRole(role),
   })),
 ];
-
-function editTargetsOf(targets: readonly SelectionTarget[]): VideoEditTargets {
-  const videoIds = new Set<number>();
-  const smartFolderIds: number[] = [];
-  for (const target of targets) {
-    if (target.kind === "smartFolder") smartFolderIds.push(target.id);
-    for (const id of target.videoIds) videoIds.add(id);
-  }
-  return { videoIds: [...videoIds], smartFolderIds };
-}
 
 function presentMap(summary: VideoEditSummary): Map<FieldId, PresentValue[]> {
   const map = new Map<FieldId, PresentValue[]>([["tags", presentTags(summary)]]);

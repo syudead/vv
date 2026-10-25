@@ -147,18 +147,7 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 
 // writeVideoPage includes progress, tags, and the selected location's folder when roots are available. Preserve MissingTagIDs in the response.
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
-	extras := s.extrasFor(r.Context(), page.Items)
-
-	audience := audienceFrom(r.Context())
-	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
-	for _, view := range s.presentVideos(r.Context(), page.Items) {
-		video := view.Video
-		item := extras.item(view)
-		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
-			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
-		}
-		payload.Items = append(payload.Items, forAudience(audience, item))
-	}
+	payload := gen.VideoPage{Items: s.listItems(r.Context(), page.Items, roots), Total: page.Total}
 	if page.NextCursor != "" {
 		next := page.NextCursor
 		payload.NextCursor = &next
@@ -170,6 +159,21 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// listItems converts listed videos to the viewer's list-item shape with their tags, progress, card credits and folder.
+func (s *server) listItems(ctx context.Context, videos []domain.Video, roots []domain.MediaFolder) []gen.Video {
+	extras := s.extrasFor(ctx, videos)
+	audience := audienceFrom(ctx)
+	items := make([]gen.Video, 0, len(videos))
+	for _, view := range s.presentVideos(ctx, videos) {
+		item := extras.item(view)
+		if folder, ok := domain.LocateVideoFolder(roots, view.Video.Path); ok {
+			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
+		}
+		items = append(items, forAudience(audience, item))
+	}
+	return items
 }
 
 // checkAudienceQuery rejects guest filters that depend on owner data with 400.

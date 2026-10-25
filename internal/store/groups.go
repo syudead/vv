@@ -96,7 +96,25 @@ func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex
 
 // Exclude missing IDs and unidentified content; registeredOnly also requires a registered location or a virtual video.
 func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredOnly bool) (map[int64]string, error) {
-	keys := make(map[int64]string, len(ids))
+	found, err := videoKeysByID(ctx, tx, ids, registeredOnly)
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[int64]string, len(found))
+	for id, k := range found {
+		keys[id] = k.userKey
+	}
+	return keys, nil
+}
+
+type videoKeys struct {
+	contentKey string
+	userKey    string
+}
+
+// videoKeysByID is userKeysByVideoID that also returns each video's own content key.
+func videoKeysByID(ctx context.Context, tx *sql.Tx, ids []int64, registeredOnly bool) (map[int64]videoKeys, error) {
+	keys := make(map[int64]videoKeys, len(ids))
 	if len(ids) == 0 {
 		return keys, nil
 	}
@@ -108,7 +126,7 @@ func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredO
 	if registeredOnly {
 		condition = libraryVideoCondition("v")
 	}
-	rows, err := tx.QueryContext(ctx, `select v.id, `+userKeyExpr("v")+` from videos v
+	rows, err := tx.QueryContext(ctx, `select v.id, v.content_key, `+userKeyExpr("v")+` from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+condition, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
@@ -116,11 +134,11 @@ func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredO
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
-		var key string
-		if err := rows.Scan(&id, &key); err != nil {
+		var k videoKeys
+		if err := rows.Scan(&id, &k.contentKey, &k.userKey); err != nil {
 			return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
 		}
-		keys[id] = key
+		keys[id] = k
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
