@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name and thumbnail-position edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; the other operations under that path return `404 not_found`. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name and thumbnail-position edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`."
 servers:
   - url: /
     description: "Served by the application"
@@ -4105,7 +4105,7 @@ paths:
     post:
       operationId: deleteCollections
       summary: "Dissolve groups and delete smart folders in bulk"
-      description: "Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations."
+      description: "Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations. Ids at or above 2^40 name the paired VVMDM's collections: the local ids are applied first in one transaction, then the peer's in one forwarded request; the counts cover both nodes, and remote reports the peer's part, with the peer's ids that were not removed when it failed."
       requestBody:
         required: true
         content:
@@ -4467,7 +4467,7 @@ paths:
     post:
       operationId: bundleVideos
       summary: "Bundle videos as versions of the same video"
-      description: "Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit."
+      description: "Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -4857,8 +4857,15 @@ paths:
         - sessionCookie: []
         - {}
       summary: "List visible groups by name"
-      description: "Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request."
+      description: "Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request. With node=peer the request is forwarded to the paired VVMDM, whose nextCursor is passed through and whose group and video ids carry 2^40; while the peer is not connected it returns 503 service_unavailable with peer_unreachable."
       parameters:
+        - name: node
+          in: query
+          description: "Node whose groups are listed: this one (local) or the paired VVMDM (peer). The picker sends the node of the selected videos."
+          schema:
+            type: string
+            enum: [local, peer]
+            default: local
         - name: q
           in: query
           description: "Trimmed, case-insensitive name substring"
@@ -4889,7 +4896,7 @@ paths:
     post:
       operationId: createGroup
       summary: "Create a group from videos and groups"
-      description: "Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything."
+      description: "Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5066,7 +5073,7 @@ paths:
     post:
       operationId: addGroupItems
       summary: "Append videos and groups to a group"
-      description: "Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found."
+      description: "Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       parameters:
         - $ref: "#/components/parameters/GroupId"
       requestBody:
@@ -5394,7 +5401,7 @@ paths:
     post:
       operationId: organizeReorder
       summary: "Reorder group items together and return an undo token"
-      description: "Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing."
+      description: "Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5419,7 +5426,7 @@ paths:
     post:
       operationId: organizeGroup
       summary: "Create a group from dragged videos and the drop target"
-      description: "Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing."
+      description: "Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5444,7 +5451,7 @@ paths:
     post:
       operationId: organizeMove
       summary: "Move cards into, between or out of groups and return an undo token"
-      description: "Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing."
+      description: "Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5471,7 +5478,7 @@ paths:
     post:
       operationId: organizeMerge
       summary: "Merge dragged groups and return an undo token"
-      description: "Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing."
+      description: "Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5498,7 +5505,7 @@ paths:
     post:
       operationId: organizeBundle
       summary: "Bundle dragged videos with the drop target as representative"
-      description: "Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing."
+      description: "Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes."
       requestBody:
         required: true
         content:
@@ -5525,7 +5532,7 @@ paths:
     post:
       operationId: organizeUndo
       summary: "Undo a drag operation"
-      description: "Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use."
+      description: "Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use. A token from a forwarded operation is undone on the paired VVMDM."
       requestBody:
         required: true
         content:
@@ -8875,6 +8882,26 @@ components:
         deletedSmartFolders:
           type: integer
           description: "Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted."
+        remote:
+          $ref: "#/components/schemas/RemoteSelectionResult"
+
+    RemoteSelectionResult:
+      type: object
+      required: [applied, failedVideoIds]
+      additionalProperties: false
+      description: "The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails."
+      properties:
+        applied:
+          type: integer
+          description: "Videos or collections changed on the peer."
+        failedVideoIds:
+          type: array
+          description: "Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success."
+          items:
+            type: integer
+            format: int64
+        reason:
+          $ref: "#/components/schemas/ErrorReason"
 
     FavoritesRequest:
       type: object
@@ -12704,5 +12731,6 @@ components:
         - already_paired
         - unsupported_version
         - peer_unreachable
+        - mixed_nodes
         - certificate_untrusted
         - fingerprint_changed

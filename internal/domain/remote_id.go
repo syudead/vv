@@ -68,3 +68,38 @@ func RemoteVideoURL(raw string) string {
 	}
 	return videoPathPrefix + strconv.FormatInt(ToRemoteID(id), 10) + rest[end:]
 }
+
+// IDNodes reports whether the positive ids name entities of this node, of the peer, or of both; a group never
+// holds both nodes' videos, and a nonpositive id names neither.
+func IDNodes(ids ...int64) (local, remote bool) {
+	for _, id := range ids {
+		switch {
+		case IsRemoteID(id):
+			remote = true
+		case id > 0:
+			local = true
+		}
+	}
+	return local, remote
+}
+
+// SplitRemoteIDs separates ids into this node's and the peer's own ids, keeping their order.
+func SplitRemoteIDs(ids []int64) (local, peer []int64) {
+	for _, id := range ids {
+		if IsRemoteID(id) {
+			peer = append(peer, FromRemoteID(id))
+		} else {
+			local = append(local, id)
+		}
+	}
+	return local, peer
+}
+
+// ToPeerIDs turns the remote ids among ids into the peer's own ids in place; other ids stay for the peer to refuse.
+func ToPeerIDs(ids []int64) {
+	for i, id := range ids {
+		if IsRemoteID(id) {
+			ids[i] = FromRemoteID(id)
+		}
+	}
+}

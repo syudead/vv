@@ -2723,7 +2723,7 @@ export interface paths {
         put?: never;
         /**
          * Dissolve groups and delete smart folders in bulk
-         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations.
+         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations. Ids at or above 2^40 name the paired VVMDM's collections: the local ids are applied first in one transaction, then the peer's in one forwarded request; the counts cover both nodes, and remote reports the peer's part, with the peer's ids that were not removed when it failed.
          */
         post: operations["deleteCollections"];
         delete?: never;
@@ -2959,7 +2959,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle videos as versions of the same video
-         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit.
+         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["bundleVideos"];
         delete?: never;
@@ -3214,13 +3214,13 @@ export interface paths {
         };
         /**
          * List visible groups by name
-         * @description Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request.
+         * @description Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request. With node=peer the request is forwarded to the paired VVMDM, whose nextCursor is passed through and whose group and video ids carry 2^40; while the peer is not connected it returns 503 service_unavailable with peer_unreachable.
          */
         get: operations["listGroups"];
         put?: never;
         /**
          * Create a group from videos and groups
-         * @description Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything.
+         * @description Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["createGroup"];
         delete?: never;
@@ -3272,7 +3272,7 @@ export interface paths {
         put?: never;
         /**
          * Append videos and groups to a group
-         * @description Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found.
+         * @description Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["addGroupItems"];
         delete?: never;
@@ -3444,7 +3444,7 @@ export interface paths {
         put?: never;
         /**
          * Reorder group items together and return an undo token
-         * @description Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing.
+         * @description Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeReorder"];
         delete?: never;
@@ -3464,7 +3464,7 @@ export interface paths {
         put?: never;
         /**
          * Create a group from dragged videos and the drop target
-         * @description Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing.
+         * @description Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeGroup"];
         delete?: never;
@@ -3484,7 +3484,7 @@ export interface paths {
         put?: never;
         /**
          * Move cards into, between or out of groups and return an undo token
-         * @description Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing.
+         * @description Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeMove"];
         delete?: never;
@@ -3504,7 +3504,7 @@ export interface paths {
         put?: never;
         /**
          * Merge dragged groups and return an undo token
-         * @description Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing.
+         * @description Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeMerge"];
         delete?: never;
@@ -3524,7 +3524,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle dragged videos with the drop target as representative
-         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing.
+         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeBundle"];
         delete?: never;
@@ -3544,7 +3544,7 @@ export interface paths {
         put?: never;
         /**
          * Undo a drag operation
-         * @description Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use.
+         * @description Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use. A token from a forwarded operation is undone on the paired VVMDM.
          */
         post: operations["organizeUndo"];
         delete?: never;
@@ -5145,6 +5145,15 @@ export interface components {
             dissolvedGroups: number;
             /** @description Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted. */
             deletedSmartFolders: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
+        };
+        /** @description The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails. */
+        RemoteSelectionResult: {
+            /** @description Videos or collections changed on the peer. */
+            applied: number;
+            /** @description Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success. */
+            failedVideoIds: number[];
+            reason?: components["schemas"]["ErrorReason"];
         };
         FavoritesRequest: {
             /** @description Video IDs whose favorite state changes. */
@@ -7269,7 +7278,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -12957,6 +12966,8 @@ export interface operations {
     listGroups: {
         parameters: {
             query?: {
+                /** @description Node whose groups are listed: this one (local) or the paired VVMDM (peer). The picker sends the node of the selected videos. */
+                node?: "local" | "peer";
                 /** @description Trimmed, case-insensitive name substring */
                 q?: string;
                 /** @description Opaque `nextCursor` from the previous response */

@@ -42,7 +42,7 @@ func (s *server) ListVideoVersions(w http.ResponseWriter, r *http.Request, id ge
 
 func (s *server) BundleVideos(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoBundleRequest
-	if !s.readJSONBody(w, r, &body) {
+	if !s.readJSONBody(w, r, &body) || !s.bundlesLocally(w, r, &body) {
 		return
 	}
 	if len(body.VideoIds) > maxBundleVideoIDs {

@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRemoteIDOffsetBoundary(t *testing.T) {
 	const offset = int64(1099511627776)
@@ -57,5 +60,33 @@ func TestVocabularyJoinTakesTheLocalIDByNameElseTheOffset(t *testing.T) {
 		if tc.got != tc.want {
 			t.Errorf("%s: id = %d, want %d", tc.label, tc.got, tc.want)
 		}
+	}
+}
+
+func TestIDNodesAndSplitByNode(t *testing.T) {
+	remote := ToRemoteID(3)
+	for _, tc := range []struct {
+		ids           []int64
+		local, remote bool
+	}{
+		{[]int64{1, 2}, true, false},
+		{[]int64{remote, 0}, false, true},
+		{[]int64{PeerIDOffset - 1, PeerIDOffset}, true, true},
+		{[]int64{0, -1}, false, false},
+	} {
+		local, gotRemote := IDNodes(tc.ids...)
+		if local != tc.local || gotRemote != tc.remote {
+			t.Errorf("IDNodes(%v) = %v, %v, want %v, %v", tc.ids, local, gotRemote, tc.local, tc.remote)
+		}
+	}
+
+	local, peer := SplitRemoteIDs([]int64{5, remote, 6, ToRemoteID(1)})
+	if !slices.Equal(local, []int64{5, 6}) || !slices.Equal(peer, []int64{3, 1}) {
+		t.Errorf("SplitRemoteIDs = %v, %v, want [5 6] and [3 1]", local, peer)
+	}
+	ids := []int64{remote, 0}
+	ToPeerIDs(ids)
+	if !slices.Equal(ids, []int64{3, 0}) {
+		t.Errorf("ToPeerIDs = %v, want [3 0]", ids)
 	}
 }

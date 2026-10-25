@@ -41,30 +41,38 @@ var forwardedResponseHeaders = []string{
 // the peer.
 var remoteContextParams = []string{"group", "smartFolder"}
 
-var remoteVideoMux = func() *http.ServeMux {
+var remoteVideoMux = operationMux(remoteVideoOperations)
+
+func operationMux(operations map[string]remoteOperation) *http.ServeMux {
 	mux := http.NewServeMux()
-	for pattern := range remoteVideoOperations {
+	for pattern := range operations {
 		mux.Handle(pattern, http.NotFoundHandler())
 	}
 	return mux
-}()
+}
 
-// remoteBoundary forwards a request whose video id names the peer's video to the peer; any other request
-// goes to next. An unclean path also goes to next, whose redirect brings it back cleaned.
+// remoteBoundary forwards a request whose video or group id names the peer's entity to the peer; any other
+// request goes to next. An unclean path also goes to next, whose redirect brings it back cleaned.
 func (s *server) remoteBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		escaped := r.URL.EscapedPath()
-		if id, rest, ok := remoteVideoPath(escaped); ok && path.Clean(escaped) == escaped {
-			s.forwardRemoteVideo(w, r, id, rest)
-			return
+		if path.Clean(escaped) == escaped {
+			if id, rest, ok := remotePath(escaped, remoteVideoPrefix); ok {
+				s.forwardRemoteVideo(w, r, id, rest)
+				return
+			}
+			if id, rest, ok := remotePath(escaped, remoteGroupPrefix); ok {
+				s.forwardRemoteGroup(w, r, id, rest)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// remoteVideoPath splits /api/videos/{id}... into a remote id and the escaped rest of the path.
-func remoteVideoPath(path string) (id int64, rest string, ok bool) {
-	tail, found := strings.CutPrefix(path, remoteVideoPrefix)
+// remotePath splits prefix{id}... into a remote id and the escaped rest of the path.
+func remotePath(path, prefix string) (id int64, rest string, ok bool) {
+	tail, found := strings.CutPrefix(path, prefix)
 	if !found {
 		return 0, "", false
 	}
@@ -110,7 +118,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 	}
 	defer func() { _ = resp.Body.Close() }()
 	switch {
-	case op.rewrite == nil || resp.StatusCode != http.StatusOK:
+	case op.rewrite == nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated):
 		s.passThrough(w, resp)
 	case r.Method == http.MethodHead:
 		writeRewrittenHead(w, resp)
@@ -199,7 +207,7 @@ func (s *server) writeRewritten(w http.ResponseWriter, resp *http.Response, rewr
 	if value := resp.Header.Get("Cache-Control"); value != "" {
 		w.Header().Set("Cache-Control", value)
 	}
-	writeJSON(w, http.StatusOK, value, s.logger)
+	writeJSON(w, resp.StatusCode, value, s.logger)
 }
 
 func (s *server) peerUnreachable(w http.ResponseWriter) {

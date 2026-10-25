@@ -34,15 +34,29 @@ func (s *server) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Collection storage is not configured.", nil)
 		return
 	}
-	deleted, err := s.collections.DeleteCollections(r.Context(), domain.CollectionDelete{
-		GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs,
-	})
-	if err != nil {
-		s.internalError(w, "Could not delete the collections.", err)
-		return
+	local := domain.CollectionDelete{GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs}
+	var remote domain.CollectionDelete
+	if !isPeerRequest(r.Context()) {
+		local.GroupIDs, remote.GroupIDs = domain.SplitRemoteIDs(groupIDs)
+		local.SmartFolderIDs, remote.SmartFolderIDs = domain.SplitRemoteIDs(smartFolderIDs)
 	}
+	// Two databases share no transaction, so the local part commits first and stays when the peer fails.
+	var deleted domain.CollectionsDeleted
+	if len(local.GroupIDs)+len(local.SmartFolderIDs) > 0 {
+		var err error
+		if deleted, err = s.collections.DeleteCollections(r.Context(), local); err != nil {
+			s.internalError(w, "Could not delete the collections.", err)
+			return
+		}
+	}
+	var out gen.CollectionsDeleteResponse
+	if len(remote.GroupIDs)+len(remote.SmartFolderIDs) > 0 {
+		var peer domain.CollectionsDeleted
+		peer, out.Remote = s.deletePeerCollections(r, remote)
+		deleted.DissolvedGroups += peer.DissolvedGroups
+		deleted.DeletedSmartFolders += peer.DeletedSmartFolders
+	}
+	out.DissolvedGroups, out.DeletedSmartFolders = deleted.DissolvedGroups, deleted.DeletedSmartFolders
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.CollectionsDeleteResponse{
-		DissolvedGroups: deleted.DissolvedGroups, DeletedSmartFolders: deleted.DeletedSmartFolders,
-	}, s.logger)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }

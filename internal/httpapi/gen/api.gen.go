@@ -685,6 +685,7 @@ const (
 	ErrorReasonMergeSamePerson               ErrorReason = "merge_same_person"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
+	ErrorReasonMixedNodes                    ErrorReason = "mixed_nodes"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
 	ErrorReasonNetworkError                  ErrorReason = "network_error"
@@ -839,6 +840,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonMergeSameTag:
 		return true
 	case ErrorReasonMissingModels:
+		return true
+	case ErrorReasonMixedNodes:
 		return true
 	case ErrorReasonNameIsSynonym:
 		return true
@@ -2775,6 +2778,24 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
+// Defines values for ListGroupsParamsNode.
+const (
+	Local ListGroupsParamsNode = "local"
+	Peer  ListGroupsParamsNode = "peer"
+)
+
+// Valid indicates whether the value is a known member of the ListGroupsParamsNode enum.
+func (e ListGroupsParamsNode) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	case Peer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPersonAppearancesParamsSort.
 const (
 	LeastSimilar ListPersonAppearancesParamsSort = "leastSimilar"
@@ -3482,6 +3503,9 @@ type CollectionsDeleteResponse struct {
 
 	// DissolvedGroups Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty.
 	DissolvedGroups int `json:"dissolvedGroups"`
+
+	// Remote The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails.
+	Remote *RemoteSelectionResult `json:"remote,omitempty"`
 }
 
 // ComfyUIMissingItem Missing ComfyUI node type or model file.
@@ -5430,6 +5454,18 @@ type RelatedVideos struct {
 
 	// PrevId Previous group member, omitted at the first member, outside a group, or when cursor is supplied. Outside groups the UI uses the previously viewed video; this value need not appear in items.
 	PrevId *int64 `json:"prevId,omitempty"`
+}
+
+// RemoteSelectionResult The paired VVMDM's part of an operation over a selection, present when the request named ids at or above 2^40. The local part is applied first and stays applied when the peer's part fails.
+type RemoteSelectionResult struct {
+	// Applied Videos or collections changed on the peer.
+	Applied int `json:"applied"`
+
+	// FailedVideoIds Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success.
+	FailedVideoIds []int64 `json:"failedVideoIds"`
+
+	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
+	Reason *ErrorReason `json:"reason,omitempty"`
 }
 
 // RenameTagRequest defines model for RenameTagRequest.
@@ -7658,6 +7694,9 @@ type ListFolderVideosParams struct {
 
 // ListGroupsParams defines parameters for ListGroups.
 type ListGroupsParams struct {
+	// Node Node whose groups are listed: this one (local) or the paired VVMDM (peer). The picker sends the node of the selected videos.
+	Node *ListGroupsParamsNode `form:"node,omitempty" json:"node,omitempty"`
+
 	// Q Trimmed, case-insensitive name substring
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
@@ -7667,6 +7706,9 @@ type ListGroupsParams struct {
 	// Limit Page size
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListGroupsParamsNode defines parameters for ListGroups.
+type ListGroupsParamsNode string
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
@@ -9994,6 +10036,19 @@ func (siw *ServerInterfaceWrapper) ListGroups(w http.ResponseWriter, r *http.Req
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListGroupsParams
+
+	// ------------- Optional query parameter "node" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "node", r.URL.Query(), &params.Node, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "node"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "q" -------------
 
