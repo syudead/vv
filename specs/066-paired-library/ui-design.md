@@ -6,6 +6,26 @@
 [plan.md, The screens](plan.md#the-screens) ·
 [contracts/screen-api.md](contracts/screen-api.md)
 
+The diagram shows the parts this design covers and what drives each: the
+connection state drives the Pairing page, the peer notice and the list
+reloads; a remote id drives the mark and the hidden actions; an operation's
+answer drives the partial result.
+
+```mermaid
+flowchart LR
+  state[Connection state] --> pairing[Pairing page]
+  state --> notice[Peer notice]
+  state --> reload[List reload]
+  ids[Remote ids] --> mark[Remote mark]
+  ids --> actions[Hidden actions]
+  ids --> bar[Selection bar]
+  bar --> op[Selection operation]
+  op --> result[Partial result dialog]
+```
+
+The connection state is `GET /api/peer` and the `peer` event; a remote id is
+an id above the offset ([plan.md, Remote ids](plan.md#remote-ids)).
+
 Sources that already decide things, linked rather than repeated here:
 
 | Topic | Source |
@@ -76,9 +96,13 @@ button; there `Add to group`, `New group` and `Bundle` keep that form for a
 mixed selection, because hiding three buttons as the selection changes would
 make the bar jump.
 
-A partial result of a bulk operation keeps the failed videos selected. The
-toast can say how many were not changed but not which; the selection can
-show which, with no new component, and `Clear selection` dismisses it.
+A partial result of a bulk operation names the failed videos in a `Dialog`.
+A toast can say how many were not changed but not which, and it leaves.
+Checks in the list cannot carry the answer either: the request that fails
+because the peer stopped also turns the state `unreachable`, the lists reload
+without the peer's items, and the selection drops ids that are no longer
+listed. The dialog keeps the titles the list showed when the request was
+sent, so it names the failed videos whether or not they are still listed.
 
 The Issue's requirement 14 says the peer's smart folders appear "in the
 sidebar"; in the product, root smart folders are cards in the unfiltered
@@ -152,8 +176,8 @@ the mark; the sidebar does not change.
 | Collection page count line | {name} · 12 videos · 1:32:10 | The mark and the name before the existing count |
 | Group picker heading, peer | Groups on {name} | `text-xs text-muted-foreground`, first line of the picker's list |
 | Selection bar reason, mixed nodes | Select videos from one VVMDM to do this | Tooltip of the disabled `Add to group`, `New group` and `Bundle` |
-| Partial result toast | Saved here. {n} videos on {name} weren't changed: {reason}. They stay selected. | One toast, 8 seconds, no action; `n` from `remote.failedVideoIds` |
-| Partial delete toast | Deleted here. {n} on {name} weren't: {reason}. They stay selected. | Same form for `POST /api/collections/delete` |
+| Partial result dialog | Not changed on {name} / {n} videos on {name} weren't changed: {reason}. The others were saved. / Close | `DialogTitle` / `DialogDescription` / the one `DialogFooter` button; `n` from `remote.failedVideoIds` |
+| Partial delete dialog | Not deleted on {name} / {n} on {name} weren't deleted: {reason}. The others were. / Close | Same form for `POST /api/collections/delete` |
 | `errors.reason.peer_unreachable` | Couldn't reach the other VVMDM | Used by every failed forwarded request, rename, merge and deletion |
 | `errors.reason.mixed_nodes` | Videos from both VVMDMs can't go in one group | |
 | `errors.reason.provisional_person_remote` | Give the person a name before adding them to videos on the other VVMDM | |
@@ -362,13 +386,27 @@ read `remote` from the answer
 | Result | What the screen shows |
 | --- | --- |
 | `failedVideoIds` empty | The toast of today, counting both nodes (`Updated 12 videos`) |
-| `failedVideoIds` not empty | The partial-result toast of [Words](#words); the selection narrows to the failed videos, which stay checked in the list; the local items leave the selection as they do after a successful operation; the bulk editor closes as it does today |
+| `failedVideoIds` not empty | No toast; the partial-result `Dialog` of [Words](#words) opens, listing the failed items by title; the bulk editor closes as it does today; the selection narrows to the failed items that are still listed, and the local items leave it as they do after a successful operation |
 | The whole request failed | As today: the editor or popover keeps the draft and shows the error, with `Couldn't reach the other VVMDM` when the reason is `peer_unreachable` |
 
-The narrowed selection is the way the failed videos are "seen" (the Issue's
-edge case): the toast says how many and where, the checks say which, and
-`Clear selection` ends it. The same holds for `Delete` of collections, where
-the remaining remote collections stay checked.
+The dialog is the way the failed videos are "seen" (the Issue's edge case),
+and it does not depend on the list. The screen takes each failed id's title
+from the selected items as the list showed them when the request was sent,
+so a failure caused by the peer stopping still names every video after the
+`peer` event has reloaded the lists without them and the selection has
+dropped them. The body is the description and then the titles, one per line
+in `text-sm`, in a list that scrolls inside the dialog past 10 lines; the
+titles are text, not links, because a remote video page cannot open while
+the peer is not connected. `Close` and `Esc` dismiss it. When the peer is
+still connected (it refused for its own `reason`), the failed items stay in
+the list and stay checked, so the owner can retry them. The same holds for
+`Delete` of collections, which lists the collections' names.
+
+The pages' tests cover the two orders this allows: a partial answer while
+the peer stays connected (the dialog opens and the failed items stay
+checked), and a `peer` event to `unreachable` that removes the remote items
+after the selection was made and before or after the answer (the dialog
+still names every failed title).
 
 Renames, merges and deletions of a tag, person or organization while the
 peer is not connected answer `409 peer_unreachable`; the dialogs show it as
@@ -469,8 +507,8 @@ criterion (Q-4).
     opens the picker headed `Groups on {name}`.
 13. **Partial result**: with the peer stopped between selecting a mixed set
     and pressing a tag action, the local videos get the tag and leave the
-    selection, the remote ones stay checked, and the toast says how many
-    were not changed and where.
+    selection, and the partial-result dialog names every remote video that
+    was not changed and the peer, although the list no longer shows them.
 14. **Narrow width**: at 360px the Pairing page's code fits on one line
     with its `Copy`, the fields take the full width, the notice stands above
     the page header on three lines, and the mark stays visible in a row's
@@ -488,9 +526,13 @@ criterion (Q-4).
 The parent Issue does not ask for screen-reader or contrast design, so only
 names are decided.
 
-- `RemoteMark` is `aria-hidden` with sr-only text "On {name}" in the same
-  element, referenced by a card link's `aria-describedby` as `VersionsMark`
-  is; the video page band's text is read as part of the header.
+- `RemoteMark` draws the `Laptop` icon `aria-hidden` and, beside it and not
+  inside a hidden element, an sr-only element with an `id` holding "On
+  {name}"; a card link's `aria-describedby` references that `id`, as it
+  references `VersionsMark`'s, so a screen reader reads the peer's name after
+  the video's. The video page band's text is read as part of the header.
+- The partial-result dialog is the `Dialog` component, named by its title;
+  its titles are a list (`ul`), so a screen reader announces how many failed.
 - The peer notice is the `Alert` component's own role; its action is a link
   named `Open Pairing`.
 - The pairing code is in a `code` element with `select-all`; `Copy` is an
