@@ -3,13 +3,13 @@
 VVMDM reads a video's title, description, date and image from any video link
 with its bundled work-info plugin `vv.link`, tries the plugins that declare
 domains in an order the owner sets, fills the empty fields of a virtual
-video created from a link, and fills a selection's empty fields by their work
-codes. The rules are in
+video created from a link, and fills a selection's empty fields from a
+plugin's search. The rules are in
 [`link_plugin.go`](../../internal/domain/link_plugin.go), the bundled plugin in
 [`link.go`](../../internal/wasmplugin/link.go) and
 [`link_page.go`](../../internal/wasmplugin/link_page.go), and the fills in
 [`link_fetch.go`](../../internal/app/link_fetch.go) and
-[`code_fill.go`](../../internal/app/code_fill.go). The sandbox and network
+[`work_info_fill.go`](../../internal/app/work_info_fill.go). The sandbox and network
 rules it shares are in [work-info-plugins.md](work-info-plugins.md).
 
 The diagram shows a virtual video created from a link.
@@ -153,18 +153,17 @@ worker belonged to the previous process.
 | Overwriting with the fetched values | The owner's typed title or description would be lost to a site's |
 | Trying only the first matching plugin | A site plugin that fails, such as one needing a login, would leave the video empty although the generic plugin can read it |
 
-## A selection fills its empty fields by code
+## A selection fills its empty fields by search
 
 `Fill info…` on the list selection bar
 ([library-ui.md, Selection bar](library-ui.md#selection-bar)) asks for one
-approved work-info plugin that fetches, and
+approved work-info plugin that searches and fetches, and
 `POST /api/work-info-plugins/{id}/fills` queues one fill for each selected
-user-data key whose work information has a code. The fill sends the code as
-the fetch's `id` and applies the result as the fill of a link fetch does,
-through the same worker, so a fill never waits on another for the runtime's
-run slot. The response returns at once with the keys queued and the keys
-left out for lacking a code; the cards update from the video events as each
-fill lands, and each run is recorded as the video's work-info fetch activity.
+user-data key. A fill searches with the key's work code, or the video's title
+without one, fetches the candidate that matches and applies the result as the
+fill of a link fetch does, through the same worker, so a fill never waits on
+another for the runtime's run slot. The response returns at once with the
+number queued; the cards update from the video events as each fill lands.
 
 The diagram shows one request from the selection bar to the filled videos.
 
@@ -174,18 +173,29 @@ sequenceDiagram
   participant H as POST fills
   participant S as Store
   participant Q as Fill worker
-  participant R as Plugin run
+  participant R as Plugin runs
   P->>H: plugin, videos, smart folders
-  H->>S: smart-folder members, codes per user-data key
-  H->>Q: queue every coded key, or none
-  H-->>P: 202, queued and without a code
+  H->>S: smart-folder members, one video and code per user-data key
+  H->>Q: queue every key, or none
+  H-->>P: 202, queued
   loop each queued key
-    Q->>R: fetch by the code
-    R-->>Q: work information or failure
-    Q->>S: fill empty fields only, then the cover if no image
-    S-->>P: video events, fetch activity
+    Q->>R: search by the code, or the title
+    R-->>Q: candidates
+    alt a candidate matches
+      Q->>R: fetch the candidate
+      Q->>S: fill empty fields only, then the cover if no image
+    else no match
+      Q->>S: failed fetch activity
+    end
   end
 ```
+
+No owner looks at the choice, so a fill takes a candidate only when it
+matches (`domain.MatchWorkInfoCandidate`): the first whose title or ID equals
+the search words once case, width, spaces and punctuation are ignored, or the
+only candidate. A search without a match writes nothing and is recorded as the
+video's failed work-info fetch, so Activity lists the videos left for
+`Fetch info…`; every other fill is recorded as a fetch too.
 
 The fill writes the empty fields of the
 [link fill table](#a-virtual-video-created-from-a-link-fills-its-empty-fields)
@@ -195,17 +205,18 @@ versions of a bundle share one code and one user-data key and are filled once,
 through the first version selected.
 
 The plugin is checked before anything is queued: a plugin that is not an
-approved work-info plugin declaring `fetch` with its required settings set
-answers with the same error as a single fetch. `vv.link` declares `fetch` but
-reads links only, so it answers `409 operation_unsupported` and the dialog
-does not offer it. The queue holds 20,000 fills,
-one selection at the bulk actions' limit, and takes a request whole or answers
+approved work-info plugin declaring `search` and `fetch` with its required
+settings set answers with the same error as a single run; `vv.link` declares
+no search, so the dialog does not offer it. The queue holds 20,000 fills, one
+selection at the bulk actions' limit, and takes a request whole or answers
 `503 work_info_fills_busy` without queuing any of it. Queued fills live in
-memory and end with the process; the activity shows which videos were filled.
+memory and end with the process.
 
 | Rejected | Why |
 | --- | --- |
-| Searching by title and taking the first candidate | A similar title fetches another work, and the fill would write its people and tags without the owner seeing them |
+| Taking the first candidate of every search | A similar title fetches another work, and the fill would write its people and tags without the owner seeing them |
+| Fetching by the code as the work's ID | Most sites' IDs are not the work's code, so most fills failed |
+| A review list of each video's candidate before applying | The owner would wait for every search; the match rule leaves the doubtful videos to `Fetch info…` |
 | Overwriting the selection's values | The owner's tags and details would be lost to a site's |
 | A job in the jobs table | Jobs are content work for ffmpeg workers; the fills share the in-memory worker of link fetches and its single run slot |
 | Applying to every video matching the list's filter | The selection bar acts on what is selected; a smart folder saved from the filter covers its matches |

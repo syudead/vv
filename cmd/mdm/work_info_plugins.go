@@ -24,7 +24,7 @@ func newWorkInfoPlugins(
 	registry := app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 		Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: db.Library(), Applier: db.Overrides(),
 		Matcher: db.Credits(), Network: network, Covers: covers, PersonImages: personImages,
-		People: db.Credits(), Codes: db.Overrides(),
+		People: db.Credits(), FillTargets: db.Overrides(),
 	})
 	registry.StartLinkFetches(ctx, db.VirtualVideos(), logger)
 	return registry, func() {

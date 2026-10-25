@@ -32,13 +32,13 @@ type linkFetchJob struct {
 	link  string
 }
 
-// linkFetches is the one worker behind every fill, link fetches and code fills alike, so fills never contend with
+// linkFetches is the one worker behind every fill, link fetches and selection fills alike, so fills never contend with
 // each other for the runtime's run slot.
 type linkFetches struct {
 	store  LinkFetchStore
 	logger *slog.Logger
 	queue  chan linkFetchJob
-	codes  codeFillQueue
+	fills  workInfoFillQueue
 	stop   context.CancelFunc
 	done   chan struct{}
 }
@@ -49,7 +49,7 @@ func (p *WorkInfoPlugins) StartLinkFetches(ctx context.Context, store LinkFetchS
 	ctx, stop := context.WithCancel(ctx)
 	f := &linkFetches{
 		store: store, logger: logger, queue: make(chan linkFetchJob, linkFetchQueueSize),
-		codes: codeFillQueue{jobs: make(chan codeFillJob, codeFillQueueSize)}, stop: stop, done: make(chan struct{}),
+		fills: workInfoFillQueue{jobs: make(chan workInfoFillJob, workInfoFillQueueSize)}, stop: stop, done: make(chan struct{}),
 	}
 	p.links = f
 	go func() {
@@ -60,8 +60,8 @@ func (p *WorkInfoPlugins) StartLinkFetches(ctx context.Context, store LinkFetchS
 				return
 			case job := <-f.queue:
 				p.runLinkFetch(ctx, job)
-			case job := <-f.codes.jobs:
-				p.runCodeFill(ctx, job)
+			case job := <-f.fills.jobs:
+				p.runWorkInfoFill(ctx, job)
 			}
 		}
 	}()

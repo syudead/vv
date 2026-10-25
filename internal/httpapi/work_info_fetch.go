@@ -116,8 +116,8 @@ func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id g
 	if !ok {
 		return
 	}
-	queued, err := s.workInfoPlugins.StartCodeFills(r.Context(), id, videoIDs)
-	if errors.Is(err, domain.ErrCodeFillQueueFull) {
+	queued, err := s.workInfoPlugins.StartWorkInfoFills(r.Context(), id, videoIDs)
+	if errors.Is(err, domain.ErrWorkInfoFillQueueFull) {
 		s.writeError(w, http.StatusServiceUnavailable, codeWorkInfoFillsBusy, "Too many fills are queued; try again later.")
 		return
 	}
@@ -126,7 +126,7 @@ func (s *server) StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id g
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusAccepted, gen.WorkInfoFillsQueued{Queued: queued.Queued, WithoutCode: queued.WithoutCode}, s.logger)
+	writeJSON(w, http.StatusAccepted, gen.WorkInfoFillsQueued{Queued: queued}, s.logger)
 }
 
 // Use empty arrays for absent lists; omit absent code and description.

@@ -31,13 +31,13 @@ type scriptedPlugins struct {
 	pageCover  bool
 	ids        []string
 	fillIDs    []int64
-	queued     domain.CodeFillsQueued
+	queued     int
 	// covers and personImages map an index to its kept image.
 	covers       map[int]domain.WorkInfoCover
 	personImages map[int]domain.WorkInfoCover
 }
 
-func (p *scriptedPlugins) StartCodeFills(_ context.Context, _ int64, videoIDs []int64) (domain.CodeFillsQueued, error) {
+func (p *scriptedPlugins) StartWorkInfoFills(_ context.Context, _ int64, videoIDs []int64) (int, error) {
 	p.calls++
 	p.fillIDs = videoIDs
 	return p.queued, p.err
@@ -222,14 +222,14 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 // Fills answer at once with the counts, and a full queue is its own busy code.
 func TestWorkInfoFillsAnswer(t *testing.T) {
 	e := newFetchRouteEnv(t)
-	e.plugins.queued = domain.CodeFillsQueued{Queued: 2, WithoutCode: 1}
+	e.plugins.queued = 2
 	status, body := e.post(fillsPath, `{"videoIds":[7,8,9]}`, e.owner)
 	var got gen.WorkInfoFillsQueued
-	if status != http.StatusAccepted || json.Unmarshal(body, &got) != nil || got.Queued != 2 || got.WithoutCode != 1 ||
+	if status != http.StatusAccepted || json.Unmarshal(body, &got) != nil || got.Queued != 2 ||
 		!slices.Equal(e.plugins.fillIDs, []int64{7, 8, 9}) {
 		t.Fatalf("fills = %d %s (ids %v)", status, body, e.plugins.fillIDs)
 	}
-	e.plugins.err = domain.ErrCodeFillQueueFull
+	e.plugins.err = domain.ErrWorkInfoFillQueueFull
 	status, body = e.post(fillsPath, `{"videoIds":[7]}`, e.owner)
 	assertErrorBody(t, "full queue", status, body, wantError{status: 503, code: gen.ErrorCodeWorkInfoFillsBusy})
 }

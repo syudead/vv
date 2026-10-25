@@ -1181,20 +1181,17 @@ export const en = {
       removeFromGroup: "Remove from group",
       fillInfo: "Fill info…",
       fillDialog: {
-        title: "Fill empty info by code",
+        title: "Fill empty info by search",
         description:
-          "Each video's work is fetched by its code, and only its empty tags, details and image are filled. Videos without a code are left out. The fetches run in the background, one at a time.",
+          "Each video is searched for by its code, or by its title without one. Only a result whose title or ID matches the search, or a single result, is used, and only the video's empty tags, details and image are filled. The fills run in the background, one at a time; videos without a match are listed as failed in Activity.",
         plugin: "Plugin",
         noPlugin:
-          "No approved plugin fetches works by ID. Add or approve one in Settings.",
+          "No approved plugin both searches and fetches works. Add or approve one in Settings.",
         submit: "Start",
         submitting: "Starting…",
         failed: (reason: string) => `Couldn't start the fills: ${reason}`,
       },
-      fillsQueued: (queued: number, withoutCode: number) =>
-        withoutCode === 0
-          ? `Filling ${videos(queued)} in the background`
-          : `Filling ${videos(queued)} in the background; ${videos(withoutCode)} without a code left out`,
+      fillsQueued: (queued: number) => `Filling ${videos(queued)} in the background`,
       deleteCollections: "Delete…",
       deleteNeedsCollection: "Select a group or smart folder",
       deleteDialog: {

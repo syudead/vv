@@ -5,7 +5,7 @@ import { startWorkInfoFills, type WorkInfoPlugin } from "../api/workInfoPlugins"
 import { errorText, t, type UiText } from "../i18n";
 import {
   approvedWorkPlugins,
-  canFetch,
+  canChooseFindBy,
   pluginLabel,
 } from "../player/workInfoFetch/fetchRules";
 import { useApprovedPlugins } from "../player/workInfoFetch/useApprovedPlugins";
@@ -31,15 +31,13 @@ interface Targets {
   smartFolderIds: readonly number[];
 }
 
-// The bundled plugin fetches by link only, so it cannot fill by code.
+// A fill searches, then fetches the matching candidate.
 function fillPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
-  return approvedWorkPlugins(plugins).filter(
-    (plugin) => canFetch(plugin) && !plugin.builtin,
-  );
+  return approvedWorkPlugins(plugins).filter(canChooseFindBy);
 }
 
 /**
- * Queue fills of the selection's empty fields by work code with one plugin
+ * Queue fills of the selection's empty fields from one plugin's search
  * (docs/design-docs/link-fetch.md). The server answers before any plugin runs, so the
  * selection stays and the cards update as each fill lands.
  */
@@ -87,7 +85,7 @@ function FillInfoDialog({ targets, onClose }: { targets: Targets; onClose: () =>
     setFailure(null);
     startWorkInfoFills(plugin.id, targets.videoIds, targets.smartFolderIds).then(
       (queued) => {
-        toast(t.library.selection.fillsQueued(queued.queued, queued.withoutCode));
+        toast(t.library.selection.fillsQueued(queued.queued));
         onClose();
       },
       (error: unknown) => {

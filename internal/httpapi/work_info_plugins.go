@@ -40,9 +40,9 @@ type WorkInfoPlugins interface {
 	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
-	// StartCodeFills queues fills by work code and returns at once; ErrCodeFillQueueFull when the queue has no room,
-	// or the errors workInfoRunError maps for a plugin that cannot fetch.
-	StartCodeFills(ctx context.Context, pluginID int64, videoIDs []int64) (domain.CodeFillsQueued, error)
+	// StartWorkInfoFills queues fills and returns how many at once; ErrWorkInfoFillQueueFull when the queue has no
+	// room, or the errors workInfoRunError maps for a plugin that cannot search and fetch.
+	StartWorkInfoFills(ctx context.Context, pluginID int64, videoIDs []int64) (int, error)
 	// FetchWorkInfoByLink fetches like FetchWorkInfo by a link; ErrWorkInfoLinkUnsupported for a link outside the
 	// plugin's domains.
 	FetchWorkInfoByLink(ctx context.Context, videoID, pluginID int64, link string) (domain.WorkInfoFetchResult, error)

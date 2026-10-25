@@ -554,10 +554,9 @@ The actions sit at the right end; those that do not fit move to the right end
 of the next line.
 
 `Fill info…` shares `Edit`'s limit and opens a dialog that picks a work-info
-plugin and queues fills of the selection's empty fields by work code
-([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-by-code)).
-A toast counts the videos queued and those left out without a code; the
-selection stays.
+plugin and queues fills of the selection's empty fields from its search
+([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-by-search)).
+A toast counts the videos queued; the selection stays.
 
 `Delete…` (`ghost-destructive`) removes the selected collections, never videos.
 It is disabled with the reason `Select a group or smart folder` until a group

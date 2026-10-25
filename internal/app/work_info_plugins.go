@@ -53,8 +53,8 @@ type WorkInfoPluginsOptions struct {
 	Network WorkInfoRunNetworkSource
 
 	Covers WorkInfoCoverApplier
-	// Codes serves fills by work code; nil leaves them unconfigured.
-	Codes WorkInfoCodes
+	// FillTargets serves selection fills; nil leaves them unconfigured.
+	FillTargets WorkInfoFillTargets
 	// PersonImages gives linked people without a face their fetched images; nil drops them.
 	PersonImages WorkInfoPersonImageFiller
 	// People serves the person page's fetches; nil leaves them unconfigured.
@@ -70,14 +70,14 @@ type WorkInfoRunNetworkSource interface {
 
 // WorkInfoPlugins manages plugin registration.
 type WorkInfoPlugins struct {
-	store   WorkInfoPluginStore
-	runtime WorkInfoPluginRuntime
-	videos  WorkInfoVideos
-	applier FetchedWorkInfoApplier
-	matcher WorkInfoCreditMatcher
-	network WorkInfoRunNetworkSource
-	covers  WorkInfoCoverApplier
-	codes   WorkInfoCodes
+	store       WorkInfoPluginStore
+	runtime     WorkInfoPluginRuntime
+	videos      WorkInfoVideos
+	applier     FetchedWorkInfoApplier
+	matcher     WorkInfoCreditMatcher
+	network     WorkInfoRunNetworkSource
+	covers      WorkInfoCoverApplier
+	fillTargets WorkInfoFillTargets
 	// personImages may be nil.
 	personImages WorkInfoPersonImageFiller
 	people       PersonPluginPeople
@@ -95,7 +95,7 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 	}
 	return &WorkInfoPlugins{
 		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, matcher: opts.Matcher,
-		network: opts.Network, covers: opts.Covers, codes: opts.Codes, personImages: opts.PersonImages, people: opts.People,
+		network: opts.Network, covers: opts.Covers, fillTargets: opts.FillTargets, personImages: opts.PersonImages, people: opts.People,
 		now: now, fetches: newWorkInfoFetches(),
 	}
 }

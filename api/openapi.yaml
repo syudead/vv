@@ -2437,8 +2437,8 @@ paths:
   /api/work-info-plugins/{id}/fills:
     post:
       operationId: startWorkInfoFills
-      summary: "Fill selected videos' empty fields by their work codes"
-      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags, takes the first video of each user-data key, and queues one fetch per key whose work information has a code, sending the code as the fetch id. Returns 202 at once with the keys queued and the keys left out for lacking a code (or for a code over 200 characters). Each queued fetch runs in the background, one at a time on the worker that runs link fetches, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, and the first cover when the video has no image; a title is never written. Every run is recorded as the video's work-info fetch activity. A missing plugin returns 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared fetch or the bundled link-only plugin vv.link 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing."
+      summary: "Fill selected videos' empty fields from a work-info plugin's search"
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags, takes the first video of each user-data key, and queues one fill per key. Returns 202 at once with the number queued. Each fill runs in the background, one at a time on the worker that runs link fetches: it searches with the key's work code, or the video's title without one, fetches the candidate whose title or id equals the search words ignoring case, width, spaces and punctuation, or the only candidate, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, and the first cover when the video has no image; a title is never written. Every fill is recorded as the video's work-info fetch activity, a search without a matching candidate as a failure. A missing plugin returns 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared search or fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing."
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       requestBody:
@@ -9039,15 +9039,12 @@ components:
 
     WorkInfoFillsQueued:
       type: object
-      required: [queued, withoutCode]
+      required: [queued]
       additionalProperties: false
       properties:
         queued:
           type: integer
           description: "User-data keys whose fill was queued."
-        withoutCode:
-          type: integer
-          description: "User-data keys left out because their work information has no code that can be sent."
 
     VideoTagsSummaryItem:
       type: object

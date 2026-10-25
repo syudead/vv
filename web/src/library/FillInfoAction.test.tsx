@@ -24,7 +24,7 @@ function install(plugins: WorkInfoPlugin[]) {
     }
     if (url.endsWith("/fills") && init?.method === "POST") {
       fills.push({ url, body: JSON.parse(String(init.body)) });
-      return Promise.resolve(jsonResponse({ queued: 2, withoutCode: 1 }, 202));
+      return Promise.resolve(jsonResponse({ queued: 2 }, 202));
     }
     throw new Error(`想定しない要求: ${init?.method ?? "GET"} ${url}`);
   });
@@ -52,11 +52,12 @@ afterEach(() => {
 });
 
 describe("FillInfoAction", () => {
-  it("取得できる承認済みプラグインで選択の補完を始め、件数を知らせる", async () => {
+  it("検索と取得ができる承認済みプラグインで選択の補完を始め、件数を知らせる", async () => {
     const fills = install([
       { ...works, id: 5, name: "search only", operations: ["search"] },
       { ...works, id: 6, name: "people", kind: "person" },
       { ...works, id: 7, name: "vv.link", operations: ["fetch"], builtin: true },
+      { ...works, id: 8, name: "unapproved", state: "unapproved" },
       works,
     ]);
     renderAction();
@@ -66,9 +67,7 @@ describe("FillInfoAction", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
 
-    await screen.findByText(
-      "Filling 2 videos in the background; 1 video without a code left out",
-    );
+    await screen.findByText("Filling 2 videos in the background");
     expect(fills).toEqual([
       {
         url: `/api/work-info-plugins/${String(works.id)}/fills`,
@@ -78,12 +77,12 @@ describe("FillInfoAction", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("取得できるプラグインがなければ理由を示し、始められない", async () => {
+  it("検索と取得ができるプラグインがなければ理由を示し、始められない", async () => {
     install([{ ...works, state: "unapproved" }]);
     renderAction();
     await userEvent.click(screen.getByRole("button", { name: "Fill info…" }));
     await screen.findByText(
-      "No approved plugin fetches works by ID. Add or approve one in Settings.",
+      "No approved plugin both searches and fetches works. Add or approve one in Settings.",
     );
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Start" }).disabled,

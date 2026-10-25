@@ -6957,9 +6957,6 @@ type WorkInfoField string
 type WorkInfoFillsQueued struct {
 	// Queued User-data keys whose fill was queued.
 	Queued int `json:"queued"`
-
-	// WithoutCode User-data keys left out because their work information has no code that can be sent.
-	WithoutCode int `json:"withoutCode"`
 }
 
 // WorkInfoFillsRequest defines model for WorkInfoFillsRequest.
@@ -8742,7 +8739,7 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
-	// StartWorkInfoFills Fill selected videos' empty fields by their work codes
+	// StartWorkInfoFills Fill selected videos' empty fields from a work-info plugin's search
 	// (POST /api/work-info-plugins/{id}/fills)
 	StartWorkInfoFills(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
