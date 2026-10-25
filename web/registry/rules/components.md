@@ -515,6 +515,21 @@ element around it says "tentative" to screen readers.
 
 Do not use it for anything other than tentative tags.
 
+### RemoteMark
+
+Item `remote-mark`. The mark of a video, group, smart folder or media folder
+that the paired VVMDM holds: lucide `Laptop` at `size-3` (`size-4` in the
+video page's band) with a `Tooltip` and sr-only text, "On {name}", both from
+the caller. It goes first among an item's marks: in the duration pill of a
+card, the duration cell of a row, a collection page's count line and the
+video page's band. It has no fill, border or colour of its own and is drawn
+in its line's text colour. It is not a control; a card link that contains it
+references its sr-only text through `id` in `aria-describedby`, as it does a
+versions mark.
+
+Do not use it for tags, tag kinds, people or organizations, which are one
+entry on both nodes, or write the node's name on every card instead.
+
 ### ScrubPreview
 
 Item `scrub-preview`. The card scrub: a band at the bottom fifth of a card's

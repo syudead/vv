@@ -7,15 +7,23 @@ import { t, type UiText } from "../i18n";
 import { useToast } from "../ui/Toast";
 import { Separator } from "../ui/shadcn/separator";
 import {
+  collectionTitleIn,
+  type RemotePartial,
+  remotePartial,
+} from "./RemotePartialDialog";
+import {
   DisabledReason,
   disabledProps,
   SelectionAction,
   WithTooltip,
 } from "./SelectionAction";
+import type { SelectionTarget } from "./selection";
 
 interface Targets {
   groupIds: readonly number[];
   smartFolderIds: readonly number[];
+  /** The cards as the list showed them, for naming what the peer did not delete. */
+  cards: readonly SelectionTarget[];
 }
 
 function deletedMessage(result: CollectionsDeleteResponse): UiText {
@@ -32,11 +40,15 @@ function deletedMessage(result: CollectionsDeleteResponse): UiText {
 export default function DeleteCollectionsAction({
   groupIds,
   smartFolderIds,
+  cards,
   disabledReason,
   onDeleted,
+  onPartial,
 }: Targets & {
   disabledReason: UiText | undefined;
   onDeleted: () => void;
+  /** The peer kept some collections; the bar names them in place of the toast. */
+  onPartial: (partial: RemotePartial) => void;
 }) {
   const words = t.library.selection.deleteDialog;
   const toast = useToast();
@@ -53,7 +65,7 @@ export default function DeleteCollectionsAction({
           icon={<Trash2 aria-hidden="true" />}
           label={t.library.selection.deleteCollections}
           {...disabledProps(disabledReason, reasonId)}
-          onClick={() => setTargets({ groupIds, smartFolderIds })}
+          onClick={() => setTargets({ groupIds, smartFolderIds, cards })}
         />
       </WithTooltip>
       <DisabledReason id={reasonId} reason={disabledReason} />
@@ -62,8 +74,14 @@ export default function DeleteCollectionsAction({
           request={() => deleteCollections(targets.groupIds, targets.smartFolderIds)}
           onDone={(result) => {
             setTargets(null);
-            toast(deletedMessage(result));
+            const partial = remotePartial(
+              result.remote,
+              collectionTitleIn(targets.cards),
+              "deleted",
+            );
+            if (partial === null) toast(deletedMessage(result));
             onDeleted();
+            if (partial !== null) onPartial(partial);
           }}
           onClose={() => setTargets(null)}
           // The endpoint ignores missing targets, so it never answers 404.

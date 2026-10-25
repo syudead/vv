@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, type ReactNode, Suspense } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 import { useAudience } from "../auth/audience";
@@ -7,6 +7,8 @@ import { LIBRARY_PATH } from "../library/libraryPath";
 import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
 import AppShell from "../shell/AppShell";
+import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
+import { PeerProvider } from "../shell/PeerProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -91,6 +93,12 @@ const DesignSystemPage = import.meta.env.DEV
   ? lazy(() => import("../designSystem/DesignSystemPage"))
   : null;
 
+/** A shell page with the peer notice above it while the peer cannot be reached. */
+function ShellPage({ children }: { children: ReactNode }) {
+  const notice = usePeerNoticeShown();
+  return <AppShell notice={notice ? <PeerNotice /> : undefined}>{children}</AppShell>;
+}
+
 function AppRoutes() {
   const location = useLocation();
   const owner = useAudience() === "owner";
@@ -107,9 +115,9 @@ function AppRoutes() {
           <Route
             path={LIBRARY_PATH}
             element={
-              <AppShell>
+              <ShellPage>
                 <LibraryPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           {["/folders", "/folders/*"].map((path) => (
@@ -117,9 +125,9 @@ function AppRoutes() {
               key={path}
               path={path}
               element={
-                <AppShell>
+                <ShellPage>
                   <FolderPage />
-                </AppShell>
+                </ShellPage>
               }
             />
           ))}
@@ -128,114 +136,114 @@ function AppRoutes() {
               key={path}
               path={path}
               element={
-                <AppShell>
+                <ShellPage>
                   <SettingsPage />
-                </AppShell>
+                </ShellPage>
               }
             />
           ))}
           <Route
             path="/tags"
             element={
-              <AppShell>
+              <ShellPage>
                 <TagsPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/people"
             element={
-              <AppShell>
+              <ShellPage>
                 <PeoplePage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/people/:id"
             element={
-              <AppShell>
+              <ShellPage>
                 <PersonPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/people/:id/faces"
             element={
-              <AppShell>
+              <ShellPage>
                 <PersonFacesPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/organizations"
             element={
-              <AppShell>
+              <ShellPage>
                 <OrganizationsPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/history"
             element={
-              <AppShell>
+              <ShellPage>
                 <HistoryPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/playlists"
             element={
-              <AppShell>
+              <ShellPage>
                 <PlaylistsPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/playlists/:id"
             element={
-              <AppShell>
+              <ShellPage>
                 <PlaylistPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/groups/:id"
             element={
-              <AppShell>
+              <ShellPage>
                 <GroupPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/smart-folders/:id"
             element={
-              <AppShell>
+              <ShellPage>
                 <SmartFolderPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/duplicates"
             element={
-              <AppShell>
+              <ShellPage>
                 <DuplicatesPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/activity"
             element={
-              <AppShell>
+              <ShellPage>
                 <ActivityPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route
             path="/activity/:id"
             element={
-              <AppShell>
+              <ShellPage>
                 <ActivityDetailPage />
-              </AppShell>
+              </ShellPage>
             }
           />
           <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
@@ -263,7 +271,9 @@ function LibraryApp() {
     <TooltipProvider>
       <ScanProvider>
         <ScanNoticeProvider>
-          <AppRoutes />
+          <PeerProvider>
+            <AppRoutes />
+          </PeerProvider>
         </ScanNoticeProvider>
       </ScanProvider>
     </TooltipProvider>

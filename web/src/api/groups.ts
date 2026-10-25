@@ -101,16 +101,22 @@ export interface ListGroupsParams {
   /** Opaque nextCursor from the previous response. */
   cursor?: string;
   limit?: number;
+  /** The node whose groups are listed; the peer's when the picked videos are remote. */
+  node?: GroupNode;
   signal?: AbortSignal;
 }
+
+export type GroupNode = "local" | "peer";
 
 export function listGroups({
   q,
   cursor,
   limit,
+  node,
   signal,
 }: ListGroupsParams = {}): Promise<GroupListPage> {
   const params = new URLSearchParams();
+  if (node === "peer") params.set("node", node);
   if (q !== undefined && q.trim() !== "") params.set("q", q);
   if (cursor !== undefined) params.set("cursor", cursor);
   if (limit !== undefined) params.set("limit", String(limit));
@@ -121,12 +127,15 @@ export function listGroups({
 }
 
 /** Read all pages without a page-count cap; reject repeated cursors instead of returning an incomplete list. */
-export async function listAllGroups(signal?: AbortSignal): Promise<LibraryGroup[]> {
+export async function listAllGroups(
+  signal?: AbortSignal,
+  node?: GroupNode,
+): Promise<LibraryGroup[]> {
   const groups: LibraryGroup[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined;
   do {
-    const answer = await listGroups({ cursor, limit: MAX_PAGE_SIZE, signal });
+    const answer = await listGroups({ cursor, limit: MAX_PAGE_SIZE, node, signal });
     groups.push(...answer.groups);
     cursor = answer.nextCursor;
     if (cursor !== undefined && seen.has(cursor)) {

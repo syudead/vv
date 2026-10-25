@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { subscribeServerEvents } from "../api/serverEvents";
 import { listTagPage, type Tag, tagPageLimit } from "../api/tags";
 import { errorText, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
@@ -248,6 +249,17 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
       moreAbortRef.current?.abort();
     },
     [],
+  );
+
+  // Names held only by the peer enter or leave the list when it connects or drops.
+  useEffect(
+    () =>
+      subscribeServerEvents({
+        peerItems: () => {
+          if (pageRef.current !== undefined) void reload();
+        },
+      }),
+    [reload],
   );
 
   return {

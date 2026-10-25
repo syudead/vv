@@ -90,6 +90,7 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { Toaster } from "../ui/shadcn/sonner";
 import { Spinner } from "../ui/shadcn/spinner";
 import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
+import RemoteMark from "../ui/RemoteMark";
 import TentativeMark from "../ui/TentativeMark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
@@ -575,7 +576,10 @@ function VvComponents() {
           <State label={o.states.selected}>
             <VideoThumbnail selected className="w-card-0 max-w-full">
               <div className="size-full bg-linear-to-br from-secondary to-muted" />
-              <VideoThumbnailDuration>{o.thumbnail.duration}</VideoThumbnailDuration>
+              <VideoThumbnailDuration>
+                <RemoteMark label={o.thumbnail.remote} />
+                {o.thumbnail.duration}
+              </VideoThumbnailDuration>
             </VideoThumbnail>
           </State>
           <State label={o.states.disabled}>

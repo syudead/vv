@@ -43,6 +43,23 @@ function removeIds(
   return { ...selection, ids, groups };
 }
 
+/**
+ * Keep only these videos selected, as after an operation the peer did not apply to them; a group
+ * stays selected when all its members stay, and smart folders leave.
+ */
+export function retainVideos(
+  selection: LibrarySelection,
+  kept: ReadonlySet<number>,
+): LibrarySelection {
+  const removed = removeIds(
+    selection,
+    [...selection.ids].filter((id) => !kept.has(id)),
+  );
+  return selection.smartFolders.size === 0
+    ? removed
+    : { ...removed, smartFolders: new Set() };
+}
+
 /** Restrict selection to loaded items so vanished videos cannot be mutated in batches. */
 export function keepMembers(
   selection: LibrarySelection,

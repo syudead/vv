@@ -231,8 +231,10 @@ describe("App", () => {
     expect(names).toEqual(["Home", "Folders", "Sign in"]);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // The pairing state is guest-capable: it decides the guest's peer notice.
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
       "/api/auth/session",
+      "/api/peer",
     ]);
     expect(FakeEventSource.instances).toHaveLength(0);
   });

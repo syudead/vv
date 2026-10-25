@@ -1,4 +1,4 @@
-export { errorText, probeErrorText, scanErrorText } from "./errors";
+export { errorReasonText, errorText, probeErrorText, scanErrorText } from "./errors";
 export {
   formatDate,
   formatDateTime,

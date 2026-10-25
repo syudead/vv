@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { useAudience } from "../auth/audience";
 import { errorText, type UiText } from "../i18n";
 import {
   type FolderListing,
@@ -10,6 +11,7 @@ import {
   RequestFailed,
   type RootFolderListing,
 } from "./client";
+import { subscribeServerEvents } from "./serverEvents";
 
 export interface FolderListingState<T> {
   data: T | null;
@@ -110,6 +112,12 @@ function useFolderData<T>(
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
   const refresh = useCallback(() => setQuietGeneration((value) => value + 1), []);
+  // The peer's roots and folders enter or leave when it connects or drops; guests open no stream here.
+  const owner = useAudience() === "owner";
+  useEffect(
+    () => (owner ? subscribeServerEvents({ peerItems: refresh }) : undefined),
+    [owner, refresh],
+  );
   const update = useCallback(
     (change: (data: T) => T) =>
       setData((current) => (current === null ? current : change(current))),

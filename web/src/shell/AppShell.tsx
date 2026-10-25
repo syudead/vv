@@ -7,8 +7,17 @@ import TopBar from "./TopBar";
 // The desktop rail never expands; do not capture Ctrl/Meta+B and block the browser's bookmark shortcut.
 const railOnly = () => undefined;
 
-/** Desktop stays collapsed; SidebarProvider owns only the narrow-screen drawer state. */
-export default function AppShell({ children }: { children: ReactNode }) {
+/**
+ * Desktop stays collapsed; SidebarProvider owns only the narrow-screen drawer state. `notice` is one
+ * Alert at the top of the content column, above the page, with the page's side padding.
+ */
+export default function AppShell({
+  notice,
+  children,
+}: {
+  notice?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <SidebarProvider
       open={false}
@@ -19,7 +28,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <TopBar />
       <div className="flex flex-1 pt-navbar">
         <Sidebar />
-        <SidebarInset>{children}</SidebarInset>
+        <SidebarInset>
+          {notice !== undefined && notice !== null && (
+            <div data-slot="app-shell-notice" className="px-3 pt-3 sm:px-4 sm:pt-4">
+              {notice}
+            </div>
+          )}
+          {children}
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );

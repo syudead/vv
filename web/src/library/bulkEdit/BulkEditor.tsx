@@ -23,6 +23,7 @@ import { Skeleton } from "../../ui/shadcn/skeleton";
 import TagCommand from "../../ui/TagCommand";
 import { useToast } from "../../ui/Toast";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
+import { type RemotePartial, remotePartial, videoTitleIn } from "../RemotePartialDialog";
 import { editTargetsOf, type SelectionTarget } from "../selection";
 import { buildAddOptions } from "../tagChoices";
 import DateField from "./DateField";
@@ -106,7 +107,7 @@ export default function BulkEditor({
 }: {
   targets: readonly SelectionTarget[];
   onClose: () => void;
-  onApplied: (removedTagIds: readonly number[]) => void;
+  onApplied: (removedTagIds: readonly number[], partial: RemotePartial | null) => void;
 }) {
   const b = t.library.bulkEdit;
   const toast = useToast();
@@ -155,7 +156,11 @@ export default function BulkEditor({
       created.current,
     );
     const result = await applyVideoEdits(editTargets, changes, removedTags);
-    return { applied: result.applied, removedTagIds: removedTags.map((tag) => tag.id) };
+    return {
+      applied: result.applied,
+      removedTagIds: removedTags.map((tag) => tag.id),
+      partial: remotePartial(result.remote, videoTitleIn(included), "changed"),
+    };
   }
 
   function apply() {
@@ -163,9 +168,10 @@ export default function BulkEditor({
     setPending(true);
     setFailure(null);
     send(state.summary).then(
-      ({ applied, removedTagIds }) => {
-        toast(b.applied(applied));
-        onApplied(removedTagIds);
+      ({ applied, removedTagIds, partial }) => {
+        // A partial answer names the peer's failures in a dialog instead of a toast.
+        if (partial === null) toast(b.applied(applied));
+        onApplied(removedTagIds, partial);
         onClose();
       },
       (error: unknown) => {

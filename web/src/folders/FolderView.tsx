@@ -24,6 +24,8 @@ import { useScanControls } from "../shell/ScanProvider";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
+import { isRemoteId } from "../lib/remoteId";
+import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { Button } from "../ui/shadcn/button";
 import { criteriaKey } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
@@ -371,7 +373,12 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
           />
           {/* Breadcrumbs show the location visually; keep the title screen-reader-only. */}
-          <PageHeader titleHidden titleRef={heading} title={name ?? t.folders.title} />
+          <PageHeader
+            titleHidden
+            titleRef={heading}
+            title={name ?? t.folders.title}
+            count={isRemoteId(folder.rootId) ? <RemoteCountLine remote /> : undefined}
+          />
         </>
       }
       toolbar={

@@ -1,4 +1,5 @@
 import type { Video } from "../api/client";
+import { isRemoteId } from "../lib/remoteId";
 import type { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import AutoTagButton from "./AutoTagButton";
@@ -180,7 +181,10 @@ function OwnerTags({ video, reread }: { video: Video; reread: () => void }) {
         onChanged={reread}
       />
       {}
-      <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
+      {/* Analysis stays on the node that holds the file. */}
+      {!isRemoteId(video.id) && (
+        <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
+      )}
     </>
   );
 }
