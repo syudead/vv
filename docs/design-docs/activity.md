@@ -172,6 +172,31 @@ external API's video and tag pairs are found inside SQLite, so a
 20000-video selection costs no extra statements. Owner entries are never
 `attention`, so they close nothing.
 
+## An assistant run is one entry per approved proposal
+
+Approving an assistant proposal writes one `assistant_run` entry (feature
+`assistant`, subject kind `proposal`, label the owner's request, decider
+`owner`), and `AssistantStore` updates it in the transactions that run the
+proposal ([assistant.md](assistant.md#a-write-is-a-proposal-the-worker-executes)).
+Its `detail` is JSON with the operation id and the `total`, `applied` and
+`failed` counts, from which the screen composes the result line.
+
+| Proposal | Entry |
+| --- | --- |
+| Approved | `running`/`waiting` |
+| Claimed by the worker | `running`/`processing` |
+| Every batch applied | `done`/`completed` |
+| A later batch failed, or a video was gone between batches | `done`/`partial` |
+| A label or video changed before the first call | `done`/`stale` |
+| The first batch failed | `done`/`failed` |
+| `running` at startup | `attention`/`interrupted` |
+
+The operations the run calls write their own per-video entries as they do for
+the screens, decided by `owner`, since the owner approved the write. Favorites,
+playlists and visibility write no per-video entry, so the run entry is their
+record. An approved proposal not yet claimed stays `waiting` across a restart
+and runs.
+
 ## Startup marks claimed entries interrupted
 
 Before the workers start, every `running` entry with reason `processing`

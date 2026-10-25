@@ -32,6 +32,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Auto-tagging with a decision model](auto-tagging.md)
 - [AI layer: classifier port and providers](ai-layer.md)
 - [Judging possible duplicates automatically](duplicate-judging.md)
+- [In-app assistant](assistant.md)
 - [Bundled versions keep every side's data](video-versions.md)
 - [Activity log](activity.md)
 - [Thumbnail editing sessions](thumbnail-editing.md)

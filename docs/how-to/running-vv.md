@@ -341,6 +341,44 @@ uses software. The startup log shows each test's result
 (`transcode video encoder checks finished`), and a failed test is logged with
 the end of FFmpeg's error output.
 
+## Assistant
+
+The assistant answers requests typed in its panel with a chat model on the
+owner's own Ollama. It needs Ollama 0.5.0 or later, reachable from the server,
+with a chat model pulled; the decision model used for tagging cannot chat. On
+a CPU-only host, a model over 8B makes each request wait minutes. The design
+is in [assistant.md](../design-docs/assistant.md).
+
+1. Pull a chat model on the Ollama host with `ollama pull <model>`.
+2. In Settings, Connections, Ollama, save the Ollama URL.
+3. Choose the model under `Generation model`; the list comes from the saved
+   URL, and a typed name is kept.
+4. Press `Save and test connection` and wait for
+   `Ollama is running and has both models.`
+
+Until a generation model is saved, the panel shows
+`Choose a model for the assistant` with a link to Connections instead of the
+request field. Clearing the field (`None`) turns the assistant off again and
+keeps the connection.
+
+The browser e2e test answers fixed outcomes from a stub, so how a real model
+reads Japanese requests is checked by hand after a change to the prompt, the
+outcome schema or the catalog. On a library with at least 30 videos, the tags
+`コスプレ衣装` and `コスプレ衣裳`, one person with credits, and watched and
+unwatched videos:
+
+| Request | Expected |
+| --- | --- |
+| `去年追加した30分以上の未視聴` on the library | Chips for last year, 30 minutes and unwatched |
+| `これにコスプレ衣装タグを付けて` with three videos selected | A card naming 3 videos and the tag; nothing changes until `Execute` |
+| `長いのは除いて` after it | The card is replaced by one with fewer videos |
+| `コスプレ衣裳タグをコスプレ衣装に統合して` | A card marked `Can’t be undone` with the number of videos that move |
+| `コスプレのタグを消して` | The thread asks which of the two tags; nothing is deleted |
+| `〇〇の出演作は何本？` with a person's name | The number on that person's page |
+| `タグを整理して` | Progress, then the review list with the two tags as one candidate |
+| `APIトークンを作って` | The assistant can’t do that |
+| Any request with Ollama stopped | The thread names the connection; nothing changes |
+
 ## Face recognition downloads
 
 VVMDM downloads nothing for face recognition until the owner turns it on

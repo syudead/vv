@@ -394,6 +394,14 @@ export function generateVideoTabsFixtures(root) {
   generateHueClips(root, VIDEO_TABS_VIDEOS, 12);
 }
 
+/** Four clips for assistant.e2e.ts, which marks two of them in progress. */
+export const ASSISTANT_VIDEOS = ["助手確認A", "助手確認B", "助手確認C", "助手確認D"];
+
+export function generateAssistantFixtures(root) {
+  // No other fixture uses this frame rate, so no content key matches another suite's video.
+  generateHueClips(root, ASSISTANT_VIDEOS, 9);
+}
+
 /** Two-second silent clips, one per title, each in its own hue. */
 function generateHueClips(root, titles, rate) {
   mkdirSync(root, { recursive: true });
