@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -9,10 +10,12 @@ import (
 
 // remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
 // an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
-// space, and without it the answer passes through.
+// space, and without it the answer passes through. request, when set, turns the request body into the peer's
+// id space, or answers r and reports false.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
+	request func(s *server, w http.ResponseWriter, r *http.Request) bool
 }
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
@@ -40,12 +43,14 @@ var remoteVideoOperations = map[string]remoteOperation{
 // remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and
 // organizations.
 var remoteVocabularyOperations = map[string]remoteOperation{
-	"PATCH /api/tags/{id}":          {rewrite: rewriteAs(rewriteRemoteTag)},
-	"GET /api/people/{id}":          {rewrite: rewriteAs(rewriteRemotePerson)},
-	"PATCH /api/people/{id}":        {rewrite: rewriteAs(rewriteRemotePerson)},
-	"GET /api/people/{id}/image":    {},
-	"GET /api/organizations/{id}":   {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
-	"PATCH /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
+	"PATCH /api/tags/{id}":        {rewrite: rewriteAs(rewriteRemoteTag)},
+	"GET /api/people/{id}":        {rewrite: rewriteAs(rewriteRemotePerson)},
+	"PATCH /api/people/{id}":      {rewrite: rewriteAs(rewriteRemotePerson)},
+	"GET /api/people/{id}/image":  {},
+	"GET /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
+	"PATCH /api/organizations/{id}": {
+		rewrite: rewriteAs(rewriteRemoteOrganizationEntity), request: (*server).remoteOrganizationPatch,
+	},
 }
 
 // rewriteAs decodes the answer into the operation's generated type, so the type says which ids are videos and

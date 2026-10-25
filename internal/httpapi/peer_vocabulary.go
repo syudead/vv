@@ -1,11 +1,16 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -254,4 +259,76 @@ func listMergedCredits[T any](s *server, w http.ResponseWriter, r *http.Request,
 		return
 	}
 	s.writeCreditBody(w, http.StatusOK, merge.list(items, total, totalAll, next))
+}
+
+// remoteOrganizationPatch sends the parent of a forwarded organization edit as the peer's id: a remote parent
+// loses the offset, and a local one goes as the peer's organization of the same name, which must exist there.
+func (s *server) remoteOrganizationPatch(w http.ResponseWriter, r *http.Request) bool {
+	var patch gen.CreditPatch
+	raw, ok := s.readJSONBodyRaw(w, r, &patch)
+	if !ok {
+		return false
+	}
+	if patch.ParentId != nil {
+		parentID, ok := s.peerOrganizationID(w, r, *patch.ParentId)
+		if !ok {
+			return false
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			s.invalidBody(w, err, "Cannot parse the JSON body.")
+			return false
+		}
+		for key := range fields {
+			if strings.EqualFold(key, "parentId") {
+				delete(fields, key)
+			}
+		}
+		fields["parentId"] = json.RawMessage(strconv.FormatInt(parentID, 10))
+		var err error
+		if raw, err = json.Marshal(fields); err != nil {
+			s.internalError(w, "Could not forward the request to the other VVMDM.", err)
+			return false
+		}
+	}
+	r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(raw)), int64(len(raw))
+	return true
+}
+
+// peerOrganizationID is the peer's id of the organization id names on the screens; among the peer's
+// organizations of a local organization's name it takes the lowest id, as the join does.
+func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id int64) (int64, bool) {
+	if domain.IsRemoteID(id) {
+		return domain.FromRemoteID(id), true
+	}
+	local, err := s.credits.Get(r.Context(), domain.CreditOrganization, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFoundReason(w, gen.ErrorReasonOrganizationNotFound, "The parent organization was not found.")
+		return 0, false
+	}
+	if err != nil {
+		s.internalError(w, "Could not load the parent organization.", err)
+		return 0, false
+	}
+	var answer gen.OrganizationList
+	if err := s.peerGet(r, "/api/organizations", url.Values{"q": {local.Name}}, &answer); err != nil {
+		if errors.Is(err, domain.ErrPeerUnreachable) {
+			s.peerUnreachable(w)
+		} else {
+			s.internalError(w, "Could not read the organizations of the other VVMDM.", err)
+		}
+		return 0, false
+	}
+	var peerID int64
+	for _, organization := range answer.Items {
+		if organization.Name == local.Name && (peerID == 0 || organization.Id < peerID) {
+			peerID = organization.Id
+		}
+	}
+	if peerID == 0 {
+		s.notFoundReason(w, gen.ErrorReasonOrganizationNotFound,
+			"The parent organization does not exist on the other VVMDM.")
+		return 0, false
+	}
+	return peerID, true
 }

@@ -115,6 +115,9 @@ func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, col
 		s.notFound(w, "This operation is not available for a "+collection.noun+" of the other VVMDM.")
 		return
 	}
+	if op.request != nil && !op.request(s, w, r) {
+		return
+	}
 	out, err := remoteRequest(r, collection.prefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")

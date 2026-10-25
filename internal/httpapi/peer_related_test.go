@@ -70,6 +70,10 @@ func TestRelatedVideosOfALocalVideoRankBothNodes(t *testing.T) {
 	if slices.Contains(ids, b.ids["a"]) {
 		t.Errorf("開いている動画が一覧にある: %v", ids)
 	}
+	// The peer's tag of the same name is b's tag, so the remote card's chip opens it.
+	if tags := related.Items[1].Tags; len(tags) != 1 || tags[0].Id != b.tagID {
+		t.Errorf("a の a のタグ = %+v, want 手元の ID %d", tags, b.tagID)
+	}
 
 	var paged []int64
 	target := b.videoPath("a", "/related?limit=4")

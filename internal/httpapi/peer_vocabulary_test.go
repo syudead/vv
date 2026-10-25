@@ -171,6 +171,61 @@ func TestMergedPeopleListAndARemotePersonsPageAndImage(t *testing.T) {
 	}
 }
 
+func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	organization := func(f *guestFixture, name string) int64 {
+		credit, err := f.env.db.Credits().Create(ctx, domain.CreditOrganization, domain.CreditInput{Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return credit.ID
+	}
+	localOnly := organization(fb, "手元だけ")
+	localLabel := organization(fb, "レーベル")
+	studio := organization(fa, "スタジオ")
+	series := organization(fa, "系列")
+	peerLabel := organization(fa, "レーベル")
+	if peerLabel == localLabel {
+		t.Fatalf("レーベルの ID が両方の台で %d; 書き換えを確かめられない", peerLabel)
+	}
+	path := "/api/organizations/" + strconv.FormatInt(domain.ToRemoteID(studio), 10)
+	parentOnA := func() int64 {
+		credit, err := fa.env.db.Credits().Get(ctx, domain.CreditOrganization, studio)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if credit.Parent == nil {
+			return 0
+		}
+		return credit.Parent.ID
+	}
+
+	for _, tc := range []struct {
+		name     string
+		parentID int64
+		want     int64
+	}{
+		{"相手だけの親", domain.ToRemoteID(series), series},
+		{"同じ名前の手元の親", localLabel, peerLabel},
+	} {
+		rec := b.owner(http.MethodPatch, path, fmt.Sprintf(`{"parentId":%d}`, tc.parentID))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d: %s", tc.name, rec.Code, rec.Body)
+		}
+		if got := parentOnA(); got != tc.want {
+			t.Errorf("%s: a の親 = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+
+	rec := b.owner(http.MethodPatch, path, fmt.Sprintf(`{"parentId":%d}`, localOnly))
+	assertErrorBody(t, "相手に無い親", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonOrganizationNotFound})
+	if got := parentOnA(); got != peerLabel {
+		t.Errorf("拒否の後の a の親 = %d, want %d のまま", got, peerLabel)
+	}
+}
+
 func TestMergedTagListPagesEveryEntryOnce(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
 	// a holds t000–t149 and b t100–t249, so 100 names are on both nodes; with the fixture's tag, 251 entries.
