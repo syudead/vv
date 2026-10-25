@@ -218,7 +218,7 @@ export function useFillReview(pluginId: number, targets: FillTargets) {
       dispatch({
         type: "row",
         index,
-        row: { choice, failure: null, status: "searched" },
+        row: { choice, failure: null, status: "searched", plan: null },
       }),
     apply: () => applyAll(state.rows ?? [], dispatch),
   };
