@@ -86,8 +86,9 @@ export function FormPage({
                 className={cn(
                   // Pad scrolling fields so input focus rings are not clipped.
                   "min-w-0 lg:-mx-1 lg:min-h-0 lg:overflow-y-auto lg:px-1",
-                  // Without an aside, let the first panel occupy its column.
-                  aside === undefined && index === 0 && "lg:col-span-2",
+                  // A sole panel, or the first one without an aside, takes two columns.
+                  (panels.length === 1 || (aside === undefined && index === 0)) &&
+                    "lg:col-span-2",
                 )}
               >
                 <FieldSet className="min-h-full min-w-0">
