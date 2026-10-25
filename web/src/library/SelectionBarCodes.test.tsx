@@ -51,6 +51,7 @@ const targets: SelectionTarget[] = [
 
 interface Server {
   summaries: unknown[];
+  summarySignals: (AbortSignal | null | undefined)[];
   applies: unknown[];
 }
 
@@ -61,12 +62,13 @@ function install({
   summary?: () => Promise<Response>;
   apply?: () => Promise<Response>;
 } = {}): Server {
-  const server: Server = { summaries: [], applies: [] };
+  const server: Server = { summaries: [], summarySignals: [], applies: [] };
   const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const url = String(input);
     const body: unknown = JSON.parse(String(init?.body));
     if (url === "/api/video-code-edits/summary") {
       server.summaries.push(body);
+      server.summarySignals.push(init?.signal);
       return summary();
     }
     if (url === "/api/video-code-edits") {
@@ -79,15 +81,16 @@ function install({
   return server;
 }
 
-function renderBar(count = 2) {
-  render(
+function bar(count: number, selected: SelectionTarget[]) {
+  const videoIds = selected.flatMap((target) => target.videoIds);
+  return (
     <TooltipProvider>
       <ToastProvider>
         <SelectionBar
           count={count}
-          targets={targets}
-          selectedIds={[1, 2]}
-          favoriteVideoIds={[1, 2]}
+          targets={selected}
+          selectedIds={videoIds}
+          favoriteVideoIds={videoIds}
           favoriteGroupIds={[]}
           smartFolderIds={[5]}
           onClear={vi.fn()}
@@ -96,8 +99,12 @@ function renderBar(count = 2) {
           onCollectionsDeleted={vi.fn()}
         />
       </ToastProvider>
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+}
+
+function renderBar(count = 2) {
+  render(bar(count, targets));
   return userEvent.setup();
 }
 
@@ -157,6 +164,28 @@ describe("Edit codes on the selection bar", () => {
       "ABC-2",
       "DEF-9",
     ]);
+  });
+
+  it("drops the pending summary when a card's selection changes while it is read", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const server = install({
+      summary: () => new Promise((resolve) => (answer = resolve)),
+    });
+    const { rerender } = render(bar(2, targets));
+    const user = userEvent.setup();
+    await user.click(editCodes());
+
+    rerender(bar(1, [targets[0]!, targets[2]!]));
+
+    expect(server.summarySignals[0]?.aborted).toBe(true);
+    expect(editCodes().hasAttribute("aria-busy")).toBe(false);
+    const region = screen.getByRole("region", { name: "Selection actions" });
+    expect(
+      within(region).getByRole<HTMLButtonElement>("button", { name: "Edit" }).disabled,
+    ).toBe(false);
+    answer(json({ rows }));
+    await user.click(editCodes());
+    expect(server.summaries[1]).toEqual({ videoIds: [1], smartFolderIds: [5] });
   });
 
   it.each([

@@ -18,6 +18,11 @@ import { editTargetsOf, type SelectionTarget } from "../selection";
 import CodeEditor from "./CodeEditor";
 import type { CodeEditItem, CodeEditRow } from "./rows";
 
+interface Reading {
+  controller: AbortController;
+  selectionKey: string;
+}
+
 interface Open {
   targets: VideoEditTargets;
   rows: readonly CodeEditRow[];
@@ -45,11 +50,23 @@ export default function EditCodesAction({
   const reasonId = useId();
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<Open | null>(null);
-  const reading = useRef<AbortController | null>(null);
+  const reading = useRef<Reading | null>(null);
 
-  useEffect(() => () => reading.current?.abort(), []);
+  useEffect(() => () => reading.current?.controller.abort(), []);
+
+  // Cards stay selectable while the summary is read, and its rows would be for the old selection.
+  const selectionKey = JSON.stringify(editTargetsOf(targets));
+  useEffect(() => {
+    const pending = reading.current;
+    if (pending === null || pending.selectionKey === selectionKey) return;
+    pending.controller.abort();
+    reading.current = null;
+    setBusy(false);
+    onBusyChange(false);
+  }, [selectionKey, onBusyChange]);
 
   function settle() {
+    reading.current = null;
     setBusy(false);
     onBusyChange(false);
   }
@@ -58,7 +75,7 @@ export default function EditCodesAction({
     if (busy) return;
     const request = editTargetsOf(targets);
     const controller = new AbortController();
-    reading.current = controller;
+    reading.current = { controller, selectionKey };
     setBusy(true);
     onBusyChange(true);
     summarizeVideoCodeEdits(request, controller.signal).then(
