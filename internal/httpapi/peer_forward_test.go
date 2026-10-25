@@ -1,12 +1,16 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/syudead/vv/internal/app"
@@ -33,6 +37,75 @@ func remoteVideoNodes(t *testing.T) (f *guestFixture, a, b *peerNode, stopA func
 
 func (f *guestFixture) remotePath(name, suffix string) string {
 	return "/api/videos/" + strconv.FormatInt(domain.ToRemoteID(f.ids[name]), 10) + suffix
+}
+
+// settleRecorder records the tentative tags a node confirms or rejects.
+type settleRecorder struct {
+	AutoTagging
+	mu    sync.Mutex
+	calls []string
+}
+
+func (f *settleRecorder) ConfirmTag(_ context.Context, videoID, tagID int64) error {
+	return f.record("confirm", videoID, tagID)
+}
+
+func (f *settleRecorder) RejectTag(_ context.Context, videoID, tagID int64) error {
+	return f.record("reject", videoID, tagID)
+}
+
+func (f *settleRecorder) record(action string, videoID, tagID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fmt.Sprintf("%s %d %d", action, videoID, tagID))
+	return nil
+}
+
+func (f *settleRecorder) recorded() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.calls)
+}
+
+// A tentative tag of a remote video is settled on the peer under the peer's tag id: a local tag by its name, a
+// remote-only tag without the offset, and a tag the peer lacks not at all.
+func TestRemoteTentativeTagIsSettledOnThePeerInItsIDs(t *testing.T) {
+	var settled []*settleRecorder
+	fa, fb, _, b, _ := mergedNodesWith(t, func(_ *store.DB, opts *Options) {
+		recorder := &settleRecorder{}
+		settled = append(settled, recorder)
+		opts.AutoTagging = recorder
+	})
+	// b creates 鳥 first, so the two nodes hold 猫 under different ids.
+	birdB, catB := tagOn(t, fb, "鳥"), tagOn(t, fb, "猫")
+	catA, dogA := tagOn(t, fa, "猫"), tagOn(t, fa, "犬")
+	if catA.ID == catB.ID {
+		t.Fatalf("precondition: 猫 has id %d on both nodes", catA.ID)
+	}
+	tagPath := func(tagID int64, action string) string {
+		return fa.remotePath("a", "/tags/"+strconv.FormatInt(tagID, 10)+"/"+action)
+	}
+
+	for _, tc := range []struct {
+		path string
+		want int
+	}{
+		{tagPath(catB.ID, "confirm"), http.StatusNoContent},
+		{tagPath(domain.ToRemoteID(dogA.ID), "reject"), http.StatusNoContent},
+		{tagPath(birdB.ID, "confirm"), http.StatusNotFound},
+	} {
+		if rec := b.owner(http.MethodPost, tc.path, ""); rec.Code != tc.want {
+			t.Errorf("%s: status = %d, want %d: %s", tc.path, rec.Code, tc.want, rec.Body)
+		}
+	}
+	video := fa.ids["a"]
+	want := []string{fmt.Sprintf("confirm %d %d", video, catA.ID), fmt.Sprintf("reject %d %d", video, dogA.ID)}
+	if got := settled[0].recorded(); !slices.Equal(got, want) {
+		t.Errorf("settled on the peer = %v, want %v", got, want)
+	}
+	if got := settled[1].recorded(); len(got) != 0 {
+		t.Errorf("settled on this node = %v, want none", got)
+	}
 }
 
 func (n *peerNode) send(req authRequest) *httptest.ResponseRecorder {

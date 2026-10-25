@@ -192,6 +192,12 @@ missing; a provisional person with a remote target answers `400` with reason
 `provisional_person_remote`. Two databases have no shared transaction, so
 the local part stays applied when the peer fails.
 
+A single edit of a remote video is forwarded by its id. Confirming or
+rejecting a tentative tag goes to the peer, which ran the auto-tagging, with
+the tag id turned into the peer's by name; a tag the peer lacks answers
+`404`. A favorites-only read of a remote media folder lists nothing, as a
+merged list does.
+
 ## The screens
 
 `web/src/lib/remoteId.ts` decides from the id whether an item is remote, and

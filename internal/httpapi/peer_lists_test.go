@@ -246,3 +246,19 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 		t.Errorf("remote root listing = %+v", listing)
 	}
 }
+
+// Favorites stay with each node, so a favorites-only read of the peer's folder lists none of the peer's favorites.
+func TestRemoteFolderFavoritesListNoneOfThePeersFavorites(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	change := domain.FavoriteChange{VideoIDs: []int64{fa.ids["a"]}, Favorite: true}
+	if _, err := fa.env.db.Favorites().SetFavorites(context.Background(), change); err != nil {
+		t.Fatal(err)
+	}
+
+	got, totals := pageVideos(t, fa, fb, func(target string) *httptest.ResponseRecorder {
+		return b.owner(http.MethodGet, target, "")
+	}, fb.folderPath(domain.ToRemoteID(fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
+	if len(got) != 0 || !slices.Equal(totals, []int{0}) {
+		t.Errorf("favorites of the remote root = %v, totals %v, want none", got, totals)
+	}
+}
