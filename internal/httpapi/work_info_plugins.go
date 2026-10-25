@@ -40,6 +40,8 @@ type WorkInfoPlugins interface {
 	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
+	// WorkInfoFillQueries lists one video per user-data key with its title and search words.
+	WorkInfoFillQueries(ctx context.Context, videoIDs []int64) ([]domain.WorkInfoFillQuery, error)
 	// FetchWorkInfoByLink fetches like FetchWorkInfo by a link; ErrWorkInfoLinkUnsupported for a link outside the
 	// plugin's domains.
 	FetchWorkInfoByLink(ctx context.Context, videoID, pluginID int64, link string) (domain.WorkInfoFetchResult, error)

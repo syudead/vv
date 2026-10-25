@@ -621,6 +621,7 @@ describe("選択バーの一括のお気に入り", () => {
     ).toEqual([
       "Edit",
       "Edit codes",
+      "Fill info…",
       "Favorite",
       "Add to playlist",
       "New group",
