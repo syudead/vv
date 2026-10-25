@@ -141,8 +141,8 @@ func (s *server) peerGet(r *http.Request, path string, query url.Values, out any
 	return s.peerCall(r, http.MethodGet, path, query, nil, out)
 }
 
-// peerCall sends body, when set, as JSON to path on the peer as the viewer and decodes a 200 answer into out;
-// any other answer is a *peerRefusal.
+// peerCall sends body, when set, as JSON to path on the peer as the viewer and decodes a 200 or 201 answer into
+// out; any other answer is a *peerRefusal.
 func (s *server) peerCall(r *http.Request, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
@@ -172,7 +172,7 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK || len(answer) > maxForwardedJSON {
+	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated) || len(answer) > maxForwardedJSON {
 		refusal := &peerRefusal{status: resp.StatusCode}
 		var problem gen.Error
 		if json.Unmarshal(answer, &problem) == nil && problem.Code != "" {

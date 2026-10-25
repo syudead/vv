@@ -493,19 +493,8 @@ func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read 
 	if !joins || utf8.RuneCountInString(search) > maxQueryLength {
 		return domain.MergeSide[gen.SmartFolderItem]{}, nil
 	}
-	if search != "" {
-		values.Set("query", search)
-	}
-	for _, name := range q.TagNames {
-		values.Add("tagName", name)
-	}
-	for param, value := range map[string]string{
-		"tagKindName": q.TagKindName, "personName": q.PersonName, "organizationName": q.OrganizationName,
-	} {
-		if value != "" {
-			values.Set(param, value)
-		}
-	}
+	q.Query = search
+	setNameFilters(values, q)
 	var answer gen.VideoPage
 	if err := s.peerGet(r, "/api/videos", values, &answer); err != nil {
 		return domain.MergeSide[gen.SmartFolderItem]{}, err
