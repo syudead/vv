@@ -12,7 +12,7 @@ export default function AssistantTrigger() {
   const store = useAssistant();
   const owner = useAudience() === "owner";
   if (store === null || !owner) return null;
-  const working = store.waiting && !store.open;
+  const working = store.working && !store.open;
   const label = working ? t.assistant.working : t.assistant.trigger;
   return (
     <Tooltip>

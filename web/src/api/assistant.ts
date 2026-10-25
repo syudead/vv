@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
 // The only caller of the /api/assistant operations; every one is owner-only.
@@ -40,4 +40,53 @@ export async function createAssistantTurn(
     },
   );
   return response.outcome;
+}
+
+export type AssistantProposalStatus = AssistantProposal["status"];
+
+/** What Execute led to: approved now, already past proposed (the 409 body), or gone (404). */
+export type ExecuteResult =
+  | { kind: "approved"; proposal: AssistantProposal }
+  | { kind: "notPending"; proposal: AssistantProposal }
+  | { kind: "expired" };
+
+/** Other failures reject with RequestFailed; the card keeps its buttons then. */
+export async function executeAssistantProposal(id: number): Promise<ExecuteResult> {
+  const response = await apiFetch(`/api/assistant/proposals/${String(id)}/execute`, {
+    method: "POST",
+  });
+  if (response.ok) {
+    return { kind: "approved", proposal: (await response.json()) as AssistantProposal };
+  }
+  if (response.status === 404) return { kind: "expired" };
+  if (response.status === 409) {
+    const body = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as {
+      proposal?: AssistantProposal;
+    } | null;
+    if (body?.proposal !== undefined)
+      return { kind: "notPending", proposal: body.proposal };
+  }
+  throw await toRequestFailed(response);
+}
+
+/** The panel re-reads a shown proposal on each assistant event. */
+export function getAssistantProposal(
+  id: number,
+  signal?: AbortSignal,
+): Promise<AssistantProposal> {
+  return request<AssistantProposal>(`/api/assistant/proposals/${String(id)}`, { signal });
+}
+
+/** Approved and running proposals, and those finished within the last hour, newest first. */
+export async function listActiveAssistantProposals(
+  signal?: AbortSignal,
+): Promise<AssistantProposal[]> {
+  const list = await request<components["schemas"]["AssistantProposalList"]>(
+    "/api/assistant/proposals?active=true",
+    { signal },
+  );
+  return list.items;
 }

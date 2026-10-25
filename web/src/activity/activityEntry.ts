@@ -1,6 +1,7 @@
 import type { ActivityEntry, ActivityFaceLink, ActivityTag } from "../api/activity";
 import { creditDisplayName } from "../credits/displayName";
 import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i18n";
+import { operationSentence } from "../assistant/proposal";
 import { videoEditPath } from "../lib/videoEditPath";
 
 /**
@@ -252,7 +253,26 @@ function completedResult(entry: EntryFields): ResultPart[] {
   }
 }
 
+/** A run's detail is JSON with its operation and counts, as the panel's card showed them. */
+function assistantRunResult(entry: EntryFields): ResultPart[] {
+  let detail: { operation?: unknown; applied?: unknown; failed?: unknown } = {};
+  try {
+    detail = (JSON.parse(entry.detail ?? "") ?? {}) as typeof detail;
+  } catch {
+    // A detail that is not JSON reads as an unknown operation with no counts.
+  }
+  const operation = typeof detail.operation === "string" ? detail.operation : "";
+  const count = (value: unknown) => (typeof value === "number" ? value : 0);
+  const parts = [text(operationSentence(operation)), text(t.activity.separator)];
+  if (entry.outcome === "stale") return [...parts, text(t.assistant.card.stale)];
+  return [
+    ...parts,
+    text(t.assistant.runCounts(count(detail.applied), count(detail.failed))),
+  ];
+}
+
 function doneResult(entry: EntryFields): ResultPart[] {
+  if (entry.kind === "assistant_run") return assistantRunResult(entry);
   const ai = entry.decider === "ai";
   switch (entry.outcome) {
     case "same":
