@@ -107,6 +107,8 @@ type listSpec struct {
 	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
+	// Duration, added-day and watch-state filters; zero values do not filter.
+	conditions domain.VideoConditions
 	// Stack ancestor filters for library items; ignore each level's scope, ordering, pagination and nested and field.
 	and []listSpec
 	// Smart-folder predicates use owner search semantics even for guests.
@@ -164,7 +166,8 @@ func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) 
 		scope: scope, expr: domain.ParseSearchQuery(q.Query),
 		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+		conditions: q.VideoConditions,
+		sort:       q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
 

@@ -294,6 +294,14 @@ be picked; typing matches names and aliases, and `#<id>` finds that one.
 Applied tags, kinds, people and organizations also show as chips in the
 `Filtering by` row, and an id the server or the loaded lists no longer hold
 leaves the URL with a toast.
+The library page alone also takes `minDurationMs` and `maxDurationMs`
+(milliseconds), `addedFrom` and `addedTo` (`YYYY-MM-DD`, a day in the server's
+time zone) and `watchState` (`unwatched`, `inProgress`, `watched`). The popover
+has no control for them; a URL sets them, and they show after the other chips
+as one duration chip, one added-date chip and one watch chip, each with its
+icon and a remove control that drops both bounds of a range. A value the
+server would reject, or a pair in the wrong order, is ignored. Guests and
+folder pages take none of them.
 Opening the popover focuses the panel itself, not its first field, so the tag
 picker's candidate list stays closed until the owner enters the field.
 The popover's fields edit a draft copied from the applied conditions on each
@@ -319,7 +327,11 @@ action `Save as smart folder`, which opens the smart folder dialog with the
 filter as its conditions and the current sort, `Random` replaced by date added;
 the `Created "{name}"` toast carries `Open` to the new folder's page.
 The dialog's conditions are the search text, `Favorites only`, tags and tag
-kind, person and organization, the same set as the library filter.
+kind, person and organization, the same set as the library filter. A rule with
+duration, added-date or watch conditions lists them under `Set by the
+assistant` as chips that can only be removed. The smart folder page shows
+them on its condition lines, and the owner's smart folder card shows the
+folder's own ones as chips after its tags.
 
 ### Scan entry and progress
 

@@ -22,7 +22,7 @@ import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favor
 import { groupsIn, groupsWithMembers, itemKey, videoItem } from "./libraryItems";
 import type { useGroupRefresh } from "./useGroupRefresh";
 import type { useItemRefresh } from "./useItemRefresh";
-import type { VideosCriteria } from "./videosCriteria";
+import { videoConditions, type VideosCriteria } from "./videosCriteria";
 import { shownVideoIds, type VideosDataAction, type VideosSeed } from "./videosData";
 import { visibilityMark, withVisibilitySince } from "./visibility";
 
@@ -174,9 +174,15 @@ export function useVideoPages({
               ? listLibrary({
                   ...params,
                   ...filters,
+                  ...videoConditions(current),
                   cursor: cursorFrom,
                 })
-              : listVideos({ ...params, ...filters, cursor: cursorFrom });
+              : listVideos({
+                  ...params,
+                  ...filters,
+                  ...videoConditions(current),
+                  cursor: cursorFrom,
+                });
         const toPage = (fetched: Awaited<ReturnType<typeof fetchOne>>) => ({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {

@@ -259,6 +259,11 @@ paths:
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/AddedFromFilter"
+        - $ref: "#/components/parameters/AddedToFilter"
+        - $ref: "#/components/parameters/WatchStateFilter"
         - name: kind
           in: query
           description: "Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both."
@@ -336,6 +341,11 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/AddedFromFilter"
+        - $ref: "#/components/parameters/AddedToFilter"
+        - $ref: "#/components/parameters/WatchStateFilter"
       responses:
         "200":
           description: "Item list"
@@ -5569,6 +5579,40 @@ components:
         type: integer
         format: int64
         minimum: 1
+    MinDurationFilter:
+      name: minDurationMs
+      in: query
+      description: "Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request."
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    MaxDurationFilter:
+      name: maxDurationMs
+      in: query
+      description: "Videos at most this long, in milliseconds; a video of unknown duration never matches."
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    AddedFromFilter:
+      name: addedFrom
+      in: query
+      description: "Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request."
+      schema:
+        type: string
+    AddedToFilter:
+      name: addedTo
+      in: query
+      description: "Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone."
+      schema:
+        type: string
+    WatchStateFilter:
+      name: watchState
+      in: query
+      description: "Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed."
+      schema:
+        $ref: "#/components/schemas/WatchState"
     MediaFolderId:
       name: id
       in: path
@@ -9779,6 +9823,29 @@ components:
           type: integer
           format: int64
           description: "Organization IDs linked in any role."
+        minDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`."
+        maxDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule."
+        addedFrom:
+          type: string
+          description: "First `YYYY-MM-DD` day added, in the server's local time zone."
+        addedTo:
+          type: string
+          description: "Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule."
+        watchState:
+          $ref: "#/components/schemas/WatchState"
+
+    WatchState:
+      type: string
+      enum: [unwatched, inProgress, watched]
+      description: "unwatched without a started position, watched when complete, otherwise inProgress."
 
     SmartRuleRef:
       type: object
@@ -9881,6 +9948,30 @@ components:
         favorite:
           type: boolean
           description: "Whether the owner favorited the folder; owner responses only."
+        conditions:
+          $ref: "#/components/schemas/SmartFolderConditions"
+
+    SmartFolderConditions:
+      type: object
+      additionalProperties: false
+      description: "The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them."
+      properties:
+        minDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        maxDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        addedFrom:
+          type: string
+          description: "`YYYY-MM-DD` day in the server's local time zone."
+        addedTo:
+          type: string
+          description: "`YYYY-MM-DD` day in the server's local time zone."
+        watchState:
+          $ref: "#/components/schemas/WatchState"
 
     SmartFolderCards:
       type: object

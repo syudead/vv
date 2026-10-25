@@ -1,7 +1,8 @@
-import type { VideoSort } from "../api/client";
+import { videoConditionNames, type VideoSort } from "../api/client";
 import type { SmartFolderSummary, SmartRule } from "../api/smartFolders";
 import { compareNatural } from "../api/tagOrder";
 import type { CreditFilter } from "../library/creditCriteria";
+import type { VideoConditions } from "../library/videoConditions";
 import { DEFAULT_SORT, type ListCriteria } from "../videoList/listCriteria";
 
 /** Count Unicode code points. */
@@ -12,6 +13,7 @@ export interface LibraryFilter {
   criteria: ListCriteria;
   tagIds: readonly number[];
   credits: CreditFilter;
+  conditions: VideoConditions;
 }
 
 export function cleanRule(rule: SmartRule): SmartRule {
@@ -22,13 +24,17 @@ export function cleanRule(rule: SmartRule): SmartRule {
   if (rule.tags !== undefined && rule.tags.length > 0) clean.tags = [...rule.tags];
   if (rule.person !== undefined) clean.person = rule.person;
   if (rule.organization !== undefined) clean.organization = rule.organization;
+  for (const name of videoConditionNames) {
+    if (rule[name] !== undefined) Object.assign(clean, { [name]: rule[name] });
+  }
   return clean;
 }
 
 /** Sort is separate from conditions and handled by folderSort. */
 export function ruleFromLibrary(filter: LibraryFilter): SmartRule {
-  const { criteria, tagIds, credits } = filter;
+  const { criteria, tagIds, credits, conditions } = filter;
   return cleanRule({
+    ...conditions,
     q: criteria.query,
     favorite: criteria.favorite,
     tagKind: credits.tagKind,

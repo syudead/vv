@@ -28,7 +28,7 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	cards := make([]domain.SmartFolderCard, len(targets))
 	for i, target := range targets {
 		cards[i] = domain.SmartFolderCard{SmartFolderSummary: target.summary, WatchState: domain.WatchStateUnwatched,
-			Previews: []domain.Video{}, Tags: []domain.VideoTag{}}
+			Previews: []domain.Video{}, Tags: []domain.VideoTag{}, Conditions: target.conditions}
 	}
 	if err := readSmartFolderCardValues(ctx, tx, audience, targets, cards); err != nil {
 		return nil, err
@@ -113,9 +113,10 @@ func readSmartFolderCardValues(ctx context.Context, tx *sql.Tx, audience domain.
 		return fmt.Errorf("cannot read the smart folder cards: %w", err)
 	}
 	for index, earlier := range query.same {
-		summary := cards[index].SmartFolderSummary
+		// Folders sharing a match keep their own identity and rule conditions.
+		summary, conditions := cards[index].SmartFolderSummary, cards[index].Conditions
 		cards[index] = cards[earlier]
-		cards[index].SmartFolderSummary = summary
+		cards[index].SmartFolderSummary, cards[index].Conditions = summary, conditions
 		previews[index] = previews[earlier]
 	}
 	return loadSmartCardPreviews(ctx, tx, audience, previews, cards)
