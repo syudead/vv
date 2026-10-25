@@ -107,6 +107,13 @@ type listSpec struct {
 	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
+	// tagKindNameID is the kind a kind name resolved to, ANDed with tagKindID; zero disables it.
+	tagKindNameID int64
+	// personName and organizationName match every entity with that canonical name; personRole applies to both
+	// person filters.
+	personName, organizationName string
+	// matchNothing empties the list, for a name filter that resolved to no entity.
+	matchNothing bool
 	// Stack ancestor filters for library items; ignore each level's scope, ordering, pagination and nested and field.
 	and []listSpec
 	// Smart-folder predicates use owner search semantics even for guests.
@@ -124,31 +131,32 @@ type listSpec struct {
 
 // ListVideos uses keyset pagination and one snapshot for tag existence, counts and rows; callers validate audience filter permissions.
 func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
-	return s.listTaggedVideoPage(ctx, q.TagIDs, func(tagIDs []int64) listSpec {
+	return s.listTaggedVideoPage(ctx, q, func(tagIDs []int64) listSpec {
 		return libraryListSpec(audience, q, tagIDs)
 	})
 }
 
-// listTaggedVideoPage drops unknown tag IDs and reads the page in the same snapshot, reporting the dropped IDs.
-func (s *LibraryStore) listTaggedVideoPage(ctx context.Context, requested []int64, spec func(tagIDs []int64) listSpec) (domain.VideoPage, error) {
+// listTaggedVideoPage drops unknown tag IDs, resolves names and reads the page in the same snapshot, reporting
+// the dropped IDs.
+func (s *LibraryStore) listTaggedVideoPage(ctx context.Context, q domain.VideoQuery, spec func(tagIDs []int64) listSpec) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("cannot start reading the list: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, requested)
+	filters, err := resolveListFilters(ctx, tx, q)
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := listVideoPageTx(ctx, tx, spec(tagIDs))
+	page, err := listVideoPageTx(ctx, tx, filters.narrow(spec(filters.tagIDs)))
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.VideoPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
-	page.MissingTagIDs = missingTagIDs
+	page.MissingTagIDs = filters.missingTagIDs
 	return page, nil
 }
 
@@ -164,13 +172,14 @@ func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) 
 		scope: scope, expr: domain.ParseSearchQuery(q.Query),
 		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
+		personName: q.PersonName, organizationName: q.OrganizationName,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
 
 // ListFolderVideos uses ListVideos semantics and filters within the requested folder scope, taking titles from matching locations.
 func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
-	return s.listTaggedVideoPage(ctx, q.TagIDs, func(tagIDs []int64) listSpec {
+	return s.listTaggedVideoPage(ctx, q.VideoQuery, func(tagIDs []int64) listSpec {
 		return filteredListSpec(folderScope(q.Dir, q.Scope, audience), q.VideoQuery, tagIDs)
 	})
 }
@@ -371,6 +380,13 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 			return domain.VideoPage{}, err
 		}
 	}
+	ids := make([]int64, len(page.Items))
+	for i, video := range page.Items {
+		ids[i] = video.ID
+	}
+	if page.ItemCursors, err = order.itemCursors(spec, values, ids); err != nil {
+		return domain.VideoPage{}, err
+	}
 	if err := attachVersions(ctx, tx, spec.scope.audience, page.Items); err != nil {
 		return domain.VideoPage{}, err
 	}
@@ -514,10 +530,23 @@ func (o listOrder) seedText(spec listSpec) string {
 }
 
 func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, error) {
-	nullFlag, text := "0", ""
+	text, err := sortValueText(value)
+	if err != nil {
+		return "", err
+	}
+	nullFlag := "0"
+	if text == nil {
+		nullFlag, text = "1", new(string)
+	}
+	return packCursor(string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), *text), nil
+}
+
+// sortValueText is a sort value as a cursor holds it, nil for a missing value.
+func sortValueText(value any) (*string, error) {
+	var text string
 	switch v := value.(type) {
 	case nil:
-		nullFlag = "1"
+		return nil, nil
 	case int64:
 		text = strconv.FormatInt(v, 10)
 	case string:
@@ -525,9 +554,24 @@ func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, err
 	case []byte:
 		text = string(v)
 	default:
-		return "", fmt.Errorf("cannot encode the sort value: %T", value)
+		return nil, fmt.Errorf("cannot encode the sort value: %T", value)
 	}
-	return packCursor(string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), text), nil
+	return &text, nil
+}
+
+// itemCursors gives each of ids, with its sort value in values, the cursor after it and the value as the cursor
+// encodes it.
+func (o listOrder) itemCursors(spec listSpec, values []any, ids []int64) ([]domain.ItemCursor, error) {
+	out := make([]domain.ItemCursor, len(ids))
+	for i, id := range ids {
+		cursor, err := o.encodeCursor(spec, values[i], id)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Cursor = cursor
+		out[i].SortValue, _ = sortValueText(values[i])
+	}
+	return out, nil
 }
 
 // Place fields that can contain separators last.

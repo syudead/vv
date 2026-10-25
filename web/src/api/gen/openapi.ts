@@ -5393,6 +5393,8 @@ export interface components {
             nextCursor?: string;
             /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
+            /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
@@ -5402,6 +5404,15 @@ export interface components {
             nextCursor?: string;
             /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
+            /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
+        };
+        /** @description One listed item's place for merging lists of two paired VVMDMs. */
+        PeerListItem: {
+            /** @description Cursor that continues the list after this item. */
+            cursor: string;
+            /** @description The item's value under the request's sort as the cursor encodes it; null sorts last. */
+            sortValue: string | null;
         };
         /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards. */
         LibraryItem: {
@@ -7365,12 +7376,20 @@ export interface components {
         VideoId: number;
         /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonFilter: number;
-        /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonRoleFilter: components["schemas"]["WorkPersonRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
+        /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        TagNameFilter: string[];
+        /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+        TagKindNameFilter: string;
+        /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+        PersonNameFilter: string;
+        /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+        OrganizationNameFilter: string;
         /** @description Media folder ID */
         MediaFolderId: number;
         /** @description API token ID */
@@ -7670,12 +7689,20 @@ export interface operations {
                 tag?: number[];
                 /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
                 kind?: "all" | "file" | "virtual";
             };
@@ -7720,6 +7747,14 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
             path?: never;
@@ -12882,12 +12917,20 @@ export interface operations {
                 tag?: number[];
                 /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
             path: {
