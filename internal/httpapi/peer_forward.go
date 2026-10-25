@@ -139,6 +139,13 @@ func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, col
 	if op.request != nil && !op.request(s, w, r) {
 		return
 	}
+	if op.path != nil {
+		peerRest, ok := op.path(s, w, r, rest)
+		if !ok {
+			return
+		}
+		rest = peerRest
+	}
 	out, err := remoteRequest(r, collection.prefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, r.URL.Query())
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
@@ -148,6 +155,28 @@ func (s *server) forwardRemoteEntity(w http.ResponseWriter, r *http.Request, col
 		return
 	}
 	s.forward(w, r, out, op)
+}
+
+// peerVideoTagPath turns the tag id of /tags/{tagId}/{action} into the peer's: a remote tag drops the offset,
+// and a local tag goes by name, since the screens show a same-named tag of the peer under the local id.
+func (s *server) peerVideoTagPath(w http.ResponseWriter, r *http.Request, rest string) (string, bool) {
+	parts := strings.Split(rest, "/")
+	id, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		s.invalidRequest(w, "The tag id is not a number.")
+		return "", false
+	}
+	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyTag, id, "", false)
+	switch {
+	case errors.Is(err, domain.ErrTagNotFound) || (err == nil && peerID == 0):
+		s.notFound(w, "This tag is not tentatively attached to the video.")
+		return "", false
+	case err != nil:
+		s.writeSplitEditError(w, err)
+		return "", false
+	}
+	parts[2] = strconv.FormatInt(peerID, 10)
+	return strings.Join(parts, "/"), true
 }
 
 // forward sends out, made from r, to the peer as r's viewer and answers with the peer's answer, rewritten by op

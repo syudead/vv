@@ -11,12 +11,14 @@ import (
 // remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
 // an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
 // space, and without it the answer passes through. body, when set, turns the request body into the peer's ids;
-// request, when set, does so with this node's and the peer's data, or answers r and reports false.
+// request, when set, does so with this node's and the peer's data, or answers r and reports false. path, when
+// set, turns the rest of the path after the entity id into the peer's ids, or answers r and reports false.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
 	body    remoteBody
 	request func(s *server, w http.ResponseWriter, r *http.Request) bool
+	path    func(s *server, w http.ResponseWriter, r *http.Request, rest string) (string, bool)
 }
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
@@ -25,7 +27,8 @@ type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
 type remoteBody func(body []byte) ([]byte, error)
 
 // remoteVideoOperations are the operations under /api/videos/{id} offered for the peer's videos. Open,
-// progress, favorites, playlists, auto-tagging, probing and activity stay with each node and are absent.
+// progress, favorites, playlists, auto-tag runs, probing and activity stay with each node and are absent; a
+// tentative tag the peer's run attached is confirmed or rejected there.
 var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}":                        {rewrite: rewriteAs(rewriteRemoteVideo)},
 	"GET /api/videos/{id}/group-members":          {rewrite: rewriteAs(rewriteRemoteGroupMembers)},
@@ -42,6 +45,8 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/thumbnail":              {media: true},
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}": {media: true},
 	"GET /api/videos/{id}/frame":                  {media: true},
+	"POST /api/videos/{id}/tags/{tagId}/confirm":  {path: (*server).peerVideoTagPath},
+	"POST /api/videos/{id}/tags/{tagId}/reject":   {path: (*server).peerVideoTagPath},
 	"PUT /api/videos/{id}/work-info": {
 		rewrite: rewriteAs(rewriteRemoteVideo),
 		request: peerWorkInfoBody("", func(body **gen.WorkInfoInput) *gen.WorkInfoInput { return *body }),
