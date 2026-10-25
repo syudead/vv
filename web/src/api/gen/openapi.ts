@@ -1634,26 +1634,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/work-info-plugins/{id}/fills": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Fill videos' empty fields from chosen works
-         * @description Owner-only. Queues one fill per item, 1–20,000 items, and returns 202 at once with the number queued. Each fill runs in the background, one at a time on the worker that runs link fetches: it fetches the item's workId, a trimmed 1–200 character id from searchWorkInfo, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, the title as the display name when a file video has none (a virtual video's only while it is still its link), and the first cover when the video has no image. Every fill is recorded as the video's work-info fetch activity; a video deleted meanwhile is skipped. No items or more than 20,000 return 400 too_many_videos, an invalid workId 400 invalid_request, a missing plugin 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing.
-         */
-        post: operations["startWorkInfoFills"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/work-info-plugins/{id}/person-search": {
         parameters: {
             query?: never;
@@ -5179,19 +5159,6 @@ export interface components {
             /** @description The work code, or the title without one; it may exceed searchWorkInfo's 200 characters. */
             query: string;
         };
-        WorkInfoFillsRequest: {
-            items: components["schemas"]["WorkInfoFillItem"][];
-        };
-        WorkInfoFillItem: {
-            /** Format: int64 */
-            videoId: number;
-            /** @description The chosen candidate's id from searchWorkInfo. */
-            workId: string;
-        };
-        WorkInfoFillsQueued: {
-            /** @description User-data keys whose fill was queued. */
-            queued: number;
-        };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
             /** @description Videos carrying the tag manually or through folder names. */
@@ -6995,7 +6962,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "work_info_fills_busy" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -10013,46 +9980,6 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-        };
-    };
-    startWorkInfoFills: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Work-info plugin ID */
-                id: components["parameters"]["WorkInfoPluginId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkInfoFillsRequest"];
-            };
-        };
-        responses: {
-            /** @description Queued fills */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkInfoFillsQueued"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            /** @description The fill queue has no room for the request (work_info_fills_busy) */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
         };
     };
     searchPeopleWithPlugin: {

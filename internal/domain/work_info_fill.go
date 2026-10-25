@@ -1,15 +1,11 @@
 package domain
 
 import (
-	"errors"
 	"strings"
 	"unicode"
 )
 
-// ErrWorkInfoFillQueueFull reports a fill request larger than the room left in the fill queue; nothing is queued.
-var ErrWorkInfoFillQueueFull = errors.New("too many work-info fills are queued")
-
-// WorkInfoFillTarget is the video a fill runs for on behalf of its user-data key, with the key's work code, empty
+// WorkInfoFillTarget is the video a selection fill lists for its user-data key, with the key's work code, empty
 // when it has none.
 type WorkInfoFillTarget struct {
 	VideoID    int64
@@ -22,12 +18,6 @@ type WorkInfoFillQuery struct {
 	VideoID int64
 	Title   string
 	Query   string
-}
-
-// WorkInfoFillItem is one fill the owner confirmed: the video and the ID of the work chosen for it.
-type WorkInfoFillItem struct {
-	VideoID int64
-	WorkID  string
 }
 
 // MatchWorkInfoCandidate returns the index of the candidate a fill preselects: the first whose title or ID equals

@@ -1,8 +1,7 @@
 import { CircleAlert } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import type { FormEvent } from "react";
 
-import { startWorkInfoFills } from "../../api/workInfoPlugins";
-import { errorText, t, type UiText } from "../../i18n";
+import { t } from "../../i18n";
 import { useToast } from "../../ui/Toast";
 import { Alert, AlertTitle } from "../../ui/shadcn/alert";
 import {
@@ -15,13 +14,23 @@ import {
 import { Spinner } from "../../ui/shadcn/spinner";
 import { CreateDialogFrame } from "../NameDialogParts";
 import {
-  chosenItems,
+  applicable,
+  chosenWork,
   type FillRow,
   type FillTargets,
   useFillReview,
 } from "./useFillReview";
 
 const skip = "skip";
+
+function Pending({ text }: { text: string }) {
+  return (
+    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Spinner aria-hidden="true" />
+      {text}
+    </span>
+  );
+}
 
 function RowChoice({
   row,
@@ -33,25 +42,19 @@ function RowChoice({
   onChoose: (choice: number | null) => void;
 }) {
   const words = t.library.selection.fillReview;
-  if (row.status === "waiting" || row.status === "searching") {
-    return (
-      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-        {row.status === "searching" && <Spinner aria-hidden="true" />}
-        {row.status === "searching" ? words.searching : words.waiting}
-      </span>
-    );
+  if (row.status === "waiting") {
+    return <span className="text-sm text-muted-foreground">{words.waiting}</span>;
   }
-  if (row.status === "failed") {
-    return <span className="text-sm text-destructive">{row.failure}</span>;
-  }
+  if (row.status === "searching") return <Pending text={words.searching} />;
   if (row.candidates.length === 0) {
-    return <span className="text-sm text-muted-foreground">{words.noResults}</span>;
+    const text = row.status === "failed" ? row.failure : words.noResults;
+    return <span className="text-sm text-muted-foreground">{text}</span>;
   }
   return (
     <Select
       value={row.choice === null ? skip : String(row.choice)}
       onValueChange={(value) => onChoose(value === skip ? null : Number(value))}
-      disabled={disabled}
+      disabled={disabled || row.status !== "searched"}
     >
       <SelectTrigger size="sm" aria-label={words.choiceFor(row.target.title)}>
         <SelectValue />
@@ -68,9 +71,36 @@ function RowChoice({
   );
 }
 
+/** What the row's fill writes, or where it stands while its work is read or written. */
+function RowPlan({ row }: { row: FillRow }) {
+  const words = t.library.selection.fillReview;
+  const fields = t.player.workInfoFetch.fields;
+  if (row.status === "fetching") return <Pending text={words.reading} />;
+  if (row.status === "applying") return <Pending text={words.applying} />;
+  if (row.status === "applied") return <p className="text-sm">{words.applied}</p>;
+  if (row.status === "failed" && row.candidates.length > 0) {
+    return <p className="text-sm text-destructive">{row.failure}</p>;
+  }
+  const work = chosenWork(row);
+  if (work === undefined || row.plan?.workId !== work.id) return null;
+  if (row.plan.plan.lines.length === 0) {
+    return <p className="text-sm text-muted-foreground">{words.nothingToFill}</p>;
+  }
+  return (
+    <dl className="flex flex-col gap-1 text-sm">
+      {row.plan.plan.lines.map((line) => (
+        <div key={line.field} className="flex flex-wrap gap-x-3">
+          <dt className="text-muted-foreground">{fields[line.field]}</dt>
+          <dd className="min-w-0 break-words">{line.values.join(" · ")}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 /**
- * Show each target's search result with its match preselected, let the owner change or drop each choice, and
- * queue fills of the chosen works only.
+ * Show what filling each target from its chosen work writes, let the owner change or drop each choice, and apply
+ * the fetched results the review showed, one video at a time.
  */
 export default function FillReviewDialog({
   pluginId,
@@ -84,34 +114,24 @@ export default function FillReviewDialog({
   const words = t.library.selection.fillReview;
   const toast = useToast();
   const review = useFillReview(pluginId, targets);
-  const items = chosenItems(review.rows ?? []);
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
+  const count = (review.rows ?? []).filter(applicable).length;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || items.length === 0) return;
-    setPending(true);
-    setFailure(null);
-    startWorkInfoFills(pluginId, items).then(
-      (queued) => {
-        toast(t.library.selection.fillsQueued(queued.queued));
-        onClose();
-      },
-      (error: unknown) => {
-        setPending(false);
-        setFailure(words.failed(errorText(error)));
-      },
-    );
+    if (review.applying || count === 0) return;
+    void review.apply().then((applied) => {
+      toast(t.library.selection.filled(applied));
+      if (applied === count) onClose();
+    });
   }
 
   return (
     <CreateDialogFrame
-      words={{ ...words, submit: words.submit(items.length) }}
+      words={{ ...words, submit: words.submit(count) }}
       description={words.description}
-      pending={pending}
-      failure={failure}
-      submitDisabled={items.length === 0}
+      pending={review.applying}
+      failure={null}
+      submitDisabled={count === 0}
       size="wide"
       onSubmit={submit}
       onClose={onClose}
@@ -123,10 +143,7 @@ export default function FillReviewDialog({
         </Alert>
       )}
       {review.rows === null && review.failure === null && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner aria-hidden="true" />
-          {words.listing}
-        </p>
+        <Pending text={words.listing} />
       )}
       {review.rows?.length === 0 && (
         <p className="text-sm text-muted-foreground">{words.noTargets}</p>
@@ -134,23 +151,23 @@ export default function FillReviewDialog({
       {review.rows !== null && review.rows.length > 0 && (
         <ul className="flex flex-col divide-y" aria-label={words.list}>
           {review.rows.map((row, index) => (
-            <li
-              key={row.target.videoId}
-              className="flex flex-wrap items-center justify-between gap-2 py-2"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium break-words">{row.target.title}</p>
-                {row.target.query !== row.target.title && (
-                  <p className="text-xs text-muted-foreground break-words">
-                    {row.target.query}
-                  </p>
-                )}
+            <li key={row.target.videoId} className="flex flex-col gap-2 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium break-words">{row.target.title}</p>
+                  {row.target.query !== row.target.title && (
+                    <p className="text-xs text-muted-foreground break-words">
+                      {row.target.query}
+                    </p>
+                  )}
+                </div>
+                <RowChoice
+                  row={row}
+                  disabled={review.applying}
+                  onChoose={(choice) => review.choose(index, choice)}
+                />
               </div>
-              <RowChoice
-                row={row}
-                disabled={pending}
-                onChoose={(choice) => review.choose(index, choice)}
-              />
+              <RowPlan row={row} />
             </li>
           ))}
         </ul>

@@ -28,9 +28,7 @@ export type WorkInfoMatch = components["schemas"]["WorkInfoMatch"];
 export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
 export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
 export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
-export type WorkInfoFillsQueued = components["schemas"]["WorkInfoFillsQueued"];
 export type WorkInfoFillTarget = components["schemas"]["WorkInfoFillTarget"];
-export type WorkInfoFillItem = components["schemas"]["WorkInfoFillItem"];
 export type WorkInfoSearchResult = components["schemas"]["WorkInfoSearchResult"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
@@ -173,20 +171,6 @@ export async function listWorkInfoFillTargets(
     },
   );
   return list.targets;
-}
-
-/** Queue fills of each video from its chosen work; the server answers before any plugin runs. */
-export function startWorkInfoFills(
-  pluginId: number,
-  items: readonly WorkInfoFillItem[],
-  signal?: AbortSignal,
-): Promise<WorkInfoFillsQueued> {
-  return request<WorkInfoFillsQueued>(`${pluginPath(pluginId)}/fills`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ items }),
-    signal,
-  });
 }
 
 /** Treat id as opaque even when URL-shaped; plugins build URLs. Fetch results last ten minutes without modifying the video. */

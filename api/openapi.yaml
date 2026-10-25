@@ -2457,41 +2457,6 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
-  /api/work-info-plugins/{id}/fills:
-    post:
-      operationId: startWorkInfoFills
-      summary: "Fill videos' empty fields from chosen works"
-      description: "Owner-only. Queues one fill per item, 1–20,000 items, and returns 202 at once with the number queued. Each fill runs in the background, one at a time on the worker that runs link fetches: it fetches the item's workId, a trimmed 1–200 character id from searchWorkInfo, and fills only the empty fields as a virtual video's link fetch does: tags when the video has none, each detail field when it is empty, the title as the display name when a file video has none (a virtual video's only while it is still its link), and the first cover when the video has no image. Every fill is recorded as the video's work-info fetch activity; a video deleted meanwhile is skipped. No items or more than 20,000 return 400 too_many_videos, an invalid workId 400 invalid_request, a missing plugin 404 not_found, a person plugin 409 plugin_kind_mismatch, an unapproved plugin 409 plugin_not_approved, undeclared fetch 409 operation_unsupported, missing required settings 409 plugin_settings_missing, and a request the queue has no room for 503 work_info_fills_busy; each queues nothing."
-      parameters:
-        - $ref: "#/components/parameters/WorkInfoPluginId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkInfoFillsRequest"
-      responses:
-        "202":
-          description: "Queued fills"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkInfoFillsQueued"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "503":
-          description: "The fill queue has no room for the request (work_info_fills_busy)"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /api/work-info-plugins/{id}/person-search:
     post:
       operationId: searchPeopleWithPlugin
@@ -9101,39 +9066,6 @@ components:
           type: string
           description: "The work code, or the title without one; it may exceed searchWorkInfo's 200 characters."
 
-    WorkInfoFillsRequest:
-      type: object
-      required: [items]
-      additionalProperties: false
-      properties:
-        items:
-          type: array
-          minItems: 1
-          maxItems: 20000
-          items:
-            $ref: "#/components/schemas/WorkInfoFillItem"
-
-    WorkInfoFillItem:
-      type: object
-      required: [videoId, workId]
-      additionalProperties: false
-      properties:
-        videoId:
-          type: integer
-          format: int64
-        workId:
-          type: string
-          description: "The chosen candidate's id from searchWorkInfo."
-
-    WorkInfoFillsQueued:
-      type: object
-      required: [queued]
-      additionalProperties: false
-      properties:
-        queued:
-          type: integer
-          description: "User-data keys whose fill was queued."
-
     VideoTagsSummaryItem:
       type: object
       required: [tag, count, manualCount]
@@ -12188,7 +12120,6 @@ components:
             - person_link_ambiguous
             - person_link_unsupported
             - work_info_link_unsupported
-            - work_info_fills_busy
             - plugin_builtin
             - link_order_changed
             - invalid_smart_rule

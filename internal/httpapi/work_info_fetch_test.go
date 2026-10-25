@@ -30,19 +30,11 @@ type scriptedPlugins struct {
 	selection  domain.WorkInfoSelection
 	pageCover  bool
 	ids        []string
-	fillItems  []domain.WorkInfoFillItem
-	queued     int
 	fillQuery  []domain.WorkInfoFillQuery
 	fillIDs    []int64
 	// covers and personImages map an index to its kept image.
 	covers       map[int]domain.WorkInfoCover
 	personImages map[int]domain.WorkInfoCover
-}
-
-func (p *scriptedPlugins) StartWorkInfoFills(_ context.Context, _ int64, items []domain.WorkInfoFillItem) (int, error) {
-	p.calls++
-	p.fillItems = items
-	return p.queued, p.err
 }
 
 func (p *scriptedPlugins) WorkInfoFillQueries(_ context.Context, videoIDs []int64) ([]domain.WorkInfoFillQuery, error) {
@@ -117,7 +109,6 @@ const (
 	personSearchPath = "/api/work-info-plugins/1/person-search"
 	fetchPath        = "/api/videos/7/work-info-fetches"
 	applyPath        = "/api/videos/7/work-info-fetches/abc/apply"
-	fillsPath        = "/api/work-info-plugins/1/fills"
 )
 
 func decodeErrorBody(t *testing.T, body []byte) gen.Error {
@@ -172,7 +163,6 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 			{searchPath, `{"query":"work"}`},
 			{personSearchPath, `{"query":"person"}`},
 			{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
-			{fillsPath, `{"items":[{"videoId":7,"workId":"w-1"}]}`},
 		} {
 			label := tc.name + " " + route.path
 			status, body := e.post(route.path, route.body, e.owner)
@@ -231,9 +221,8 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	}
 }
 
-// The targets list answers each video's title and search words; fills answer at once with the count, refuse an
-// empty item list before the registry, and a full queue is its own busy code.
-func TestWorkInfoFillsAnswer(t *testing.T) {
+// The targets list answers each video's title and search words.
+func TestWorkInfoFillTargetsAnswer(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	e.plugins.fillQuery = []domain.WorkInfoFillQuery{{VideoID: 7, Title: "Trip", Query: "ABC-1"}}
 	status, body := e.post("/api/work-info-fill-targets", `{"videoIds":[7,8]}`, e.owner)
@@ -243,24 +232,6 @@ func TestWorkInfoFillsAnswer(t *testing.T) {
 		!slices.Equal(e.plugins.fillIDs, []int64{7, 8}) {
 		t.Fatalf("targets = %d %s (ids %v)", status, body, e.plugins.fillIDs)
 	}
-
-	e.plugins.queued = 2
-	status, body = e.post(fillsPath, `{"items":[{"videoId":7,"workId":"w-1"},{"videoId":8,"workId":"w-2"}]}`, e.owner)
-	var got gen.WorkInfoFillsQueued
-	want := []domain.WorkInfoFillItem{{VideoID: 7, WorkID: "w-1"}, {VideoID: 8, WorkID: "w-2"}}
-	if status != http.StatusAccepted || json.Unmarshal(body, &got) != nil || got.Queued != 2 ||
-		!slices.Equal(e.plugins.fillItems, want) {
-		t.Fatalf("fills = %d %s (items %v)", status, body, e.plugins.fillItems)
-	}
-	calls := e.plugins.calls
-	status, body = e.post(fillsPath, `{"items":[]}`, e.owner)
-	assertErrorBody(t, "no items", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonTooManyVideos, limit: 20000})
-	if e.plugins.calls != calls {
-		t.Fatal("an empty fill reached the registry")
-	}
-	e.plugins.err = domain.ErrWorkInfoFillQueueFull
-	status, body = e.post(fillsPath, `{"items":[{"videoId":7,"workId":"w-1"}]}`, e.owner)
-	assertErrorBody(t, "full queue", status, body, wantError{status: 503, code: gen.ErrorCodeWorkInfoFillsBusy})
 }
 
 func TestPersonSearchAnswersCandidates(t *testing.T) {

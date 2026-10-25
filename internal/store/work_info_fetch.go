@@ -135,16 +135,13 @@ func fetchedApplyTarget(
 func emptyFieldsOnly(
 	ctx context.Context, tx *sql.Tx, contentKey, userKey string, apply domain.FetchedWorkInfoApply,
 ) (domain.FetchedWorkInfoApply, error) {
-	// A virtual video's title is empty while it is still its link; a file video's while it has no display name.
-	var titleEmpty, hasTags bool
+	var titleFromLink, hasTags bool
 	if err := tx.QueryRowContext(ctx, `select
-		exists (select 1 from virtual_videos where user_key = ? and title_from_link = 1)
-			or (? = 0 and not exists (select 1 from video_overrides where content_key = ? and coalesce(display_name, '') <> '')),
-		exists (select 1 from video_tags where content_key = ?)`,
-		contentKey, domain.IsVirtualKey(contentKey), contentKey, userKey).Scan(&titleEmpty, &hasTags); err != nil {
+		exists (select 1 from virtual_videos where user_key = ? and title_from_link = 1),
+		exists (select 1 from video_tags where content_key = ?)`, contentKey, userKey).Scan(&titleFromLink, &hasTags); err != nil {
 		return apply, fmt.Errorf("cannot read the video's values: %w", err)
 	}
-	if !titleEmpty {
+	if !titleFromLink {
 		apply.Title = nil
 	}
 	if hasTags {

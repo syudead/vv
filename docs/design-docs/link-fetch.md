@@ -7,9 +7,8 @@ video created from a link, and fills a selection's empty fields from the
 works the owner confirms. The rules are in
 [`link_plugin.go`](../../internal/domain/link_plugin.go), the bundled plugin in
 [`link.go`](../../internal/wasmplugin/link.go) and
-[`link_page.go`](../../internal/wasmplugin/link_page.go), and the fills in
-[`link_fetch.go`](../../internal/app/link_fetch.go) and
-[`work_info_fill.go`](../../internal/app/work_info_fill.go). The sandbox and network
+[`link_page.go`](../../internal/wasmplugin/link_page.go), and the link fill in
+[`link_fetch.go`](../../internal/app/link_fetch.go). The sandbox and network
 rules it shares are in [work-info-plugins.md](work-info-plugins.md).
 
 The diagram shows a virtual video created from a link.
@@ -134,7 +133,7 @@ the owner made during the fetch stays:
 
 | Field | Written when |
 | --- | --- |
-| Title | `title_from_link` is still set: no title was given and none was saved since; for a file video filled from a selection, it has no display name |
+| Title | `title_from_link` is still set: no title was given and none was saved since |
 | Tags | The video has none |
 | A detail field (code, description, a date kind, a role, links, external IDs) | It is empty |
 | Cover | The video still has no image, checked under the generation lock every image write takes (`Ingest.FillThumbnailImage`); the first cover of at most 4096×4096 by its header, since no owner chose it and a page could name an image that decodes to hundreds of megabytes |
@@ -157,10 +156,13 @@ worker belonged to the previous process.
 
 `Fill info…` on the list selection bar
 ([library-ui.md, Selection bar](library-ui.md#selection-bar)) asks for one
-approved work-info plugin that searches and fetches, then shows the works it
-finds for each selected video and fills only the ones the owner keeps. The
-dialog is in [`web/src/library/fillInfo/`](../../web/src/library/fillInfo)
-and the fills in [`work_info_fill.go`](../../internal/app/work_info_fill.go).
+approved work-info plugin that searches and fetches, then lists for each
+selected video the works found and what the chosen one writes into its empty
+fields, and applies only what the owner saw. The dialog is in
+[`web/src/library/fillInfo/`](../../web/src/library/fillInfo); the server
+side is the list in
+[`work_info_fill.go`](../../internal/app/work_info_fill.go) and the single
+fetch and apply.
 
 The diagram shows one review from the selection bar to the filled videos.
 
@@ -168,7 +170,6 @@ The diagram shows one review from the selection bar to the filled videos.
 sequenceDiagram
   participant P as Fill dialog
   participant H as API
-  participant Q as Fill worker
   participant R as Plugin runs
   P->>H: POST /api/work-info-fill-targets
   H-->>P: one video per user-data key, title, search words
@@ -176,59 +177,48 @@ sequenceDiagram
     P->>H: POST search with the code, or the title
     H->>R: search
     H-->>P: candidates, match
+    opt a work is chosen
+      P->>H: GET the video, POST work-info-fetches
+      H->>R: fetch
+      H-->>P: held result
+      P->>P: plan of the empty fields it fills
+    end
   end
   P->>P: owner keeps, changes or drops each choice
-  P->>H: POST fills with video and work ID pairs
-  H->>Q: queue every pair, or none
-  H-->>P: 202, queued
-  loop each pair
-    Q->>R: fetch the work
-    Q->>Q: fill empty fields only, then the cover if no image
+  loop each kept plan
+    P->>H: POST apply with the plan's selection
   end
 ```
 
 `POST /api/work-info-fill-targets` resolves the selection's smart folders and
 returns the first video of each user-data key with its title and its search
-words: the key's work code, or the title without one. The dialog runs the
-plugin's search for each video in turn, since the runtime has one run slot,
-and lists every video as its result arrives.
+words: the key's work code, or the title without one. The versions of a
+bundle share one code and one user-data key and are listed once. The dialog
+then runs one search or fetch at a time, since the runtime has one run slot,
+and shows each video as its result arrives; closing the dialog stops the rest.
 
 The search response carries `match`, the candidate the dialog preselects
 (`domain.MatchWorkInfoCandidate`): the first whose title or ID equals the
 search words once case, width, spaces and punctuation are ignored, or the only
 candidate. A video without a match starts as `Don't fill`; the owner can pick
-any candidate for it, change a preselected one or drop it. Only titles are
-shown, not the values each work would write, so the review needs no fetch and
-the owner waits only for the searches.
+any candidate, change a preselected one or drop it.
 
-`POST /api/work-info-plugins/{id}/fills` takes the kept video and work ID
-pairs and answers at once with the number queued. Each fill fetches its work
-and applies the result as the fill of a link fetch does, through the same
-worker, so a fill never waits on another for the run slot; the cards update
-from the video events, and each run is recorded as the video's work-info
-fetch activity.
-
-The fill writes the empty fields of the
-[link fill table](#a-virtual-video-created-from-a-link-fills-its-empty-fields).
-A file video's title counts as empty while it has no display name, since its
-file title is only a fallback: the fetched title becomes its display name,
-decided inside the apply's transaction, and a display name the owner set
-stays. The versions of a bundle share one code and one user-data key and are
-listed once, through the first version selected.
-
-The plugin is checked before anything is queued: a plugin that is not an
-approved work-info plugin declaring `fetch` with its required settings set
-answers with the same error as a single fetch, and the dialog offers only
-plugins that also search, so `vv.link` is never offered. The queue holds
-20,000 fills, one selection at the bulk actions' limit, and takes a request
-whole or answers `503 work_info_fills_busy` without queuing any of it. Queued
-fills live in memory and end with the process.
+Each chosen work is fetched with the single fetch, which holds the result for
+10 minutes, and the dialog builds a plan from it and the video (`fillPlan`):
+the title while a file video has no display name, since its file title is only
+a fallback; the tags when the video has none; each empty code, description
+and date; each role, link and ID list the video has no entry in; and the first
+cover when no image is applied. The row lists those values under their field
+names, and `Fill N videos` sends each plan as the selection of the single
+apply, one video at a time, so the owner gets exactly the values shown. A
+plan that writes nothing is shown as such and not applied; a failed apply
+stays on its row with the reason, and the dialog stays open.
 
 | Rejected | Why |
 | --- | --- |
-| Filling without a review, taking only matching candidates | The owner could not correct a wrong match or rescue a video whose title differs from the site's |
-| Showing the values each work would write | Every video would need a fetch before the review, so the owner would wait for twice the runs |
+| Filling in the background without a review | The owner could not see what matched, and a wrong fill cannot be rolled back |
+| Showing only the works found | The owner still could not tell what each video would get |
+| Fetching again on the server when applying | The result could differ from the one the owner reviewed |
 | Fetching by the code as the work's ID | Most sites' IDs are not the work's code, so most fills failed |
-| Searching on the server for the whole selection | The request would wait for every search; the dialog shows each result as it arrives and can stop when closed |
+| Searching on the server for the whole selection | The request would wait for every search; the dialog shows each result as it arrives and stops when closed |
 | Overwriting the selection's values | The owner's tags and details would be lost to a site's |
-| A job in the jobs table | Jobs are content work for ffmpeg workers; the fills share the in-memory worker of link fetches and its single run slot |
