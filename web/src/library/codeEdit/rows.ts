@@ -1,4 +1,5 @@
 import type { components } from "../../api/gen/openapi";
+import { trimWhiteSpace } from "../../playlists/playlistName";
 
 export type CodeEditRow = components["schemas"]["VideoCodeEditRow"];
 export type CodeEditItem = components["schemas"]["VideoCodeEditItem"];
@@ -103,10 +104,11 @@ function writes(row: CodeEditRow, state: RowState, value: string): boolean {
 
 function deriveOne(row: CodeEditRow, input: DeriveInput): Omit<DerivedRow, "duplicate"> {
   const state = input.typed.has(row.video.id) ? "edited" : initialState(row);
-  const trimmed = rawValue(row, state, input).trim();
+  const trimmed = trimWhiteSpace(rawValue(row, state, input));
   const points = Array.from(trimmed);
   const cut = points.length > codeLimit;
-  const value = cut ? points.slice(0, codeLimit).join("") : trimmed;
+  // A cut can end on white space, which the server would trim before saving.
+  const value = cut ? trimWhiteSpace(points.slice(0, codeLimit).join("")) : trimmed;
   return { row, state, value, writes: writes(row, state, value), cut };
 }
 

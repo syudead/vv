@@ -135,6 +135,26 @@ describe("deriveRows", () => {
     expect(Array.from(result.value)).toHaveLength(100);
     expect(first(derive([row(2, { fileTitle: "𝒜".repeat(100) })])).cut).toBe(false);
   });
+
+  it("trims white space the cut leaves before comparing and marking duplicates", () => {
+    const code = "A".repeat(99);
+    const rows = [row(1, { fileTitle: `${code} B` }), row(2, { fileTitle: "x", code })];
+    const derived = derive(rows, { typed: [[2, `${code} C`]] });
+    expect(
+      derived.map(({ value, cut, writes, duplicate }) => [value, cut, writes, duplicate]),
+    ).toEqual([
+      [code, true, true, true],
+      [code, true, false, true],
+    ]);
+  });
+
+  it("trims Unicode White_Space as the server does, unlike trim() at U+0085 and U+FEFF", () => {
+    const rows = [row(1, { fileTitle: "x", code: "﻿X" }), row(2, { fileTitle: "y" })];
+    expect(values(derive(rows, { typed: [[2, "\u0085Y\u0085"]] }))).toEqual([
+      ["existing", "﻿X"],
+      ["edited", "Y"],
+    ]);
+  });
 });
 
 describe("nextPattern", () => {
