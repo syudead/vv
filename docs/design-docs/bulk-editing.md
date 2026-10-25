@@ -150,7 +150,10 @@ The editor is a `FormPageDialog` whose aside holds the pattern, the
 replacement, the upper-case option and the counts, so they stay in view while
 a long table scrolls; its single panel is the table, one row per key with the
 thumbnail, the title, the file name, the code input and the marks, so the
-source and the result sit side by side. A state mark (`Suggested`,
+source and the result sit side by side. Below `md` the table drops the
+thumbnail and file name columns and shows the file name under the title and
+the marks under the input, so the two remaining cells still put the file name
+beside its code. A state mark (`Suggested`,
 `Changed`) means Apply writes the row, so the marked rows add up to the number
 on `Apply to N videos`; the warnings (`Duplicate`, `Cut to 100`) are badges
 in the same column. A suggested value is muted until the owner types in it,
