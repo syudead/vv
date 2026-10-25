@@ -210,3 +210,111 @@ func TestASynonymStaysOnItsNode(t *testing.T) {
 		t.Error("the synonym reached a")
 	}
 }
+
+// provisionalPersonOn stores a face analysis of one of f's videos, which creates a person without a name.
+func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
+	t.Helper()
+	ctx := context.Background()
+	faces := f.env.db.Faces()
+	if _, err := faces.QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByOwner); err != nil {
+		t.Fatal(err)
+	}
+	job, err := faces.Claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	centroid := make([]float32, 128)
+	centroid[0] = 1
+	if err := faces.Store(ctx, domain.FaceAnalysis{
+		ContentKey: job.ContentKey, Recognizer: domain.FaceRecognizerSFaceInt8, Generation: job.Generation,
+		People: []domain.FaceAnalysedPerson{{
+			Spans: []domain.FaceSpan{{Start: 0, End: 10, X: 0.5, Y: 0.5, W: 0.1}}, GoodSeconds: 10,
+			Centroid: centroid, FaceVector: centroid, Crop: domain.PersonImage{JPEG: []byte("crop"), Width: 2, Height: 2},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	provisional := true
+	page, err := f.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("provisional people = %+v, %v; want one", page.Items, err)
+	}
+	return page.Items[0].ID
+}
+
+func personNamesOn(t *testing.T, f *guestFixture) []string {
+	t.Helper()
+	page, err := f.env.db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, person := range page.Items {
+		names = append(names, person.Name)
+	}
+	return sortedCopy(names)
+}
+
+// The peer refuses a new name it holds even when it lacks the entry being renamed, so the two entries stay apart.
+func TestRenameAnEntryThePeerLacksToANameThePeerHoldsChangesNothing(t *testing.T) {
+	cases := []struct {
+		name   string
+		target func(t *testing.T, fb *guestFixture) string
+		body   string
+		want   wantError
+	}{
+		{"tag", func(t *testing.T, fb *guestFixture) string {
+			t.Helper()
+			return tagPath(tagOn(t, fb, "猫").ID, "")
+		}, `{"name":"犬"}`,
+			wantError{status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "犬"}},
+		{"person", func(t *testing.T, fb *guestFixture) string {
+			t.Helper()
+			return "/api/people/" + strconv.FormatInt(fb.createWorkInfoPerson(t, "佐藤"), 10)
+		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+		{"provisional person", func(t *testing.T, fb *guestFixture) string {
+			t.Helper()
+			return "/api/people/" + strconv.FormatInt(provisionalPersonOn(t, fb), 10)
+		}, `{"name":"鈴木"}`, wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPersonNameTaken}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fa, fb, b, _ := mergedNodes(t)
+			tagOn(t, fa, "犬")
+			fa.createWorkInfoPerson(t, "鈴木")
+			target := tc.target(t, fb)
+			people := personNamesOn(t, fb)
+
+			rec := b.owner(http.MethodPatch, target, tc.body)
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), tc.want)
+			if _, found := tagNamed(t, fb, "犬"); found {
+				t.Error("b gained the tag 犬")
+			}
+			if got := personNamesOn(t, fb); !slices.Equal(got, people) {
+				t.Errorf("b's people = %v, want %v", got, people)
+			}
+		})
+	}
+}
+
+// Undoing a face split merges the split's provisional person back by id; it has no name to send to the peer.
+func TestMergeAProvisionalPersonMergesItHere(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	sato := fb.createWorkInfoPerson(t, "佐藤")
+	provisional := provisionalPersonOn(t, fb)
+
+	body := `{"sourceIds":[` + strconv.FormatInt(provisional, 10) + `]}`
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(sato, 10)+"/merge", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
+	}
+	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != sato || len(merged.NotFoundIds) != 0 {
+		t.Errorf("merge = %+v, want b's 佐藤 and no missing sources", merged)
+	}
+	if got, want := personNamesOn(t, fb), []string{"佐藤"}; !slices.Equal(got, want) {
+		t.Errorf("b's people = %v, want %v with the provisional person merged", got, want)
+	}
+	if got := personNamesOn(t, fa); len(got) != 0 {
+		t.Errorf("a's people = %v, want none", got)
+	}
+}

@@ -19,15 +19,17 @@ type vocabularyMerge struct {
 	notFound []int64
 }
 
-// planMerge reports found false when target names nothing on either node.
+// planMerge reports found false when target names nothing on either node. A local id without a name, such as a
+// provisional person, merges here by id only, since the peer cannot be told about it; the local merge reports a
+// local id that does not exist.
 func (s *server) planMerge(r *http.Request, kind domain.VocabularyKind, target int64, sources []int64) (vocabularyMerge, bool, error) {
 	unique := uniqueInt64s(sources)
 	names, err := s.vocabularyNames(r, kind, append([]int64{target}, unique...))
 	if err != nil {
 		return vocabularyMerge{}, false, err
 	}
-	into, found := names[target]
-	if !found {
+	into, named := names[target]
+	if !named && domain.IsRemoteID(target) {
 		return vocabularyMerge{}, false, nil
 	}
 	plan := vocabularyMerge{
@@ -39,17 +41,16 @@ func (s *server) planMerge(r *http.Request, kind domain.VocabularyKind, target i
 	}
 	sent := map[string]bool{}
 	for _, id := range unique {
-		name, found := names[id]
-		switch {
-		case !found:
-			plan.notFound = append(plan.notFound, id)
-			continue
-		case !sent[name]:
-			sent[name] = true
-			plan.change.Sources = append(plan.change.Sources, name)
-		}
+		name, named := names[id]
 		if !domain.IsRemoteID(id) {
 			plan.sources = append(plan.sources, id)
+		} else if !named || into == "" {
+			plan.notFound = append(plan.notFound, id)
+			continue
+		}
+		if named && into != "" && !sent[name] {
+			sent[name] = true
+			plan.change.Sources = append(plan.change.Sources, name)
 		}
 	}
 	return plan, true, nil

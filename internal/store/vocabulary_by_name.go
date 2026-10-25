@@ -120,7 +120,15 @@ func renameTagByName(ctx context.Context, tx *sql.Tx, name, newName string) (dom
 		return domain.VocabularyOutcome{}, err
 	}
 	id, found, err := canonicalTagIDByName(ctx, tx, name)
-	if err != nil || !found {
+	if err != nil {
+		return domain.VocabularyOutcome{}, err
+	}
+	if !found {
+		// The caller renames its own tag next, so a new name held here is refused even when name is absent.
+		holder, taken, err := lookupTagName(ctx, tx, normalized)
+		if err == nil && taken {
+			err = &domain.TagNameConflict{Tag: holder.ref()}
+		}
 		return domain.VocabularyOutcome{}, err
 	}
 	changed, err := renameTagInTx(ctx, tx, id, normalized)
@@ -228,15 +236,18 @@ func renameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name, n
 		return domain.VocabularyOutcome{}, nil, err
 	}
 	id, found, err := creditIDByName(ctx, tx, t, name)
-	if err != nil || !found {
-		return domain.VocabularyOutcome{}, nil, err
-	}
-	holder, taken, err := creditIDByName(ctx, tx, t, normalized.Name)
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
-	if taken && holder != id {
+	// The caller renames its own entry next, so a new name held here is refused even when name is absent.
+	holder, taken, err := creditIDByName(ctx, tx, t, normalized.Name)
+	switch {
+	case err != nil:
+		return domain.VocabularyOutcome{}, nil, err
+	case taken && (!found || holder != id):
 		return domain.VocabularyOutcome{}, nil, &domain.CreditNameConflict{Kind: t.kind, Name: normalized.Name}
+	case !found:
+		return domain.VocabularyOutcome{}, nil, nil
 	}
 	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, domain.CreditPatch{Name: &normalized.Name})
 	if err != nil {

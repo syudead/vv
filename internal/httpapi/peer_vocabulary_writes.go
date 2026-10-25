@@ -199,21 +199,30 @@ func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, id
 	if len(remote) == 0 {
 		return names, nil
 	}
-	var answer struct {
-		Items []struct {
-			ID   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"items"`
-	}
-	if err := s.peerGet(r, vocabularyListPaths[kind], url.Values{}, &answer); err != nil {
+	items, err := s.peerEntries(r, kind)
+	if err != nil {
 		return nil, err
 	}
-	for _, item := range answer.Items {
+	for _, item := range items {
 		if item.Name != "" && slices.Contains(remote, item.ID) {
 			names[domain.ToRemoteID(item.ID)] = item.Name
 		}
 	}
 	return names, nil
+}
+
+// peerVocabularyItem is an entry of the peer's whole list of a kind, in the peer's id space, as peerEntries reads it.
+type peerVocabularyItem struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (s *server) peerEntries(r *http.Request, kind domain.VocabularyKind) ([]peerVocabularyItem, error) {
+	var answer struct {
+		Items []peerVocabularyItem `json:"items"`
+	}
+	err := s.peerGet(r, vocabularyListPaths[kind], url.Values{}, &answer)
+	return answer.Items, err
 }
 
 // restoreBody lets the next reader of r read raw again.
@@ -313,8 +322,23 @@ func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind
 	return true
 }
 
+// peerCreditNameFree answers 409 with the kind's name_taken reason and reports false when the peer holds name; a
+// provisional person has no name to rename on the peer, so the peer's list is read instead.
+func (s *server) peerCreditNameFree(w http.ResponseWriter, r *http.Request, kind domain.CreditKind, name string) bool {
+	items, err := s.peerEntries(r, vocabularyKindOf(kind))
+	if err != nil {
+		s.vocabularyFailure(w, err)
+		return false
+	}
+	if slices.ContainsFunc(items, func(item peerVocabularyItem) bool { return item.Name == name }) {
+		s.creditNameTaken(w, kind)
+		return false
+	}
+	return true
+}
+
 // renameCreditOnPeer renames the peer's entry of id's name before the local update; a provisional person has no
-// name the peer could hold, so only the conflict here is checked.
+// name the peer could hold, so only the new name is checked on both nodes.
 func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind domain.CreditKind, id int64, name *string) bool {
 	if name == nil {
 		return true
@@ -335,7 +359,7 @@ func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind
 		return false
 	}
 	if current.Name == "" {
-		return true
+		return s.peerCreditNameFree(w, r, kind, normalized.Name)
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
 		Kind: vocabularyKindOf(kind), Action: domain.VocabularyRename, Name: current.Name, NewName: normalized.Name,
