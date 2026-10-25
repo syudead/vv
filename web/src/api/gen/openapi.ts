@@ -1202,6 +1202,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/review-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a review run and a page of its candidates
+         * @description Owner-only. Returns the run with its progress and its listed, adopted and rejected candidate sets, most probable first, each member with its current name and count. A candidate whose member no longer exists, such as the source of a merged tag, is left out, so a page may hold fewer than limit items. A missing run returns 404 not_found; an unknown cursor 400 invalid_request.
+         */
+        get: operations["getAssistantReviewRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/review-runs/{id}/candidates/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt review candidates
+         * @description Owner-only. Stores one approved proposal per chosen candidate, in the order of ids, each running the set's one operation: mergeTag or mergePeople into the member with more videos, or createGroup of the videos named by their common title. The assistant worker executes them like any approved proposal. skippedIds lists the ids that are not listed in the run or whose member no longer exists. A missing run returns 404 not_found.
+         */
+        post: operations["adoptAssistantReviewCandidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/review-runs/{id}/candidates/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject review candidates
+         * @description Owner-only. Marks the listed candidates among ids rejected and remembers their sets, which later runs of the kind do not judge again. skippedIds lists the ids that are not listed in the run. A missing run returns 404 not_found.
+         */
+        post: operations["rejectAssistantReviewCandidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/comfyui": {
         parameters: {
             query?: never;
@@ -3843,10 +3903,10 @@ export interface components {
         AssistantTurnResponse: {
             outcome: components["schemas"]["AssistantTurnOutcome"];
         };
-        /** @description One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing. */
+        /** @description One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing. */
         AssistantTurnOutcome: {
             /** @enum {string} */
-            kind: "filter" | "navigate" | "answer" | "proposal" | "clarify" | "unsupported" | "unreadable";
+            kind: "filter" | "navigate" | "answer" | "proposal" | "review" | "clarify" | "unsupported" | "unreadable";
             criteria?: components["schemas"]["AssistantCriteria"];
             destination?: components["schemas"]["AssistantDestination"];
             /** @enum {string} */
@@ -3856,6 +3916,7 @@ export interface components {
             items?: components["schemas"]["AssistantAnswerItem"][];
             link?: components["schemas"]["AssistantAnswerLink"];
             proposal?: components["schemas"]["AssistantProposal"];
+            run?: components["schemas"]["AssistantReviewRun"];
             /** @enum {string} */
             about?: "operation" | "target" | "value";
             candidates?: components["schemas"]["AssistantCandidate"][];
@@ -3900,6 +3961,70 @@ export interface components {
         };
         /** @enum {string} */
         AssistantLabelKind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot";
+        /** @description A search for candidate sets of one kind and their judging by the classifier, one question per set. */
+        AssistantReviewRun: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "tags" | "people" | "works";
+            /**
+             * @description interrupted was stopped by a restart.
+             * @enum {string}
+             */
+            status: "running" | "done" | "failed" | "interrupted";
+            /** @description Candidate sets found. */
+            total: number;
+            /** @description Sets judged so far. */
+            judged: number;
+            /** @description Sets judged at 0.5 or more and listed. */
+            listed: number;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+        };
+        AssistantReviewRunPage: {
+            run: components["schemas"]["AssistantReviewRun"];
+            items: components["schemas"]["AssistantReviewCandidate"][];
+            nextCursor?: string;
+        };
+        AssistantReviewCandidate: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: double
+             * @description The classifier's probability that the set is one entity or one work, 0.5 or more.
+             */
+            probability: number;
+            /** @description Two tags or two people, or two or more videos. */
+            members: components["schemas"]["AssistantReviewMember"][];
+            /** @enum {string} */
+            state: "listed" | "adopted" | "rejected";
+        };
+        AssistantReviewMember: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /**
+             * Format: int64
+             * @description The tag or person, or a current library video of the member.
+             */
+            id: number;
+            /** @description The current name, or the video's title when the set was judged, as untranslated user data. */
+            name: string;
+            /** @description Videos the tag is on or the person is credited on; 0 for a video. */
+            count: number;
+        };
+        AssistantReviewCandidateIds: {
+            ids: number[];
+        };
+        AssistantReviewAdoption: {
+            /** @description The approved proposals, in the order of ids. */
+            proposals: components["schemas"]["AssistantProposal"][];
+            skippedIds: number[];
+        };
+        AssistantReviewRejection: {
+            rejectedIds: number[];
+            skippedIds: number[];
+        };
         AssistantProposalList: {
             items: components["schemas"]["AssistantProposal"][];
         };
@@ -7465,6 +7590,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Assistant review run ID */
+        AssistantReviewRunId: number;
         /** @description Assistant proposal ID */
         AssistantProposalId: number;
         /** @description Activity record ID */
@@ -9698,6 +9825,96 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getAssistantReviewRun: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description Candidates per page; 50 when omitted. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run and one page of candidates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewRunPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adoptAssistantReviewCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantReviewCandidateIds"];
+            };
+        };
+        responses: {
+            /** @description The approved proposals */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewAdoption"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectAssistantReviewCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant review run ID */
+                id: components["parameters"]["AssistantReviewRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantReviewCandidateIds"];
+            };
+        };
+        responses: {
+            /** @description The rejected and skipped ids */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantReviewRejection"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getComfyUISettings: {

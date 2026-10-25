@@ -603,7 +603,17 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 
 func requiresJSONBody(r *http.Request) bool {
 	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
-		isActivityUndoPost(r) || requiresOtherJSONBody(r)
+		isActivityUndoPost(r) || isAssistantReviewDecision(r) || requiresOtherJSONBody(r)
+}
+
+// isAssistantReviewDecision matches adopting and rejecting a review run's candidates.
+func isAssistantReviewDecision(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/assistant/review-runs/")
+	if r.Method != http.MethodPost || !ok {
+		return false
+	}
+	id, rest, found := strings.Cut(suffix, "/")
+	return found && id != "" && (rest == "candidates/adopt" || rest == "candidates/reject")
 }
 
 func requiresOtherJSONBody(r *http.Request) bool {

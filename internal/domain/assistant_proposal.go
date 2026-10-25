@@ -315,7 +315,7 @@ func (d AssistantRunDetail) Encode() string {
 	return string(body)
 }
 
-// AssistantChanged follows every committed change of a proposal; it carries no payload.
+// AssistantChanged follows every committed change of a proposal or a review run; it carries no payload.
 type AssistantChanged struct{}
 
 func (AssistantChanged) event() {}
