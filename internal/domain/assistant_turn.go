@@ -126,6 +126,7 @@ type AssistantTurnResult struct {
 	Destination *AssistantDestination
 	Answer      *AssistantAnswer
 	Proposal    *AssistantProposal
+	Review      *AssistantReviewRun
 	Clarify     *AssistantClarification
 	// Unsupported is the operation the model named, when the catalog has it but the assistant cannot build it yet.
 	Unsupported string

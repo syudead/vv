@@ -67,6 +67,16 @@ func assistantProposalByID(ctx context.Context, q rowQueryer, id int64) (domain.
 func (s *AssistantStore) CreateProposal(
 	ctx context.Context, request string, plan domain.AssistantPlan, now time.Time,
 ) (domain.AssistantProposal, error) {
+	return s.storeProposal(ctx, request, plan, now, nil)
+}
+
+// proposalStep changes a just stored proposal in the same transaction.
+type proposalStep func(tx *sql.Tx, c *changes, p domain.AssistantProposal) (domain.AssistantProposal, error)
+
+// storeProposal stores a proposed plan, runs then on it when given, and commits both.
+func (s *AssistantStore) storeProposal(
+	ctx context.Context, request string, plan domain.AssistantPlan, now time.Time, then proposalStep,
+) (domain.AssistantProposal, error) {
 	encoded, err := json.Marshal(plan)
 	if err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot encode the assistant plan: %w", err)
@@ -76,20 +86,32 @@ func (s *AssistantStore) CreateProposal(
 		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var id int64
-	if err := tx.QueryRowContext(ctx, `insert into assistant_proposals (status, request, plan, total, created_at)
-		values (?, ?, ?, ?, ?) returning id`, string(domain.AssistantProposed), request, string(encoded),
-		plan.Total(), now.UnixMilli()).Scan(&id); err != nil {
-		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
-	}
-	p, err := assistantProposalByID(ctx, tx, id)
+	p, err := insertAssistantProposal(ctx, tx, request, encoded, plan.Total(), now)
 	if err != nil {
 		return domain.AssistantProposal{}, err
 	}
-	if err := s.db.commitWith(ctx, tx, &changes{}, domain.AssistantChanged{}); err != nil {
+	c := &changes{}
+	if then != nil {
+		if p, err = then(tx, c, p); err != nil {
+			return domain.AssistantProposal{}, err
+		}
+	}
+	if err := s.db.commitWith(ctx, tx, c, domain.AssistantChanged{}); err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
 	}
 	return p, nil
+}
+
+func insertAssistantProposal(
+	ctx context.Context, tx *sql.Tx, request string, plan []byte, total int, now time.Time,
+) (domain.AssistantProposal, error) {
+	var id int64
+	if err := tx.QueryRowContext(ctx, `insert into assistant_proposals (status, request, plan, total, created_at)
+		values (?, ?, ?, ?, ?) returning id`, string(domain.AssistantProposed), request, string(plan),
+		total, now.UnixMilli()).Scan(&id); err != nil {
+		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
+	}
+	return assistantProposalByID(ctx, tx, id)
 }
 
 // Proposal reads one proposal in any status; a missing one is domain.ErrNotFound.
@@ -132,6 +154,21 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 		return domain.AssistantProposal{}, fmt.Errorf("cannot approve the assistant proposal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	c := &changes{}
+	p, err := approveAssistantProposal(ctx, tx, c, id, now)
+	if err != nil {
+		return p, err
+	}
+	if err := s.db.commitWith(ctx, tx, c, domain.AssistantChanged{}); err != nil {
+		return domain.AssistantProposal{}, fmt.Errorf("cannot approve the assistant proposal: %w", err)
+	}
+	return p, nil
+}
+
+// approveAssistantProposal is ApproveProposal inside the caller's transaction.
+func approveAssistantProposal(
+	ctx context.Context, tx *sql.Tx, c *changes, id int64, now time.Time,
+) (domain.AssistantProposal, error) {
 	moved, err := moveAssistantProposalIf(ctx, tx, id, domain.AssistantProposed, domain.AssistantApproved,
 		`created_at >= ?`, []any{now.Add(-domain.AssistantProposalTTL).UnixMilli()}, `approved_at = ?`, now.UnixMilli())
 	if err != nil {
@@ -148,7 +185,6 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 		}
 		return p, domain.ErrAssistantProposalNotPending
 	}
-	c := &changes{}
 	entryID, err := recordActivity(ctx, tx, c, domain.ActivityEntry{
 		Kind:    domain.ActivityAssistantRun,
 		Subject: domain.ActivitySubject{Kind: domain.ActivitySubjectProposal, Key: strconv.FormatInt(id, 10), Label: p.Request},
@@ -162,9 +198,6 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 		return domain.AssistantProposal{}, fmt.Errorf("cannot link the assistant proposal to its activity: %w", err)
 	}
 	p.ActivityID = entryID
-	if err := s.db.commitWith(ctx, tx, c, domain.AssistantChanged{}); err != nil {
-		return domain.AssistantProposal{}, fmt.Errorf("cannot approve the assistant proposal: %w", err)
-	}
 	return p, nil
 }
 

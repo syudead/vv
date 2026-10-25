@@ -140,6 +140,10 @@ func toAPIAssistantOutcome(r domain.AssistantTurnResult) (gen.AssistantTurnOutco
 		proposal := toAPIAssistantProposal(*r.Proposal)
 		out.Proposal = &proposal
 	}
+	if r.Review != nil {
+		run := toAPIAssistantReviewRun(*r.Review)
+		out.Run = &run
+	}
 	if r.Clarify != nil {
 		setAPIAssistantClarify(&out, *r.Clarify)
 	}
