@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 import type { FolderRef, Video } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
-import type { Zoom } from "../preferences/viewPreferences";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { resultCountText } from "../videoList/listSummary";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import type { VideoSelection } from "../videoList/useVideoSelection";
-import VideoCard from "../videoList/VideoCard";
+import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
 import FolderVideoGrid from "./FolderVideoGrid";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
@@ -16,6 +16,7 @@ import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./sta
 export default function FolderSearchResults({
   folder,
   videos,
+  view,
   zoom,
   backTo,
   preview,
@@ -24,12 +25,14 @@ export default function FolderSearchResults({
 }: {
   folder: FolderRef;
   videos: VideosState;
+  view: ViewMode;
   zoom: Zoom;
   backTo: string;
   preview: PreviewCardProps;
   selection: VideoSelection;
   tagsRow: (video: Video) => ReactNode;
 }) {
+  const Card = view === "grid" ? VideoCard : VideoRow;
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
   const initialLoadError =
     !videos.loading && videos.items.length === 0 ? videos.error : null;
@@ -53,18 +56,19 @@ export default function FolderSearchResults({
             <TagRowMeasureProvider>
               <FolderVideoGrid
                 videos={videos}
+                view={view}
                 zoom={zoom}
                 selectedKeys={selection.selectedKeys}
                 onLift={preview.previewCoordinator.reset}
                 onAccepted={selection.clear}
                 card={(video) => (
-                  <VideoCard
+                  <Card
                     key={video.id}
                     video={video}
                     backTo={backTo}
                     {...selection.cardProps(video.id)}
                     {...preview}
-                    tagsRow={tagsRow}
+                    tagsRow={view === "grid" ? tagsRow : undefined}
                     location={
                       video.folder === undefined
                         ? undefined

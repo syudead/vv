@@ -70,13 +70,8 @@ func (s FolderScope) Valid() bool {
 type FolderVideoQuery struct {
 	Dir   string
 	Scope FolderScope
-	// Query uses VideoQuery syntax but matches only locations within Scope.
-	Query        string
-	Sort         VideoSort
-	Seed         int64
-	Cursor       string
-	Limit        int
-	FavoriteOnly bool
+	// VideoQuery's search, filters, sort and paging apply to the locations within Scope; Kind is ignored.
+	VideoQuery
 }
 
 // ValidateFolderPath rejects empty segments, leading/trailing slashes, dot segments, and NUL to prevent escaping the root; empty denotes the root itself.

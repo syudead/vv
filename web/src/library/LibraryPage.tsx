@@ -13,7 +13,6 @@ import {
   type LibraryGroup,
   type LibraryItem,
   type SmartFolderSummary,
-  type TagRef,
   type Video,
   type VideoSort,
 } from "../api/client";
@@ -22,7 +21,6 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import type { CreditKind } from "../api/credits";
 import {
   groupKey,
   itemKey,
@@ -30,7 +28,6 @@ import {
   smartFolderKey,
   videoKey,
 } from "../api/libraryItems";
-import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { GroupChangedContext } from "../groups/groupChanges";
@@ -52,11 +49,9 @@ import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { TableBody, TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
-import { useToast } from "../ui/Toast";
 import {
   criteriaKey,
   type HistoryMode,
-  type ListCriteria,
   type ListCriteriaChange,
   newSeed,
 } from "../videoList/listCriteria";
@@ -73,23 +68,7 @@ import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
 import type { LibraryFilter } from "../smartFolders/smartRule";
-import ActiveTagFilters from "./ActiveTagFilters";
-import {
-  clearedCredits,
-  creditKinds,
-  creditSignature,
-  hasFilterChips,
-  ORGANIZATION_PARAM,
-  PERSON_PARAM,
-  TAG_KIND_PARAM,
-  useCreditFilter,
-  withoutCredit,
-} from "./creditCriteria";
 import CardTagRow from "./CardTagRow";
-import { CreditFilterField, TagFilterField } from "./FilterFields";
-import { draftParams, useFilterDraft } from "./useFilterDraft";
-import { type LibraryFilterPick, pickParams } from "./filterPicks";
-import { useSearchSuggestions } from "./searchSuggestions";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
@@ -117,18 +96,14 @@ import SelectionBar from "./SelectionBar";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
-import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
+import {
+  libraryFilterParams,
+  useLibraryFilters,
+  useLibraryFilterValues,
+} from "./useLibraryFilters";
 import { useMarqueeSelection } from "./useMarqueeSelection";
 import { useRangeSelection } from "./useRangeSelection";
-import {
-  clearConditions as clearTagConditions,
-  hasConditions as hasTagConditions,
-  MAX_TAG_COUNT,
-  parseTagParam,
-  removeTagId,
-  serializeTagIds,
-  TAG_PARAM,
-} from "./tagCriteria";
+import { hasConditions as hasTagConditions } from "./tagCriteria";
 
 const skeletonCount = 12;
 
@@ -153,19 +128,6 @@ function libraryConditioned(filter: LibraryFilter): boolean {
   return hasTagConditions(filter.criteria, filter.tagIds, filter.credits);
 }
 
-/** Each tag, the kind, the person and the organization count as one applied filter. */
-function idFilterCount(
-  tagIds: readonly number[],
-  credits: LibraryFilter["credits"],
-): number {
-  return (
-    tagIds.length +
-    [credits.tagKind, credits.person, credits.organization].filter(
-      (id) => id !== undefined,
-    ).length
-  );
-}
-
 function saveSmartFolderAction(
   owner: boolean,
   conditioned: boolean,
@@ -178,11 +140,10 @@ function saveSmartFolderAction(
 }
 
 /** Retired parameters (versions, addedWithin, minDuration, maxDuration) are dropped on the next write. */
-const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM, TAG_KIND_PARAM];
+const libraryParams = libraryFilterParams;
 
 export default function LibraryPage() {
   const location = useLocation();
-  const toast = useToast();
   // Hide owner-data actions from guests.
   //
   const owner = useAudience() === "owner";
@@ -191,16 +152,7 @@ export default function LibraryPage() {
   // Pass library-specific filters through useListCriteria's extension so every URL update preserves them.
   const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
   const { query, favorite, sort } = criteria;
-  // Preserve tag-array identity across unrelated URL changes so card callbacks and memoization remain stable.
-  const rawTagKey = JSON.stringify(
-    new URLSearchParams(location.search).getAll(TAG_PARAM),
-  );
-  const tagIds = useMemo(
-    () => (owner ? parseTagParam(JSON.parse(rawTagKey) as string[]) : []),
-    [owner, rawTagKey],
-  );
-  const credits = useCreditFilter(location.search, owner);
-  const libraryFilter = credits;
+  const { tagIds, credits } = useLibraryFilterValues(owner);
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
@@ -230,108 +182,9 @@ export default function LibraryPage() {
     [preferences, savePreferences, update],
   );
   const { shuffle, commitQuery } = useListActions(update);
-  const clearAll = useCallback(() => {
-    resetPreview();
-    const cleared = clearTagConditions(criteria);
-    apply(cleared.criteria, "push", {
-      [TAG_PARAM]: serializeTagIds(cleared.tag),
-      ...clearedCredits,
-    });
-  }, [apply, criteria, resetPreview]);
-
-  // Read current criteria through refs to keep card callbacks stable across unrelated renders.
-  const latestConditions = useRef({ criteria, tagIds });
-  latestConditions.current = { criteria, tagIds };
-  const applyTags = useCallback(
-    (next: ListCriteria, mode: HistoryMode, ids: readonly number[]) =>
-      apply(next, mode, { [TAG_PARAM]: serializeTagIds(ids) }),
-    [apply],
-  );
-
-  const removeCredit = useCallback(
-    (kind: CreditKind) => {
-      resetPreview();
-      apply(latestConditions.current.criteria, "push", withoutCredit(kind));
-    },
-    [apply, resetPreview],
-  );
-  // Remove missing credits with history replacement and notify; changed criteria reload the list.
-  const creditGone = useCallback(
-    (kind: CreditKind) => {
-      toast(
-        kind === "person"
-          ? t.library.activeTags.personGone
-          : t.library.activeTags.organizationGone,
-      );
-      apply(latestConditions.current.criteria, "replace", withoutCredit(kind));
-    },
-    [apply, toast],
-  );
-  const applyTagKind = useCallback<ApplyTagKind>(
-    (extra, mode) => {
-      resetPreview();
-      apply(latestConditions.current.criteria, mode, extra);
-    },
-    [apply, resetPreview],
-  );
-  const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
-  const changeTagKind = tagKinds.change;
-  const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
-
-  // A search suggestion also clears the typed text, in the same history entry as the filter.
-  const applyPick = useCallback(
-    (pick: LibraryFilterPick, clearQuery = false) => {
-      const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
-      const result = pickParams(pick, currentTagIds);
-      if (result.kind === "tagLimit") {
-        toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
-      }
-      if (result.kind !== "params" && !clearQuery) return;
-      resetPreview();
-      apply(
-        clearQuery ? { ...current, query: "" } : current,
-        "push",
-        result.kind === "params" ? result.params : undefined,
-      );
-    },
-    [apply, resetPreview, toast],
-  );
-  const pressTag = useCallback(
-    (tag: TagRef) => applyPick({ kind: "tag", id: tag.id }),
-    [applyPick],
-  );
-  const pickSuggestion = useCallback(
-    (pick: LibraryFilterPick) => applyPick(pick, true),
-    [applyPick],
-  );
-  const suggestions = useSearchSuggestions(owner, pickSuggestion);
-  const filterDraft = useFilterDraft(tagIds, credits);
-  const resetFilterDraft = filterDraft.reset;
-  const loadTagKinds = tagKinds.load;
-  const openFilter = useCallback(() => {
-    resetFilterDraft();
-    if (owner) loadTagKinds();
-  }, [loadTagKinds, owner, resetFilterDraft]);
-  const addDraftTag = (id: number) => {
-    if (!filterDraft.addTag(id)) {
-      toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
-    }
-  };
-  const applyFilter = (favorite: boolean) => {
-    resetPreview();
-    apply(
-      { ...latestConditions.current.criteria, favorite },
-      "push",
-      draftParams(filterDraft.draft),
-    );
-  };
-  const removeActiveTag = useCallback(
-    (id: number) => {
-      resetPreview();
-      applyTags(criteria, "push", removeTagId(tagIds, id));
-    },
-    [applyTags, criteria, resetPreview, tagIds],
-  );
+  // Read current tags through a ref to keep bulk-edit callbacks stable across unrelated renders.
+  const latestTagIds = useRef(tagIds);
+  latestTagIds.current = tagIds;
   const { listRef: list, capture: captureAnchor } = useZoomAnchor(zoom);
 
   const changeZoom = useCallback(
@@ -344,7 +197,7 @@ export default function LibraryPage() {
   );
 
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
   );
   const {
     items,
@@ -360,7 +213,19 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
+  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
+  const filters = useLibraryFilters({
+    owner,
+    criteria,
+    apply,
+    tagIds,
+    credits,
+    missingTagIds,
+    restored: restored !== undefined,
+    resetPreview,
+    searchField,
+  });
+  const { pressTag, clearAll } = filters;
 
   // Keep newly nonmatching watched rows in place until the next reload.
   useEffect(() => {
@@ -438,7 +303,7 @@ export default function LibraryPage() {
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
     (tagId: number) => {
-      if (!latestConditions.current.tagIds.includes(tagId)) return;
+      if (!latestTagIds.current.includes(tagId)) return;
       clearSelection();
       clearListSnapshot();
       reload();
@@ -458,11 +323,7 @@ export default function LibraryPage() {
   }, [items]);
 
   // Clear selection whenever conditions change, even when some videos match both views.
-  const conditionsSignature = [
-    criteriaKey(criteria),
-    tagIds.join(","),
-    creditSignature(credits),
-  ].join("\u0000");
+  const conditionsSignature = [criteriaKey(criteria), filters.signature].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
     if (knownConditionsSignature.current === conditionsSignature) return;
@@ -534,7 +395,7 @@ export default function LibraryPage() {
     // Do not snapshot temporary drag overlays or restore stale order after successful mutations invalidated it.
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...libraryFilter },
+      { ...criteria, tags: tagIds, ...credits },
       {
         items,
         total,
@@ -545,17 +406,7 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [
-    libraryFilter,
-    criteria,
-    cursor,
-    hasMore,
-    items,
-    shown,
-    staleGroups,
-    tagIds,
-    total,
-  ]);
+  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
 
   const results = useRef<HTMLElement | null>(null);
   const marqueeBox = useRef<HTMLDivElement | null>(null);
@@ -584,49 +435,6 @@ export default function LibraryPage() {
     observer.observe(target);
     return () => observer.disconnect();
   }, [hasMore, loadMore, resetPreview]);
-
-  // Remove missing tag filters once per response content; URL replacement can cause repeated intermediate renders.
-  const handledMissingTagIds = useRef<string | null>(null);
-  useEffect(() => {
-    if (missingTagIds.length === 0) {
-      handledMissingTagIds.current = null;
-      return;
-    }
-    const signature = [...missingTagIds].sort((a, b) => a - b).join(",");
-    if (handledMissingTagIds.current === signature) return;
-    handledMissingTagIds.current = signature;
-    const remaining = tagIds.filter((id) => !missingTagIds.includes(id));
-    if (remaining.length === tagIds.length) return;
-    toast(t.library.deletedTagsRemoved);
-    refreshTags().catch(() => undefined);
-    applyTags(criteria, "replace", remaining);
-  }, [applyTags, criteria, missingTagIds, tagIds, toast]);
-
-  // Restored snapshots skip list requests, so validate URL tags against the refreshed shared tag list on mount.
-  const mountRef = useRef({ criteria, tagIds, apply: applyTags, toast });
-  mountRef.current = { criteria, tagIds, apply: applyTags, toast };
-  useEffect(() => {
-    if (restored === undefined || mountRef.current.tagIds.length === 0) return;
-    let alive = true;
-    revalidateTags()
-      .then((tags) => {
-        if (!alive) return;
-        const known = new Set(tags.map((tag) => tag.id));
-        const {
-          tagIds: current,
-          criteria: currentCriteria,
-          apply: currentApply,
-        } = mountRef.current;
-        const remaining = current.filter((id) => known.has(id));
-        if (remaining.length === current.length) return;
-        mountRef.current.toast(t.library.deletedTagsRemoved);
-        currentApply(currentCriteria, "replace", remaining);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [restored]);
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
@@ -821,7 +629,7 @@ export default function LibraryPage() {
               onSortChange={changeSort}
               onShuffle={shuffle}
               favorite={favorite}
-              onFilterApply={applyFilter}
+              onFilterApply={filters.toolbar.onFilterApply}
               canClear={conditioned}
               onClear={clearAll}
               view={view}
@@ -831,30 +639,10 @@ export default function LibraryPage() {
               }}
               zoom={zoom}
               onZoomChange={changeZoom}
-              extraFilter={
-                <>
-                  <TagFilterField
-                    tagIds={filterDraft.draft.tagIds}
-                    kindId={filterDraft.draft.tagKind}
-                    kinds={tagKinds.kinds}
-                    maxTags={MAX_TAG_COUNT}
-                    onAddTag={addDraftTag}
-                    onRemoveTag={filterDraft.removeTag}
-                    onKindChange={(tagKind) => filterDraft.change({ tagKind })}
-                  />
-                  {creditKinds.map((kind) => (
-                    <CreditFilterField
-                      key={kind}
-                      kind={kind}
-                      value={filterDraft.draft[kind]}
-                      onChange={(id) => filterDraft.change({ [kind]: id })}
-                    />
-                  ))}
-                </>
-              }
-              extraFilterCount={idFilterCount(tagIds, credits)}
-              onFilterOpen={openFilter}
-              suggestions={suggestions}
+              extraFilter={filters.toolbar.extraFilter}
+              extraFilterCount={filters.toolbar.extraFilterCount}
+              onFilterOpen={filters.toolbar.onFilterOpen}
+              suggestions={filters.toolbar.suggestions}
             />
           </TopBarPortal>
         }
@@ -900,18 +688,7 @@ export default function LibraryPage() {
               }
             />
           )}
-          {hasFilterChips(tagIds, credits) && (
-            <ActiveTagFilters
-              tagIds={tagIds}
-              onRemove={removeActiveTag}
-              credits={credits}
-              onRemoveCredit={removeCredit}
-              onCreditGone={creditGone}
-              tagKindName={tagKinds.name}
-              onRemoveTagKind={removeTagKind}
-              searchFieldRef={searchField}
-            />
-          )}
+          {filters.activeFilters}
           {body}
           {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
           {error !== null && items.length > 0 && (

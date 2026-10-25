@@ -189,9 +189,7 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 		var got []int64
 		cursor := ""
 		for range 20 {
-			page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
-				Dir: fixturePath("/media"), Sort: sort, Seed: 9, Limit: 2, Cursor: cursor,
-			})
+			page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media"), VideoQuery: domain.VideoQuery{Sort: sort, Seed: 9, Limit: 2, Cursor: cursor}})
 			if err != nil {
 				t.Fatal(err)
 			}

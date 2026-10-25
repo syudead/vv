@@ -135,7 +135,7 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 
 	folderIDs := func(dir string) []int64 {
 		t.Helper()
-		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath(dir), Limit: domain.MaxLimit})
+		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath(dir), VideoQuery: domain.VideoQuery{Limit: domain.MaxLimit}})
 		if err != nil {
 			t.Fatal(err)
 		}

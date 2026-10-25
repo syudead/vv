@@ -151,3 +151,18 @@ func TestGuestRejectsFavoriteListConditions(t *testing.T) {
 		}
 	}
 }
+
+func TestListFolderVideosFiltersByTag(t *testing.T) {
+	f := newFavoriteListFixture(t)
+	folder := "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/videos?scope=subtree&sort=titleAsc&tag="
+	page := f.videoPage(t, folder+strconv.FormatInt(f.manual, 10)+"&tag=999999")
+	if titles := videoPageTitles(page); !slices.Equal(titles, []string{"ep1", "p2", "solo"}) || page.Total != 3 {
+		t.Errorf("タグで絞ったフォルダ = %v・total %d", titles, page.Total)
+	}
+	if page.MissingTagIds == nil || !slices.Equal(*page.MissingTagIds, []int64{999999}) {
+		t.Errorf("missingTagIds = %v, want [999999]", page.MissingTagIds)
+	}
+	rec := f.env.get(folder + strconv.FormatInt(f.manual, 10))
+	assertErrorBody(t, "ゲストのタグ絞り込み", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonGuestFilterNotAllowed})
+}

@@ -3,23 +3,23 @@ import type { ReactNode } from "react";
 import type { FolderSummary, Video } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
-import type { Zoom } from "../preferences/viewPreferences";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { CardGrid } from "../ui/patterns/card-grid";
 import FolderVideoGrid from "./FolderVideoGrid";
-import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import type { VideoSelection } from "../videoList/useVideoSelection";
-import VideoCard from "../videoList/VideoCard";
+import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import FolderCard from "./FolderCard";
 import { Section } from "./layout";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches } from "./states";
 
 export default function FolderContents({
-  criteria,
+  filtered,
   listingLoading,
   childFolders,
   videos,
+  view,
   zoom,
   backTo,
   preview,
@@ -27,10 +27,12 @@ export default function FolderContents({
   tagsRow,
   groupingMenu,
 }: {
-  criteria: ListCriteria;
+  /** Whether any search, filter or favorite condition applies. */
+  filtered: boolean;
   listingLoading: boolean;
   childFolders: FolderSummary[];
   videos: VideosState;
+  view: ViewMode;
   zoom: Zoom;
   /** Return URL for playback. */
   backTo: string;
@@ -41,8 +43,9 @@ export default function FolderContents({
   /** Owners only: grouping menu at the end of the video heading. */
   groupingMenu?: ReactNode;
 }) {
+  const Card = view === "grid" ? VideoCard : VideoRow;
   const showFolders = listingLoading || childFolders.length > 0;
-  const filterOnly = hasConditions(criteria);
+  const filterOnly = filtered;
   const filterOnlyNoMatch =
     filterOnly && !videos.loading && videos.error === null && videos.items.length === 0;
   const showVideos =
@@ -94,18 +97,19 @@ export default function FolderContents({
               <TagRowMeasureProvider>
                 <FolderVideoGrid
                   videos={videos}
+                  view={view}
                   zoom={zoom}
                   selectedKeys={selection.selectedKeys}
                   onLift={preview.previewCoordinator.reset}
                   onAccepted={selection.clear}
                   card={(video) => (
-                    <VideoCard
+                    <Card
                       key={video.id}
                       video={video}
                       backTo={backTo}
                       {...selection.cardProps(video.id)}
                       {...preview}
-                      tagsRow={tagsRow}
+                      tagsRow={view === "grid" ? tagsRow : undefined}
                     />
                   )}
                 />

@@ -51,7 +51,7 @@ func TestListsCarryTheVersionsSummary(t *testing.T) {
 		}
 		checkVersionsRefs(t, "ListLibrary", items, ids["a"], 2)
 		checkVersionsRefs(t, "ListVideos", listedPage(t, db, audience, domain.VideoQuery{}).Items, ids["a"], 2)
-		folder, err := db.Library().ListFolderVideos(ctx, audience, domain.FolderVideoQuery{Dir: fixturePath("/media"), Limit: domain.MaxLimit})
+		folder, err := db.Library().ListFolderVideos(ctx, audience, domain.FolderVideoQuery{Dir: fixturePath("/media"), VideoQuery: domain.VideoQuery{Limit: domain.MaxLimit}})
 		if err != nil {
 			t.Fatal(err)
 		}

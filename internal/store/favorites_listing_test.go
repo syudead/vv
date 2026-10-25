@@ -106,18 +106,14 @@ func TestListVideosFavoriteOnly(t *testing.T) {
 		t.Errorf("ListVideos の total = %d, want 2", page.Total)
 	}
 
-	folder, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{
-		Dir: fixturePath("/media/show"), FavoriteOnly: true, Sort: domain.SortAddedDesc,
-	})
+	folder, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/show"), VideoQuery: domain.VideoQuery{FavoriteOnly: true, Sort: domain.SortAddedDesc}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if folder.Total != 1 || len(folder.Items) != 1 || folder.Items[0].ID != ep1 {
 		t.Errorf("ListFolderVideos(show) = total %d・%+v, want ep1 だけ", folder.Total, folder.Items)
 	}
-	folder, err = db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{
-		Dir: fixturePath("/media/pair"), FavoriteOnly: true, Sort: domain.SortAddedDesc,
-	})
+	folder, err = db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/pair"), VideoQuery: domain.VideoQuery{FavoriteOnly: true, Sort: domain.SortAddedDesc}})
 	if err != nil {
 		t.Fatal(err)
 	}

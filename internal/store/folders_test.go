@@ -180,7 +180,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 		var titles []string
 		cursor := ""
 		for {
-			page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/many"), Sort: sort, Cursor: cursor})
+			page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/many"), VideoQuery: domain.VideoQuery{Sort: sort, Cursor: cursor}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -207,7 +207,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 
 func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := folderFixture(t, sampleFile(fixturePath("/media/A/x.mp4"), "x", "key-x", 1, 0))
-	_, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Cursor: "!!"})
+	_, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), VideoQuery: domain.VideoQuery{Cursor: "!!"}})
 	if !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("err = %v, want domain.ErrInvalidCursor", err)
 	}

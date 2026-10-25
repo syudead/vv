@@ -5,8 +5,11 @@ import { isOrganizable, itemKey, itemVideo, itemVideos } from "../api/libraryIte
 import type { VideosState } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import type { Zoom } from "../preferences/viewPreferences";
+import { LibraryTableHeader } from "../library/LibraryPage";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import { CardGrid } from "../ui/patterns/card-grid";
+import { DataTable } from "../ui/patterns/data-table";
+import { TableBody } from "../ui/shadcn/table";
 import { CardDragLayer, DraggableCard } from "../videoList/cardDrag";
 import { liftedKeys } from "../videoList/cardDragRules";
 import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
@@ -15,6 +18,14 @@ import { useVideoDrops } from "../videoList/useVideoDrops";
 
 export default function FolderVideoGrid(props: FolderVideoGridProps) {
   const owner = useAudience() === "owner";
+  if (props.view === "list") {
+    return (
+      <DataTable label={t.folders.videos}>
+        <LibraryTableHeader owner={owner} />
+        <TableBody>{itemVideos(props.videos.items).map(props.card)}</TableBody>
+      </DataTable>
+    );
+  }
   if (!owner) {
     return (
       <CardGrid size={props.zoom}>
@@ -27,7 +38,9 @@ export default function FolderVideoGrid(props: FolderVideoGridProps) {
 
 interface FolderVideoGridProps {
   videos: VideosState;
+  view: ViewMode;
   zoom: Zoom;
+  /** A card in the grid, a row in the list. */
   card: (video: Video) => ReactNode;
   /** Keys of the selected videos; pressing one lifts them all in display order. */
   selectedKeys: readonly string[];
