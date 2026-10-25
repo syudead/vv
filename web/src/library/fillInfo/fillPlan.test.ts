@@ -14,13 +14,6 @@ const fetched = fetchResult({
 describe("fillPlan", () => {
   it("名前のない動画には名前・タグ・空の項目・画像を入れる", () => {
     const plan = fillPlan({ ...video, tags: [] }, fetched);
-    expect(plan.lines.map((line) => line.field)).toEqual([
-      "title",
-      "code",
-      "description",
-      "tags",
-      "cover",
-    ]);
     expect(plan.selection).toMatchObject({
       fields: ["title", "code", "description"],
       tags: ["drama"],
@@ -43,7 +36,6 @@ describe("fillPlan", () => {
       },
     };
     const plan = fillPlan(filled, fetched);
-    expect(plan.lines.map((line) => line.field)).toEqual(["description"]);
     expect(plan.selection).toMatchObject({
       fields: ["description"],
       tags: [],
@@ -54,5 +46,17 @@ describe("fillPlan", () => {
   it("仮想動画の題名は入れない", () => {
     const plan = fillPlan({ ...video, virtual: true, tags: [] }, fetched);
     expect(plan.selection.fields).not.toContain("title");
+  });
+
+  it("判定用に、取得した品番と発売日だけを返す", () => {
+    const dated = fetchResult({
+      code: "ABC-1",
+      dates: [
+        { kind: "recorded", date: "2024-04-01" },
+        { kind: "release", date: "2024-05-01" },
+      ],
+    });
+    expect(fillPlan(video, dated).facts).toEqual(["ABC-1", "2024-05-01"]);
+    expect(fillPlan(video, fetchResult()).facts).toEqual([]);
   });
 });

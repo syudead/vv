@@ -1,5 +1,5 @@
 import type { Video } from "../../api/client";
-import type { WorkInfoFetch, WorkInfoField } from "../../api/workInfoPlugins";
+import type { WorkInfoFetch } from "../../api/workInfoPlugins";
 import { detailRow, videoWorkInfo } from "../../player/workInfoFetch/detailRows";
 import { selectableTags, titleRow } from "../../player/workInfoFetch/fetchRules";
 import {
@@ -11,18 +11,14 @@ import {
   type WorkSelection,
   wholeRows,
 } from "../../player/workInfoFetch/workSelection";
-import { t } from "../../i18n";
 
-/** One field a fill writes and the values it writes there, for the review. */
-export interface FillLine {
-  field: WorkInfoField;
-  values: string[];
-}
-
-/** What filling a video from a fetched work writes: the apply's selection and the lines the review shows. */
+/**
+ * What filling a video from a fetched work writes, and the fetched code and release date the review shows so the
+ * owner can tell at a glance whether the right work was found.
+ */
 export interface FillPlan {
   selection: WorkSelection;
-  lines: FillLine[];
+  facts: string[];
 }
 
 /**
@@ -32,7 +28,6 @@ export interface FillPlan {
  */
 export function fillPlan(video: Video, result: WorkInfoFetch): FillPlan {
   const info = videoWorkInfo(video);
-  const lines: FillLine[] = [];
   const selection: WorkSelection = {
     fields: [],
     tags: [],
@@ -45,46 +40,28 @@ export function fillPlan(video: Video, result: WorkInfoFetch): FillPlan {
   };
   if (!video.virtual && !video.displayName && titleRow(video, result) === "differs") {
     selection.fields.push("title");
-    lines.push({ field: "title", values: [result.title ?? ""] });
   }
   for (const row of wholeRows(video, result)) {
     const detail = row.field === "title" ? undefined : detailRow(row.field, info, result);
     if (row.kind !== "fill" || detail?.kind !== "single") continue;
     selection.fields.push(row.field);
-    lines.push({ field: row.field, values: [detail.fetched ?? ""] });
   }
-  if (video.tags.length === 0) {
-    selection.tags = selectableTags(video, result);
-    if (selection.tags.length > 0) lines.push({ field: "tags", values: selection.tags });
-  }
+  if (video.tags.length === 0) selection.tags = selectableTags(video, result);
   for (const field of ROLE_FIELDS) {
     const row = roleRow(field, video, result);
     if (row.now.length > 0) continue;
-    const chips = row.fetched.filter((chip) => choosable(chip) && chip.at !== undefined);
-    if (chips.length === 0) continue;
-    const ats = chips.map((chip) => chip.at ?? 0);
+    const ats = row.fetched
+      .filter((chip) => choosable(chip) && chip.at !== undefined)
+      .map((chip) => chip.at ?? 0);
     if (field.startsWith("people.")) selection.people.push(...ats);
     else selection.organizations.push(...ats);
-    lines.push({ field, values: chips.map((chip) => chip.name) });
   }
   if (info.urls.length === 0) selection.urls = freshUrls(video, result);
-  if (selection.urls.length > 0) lines.push({ field: "urls", values: selection.urls });
   if (info.externalIds.length === 0) selection.externalIds = freshIds(video, result);
-  if (selection.externalIds.length > 0) {
-    lines.push({
-      field: "externalIds",
-      values: selection.externalIds.map((id) =>
-        t.player.workInfo.externalId(id.source, id.value),
-      ),
-    });
-  }
-  const cover = result.covers[0];
-  if (video.thumbnailImage === undefined && cover !== undefined) {
-    selection.cover = 0;
-    lines.push({
-      field: "cover",
-      values: [t.player.workInfoFetch.coverSize(cover.width, cover.height)],
-    });
-  }
-  return { selection, lines };
+  if (video.thumbnailImage === undefined && result.covers.length > 0) selection.cover = 0;
+  const release = result.dates.find((date) => date.kind === "release")?.date;
+  const facts = [result.code, release].filter(
+    (fact): fact is string => fact !== undefined && fact !== "",
+  );
+  return { selection, facts };
 }

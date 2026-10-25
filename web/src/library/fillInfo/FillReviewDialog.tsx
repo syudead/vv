@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
+import { workSelectionEmpty } from "../../player/workInfoFetch/workSelection";
 import { CreateDialogFrame } from "../NameDialogParts";
 import {
   applicable,
@@ -71,10 +72,9 @@ function RowChoice({
   );
 }
 
-/** What the row's fill writes, or where it stands while its work is read or written. */
+/** The chosen work's code and release date, or where the row stands while its work is read or written. */
 function RowPlan({ row }: { row: FillRow }) {
   const words = t.library.selection.fillReview;
-  const fields = t.player.workInfoFetch.fields;
   if (row.status === "fetching") return <Pending text={words.reading} />;
   if (row.status === "applying") return <Pending text={words.applying} />;
   if (row.status === "applied") return <p className="text-sm">{words.applied}</p>;
@@ -83,18 +83,13 @@ function RowPlan({ row }: { row: FillRow }) {
   }
   const work = chosenWork(row);
   if (work === undefined || row.plan?.workId !== work.id) return null;
-  if (row.plan.plan.lines.length === 0) {
-    return <p className="text-sm text-muted-foreground">{words.nothingToFill}</p>;
-  }
+  const { facts, selection } = row.plan.plan;
+  const empty = workSelectionEmpty(selection);
+  if (facts.length === 0 && !empty) return null;
   return (
-    <dl className="flex flex-col gap-1 text-sm">
-      {row.plan.plan.lines.map((line) => (
-        <div key={line.field} className="flex flex-wrap gap-x-3">
-          <dt className="text-muted-foreground">{fields[line.field]}</dt>
-          <dd className="min-w-0 break-words">{line.values.join(" · ")}</dd>
-        </div>
-      ))}
-    </dl>
+    <p className="text-sm break-words text-muted-foreground">
+      {[...facts, ...(empty ? [words.nothingToFill] : [])].join(" · ")}
+    </p>
   );
 }
 

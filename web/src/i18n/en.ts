@@ -1236,7 +1236,7 @@ export const en = {
       fillReview: {
         title: "Check what each video gets",
         description:
-          "Each video lists the works found and what the chosen one writes into its empty fields. A work whose title or ID matches the search, or the only one found, is chosen for you; a name or value already on the video stays.",
+          "Check each video's chosen work by its code and release date. A work whose title or ID matches the search, or the only one found, is chosen for you; filling writes only the video's empty fields.",
         list: "Videos to fill",
         listing: "Listing the videos…",
         listFailed: (reason: string) => `Couldn't list the videos: ${reason}`,

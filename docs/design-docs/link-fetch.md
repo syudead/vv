@@ -157,9 +157,9 @@ worker belonged to the previous process.
 `Fill info…` on the list selection bar
 ([library-ui.md, Selection bar](library-ui.md#selection-bar)) asks for one
 approved work-info plugin that searches and fetches, then lists for each
-selected video the works found and what the chosen one writes into its empty
-fields, and applies only what the owner saw. The dialog is in
-[`web/src/library/fillInfo/`](../../web/src/library/fillInfo); the server
+selected video the works found and the chosen one's code and release date,
+and fills the video's empty fields from the results the owner kept. The
+dialog is in [`web/src/library/fillInfo/`](../../web/src/library/fillInfo); the server
 side is the list in
 [`work_info_fill.go`](../../internal/app/work_info_fill.go) and the single
 fetch and apply.
@@ -208,16 +208,18 @@ Each chosen work is fetched with the single fetch, which holds the result for
 the title while a file video has no display name, since its file title is only
 a fallback; the tags when the video has none; each empty code, description
 and date; each role, link and ID list the video has no entry in; and the first
-cover when no image is applied. The row lists those values under their field
-names, and `Fill N videos` sends each plan as the selection of the single
-apply, one video at a time, so the owner gets exactly the values shown. A
-plan that writes nothing is shown as such and not applied; a failed apply
+cover when no image is applied. The row shows only the fetched code and
+release date, which are enough to tell whether the right work was found, and
+`Fill N videos` sends each plan as the selection of the single apply, one
+video at a time, so the owner gets the result that was reviewed. A plan that
+writes nothing is shown as such and not applied; a failed apply
 stays on its row with the reason, and the dialog stays open.
 
 | Rejected | Why |
 | --- | --- |
 | Filling in the background without a review | The owner could not see what matched, and a wrong fill cannot be rolled back |
-| Showing only the works found | The owner still could not tell what each video would get |
+| Showing only the works found | The owner could not tell a wrong work with a similar title |
+| Listing every value each plan writes | Across many videos the descriptions, tags and links buried the code and date that tell a wrong work |
 | Fetching again on the server when applying | The result could differ from the one the owner reviewed |
 | Fetching by the code as the work's ID | Most sites' IDs are not the work's code, so most fills failed |
 | Searching on the server for the whole selection | The request would wait for every search; the dialog shows each result as it arrives and stops when closed |
