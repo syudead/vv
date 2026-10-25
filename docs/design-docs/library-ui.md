@@ -523,8 +523,9 @@ video's row shows the virtual mark in the duration cell, empty quality and size
 cells and its creation time as the date added.
 
 Selection is owner-only, on the library, group, smart-folder and folder pages
-and in folder search results. A folder page selects its videos only, through
-checks, and clears the selection when its conditions change. Its check shows on hover or focus in the
+and in folder search results. A folder page selects only its videos, with the
+same checks, Shift ranges, drawn boxes and multi-card drags as the library, and
+clears the selection when its conditions change. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.

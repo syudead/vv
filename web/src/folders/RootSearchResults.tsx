@@ -6,7 +6,7 @@ import {
   saveListSnapshot,
   type takeListSnapshot,
 } from "../api/listSnapshot";
-import { itemVideos } from "../api/libraryItems";
+import { itemVideos, videoKey } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
@@ -145,7 +145,8 @@ export default function RootSearchResults({
 
   // Use display: contents so the snapshot wrapper does not affect ListPage spacing.
   return (
-    <div onClick={saveSnapshot} className="contents">
+    <div ref={selection.container} onClick={saveSnapshot} className="contents">
+      {selection.marqueeBox}
       <h2 className="sr-only">{t.folders.searchResults}</h2>
       {noMatch ? (
         <NoMatches />
@@ -160,22 +161,27 @@ export default function RootSearchResults({
             <TagRowMeasureProvider>
               <CardGrid size={zoom}>
                 {itemVideos(items).map((video) => (
-                  <VideoCard
+                  <div
                     key={video.id}
-                    video={video}
-                    backTo={backTo}
-                    {...selection.cardProps(video.id)}
-                    {...preview}
-                    tagsRow={tagsRow}
-                    location={
-                      video.folder === undefined
-                        ? undefined
-                        : topLevelLocationLabel(
-                            video.folder,
-                            rootNames.get(video.folder.rootId),
-                          )
-                    }
-                  />
+                    data-card-key={videoKey(video.id)}
+                    className="grid min-w-0"
+                  >
+                    <VideoCard
+                      video={video}
+                      backTo={backTo}
+                      {...selection.cardProps(video.id)}
+                      {...preview}
+                      tagsRow={tagsRow}
+                      location={
+                        video.folder === undefined
+                          ? undefined
+                          : topLevelLocationLabel(
+                              video.folder,
+                              rootNames.get(video.folder.rootId),
+                            )
+                      }
+                    />
+                  </div>
                 ))}
               </CardGrid>
             </TagRowMeasureProvider>

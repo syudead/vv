@@ -282,7 +282,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
-        selection={selection.cardProps}
+        selection={selection}
         tagsRow={tagsRow}
       />
     );
@@ -313,7 +313,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
-        selection={selection.cardProps}
+        selection={selection}
         tagsRow={tagsRow}
         groupingMenu={groupingMenu}
       />
@@ -364,8 +364,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     >
       {/* Snapshot immediately before navigation; display: contents preserves the layout's spacing. */}
       <div ref={listRef} onClick={saveSnapshot} className="contents">
-        {body}
+        <div ref={selection.container} className="contents">
+          {body}
+        </div>
       </div>
+      {selection.marqueeBox}
       <div ref={sentinel} aria-hidden="true" className="h-px" />
     </ListPage>
   );

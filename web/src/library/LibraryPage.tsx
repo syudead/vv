@@ -99,6 +99,7 @@ import {
   useLibraryMoves,
 } from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
+import { MarqueeBox } from "./MarqueeBox";
 import {
   emptySelection,
   favoriteTargets,
@@ -879,12 +880,7 @@ export default function LibraryPage() {
           aria-label={conditioned ? t.library.resultsLabel : undefined}
           className="flex min-w-0 flex-col gap-3"
         >
-          <div
-            ref={marqueeBox}
-            hidden
-            aria-hidden="true"
-            className="pointer-events-none fixed z-40 rounded-sm border border-primary bg-primary-soft/40"
-          />
+          <MarqueeBox ref={marqueeBox} />
           {/* Home itself needs no heading or count; only filtered results get them. */}
           {conditioned && (
             <PageHeader

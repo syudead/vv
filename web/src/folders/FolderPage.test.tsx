@@ -440,11 +440,17 @@ describe("FolderPage", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
-  it("最上位の検索結果でも動画を選ぶと選択バーが出る", async () => {
+  it("最上位の検索結果でも動画を選べ、Shift でチェックすると間の動画も選ぶ", async () => {
     const user = userEvent.setup();
     renderFolders("/folders?q=京都");
-    await user.click(await screen.findByRole("checkbox", { name: 'Select "z"' }));
-    expect(screen.getByText("1 video selected")).toBeTruthy();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "x"' }));
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByRole("checkbox", { name: 'Select "z"' }));
+    await user.keyboard("{/Shift}");
+    expect(screen.getByText("3 videos selected")).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: 'Select "y"' }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("パンくずに現在地までの段を出し、現在地はリンクにしない", async () => {

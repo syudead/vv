@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { Video } from "../api/client";
 import { isOrganizable, itemKey, itemVideo, itemVideos } from "../api/libraryItems";
@@ -8,14 +8,10 @@ import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { CardDragLayer, DraggableCard } from "../videoList/cardDrag";
+import { liftedKeys } from "../videoList/cardDragRules";
 import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
-
-/** A folder drag lifts only the pressed card, even while videos are selected. */
-function single(key: string): readonly string[] {
-  return [key];
-}
 
 export default function FolderVideoGrid(props: FolderVideoGridProps) {
   const owner = useAudience() === "owner";
@@ -33,11 +29,22 @@ interface FolderVideoGridProps {
   videos: VideosState;
   zoom: Zoom;
   card: (video: Video) => ReactNode;
+  /** Keys of the selected videos; pressing one lifts them all in display order. */
+  selectedKeys: readonly string[];
   /** Called on lift to stop hover previews. */
   onLift: () => void;
+  /** Called after a drop is accepted, to clear the selection. */
+  onAccepted: () => void;
 }
 
-function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridProps) {
+function OwnerFolderVideoGrid({
+  videos,
+  zoom,
+  card,
+  selectedKeys,
+  onLift,
+  onAccepted,
+}: FolderVideoGridProps) {
   const { refreshInPlace } = videos;
   const undo = useUndoToast(refreshInPlace);
   const drops = useVideoDrops({
@@ -47,16 +54,21 @@ function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridPro
     from: null,
     groupItem: null,
     reread: refreshInPlace,
+    onAccepted,
     undo,
   });
   const shown = drops.shown;
   // Narrow the type to draggable items; folders never receive smart-folder entries.
   const organizable = useMemo(() => shown.filter(isOrganizable), [shown]);
   const { order, nameOf, preview } = useOrderedItemDrag(organizable, itemKey, false);
+  const liftedFor = useCallback(
+    (key: string) => liftedKeys(order, key, selectedKeys),
+    [order, selectedKeys],
+  );
   return (
     <CardDragLayer
       order={order}
-      liftedFor={single}
+      liftedFor={liftedFor}
       reorder={false}
       onto={drops.onto}
       nameOf={nameOf}

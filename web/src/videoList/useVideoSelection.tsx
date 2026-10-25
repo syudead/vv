@@ -1,21 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { LibraryItem } from "../api/client";
-import { itemVideos } from "../api/libraryItems";
+import { itemVideos, videoKey } from "../api/libraryItems";
 import {
   emptySelection,
   keepMembers,
   type LibrarySelection,
   setVideo,
 } from "../library/selection";
+import { MarqueeBox } from "../library/MarqueeBox";
 import SelectionBar from "../library/SelectionBar";
 import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
+import { useMarqueeSelection } from "../library/useMarqueeSelection";
+import { useRangeSelection } from "../library/useRangeSelection";
 import { useSelectionTargets } from "./pageHooks";
 
 /**
  * Owner selection over the loaded videos of a page without groups or smart folders, such as a
- * folder. Videos that leave the list drop out, so bulk actions cannot reach
- * hidden ones; `onChanged` runs after a bulk action that needs the list read again.
+ * folder, with the library's checks, Shift ranges and drawn boxes. Videos that leave the list
+ * drop out, so bulk actions cannot reach hidden ones; `onChanged` runs after a bulk action that
+ * needs the list read again.
  */
 export function useVideoSelection(
   items: readonly LibraryItem[],
@@ -30,15 +41,37 @@ export function useVideoSelection(
   useEffect(() => {
     setSelection((current) => keepMembers(current, loaded));
   }, [loaded]);
-  const clear = useCallback(() => setSelection(emptySelection), []);
+
+  const displayed = useRef(items);
+  useLayoutEffect(() => {
+    displayed.current = items;
+  });
+  const { select: selectRange, point } = useRangeSelection(displayed, setSelection);
+  const clear = useCallback(() => {
+    point(null);
+    setSelection(emptySelection);
+  }, [point]);
   const selectionMode = selection.ids.size > 0;
   useEscapeClearsSelection(selectionMode, clear);
   const select = useCallback(
     (id: number, selected: boolean) =>
-      setSelection((current) => setVideo(current, id, selected)),
-    [],
+      selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
+    [selectRange],
   );
+
+  const container = useRef<HTMLDivElement | null>(null);
+  const box = useRef<HTMLDivElement | null>(null);
+  useMarqueeSelection({
+    container,
+    box,
+    enabled: owner,
+    items,
+    selection,
+    setSelection,
+  });
+
   const { favorites, selectedIds, editTargets } = useSelectionTargets(selection, items);
+  const selectedKeys = useMemo(() => selectedIds.map(videoKey), [selectedIds]);
   const afterBulk = useCallback(() => {
     clear();
     onChanged();
@@ -67,7 +100,9 @@ export function useVideoSelection(
     />
   ) : null;
 
-  return { cardProps, clear, bar };
+  const marqueeBox = <MarqueeBox ref={box} />;
+
+  return { cardProps, selectedKeys, clear, bar, container, marqueeBox };
 }
 
-export type CardSelection = ReturnType<typeof useVideoSelection>["cardProps"];
+export type VideoSelection = ReturnType<typeof useVideoSelection>;
