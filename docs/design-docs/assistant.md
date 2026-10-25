@@ -100,6 +100,10 @@ sees names and counts, never ids.
 | A name (`named`) | The entities the row's target kind resolves |
 | A filter (`filter`) | Every video matching it, counted by the server |
 
+Favorites act on a selected or open group or smart folder itself, as the
+library's favorite action does: the folder is not expanded to its videos, and
+a selected group's members are not favorited with it.
+
 A target over 20,000 videos answers `400 too_many_videos`, as the bulk
 operations do. A clarification choice is sent again as the same request with
 the chosen id pinned; a pinned id wins only when it is among the candidates the

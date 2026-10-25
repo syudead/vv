@@ -24,29 +24,48 @@ func (g *fakeStructuredGenerator) Generate(_ context.Context, req domain.Generat
 	return json.RawMessage(g.answer), g.err
 }
 
-// fakeVocabulary matches names exactly, per kind.
+// fakeVocabulary matches names exactly, per kind, and reads the current names of entities.
 type fakeVocabulary struct {
-	names map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
+	names    map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
+	entities map[domain.AssistantLabelKind]map[int64]string
 }
 
 func (v fakeVocabulary) FindNames(_ context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error) {
 	return v.names[kind][name], nil
 }
 
-func (v fakeVocabulary) EntityNames(context.Context, domain.AssistantLabelKind, []int64) (map[int64]string, error) {
-	return map[int64]string{}, nil
+func (v fakeVocabulary) EntityNames(_ context.Context, kind domain.AssistantLabelKind, ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	for _, id := range ids {
+		if name, ok := v.entities[kind][id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
 }
 
-// fakeLibraryVideos returns its videos by id and answers every listing with total.
+// fakeGroups returns the member videos of each group.
+type fakeGroups map[int64][]int64
+
+func (g fakeGroups) GroupVideoIDs(_ context.Context, ids []int64) ([]int64, error) {
+	var out []int64
+	for _, id := range ids {
+		out = append(out, g[id]...)
+	}
+	return out, nil
+}
+
+// fakeLibraryVideos returns its videos by id and answers every listing with items and total.
 type fakeLibraryVideos struct {
 	videos  map[int64]domain.Video
+	items   []domain.Video
 	total   int
 	queries []domain.VideoQuery
 }
 
 func (f *fakeLibraryVideos) ListVideos(_ context.Context, _ domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
 	f.queries = append(f.queries, q)
-	return domain.VideoPage{Total: f.total}, nil
+	return domain.VideoPage{Items: f.items, Total: f.total}, nil
 }
 
 func (f *fakeLibraryVideos) VideosByIDs(_ context.Context, _ domain.Audience, ids []int64) ([]domain.Video, error) {
@@ -254,5 +273,72 @@ func TestTurnAnswersUnreadableForJSONOutsideTheSchema(t *testing.T) {
 	result, err := f.a.Turn(context.Background(), selection())
 	if err != nil || result.Kind != domain.AssistantTurnUnreadable {
 		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+}
+
+func TestTurnPinnedVideoSettlesATitleThatMatchedTwoVideos(t *testing.T) {
+	f := newTurnFixture(`{"kind":"navigate","navigate":{"to":"video","name":"clip"}}`, nil)
+	f.videos.items, f.videos.total = []domain.Video{f.videos.videos[7], f.videos.videos[8]}, 2
+	in := selection()
+	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelVideo, ID: 8, Name: "Clip 8"}}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantTurnNavigate {
+		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+	if result.Destination.ID != 8 {
+		t.Fatalf("destination = %+v, want video 8", result.Destination)
+	}
+}
+
+func favoritesFixture() turnFixture {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateFavorites","target":{"kind":"selection"},`+
+		`"arguments":{"enabled":true}}}`, nil)
+	f.a.vocabulary = fakeVocabulary{entities: map[domain.AssistantLabelKind]map[int64]string{
+		domain.AssistantLabelGroup: {20: "Pair"}, domain.AssistantLabelSmartFolder: {30: "Cats"},
+	}}
+	f.a.groups = fakeGroups{20: {8}}
+	return f
+}
+
+// The library favorites a selected group without its members and a selected smart folder as itself; no smart
+// folder port is configured, so expanding the folder would fail the turn.
+func TestTurnFavoritesSelectedCollectionsAsThemselves(t *testing.T) {
+	f := favoritesFixture()
+	in := selection(7, 8)
+	in.Context.SelectedGroupIDs, in.Context.SelectedSmartFolderIDs = []int64{20}, []int64{30}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+	plan := f.store.created
+	if !slices.Equal(plan.Targets.VideoKeys, []string{"key-7"}) {
+		t.Fatalf("video keys = %v, want only the standalone video", plan.Targets.VideoKeys)
+	}
+	groups, _ := plan.Call.Body["groupIds"].([]int64)
+	folders, _ := plan.Call.Body["smartFolderIds"].([]int64)
+	if !slices.Equal(groups, []int64{20}) || !slices.Equal(folders, []int64{30}) {
+		t.Fatalf("body = %+v", plan.Call.Body)
+	}
+	folder := domain.AssistantLabel{Kind: domain.AssistantLabelSmartFolder, ID: 30, Name: "Cats"}
+	if !slices.Contains(plan.Targets.Labels, folder) {
+		t.Fatalf("labels = %+v, want %+v", plan.Targets.Labels, folder)
+	}
+}
+
+func TestTurnFavoritesTheOpenSmartFolderAsItself(t *testing.T) {
+	f := favoritesFixture()
+	f.gen.answer = `{"kind":"action","action":{"operation":"updateFavorites","target":{"kind":"current"},` +
+		`"arguments":{"enabled":true}}}`
+	in := domain.AssistantTurnInput{Text: "request", Context: domain.AssistantTurnContext{
+		Route: domain.AssistantRouteSmartFolder, RouteID: 30,
+	}}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("Turn() = %+v, %v", result, err)
+	}
+	plan := f.store.created
+	folders, _ := plan.Call.Body["smartFolderIds"].([]int64)
+	if len(plan.Targets.VideoKeys) != 0 || !slices.Equal(folders, []int64{30}) {
+		t.Fatalf("targets = %+v, body = %+v", plan.Targets, plan.Call.Body)
 	}
 }

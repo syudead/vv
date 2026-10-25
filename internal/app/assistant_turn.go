@@ -20,6 +20,12 @@ type AssistantSmartFolders interface {
 	SmartFolderVideoIDs(ctx context.Context, ids []int64) ([]int64, error)
 }
 
+// AssistantGroups reads the member videos of groups, so an operation that takes a selected group does not also
+// receive its members.
+type AssistantGroups interface {
+	GroupVideoIDs(ctx context.Context, ids []int64) ([]int64, error)
+}
+
 // AssistantHistory reads the watch history, newest first.
 type AssistantHistory interface {
 	ListWatchHistory(

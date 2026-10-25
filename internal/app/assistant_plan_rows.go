@@ -96,22 +96,35 @@ func favorites(ctx context.Context, d *planDraft) (bool, error) {
 	if !d.need(d.args.Enabled != nil) {
 		return false, nil
 	}
-	if len(d.groupIDs) > 0 {
-		names, err := d.t.a.vocabulary.EntityNames(ctx, domain.AssistantLabelGroup, d.groupIDs)
-		if err != nil {
-			return false, err
-		}
-		for _, id := range d.groupIDs {
-			if name, ok := names[id]; ok {
-				d.plan.Targets.Labels = append(d.plan.Targets.Labels,
-					domain.AssistantLabel{Kind: domain.AssistantLabelGroup, ID: id, Name: name})
-			}
-		}
-		d.body("groupIds", d.groupIDs)
+	if err := d.collectionTargets(ctx, domain.AssistantLabelGroup, "groupIds", d.groupIDs); err != nil {
+		return false, err
+	}
+	if err := d.collectionTargets(ctx, domain.AssistantLabelSmartFolder, "smartFolderIds", d.folderIDs); err != nil {
+		return false, err
 	}
 	d.body("favorite", *d.args.Enabled)
 	d.literal(domain.AssistantArgEnabled, *d.args.Enabled)
 	return true, nil
+}
+
+// collectionTargets labels the collections the card shows and sends their ids in field.
+func (d *planDraft) collectionTargets(
+	ctx context.Context, kind domain.AssistantLabelKind, field string, ids []int64,
+) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	names, err := d.t.a.vocabulary.EntityNames(ctx, kind, ids)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if name, ok := names[id]; ok {
+			d.plan.Targets.Labels = append(d.plan.Targets.Labels, domain.AssistantLabel{Kind: kind, ID: id, Name: name})
+		}
+	}
+	d.body(field, ids)
+	return nil
 }
 
 func displayName(_ context.Context, d *planDraft) (bool, error) {
