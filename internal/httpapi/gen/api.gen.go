@@ -333,6 +333,114 @@ func (e ActivitySubjectKind) Valid() bool {
 	}
 }
 
+// Defines values for AssistantDestinationKind.
+const (
+	AssistantDestinationKindActivity      AssistantDestinationKind = "activity"
+	AssistantDestinationKindDuplicates    AssistantDestinationKind = "duplicates"
+	AssistantDestinationKindFolders       AssistantDestinationKind = "folders"
+	AssistantDestinationKindGroup         AssistantDestinationKind = "group"
+	AssistantDestinationKindHistory       AssistantDestinationKind = "history"
+	AssistantDestinationKindLibrary       AssistantDestinationKind = "library"
+	AssistantDestinationKindOrganization  AssistantDestinationKind = "organization"
+	AssistantDestinationKindOrganizations AssistantDestinationKind = "organizations"
+	AssistantDestinationKindPeople        AssistantDestinationKind = "people"
+	AssistantDestinationKindPerson        AssistantDestinationKind = "person"
+	AssistantDestinationKindPlaylist      AssistantDestinationKind = "playlist"
+	AssistantDestinationKindPlaylists     AssistantDestinationKind = "playlists"
+	AssistantDestinationKindSettings      AssistantDestinationKind = "settings"
+	AssistantDestinationKindSmartFolder   AssistantDestinationKind = "smartFolder"
+	AssistantDestinationKindTag           AssistantDestinationKind = "tag"
+	AssistantDestinationKindTags          AssistantDestinationKind = "tags"
+	AssistantDestinationKindVideo         AssistantDestinationKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDestinationKind enum.
+func (e AssistantDestinationKind) Valid() bool {
+	switch e {
+	case AssistantDestinationKindActivity:
+		return true
+	case AssistantDestinationKindDuplicates:
+		return true
+	case AssistantDestinationKindFolders:
+		return true
+	case AssistantDestinationKindGroup:
+		return true
+	case AssistantDestinationKindHistory:
+		return true
+	case AssistantDestinationKindLibrary:
+		return true
+	case AssistantDestinationKindOrganization:
+		return true
+	case AssistantDestinationKindOrganizations:
+		return true
+	case AssistantDestinationKindPeople:
+		return true
+	case AssistantDestinationKindPerson:
+		return true
+	case AssistantDestinationKindPlaylist:
+		return true
+	case AssistantDestinationKindPlaylists:
+		return true
+	case AssistantDestinationKindSettings:
+		return true
+	case AssistantDestinationKindSmartFolder:
+		return true
+	case AssistantDestinationKindTag:
+		return true
+	case AssistantDestinationKindTags:
+		return true
+	case AssistantDestinationKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantDestinationSettingsPage.
+const (
+	AssistantDestinationSettingsPageAccount         AssistantDestinationSettingsPage = "account"
+	AssistantDestinationSettingsPageApi             AssistantDestinationSettingsPage = "api"
+	AssistantDestinationSettingsPageAutoTagging     AssistantDestinationSettingsPage = "auto-tagging"
+	AssistantDestinationSettingsPageConnections     AssistantDestinationSettingsPage = "connections"
+	AssistantDestinationSettingsPageConversion      AssistantDestinationSettingsPage = "conversion"
+	AssistantDestinationSettingsPageDangerZone      AssistantDestinationSettingsPage = "danger-zone"
+	AssistantDestinationSettingsPageFaceRecognition AssistantDestinationSettingsPage = "face-recognition"
+	AssistantDestinationSettingsPageLibrary         AssistantDestinationSettingsPage = "library"
+	AssistantDestinationSettingsPageNetwork         AssistantDestinationSettingsPage = "network"
+	AssistantDestinationSettingsPagePlugins         AssistantDestinationSettingsPage = "plugins"
+	AssistantDestinationSettingsPageScan            AssistantDestinationSettingsPage = "scan"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDestinationSettingsPage enum.
+func (e AssistantDestinationSettingsPage) Valid() bool {
+	switch e {
+	case AssistantDestinationSettingsPageAccount:
+		return true
+	case AssistantDestinationSettingsPageApi:
+		return true
+	case AssistantDestinationSettingsPageAutoTagging:
+		return true
+	case AssistantDestinationSettingsPageConnections:
+		return true
+	case AssistantDestinationSettingsPageConversion:
+		return true
+	case AssistantDestinationSettingsPageDangerZone:
+		return true
+	case AssistantDestinationSettingsPageFaceRecognition:
+		return true
+	case AssistantDestinationSettingsPageLibrary:
+		return true
+	case AssistantDestinationSettingsPageNetwork:
+		return true
+	case AssistantDestinationSettingsPagePlugins:
+		return true
+	case AssistantDestinationSettingsPageScan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssistantLabelKind.
 const (
 	AssistantLabelKindFolderRoot   AssistantLabelKind = "folderRoot"
@@ -410,16 +518,148 @@ func (e AssistantProposalStatus) Valid() bool {
 
 // Defines values for AssistantReadinessReason.
 const (
-	GenerationModelUnset AssistantReadinessReason = "generation_model_unset"
-	OllamaNotSaved       AssistantReadinessReason = "ollama_not_saved"
+	AssistantReadinessReasonGenerationModelUnset AssistantReadinessReason = "generation_model_unset"
+	AssistantReadinessReasonOllamaNotSaved       AssistantReadinessReason = "ollama_not_saved"
 )
 
 // Valid indicates whether the value is a known member of the AssistantReadinessReason enum.
 func (e AssistantReadinessReason) Valid() bool {
 	switch e {
-	case GenerationModelUnset:
+	case AssistantReadinessReasonGenerationModelUnset:
 		return true
-	case OllamaNotSaved:
+	case AssistantReadinessReasonOllamaNotSaved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantRouteKind.
+const (
+	AssistantRouteKindDuplicates   AssistantRouteKind = "duplicates"
+	AssistantRouteKindFolder       AssistantRouteKind = "folder"
+	AssistantRouteKindGroup        AssistantRouteKind = "group"
+	AssistantRouteKindLibrary      AssistantRouteKind = "library"
+	AssistantRouteKindOrganization AssistantRouteKind = "organization"
+	AssistantRouteKindOther        AssistantRouteKind = "other"
+	AssistantRouteKindPeople       AssistantRouteKind = "people"
+	AssistantRouteKindPerson       AssistantRouteKind = "person"
+	AssistantRouteKindPlaylist     AssistantRouteKind = "playlist"
+	AssistantRouteKindSettings     AssistantRouteKind = "settings"
+	AssistantRouteKindSmartFolder  AssistantRouteKind = "smartFolder"
+	AssistantRouteKindTag          AssistantRouteKind = "tag"
+	AssistantRouteKindTags         AssistantRouteKind = "tags"
+	AssistantRouteKindVideo        AssistantRouteKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantRouteKind enum.
+func (e AssistantRouteKind) Valid() bool {
+	switch e {
+	case AssistantRouteKindDuplicates:
+		return true
+	case AssistantRouteKindFolder:
+		return true
+	case AssistantRouteKindGroup:
+		return true
+	case AssistantRouteKindLibrary:
+		return true
+	case AssistantRouteKindOrganization:
+		return true
+	case AssistantRouteKindOther:
+		return true
+	case AssistantRouteKindPeople:
+		return true
+	case AssistantRouteKindPerson:
+		return true
+	case AssistantRouteKindPlaylist:
+		return true
+	case AssistantRouteKindSettings:
+		return true
+	case AssistantRouteKindSmartFolder:
+		return true
+	case AssistantRouteKindTag:
+		return true
+	case AssistantRouteKindTags:
+		return true
+	case AssistantRouteKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantTurnOutcomeAbout.
+const (
+	Operation AssistantTurnOutcomeAbout = "operation"
+	Target    AssistantTurnOutcomeAbout = "target"
+	Value     AssistantTurnOutcomeAbout = "value"
+)
+
+// Valid indicates whether the value is a known member of the AssistantTurnOutcomeAbout enum.
+func (e AssistantTurnOutcomeAbout) Valid() bool {
+	switch e {
+	case Operation:
+		return true
+	case Target:
+		return true
+	case Value:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantTurnOutcomeKind.
+const (
+	AssistantTurnOutcomeKindAnswer      AssistantTurnOutcomeKind = "answer"
+	AssistantTurnOutcomeKindClarify     AssistantTurnOutcomeKind = "clarify"
+	AssistantTurnOutcomeKindFilter      AssistantTurnOutcomeKind = "filter"
+	AssistantTurnOutcomeKindNavigate    AssistantTurnOutcomeKind = "navigate"
+	AssistantTurnOutcomeKindProposal    AssistantTurnOutcomeKind = "proposal"
+	AssistantTurnOutcomeKindUnreadable  AssistantTurnOutcomeKind = "unreadable"
+	AssistantTurnOutcomeKindUnsupported AssistantTurnOutcomeKind = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AssistantTurnOutcomeKind enum.
+func (e AssistantTurnOutcomeKind) Valid() bool {
+	switch e {
+	case AssistantTurnOutcomeKindAnswer:
+		return true
+	case AssistantTurnOutcomeKindClarify:
+		return true
+	case AssistantTurnOutcomeKindFilter:
+		return true
+	case AssistantTurnOutcomeKindNavigate:
+		return true
+	case AssistantTurnOutcomeKindProposal:
+		return true
+	case AssistantTurnOutcomeKindUnreadable:
+		return true
+	case AssistantTurnOutcomeKindUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantTurnOutcomeQuestion.
+const (
+	Appearances AssistantTurnOutcomeQuestion = "appearances"
+	Count       AssistantTurnOutcomeQuestion = "count"
+	List        AssistantTurnOutcomeQuestion = "list"
+	Recent      AssistantTurnOutcomeQuestion = "recent"
+)
+
+// Valid indicates whether the value is a known member of the AssistantTurnOutcomeQuestion enum.
+func (e AssistantTurnOutcomeQuestion) Valid() bool {
+	switch e {
+	case Appearances:
+		return true
+	case Count:
+		return true
+	case List:
+		return true
+	case Recent:
 		return true
 	default:
 		return false
@@ -464,16 +704,16 @@ func (e CheckResultReason) Valid() bool {
 
 // Defines values for ComfyUIMissingItemKind.
 const (
-	Model ComfyUIMissingItemKind = "model"
-	Node  ComfyUIMissingItemKind = "node"
+	ComfyUIMissingItemKindModel ComfyUIMissingItemKind = "model"
+	ComfyUIMissingItemKindNode  ComfyUIMissingItemKind = "node"
 )
 
 // Valid indicates whether the value is a known member of the ComfyUIMissingItemKind enum.
 func (e ComfyUIMissingItemKind) Valid() bool {
 	switch e {
-	case Model:
+	case ComfyUIMissingItemKindModel:
 		return true
-	case Node:
+	case ComfyUIMissingItemKindNode:
 		return true
 	default:
 		return false
@@ -617,6 +857,8 @@ const (
 	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
 	ErrorCodeActivityNotRetryable        ErrorCode = "activity_not_retryable"
 	ErrorCodeActivityNotUndoable         ErrorCode = "activity_not_undoable"
+	ErrorCodeAssistantNotReady           ErrorCode = "assistant_not_ready"
+	ErrorCodeAssistantUnavailable        ErrorCode = "assistant_unavailable"
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
 	ErrorCodeFileMissing                 ErrorCode = "file_missing"
@@ -672,6 +914,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeActivityNotRetryable:
 		return true
 	case ErrorCodeActivityNotUndoable:
+		return true
+	case ErrorCodeAssistantNotReady:
+		return true
+	case ErrorCodeAssistantUnavailable:
 		return true
 	case ErrorCodeConflict:
 		return true
@@ -793,6 +1039,7 @@ const (
 	ErrorReasonFaceRecognitionUnsupported    ErrorReason = "face_recognition_unsupported"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
+	ErrorReasonGenerationModelUnset          ErrorReason = "generation_model_unset"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
@@ -807,6 +1054,7 @@ const (
 	ErrorReasonMergeSamePerson               ErrorReason = "merge_same_person"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
+	ErrorReasonModel                         ErrorReason = "model"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
 	ErrorReasonNetworkError                  ErrorReason = "network_error"
@@ -815,6 +1063,7 @@ const (
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
 	ErrorReasonNotOllama                     ErrorReason = "not_ollama"
 	ErrorReasonNotVirtual                    ErrorReason = "not_virtual"
+	ErrorReasonOllamaNotSaved                ErrorReason = "ollama_not_saved"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
@@ -847,6 +1096,7 @@ const (
 	ErrorReasonThumbnailUploadInvalid        ErrorReason = "thumbnail_upload_invalid"
 	ErrorReasonThumbnailUploadTooLarge       ErrorReason = "thumbnail_upload_too_large"
 	ErrorReasonTimedOut                      ErrorReason = "timed_out"
+	ErrorReasonTimeout                       ErrorReason = "timeout"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
@@ -923,6 +1173,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonFolderNotFound:
 		return true
+	case ErrorReasonGenerationModelUnset:
+		return true
 	case ErrorReasonGroupCycle:
 		return true
 	case ErrorReasonGroupTargetNotFound:
@@ -951,6 +1203,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonMissingModels:
 		return true
+	case ErrorReasonModel:
+		return true
 	case ErrorReasonNameIsSynonym:
 		return true
 	case ErrorReasonNameIsTag:
@@ -966,6 +1220,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonNotOllama:
 		return true
 	case ErrorReasonNotVirtual:
+		return true
+	case ErrorReasonOllamaNotSaved:
 		return true
 	case ErrorReasonOpenNotLocal:
 		return true
@@ -1030,6 +1286,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonThumbnailUploadTooLarge:
 		return true
 	case ErrorReasonTimedOut:
+		return true
+	case ErrorReasonTimeout:
 		return true
 	case ErrorReasonTooFewVideos:
 		return true
@@ -1106,22 +1364,22 @@ func (e FaceRecognizer) Valid() bool {
 
 // Defines values for FaceRuntimeReason.
 const (
-	Disk         FaceRuntimeReason = "disk"
-	HashMismatch FaceRuntimeReason = "hash_mismatch"
-	HelperStart  FaceRuntimeReason = "helper_start"
-	Network      FaceRuntimeReason = "network"
+	FaceRuntimeReasonDisk         FaceRuntimeReason = "disk"
+	FaceRuntimeReasonHashMismatch FaceRuntimeReason = "hash_mismatch"
+	FaceRuntimeReasonHelperStart  FaceRuntimeReason = "helper_start"
+	FaceRuntimeReasonNetwork      FaceRuntimeReason = "network"
 )
 
 // Valid indicates whether the value is a known member of the FaceRuntimeReason enum.
 func (e FaceRuntimeReason) Valid() bool {
 	switch e {
-	case Disk:
+	case FaceRuntimeReasonDisk:
 		return true
-	case HashMismatch:
+	case FaceRuntimeReasonHashMismatch:
 		return true
-	case HelperStart:
+	case FaceRuntimeReasonHelperStart:
 		return true
-	case Network:
+	case FaceRuntimeReasonNetwork:
 		return true
 	default:
 		return false
@@ -1553,19 +1811,19 @@ func (e PersonProfileBloodType) Valid() bool {
 
 // Defines values for PersonProfileGender.
 const (
-	Female PersonProfileGender = "female"
-	Male   PersonProfileGender = "male"
-	Other  PersonProfileGender = "other"
+	PersonProfileGenderFemale PersonProfileGender = "female"
+	PersonProfileGenderMale   PersonProfileGender = "male"
+	PersonProfileGenderOther  PersonProfileGender = "other"
 )
 
 // Valid indicates whether the value is a known member of the PersonProfileGender enum.
 func (e PersonProfileGender) Valid() bool {
 	switch e {
-	case Female:
+	case PersonProfileGenderFemale:
 		return true
-	case Male:
+	case PersonProfileGenderMale:
 		return true
-	case Other:
+	case PersonProfileGenderOther:
 		return true
 	default:
 		return false
@@ -3473,6 +3731,32 @@ type ApproveWorkInfoPluginRequest struct {
 	Digest string `json:"digest"`
 }
 
+// AssistantAnswerItem defines model for AssistantAnswerItem.
+type AssistantAnswerItem struct {
+	Id int64 `json:"id"`
+
+	// Title The video's title, as untranslated user data.
+	Title string `json:"title"`
+}
+
+// AssistantAnswerLink Where the number came from: the library with criteria, or the page of the entity.
+type AssistantAnswerLink struct {
+	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+	Criteria    *AssistantCriteria    `json:"criteria,omitempty"`
+	Destination *AssistantDestination `json:"destination,omitempty"`
+}
+
+// AssistantCandidate defines model for AssistantCandidate.
+type AssistantCandidate struct {
+	// Count Videos the tag is on or the person or organization is credited on; 0 for other kinds.
+	Count int                `json:"count"`
+	Id    int64              `json:"id"`
+	Kind  AssistantLabelKind `json:"kind"`
+
+	// Name The entity's name, as untranslated user data.
+	Name string `json:"name"`
+}
+
 // AssistantChange defines model for AssistantChange.
 type AssistantChange struct {
 	// Argument The argument name of the action outcome, such as tagNames or enabled.
@@ -3484,6 +3768,30 @@ type AssistantChange struct {
 	// Value A literal value, such as a boolean, a number or a date.
 	Value interface{} `json:"value,omitempty"`
 }
+
+// AssistantCriteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+type AssistantCriteria struct {
+	Labels []AssistantLabel `json:"labels"`
+
+	// Rule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
+	Rule SmartRule `json:"rule"`
+
+	// Sort Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
+// AssistantDestination defines model for AssistantDestination.
+type AssistantDestination struct {
+	Id           *int64                            `json:"id,omitempty"`
+	Kind         AssistantDestinationKind          `json:"kind"`
+	SettingsPage *AssistantDestinationSettingsPage `json:"settingsPage,omitempty"`
+}
+
+// AssistantDestinationKind defines model for AssistantDestination.Kind.
+type AssistantDestinationKind string
+
+// AssistantDestinationSettingsPage defines model for AssistantDestination.SettingsPage.
+type AssistantDestinationSettingsPage string
 
 // AssistantImpact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
 type AssistantImpact struct {
@@ -3500,8 +3808,17 @@ type AssistantLabel struct {
 	Name string `json:"name"`
 }
 
-// AssistantLabelKind defines model for AssistantLabel.Kind.
+// AssistantLabelKind defines model for AssistantLabelKind.
 type AssistantLabelKind string
+
+// AssistantPin defines model for AssistantPin.
+type AssistantPin struct {
+	Id   int64              `json:"id"`
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The name the clarification asked about, as untranslated user data.
+	Name string `json:"name"`
+}
 
 // AssistantProposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
 type AssistantProposal struct {
@@ -3583,6 +3900,94 @@ type AssistantReadiness struct {
 
 // AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
 type AssistantReadinessReason string
+
+// AssistantRoute defines model for AssistantRoute.
+type AssistantRoute struct {
+	// Id The entity the screen shows, for the kinds that show one.
+	Id   *int64             `json:"id,omitempty"`
+	Kind AssistantRouteKind `json:"kind"`
+}
+
+// AssistantRouteKind defines model for AssistantRoute.Kind.
+type AssistantRouteKind string
+
+// AssistantSelectedCollections defines model for AssistantSelectedCollections.
+type AssistantSelectedCollections struct {
+	Groups       *[]int64 `json:"groups,omitempty"`
+	SmartFolders *[]int64 `json:"smartFolders,omitempty"`
+}
+
+// AssistantTurnContext The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
+type AssistantTurnContext struct {
+	// Filter Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
+	Filter *SmartRule `json:"filter,omitempty"`
+
+	// Pinned Ids chosen in a clarification, used before resolving the same name again.
+	Pinned                *[]AssistantPin               `json:"pinned,omitempty"`
+	Route                 AssistantRoute                `json:"route"`
+	SelectedCollectionIds *AssistantSelectedCollections `json:"selectedCollectionIds,omitempty"`
+
+	// SelectedVideoIds The list selection; over 20,000 returns 400 too_many_videos.
+	SelectedVideoIds *[]int64 `json:"selectedVideoIds,omitempty"`
+
+	// Sort Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
+// AssistantTurnOutcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+type AssistantTurnOutcome struct {
+	About      *AssistantTurnOutcomeAbout `json:"about,omitempty"`
+	Candidates *[]AssistantCandidate      `json:"candidates,omitempty"`
+
+	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+	Criteria    *AssistantCriteria       `json:"criteria,omitempty"`
+	Destination *AssistantDestination    `json:"destination,omitempty"`
+	Items       *[]AssistantAnswerItem   `json:"items,omitempty"`
+	Kind        AssistantTurnOutcomeKind `json:"kind"`
+
+	// Link Where the number came from: the library with criteria, or the page of the entity.
+	Link *AssistantAnswerLink `json:"link,omitempty"`
+
+	// Names Names that matched nothing, as untranslated user data.
+	Names *[]string `json:"names,omitempty"`
+
+	// Operation The catalog row id the model named that the assistant cannot build a request for yet.
+	Operation *string `json:"operation,omitempty"`
+
+	// Proposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+	Proposal *AssistantProposal            `json:"proposal,omitempty"`
+	Question *AssistantTurnOutcomeQuestion `json:"question,omitempty"`
+
+	// Total The count the screens show for the same filter or entity.
+	Total *int `json:"total,omitempty"`
+}
+
+// AssistantTurnOutcomeAbout defines model for AssistantTurnOutcome.About.
+type AssistantTurnOutcomeAbout string
+
+// AssistantTurnOutcomeKind defines model for AssistantTurnOutcome.Kind.
+type AssistantTurnOutcomeKind string
+
+// AssistantTurnOutcomeQuestion defines model for AssistantTurnOutcome.Question.
+type AssistantTurnOutcomeQuestion string
+
+// AssistantTurnRequest defines model for AssistantTurnRequest.
+type AssistantTurnRequest struct {
+	// Context The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
+	Context AssistantTurnContext `json:"context"`
+
+	// Previous One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+	Previous *AssistantTurnOutcome `json:"previous,omitempty"`
+
+	// Text The owner's request, as untranslated user data; at most 500 characters.
+	Text string `json:"text"`
+}
+
+// AssistantTurnResponse defines model for AssistantTurnResponse.
+type AssistantTurnResponse struct {
+	// Outcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
+	Outcome AssistantTurnOutcome `json:"outcome"`
+}
 
 // AuthRedirect defines model for AuthRedirect.
 type AuthRedirect struct {
@@ -8280,6 +8685,9 @@ type UndoActivityJSONRequestBody = ActivityUndoRequest
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
 
+// CreateAssistantTurnJSONRequestBody defines body for CreateAssistantTurn for application/json ContentType.
+type CreateAssistantTurnJSONRequestBody = AssistantTurnRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -8588,6 +8996,9 @@ type ServerInterface interface {
 	// GetAssistantReadiness Say whether the assistant can take a request
 	// (GET /api/assistant/readiness)
 	GetAssistantReadiness(w http.ResponseWriter, r *http.Request)
+	// CreateAssistantTurn Interpret one request into one outcome
+	// (POST /api/assistant/turns)
+	CreateAssistantTurn(w http.ResponseWriter, r *http.Request)
 	// Login Sign in with a username and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -9601,6 +10012,20 @@ func (siw *ServerInterfaceWrapper) GetAssistantReadiness(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssistantReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAssistantTurn(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16126,6 +16551,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama/models", wrapper.ListOllamaModels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/readiness", wrapper.GetAssistantReadiness)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns", wrapper.CreateAssistantTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)

@@ -1122,6 +1122,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interpret one request into one outcome
+         * @description Owner-only. Sends the request, the screen context and, for a follow-up, the previous outcome to the saved generation model as one structured-output call, then resolves every name the model returned against the library: one match is used, several or none answer clarify with the candidates, except a tag to attach, which the proposal lists in created. An action outcome stores a proposal and answers it; a follow-up discards the previous proposal once the new request is understood. filter, navigate and answer change nothing. An answer the schema does not match is unreadable and changes nothing. text over 500 characters, or a target or selection of more than 20,000 videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Ollama that cannot be reached (connection), a missing or refusing model (model) or a timeout (timeout) returns 503 assistant_unavailable and stores nothing. The call waits for the model up to 10 minutes.
+         */
+        post: operations["createAssistantTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/proposals": {
         parameters: {
             query?: never;
@@ -3783,6 +3803,103 @@ export interface components {
             /** @description Model name as Ollama lists it, such as qwen3:8b. */
             name: string;
         };
+        AssistantTurnRequest: {
+            /** @description The owner's request, as untranslated user data; at most 500 characters. */
+            text: string;
+            context: components["schemas"]["AssistantTurnContext"];
+            previous?: components["schemas"]["AssistantTurnOutcome"];
+        };
+        /** @description The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it. */
+        AssistantTurnContext: {
+            route: components["schemas"]["AssistantRoute"];
+            /** @description The list selection; over 20,000 returns 400 too_many_videos. */
+            selectedVideoIds?: number[];
+            selectedCollectionIds?: components["schemas"]["AssistantSelectedCollections"];
+            filter?: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            /** @description Ids chosen in a clarification, used before resolving the same name again. */
+            pinned?: components["schemas"]["AssistantPin"][];
+        };
+        AssistantRoute: {
+            /** @enum {string} */
+            kind: "library" | "folder" | "video" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "tag" | "tags" | "people" | "duplicates" | "settings" | "other";
+            /**
+             * Format: int64
+             * @description The entity the screen shows, for the kinds that show one.
+             */
+            id?: number;
+        };
+        AssistantSelectedCollections: {
+            groups?: number[];
+            smartFolders?: number[];
+        };
+        AssistantPin: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /** @description The name the clarification asked about, as untranslated user data. */
+            name: string;
+            /** Format: int64 */
+            id: number;
+        };
+        AssistantTurnResponse: {
+            outcome: components["schemas"]["AssistantTurnOutcome"];
+        };
+        /** @description One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing. */
+        AssistantTurnOutcome: {
+            /** @enum {string} */
+            kind: "filter" | "navigate" | "answer" | "proposal" | "clarify" | "unsupported" | "unreadable";
+            criteria?: components["schemas"]["AssistantCriteria"];
+            destination?: components["schemas"]["AssistantDestination"];
+            /** @enum {string} */
+            question?: "count" | "appearances" | "recent" | "list";
+            /** @description The count the screens show for the same filter or entity. */
+            total?: number;
+            items?: components["schemas"]["AssistantAnswerItem"][];
+            link?: components["schemas"]["AssistantAnswerLink"];
+            proposal?: components["schemas"]["AssistantProposal"];
+            /** @enum {string} */
+            about?: "operation" | "target" | "value";
+            candidates?: components["schemas"]["AssistantCandidate"][];
+            /** @description Names that matched nothing, as untranslated user data. */
+            names?: string[];
+            /** @description The catalog row id the model named that the assistant cannot build a request for yet. */
+            operation?: string;
+        };
+        /** @description Library conditions with ids, in the names the library URL uses, and the labels of the entities they name. */
+        AssistantCriteria: {
+            rule: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            labels: components["schemas"]["AssistantLabel"][];
+        };
+        AssistantDestination: {
+            /** @enum {string} */
+            kind: "video" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "tag" | "library" | "folders" | "tags" | "people" | "organizations" | "playlists" | "history" | "duplicates" | "activity" | "settings";
+            /** Format: int64 */
+            id?: number;
+            /** @enum {string} */
+            settingsPage?: "scan" | "library" | "auto-tagging" | "face-recognition" | "connections" | "plugins" | "conversion" | "network" | "account" | "api" | "danger-zone";
+        };
+        AssistantAnswerItem: {
+            /** Format: int64 */
+            id: number;
+            /** @description The video's title, as untranslated user data. */
+            title: string;
+        };
+        /** @description Where the number came from: the library with criteria, or the page of the entity. */
+        AssistantAnswerLink: {
+            criteria?: components["schemas"]["AssistantCriteria"];
+            destination?: components["schemas"]["AssistantDestination"];
+        };
+        AssistantCandidate: {
+            kind: components["schemas"]["AssistantLabelKind"];
+            /** Format: int64 */
+            id: number;
+            /** @description The entity's name, as untranslated user data. */
+            name: string;
+            /** @description Videos the tag is on or the person or organization is credited on; 0 for other kinds. */
+            count: number;
+        };
+        /** @enum {string} */
+        AssistantLabelKind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot";
         AssistantProposalList: {
             items: components["schemas"]["AssistantProposal"][];
         };
@@ -3829,8 +3946,7 @@ export interface components {
             labels: components["schemas"]["AssistantLabel"][];
         };
         AssistantLabel: {
-            /** @enum {string} */
-            kind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot";
+            kind: components["schemas"]["AssistantLabelKind"];
             /**
              * Format: int64
              * @description The entity's id when the card showed it; absent when unknown.
@@ -7230,7 +7346,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "assistant_not_ready" | "assistant_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -7254,7 +7370,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset";
     };
     responses: {
         /** @description Resource not found */
@@ -9452,6 +9568,50 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    createAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description The outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTurnResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved or generation_model_unset) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The model cannot answer (`assistant_unavailable`, reason connection, model or timeout); nothing is stored */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listAssistantProposals: {

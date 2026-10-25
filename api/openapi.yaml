@@ -1807,6 +1807,41 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/assistant/turns:
+    post:
+      operationId: createAssistantTurn
+      summary: "Interpret one request into one outcome"
+      description: "Owner-only. Sends the request, the screen context and, for a follow-up, the previous outcome to the saved generation model as one structured-output call, then resolves every name the model returned against the library: one match is used, several or none answer clarify with the candidates, except a tag to attach, which the proposal lists in created. An action outcome stores a proposal and answers it; a follow-up discards the previous proposal once the new request is understood. filter, navigate and answer change nothing. An answer the schema does not match is unreadable and changes nothing. text over 500 characters, or a target or selection of more than 20,000 videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Ollama that cannot be reached (connection), a missing or refusing model (model) or a timeout (timeout) returns 503 assistant_unavailable and stores nothing. The call waits for the model up to 10 minutes."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantTurnRequest"
+      responses:
+        "200":
+          description: "The outcome"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantTurnResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved or generation_model_unset)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "The model cannot answer (`assistant_unavailable`, reason connection, model or timeout); nothing is stored"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/assistant/proposals:
     get:
       operationId: listAssistantProposals
@@ -6336,6 +6371,219 @@ components:
         name:
           type: string
           description: "Model name as Ollama lists it, such as qwen3:8b."
+    AssistantTurnRequest:
+      type: object
+      required: [text, context]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: "The owner's request, as untranslated user data; at most 500 characters."
+        context:
+          $ref: "#/components/schemas/AssistantTurnContext"
+        previous:
+          $ref: "#/components/schemas/AssistantTurnOutcome"
+
+    AssistantTurnContext:
+      type: object
+      required: [route]
+      additionalProperties: false
+      description: "The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it."
+      properties:
+        route:
+          $ref: "#/components/schemas/AssistantRoute"
+        selectedVideoIds:
+          type: array
+          maxItems: 20000
+          description: "The list selection; over 20,000 returns 400 too_many_videos."
+          items:
+            type: integer
+            format: int64
+        selectedCollectionIds:
+          $ref: "#/components/schemas/AssistantSelectedCollections"
+        filter:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        pinned:
+          type: array
+          maxItems: 50
+          description: "Ids chosen in a clarification, used before resolving the same name again."
+          items:
+            $ref: "#/components/schemas/AssistantPin"
+
+    AssistantRoute:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [library, folder, video, person, organization, playlist, group, smartFolder, tag, tags, people, duplicates, settings, other]
+        id:
+          type: integer
+          format: int64
+          description: "The entity the screen shows, for the kinds that show one."
+
+    AssistantSelectedCollections:
+      type: object
+      additionalProperties: false
+      properties:
+        groups:
+          type: array
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolders:
+          type: array
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    AssistantPin:
+      type: object
+      required: [kind, name, id]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        name:
+          type: string
+          description: "The name the clarification asked about, as untranslated user data."
+        id:
+          type: integer
+          format: int64
+
+    AssistantTurnResponse:
+      type: object
+      required: [outcome]
+      additionalProperties: false
+      properties:
+        outcome:
+          $ref: "#/components/schemas/AssistantTurnOutcome"
+
+    AssistantTurnOutcome:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      description: "One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing."
+      properties:
+        kind:
+          type: string
+          enum: [filter, navigate, answer, proposal, clarify, unsupported, unreadable]
+        criteria:
+          $ref: "#/components/schemas/AssistantCriteria"
+        destination:
+          $ref: "#/components/schemas/AssistantDestination"
+        question:
+          type: string
+          enum: [count, appearances, recent, list]
+        total:
+          type: integer
+          description: "The count the screens show for the same filter or entity."
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/AssistantAnswerItem"
+        link:
+          $ref: "#/components/schemas/AssistantAnswerLink"
+        proposal:
+          $ref: "#/components/schemas/AssistantProposal"
+        about:
+          type: string
+          enum: [operation, target, value]
+        candidates:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/AssistantCandidate"
+        names:
+          type: array
+          description: "Names that matched nothing, as untranslated user data."
+          items:
+            type: string
+        operation:
+          type: string
+          description: "The catalog row id the model named that the assistant cannot build a request for yet."
+
+    AssistantCriteria:
+      type: object
+      required: [rule, labels]
+      additionalProperties: false
+      description: "Library conditions with ids, in the names the library URL uses, and the labels of the entities they name."
+      properties:
+        rule:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+
+    AssistantDestination:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [video, person, organization, playlist, group, smartFolder, tag, library, folders, tags, people, organizations, playlists, history, duplicates, activity, settings]
+        id:
+          type: integer
+          format: int64
+        settingsPage:
+          type: string
+          enum: [scan, library, auto-tagging, face-recognition, connections, plugins, conversion, network, account, api, danger-zone]
+
+    AssistantAnswerItem:
+      type: object
+      required: [id, title]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          description: "The video's title, as untranslated user data."
+
+    AssistantAnswerLink:
+      type: object
+      additionalProperties: false
+      description: "Where the number came from: the library with criteria, or the page of the entity."
+      properties:
+        criteria:
+          $ref: "#/components/schemas/AssistantCriteria"
+        destination:
+          $ref: "#/components/schemas/AssistantDestination"
+
+    AssistantCandidate:
+      type: object
+      required: [kind, id, name, count]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: "The entity's name, as untranslated user data."
+        count:
+          type: integer
+          description: "Videos the tag is on or the person or organization is credited on; 0 for other kinds."
+
+    AssistantLabelKind:
+      type: string
+      enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot]
+
     AssistantProposalList:
       type: object
       required: [items]
@@ -6424,8 +6672,7 @@ components:
       additionalProperties: false
       properties:
         kind:
-          type: string
-          enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot]
+          $ref: "#/components/schemas/AssistantLabelKind"
         id:
           type: integer
           format: int64
@@ -12578,6 +12825,8 @@ components:
             - activity_not_undoable
             - ollama_unreachable
             - proposal_not_pending
+            - assistant_not_ready
+            - assistant_unavailable
         message:
           type: string
           description: "English explanation for API clients and unknown-code fallback; the UI derives text from code and reason."
@@ -12716,3 +12965,7 @@ components:
         - too_many_urls
         - connection
         - not_ollama
+        - model
+        - timeout
+        - ollama_not_saved
+        - generation_model_unset
