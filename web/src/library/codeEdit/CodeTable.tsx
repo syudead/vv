@@ -1,5 +1,5 @@
 import { RotateCcw, Scissors, TriangleAlert } from "lucide-react";
-import { memo } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
@@ -113,6 +113,39 @@ function sameRow(a: CodeRowProps, b: CodeRowProps): boolean {
   );
 }
 
+interface TypedCaret {
+  raw: string;
+  caret: number;
+}
+
+/**
+ * Keeps the caret where the owner typed when the shown value replaces the typed text, which would
+ * otherwise move it to the end. Returns the input ref and the handler that records each keystroke.
+ */
+function useCaretAfterCut(shown: string) {
+  const input = useRef<HTMLInputElement>(null);
+  const typed = useRef<TypedCaret | null>(null);
+  // Runs after every render: a keystroke can leave the shown value unchanged and still be cut away.
+  useLayoutEffect(() => {
+    const last = typed.current;
+    typed.current = null;
+    const element = input.current;
+    if (last === null || element === null || element.value === last.raw) return;
+    if (element.ownerDocument.activeElement !== element) return;
+    // The shown value starts at the first non-white-space character of the typed text.
+    const start = Math.max(last.raw.indexOf(shown), 0);
+    const caret = Math.min(Math.max(last.caret - start, 0), shown.length);
+    element.setSelectionRange(caret, caret);
+  });
+  const record = (element: HTMLInputElement) => {
+    typed.current = {
+      raw: element.value,
+      caret: element.selectionStart ?? element.value.length,
+    };
+  };
+  return { input, record };
+}
+
 const CodeRow = memo(function CodeRow({
   row,
   typed,
@@ -126,6 +159,8 @@ const CodeRow = memo(function CodeRow({
   const versions = shownVersionsCount(video);
   const id = codeInputId(video.id);
   const errorId = `${id}-error`;
+  const shown = row.cut ? row.value : (typed ?? row.value);
+  const caret = useCaretAfterCut(shown);
   return (
     <TableRow className="hover:bg-transparent">
       <TableCell className="hidden w-list-thumb-cell md:table-cell">
@@ -167,10 +202,13 @@ const CodeRow = memo(function CodeRow({
           aria-invalid={reason !== undefined || undefined}
           aria-describedby={reason === undefined ? undefined : errorId}
           aria-disabled={disabled || undefined}
+          ref={caret.input}
           // A cut value is shown as Apply sends it; otherwise the raw text keeps trimming off the caret.
-          value={row.cut ? row.value : (typed ?? row.value)}
+          value={shown}
           onChange={(event) => {
-            if (!disabled) onType(video.id, event.target.value);
+            if (disabled) return;
+            caret.record(event.target);
+            onType(video.id, event.target.value);
           }}
         />
         {reason !== undefined && (
