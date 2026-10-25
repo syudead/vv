@@ -87,7 +87,8 @@ flowchart LR
 | Both operations in `VideoEditStore` | A new `VideoCodeStore` role | They are edits over a selection with the same target resolution; a new role would hold two methods and its own fixtures |
 | The write replaces only `code` of each key's work information and keeps the rest | `WorkInfoStore.SetMany` | `SetMany` replaces the whole record, so the client would have to send people, dates and links it never read |
 | A missing or merged video answers `404 video_not_found` with `field` `items[i].videoId` and writes nothing | Skipping missing videos as `POST /api/video-edits` does | The owner edited that row by hand; dropping it silently loses the value, and the Issue asks for a reason instead |
-| No version check: the last write wins | Sending `contentVersion` per row | The Issue chooses last-write-wins for a code changed elsewhere, and a code has no stale-screen hazard like a deleted virtual video |
+| Each item carries the row's `video.contentVersion`; the store compares it with the video's in the transaction and answers `409 content_changed` with `field` `items[i].contentVersion`, writing nothing | Sending only `videoId` | `videos.id` is a rowid SQLite can reuse after a delete, so a deleted video's ID can name a new video; the check the virtual-video save uses ([catalog-organization.md](../../docs/design-docs/catalog-organization.md)) makes that row fail instead of writing into the new video |
+| The code itself is not versioned: the last write wins | Sending the code the row read and rejecting a changed one | The Issue chooses last-write-wins for a code changed elsewhere; the `contentVersion` check guards the video's identity, not its code |
 | No activity entry | A `done` entry per video | The single `PUT /api/videos/{id}/work-info` writes none ([activity.md](../../docs/design-docs/activity.md#owner-operations-write-a-done-entry-per-video)); the two writes stay equivalent |
 
 ## Suggestions and the regular expression are computed in the browser
@@ -209,14 +210,18 @@ classification and the 1,000 limit through `resolveVideoTargets`
   the representative's `fileTitle` and the key's code; a virtual video's row
   has no `fileTitle`; the write changes only `code` and keeps the key's people,
   dates and links; an item whose video is missing writes nothing and returns
-  the index; two items on one key return `invalid_request`; events are the
+  the index; an item whose `contentVersion` differs from its video's, as
+  after a deleted virtual video's ID is reused, writes nothing and returns
+  `ErrContentChanged` with the index; two items on one key return
+  `invalid_request`; events are the
   single write's `VideoWorkInfoChanged` per video of the key.
 - Domain tests: 0 and 1,001 items, a repeated video ID, a code of 100 and 101
   code points, a control character, each accepted or rejected as the contract
   says.
 - HTTP tests with a fake store: 1,001 resolved videos answer
   `400 too_many_videos` with `limit` 1000 and no store call; a missing video
-  maps to `404 video_not_found` with `items[i].videoId`; the owner-only
+  maps to `404 video_not_found` with `items[i].videoId` and a changed one to
+  `409 content_changed` with `items[i].contentVersion`; the owner-only
   classification test covers both paths.
 
 ### Derive the code table rows from the selection and the pattern
@@ -276,7 +281,8 @@ controls
 summary rows; a `400 too_many_videos` summary shows the reason and no dialog;
 Apply sends only the changed and suggested rows and, on `200`, closes, toasts
 the count and refreshes the cards whose `video` event arrives through the fake
-event source; a `404` keeps the dialog and its values and shows the reason.
+event source; a `404` or `409` keeps the dialog and its values and shows the
+reason.
 `task check-docs` passes; `bulk-editing.md` no longer lists codes as rejected.
 This unit changes a screen: the implementation reviews the bar at the width
 where its items wrap.

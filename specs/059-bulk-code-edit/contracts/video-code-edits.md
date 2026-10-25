@@ -39,7 +39,9 @@ flowchart LR
   valid -->|no| e400[400 invalid_request or work_info_*]
   valid -->|yes| resolve{Every video present?}
   resolve -->|no| e404[404 video_not_found, nothing written]
-  resolve -->|yes| write[Replace code per key]
+  resolve -->|yes| same{Every contentVersion current?}
+  same -->|no| e409[409 content_changed, nothing written]
+  same -->|yes| write[Replace code per key]
   write --> events[video event per video of the key]
   write --> ok[200 applied]
 ```
@@ -48,6 +50,7 @@ flowchart LR
 | --- | --- | --- | --- | --- |
 | `items` | body | `array`, 1–1,000 | yes | One per row to write; a video ID listed twice returns `400 invalid_request` |
 | `items[i].videoId` | body | `integer` | yes | The row's shown video; a bundle member maps to its bundle's key |
+| `items[i].contentVersion` | body | `string` | yes | The row's `video.contentVersion` from the summary; it checks that the ID still names the video the row showed, since SQLite can reuse a deleted video's ID |
 | `items[i].code` | body | `string` | yes | The new code: trimmed, 1–100 code points, no control characters, as `WorkInfo.code` |
 
 **Response**: `200` with `VideoCodeEditResponse`: `applied`, the number of
@@ -60,11 +63,12 @@ unchanged.
 | `400` | `work_info_empty`, `work_info_too_long`, `work_info_control_characters` | A code empty after trimming, over 100 code points or with a control character; `field` is `items[i].code` |
 | `403` | `forbidden` | The viewer is not the owner |
 | `404` | `video_not_found` | A video is missing, hidden or merged away; `field` is `items[i].videoId`, and nothing is written |
+| `409` | `content_changed` | A video's `contentVersion` differs from the item's, as when its ID now names another video; `field` is `items[i].contentVersion`, and nothing is written |
 
 ## Client use
 
 The bar sends the summary before opening the editor and shows a `400` as a
 toast. The editor sends only the rows whose value is non-empty and differs
-from the row's `code`, keeps its values on any error and names the row the
-error's `field` points at. After `200` it closes and clears the list
+from the row's `code`, each with its `video.contentVersion`, keeps its values
+on any error and names the row the error's `field` points at. After `200` it closes and clears the list
 snapshot; the cards read their `cardCredits` again on the `video` events.
