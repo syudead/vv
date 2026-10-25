@@ -80,7 +80,10 @@ stateDiagram-v2
 
 The stream also carries the peer's `video`, `group` and `smartFolder` events,
 which arrive here with remote ids so open screens refresh remote items. A
-failed stream retries after 5 s, doubling to 60 s. `unreachable` names a
+failed stream retries after 5 s, doubling to 60 s, or at once when the peer
+presents its credential at the handshake: the node that accepted a pairing
+connects before the requesting node has stored it, and that node's first
+handshake after storing it wakes the retry. `unreachable` names a
 reason (`network`, `version` or `certificate`). While the peer is not
 `connected`, reads skip it without a request and answer with the local part,
 so a list never waits 10 s per page for a stopped peer. A `401 peer_unknown`

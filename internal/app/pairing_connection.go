@@ -67,12 +67,24 @@ func (p *Pairing) interrupt(retry bool) uint64 {
 		stop()
 	}
 	if retry {
-		select {
-		case p.wake <- struct{}{}:
-		default:
-		}
+		p.wakeLoop()
 	}
 	return generation
+}
+
+// wakeLoop ends the loop's wait before its retry delay; a wake while an attempt runs is kept for the next wait.
+func (p *Pairing) wakeLoop() {
+	select {
+	case p.wake <- struct{}{}:
+	default:
+	}
+}
+
+// seenPeerVersion is the peer version the state last carried, kept while the peer cannot be reached.
+func (p *Pairing) seenPeerVersion() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.status.peerVersion
 }
 
 // Run keeps one event stream open to the peer while a record with an incoming secret exists, and returns
@@ -151,7 +163,7 @@ func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 	if err == nil {
 		err = p.link.Watch(attempt, target, record.OutgoingSecret, func() {
 			opened = true
-			p.setStatus(generation, peerStatus{state: domain.PeerConnected})
+			p.setStatus(generation, peerStatus{state: domain.PeerConnected, peerVersion: node.Version})
 		}, func(changed domain.PeerChanged) { p.publish(changed) })
 		err = p.confirmUnknown(attempt, record, err)
 	}
@@ -217,6 +229,7 @@ func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.Pee
 	case errors.As(err, &untrusted):
 		p.setStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonCertificate, fingerprint: untrusted.Fingerprint,
+			peerVersion: p.seenPeerVersion(),
 		})
 	case errors.As(err, &version):
 		p.setStatus(generation, peerStatus{
@@ -224,7 +237,9 @@ func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.Pee
 		})
 	default:
 		p.logger.Debug("the paired VVMDM is unreachable", slog.Any("error", err))
-		p.setStatus(generation, peerStatus{state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork})
+		p.setStatus(generation, peerStatus{
+			state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork, peerVersion: p.seenPeerVersion(),
+		})
 	}
 }
 

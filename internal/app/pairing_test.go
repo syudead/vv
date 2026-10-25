@@ -245,8 +245,8 @@ func TestPairingStoresBothSecrets(t *testing.T) {
 		t.Error("両方向の secret が同じ")
 	}
 	for _, node := range []*Pairing{n.a, n.b} {
-		if state, err := node.State(ctx); err != nil || state.State != domain.PeerConnected {
-			t.Errorf("State = %+v, %v, want connected", state, err)
+		if state, err := node.State(ctx); err != nil || state.State != domain.PeerConnected || state.PeerVersion != "1.2.0" {
+			t.Errorf("State = %+v, %v, want connected with PeerVersion 1.2.0", state, err)
 		}
 	}
 	if err := n.pairFromB("ANYCODE2"); !errors.Is(err, domain.ErrAlreadyPaired) {

@@ -226,8 +226,8 @@ test.describe.serial("paired library", () => {
     };
     expect(own.state).toBe("connected");
     peerName = own.peer.name;
-    // The node that showed the code connects back on its own; its first attempt can miss, and the
-    // retry comes 5 s later.
+    // The node that showed the code connects back on its own; when its first attempt comes before the
+    // main node stored the pairing, the main node's handshake makes it retry at once.
     await expect
       .poll(
         async () =>

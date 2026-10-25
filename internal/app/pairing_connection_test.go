@@ -14,6 +14,8 @@ import (
 const (
 	connectionPeerID = "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b"
 	connectionPeer   = "http://peer.local:8080"
+	// connectionIncoming is the peer's credential here, well-formed so Authenticate reaches the store.
+	connectionIncoming = "vvp_aW5jb21pbmctc2VjcmV0LWZvci10aGUtcGVlci0wMDA"
 )
 
 // watchStep scripts one connection attempt: open holds the stream until the test ends it through
@@ -187,7 +189,7 @@ func startConnection(t *testing.T, link *streamLink) *connectionNode {
 	record := domain.PeerRecord{
 		NodeID: connectionPeerID, Name: "peer", Address: connectionPeer, OutgoingSecret: "vvp_outgoing",
 	}
-	if err := store.AddPeer(context.Background(), record, "vvp_incoming"); err != nil {
+	if err := store.AddPeer(context.Background(), record, connectionIncoming); err != nil {
 		t.Fatal(err)
 	}
 	events := &peerEventLog{store: store}
@@ -259,6 +261,9 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 			watchStep{open: true},
 		))
 		assertStates(t, "ストリームが開く", node.events, "connected")
+		if version := node.events.states[0].PeerVersion; version != "1.2.0" {
+			t.Errorf("connected の PeerVersion = %q, want 1.2.0", version)
+		}
 		if len(node.events.changed) != 1 || node.events.changed[0].VideoIDs[0] != domain.ToRemoteID(7) {
 			t.Errorf("転送されたイベント = %+v, want %+v", node.events.changed, forwarded)
 		}
@@ -266,6 +271,9 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 		node.link.end <- &domain.PeerUnreachableError{Message: "connection reset"}
 		synctest.Wait()
 		assertStates(t, "ストリームが切れる", node.events, "connected", "unreachable/network")
+		if version := node.events.states[1].PeerVersion; version != "1.2.0" {
+			t.Errorf("切れた後の PeerVersion = %q, want 最後に見た 1.2.0", version)
+		}
 		lost := time.Now()
 
 		time.Sleep(domain.PeerRetryFirst)
@@ -283,7 +291,7 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 		if !node.events.revoked[3] {
 			t.Error("revoked のイベントの時点で受け取る secret が取り消されていない")
 		}
-		if valid, _ := node.pairing.Authenticate(context.Background(), "vvp_incoming"); valid {
+		if valid, _ := node.pairing.Authenticate(context.Background(), connectionIncoming); valid {
 			t.Error("revoked の後も相手の資格情報が通る")
 		}
 
@@ -380,16 +388,22 @@ func TestConnectionOffersThePeerOnlyWhileConnected(t *testing.T) {
 }
 
 // A peer that requested the pairing accepts the secret at its handshake before it stores the record, so its
-// event stream refusing the secret then is not a revocation.
+// event stream refusing the secret then is not a revocation. Its handshake after storing reconnects at once.
 func TestConnectionWaitsForThePeerStoringThePairing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		node := startConnection(t, newStreamLink(watchStep{err: domain.ErrPeerUnknown}, watchStep{open: true}))
 		if record := node.store.stored(); record == nil || record.IncomingRevoked {
 			t.Fatalf("記録 = %+v, want 受け取る secret が残る", record)
 		}
-		time.Sleep(domain.PeerRetryFirst)
+		refused := time.Now()
+		if _, err := node.pairing.Handshake(context.Background(), connectionIncoming); err != nil {
+			t.Fatalf("相手の資格情報の Handshake: %v", err)
+		}
 		synctest.Wait()
 		assertStates(t, "相手の保存後の再接続", node.events, "connected")
+		if times := node.link.attemptTimes(); len(times) != 2 || !times[1].Equal(refused) {
+			t.Errorf("試行の時刻 = %v, want 相手の Handshake の直後 %v", times, refused)
+		}
 	})
 }
 

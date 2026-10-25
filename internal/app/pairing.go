@@ -218,7 +218,7 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err := p.store.AddPeer(ctx, record, incoming); err != nil {
 		return domain.PeerState{}, err
 	}
-	p.paired()
+	p.paired(answer.Node.Version)
 	return p.State(ctx)
 }
 
@@ -274,7 +274,7 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 	if err := p.store.AddPeer(ctx, record, incoming); err != nil {
 		return domain.PairingAnswer{}, err
 	}
-	p.paired()
+	p.paired(req.Node.Version)
 	return domain.PairingAnswer{Node: node, Secret: incoming}, nil
 }
 
@@ -320,16 +320,18 @@ func (p *Pairing) expectHandshake(secret string) func() {
 	}
 }
 
-func (p *Pairing) paired() {
+func (p *Pairing) paired(peerVersion string) {
 	p.mu.Lock()
 	p.code.Clear()
 	p.mu.Unlock()
 	generation := p.interrupt(true)
-	p.setStatus(generation, peerStatus{state: domain.PeerConnected})
+	p.setStatus(generation, peerStatus{state: domain.PeerConnected, peerVersion: peerVersion})
 }
 
 // Handshake answers this node's identity to a caller presenting the peer credential, or the secret
-// a pairing in progress sent; anything else answers domain.ErrPeerUnknown.
+// a pairing in progress sent; anything else answers domain.ErrPeerUnknown. The peer presenting its
+// credential is reachable and holds the pairing, so a loop waiting to retry connects at once: the node
+// that accepted a pairing otherwise waits out a retry delay for the requester to store its record.
 func (p *Pairing) Handshake(ctx context.Context, secret string) (domain.PeerNode, error) {
 	p.mu.Lock()
 	_, pending := p.pending[secret]
@@ -342,6 +344,7 @@ func (p *Pairing) Handshake(ctx context.Context, secret string) (domain.PeerNode
 		if !valid {
 			return domain.PeerNode{}, domain.ErrPeerUnknown
 		}
+		p.wakeLoop()
 	}
 	return p.Node(ctx)
 }
