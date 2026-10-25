@@ -103,7 +103,7 @@ func (s *server) expandLocalFolders(w http.ResponseWriter, r *http.Request, sel 
 		if rule == nil {
 			continue
 		}
-		ids, err := s.peerMatchIDs(r, *rule, limit-len(sel.peer))
+		ids, err := s.peerMatchIDs(r, *rule, sel.peer, limit)
 		if err != nil {
 			s.logger.Info("the selection leaves out the other VVMDM's matches", slog.Int64("smartFolder", id), slog.Any("error", err))
 			return true
@@ -153,7 +153,7 @@ func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *
 			continue
 		}
 		if !rule.Favorite {
-			ids, err := s.peerMatchIDs(r, *rule.Match, limit-len(sel.peer))
+			ids, err := s.peerMatchIDs(r, *rule.Match, sel.peer, limit)
 			if err != nil {
 				s.peerUnreachable(w)
 				return false
@@ -162,7 +162,7 @@ func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *
 		}
 		q := queryByName(*rule.Match)
 		q.FavoriteOnly = rule.Favorite
-		ids, err := s.localMatchIDs(r.Context(), q, limit-len(sel.local))
+		ids, err := s.localMatchIDs(r.Context(), q, sel.local, limit)
 		if err != nil {
 			s.internalError(w, "Could not read the smart folder videos.", err)
 			return false
@@ -172,11 +172,31 @@ func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *
 	return true
 }
 
-// peerMatchIDs lists the peer's videos matching rule, stopping once more than limit are read.
-func (s *server) peerMatchIDs(r *http.Request, rule gen.SmartRuleByName, limit int) ([]int64, error) {
+// distinctOver reports when ids read together with the ids already held name more than limit distinct videos,
+// so a page that only repeats held ids does not end the reading early.
+type distinctOver struct {
+	seen  map[int64]struct{}
+	limit int
+}
+
+func newDistinctOver(held []int64, limit int) distinctOver {
+	seen := make(map[int64]struct{}, len(held))
+	for _, id := range held {
+		seen[id] = struct{}{}
+	}
+	return distinctOver{seen: seen, limit: limit}
+}
+
+func (d distinctOver) add(id int64) { d.seen[id] = struct{}{} }
+
+func (d distinctOver) over() bool { return len(d.seen) > d.limit }
+
+// peerMatchIDs lists the peer's videos matching rule, stopping once they and held name more than limit videos.
+func (s *server) peerMatchIDs(r *http.Request, rule gen.SmartRuleByName, held []int64, limit int) ([]int64, error) {
 	values := url.Values{"limit": {strconv.Itoa(selectionPageLimit)}}
 	setNameFilters(values, queryByName(rule))
 	ids := []int64{}
+	count := newDistinctOver(held, limit)
 	for {
 		var page gen.VideoPage
 		if err := s.peerGet(r, "/api/videos", values, &page); err != nil {
@@ -184,21 +204,23 @@ func (s *server) peerMatchIDs(r *http.Request, rule gen.SmartRuleByName, limit i
 		}
 		for _, video := range page.Items {
 			ids = append(ids, video.Id)
+			count.add(video.Id)
 		}
-		if page.NextCursor == nil || len(ids) > limit {
+		if page.NextCursor == nil || count.over() {
 			return ids, nil
 		}
 		values.Set("cursor", *page.NextCursor)
 	}
 }
 
-// localMatchIDs lists this node's videos matching q, stopping once more than limit are read.
-func (s *server) localMatchIDs(ctx context.Context, q domain.VideoQuery, limit int) ([]int64, error) {
+// localMatchIDs lists this node's videos matching q, stopping once they and held name more than limit videos.
+func (s *server) localMatchIDs(ctx context.Context, q domain.VideoQuery, held []int64, limit int) ([]int64, error) {
 	if s.videos == nil {
 		return nil, nil
 	}
 	q.Limit = selectionPageLimit
 	ids := []int64{}
+	count := newDistinctOver(held, limit)
 	for {
 		page, err := s.videos.ListVideos(ctx, domain.AudienceOwner, q)
 		if err != nil {
@@ -206,8 +228,9 @@ func (s *server) localMatchIDs(ctx context.Context, q domain.VideoQuery, limit i
 		}
 		for _, video := range page.Items {
 			ids = append(ids, video.ID)
+			count.add(video.ID)
 		}
-		if page.NextCursor == "" || len(ids) > limit {
+		if page.NextCursor == "" || count.over() {
 			return ids, nil
 		}
 		q.Cursor = page.NextCursor

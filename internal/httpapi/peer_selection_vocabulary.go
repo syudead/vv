@@ -37,6 +37,7 @@ type editVocabulary struct {
 // translateEdit is edit in v's node's ids: a tag to add goes by name when the node lacks its id, a person or
 // organization to add is created there when missing, and an entity to remove the node lacks is dropped.
 func translateEdit(edit domain.VideoEdit, v editVocabulary) (domain.VideoEdit, error) {
+	v = rememberCreated(v)
 	out := domain.VideoEdit{Dates: edit.Dates, Public: edit.Public}
 	for _, input := range edit.TagsAdd {
 		if input.ID == nil {
@@ -72,6 +73,31 @@ func translateEdit(edit domain.VideoEdit, v editVocabulary) (domain.VideoEdit, e
 		}
 	}
 	return out, nil
+}
+
+// rememberCreated makes v's id return what v's create made earlier, so a person or organization named in
+// several credits of one edit is created once: the name lookups hold the node's entities before the edit.
+func rememberCreated(v editVocabulary) editVocabulary {
+	created := map[domain.VocabularyKind]map[string]int64{}
+	id, create := v.id, v.create
+	v.id = func(kind domain.VocabularyKind, name string) (int64, error) {
+		if found, ok := created[kind][name]; ok {
+			return found, nil
+		}
+		return id(kind, name)
+	}
+	v.create = func(kind domain.CreditKind, name string) (int64, error) {
+		made, err := create(kind, name)
+		if err == nil {
+			vocabulary := vocabularyKindOf(kind)
+			if created[vocabulary] == nil {
+				created[vocabulary] = map[string]int64{}
+			}
+			created[vocabulary][name] = made
+		}
+		return made, err
+	}
+	return v
 }
 
 func translateCreditEdit(v editVocabulary, index int, credit domain.CreditEdit) (domain.CreditEdit, error) {

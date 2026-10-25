@@ -433,6 +433,8 @@ const errorReasons = {
   person_name_taken: "A person on this or the other VVMDM already has that name.",
   organization_name_taken:
     "An organization on this or the other VVMDM already has that name.",
+  provisional_person_remote:
+    "Give the person a name before adding them to videos on the other VVMDM",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
