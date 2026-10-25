@@ -13,6 +13,7 @@ import AnswerReply from "./AnswerReply";
 import { useDestinationName } from "./destinationName";
 import FilterReply from "./FilterReply";
 import { atDestination } from "./links";
+import ReviewReply from "./ReviewReply";
 import type { Exchange, Reply, UnavailableReason } from "./thread";
 
 /** After a minute the waiting row says the request goes on without the panel. */
@@ -178,6 +179,10 @@ function OutcomeReply({
       return <Line>{unsupportedText(outcome.operation)}</Line>;
     case "unreadable":
       return <Line>{t.assistant.unreadable}</Line>;
+    case "review":
+      return outcome.run === undefined ? null : (
+        <ReviewReply run={outcome.run} exchange={exchange} />
+      );
     default:
       // The confirmation card for a proposal is drawn by the card's own unit.
       return null;

@@ -90,3 +90,55 @@ export async function listActiveAssistantProposals(
   );
   return list.items;
 }
+
+export type AssistantReviewRun = components["schemas"]["AssistantReviewRun"];
+export type AssistantReviewKind = AssistantReviewRun["kind"];
+export type AssistantReviewCandidate = components["schemas"]["AssistantReviewCandidate"];
+export type AssistantReviewMember = components["schemas"]["AssistantReviewMember"];
+export type AssistantReviewRunPage = components["schemas"]["AssistantReviewRunPage"];
+export type AssistantReviewAdoption = components["schemas"]["AssistantReviewAdoption"];
+export type AssistantReviewRejection = components["schemas"]["AssistantReviewRejection"];
+
+/** The run and one page of its candidates, most probable first; 404 when the run is gone. */
+export function getAssistantReviewRun(
+  id: number,
+  page: { cursor?: string; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<AssistantReviewRunPage> {
+  const query = new URLSearchParams();
+  if (page.cursor !== undefined) query.set("cursor", page.cursor);
+  if (page.limit !== undefined) query.set("limit", String(page.limit));
+  const search = query.toString();
+  return request<AssistantReviewRunPage>(
+    `/api/assistant/review-runs/${String(id)}${search === "" ? "" : `?${search}`}`,
+    { signal },
+  );
+}
+
+function postCandidates<T>(
+  id: number,
+  action: "adopt" | "reject",
+  ids: readonly number[],
+): Promise<T> {
+  return request<T>(`/api/assistant/review-runs/${String(id)}/candidates/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+/** One approved proposal per adopted candidate, in the order of ids, without the skipped ones. */
+export function adoptAssistantReviewCandidates(
+  id: number,
+  ids: readonly number[],
+): Promise<AssistantReviewAdoption> {
+  return postCandidates(id, "adopt", ids);
+}
+
+/** Rejected candidates are remembered, so a later run of the kind does not list them. */
+export function rejectAssistantReviewCandidates(
+  id: number,
+  ids: readonly number[],
+): Promise<AssistantReviewRejection> {
+  return postCandidates(id, "reject", ids);
+}

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AssistantOutcome,
   AssistantProposal,
+  AssistantReviewRun,
   AssistantTurnRequest,
 } from "../api/assistant";
 import * as events from "../api/serverEvents";
@@ -34,6 +35,7 @@ interface Server {
   executes: string[];
   proposal: () => Response;
   list: () => Response;
+  reviewRun: () => Response;
   /** Delivers an assistant event to every subscriber, as /api/events would. */
   emit: () => void;
 }
@@ -47,6 +49,7 @@ function installServer(): Server {
     executes: [],
     proposal: () => json({ code: "not_found", message: "not found" }, 404),
     list: () => json({ items: [] }),
+    reviewRun: () => json({ code: "not_found", message: "not found" }, 404),
     emit: () => undefined,
   };
   beforeEach(() => {
@@ -54,6 +57,7 @@ function installServer(): Server {
     server.turns = [];
     server.executes = [];
     server.list = () => json({ items: [] });
+    server.reviewRun = () => json({ code: "not_found", message: "not found" }, 404);
     server.execute = () => json({ code: "not_found", message: "not found" }, 404);
     server.proposal = () => json({ code: "not_found", message: "not found" }, 404);
     const subscribers = new Set<events.ServerEventHandlers>();
@@ -75,6 +79,8 @@ function installServer(): Server {
       }
       if (url.startsWith("/api/assistant/proposals/"))
         return Promise.resolve(server.proposal());
+      if (url.startsWith("/api/assistant/review-runs/"))
+        return Promise.resolve(server.reviewRun());
       if (url === "/api/assistant/turns" && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as AssistantTurnRequest;
         server.turns.push(body);
@@ -509,6 +515,93 @@ describe("AssistantPanel", () => {
         .getByRole("link", { name: "Open in Activity" })
         .getAttribute("href"),
     ).toBe("/activity/77");
+  });
+
+  it("review の結果は assistant イベントで進み具合を読み直し、レビュー一覧へリンクする", async () => {
+    const reviewRun = (extra: Partial<AssistantReviewRun>): AssistantReviewRun => ({
+      id: 7,
+      kind: "tags",
+      status: "running",
+      total: 40,
+      judged: 0,
+      listed: 0,
+      startedAt: new Date().toISOString(),
+      ...extra,
+    });
+    server.turn = () => outcome({ kind: "review", run: reviewRun({}) });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "タグを整理して");
+
+    expect(
+      await within(panel()).findByText("Looking for duplicate tags… Judged 0 of 40"),
+    ).toBeDefined();
+    expect(within(panel()).queryByText(/already running/)).toBeNull();
+    expect(
+      within(panel())
+        .getByRole("link", { name: "Open the review list" })
+        .getAttribute("href"),
+    ).toBe("/assistant/reviews/7");
+
+    server.reviewRun = () =>
+      json({ run: reviewRun({ judged: 25, listed: 3 }), items: [] });
+    act(() => server.emit());
+    expect(
+      await within(panel()).findByText("Looking for duplicate tags… Judged 25 of 40"),
+    ).toBeDefined();
+
+    server.reviewRun = () =>
+      json({ run: reviewRun({ status: "done", judged: 40, listed: 3 }), items: [] });
+    act(() => server.emit());
+    expect(await within(panel()).findByText("3 candidates to review")).toBeDefined();
+  });
+
+  it("答えが届く前に終わった review は、イベントを待たずに読み直した結果を出す", async () => {
+    const started = {
+      id: 7,
+      kind: "tags",
+      status: "running",
+      total: 0,
+      judged: 0,
+      listed: 0,
+      startedAt: new Date().toISOString(),
+    } satisfies AssistantReviewRun;
+    server.turn = () => outcome({ kind: "review", run: started });
+    // The run's last event went out before the turn answered, so no further event comes.
+    server.reviewRun = () => json({ run: { ...started, status: "done" }, items: [] });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "タグを整理して");
+
+    expect(
+      await within(panel()).findByText("Nothing looked like a duplicate"),
+    ).toBeDefined();
+  });
+
+  it("同じ種類の review が実行中なら、そのことと同じ進み具合を出す", async () => {
+    server.turn = () =>
+      outcome({
+        kind: "review",
+        run: {
+          id: 7,
+          kind: "people",
+          status: "running",
+          total: 40,
+          judged: 12,
+          listed: 2,
+          startedAt: "2026-10-25T10:00:00Z",
+        },
+      });
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "人物を整理して");
+
+    expect(
+      await within(panel()).findByText("A review of duplicate people is already running"),
+    ).toBeDefined();
+    expect(
+      within(panel()).getByText("Looking for duplicate people… Judged 12 of 40"),
+    ).toBeDefined();
   });
 
   it("stale の結果はもう一度頼む行を出す", async () => {
