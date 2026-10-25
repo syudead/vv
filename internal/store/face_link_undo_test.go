@@ -133,10 +133,7 @@ func TestUndoingAFaceLinkTwiceIsRefused(t *testing.T) {
 
 func TestUndoingAFaceLinkKeepsThePerformerWhileAnotherAppearanceLinksThePerson(t *testing.T) {
 	f := linkedFixture{faceFixture: newFaceFixture(t)}
-	f.named = createPerson(t, f.db, "Named").ID
-	setFaceVector(t, f.db, f.named, faceBasis(0))
-	// Two main people match the same person, so one performer row stands for both links.
-	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop-1"), facePerson(0.75, 0, faceBasis(0), "crop-2"))
+	f.named = f.analyseOnePersonTwice(t, "crop")
 	appearances := faceAppearances(t, f.db)
 
 	f.undoFaceLink(t, appearances[0].id)

@@ -206,15 +206,22 @@ func provisionalPeople(t *testing.T, db *store.DB) []int64 {
 	return ids
 }
 
-func TestFaceAnalysisLinksOneProvisionalPersonToBothVideosAndIgnoresAShortFace(t *testing.T) {
+// The same face in A and B makes a provisional person per video, offered with each other rather than linked.
+func TestFaceAnalysisOffersTheProvisionalPeopleOfOneFaceAndIgnoresAShortFace(t *testing.T) {
 	f := newFaceAnalysisFixture(t)
 	people := provisionalPeople(t, f.db)
-	if len(people) != 1 {
-		t.Fatalf("provisional people = %v, want one for the face of A and B", people)
+	if len(people) != 2 {
+		t.Fatalf("provisional people = %v, want one for the face in each of A and B", people)
 	}
 	got := performersOf(t, f.db, "key-a.mp4", "key-b.mp4", "key-c.mp4")
-	if want := map[string][]int64{"key-a.mp4": people, "key-b.mp4": people}; !maps.EqualFunc(got, want, slices.Equal) {
-		t.Fatalf("performers = %v, want %v", got, want)
+	if len(got) != 2 || len(got["key-a.mp4"]) != 1 || len(got["key-b.mp4"]) != 1 ||
+		!slices.Contains(people, got["key-a.mp4"][0]) || !slices.Contains(people, got["key-b.mp4"][0]) ||
+		got["key-a.mp4"][0] == got["key-b.mp4"][0] {
+		t.Fatalf("performers = %v, want one of %v in each of A and B", got, people)
+	}
+	pairs, err := f.db.Credits().FaceCandidates(context.Background(), people[0])
+	if err != nil || len(pairs) != 1 || pairs[0].Person.ID != people[1] {
+		t.Fatalf("candidates of %d = %+v, %v; want %d", people[0], pairs, err, people[1])
 	}
 	counts, err := f.db.Faces().Counts(context.Background())
 	if err != nil || counts.Done != 3 {
@@ -222,11 +229,16 @@ func TestFaceAnalysisLinksOneProvisionalPersonToBothVideosAndIgnoresAShortFace(t
 	}
 }
 
-// Acceptance 4: the owner's photo of a named person merges the provisional person of A and B into them, through the
-// face event and the worker.
+// Acceptance 4: once the owner has joined the provisional people of A and B, the owner's photo of a named person
+// merges that person into them, through the face event and the worker.
 func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
 	ctx := context.Background()
 	f := newFaceAnalysisFixture(t)
+	if people := provisionalPeople(t, f.db); len(people) != 2 {
+		t.Fatalf("provisional people = %v, want two", people)
+	} else if _, err := f.db.Credits().Merge(ctx, domain.CreditPerson, people[0], people[1:]); err != nil {
+		t.Fatal(err)
+	}
 	bus := newTestBus()
 	subscriptions := subscribeEvents(bus, eventSubscribers{PersonImageChanged: f.recognizer.PersonImageChanged})
 	t.Cleanup(subscriptions.StopWorkers)

@@ -183,8 +183,8 @@ func faceCandidatePairs(t *testing.T, db *DB) [][2]int64 {
 	return out
 }
 
-// linkedFixture analyses a video with two main people: one matches the named person, the other is new and close to
-// two other named people, so it becomes a provisional person offered with both.
+// linkedFixture analyses a video with two main people: the owner names the first one's new person, the other is
+// close to two named people, so it becomes a provisional person offered with both.
 type linkedFixture struct {
 	faceFixture
 	named, near, nearer, provisional int64
@@ -193,10 +193,8 @@ type linkedFixture struct {
 func newLinkedFixture(t *testing.T) linkedFixture {
 	t.Helper()
 	f := linkedFixture{faceFixture: newFaceFixture(t)}
-	f.named = createPerson(t, f.db, "Named").ID
 	f.near = createPerson(t, f.db, "Near").ID
 	f.nearer = createPerson(t, f.db, "Nearer").ID
-	setFaceVector(t, f.db, f.named, faceBasis(0))
 	setFaceVector(t, f.db, f.near, faceNear(2, 3, 0.4))
 	setFaceVector(t, f.db, f.nearer, faceNear(2, 4, 0.42))
 	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop-named"), facePerson(0.75, 0, faceBasis(2), "crop-new"))
@@ -204,18 +202,40 @@ func newLinkedFixture(t *testing.T) linkedFixture {
 	if len(appearances) != 2 {
 		t.Fatalf("appearances = %+v, want 2", appearances)
 	}
-	f.provisional = appearances[1].personID
+	f.named, f.provisional = appearances[0].personID, appearances[1].personID
+	nameFacePerson(t, f.db, f.named, "Named")
 	return f
 }
 
-func TestStoreFaceAnalysisLinksPeopleAndCreatesAProvisionalPerson(t *testing.T) {
+// analyseOnePersonTwice analyses a video whose two main people the owner then merges and names, so one named person
+// holds both appearances and one performer row stands for both links.
+func (f faceFixture) analyseOnePersonTwice(t *testing.T, crop string) int64 {
+	t.Helper()
+	f.analyse(t, facePerson(0.25, 0, faceBasis(0), crop), facePerson(0.75, 0, faceBasis(0), crop))
+	appearances := faceAppearances(t, f.db)
+	named := appearances[0].personID
+	if _, err := f.db.Credits().Merge(context.Background(), domain.CreditPerson, named, []int64{appearances[1].personID}); err != nil {
+		t.Fatal(err)
+	}
+	nameFacePerson(t, f.db, named, "Named")
+	return named
+}
+
+// nameFacePerson gives a provisional person a name, as the owner does on the person page.
+func nameFacePerson(t *testing.T, db *DB, id int64, name string) {
+	t.Helper()
+	if _, err := db.Credits().Update(context.Background(), domain.CreditPerson, id, domain.CreditPatch{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStoreFaceAnalysisCreatesAProvisionalPersonPerMainPerson(t *testing.T) {
 	f := newLinkedFixture(t)
 	ctx := context.Background()
 
 	appearances := faceAppearances(t, f.db)
-	if appearances[0].personID != f.named || appearances[1].personID == 0 ||
-		slices.Contains([]int64{f.named, f.near, f.nearer}, appearances[1].personID) {
-		t.Fatalf("appearances = %+v, want the named person and a new one", appearances)
+	if appearances[1].personID == 0 || slices.Contains([]int64{f.named, f.near, f.nearer}, appearances[1].personID) {
+		t.Fatalf("appearances = %+v, want a new person", appearances)
 	}
 	provisional, err := f.db.Credits().Get(ctx, domain.CreditPerson, f.provisional)
 	if err != nil || !provisional.Provisional {
@@ -239,7 +259,7 @@ func TestStoreFaceAnalysisLinksPeopleAndCreatesAProvisionalPerson(t *testing.T) 
 		t.Errorf("entry = %+v, want face_recognition done by rule", entry)
 	}
 	want := []faceLinkRow{
-		{appearanceID: appearances[0].id, personID: f.named},
+		{appearanceID: appearances[0].id, personID: f.named, created: true},
 		{appearanceID: appearances[1].id, personID: f.provisional, created: true},
 	}
 	if got := faceLinksOf(t, f.db, entry.ID); !slices.Equal(got, want) {
@@ -247,9 +267,9 @@ func TestStoreFaceAnalysisLinksPeopleAndCreatesAProvisionalPerson(t *testing.T) 
 	}
 }
 
-// A person is matched by their face's vector alone: the new person keeps the vector of their crop's face, and the
-// centroid of an appearance linked to them, here one made to stand for a stranger, matches nobody.
-func TestStoreFaceAnalysisMatchesAPersonByTheirFaceOnly(t *testing.T) {
+// A person is offered by their face's vector alone: the new person keeps the vector of their crop's face, and the
+// centroid of an appearance linked to them, here one made to stand for a stranger, offers nobody.
+func TestStoreFaceAnalysisOffersAPersonByTheirFaceOnly(t *testing.T) {
 	f := newFaceFixture(t)
 	first := facePerson(0.25, 0, faceBasis(0), "crop-a")
 	first.FaceVector = faceNear(0, 1, 0.9)
@@ -271,22 +291,29 @@ func TestStoreFaceAnalysisMatchesAPersonByTheirFaceOnly(t *testing.T) {
 	if len(appearances) != 2 || appearances[0].personID != person || appearances[1].personID == person {
 		t.Fatalf("appearances = %+v, want the stranger as a new person beside person %d", appearances, person)
 	}
+	if got := faceCandidatePairs(t, f.db); len(got) != 0 {
+		t.Errorf("candidates = %v, want none", got)
+	}
 }
 
-// A face that reaches Link with two people links to the closer one and offers the two as one person stored twice,
-// so the next video of that face does not make a third.
-func TestStoreFaceAnalysisLinksTheCloserOfTwoPeopleAndOffersThem(t *testing.T) {
+// A face identical to a stored person's is never linked to them without the owner: it becomes a provisional person
+// offered with every person it reaches.
+func TestStoreFaceAnalysisOffersEvenAnIdenticalPersonWithoutLinking(t *testing.T) {
 	f := newFaceFixture(t)
-	closer, other := createPerson(t, f.db, "Closer").ID, createPerson(t, f.db, "Other").ID
-	setFaceVector(t, f.db, closer, faceNear(0, 1, 0.8))
+	same, other := createPerson(t, f.db, "Same").ID, createPerson(t, f.db, "Other").ID
+	setFaceVector(t, f.db, same, faceBasis(0))
 	setFaceVector(t, f.db, other, faceNear(0, 2, 0.75))
 	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop"))
 
-	if got := faceAppearances(t, f.db); len(got) != 1 || got[0].personID != closer {
-		t.Fatalf("appearances = %+v, want one linked to person %d", got, closer)
+	got := faceAppearances(t, f.db)
+	if len(got) != 1 || got[0].personID == same || got[0].personID == other {
+		t.Fatalf("appearances = %+v, want one of a new person", got)
 	}
-	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{other, closer}}; !slices.Equal(got, want) {
+	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{got[0].personID, same}, {got[0].personID, other}}; !slices.Equal(got, want) {
 		t.Errorf("candidates = %v, want %v", got, want)
+	}
+	if performers := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(performers, []int64{got[0].personID}) {
+		t.Errorf("performers = %v, want only the new person", performers)
 	}
 }
 
@@ -385,8 +412,9 @@ func TestDeletingAProvisionalPersonDeletesItsFaceData(t *testing.T) {
 		}
 	}
 	check("after the delete")
-	if rows := tableRows(t, f.db, "person_images"); len(rows) != 0 {
-		t.Errorf("faces after the delete = %v, want none", rows)
+	var faces int
+	if err := f.db.sql.QueryRow(`select count(*) from person_images where person_id = ?`, f.provisional).Scan(&faces); err != nil || faces != 0 {
+		t.Errorf("faces of the deleted person = %d, %v; want none", faces, err)
 	}
 
 	// Acceptance 7: the same face found again creates nobody and gets no centroid or crop back.
