@@ -21,7 +21,8 @@ type remoteDetailsInput struct {
 
 // peerWorkInfoBody gives the peer a work-info save in its own person and organization ids; workInfo picks the
 // work information out of the body, and field names its property, or is empty for a body that is the work
-// information. A person or organization the peer lacks is created there by name, as a bulk edit does.
+// information. A person or organization the peer lacks is created there by name, as a bulk edit does, and
+// one given by name alone is not created on this node at all.
 func peerWorkInfoBody[T any](
 	field string, workInfo func(*T) *gen.WorkInfoInput,
 ) func(*server, http.ResponseWriter, *http.Request) bool {
@@ -33,7 +34,7 @@ func peerWorkInfoBody[T any](
 		}
 		if info := workInfo(&body); info != nil {
 			// Re-encoding turns a missing required field into its zero value, which the peer would then accept.
-			if message, ok := workInfoInputRequiredPresent(rawProperty(raw, field)); !ok {
+			if message, ok := workInfoRequiredPresent(rawProperty(raw, field), true); !ok {
 				s.invalidRequest(w, message)
 				return false
 			}
@@ -85,11 +86,20 @@ func translateCreditRefs[T any](
 ) error {
 	for i := range items {
 		target := ref(&items[i])
-		id, err := translateID(v, kind, target.Id, fmt.Sprintf(field, i), true)
+		var (
+			id  int64
+			err error
+		)
+		// A name alone is a person or organization the screen did not create here, so it goes to the peer as is.
+		if target.Id == nil {
+			id, err = idByName(v, kind, valueOrZero(target.Name), true)
+		} else {
+			id, err = translateID(v, kind, *target.Id, fmt.Sprintf(field, i), true)
+		}
 		if err != nil {
 			return err
 		}
-		target.Id = id
+		target.Id, target.Name = &id, nil
 	}
 	return nil
 }

@@ -10,7 +10,12 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import PairingSection from "./PairingSection";
 
 const NODE = { id: "a1", name: "den-pc", version: "1.4.0" };
-const PEER = { name: "studio-pc", address: "http://192.168.1.20:8080", version: "1.4.0" };
+const PEER = {
+  name: "studio-pc",
+  address: "http://192.168.1.20:8080",
+  version: "1.4.0",
+  pinned: false,
+};
 
 const unpaired: PeerState = { state: "unpaired", node: NODE };
 const connected: PeerState = { state: "connected", peer: PEER, node: NODE };
@@ -251,9 +256,30 @@ describe("PairingSection, paired", () => {
     expect(screen.getByText("Can't reach it")).toBeDefined();
   });
 
+  it("asks for a first trust, not a changed certificate, when nothing is pinned", async () => {
+    serve({
+      ...connected,
+      state: "unreachable",
+      reason: "certificate",
+      fingerprint: "b2xk",
+    });
+    renderSection();
+
+    expect(await screen.findByText("Can't verify its certificate")).toBeDefined();
+    expect(screen.getByText("Certificate not trusted")).toBeDefined();
+    expect(screen.queryByText("Certificate changed")).toBeNull();
+    expect(screen.queryByText("Confirm the new certificate")).toBeNull();
+  });
+
   it("trusts the fingerprint it shows, and the new one after fingerprint_changed", async () => {
     const sent = serve(
-      { ...connected, state: "unreachable", reason: "certificate", fingerprint: "b2xk" },
+      {
+        ...connected,
+        peer: { ...PEER, pinned: true },
+        state: "unreachable",
+        reason: "certificate",
+        fingerprint: "b2xk",
+      },
       {
         "POST /api/peer/certificate": [
           () => conflict("fingerprint_changed", { fingerprint: "bmV3" }),
@@ -264,6 +290,8 @@ describe("PairingSection, paired", () => {
     const user = userEvent.setup();
     renderSection();
 
+    expect(await screen.findByText("Certificate changed")).toBeDefined();
+    expect(screen.getByText("Confirm the new certificate")).toBeDefined();
     await user.click(await screen.findByRole("button", { name: "Trust and reconnect" }));
     expect(
       await screen.findByText(

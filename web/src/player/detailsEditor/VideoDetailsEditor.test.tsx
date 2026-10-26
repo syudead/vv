@@ -96,11 +96,11 @@ function Back() {
   );
 }
 
-function renderEditor() {
+function renderEditor(path = "/videos/7/edit") {
   return render(
     <TooltipProvider>
       <ToastProvider>
-        <MemoryRouter initialEntries={["/", "/videos/7/edit"]} initialIndex={1}>
+        <MemoryRouter initialEntries={["/", path]} initialIndex={1}>
           <AudienceProvider audience="owner">
             <Where />
             <Back />
@@ -291,6 +291,37 @@ describe("VideoDetailsEditor", () => {
           { role: "performer", person: { id: 1 } },
           { role: "performer", person: { id: 5 } },
           { role: "director", person: { id: 5 } },
+        ],
+      },
+    });
+  });
+
+  it("相手の動画では新しい名前をこのノードに作らず、名前のまま送る", async () => {
+    const remote = 2 ** 40 + 7;
+    const local = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === `/api/videos/${String(remote)}` && (init?.method ?? "GET") === "GET")
+        return Promise.resolve(json({ ...video, id: remote }));
+      if (url === `/api/videos/${String(remote)}/details`)
+        return Promise.resolve(server.details(JSON.parse(String(init?.body))));
+      return local(input, init);
+    });
+    renderEditor(`/videos/${String(remote)}/edit`);
+    const user = userEvent.setup();
+    await user.type(
+      await screen.findByRole("combobox", { name: "Add a performer" }),
+      "Eve",
+    );
+    await user.click(await screen.findByRole("option", { name: 'Create "Eve"' }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(server.details).toHaveBeenCalledTimes(1));
+    expect(server.createPerson).not.toHaveBeenCalled();
+    expect(server.details.mock.calls[0]![0]).toMatchObject({
+      workInfo: {
+        people: [
+          { role: "performer", person: { id: 1 } },
+          { role: "performer", person: { name: "Eve" } },
         ],
       },
     });

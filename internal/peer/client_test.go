@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
 func TestVersionVerifiesTheCertificate(t *testing.T) {
@@ -67,5 +69,29 @@ func TestRefusalMapsThePeerReason(t *testing.T) {
 	server.Close()
 	if _, err := New(Options{}).Version(context.Background(), domain.PeerTarget{Address: server.URL}); !errors.Is(err, domain.ErrPeerUnreachable) {
 		t.Errorf("止まった相手の err = %v, want ErrPeerUnreachable", err)
+	}
+}
+
+// The sender's own fingerprint travels in node.fingerprint, and the receiver refusing this node's certificate
+// comes back with the fingerprint it saw, not as the receiver's own untrusted certificate.
+func TestRequestPairingSendsTheOwnFingerprint(t *testing.T) {
+	var sent gen.PairingRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"conflict","reason":"certificate_untrusted","message":"x","fingerprint":"seen"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := New(Options{}).RequestPairing(context.Background(), domain.PeerTarget{Address: server.URL},
+		domain.PairingRequest{Address: "https://b.local", Fingerprint: "own"})
+	if sent.Node.Fingerprint == nil || *sent.Node.Fingerprint != "own" {
+		t.Errorf("送った node.fingerprint = %v, want own", sent.Node.Fingerprint)
+	}
+	var own *domain.OwnCertificateUntrustedError
+	var untrusted *domain.CertificateUntrustedError
+	if !errors.As(err, &own) || own.Fingerprint != "seen" || errors.As(err, &untrusted) || !errors.Is(err, domain.ErrPeerUnreachable) {
+		t.Errorf("err = %v, want 指紋 seen の OwnCertificateUntrustedError", err)
 	}
 }

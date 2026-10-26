@@ -131,6 +131,11 @@ func translateID(v editVocabulary, kind domain.VocabularyKind, id int64, field s
 	if err != nil {
 		return 0, err
 	}
+	return idByName(v, kind, name, add)
+}
+
+// idByName is v's node's id of name, created there with add when the node lacks it, else zero.
+func idByName(v editVocabulary, kind domain.VocabularyKind, name string, add bool) (int64, error) {
 	found, err := v.id(kind, name)
 	if err != nil || found != 0 || !add {
 		return found, err

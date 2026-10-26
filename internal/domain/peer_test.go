@@ -3,6 +3,7 @@ package domain
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func TestPairingCodeExpiresAfterTenMinutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slot.Consume(code.Value, start.Add(10*time.Minute)) {
+	if slot.Matches(code.Value, start.Add(10*time.Minute)) {
 		t.Error("10 分ちょうどのコードが通った")
 	}
 
@@ -47,11 +48,27 @@ func TestPairingCodeExpiresAfterTenMinutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slot.Consume(" "+strings.ToLower(code.Value)+" ", start.Add(10*time.Minute-time.Second)) {
+	if !slot.Matches(" "+strings.ToLower(code.Value)+" ", start.Add(10*time.Minute-time.Second)) {
 		t.Fatal("期限内のコードが通らない")
 	}
-	if slot.Consume(code.Value, start.Add(time.Second)) {
-		t.Error("使ったコードがもう一度通った")
+}
+
+// A failed callback must leave the code usable; only a pairing that succeeded clears it.
+func TestPairingCodeStaysUntilCleared(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	var slot PairingCodeSlot
+	code, err := slot.Issue(rand.Reader, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := range 2 {
+		if !slot.Matches(code.Value, now) {
+			t.Fatalf("%d 回目の照合でコードが通らない", attempt+1)
+		}
+	}
+	slot.Clear()
+	if slot.Matches(code.Value, now) {
+		t.Error("消したコードが通った")
 	}
 }
 
@@ -70,11 +87,26 @@ func TestSecondPairingCodeReplacesTheFirst(t *testing.T) {
 	if first.Value == second.Value {
 		t.Fatalf("2 つのコードが同じ %q", first.Value)
 	}
-	if slot.Consume(first.Value, now) {
+	if slot.Matches(first.Value, now) {
 		t.Error("置き換えられた 1 つ目のコードが通った")
 	}
-	if !slot.Consume(second.Value, now) {
+	if !slot.Matches(second.Value, now) {
 		t.Error("2 つ目のコードが通らない")
+	}
+}
+
+func TestValidFingerprint(t *testing.T) {
+	valid := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	if !ValidFingerprint(valid) {
+		t.Errorf("ValidFingerprint(%q) = false", valid)
+	}
+	for _, bad := range []string{
+		"", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 31)),
+		base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)), valid + " ",
+	} {
+		if ValidFingerprint(bad) {
+			t.Errorf("ValidFingerprint(%q) = true", bad)
+		}
 	}
 }
 

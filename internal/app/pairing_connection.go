@@ -37,14 +37,33 @@ func (p *Pairing) loadStatus(record *domain.PeerRecord) peerStatus {
 // setStatus applies next unless the loop was interrupted after generation was read, and publishes one
 // domain.PeerStateChanged when the state changed.
 func (p *Pairing) setStatus(generation uint64, next peerStatus) {
+	p.applyStatus(generation, next, nil)
+}
+
+// applyStatus is setStatus with the failure that caused next, which the transition's log line names.
+func (p *Pairing) applyStatus(generation uint64, next peerStatus, cause error) {
 	p.mu.Lock()
 	if generation != p.generation || (p.loaded && p.status == next) {
 		p.mu.Unlock()
 		return
 	}
+	previous := p.status.state
 	p.status, p.loaded = next, true
 	p.mu.Unlock()
+	p.logTransition(previous, next, cause)
 	p.publish(domain.PeerStateChanged{})
+}
+
+// logTransition logs losing and regaining the peer once per transition; each failed retry stays at debug.
+func (p *Pairing) logTransition(previous domain.PeerConnection, next peerStatus, cause error) {
+	switch {
+	case previous == next.state:
+	case next.state == domain.PeerConnected:
+		p.logger.Info("the paired VVMDM is connected", slog.String("previous", string(previous)))
+	case next.state == domain.PeerUnreachable && previous == domain.PeerConnected:
+		p.logger.Info("the paired VVMDM became unreachable",
+			slog.String("reason", string(next.reason)), slog.Any("error", cause))
+	}
 }
 
 func (p *Pairing) publish(event domain.Event) {
@@ -227,19 +246,19 @@ func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.Pee
 	case errors.Is(err, domain.ErrPeerUnknown):
 		p.revoke(ctx, generation, record)
 	case errors.As(err, &untrusted):
-		p.setStatus(generation, peerStatus{
+		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonCertificate, fingerprint: untrusted.Fingerprint,
 			peerVersion: p.seenPeerVersion(),
-		})
+		}, err)
 	case errors.As(err, &version):
-		p.setStatus(generation, peerStatus{
+		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonVersion, peerVersion: version.Peer,
-		})
+		}, err)
 	default:
 		p.logger.Debug("the paired VVMDM is unreachable", slog.Any("error", err))
-		p.setStatus(generation, peerStatus{
+		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork, peerVersion: p.seenPeerVersion(),
-		})
+		}, err)
 	}
 }
 

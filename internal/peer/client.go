@@ -123,6 +123,9 @@ func (c *Client) RequestPairing(
 		},
 		Secret: req.Secret,
 	}
+	if req.Fingerprint != "" {
+		body.Node.Fingerprint = &req.Fingerprint
+	}
 	var answer gen.PairingAnswer
 	if err := c.call(ctx, target, http.MethodPost, "/api/peer/pairings", "", body, &answer,
 		http.StatusCreated); err != nil {
@@ -253,9 +256,8 @@ func refusal(status int, body []byte, address string) error {
 	case gen.ErrorReasonPeerUnreachable:
 		return &domain.PeerUnreachableError{Message: "The other VVMDM could not reach this one: " + answer.Message}
 	case gen.ErrorReasonCertificateUntrusted:
-		return &domain.PeerUnreachableError{
-			Message: "The other VVMDM does not trust the certificate of this one (SPKI " + deref(answer.Fingerprint) + ").",
-		}
+		// The peer names the certificate it saw at this node's address, which only the owner of this node can judge.
+		return &domain.OwnCertificateUntrustedError{Fingerprint: deref(answer.Fingerprint)}
 	}
 	return &domain.PeerUnreachableError{
 		Message: "The other VVMDM at " + address + " answered with status " + strconv.Itoa(status) + ".",

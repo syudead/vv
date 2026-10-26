@@ -18,7 +18,12 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 const remoteId = remoteIdOffset + 5;
-const peerInfo = { name: "studio-pc", address: "http://192.168.1.20:8080", version: "1" };
+const peerInfo = {
+  name: "studio-pc",
+  address: "http://192.168.1.20:8080",
+  version: "1",
+  pinned: false,
+};
 const connected: PeerState = { state: "connected", peer: peerInfo };
 const unreachable: PeerState = {
   state: "unreachable",

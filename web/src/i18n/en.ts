@@ -4693,6 +4693,8 @@ export const en = {
         certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
+        untrusted: "Can't verify its certificate",
+        untrustedDetail: "Confirm its certificate below to connect.",
         revoked: "Unpaired by the other side",
         revokedDetail:
           "It no longer shares its library with this VVMDM. Remove the pairing to pair again from either side.",

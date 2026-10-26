@@ -30,11 +30,44 @@ other presents as `Authorization: VV-Peer <secret>` on every request.
 sequenceDiagram
   participant B as Node B
   participant A as Node A
-  B->>A: POST /api/peer/pairings with code
-  A->>B: GET /api/peer/handshake
+  opt B's own address is https and the roots do not verify it
+    B->>B: GET /api/peer/handshake at its own address
+    Note over B: reads its certificate's SPKI
+  end
+  B->>A: POST /api/peer/pairings with code and that SPKI
+  A->>B: GET /api/peer/handshake, pinned to that SPKI
   B-->>A: node id, version
   A-->>B: 201, secret for B
 ```
+
+### Both nodes behind self-signed HTTPS
+
+The requesting node tells the accepting node which certificate its own
+address presents, so neither owner confirms the requester's certificate. B
+sits behind a TLS terminator and cannot read its certificate locally, so it
+connects to the address it announces: when the system roots do not verify
+that certificate, B handshakes again pinned to its SPKI with the secret of
+the pairing in progress, and only an answer with B's own node id makes B send
+the SPKI as `node.fingerprint`. A pins it for the callback and stores it as
+the peer's pin. An `http` address, or a certificate the roots verify, sends
+no fingerprint, and A then verifies with the roots as before; B's owner still
+confirms A's certificate after `certificate_untrusted`.
+
+| Property | How it holds |
+| --- | --- |
+| A trusts no certificate it has not been told about by an authenticated request | The fingerprint arrives in the request the code authenticates, over the channel B already verified against A's roots or the pin its owner confirmed |
+| A failed callback can be repeated | The code stays usable until a pairing succeeds; it still expires after 10 minutes, and success clears it |
+| The owner of B can tell which certificate A refused | A's `certificate_untrusted` reaches B's page as `409 peer_unreachable` with the `fingerprint` A saw, which B never offers to trust as A's |
+| The accepting node's log names a failed callback | A logs it at warning level with the address and the error |
+
+B's view of its own address is only as trustworthy as B's network path to
+itself, the same trust the owner extends when confirming A's fingerprint.
+
+| Rejected | Why |
+| --- | --- |
+| A second fingerprint confirmation on A's page | A's owner is not at the screen during a pairing B starts, and the code already authenticates the request |
+| A reading its certificate from local files | A TLS terminator holds the certificate, so the node has no file to read |
+| Trusting the callback's certificate on first use | Any host answering at B's address could then pin itself |
 
 The peer reads this node's own `/api/*` operations, so no third contract
 drifts from the shapes the screens use. A table in
@@ -50,9 +83,9 @@ audience before paging ([authentication.md](authentication.md)).
 | --- | --- |
 | Both nodes run the same release `version`; pairing and every reconnection compare it | The peer reads the screen API, which changes between releases without notice |
 | The secret is per direction (`vvp_` plus 32 random bytes), hashed on the receiving node and kept in the `peer` table, not tied to `account_version` | A password change keeps the pairing, while it signs out sessions |
-| The pairing code is 8 characters, one per node, valid 10 minutes, used once and kept in memory | A restart ending the code is the wanted behaviour |
+| The pairing code is 8 characters, one per node, valid 10 minutes, cleared by the pairing it completes and kept in memory | A restart ending the code is the wanted behaviour |
 | A node has at most one peer; a second pairing answers `409 already_paired` | The owner unpairs first |
-| HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it | A public certificate rotates every 90 days; a self-signed one is pinned once |
+| HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it, and the Settings page calls an unpinned certificate untrusted rather than changed | A public certificate rotates every 90 days; a self-signed one is pinned once |
 | A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
 | Rejected | Why |
@@ -85,7 +118,9 @@ failed stream retries after 5 s, doubling to 60 s, or at once when the peer
 presents its credential at the handshake: the node that accepted a pairing
 connects before the requesting node has stored it, and that node's first
 handshake after storing it wakes the retry. `unreachable` names a
-reason (`network`, `version` or `certificate`). While the peer is not
+reason (`network`, `version` or `certificate`). Moving from `connected` to
+`unreachable`, and into `connected`, logs one info line with the reason and
+error; each failed retry logs at debug level. While the peer is not
 `connected`, reads skip it without a request and answer with the local part,
 so a list never waits 10 s per page for a stopped peer. A `401 peer_unknown`
 from the peer, which an unpaired or wiped peer answers alike, first clears the
@@ -192,7 +227,11 @@ missing; a provisional person with a remote target answers `400` with reason
 `provisional_person_remote`. Two databases have no shared transaction, so
 the local part stays applied when the peer fails.
 
-A single edit of a remote video is forwarded by its id. Confirming or
+A single edit of a remote video is forwarded by its id. Its details editor
+sends a person or organization new to the screen as `{"name": ...}` instead
+of creating it here first, and the forwarding finds or creates it on the peer
+by that name, so this node gains no row; a local video's save refuses a credit
+by name with `400`. Confirming or
 rejecting a tentative tag goes to the peer, which ran the auto-tagging, with
 the tag id turned into the peer's by name; a tag the peer lacks answers
 `404`. A favorites-only read of a remote media folder lists nothing, as a

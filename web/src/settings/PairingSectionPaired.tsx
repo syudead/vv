@@ -38,11 +38,12 @@ function stateLine(state: PeerState): StateLine {
       detail: text.revokedDetail,
       tone: "warning",
     };
+  // Without a pinned certificate nothing was trusted before, so nothing "changed".
   if (state.reason === "certificate")
     return {
       icon: ShieldAlert,
-      word: text.certificate,
-      detail: text.certificateDetail,
+      word: state.peer?.pinned === true ? text.certificate : text.untrusted,
+      detail: state.peer?.pinned === true ? text.certificateDetail : text.untrustedDetail,
       tone: "warning",
     };
   if (state.reason === "version")
@@ -116,13 +117,18 @@ function AddressRow({
   );
 }
 
-/** Sends the fingerprint on screen; fingerprint_changed replaces it with the one now waiting. */
+/**
+ * Sends the fingerprint on screen; fingerprint_changed replaces it with the one now waiting. An
+ * unpinned peer gets the first-trust wording that pairing uses.
+ */
 function CertificateRow({
   address,
   fingerprint,
+  pinned,
 }: {
   address: string;
   fingerprint: string;
+  pinned: boolean;
 }) {
   const text = t.settings.pairing;
   const [shown, setShown] = useState(fingerprint);
@@ -154,7 +160,13 @@ function CertificateRow({
   return (
     <div className="flex flex-col gap-2">
       <FingerprintAlert
-        title={changed ? text.paired.certificateChanged : text.paired.certificateTitle}
+        title={
+          changed
+            ? text.paired.certificateChanged
+            : pinned
+              ? text.paired.certificateTitle
+              : text.form.untrustedTitle
+        }
         address={address}
         fingerprint={shown}
         action={text.paired.trust}
@@ -285,6 +297,7 @@ export function PairedSection({
           key={certificate}
           address={peer?.address ?? ""}
           fingerprint={certificate}
+          pinned={peer?.pinned === true}
         />
       )}
       <div>

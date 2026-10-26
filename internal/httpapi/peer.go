@@ -167,7 +167,7 @@ func peerStateBody(state domain.PeerState, audience domain.Audience) gen.PeerSta
 	node := peerNodeBody(state.Node)
 	body.Node = &node
 	if state.Peer != nil {
-		body.Peer = &gen.PeerInfo{Name: state.Peer.Name, Address: state.Peer.Address}
+		body.Peer = &gen.PeerInfo{Name: state.Peer.Name, Address: state.Peer.Address, Pinned: state.Peer.PinnedSPKI != ""}
 		if state.PeerVersion != "" {
 			body.Peer.Version = &state.PeerVersion
 		}
@@ -299,10 +299,11 @@ func (s *server) AcceptPairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer, err := s.pairing.Accept(r.Context(), domain.PairingRequest{
-		Code:    body.Code,
-		Node:    domain.PeerNode{ID: body.Node.Id, Name: body.Node.Name, Version: body.Node.Version},
-		Address: body.Node.Address,
-		Secret:  body.Secret,
+		Code:        body.Code,
+		Node:        domain.PeerNode{ID: body.Node.Id, Name: body.Node.Name, Version: body.Node.Version},
+		Address:     body.Node.Address,
+		Secret:      body.Secret,
+		Fingerprint: valueOrZero(body.Node.Fingerprint),
 	})
 	if err != nil {
 		s.writePairingError(w, err, "Could not accept the pairing.")
@@ -356,6 +357,7 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 		address     *domain.InvalidPeerAddressError
 		version     *domain.UnsupportedVersionError
 		untrusted   *domain.CertificateUntrustedError
+		distrusted  *domain.OwnCertificateUntrustedError
 		unreachable *domain.PeerUnreachableError
 	)
 	switch {
@@ -380,6 +382,12 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
 			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonCertificateUntrusted), Fingerprint: &untrusted.Fingerprint,
 			Message: "The certificate of the other VVMDM is not trusted.",
+		})
+	case errors.As(err, &distrusted):
+		s.logger.Info("pairing failed", slog.Any("error", err))
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonPeerUnreachable), Fingerprint: &distrusted.Fingerprint,
+			Message: distrusted.Error(),
 		})
 	case errors.As(err, &unreachable):
 		s.logger.Info("pairing failed", slog.Any("error", err))

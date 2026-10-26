@@ -622,7 +622,7 @@ export interface paths {
         get?: never;
         /**
          * Save display name and work information atomically
-         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed.
+         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed. For the peer's video a person or organization may be given by name, which the peer creates when it lacks it.
          */
         put: operations["setVideoDetails"];
         post?: never;
@@ -1521,7 +1521,7 @@ export interface paths {
         put?: never;
         /**
          * Pair with the node whose code the owner typed
-         * @description Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * @description Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1581,7 +1581,7 @@ export interface paths {
         put?: never;
         /**
          * Accept a pairing from another node
-         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake and stores the pairing only after that succeeds. An unknown, used or expired code returns 400 invalid_request with invalid_code; malformed values 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify 409 certificate_untrusted with fingerprint.
+         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint.
          */
         post: operations["acceptPairing"];
         delete?: never;
@@ -4876,10 +4876,12 @@ export interface components {
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
         };
-        /** @description Write reference to one person or organization. */
+        /** @description Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request. */
         CreditIdRef: {
             /** Format: int64 */
-            id: number;
+            id?: number;
+            /** @description A person or organization the peer may lack, so this node creates nothing for the peer's video. */
+            name?: string;
         };
         WorkPersonInput: {
             role: components["schemas"]["WorkPersonRole"];
@@ -7311,6 +7313,8 @@ export interface components {
             name: string;
             /** @description The peer's base URL */
             address: string;
+            /** @description Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted */
+            pinned: boolean;
             /** @description The peer version last seen; with reason version, the one that differs */
             version?: string;
         };
@@ -7356,6 +7360,8 @@ export interface components {
             name: string;
             /** @description The sender's base URL as the receiver can reach it */
             address: string;
+            /** @description Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender read it from its own address; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate. */
+            fingerprint?: string;
             version: string;
         };
         PairingRequest: {
@@ -7499,7 +7505,7 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
-            /** @description Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted. */
+            /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, and for peer_unreachable when the other node did not trust this node's certificate. */
             fingerprint?: string;
             /** @description This node's release version; only for unsupported_version. */
             localVersion?: string;

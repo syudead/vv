@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"sync"
 	"testing"
@@ -112,12 +114,18 @@ type directLink struct {
 	// failHandshake makes every callback fail, as an unreachable return address.
 	failHandshake bool
 	requests      int
+	// certificates holds the SPKI of each address that presents a self-signed certificate, which a call
+	// reaches only when pinned to it.
+	certificates map[string]string
 }
 
 func (l *directLink) node(target domain.PeerTarget) (*Pairing, error) {
 	node, ok := l.nodes[target.Address]
 	if !ok {
 		return nil, &domain.PeerUnreachableError{Message: "no node at " + target.Address}
+	}
+	if spki, selfSigned := l.certificates[target.Address]; selfSigned && target.PinnedSPKI != spki {
+		return nil, &domain.CertificateUntrustedError{Fingerprint: spki}
 	}
 	return node, nil
 }
@@ -369,4 +377,75 @@ func TestUnpairClearsTheRecordAndState(t *testing.T) {
 	if _, err := n.b.ChangeAddress(ctx, addressA); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("解除後の ChangeAddress err = %v, want ErrNotFound", err)
 	}
+}
+
+// A callback that fails must leave A's code usable for the retry; only the pairing that succeeds uses it up.
+func TestFailedCallbackKeepsTheCode(t *testing.T) {
+	ctx := context.Background()
+	n := newPairingNodes(t, "1.2.0", "1.2.0")
+	code := n.issueCodeOnA(t)
+	n.link.failHandshake = true
+	if err := n.pairFromB(code); !errors.Is(err, domain.ErrPeerUnreachable) {
+		t.Fatalf("失敗するコールバックの Pair err = %v, want ErrPeerUnreachable", err)
+	}
+
+	n.link.failHandshake = false
+	if err := n.pairFromB(code); err != nil {
+		t.Fatalf("同じコードでの再試行の Pair err = %v", err)
+	}
+	node, _ := n.b.Node(ctx)
+	secret, _ := domain.NewPeerSecret(rand.Reader)
+	if _, err := n.a.Accept(ctx, domain.PairingRequest{Code: code, Node: node, Address: addressB, Secret: secret}); !errors.Is(err, domain.ErrInvalidPairingCode) {
+		t.Errorf("ペアリング後の同じコードの Accept err = %v, want ErrInvalidPairingCode", err)
+	}
+}
+
+func testFingerprint(seed string) string {
+	sum := sha256.Sum256([]byte(seed))
+	return base64.StdEncoding.EncodeToString(sum[:])
+}
+
+// Both nodes behind self-signed HTTPS: B's owner trusts A's certificate once, B reads its own certificate
+// from its address and sends it, and A pins it for the callback and the pairing.
+func TestPairingPinsBothSelfSignedCertificates(t *testing.T) {
+	const httpsA, httpsB = "https://a.local", "https://b.local"
+	ctx := context.Background()
+	n := newPairingNodes(t, "1.2.0", "1.2.0")
+	spkiA, spkiB := testFingerprint("a"), testFingerprint("b")
+	n.link.nodes = map[string]*Pairing{httpsA: n.a, httpsB: n.b}
+	n.link.certificates = map[string]string{httpsA: spkiA, httpsB: spkiB}
+	code := n.issueCodeOnA(t)
+
+	_, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB})
+	var untrusted *domain.CertificateUntrustedError
+	if !errors.As(err, &untrusted) || untrusted.Fingerprint != spkiA {
+		t.Fatalf("確認前の Pair err = %v, want A の指紋 %s の CertificateUntrustedError", err, spkiA)
+	}
+	if _, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA}); err != nil {
+		t.Fatalf("A の証明書を確認した Pair err = %v", err)
+	}
+	if onA, onB := n.storeA.stored(), n.storeB.stored(); onA == nil || onB == nil ||
+		onA.PinnedSPKI != spkiB || onB.PinnedSPKI != spkiA {
+		t.Errorf("固定した指紋: A %+v, B %+v, want A に %s, B に %s", onA, onB, spkiB, spkiA)
+	}
+}
+
+func TestAcceptRefusesAFingerprintWithoutHTTPSOrForm(t *testing.T) {
+	ctx := context.Background()
+	n := newPairingNodes(t, "1.2.0", "1.2.0")
+	code := n.issueCodeOnA(t)
+	node, _ := n.b.Node(ctx)
+	secret, _ := domain.NewPeerSecret(rand.Reader)
+	for _, tc := range []struct{ address, fingerprint string }{
+		{addressB, testFingerprint("b")},
+		{"https://b.local", "not-a-fingerprint"},
+	} {
+		_, err := n.a.Accept(ctx, domain.PairingRequest{
+			Code: code, Node: node, Address: tc.address, Secret: secret, Fingerprint: tc.fingerprint,
+		})
+		if !errors.Is(err, domain.ErrInvalidPairingInput) {
+			t.Errorf("%s と %q の Accept err = %v, want ErrInvalidPairingInput", tc.address, tc.fingerprint, err)
+		}
+	}
+	n.assertNothingStored(t)
 }
