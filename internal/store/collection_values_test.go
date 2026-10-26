@@ -29,6 +29,7 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, ids[len(ids)-1]); err == nil {
 		t.Fatal("fixture must reject full detail decoding")
 	}
+	refreshCollections(t, db)
 	for _, table := range []string{"group_values", "group_members", "smart_folder_values"} {
 		execSQL(t, db, `create trigger forbid_`+table+` before insert on `+table+` begin select raise(abort, 'page recomputed collection values'); end`)
 	}
@@ -63,6 +64,7 @@ func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
 			video := looseVideo(t, db, "one")
 			group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
 			folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
+			refreshCollections(t, db)
 			// Model a write made while the application was stopped, awaiting startup recovery.
 			execSQL(t, db, `update videos set duration_ms = 2500`)
 			execSQL(t, db, `create trigger reject_refresh before insert on `+table+`
@@ -87,28 +89,25 @@ func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
 	}
 }
 
-func TestCollectionRefreshFailurePreventsSourceWriteAndEvents(t *testing.T) {
+// Bulk writes such as job results only mark collections; a refresh that would fail must not block them.
+func TestCollectionRefreshFailureDoesNotBlockSourceWrites(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	video := looseVideo(t, db, "one")
 	group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
 	folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
-	recorder := &eventRecorder{}
-	db.PublishTo(recorder)
+	refreshCollections(t, db)
 	execSQL(t, db, `create trigger reject_refresh before insert on smart_folder_values
 		begin select raise(abort, 'refresh rejected'); end`)
-	err := db.Ingest().ApplyProbe(ctx, video, domain.Probe{DurationMs: 2500}, domain.Playability{Playable: true})
-	if err == nil || !strings.Contains(err.Error(), "refresh rejected") {
+	probe := domain.Probe{DurationMs: 2500}
+	if err := db.Ingest().ApplyProbe(ctx, video, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatalf("write error = %v", err)
 	}
 	var duration sql.NullInt64
-	if err := db.sql.QueryRow(`select duration_ms from videos where id = ?`, video).Scan(&duration); err != nil || duration.Valid {
-		t.Fatalf("source write was committed: %v, %v", duration, err)
+	if err := db.sql.QueryRow(`select duration_ms from videos where id = ?`, video).Scan(&duration); err != nil || duration.Int64 != 2500 {
+		t.Fatalf("source write = %v, %v", duration, err)
 	}
 	assertStoredDuration(t, db, group, folder, sql.NullInt64{})
-	if len(recorder.events) != 0 {
-		t.Fatalf("failed write published events: %+v", recorder.events)
-	}
 }
 
 func assertStoredDuration(t *testing.T, db *DB, group, folder int64, want sql.NullInt64) {
@@ -130,7 +129,7 @@ func assertStoredDuration(t *testing.T, db *DB, group, folder int64, want sql.Nu
 	}
 }
 
-// Writes publish current collection values before any list request can refresh them.
+// A refresh brings stored values up to every change committed before it.
 func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -146,6 +145,7 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	if _, err := db.Playback().SaveProgress(ctx, "one", domain.Progress{Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
+	refreshCollections(t, db)
 	var count, duration, watched, open int64
 	if err := db.sql.QueryRow(`select video_count, duration_ms, watched, open_video_id from group_values where group_id = ? and audience = 1`, groupID).Scan(&count, &duration, &watched, &open); err != nil {
 		t.Fatal(err)
@@ -165,6 +165,7 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{one}); err != nil {
 		t.Fatal(err)
 	}
+	refreshCollections(t, db)
 	var empty sql.NullInt64
 	if err := db.sql.QueryRow(`select duration_ms from smart_folder_values where folder_id = ? and audience = 1`, folderID).Scan(&empty); err != nil || empty.Valid {
 		t.Fatalf("deleted member duration = %v, %v", empty, err)
@@ -172,11 +173,19 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	if _, err := db.SmartFolders().ChangeSmartFolder(ctx, folderID, domain.SmartFolderChange{Rule: &domain.SmartRule{Q: "two"}}); err != nil {
 		t.Fatal(err)
 	}
+	refreshCollections(t, db)
 	if err := db.sql.QueryRow(`select size_bytes from smart_folder_values where folder_id = ? and audience = 1`, folderID).Scan(&duration); err != nil || duration != 10 {
 		t.Fatalf("changed rule size = %d, %v", duration, err)
 	}
 	var pending int
 	if err := db.sql.QueryRow(`select count(*) from collection_changes`).Scan(&pending); err != nil || pending != 0 {
-		t.Fatalf("pending changes after commit = %d, %v", pending, err)
+		t.Fatalf("pending changes after refresh = %d, %v", pending, err)
+	}
+}
+
+func refreshCollections(t *testing.T, db *DB) {
+	t.Helper()
+	if err := db.RefreshCollectionValues(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

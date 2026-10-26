@@ -27,13 +27,15 @@ and visibility. Owner and guest rows are separate: private videos cannot affect
 guest counts, ordering or covers. These are collection information used by the
 ordinary library, independent of the removed shelf feature.
 
-Relevant writes mark affected collections through database triggers and refresh
-their information before committing. Structural and matching changes refresh
-all affected collection kinds; playback changes target containing groups and
-refresh smart-folder matches. Work is coalesced within the write transaction.
-Startup fills existing collections after rebuilding search and folder indexes.
-A pending-change check also recovers writes made
-outside the store. Unchanged list requests do not rebuild collection values.
+Relevant writes only mark affected collections through database triggers; they
+do not refresh collection information. Structural and matching changes mark all
+collection kinds; playback changes target containing groups and mark
+smart-folder matches. The library list and group reads refresh pending marks
+in one write transaction before they read, so every change committed before the
+request is reflected and the work of many writes, such as an import's job
+results, is done once. A write that commits during that read is reflected by
+the next request. Startup fills existing collections after rebuilding search
+and folder indexes. Unchanged list requests do not rebuild collection values.
 
 `GET /api/library` combines video keys with stored group and smart-folder values
 in SQL, applies the common sort and cursor, and selects `limit + 1` keys. Only
@@ -51,7 +53,8 @@ on the selected groups' size. Paging does not imply constant database work.
 
 ```mermaid
 flowchart LR
-  write[Video or collection change] --> saved[Update collection information before commit]
+  write[Video or collection change] --> marked[Mark affected collections]
+  marked --> saved[Next list read refreshes marked collections]
   saved --> keys[SQL combines and pages video, group and folder keys]
   keys --> page[Load selected cards and bounded group covers]
   page --> lazy[Load visible smart-folder card details]
