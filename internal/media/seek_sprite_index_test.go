@@ -159,9 +159,8 @@ func TestGenerateSeekSpriteExtractsPerIntervalForSparseKeyframes(t *testing.T) {
 		t.Fatalf("キーフレーム 3 枚で 30 コマに %v（errSeekIndexUnsupported のはず）", err)
 	}
 	output := t.TempDir()
-	fullDecode, err := GenerateSeekSprite(context.Background(), videoPath, output, layout)
-	if err != nil || fullDecode {
-		t.Fatalf("fullDecode = %v, err = %v", fullDecode, err)
+	if err := GenerateSeekSprite(context.Background(), videoPath, output, layout); err != nil {
+		t.Fatal(err)
 	}
 	sheets := readSheets(t, output)
 	for _, k := range []int{1, 5, 13, 27} {

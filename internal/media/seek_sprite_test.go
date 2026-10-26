@@ -9,32 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-func TestSeekSpriteArgsFollowLayout(t *testing.T) {
-	layout := domain.NewSeekSpriteLayout(7_200_000)
-	args := seekSpriteArgs("/media/a.mp4", "/cache/%03d.jpg", layout)
-	joined := strings.Join(args, " ")
-	for _, want := range []string{
-		"-i /media/a.mp4",
-		"-map 0:V:0?",
-		"tpad=stop_mode=clone:stop=-1,fps=1000/88889:round=up:eof_action=pass,trim=end_frame=81,",
-		"scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
-		"-fps_mode passthrough",
-		"-q:v 2",
-		"-start_number 0",
-		"/cache/%03d.jpg",
-	} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("生成引数に %q が無い: %v", want, args)
-		}
-	}
-}
 
 func runFFmpeg(t *testing.T, args ...string) {
 	t.Helper()
@@ -53,7 +32,7 @@ func generateSprite(t *testing.T, videoPath string, durationMs int64) (string, d
 	t.Helper()
 	layout := domain.NewSeekSpriteLayout(durationMs)
 	output := t.TempDir()
-	if _, err := GenerateSeekSprite(context.Background(), videoPath, output, layout); err != nil {
+	if err := GenerateSeekSprite(context.Background(), videoPath, output, layout); err != nil {
 		t.Fatal(err)
 	}
 	return output, layout
@@ -245,8 +224,7 @@ func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	}
 }
 
-// An interval over the limit fails the stage at once so GenerateSeekSprite moves to full decoding
-// instead of spending the whole generation timeout on extraction.
+// An interval over the limit fails generation at once, marked so the job is not retried.
 func TestGenerateSeekSpriteFailsIntervalOverFrameTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -254,7 +232,7 @@ func TestGenerateSeekSpriteFailsIntervalOverFrameTimeout(t *testing.T) {
 	videoPath := mediaFixture(t, "sparse.mp4")
 
 	err := generateSeekSpriteWithin(context.Background(), videoPath, t.TempDir(), domain.NewSeekSpriteLayout(15_000), time.Nanosecond)
-	if err == nil || errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "longer than") {
-		t.Fatalf("上限を超えた区間で %v（上限超過のエラーのはず）", err)
+	if !errors.Is(err, domain.ErrFailureRepeats) || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("上限を超えた区間で %v（再試行しない失敗のはず）", err)
 	}
 }

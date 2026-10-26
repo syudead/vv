@@ -11,7 +11,8 @@ made with the old floor stay readable. Frame k covers `[k × intervalMs, (k + 1)
 player picks a frame from `intervalMs`, `frameCount`, `columns` and `rows` in
 the layout ([`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)).
 
-Generation tries the cheapest method first and falls back on failure.
+Generation tries the index first and falls back to per-interval extraction. It
+never decodes a whole video, so a job takes seconds or fails.
 
 ```mermaid
 flowchart LR
@@ -19,10 +20,9 @@ flowchart LR
   fit -->|yes| index[From the index]
   fit -->|no| interval[Per-interval extraction]
   index -->|fails| interval
-  interval -->|fails| full[Full decode]
+  interval -->|fails or too slow| failed[Job fails]
   index --> tile[Tile 9x9 into 000.jpg]
   interval --> tile
-  full --> tile
 ```
 
 ## Frame selection
@@ -113,38 +113,35 @@ with several video streams use the first that is not an attached picture.
 Temporary BMPs are deleted on success, failure and cancellation, and
 `internal/artifacts` checks the finished output before publication.
 
-Generation falls back to a full decode, with the same frame count, size and
-layout, in three cases.
+Extraction fails the job when `ffmpeg` fails, when no interval yields an image,
+or when one frame takes longer than 30 seconds. The whole job is limited to 5
+minutes.
 
 ```mermaid
 flowchart LR
   ext[Extraction ends] --> cancel{Cancelled?}
-  cancel -->|yes| stop[Stop, no full decode]
+  cancel -->|yes| stop[Stop, job requeued at startup]
   cancel -->|no| err{ffmpeg error or no image?}
-  err -->|no| slow{A frame over 2 minutes?}
+  err -->|yes| fail[Job fails, retried]
+  err -->|no| slow{A frame over 30 s or the job over 5 min?}
+  slow -->|yes| repeat[Job fails, not retried]
   slow -->|no| ok[Tile]
-  slow -->|yes| full[Full decode]
-  err -->|yes| full
 ```
 
-A frame normally decodes at most one keyframe gap, so 2 minutes per frame is a
+A frame normally decodes at most one keyframe gap, so 30 seconds per frame is a
 generous bound. Some AV1 MP4 files make `ffmpeg` 8 seeking decode from the
-start of the video, so each later frame costs more and 81 frames never finish
-within the processing limit; the bound stops extraction early and leaves time
-for one full decode.
+start of the video, so each later frame costs more and 81 frames would take
+hours; that is why AV1 is read from the index.
 
-The 30-minute processing limit covers extraction, tiling and fallback together.
+A time limit failure wraps `domain.ErrFailureRepeats`, because the next attempt
+would take as long. The job then fails without using its remaining attempts, so
+one slow input does not hold the serial seek worker through every retry.
 
-A full decode is a substitution: it is logged and recorded as a recent import
-problem `seek_thumbnail_full_decode`. Per-interval extraction is the normal path for its inputs and is not a
-substitution.
-
-| Case | Recorded problem |
-| --- | --- |
-| Full decode in this run | Substitution recorded; `fullDecode` stored in `sprite.json` |
-| Rerun after a stop between publication and completion | `fullDecode` read back from `sprite.json` and recorded |
-| Another video with the same content adopts the sprite | `fullDecode` read back and recorded |
-| Older `sprite.json` without `fullDecode` | Problem row left unchanged |
+Generation used to fall back to decoding the whole video, which took minutes
+for a long video and was recorded as the import problem
+`seek_thumbnail_full_decode`. New sprites record `fullDecode` as false. Sprites
+made that way keep their `fullDecode: true` in `sprite.json`, and adopting one
+still records the problem.
 
 Older sprites of up to 600 frames on 6 sheets stay readable. They are not
 regenerated in bulk; the new method applies to newly processed jobs, so the

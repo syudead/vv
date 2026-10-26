@@ -70,7 +70,7 @@ type ArtifactStore interface {
 	// publication; return persisted substitution provenance or SubstitutionUnknown for old metadata. A forced
 	// publish keeps the published sprite readable until the new one replaces it.
 	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout, force bool,
-		write func(outputDir string) (fullDecode bool, err error)) (domain.Substitution, error)
+		write func(outputDir string) error) (domain.Substitution, error)
 	// Reuse complete previews unless forced; current=false immediately before publication returns
 	// ErrPreviewStale without publishing. A forced publish keeps the published preview readable until replaced.
 	PublishPreview(ctx context.Context, contentKey string, force bool, write func(output string) error,
@@ -88,8 +88,7 @@ type Generator interface {
 	Thumbnail(ctx context.Context, path string, durationMs int64, output, poster string) (firstFrame bool, err error)
 	// ThumbnailAt never substitutes the first frame.
 	ThumbnailAt(ctx context.Context, path string, positionMs int64, output, poster string) error
-	// SeekSprite reports fallback to full decoding after segment extraction fails.
-	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
+	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) error
 	Preview(ctx context.Context, path, output string, durationMs int64) error
 	// Build fingerprints from ordered JPEG sheets without ffmpeg.
 	SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error)
@@ -554,7 +553,7 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	return i.artifacts.generate(ctx, job.ContentKey, artifactSeekThumbnails, func() (bool, error) {
 		// Reuse persisted substitution provenance after restart or across duplicate content; unknown
 		// legacy provenance must not alter existing issue rows.
-		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, job.Force, func(outputDir string) (bool, error) {
+		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, job.Force, func(outputDir string) error {
 			return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
 		})
 		if err != nil {

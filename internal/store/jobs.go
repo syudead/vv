@@ -426,7 +426,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	if err != nil {
 		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
 	}
-	state := domain.JobStateAfterFailure(attempts, job.LastLocation, current)
+	state := domain.JobStateAfterFailure(domain.AttemptsAfterFailure(attempts, cause), job.LastLocation, current)
 
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `

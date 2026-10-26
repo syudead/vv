@@ -106,8 +106,8 @@ func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string, st
 func (probeOnlyGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {
 	return domain.Fingerprint{}, nil
 }
-func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
-	return false, nil
+func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) error {
+	return nil
 }
 func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error { return nil }
 func (probeOnlyGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {

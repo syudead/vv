@@ -30,8 +30,8 @@ func (substitutingGenerator) ThumbnailAt(_ context.Context, _ string, _ int64, o
 func (substitutingGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {
 	return domain.Fingerprint{}, nil
 }
-func (substitutingGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
-	return false, nil
+func (substitutingGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) error {
+	return nil
 }
 func (substitutingGenerator) Preview(context.Context, string, string, int64) error { return nil }
 func (substitutingGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {
