@@ -113,6 +113,11 @@ with several video streams use the first that is not an attached picture.
 Temporary BMPs are deleted on success, failure and cancellation, and
 `internal/artifacts` checks the finished output before publication.
 
+An interval whose data does not decode, such as zeroed bytes in a partly
+downloaded file, yields no image and reuses a nearby frame like an empty
+interval. `-max_error_rate 1` keeps `ffmpeg` 7 and later from exiting with
+status 69 when most packets of the interval fail to decode.
+
 Extraction fails the job when `ffmpeg` fails, when no interval yields an image,
 or when one frame takes longer than 30 seconds. The whole job is limited to 5
 minutes.
