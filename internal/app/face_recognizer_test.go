@@ -360,16 +360,11 @@ func newFaceWorkerFixture(keys ...string) *faceWorkerFixture {
 // run starts the worker inside the synctest bubble and stops it when the test ends.
 func (f *faceWorkerFixture) run(t *testing.T) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		f.rec.Run(ctx)
-	}()
-	t.Cleanup(func() {
-		cancel()
-		<-done
-	})
+	// Cleanups run last first, so the helper stops after the loop.
+	t.Cleanup(f.rec.Close)
+	loop := newTestLoop()
+	f.rec.Waker = loop.Wake
+	loop.run(t, f.rec.Step)
 }
 
 func (f *faceWorkerFixture) change(s domain.FaceSettings) {
@@ -615,7 +610,7 @@ func TestFaceRecognizerRetriesAVideoAfterADatabaseError(t *testing.T) {
 				}
 
 				tc.clear(f)
-				time.Sleep(faceRetryDelay)
+				time.Sleep(time.Duration(domain.WorkerRetry))
 				synctest.Wait()
 				wantStored, wantFailed := 1, 0
 				if tc.failed {
@@ -643,7 +638,7 @@ func TestFaceRecognizerReturnsAStrandedVideoBeforeTheNextClaim(t *testing.T) {
 
 		f.queue.setFault("Store", nil)
 		f.queue.setFault("RequeueRunning", nil)
-		time.Sleep(faceRetryDelay)
+		time.Sleep(time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if got := f.queue.state(); got.requeues != 1 || got.claims != 2 || len(got.stored) != 1 {
 			t.Fatalf("after the back-off: %+v; want the video returned to the queue, claimed again and stored", got)
@@ -717,7 +712,7 @@ func TestFaceRecognizerAppliesTheCastRuleToEachChangedVideoAndRetriesAfterADatab
 		if got := cast.seen(); len(got) != 2 {
 			t.Fatalf("checked %v before the back-off, want no retry yet", got)
 		}
-		time.Sleep(faceRetryDelay)
+		time.Sleep(time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if got := cast.seen(); !slices.Equal(got, []int64{1, 2, 3}) {
 			t.Fatalf("checked %v after the back-off, want video 3 checked again", got)
@@ -737,7 +732,7 @@ func TestFaceRecognizerDropsARefusedCastMergeAndAnalysesTheQueue(t *testing.T) {
 				cast.attempts())
 		}
 
-		time.Sleep(faceRetryDelay)
+		time.Sleep(time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if n := cast.attempts(); n != 1 {
 			t.Fatalf("cast attempts after the back-off = %d, want the refused video dropped", n)
