@@ -85,6 +85,23 @@ func (e *OwnCertificateUntrustedError) Error() string {
 
 func (e *OwnCertificateUntrustedError) Unwrap() error { return ErrPeerUnreachable }
 
+// OwnCertificateUnverifiedError is this node's own https address presenting a certificate the system roots do
+// not verify and the owner has not confirmed; Fingerprint is the SPKI it presents now.
+type OwnCertificateUnverifiedError struct {
+	Fingerprint string
+}
+
+func (e *OwnCertificateUnverifiedError) Error() string {
+	return "the certificate of this VVMDM's own address is not confirmed (SPKI " + e.Fingerprint + ")"
+}
+
+// PresentedCertificate is the certificate an https address presents in a TLS handshake.
+type PresentedCertificate struct {
+	Fingerprint string
+	// Verified reports that the system roots verify it for the address's host.
+	Verified bool
+}
+
 // ValidFingerprint accepts the standard base64 of a 32-byte SHA-256, the form Fingerprint values take.
 func ValidFingerprint(fingerprint string) bool {
 	raw, err := base64.StdEncoding.Strict().DecodeString(fingerprint)
@@ -283,10 +300,13 @@ type PeerTarget struct {
 
 // PairInput is what the owner typed on the Pairing page.
 type PairInput struct {
-	Address     string
-	Code        string
-	OwnAddress  string
+	Address    string
+	Code       string
+	OwnAddress string
+	// Fingerprint is the other node's certificate the owner confirmed.
 	Fingerprint string
+	// OwnFingerprint is the certificate of OwnAddress the owner confirmed.
+	OwnFingerprint string
 }
 
 // PairingRequest is what the pairing node sends with the other node's code.
@@ -296,8 +316,8 @@ type PairingRequest struct {
 	Address string
 	// Secret is what the receiving node will present to the sender.
 	Secret string
-	// Fingerprint is the SPKI fingerprint of the certificate Address presents when the system roots do not
-	// verify it; the receiving node pins it. Empty for an http address or a verified certificate.
+	// Fingerprint is the SPKI fingerprint of the certificate Address presents, as the sender's owner confirmed
+	// it when the system roots do not verify it; the receiving node pins it. Empty otherwise.
 	Fingerprint string
 }
 

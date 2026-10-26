@@ -60,6 +60,10 @@ func (l *streamLink) RequestPairing(context.Context, domain.PeerTarget, domain.P
 	return domain.PairingAnswer{}, errors.New("not used")
 }
 
+func (l *streamLink) Certificate(context.Context, string) (domain.PresentedCertificate, error) {
+	return domain.PresentedCertificate{}, errors.New("not used")
+}
+
 func (l *streamLink) Handshake(ctx context.Context, target domain.PeerTarget, _ string) (domain.PeerNode, error) {
 	l.mu.Lock()
 	node, handshake := l.node, l.handshake

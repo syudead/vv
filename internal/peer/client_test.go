@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -93,5 +94,32 @@ func TestRequestPairingSendsTheOwnFingerprint(t *testing.T) {
 	var untrusted *domain.CertificateUntrustedError
 	if !errors.As(err, &own) || own.Fingerprint != "seen" || errors.As(err, &untrusted) || !errors.Is(err, domain.ErrPeerUnreachable) {
 		t.Errorf("err = %v, want 指紋 seen の OwnCertificateUntrustedError", err)
+	}
+}
+
+// Reading the certificate of this node's own address completes only the TLS handshake: whoever terminates it
+// receives no request, so no secret, and the roots decide whether the owner must confirm the fingerprint.
+func TestCertificateSendsNoRequest(t *testing.T) {
+	var requested atomic.Bool
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requested.Store(true) }))
+	t.Cleanup(server.Close)
+	ctx := context.Background()
+	want := Fingerprint(server.Certificate())
+
+	presented, err := New(Options{}).Certificate(ctx, server.URL)
+	if err != nil || presented != (domain.PresentedCertificate{Fingerprint: want}) {
+		t.Errorf("システムのルートで Certificate = %+v, %v, want 検証されない指紋 %s", presented, err, want)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	if presented, err := New(Options{RootCAs: roots}).Certificate(ctx, server.URL); err != nil || !presented.Verified {
+		t.Errorf("信頼したルートで Certificate = %+v, %v, want 検証済み", presented, err)
+	}
+	server.Close()
+	if requested.Load() {
+		t.Error("Certificate が HTTP の要求を送った")
+	}
+	if _, err := New(Options{}).Certificate(ctx, server.URL); !errors.Is(err, domain.ErrPeerUnreachable) {
+		t.Errorf("止まったアドレスの err = %v, want ErrPeerUnreachable", err)
 	}
 }

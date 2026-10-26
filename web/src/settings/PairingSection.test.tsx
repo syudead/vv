@@ -212,6 +212,50 @@ describe("PairingSection, unpaired", () => {
       fingerprint: "c2hhMjU2LXBpbg==",
     });
   });
+
+  it("confirms this VVMDM's own certificate, then the other's, and sends both", async () => {
+    const sent = serve(unpaired, {
+      "POST /api/peer/pair": [
+        () => conflict("own_certificate_unverified", { fingerprint: "b3du" }),
+        () => conflict("certificate_untrusted", { fingerprint: "cGVlcg==" }),
+        () => json(connected, 201),
+      ],
+    });
+    const user = userEvent.setup();
+    renderSection();
+
+    await fillForm(user);
+    await user.click(pairButton());
+    expect(
+      await screen.findByText("This VVMDM's certificate can't be verified"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /compare this fingerprint with the certificate this VVMDM serves/i,
+      ),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
+    expect(await screen.findByText("Certificate not trusted")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(sent.map((request) => request.body)).toEqual([
+      { address: PEER.address, code: "ABCDEFGH", ownAddress: window.location.origin },
+      {
+        address: PEER.address,
+        code: "ABCDEFGH",
+        ownAddress: window.location.origin,
+        ownFingerprint: "b3du",
+      },
+      {
+        address: PEER.address,
+        code: "ABCDEFGH",
+        ownAddress: window.location.origin,
+        ownFingerprint: "b3du",
+        fingerprint: "cGVlcg==",
+      },
+    ]);
+  });
 });
 
 describe("PairingSection, paired", () => {

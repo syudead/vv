@@ -28,13 +28,16 @@ other presents as `Authorization: VV-Peer <secret>` on every request.
 
 ```mermaid
 sequenceDiagram
+  participant O as Owner of B
   participant B as Node B
   participant A as Node A
   opt B's own address is https and the roots do not verify it
-    B->>B: GET /api/peer/handshake at its own address
-    Note over B: reads its certificate's SPKI
+    B->>B: TLS handshake only, at its own address
+    Note over B: reads the SPKI, sends no request
+    B-->>O: 409 own_certificate_unverified with that SPKI
+    O->>B: pair again with ownFingerprint after comparing it
   end
-  B->>A: POST /api/peer/pairings with code and that SPKI
+  B->>A: POST /api/peer/pairings with code and the confirmed SPKI
   A->>B: GET /api/peer/handshake, pinned to that SPKI
   B-->>A: node id, version
   A-->>B: 201, secret for B
@@ -42,30 +45,46 @@ sequenceDiagram
 
 ### Both nodes behind self-signed HTTPS
 
-The requesting node tells the accepting node which certificate its own
-address presents, so neither owner confirms the requester's certificate. B
-sits behind a TLS terminator and cannot read its certificate locally, so it
-connects to the address it announces: when the system roots do not verify
-that certificate, B handshakes again pinned to its SPKI with the secret of
-the pairing in progress, and only an answer with B's own node id makes B send
-the SPKI as `node.fingerprint`. A pins it for the callback and stores it as
-the peer's pin. An `http` address, or a certificate the roots verify, sends
-no fingerprint, and A then verifies with the roots as before; B's owner still
-confirms A's certificate after `certificate_untrusted`.
+The requesting node's owner confirms the certificate of the requester's own
+address, and the accepting node pins it, so nothing is confirmed on A. B sits
+behind a TLS terminator and cannot read its certificate locally, so it
+completes a TLS handshake with the address it announces and closes the
+connection without a request. When the system roots do not verify that
+certificate, pairing answers `409 own_certificate_unverified` with its SPKI
+before A is called, and the page asks the owner to compare it with the
+certificate B serves, such as in the browser's certificate viewer for B's
+page. Pairing again with `ownFingerprint` equal to the SPKI the address
+presents sends it to A as `node.fingerprint`; A pins it for the callback and
+stores it as the peer's pin. An `http` address, or a certificate the roots
+verify, sends no fingerprint, and A verifies with the roots. B's owner then
+confirms A's certificate after `certificate_untrusted`, so both
+confirmations happen in turn on B's page.
+
+The owner's comparison is what authenticates B's certificate. B cannot
+authenticate it by talking to its own address: an on-path host that
+terminates TLS with its own certificate and relays to B answers any request
+as B would, node id included, and reads whatever the request carries. A
+handshake that sent the pending secret through it would hand that host a
+reusable peer credential and make A pin the host's certificate. The probe
+therefore sends nothing over the connection, and its SPKI only proposes what
+the owner confirms.
 
 | Property | How it holds |
 | --- | --- |
-| A trusts no certificate it has not been told about by an authenticated request | The fingerprint arrives in the request the code authenticates, over the channel B already verified against A's roots or the pin its owner confirmed |
+| No credential reaches B's own address from B | The probe completes only the TLS handshake; the pending secret travels only to A and back in A's pinned callback |
+| A pins only a certificate B's owner confirmed | B sends `node.fingerprint` only when it equals both `ownFingerprint` and the SPKI the address presents now, in the request the code authenticates |
 | A failed callback can be repeated | The code stays usable until a pairing succeeds; it still expires after 10 minutes, and success clears it |
 | The owner of B can tell which certificate A refused | A's `certificate_untrusted` reaches B's page as `409 peer_unreachable` with the `fingerprint` A saw, which B never offers to trust as A's |
 | The accepting node's log names a failed callback | A logs it at warning level with the address and the error |
 
-B's view of its own address is only as trustworthy as B's network path to
-itself, the same trust the owner extends when confirming A's fingerprint.
+When B cannot reach its own address, such as behind NAT without
+hairpinning, it sends the fingerprint its owner confirmed earlier, or none,
+and A verifies with the roots.
 
 | Rejected | Why |
 | --- | --- |
-| A second fingerprint confirmation on A's page | A's owner is not at the screen during a pairing B starts, and the code already authenticates the request |
+| B proving its own address with a pinned handshake | A relaying TLS terminator passes the node-id check and reads the secret the handshake sends |
+| A second fingerprint confirmation on A's page | A's owner is not at the screen during a pairing B starts |
 | A reading its certificate from local files | A TLS terminator holds the certificate, so the node has no file to read |
 | Trusting the callback's certificate on first use | Any host answering at B's address could then pin itself |
 

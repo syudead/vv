@@ -62,6 +62,9 @@ describe("pairFailure", () => {
   it("asks to trust the fingerprint of an untrusted certificate", () => {
     const failure = conflict("certificate_untrusted", { fingerprint: "c2hh" });
     expect(pairFailure(failure)).toEqual({ kind: "untrusted", fingerprint: "c2hh" });
+    expect(
+      pairFailure(conflict("own_certificate_unverified", { fingerprint: "b3du" })),
+    ).toEqual({ kind: "ownUntrusted", fingerprint: "b3du" });
   });
 
   it("falls back to the reason's text when the details are missing", () => {

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -114,6 +115,8 @@ type directLink struct {
 	// failHandshake makes every callback fail, as an unreachable return address.
 	failHandshake bool
 	requests      int
+	// handshakes lists the address of each handshake, the only call besides RequestPairing that carries a secret.
+	handshakes []string
 	// certificates holds the SPKI of each address that presents a self-signed certificate, which a call
 	// reaches only when pinned to it.
 	certificates map[string]string
@@ -149,7 +152,17 @@ func (l *directLink) RequestPairing(
 	return node.Accept(ctx, req)
 }
 
+// Certificate presents the self-signed certificate of address, or one the roots verify.
+func (l *directLink) Certificate(_ context.Context, address string) (domain.PresentedCertificate, error) {
+	if _, err := l.node(domain.PeerTarget{Address: address, PinnedSPKI: l.certificates[address]}); err != nil {
+		return domain.PresentedCertificate{}, err
+	}
+	spki, selfSigned := l.certificates[address]
+	return domain.PresentedCertificate{Fingerprint: spki, Verified: !selfSigned}, nil
+}
+
 func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error) {
+	l.handshakes = append(l.handshakes, target.Address)
 	if l.failHandshake {
 		return domain.PeerNode{}, &domain.PeerUnreachableError{Message: "callback refused"}
 	}
@@ -405,28 +418,61 @@ func testFingerprint(seed string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// Both nodes behind self-signed HTTPS: B's owner trusts A's certificate once, B reads its own certificate
-// from its address and sends it, and A pins it for the callback and the pairing.
-func TestPairingPinsBothSelfSignedCertificates(t *testing.T) {
-	const httpsA, httpsB = "https://a.local", "https://b.local"
-	ctx := context.Background()
-	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	spkiA, spkiB := testFingerprint("a"), testFingerprint("b")
+const httpsA, httpsB = "https://a.local", "https://b.local"
+
+// newSelfSignedNodes serves both nodes at https addresses whose self-signed certificates have spkiA and spkiB.
+func newSelfSignedNodes(t *testing.T) (n *pairingNodes, spkiA, spkiB string) {
+	t.Helper()
+	n = newPairingNodes(t, "1.2.0", "1.2.0")
+	spkiA, spkiB = testFingerprint("a"), testFingerprint("b")
 	n.link.nodes = map[string]*Pairing{httpsA: n.a, httpsB: n.b}
 	n.link.certificates = map[string]string{httpsA: spkiA, httpsB: spkiB}
+	return n, spkiA, spkiB
+}
+
+// Both nodes behind self-signed HTTPS: B's owner confirms B's own certificate and A's, and A pins the one B's
+// owner confirmed for the callback and the pairing. B never calls its own address with a secret.
+func TestPairingPinsBothSelfSignedCertificates(t *testing.T) {
+	ctx := context.Background()
+	n, spkiA, spkiB := newSelfSignedNodes(t)
 	code := n.issueCodeOnA(t)
 
-	_, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB})
+	_, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, OwnFingerprint: spkiB})
 	var untrusted *domain.CertificateUntrustedError
 	if !errors.As(err, &untrusted) || untrusted.Fingerprint != spkiA {
-		t.Fatalf("確認前の Pair err = %v, want A の指紋 %s の CertificateUntrustedError", err, spkiA)
+		t.Fatalf("A の確認前の Pair err = %v, want A の指紋 %s の CertificateUntrustedError", err, spkiA)
 	}
-	if _, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA}); err != nil {
-		t.Fatalf("A の証明書を確認した Pair err = %v", err)
+	confirmed := domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA, OwnFingerprint: spkiB}
+	if _, err := n.b.Pair(ctx, confirmed); err != nil {
+		t.Fatalf("両方の証明書を確認した Pair err = %v", err)
 	}
 	if onA, onB := n.storeA.stored(), n.storeB.stored(); onA == nil || onB == nil ||
 		onA.PinnedSPKI != spkiB || onB.PinnedSPKI != spkiA {
 		t.Errorf("固定した指紋: A %+v, B %+v, want A に %s, B に %s", onA, onB, spkiB, spkiA)
+	}
+	// Only A's callback handshakes B's address; a probe carrying the pending secret would add calls.
+	if want := []string{httpsB}; !slices.Equal(n.link.handshakes, want) {
+		t.Errorf("handshake の宛先 = %q, want A のコールバックだけの %q", n.link.handshakes, want)
+	}
+}
+
+// An own certificate the owner did not confirm, or confirmed as another one, stops the pairing before A is
+// called, naming the certificate the address presents now.
+func TestPairRefusesAnUnconfirmedOwnCertificateBeforeCallingThePeer(t *testing.T) {
+	for _, confirmed := range []string{"", testFingerprint("other")} {
+		n, spkiA, spkiB := newSelfSignedNodes(t)
+		code := n.issueCodeOnA(t)
+		_, err := n.b.Pair(context.Background(), domain.PairInput{
+			Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA, OwnFingerprint: confirmed,
+		})
+		var unverified *domain.OwnCertificateUnverifiedError
+		if !errors.As(err, &unverified) || unverified.Fingerprint != spkiB {
+			t.Errorf("自分の指紋 %q の Pair err = %v, want 指紋 %s の OwnCertificateUnverifiedError", confirmed, err, spkiB)
+		}
+		if n.link.requests != 0 || len(n.link.handshakes) != 0 {
+			t.Errorf("自分の指紋 %q: ペアリング要求 %d 回、handshake %q, want どちらも無し", confirmed, n.link.requests, n.link.handshakes)
+		}
+		n.assertNothingStored(t)
 	}
 }
 

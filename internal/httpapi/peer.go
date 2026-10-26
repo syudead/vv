@@ -217,9 +217,9 @@ func (s *server) PairPeer(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	input := domain.PairInput{Address: body.Address, Code: body.Code, OwnAddress: body.OwnAddress}
-	if body.Fingerprint != nil {
-		input.Fingerprint = *body.Fingerprint
+	input := domain.PairInput{
+		Address: body.Address, Code: body.Code, OwnAddress: body.OwnAddress,
+		Fingerprint: valueOrZero(body.Fingerprint), OwnFingerprint: valueOrZero(body.OwnFingerprint),
 	}
 	state, err := s.pairing.Pair(r.Context(), input)
 	if err != nil {
@@ -358,6 +358,7 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 		version     *domain.UnsupportedVersionError
 		untrusted   *domain.CertificateUntrustedError
 		distrusted  *domain.OwnCertificateUntrustedError
+		unverified  *domain.OwnCertificateUnverifiedError
 		unreachable *domain.PeerUnreachableError
 	)
 	switch {
@@ -382,6 +383,11 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
 			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonCertificateUntrusted), Fingerprint: &untrusted.Fingerprint,
 			Message: "The certificate of the other VVMDM is not trusted.",
+		})
+	case errors.As(err, &unverified):
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonOwnCertificateUnverified), Fingerprint: &unverified.Fingerprint,
+			Message: "The certificate of this VVMDM's own address is not confirmed.",
 		})
 	case errors.As(err, &distrusted):
 		s.logger.Info("pairing failed", slog.Any("error", err))

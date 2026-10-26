@@ -212,8 +212,8 @@ func TestPairingConnectsBothNodes(t *testing.T) {
 	}
 }
 
-// Two nodes behind self-signed HTTPS pair after B's owner trusts A's certificate once: B reads its own
-// certificate at its address and A pins it for the callback. The TLS servers are the boundary under test.
+// Two nodes behind self-signed HTTPS pair after B's owner confirms B's own certificate and then A's, and A pins
+// the confirmed one for the callback. The TLS servers are the boundary under test.
 func TestPairingOverSelfSignedHTTPSPinsBothSides(t *testing.T) {
 	a, b := newPeerNodeServed(t, "node-a", httptest.NewTLSServer), newPeerNodeServed(t, "node-b", httptest.NewTLSServer)
 	rec := a.owner(http.MethodPost, "/api/peer/code", "")
@@ -221,18 +221,24 @@ func TestPairingOverSelfSignedHTTPSPinsBothSides(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &code); err != nil {
 		t.Fatalf("コードの発行: %d %s", rec.Code, rec.Body)
 	}
-	pair := func(fingerprint *string) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: code.Code, OwnAddress: b.url, Fingerprint: fingerprint})
+	pair := func(fingerprint, own *string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(gen.PairPeerRequest{
+			Address: a.url, Code: code.Code, OwnAddress: b.url, Fingerprint: fingerprint, OwnFingerprint: own,
+		})
 		return b.owner(http.MethodPost, "/api/peer/pair", string(body))
 	}
-
-	rec = pair(nil)
-	refusal := decode[gen.Error](t, rec)
-	if rec.Code != http.StatusConflict || refusal.Reason == nil || *refusal.Reason != gen.ErrorReasonCertificateUntrusted ||
-		refusal.Fingerprint == nil {
-		t.Fatalf("確認前のペアリング: status = %d: %s, want 409 certificate_untrusted", rec.Code, rec.Body)
+	refused := func(rec *httptest.ResponseRecorder, reason gen.ErrorReason) *string {
+		t.Helper()
+		refusal := decode[gen.Error](t, rec)
+		if rec.Code != http.StatusConflict || refusal.Reason == nil || *refusal.Reason != reason || refusal.Fingerprint == nil {
+			t.Fatalf("status = %d: %s, want 409 %s と指紋", rec.Code, rec.Body, reason)
+		}
+		return refusal.Fingerprint
 	}
-	if rec := pair(refusal.Fingerprint); rec.Code != http.StatusCreated {
+
+	own := refused(pair(nil, nil), gen.ErrorReasonOwnCertificateUnverified)
+	peerCertificate := refused(pair(nil, own), gen.ErrorReasonCertificateUntrusted)
+	if rec := pair(peerCertificate, own); rec.Code != http.StatusCreated {
 		t.Fatalf("確認後のペアリング: status = %d: %s", rec.Code, rec.Body)
 	}
 	for _, node := range []*peerNode{a, b} {

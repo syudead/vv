@@ -38,6 +38,9 @@ type PeerLink interface {
 	// Version reads the release version the node at target reports in its health.
 	Version(ctx context.Context, target domain.PeerTarget) (string, error)
 	RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error)
+	// Certificate completes only a TLS handshake with the https address, sending nothing over the connection,
+	// and returns the certificate the address presents.
+	Certificate(ctx context.Context, address string) (domain.PresentedCertificate, error)
 	// Handshake presents secret and returns the identity the node at target answers with.
 	Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error)
 	// Watch holds the peer's event stream open with secret: it calls opened once the stream is open and
@@ -187,6 +190,10 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err != nil {
 		return domain.PeerState{}, err
 	}
+	ownFingerprint, err := p.ownFingerprint(ctx, ownAddress, input.OwnFingerprint)
+	if err != nil {
+		return domain.PeerState{}, err
+	}
 	target := domain.PeerTarget{Address: address, PinnedSPKI: input.Fingerprint}
 	peerVersion, err := p.link.Version(ctx, target)
 	if err != nil {
@@ -205,7 +212,7 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	defer release()
 	answer, err := p.link.RequestPairing(ctx, target, domain.PairingRequest{
 		Code: input.Code, Node: node, Address: ownAddress, Secret: incoming,
-		Fingerprint: p.ownCertificate(ctx, ownAddress, incoming, node.ID),
+		Fingerprint: ownFingerprint,
 	})
 	if err != nil {
 		return domain.PeerState{}, err
@@ -224,31 +231,29 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	return p.State(ctx)
 }
 
-// ownCertificate is the SPKI fingerprint of the certificate this node's own address presents when the
-// system roots do not verify it, or empty. A TLS terminator in front of this node holds the certificate, so
-// the node reads it by calling its own address, and the pinned handshake with the pending secret proves the
-// address reaches this node. The other node pins the fingerprint for its callback; it receives it over the
-// channel this node already verified, in the request the code authenticates.
-func (p *Pairing) ownCertificate(ctx context.Context, ownAddress, secret, nodeID string) string {
+// ownFingerprint is the certificate of this node's own address that the other node pins for its callback:
+// empty for an http address or one the system roots verify, and otherwise the SPKI the owner confirmed, which
+// must be the one the address presents now. Only the owner's comparison authenticates it: an on-path proxy
+// would relay any check made over this node's connection to itself, so the probe sends nothing over it.
+func (p *Pairing) ownFingerprint(ctx context.Context, ownAddress, confirmed string) (string, error) {
 	if !strings.HasPrefix(ownAddress, "https://") {
-		return ""
+		return "", nil
 	}
-	_, err := p.link.Handshake(ctx, domain.PeerTarget{Address: ownAddress}, secret)
-	var untrusted *domain.CertificateUntrustedError
-	if !errors.As(err, &untrusted) {
-		if err != nil {
-			p.logger.Info("could not read the certificate of this VVMDM's own address",
-				slog.String("address", ownAddress), slog.Any("error", err))
-		}
-		return ""
-	}
-	pinned := domain.PeerTarget{Address: ownAddress, PinnedSPKI: untrusted.Fingerprint}
-	if answered, err := p.link.Handshake(ctx, pinned, secret); err != nil || answered.ID != nodeID {
-		p.logger.Info("this VVMDM's own address does not answer as this VVMDM",
+	presented, err := p.link.Certificate(ctx, ownAddress)
+	if err != nil {
+		// Without a route to itself, such as behind NAT without hairpinning, the other node verifies with the
+		// roots or the pin the owner confirmed earlier.
+		p.logger.Info("could not read the certificate of this VVMDM's own address",
 			slog.String("address", ownAddress), slog.Any("error", err))
-		return ""
+		return confirmed, nil
 	}
-	return untrusted.Fingerprint
+	if presented.Verified {
+		return "", nil
+	}
+	if confirmed != presented.Fingerprint {
+		return "", &domain.OwnCertificateUnverifiedError{Fingerprint: presented.Fingerprint}
+	}
+	return confirmed, nil
 }
 
 func checkPairingAnswer(answer domain.PairingAnswer, ownID, version string) error {

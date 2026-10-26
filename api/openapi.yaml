@@ -2269,7 +2269,7 @@ paths:
     post:
       operationId: pairPeer
       summary: "Pair with the node whose code the owner typed"
-      description: "Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
+      description: "An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
       requestBody:
         required: true
         content:
@@ -12659,6 +12659,9 @@ components:
         fingerprint:
           type: string
           description: "The SPKI fingerprint the owner confirmed after certificate_untrusted"
+        ownFingerprint:
+          type: string
+          description: "The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified"
     UpdatePeerAddressRequest:
       type: object
       required: [address]
@@ -12689,7 +12692,7 @@ components:
           description: "The sender's base URL as the receiver can reach it"
         fingerprint:
           type: string
-          description: "Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender read it from its own address; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate."
+          description: "Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate."
         version:
           type: string
     PairingRequest:
@@ -13019,7 +13022,7 @@ components:
             type: string
         fingerprint:
           type: string
-          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, and for peer_unreachable when the other node did not trust this node's certificate."
+          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate."
         localVersion:
           type: string
           description: "This node's release version; only for unsupported_version."
@@ -13149,3 +13152,4 @@ components:
         - organization_name_taken
         - certificate_untrusted
         - fingerprint_changed
+        - own_certificate_unverified

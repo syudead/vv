@@ -103,6 +103,49 @@ func verifyPin(pinned string) func(tls.ConnectionState) error {
 	}
 }
 
+// Certificate completes a TLS handshake with the https address and closes the connection without sending a
+// request, so nothing reaches whoever terminates it; it reports whether the roots verify the certificate.
+func (c *Client) Certificate(ctx context.Context, address string) (domain.PresentedCertificate, error) {
+	parsed, err := url.Parse(address)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{Message: "Not an https address: " + address + "."}
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "443"
+	}
+	dialer := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: connectTimeout},
+		// The chain is verified below, so an unverified certificate still yields its fingerprint.
+		Config: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true},
+	}
+	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(parsed.Hostname(), port))
+	if err != nil {
+		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{
+			Message: "Could not connect to " + address + ".", Cause: err,
+		}
+	}
+	var state tls.ConnectionState
+	if secure, ok := conn.(*tls.Conn); ok {
+		state = secure.ConnectionState()
+	}
+	_ = conn.Close()
+	if len(state.PeerCertificates) == 0 {
+		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{Message: address + " presented no certificate."}
+	}
+	leaf := state.PeerCertificates[0]
+	intermediates := x509.NewCertPool()
+	for _, cert := range state.PeerCertificates[1:] {
+		intermediates.AddCert(cert)
+	}
+	_, verifyErr := leaf.Verify(x509.VerifyOptions{
+		Roots: c.roots, Intermediates: intermediates, DNSName: parsed.Hostname(),
+	})
+	return domain.PresentedCertificate{Fingerprint: Fingerprint(leaf), Verified: verifyErr == nil}, nil
+}
+
 // Version reads the release version the peer's health reports, also while its storage is degraded.
 func (c *Client) Version(ctx context.Context, target domain.PeerTarget) (string, error) {
 	var health gen.Health

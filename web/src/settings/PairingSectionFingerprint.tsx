@@ -15,9 +15,12 @@ export function FingerprintAlert({
   action,
   pending,
   destructive = false,
+  body,
   onTrust,
 }: {
   title: UiText;
+  /** Defaults to asking for a comparison with the certificate at address on the other side. */
+  body?: UiText;
   address: string;
   fingerprint: string;
   action: UiText;
@@ -33,7 +36,7 @@ export function FingerprintAlert({
       <ShieldAlert aria-hidden="true" />
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription className="flex flex-col gap-2">
-        <p>{t.settings.pairing.certificateBody(address)}</p>
+        <p>{body ?? t.settings.pairing.certificateBody(address)}</p>
         <code className="block rounded-sm bg-muted px-2 py-1 font-mono text-xs break-all select-all">
           {fingerprint}
         </code>

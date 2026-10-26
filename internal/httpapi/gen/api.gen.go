@@ -698,6 +698,7 @@ const (
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
+	ErrorReasonOwnCertificateUnverified      ErrorReason = "own_certificate_unverified"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
 	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
@@ -870,6 +871,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOrganizationParentCycle:
 		return true
 	case ErrorReasonOutputTooLarge:
+		return true
+	case ErrorReasonOwnCertificateUnverified:
 		return true
 	case ErrorReasonPasswordLength:
 		return true
@@ -3749,7 +3752,7 @@ type Error struct {
 	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
-	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, and for peer_unreachable when the other node did not trust this node's certificate.
+	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate.
 	Fingerprint *string `json:"fingerprint,omitempty"`
 
 	// Host Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons.
@@ -4997,6 +5000,9 @@ type PairPeerRequest struct {
 
 	// OwnAddress This node's base URL as the other node can reach it
 	OwnAddress string `json:"ownAddress"`
+
+	// OwnFingerprint The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified
+	OwnFingerprint *string `json:"ownFingerprint,omitempty"`
 }
 
 // PairingAnswer defines model for PairingAnswer.
@@ -5027,7 +5033,7 @@ type PairingRequestNode struct {
 	// Address The sender's base URL as the receiver can reach it
 	Address string `json:"address"`
 
-	// Fingerprint Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender read it from its own address; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate.
+	// Fingerprint Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate.
 	Fingerprint *string `json:"fingerprint,omitempty"`
 	Id          string  `json:"id"`
 
