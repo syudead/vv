@@ -269,6 +269,9 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("cannot open the read-only database (%s): %w", path, err)
 	}
 
+	// SQLite runs one writer at a time; queue writers in Go instead of in SQLite's busy wait, which also bounds the
+	// connections concurrent requests can open.
+	handle.SetMaxOpenConns(1)
 	db := &DB{sql: handle, read: read, path: path}
 	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()
