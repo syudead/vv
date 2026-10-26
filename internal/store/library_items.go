@@ -157,11 +157,12 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
-	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)`
+	whole := `select distinct hits.group_id from hits where hits.n > 0 and hits.n = hits.total`
 	// Stored group values count every member, so a kind that drops some members must count the matched ones.
 	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
 		whole = storedWholeGroupsSQL(spec, roots)
 	}
+	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not, so reference hits, matched and gm as few times as possible.
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
 	cte += `,
 	matched as (
@@ -169,15 +170,13 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		from chosen join videos on videos.id = chosen.video_id` + where + `),
 	` + groupSQL.members + `,
 	hits as (
-		select gm.group_id, count(*) as n from matched
-		join gm on gm.video_id = matched.video_id
-		group by gm.group_id),
+		select gm.group_id, gm.video_id, count(matched.video_id) over (partition by gm.group_id) as n,
+			` + groupSQL.total + ` as total
+		from gm left join matched on matched.video_id = gm.video_id),
 	whole as materialized (
 		` + whole + `),
 	carded as materialized (
-		select video_id from gm where group_id in (select group_id from whole)
-		except
-		select video_id from gm where group_id not in (select group_id from whole)),
+		` + groupSQL.carded + `),
 ` + groupSQL.values + `,
 	items as (
 		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
@@ -277,14 +276,15 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 
 	cte, args := libraryItemsCTE(spec)
 
-	// Materialize items once for page and count; count before applying the cursor and bind arguments in SQL order.
+	// Count before applying the cursor and bind arguments in SQL order. A window count keeps items referenced once:
+	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not.
 	cteArgs := append([]any{}, args...)
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
 	query := cte + `, filtered as materialized (select items.*, ` + order.value +
-		` as sort_value from items)
-	select group_id, id, video_id, path, sort_value, (select count(*) from filtered) from filtered`
+		` as sort_value, count(*) over () as total from items)
+	select group_id, id, video_id, path, sort_value, total from filtered`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
@@ -457,7 +457,7 @@ func (s extraScanner) Scan(dest ...any) error {
 	return s.rows.Scan(append(dest, s.extra...)...)
 }
 
-type groupListSQL struct{ members, count, values, items string }
+type groupListSQL struct{ members, total, carded, values, items string }
 
 func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
 	audience := spec.scope.audience
@@ -467,13 +467,15 @@ func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
 	return groupListSQL{
 		members: groupDescendantsCTE(roots, audience) + `,
 		gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc)`,
-		count: `select count(*) from gm c where c.group_id = hits.group_id`,
+		total: `count(*) over (partition by gm.group_id)`,
+		carded: `select video_id from hits group by video_id
+		having count(*) = sum(hits.n > 0 and hits.n = hits.total)`,
 		values: `mv as (
-		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
+		select hits.group_id, hits.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at
-		from gm join whole on whole.group_id = gm.group_id
-		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progress + `)`,
+		from hits join videos v on v.id = hits.video_id` + representativeLocationJoin("hits", audience) + progress + `
+		where hits.n > 0 and hits.n = hits.total)`,
 		items: `select g.id, g.id * 2 + 1, null, null,
 			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
 			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `
