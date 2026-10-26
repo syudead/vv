@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -55,12 +55,12 @@ func refreshCollectionValues(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("cannot read the changed groups: %w", err)
 	}
 	if len(ids) > 0 {
-		encoded, err := json.Marshal(ids)
-		if err != nil {
-			return err
+		// Formatted integers are safe to inline, which keeps the statements free of repeated arguments.
+		rows := make([]string, len(ids))
+		for i, id := range ids {
+			rows[i] = "(" + strconv.FormatInt(id, 10) + ")"
 		}
-		// Integer IDs are safe to inline, which keeps the statements free of repeated arguments.
-		roots := `select value as id from json_each('` + string(encoded) + `')`
+		roots := `select column1 as id from (values ` + strings.Join(rows, ", ") + `)`
 		for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
 			if err := refreshGroupValues(ctx, tx, audience, roots); err != nil {
 				return err
