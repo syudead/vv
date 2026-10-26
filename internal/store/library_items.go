@@ -130,10 +130,6 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
 			videoAlias + `.content_key <> ''`
 	}
-	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
-	if spec.storedCollections {
-		folderItems, folderArgs = storedSmartFolderItemsSQL(spec), nil
-	}
 	roots := topGroupsSelect
 	videoFavorite := ""
 	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
@@ -173,8 +169,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
 		where matched.video_id not in (select video_id from carded)` + videoFavorite + `
 		union all
-` + groupSQL.items + folderItems + `)`
-	return cte, append(args, folderArgs...)
+` + groupSQL.items + `)`
+	return cte, args
 }
 
 // Reuse listOrders cursor semantics with item-specific value expressions.
@@ -215,8 +211,12 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	spec := libraryListSpec(audience, q, tagIDs)
 	spec.storedCollections = true
-	spec.includeSmartFolders = q.ListsSmartFolders()
-	page, err := listLibraryPageTx(ctx, tx, spec)
+	list := listLibraryPageTx
+	// Guests do not see smart folders.
+	if audience.IsOwner() && q.ListsSmartFolders() {
+		list = listLibraryWithFolders
+	}
+	page, err := list(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
@@ -232,7 +232,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	return page, nil
 }
 
-// Item IDs are keyset keys; negative IDs encode smart folders, while videoID holds a video's actual ID.
+// Item IDs are keyset keys; videoID holds a video's actual ID.
 type itemRow struct {
 	groupID sql.NullInt64
 	id      int64
@@ -323,20 +323,19 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 			return nil, "", err
 		}
 	}
-	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.smartFolders, spec.storedCollections)
+	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.storedCollections)
 	if err != nil {
 		return nil, "", err
 	}
 	return items, next, nil
 }
 
-// Video items use their chosen location; group values use all visible descendants and smart folders use prepared summaries.
-func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder, compact bool) ([]domain.LibraryItem, error) {
+// Video items use their chosen location; group values use all visible descendants.
+func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, compact bool) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
 		switch {
-		case key.id < 0:
 		case key.groupID.Valid:
 			groupIDs = append(groupIDs, key.groupID.Int64)
 		default:
@@ -350,12 +349,6 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	if compact {
-		folders, err = readLibraryFolderSummaries(ctx, tx, audience, keys)
-		if err != nil {
-			return nil, err
-		}
-	}
 	groups, err := loadLibraryGroups(ctx, tx, audience, groupIDs, compact)
 	if err != nil {
 		return nil, err
@@ -363,14 +356,6 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 
 	items := make([]domain.LibraryItem, 0, len(keys))
 	for _, key := range keys {
-		if key.id < 0 {
-			summary, ok := librarySmartFolderSummary(folders, -key.id)
-			if !ok {
-				return nil, fmt.Errorf("cannot read the smart folder (id=%d)", -key.id)
-			}
-			items = append(items, domain.LibraryItem{SmartFolder: summary})
-			continue
-		}
 		if key.groupID.Valid {
 			group, ok := groups[key.groupID.Int64]
 			if !ok {

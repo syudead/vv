@@ -4140,7 +4140,7 @@ type LibraryGroup struct {
 // LibraryGroupWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
 type LibraryGroupWatchState string
 
-// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards.
+// LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards.
 type LibraryItem struct {
 	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup   `json:"group,omitempty"`

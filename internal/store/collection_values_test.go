@@ -30,15 +30,23 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 		t.Fatal("fixture must reject full detail decoding")
 	}
 	refreshCollections(t, db)
-	for _, table := range []string{"group_values", "group_members", "smart_folder_values"} {
+	for _, table := range []string{"group_values", "group_members"} {
 		execSQL(t, db, `create trigger forbid_`+table+` before insert on `+table+` begin select raise(abort, 'page recomputed collection values'); end`)
 	}
+	// Smart folders lead the library, so the group follows on the second page.
 	page, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 2 || len(page.Items) != 1 || page.Items[0].Group == nil || page.Items[0].Group.ID != groupID {
+	if page.Total != 2 || len(page.Items) != 1 || page.Items[0].SmartFolder == nil || page.Items[0].SmartFolder.ID != folderID {
 		t.Fatalf("first page = %+v", page)
+	}
+	page, err = db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: page.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Group == nil || page.Items[0].Group.ID != groupID || page.NextCursor != "" {
+		t.Fatalf("second page = %+v", page)
 	}
 	group := page.Items[0].Group
 	if group.Card == nil || len(group.Members) != 0 || !slices.Equal(group.Card.VideoIDs, ids) {
@@ -47,23 +55,15 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 	if got := memberIDs(domain.LibraryGroup{Members: group.Card.Previews}); !slices.Equal(got, ids[:domain.MaxFolderPreviews]) {
 		t.Fatalf("previews = %v", got)
 	}
-	page, err = db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: page.NextCursor})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].SmartFolder == nil || page.Items[0].SmartFolder.ID != folderID || page.NextCursor != "" {
-		t.Fatalf("second page = %+v", page)
-	}
 }
 
 func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
-	for _, table := range []string{"group_values", "smart_folder_values"} {
+	for _, table := range []string{"group_values"} {
 		t.Run(table, func(t *testing.T) {
 			db := migratedDB(t)
 			ctx := context.Background()
 			video := looseVideo(t, db, "one")
 			group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
-			folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
 			refreshCollections(t, db)
 			// Model a write made while the application was stopped, awaiting startup recovery.
 			execSQL(t, db, `update videos set duration_ms = 2500`)
@@ -72,7 +72,7 @@ func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
 			if err := db.RefreshCollectionValues(ctx); err == nil || !strings.Contains(err.Error(), "refresh rejected") {
 				t.Fatalf("refresh error = %v", err)
 			}
-			assertStoredDuration(t, db, group, folder, sql.NullInt64{})
+			assertStoredDuration(t, db, group, sql.NullInt64{})
 			var pending bool
 			if err := db.sql.QueryRow(`select exists(select 1 from collection_changes)`).Scan(&pending); err != nil || !pending {
 				t.Fatalf("recovery lost pending changes: %v, %v", pending, err)
@@ -81,7 +81,7 @@ func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
 			if err := db.RefreshCollectionValues(ctx); err != nil {
 				t.Fatal(err)
 			}
-			assertStoredDuration(t, db, group, folder, sql.NullInt64{Int64: 2500, Valid: true})
+			assertStoredDuration(t, db, group, sql.NullInt64{Int64: 2500, Valid: true})
 			if err := db.sql.QueryRow(`select exists(select 1 from collection_changes)`).Scan(&pending); err != nil || pending {
 				t.Fatalf("successful recovery left pending changes: %v, %v", pending, err)
 			}
@@ -95,9 +95,8 @@ func TestCollectionRefreshFailureDoesNotBlockSourceWrites(t *testing.T) {
 	ctx := context.Background()
 	video := looseVideo(t, db, "one")
 	group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
-	folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
 	refreshCollections(t, db)
-	execSQL(t, db, `create trigger reject_refresh before insert on smart_folder_values
+	execSQL(t, db, `create trigger reject_refresh before insert on group_values
 		begin select raise(abort, 'refresh rejected'); end`)
 	probe := domain.Probe{DurationMs: 2500}
 	if err := db.Ingest().ApplyProbe(ctx, video, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
@@ -107,25 +106,17 @@ func TestCollectionRefreshFailureDoesNotBlockSourceWrites(t *testing.T) {
 	if err := db.sql.QueryRow(`select duration_ms from videos where id = ?`, video).Scan(&duration); err != nil || duration.Int64 != 2500 {
 		t.Fatalf("source write = %v, %v", duration, err)
 	}
-	assertStoredDuration(t, db, group, folder, sql.NullInt64{})
+	assertStoredDuration(t, db, group, sql.NullInt64{})
 }
 
-func assertStoredDuration(t *testing.T, db *DB, group, folder int64, want sql.NullInt64) {
+func assertStoredDuration(t *testing.T, db *DB, group int64, want sql.NullInt64) {
 	t.Helper()
-	for _, entry := range []struct {
-		table, key string
-		id         int64
-	}{
-		{"group_values", "group_id", group},
-		{"smart_folder_values", "folder_id", folder},
-	} {
-		var got sql.NullInt64
-		if err := db.sql.QueryRow(`select duration_ms from `+entry.table+` where `+entry.key+` = ? and audience = 1`, entry.id).Scan(&got); err != nil {
-			t.Fatal(err)
-		}
-		if got != want {
-			t.Fatalf("%s duration = %v, want %v", entry.table, got, want)
-		}
+	var got sql.NullInt64
+	if err := db.sql.QueryRow(`select duration_ms from group_values where group_id = ? and audience = 1`, group).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("group_values duration = %v, want %v", got, want)
 	}
 }
 
@@ -135,7 +126,6 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	ctx := context.Background()
 	one, two := looseVideo(t, db, "one"), looseVideo(t, db, "two")
 	groupID := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{one, two}})
-	folderID := newSmartFolder(t, db, "one", domain.SmartRule{Q: "one"}, domain.SortAddedDesc, 0)
 	if err := db.Ingest().ApplyProbe(ctx, one, domain.Probe{DurationMs: 2000}, domain.Playability{Playable: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,27 +149,38 @@ func TestCollectionValuesFollowCommittedChanges(t *testing.T) {
 	if count != 1 || watched != 0 {
 		t.Fatalf("guest group = %d, %d", count, watched)
 	}
-	if err := db.sql.QueryRow(`select duration_ms from smart_folder_values where folder_id = ? and audience = 1`, folderID).Scan(&duration); err != nil || duration != 2000 {
-		t.Fatalf("smart folder duration = %d, %v", duration, err)
-	}
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{one}); err != nil {
 		t.Fatal(err)
 	}
 	refreshCollections(t, db)
-	var empty sql.NullInt64
-	if err := db.sql.QueryRow(`select duration_ms from smart_folder_values where folder_id = ? and audience = 1`, folderID).Scan(&empty); err != nil || empty.Valid {
-		t.Fatalf("deleted member duration = %v, %v", empty, err)
-	}
-	if _, err := db.SmartFolders().ChangeSmartFolder(ctx, folderID, domain.SmartFolderChange{Rule: &domain.SmartRule{Q: "two"}}); err != nil {
-		t.Fatal(err)
-	}
-	refreshCollections(t, db)
-	if err := db.sql.QueryRow(`select size_bytes from smart_folder_values where folder_id = ? and audience = 1`, folderID).Scan(&duration); err != nil || duration != 10 {
-		t.Fatalf("changed rule size = %d, %v", duration, err)
+	if err := db.sql.QueryRow(`select video_count from group_values where group_id = ? and audience = 1`, groupID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("count after deleting a member = %d, %v", count, err)
 	}
 	var pending int
 	if err := db.sql.QueryRow(`select count(*) from collection_changes`).Scan(&pending); err != nil || pending != 0 {
 		t.Fatalf("pending changes after refresh = %d, %v", pending, err)
+	}
+}
+
+// A video change refreshes the groups that contain it, with their ancestors, and leaves other groups alone.
+func TestCollectionRefreshTouchesOnlyGroupsOfTheChangedVideo(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	one, two := looseVideo(t, db, "one"), looseVideo(t, db, "two")
+	child := createGroup(t, db, "child", domain.GroupAdd{VideoIDs: []int64{one}})
+	parent := createGroup(t, db, "parent", domain.GroupAdd{GroupIDs: []int64{child}})
+	other := createGroup(t, db, "other", domain.GroupAdd{VideoIDs: []int64{two}})
+	refreshCollections(t, db)
+	execSQL(t, db, fmt.Sprintf(`create trigger reject_other before insert on group_values when new.group_id = %d
+		begin select raise(abort, 'unrelated group refreshed'); end`, other))
+
+	probe := domain.Probe{DurationMs: 2500}
+	if err := db.Ingest().ApplyProbe(ctx, one, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	refreshCollections(t, db)
+	for _, id := range []int64{child, parent} {
+		assertStoredDuration(t, db, id, sql.NullInt64{Int64: 2500, Valid: true})
 	}
 }
 

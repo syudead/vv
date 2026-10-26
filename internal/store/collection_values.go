@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -49,29 +50,38 @@ func (db *DB) collectionChangesPending(ctx context.Context) (bool, error) {
 }
 
 func refreshCollectionValues(ctx context.Context, tx *sql.Tx) error {
-	for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
-		if err := refreshGroupValues(ctx, tx, audience); err != nil {
+	ids, err := queryInt64s(ctx, tx, changedGroupsSQL)
+	if err != nil {
+		return fmt.Errorf("cannot read the changed groups: %w", err)
+	}
+	if len(ids) > 0 {
+		encoded, err := json.Marshal(ids)
+		if err != nil {
 			return err
 		}
-		if err := refreshSmartFolderValues(ctx, tx, audience); err != nil {
-			return err
+		// Integer IDs are safe to inline, which keeps the statements free of repeated arguments.
+		roots := `select value as id from json_each('` + string(encoded) + `')`
+		for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
+			if err := refreshGroupValues(ctx, tx, audience, roots); err != nil {
+				return err
+			}
 		}
 	}
-	_, err := tx.ExecContext(ctx, `delete from collection_changes`)
+	_, err = tx.ExecContext(ctx, `delete from collection_changes`)
 	return err
 }
 
-func changedCollections(kind, table string) string {
-	return `select id from ` + table + ` where exists (select 1 from collection_changes
-		where kind = '` + kind + `' and id = 0) or id in (select id from collection_changes where kind = '` + kind + `')`
-}
+// changedGroupsSQL selects the marked groups and their ancestors, whose members include a marked group's videos;
+// mark 0 selects every group.
+const changedGroupsSQL = `with recursive marked(id) as (
+		select id from groups where exists (select 1 from collection_changes where kind = 'group' and id = 0)
+		union
+		select id from collection_changes where kind = 'group' and id <> 0
+		union
+		select gi.group_id from group_items gi join marked on gi.child_id = marked.id)
+	select g.id from groups g join marked on marked.id = g.id`
 
-func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audience) error {
-	var pending bool
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from collection_changes where kind = 'group')`).Scan(&pending); err != nil || !pending {
-		return err
-	}
-	roots := changedCollections("group", "groups")
+func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, roots string) error {
 	a := strconv.Itoa(audienceValue(audience))
 	statements := []string{
 		`delete from group_members where audience = ` + a + ` and group_id in (` + roots + `)`,
