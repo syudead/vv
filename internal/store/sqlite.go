@@ -31,6 +31,8 @@ type DB struct {
 	read     *sql.DB
 	path     string
 	folderMu sync.Mutex
+	// refreshMu lets one reader refresh collection values while concurrent readers wait without a connection.
+	refreshMu sync.Mutex
 
 	revisionMu            sync.Mutex
 	lastThumbnailRevision int64

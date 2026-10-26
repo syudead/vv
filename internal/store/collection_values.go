@@ -16,15 +16,18 @@ func audienceValue(audience domain.Audience) int {
 	return 0
 }
 
-// Writes refresh collection information before commit. Startup and writes made outside the store
-// use this recovery path; unchanged pages perform only the pending check.
+// Writes only mark collections; list and group reads, and startup, refresh the marks here. Unchanged
+// pages perform only the pending check.
 func (db *DB) RefreshCollectionValues(ctx context.Context) error {
-	var pending bool
-	if err := db.read.QueryRowContext(ctx, `select exists (select 1 from collection_changes)`).Scan(&pending); err != nil {
-		return fmt.Errorf("cannot read collection changes: %w", err)
+	pending, err := db.collectionChangesPending(ctx)
+	if err != nil || !pending {
+		return err
 	}
-	if !pending {
-		return nil
+	db.refreshMu.Lock()
+	defer db.refreshMu.Unlock()
+	// A reader that waited finds the marks cleared by the one before it.
+	if pending, err := db.collectionChangesPending(ctx); err != nil || !pending {
+		return err
 	}
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -35,6 +38,14 @@ func (db *DB) RefreshCollectionValues(ctx context.Context) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (db *DB) collectionChangesPending(ctx context.Context) (bool, error) {
+	var pending bool
+	if err := db.read.QueryRowContext(ctx, `select exists (select 1 from collection_changes)`).Scan(&pending); err != nil {
+		return false, fmt.Errorf("cannot read collection changes: %w", err)
+	}
+	return pending, nil
 }
 
 func refreshCollectionValues(ctx context.Context, tx *sql.Tx) error {
