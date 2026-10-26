@@ -16,6 +16,11 @@ unrelated user changes.
 Before editing tests, apply .agents/skills/write-tests/SKILL.md using the
 supplied acceptance evidence and existing coverage. Include the selected test
 levels, fixture rationale and any removed coverage in your return to the parent.
+After the focused checks, write the coverage report for the changed packages or
+test files and run `task coverage-changed` (pass `BASE=` the branch you started
+from). Add the case each listed line is missing, or return the line with the
+reason it stays uncovered under the changed-line coverage rule of
+docs/design-docs/testing.md; return the command's summary line.
 
 Do not create or switch branches, commit, push, open or update a pull request,
 run the repository self-review workflow, change approved artifacts, or expand
@@ -23,5 +28,6 @@ the delegated scope. If the work requires a new product or architecture
 decision, contradicts an approved artifact, or cannot be completed within the
 supplied scope, stop and return the exact blocker instead of guessing.
 
-Return the files changed, focused checks and their results, and any unresolved
+Return the files changed, focused checks and their results, the
+`task coverage-changed` result, and any unresolved
 risk or blocker the parent agent must handle.

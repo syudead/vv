@@ -109,6 +109,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      a new design document starts from [`assets/design-doc-template.md`](assets/design-doc-template.md)
      and a new how-to guide from [`assets/how-to-template.md`](assets/how-to-template.md)
    - Run focused validation and any repository checks required by the change, including the pre-push check from `AGENTS.md`
+   - Run `task coverage-changed` after the coverage report and resolve every listed line ([changed-line coverage](../../../docs/design-docs/testing.md#changed-line-coverage)); do not report the work complete while a line is listed without a reason
 
 6. Progress tracking and error handling:
    - Report progress for the requested work
@@ -134,4 +135,5 @@ Report final status with summary of completed work.
 
 - [ ] Requested work completed without expanding into unrelated plan items
 - [ ] Implementation validated against specification, plan, and test coverage
+- [ ] `task coverage-changed` lists no changed line without a stated reason
 - [ ] Completion reported to user with summary of completed work

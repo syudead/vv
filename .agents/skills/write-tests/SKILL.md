@@ -63,7 +63,12 @@ policy rather than copying neighbouring tests' setup.
    without the fix when practicable; otherwise state the limitation. For
    cancellation or synchronization changes, temporarily disable the behaviour
    and confirm failure as required by the policy. Never commit the mutation.
-4. Run the checks required by the owning workflow and `AGENTS.md`. A delegated
+4. Write the coverage report over the affected packages or test files and run
+   `task coverage-changed`. Resolve every listed line by the
+   [changed-line coverage](../../../docs/design-docs/testing.md#changed-line-coverage)
+   rule; a listed line is a missed case in the selection above, not a number
+   to raise.
+5. Run the checks required by the owning workflow and `AGENTS.md`. A delegated
    worker runs its focused checks and leaves full validation and push to its
    parent; this skill grants no branch, push or merge authority.
 
@@ -80,8 +85,10 @@ to fill the selection table.
 | Waiting | Success observes state or virtual time without waiting out a wall-clock timeout |
 | Scope | Removed integration coverage is identified separately from isolated unit coverage |
 | Wiring | Extracted rules have a caller check, not only helper tests |
+| Changed lines | `task coverage-changed` lists no line, or each listed line has a stated reason |
 
 Fix mismatches inside the task's scope, then run the affected checks again.
-Report selected levels, reused or removed coverage, checks and their results,
+Report selected levels, reused or removed coverage, the `task coverage-changed`
+summary line with every line left uncovered and its reason, checks and their results,
 and any unverified boundary in the existing PR validation section or worker
 return. Do not create a separate test-plan file or a new approval checkpoint.

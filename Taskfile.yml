@@ -206,13 +206,13 @@ tasks:
       - go test {{.GO_PACKAGES}}
 
   test-go-report:
-    desc: Run Go tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
+    desc: Run Go tests (GO_PACKAGES) and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
     vars:
       GOTESTSUM:
         sh: go -C tools tool -n gotestsum
     cmds:
       - mkdir -p reports
-      - '"{{.GOTESTSUM}}" --junitfile reports/go-junit.xml --format pkgname -- -coverprofile=reports/go-coverage.out ./...'
+      - '"{{.GOTESTSUM}}" --junitfile reports/go-junit.xml --format pkgname -- -coverprofile=reports/go-coverage.out {{.GO_PACKAGES}}'
 
   test-web:
     desc: Run the Web build check and unit tests.
@@ -235,6 +235,13 @@ tasks:
     desc: Run the Web unit tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
+
+  coverage-changed:
+    desc: List changed lines since the merge base with BASE (default origin/main) that no test runs, from the reports test-go-report and test-web-report wrote.
+    vars:
+      BASE: '{{.BASE | default "origin/main"}}'
+    cmds:
+      - go run ./scripts/changedcoverage -base {{.BASE}}
 
   quality-metrics:
     desc: Write the complexity of every function and the duplicated code under reports/quality/.

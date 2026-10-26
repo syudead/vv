@@ -18,8 +18,9 @@ finding that is not a defect with one line citing why. For a failed check, find
 the root cause; never skip, disable or loosen a test, and never re-run a check
 to get past it.
 
-Push only after the checks the change needs pass, including the pre-push check
-from `AGENTS.md`. A browser e2e check (`task test-e2e`) the change or plan
+Treat the files with uncovered changed lines in the Codecov comment like a
+finding. Push only after the checks the change needs pass, including the
+pre-push check and `task coverage-changed` from `AGENTS.md`. A browser e2e check (`task test-e2e`) the change or plan
 requires is satisfied by a manual CI run on the pushed branch (see "Checks
 before a push" in `.agents/skills/issue-handoff/references/README.md`), since a PR's CI does not run e2e; a visual
 or manual check the plan or `ui-design.md` asks for (screenshots, a quickstart
