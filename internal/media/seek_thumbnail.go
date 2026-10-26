@@ -253,17 +253,8 @@ frames:
 		go func(frame int) {
 			defer workers.Done()
 			defer func() { <-semaphore }()
-			at := float64(int64(frame)*layout.IntervalMs) / 1000
-			interval := float64(layout.IntervalMs) / 1000
-			args := []string{
-				"-nostdin", "-v", "error", "-ss", strconv.FormatFloat(at, 'f', 3, 64),
-				"-t", strconv.FormatFloat(interval, 'f', 3, 64), "-i", videoPath,
-				"-map", "0:V:0?", "-frames:v", "1",
-				"-vf", "trim=end=" + strconv.FormatFloat(interval, 'f', 3, 64) + "," + seekSpriteFastScale,
-				"-c:v", "bmp", "-f", "rawvideo", "pipe:1",
-			}
 			frameCtx, cancelFrame := context.WithTimeout(workCtx, frameTimeout)
-			data, err := runSeekFFmpeg(frameCtx, args)
+			data, err := runSeekFFmpeg(frameCtx, seekFrameArgs(videoPath, frame, layout.IntervalMs))
 			cancelFrame()
 			if errors.Is(err, context.DeadlineExceeded) && workCtx.Err() == nil {
 				err = fmt.Errorf("%w: extraction took longer than %v", domain.ErrFailureRepeats, frameTimeout)
@@ -294,6 +285,19 @@ frames:
 		return err
 	}
 	return tileSeekSprite(ctx, temporary, outputDir, layout)
+}
+
+// seekFrameArgs extracts the first frame of one interval as a BMP on stdout. A damaged interval, such as zeroed bytes
+// in a partly downloaded file, yields no image and reuses a nearby frame: -max_error_rate 1 keeps ffmpeg 7 and later
+// from exiting with status 69 when most packets fail to decode.
+func seekFrameArgs(videoPath string, frame int, intervalMs int64) []string {
+	at := strconv.FormatFloat(float64(int64(frame)*intervalMs)/1000, 'f', 3, 64)
+	interval := strconv.FormatFloat(float64(intervalMs)/1000, 'f', 3, 64)
+	return []string{
+		"-nostdin", "-v", "error", "-max_error_rate", "1", "-ss", at, "-t", interval, "-i", videoPath,
+		"-map", "0:V:0?", "-frames:v", "1", "-vf", "trim=end=" + interval + "," + seekSpriteFastScale,
+		"-c:v", "bmp", "-f", "rawvideo", "pipe:1",
+	}
 }
 
 // Prefer the preceding frame, falling back to the following frame if needed.

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -213,6 +214,59 @@ func TestGenerateSeekSpriteFromIndexReadsAV1(t *testing.T) {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
 		if got := frameSeconds(t, sheets, layout, k); got < startSec-0.5 || got > startSec+0.5 {
 			t.Errorf("コマ %d の時刻 %.2f 秒（区間の先頭 %.0f 秒のはず）", k, got, startSec)
+		}
+	}
+}
+
+// Zeroed bytes in one keyframe, as in a partly downloaded file, cost only that interval: it reuses the previous
+// frame instead of failing the sprite.
+func TestGenerateSeekSpriteReusesPreviousFrameForDamagedInterval(t *testing.T) {
+	t.Parallel()
+
+	videoPath := makeH264Clock(t, "clock.mp4", "10")
+	file, err := os.OpenFile(videoPath, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	movie, err := readMovieBox(context.Background(), file, info.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	track, err := parseKeyframeTrack(movie)
+	if err != nil {
+		t.Fatal(err)
+	}
+	damaged := track.keyframes[5]
+	if _, err := file.WriteAt(make([]byte, damaged.size), damaged.offset); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	output, layout := generateSprite(t, videoPath, 10_000)
+	sheets := readSheets(t, output)
+	for _, check := range []struct {
+		frame int
+		want  float64
+	}{{4, 4}, {5, 4}, {6, 6}} {
+		if got := frameSeconds(t, sheets, layout, check.frame); got < check.want-0.5 || got > check.want+0.5 {
+			t.Errorf("コマ %d の時刻 %.2f 秒（%.0f 秒のはず）", check.frame, got, check.want)
+		}
+	}
+}
+
+// ffmpeg 7 and later exit with status 69 when most packets of an interval fail to decode; the limit keeps a damaged
+// interval an empty one.
+func TestSeekFrameArgsToleratesDecodeErrors(t *testing.T) {
+	args := strings.Join(seekFrameArgs("/media/a.mp4", 2, 1500), " ")
+	for _, want := range []string{"-max_error_rate 1 ", "-ss 3.000 -t 1.500 -i /media/a.mp4", "trim=end=1.500,"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("引数に %q が無い: %s", want, args)
 		}
 	}
 }
