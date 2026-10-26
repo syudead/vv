@@ -9,6 +9,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceruntime"
+	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
@@ -19,30 +20,37 @@ import (
 type faceRecognition struct {
 	settings *app.FaceRecognitionSettings
 	analysis *app.FaceRecognizer
+	loop     *jobs.Loop
 	runtime  *faceruntime.Manager
 }
 
 func newFaceRecognition(ctx context.Context, dataDir string, db *store.DB, logger *slog.Logger) faceRecognition {
-	var analysis *app.FaceRecognizer
+	loop := jobs.NewLoop()
 	faceRuntime := faceruntime.New(faceruntime.Options{
 		Dir:     filepath.Join(dataDir, "face"),
 		Catalog: faceruntime.DefaultCatalog(runtime.GOOS, runtime.GOARCH),
 		Launch:  faceruntime.ExecLauncher(ctx, media.Command),
 		Logger:  logger,
 		// Videos queued while the runtime was not ready wait for it.
-		Ready: func() { analysis.Wake() },
+		Ready: loop.Wake,
 	})
-	analysis = app.NewFaceRecognizer(app.FaceRecognizerOptions{
+	analysis := app.NewFaceRecognizer(app.FaceRecognizerOptions{
 		Queue: db.Faces(), Images: db.Faces(), Settings: db.Settings(), Runtime: faceRuntime,
 		Helper:       func(r domain.FaceRecognizer) app.FaceHelper { return faceRuntime.Helper(r) },
 		Frames:       media.FaceFrames,
 		MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Cast: db.Faces(),
-		Logger: logger,
+		Wake: loop.Wake, Logger: logger,
 	})
 	settings := app.NewFaceRecognitionSettings(app.FaceRecognitionSettingsOptions{
 		Settings: db.Settings(), Queue: db.Faces(), Runtime: faceRuntime, Analysis: analysis,
 	})
-	return faceRecognition{settings: settings, analysis: analysis, runtime: faceRuntime}
+	return faceRecognition{settings: settings, analysis: analysis, loop: loop, runtime: faceRuntime}
+}
+
+// run analyses queued videos until ctx ends, then stops the face helper.
+func (f faceRecognition) run(ctx context.Context) {
+	f.loop.Run(ctx, f.analysis.Step)
+	f.analysis.Close()
 }
 
 // start reads the face runtime's files in the background and resumes a download interrupted while the feature was
