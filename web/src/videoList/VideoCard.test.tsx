@@ -1179,7 +1179,7 @@ describe("VideoCard のリモートの印", () => {
 
   const peer: PeerState = {
     state: "connected",
-    peer: { name: "studio-pc", address: "http://pc:8080", version: "1" },
+    peer: { name: "studio-pc", address: "http://pc:8080", version: "1", pinned: false },
   };
   const remote = video({ id: remoteIdOffset + 1 });
 

@@ -23,7 +23,7 @@ export type PairField = "address" | "code" | "ownAddress";
 export type PairFailure =
   | { kind: "field"; field: PairField; text: UiText }
   | { kind: "alert"; text: UiText }
-  | { kind: "untrusted"; fingerprint: string };
+  | { kind: "untrusted" | "ownUntrusted"; fingerprint: string };
 
 function addressField(field: string | undefined): PairField {
   return field === "ownAddress" ? "ownAddress" : "address";
@@ -61,6 +61,10 @@ export function pairFailure(failure: unknown): PairFailure {
     case "certificate_untrusted":
       if (failure.fingerprint !== undefined)
         return { kind: "untrusted", fingerprint: failure.fingerprint };
+      break;
+    case "own_certificate_unverified":
+      if (failure.fingerprint !== undefined)
+        return { kind: "ownUntrusted", fingerprint: failure.fingerprint };
       break;
   }
   return { kind: "alert", text: text.form.failed(errorText(failure)) };

@@ -63,6 +63,46 @@ func TestRemoteVideoWorkInfoIsSavedOnThePeerInItsIDs(t *testing.T) {
 	}
 }
 
+// A person or organization new to the screen goes to the peer by name: the peer creates it once, and this node
+// creates nothing. A local video refuses a credit by name, since its screen creates credits first.
+func TestRemoteVideoCreditByNameIsCreatedOnlyOnThePeer(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	remote := domain.ToRemoteID(fa.ids["a"])
+	rec := b.owner(http.MethodPut, fmt.Sprintf("/api/videos/%d/details", remote),
+		`{"displayName":"x","workInfo":{"people":[{"role":"performer","person":{"name":"新人"}},`+
+			`{"role":"director","person":{"name":"新人"}}],"organizations":[{"role":"maker","organization":{"name":"新スタジオ"}}]}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("details: status = %d: %s", rec.Code, rec.Body)
+	}
+	names := func(f *guestFixture, kind domain.CreditKind) map[int64]string {
+		page, err := f.env.db.Credits().List(ctx, kind, domain.CreditQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[int64]string{}
+		for _, credit := range page.Items {
+			out[credit.ID] = credit.Name
+		}
+		return out
+	}
+	peopleOnA := names(fa, domain.CreditPerson)
+	onA := decode[gen.Video](t, fa.env.get(fa.videoPath("a", ""), fa.owner))
+	if onA.WorkInfo == nil || len(onA.WorkInfo.People) != 2 || len(onA.WorkInfo.Organizations) != 1 ||
+		peopleOnA[onA.WorkInfo.People[0].Person.Id] != "新人" || onA.WorkInfo.People[1].Person.Id != onA.WorkInfo.People[0].Person.Id ||
+		len(peopleOnA) != 1 || onA.WorkInfo.Organizations[0].Organization.Name != "新スタジオ" {
+		t.Errorf("a の作品情報 = %+v, a の人物 = %v, want 1 人の 新人 と 新スタジオ", onA.WorkInfo, peopleOnA)
+	}
+	if people, organizations := names(fb, domain.CreditPerson), names(fb, domain.CreditOrganization); len(people)+len(organizations) != 0 {
+		t.Errorf("b に作られた: 人物 %v, 組織 %v", people, organizations)
+	}
+
+	rec = b.owner(http.MethodPut, fb.videoPath("a", "/work-info"), `{"people":[{"role":"performer","person":{"name":"新人"}}]}`)
+	if rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Message != "people[0].person.name is only for a video of the paired VVMDM." {
+		t.Errorf("ローカルの名前指定: status = %d: %s, want 400", rec.Code, rec.Body)
+	}
+}
+
 // A forwarded save missing a required nested field is refused here: re-encoding would fill it with a zero value
 // that the peer then accepts, dropping the date and clearing the dates it already has.
 func TestRemoteWorkInfoMissingARequiredFieldIsNotForwarded(t *testing.T) {

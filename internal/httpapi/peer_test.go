@@ -73,6 +73,12 @@ type peerNode struct {
 
 func newPeerNode(t *testing.T, name string) *peerNode {
 	t.Helper()
+	return newPeerNodeServed(t, name, httptest.NewServer)
+}
+
+// newPeerNodeServed is newPeerNode served by serve, such as httptest.NewTLSServer for a self-signed certificate.
+func newPeerNodeServed(t *testing.T, name string, serve func(http.Handler) *httptest.Server) *peerNode {
+	t.Helper()
 	library := &audienceLibrary{fakeLibrary: sampleLibrary()}
 	var pairing *app.Pairing
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
@@ -81,7 +87,7 @@ func newPeerNode(t *testing.T, name string) *peerNode {
 		pairing = withTestPairing(db, name, storePublisher{events: events}, &opts)
 		return opts
 	})
-	server := httptest.NewServer(env.handler)
+	server := serve(env.handler)
 	t.Cleanup(server.Close)
 	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library, pairing: pairing}
 }
@@ -203,6 +209,55 @@ func TestPairingConnectsBothNodes(t *testing.T) {
 	// The record also lives on A, so A's code is refused as already paired.
 	if rec := a.owner(http.MethodPost, "/api/peer/code", ""); rec.Code != http.StatusConflict {
 		t.Errorf("ペアリング済みのコード発行: status = %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// Two nodes behind self-signed HTTPS pair after B's owner confirms B's own certificate and then A's, and A pins
+// the confirmed one for the callback. The TLS servers are the boundary under test.
+func TestPairingOverSelfSignedHTTPSPinsBothSides(t *testing.T) {
+	a, b := newPeerNodeServed(t, "node-a", httptest.NewTLSServer), newPeerNodeServed(t, "node-b", httptest.NewTLSServer)
+	rec := a.owner(http.MethodPost, "/api/peer/code", "")
+	var code gen.PairingCode
+	if err := json.Unmarshal(rec.Body.Bytes(), &code); err != nil {
+		t.Fatalf("コードの発行: %d %s", rec.Code, rec.Body)
+	}
+	pair := func(fingerprint, own *string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(gen.PairPeerRequest{
+			Address: a.url, Code: code.Code, OwnAddress: b.url, Fingerprint: fingerprint, OwnFingerprint: own,
+		})
+		return b.owner(http.MethodPost, "/api/peer/pair", string(body))
+	}
+	refused := func(rec *httptest.ResponseRecorder, reason gen.ErrorReason) *string {
+		t.Helper()
+		refusal := decode[gen.Error](t, rec)
+		if rec.Code != http.StatusConflict || refusal.Reason == nil || *refusal.Reason != reason || refusal.Fingerprint == nil {
+			t.Fatalf("status = %d: %s, want 409 %s と指紋", rec.Code, rec.Body, reason)
+		}
+		return refusal.Fingerprint
+	}
+
+	own := refused(pair(nil, nil), gen.ErrorReasonOwnCertificateUnverified)
+	peerCertificate := refused(pair(nil, own), gen.ErrorReasonCertificateUntrusted)
+	if rec := pair(peerCertificate, own); rec.Code != http.StatusCreated {
+		t.Fatalf("確認後のペアリング: status = %d: %s", rec.Code, rec.Body)
+	}
+	for _, node := range []*peerNode{a, b} {
+		state, _ := decodePeerState(t, node.owner(http.MethodGet, "/api/peer", ""))
+		if state.State != gen.PeerStateStateConnected || state.Peer == nil || !state.Peer.Pinned {
+			t.Errorf("状態 = %+v, want connected で証明書を固定", state)
+		}
+	}
+}
+
+// The other node refusing this node's certificate answers peer_unreachable with that certificate's fingerprint,
+// so the screen does not offer to trust it as the other node's.
+func TestPairingErrorNamesTheRefusedOwnCertificate(t *testing.T) {
+	rec := httptest.NewRecorder()
+	(&server{logger: discardLogger()}).writePairingError(rec, &domain.OwnCertificateUntrustedError{Fingerprint: "seen"}, "x")
+	body := decode[gen.Error](t, rec)
+	if rec.Code != http.StatusConflict || body.Reason == nil || *body.Reason != gen.ErrorReasonPeerUnreachable ||
+		body.Fingerprint == nil || *body.Fingerprint != "seen" {
+		t.Errorf("status = %d: %s, want 409 peer_unreachable と指紋 seen", rec.Code, rec.Body)
 	}
 }
 

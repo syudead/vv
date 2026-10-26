@@ -18,7 +18,16 @@ type Values = Record<PairField, string>;
 /** The fingerprint waits for the owner together with the address it came from. */
 type Problem =
   | { kind: "alert"; text: UiText }
-  | { kind: "untrusted"; fingerprint: string; address: string };
+  | { kind: "untrusted" | "ownUntrusted"; fingerprint: string; address: string };
+
+/** The fingerprints the owner trusted: the other VVMDM's, and this VVMDM's own address's. */
+type Confirmed = { fingerprint?: string; ownFingerprint?: string };
+
+/** Which confirmation each address field's fingerprint belongs to, dropped when that field changes. */
+const confirmationOf: Partial<Record<PairField, keyof Confirmed>> = {
+  address: "fingerprint",
+  ownAddress: "ownFingerprint",
+};
 
 function PairInput({
   field,
@@ -77,27 +86,36 @@ function ProblemAlert({
 }: {
   problem: Problem;
   pending: boolean;
-  onTrust: (fingerprint: string) => void;
+  onTrust: (confirmed: Confirmed) => void;
 }) {
   const text = t.settings.pairing;
   if (problem.kind === "alert") {
     return <FailureAlert text={problem.text} />;
   }
+  const own = problem.kind === "ownUntrusted";
   return (
     <FingerprintAlert
-      title={text.form.untrustedTitle}
+      title={own ? text.form.ownUntrustedTitle : text.form.untrustedTitle}
+      body={own ? text.ownCertificateBody(problem.address) : undefined}
       address={problem.address}
       fingerprint={problem.fingerprint}
       action={text.form.trust}
       pending={pending}
-      onTrust={() => onTrust(problem.fingerprint)}
+      onTrust={() =>
+        onTrust(
+          own
+            ? { ownFingerprint: problem.fingerprint }
+            : { fingerprint: problem.fingerprint },
+        )
+      }
     />
   );
 }
 
 /**
  * A refusal keeps every value; a field error clears when that field changes. Trusting a certificate
- * sends the same form again with the fingerprint shown.
+ * sends the same form again with the fingerprint shown and any trusted before, so this VVMDM's own
+ * certificate and then the other's are confirmed in turn.
  */
 function PairForm({
   onPaired,
@@ -115,19 +133,25 @@ function PairForm({
   });
   const [errors, setErrors] = useState<Partial<Record<PairField, UiText>>>({});
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [confirmed, setConfirmed] = useState<Confirmed>({});
   const [pending, setPending] = useState(false);
 
   const edit = (field: PairField, value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
+    const confirmation = confirmationOf[field];
+    if (confirmation !== undefined)
+      setConfirmed((current) => ({ ...current, [confirmation]: undefined }));
   };
 
-  const pair = async (fingerprint?: string) => {
+  const pair = async (trusted: Confirmed = {}) => {
+    const next = { ...confirmed, ...trusted };
+    setConfirmed(next);
     const body = {
       address: values.address.trim(),
       code: normalizePairingCode(values.code),
       ownAddress: values.ownAddress.trim(),
-      ...(fingerprint === undefined ? {} : { fingerprint }),
+      ...next,
     };
     setPending(true);
     onPendingChange(true);
@@ -142,9 +166,9 @@ function PairForm({
       else if (failure.kind === "alert") setProblem(failure);
       else
         setProblem({
-          kind: "untrusted",
+          kind: failure.kind,
           fingerprint: failure.fingerprint,
-          address: body.address,
+          address: failure.kind === "ownUntrusted" ? body.ownAddress : body.address,
         });
     }
     setPending(false);
@@ -193,7 +217,7 @@ function PairForm({
         <ProblemAlert
           problem={problem}
           pending={pending}
-          onTrust={(fingerprint) => void pair(fingerprint)}
+          onTrust={(trusted) => void pair(trusted)}
         />
       )}
       <div>

@@ -424,6 +424,8 @@ const errorReasons = {
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  own_certificate_unverified:
+    "This VVMDM's own certificate can't be verified. Confirm its fingerprint to pair.",
   mixed_nodes:
     "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
@@ -4619,6 +4621,8 @@ export const en = {
         "Enter an address starting with http:// or https://, with a host and no path.",
       certificateBody: (address: string) =>
         `${address} uses a certificate this VVMDM can't verify. Compare this fingerprint with the certificate on the other side before you trust it.`,
+      ownCertificateBody: (address: string) =>
+        `${address} is this VVMDM's own address, and its certificate can't be verified. Compare this fingerprint with the certificate this VVMDM serves, such as in your browser's certificate viewer for this page, before you trust it. The other VVMDM will trust only this certificate when it calls this one back.`,
       loadFailed: (reason: string) => `Couldn't load the pairing: ${reason}`,
       unpaired: {
         heading: "Pair with another VVMDM",
@@ -4659,6 +4663,7 @@ export const en = {
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",
+        ownUntrustedTitle: "This VVMDM's certificate can't be verified",
         trust: "Trust and pair",
       },
       paired: {
@@ -4693,6 +4698,8 @@ export const en = {
         certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
+        untrusted: "Can't verify its certificate",
+        untrustedDetail: "Confirm its certificate below to connect.",
         revoked: "Unpaired by the other side",
         revokedDetail:
           "It no longer shares its library with this VVMDM. Remove the pairing to pair again from either side.",

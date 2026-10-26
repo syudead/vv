@@ -4,6 +4,7 @@ import { isAborted, RequestFailed, type Video } from "../../api/client";
 import { createCredit, updateCredit } from "../../api/credits";
 import { setVideoDetails } from "../../api/workInfo";
 import { errorText, t } from "../../i18n";
+import { isRemoteId } from "../../lib/remoteId";
 import { Button } from "../../ui/shadcn/button";
 import {
   type Draft,
@@ -61,7 +62,7 @@ export function useEditorSave(run: (signal: AbortSignal) => Promise<void>): Edit
   return { saving, failure, problem, save, setFailure, setProblem };
 }
 
-/** Name chosen provisional people, then create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
+/** Name chosen provisional people, then create new credits sequentially and retain their IDs before saving details once; the peer's video sends new credits by name instead. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
 export function useDetailsSave({
   video,
   draftRef,
@@ -101,7 +102,9 @@ export function useDetailsSave({
         return;
       }
     }
-    for (const entry of newEntries(draft)) {
+    // The peer's video sends new credits by name, so they are created on the peer and not here.
+    const byName = isRemoteId(video.id);
+    for (const entry of byName ? [] : newEntries(draft)) {
       try {
         const credit = await createCredit(entry.kind, { name: entry.name }, signal);
         draft = withCreated(draft, entry.kind, entry.newKey, credit.id);
@@ -113,7 +116,7 @@ export function useDetailsSave({
         return;
       }
     }
-    const { body, targets } = toDetailsInput(draft);
+    const { body, targets } = toDetailsInput(draft, { byName });
     let saved: Video;
     try {
       saved = await setVideoDetails(

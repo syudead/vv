@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"slices"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -56,6 +58,10 @@ func (l *streamLink) Version(context.Context, domain.PeerTarget) (string, error)
 
 func (l *streamLink) RequestPairing(context.Context, domain.PeerTarget, domain.PairingRequest) (domain.PairingAnswer, error) {
 	return domain.PairingAnswer{}, errors.New("not used")
+}
+
+func (l *streamLink) Certificate(context.Context, string) (domain.PresentedCertificate, error) {
+	return domain.PresentedCertificate{}, errors.New("not used")
 }
 
 func (l *streamLink) Handshake(ctx context.Context, target domain.PeerTarget, _ string) (domain.PeerNode, error) {
@@ -185,6 +191,12 @@ type connectionNode struct {
 // startConnection runs the loop of a paired node inside the caller's synctest bubble.
 func startConnection(t *testing.T, link *streamLink) *connectionNode {
 	t.Helper()
+	return startLoggedConnection(t, link, nil)
+}
+
+// startLoggedConnection is startConnection with the loop's logger; nil uses slog.Default.
+func startLoggedConnection(t *testing.T, link *streamLink, logger *slog.Logger) *connectionNode {
+	t.Helper()
 	store := &fakePeerStore{}
 	record := domain.PeerRecord{
 		NodeID: connectionPeerID, Name: "peer", Address: connectionPeer, OutgoingSecret: "vvp_outgoing",
@@ -193,7 +205,9 @@ func startConnection(t *testing.T, link *streamLink) *connectionNode {
 		t.Fatal(err)
 	}
 	events := &peerEventLog{store: store}
-	pairing := NewPairing(PairingOptions{Store: store, Link: link, Version: "1.2.0", NodeName: "self", Publisher: events})
+	pairing := NewPairing(PairingOptions{
+		Store: store, Link: link, Version: "1.2.0", NodeName: "self", Publisher: events, Logger: logger,
+	})
 	events.pairing = pairing
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -457,5 +471,54 @@ func TestUnpairTellsThePeerAndDeletesOnFailure(t *testing.T) {
 		}
 		// The stream the unpairing stopped is not reported as a lost connection.
 		assertStates(t, "解除", node.events, "connected", "unpaired")
+	})
+}
+
+// infoMessages records the messages of log records at info and above.
+type infoMessages struct {
+	mu       sync.Mutex
+	messages []string
+}
+
+func (h *infoMessages) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelInfo
+}
+
+func (h *infoMessages) Handle(_ context.Context, record slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.messages = append(h.messages, record.Message)
+	return nil
+}
+
+func (h *infoMessages) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *infoMessages) WithGroup(string) slog.Handler { return h }
+
+func (h *infoMessages) all() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.messages)
+}
+
+// Losing and regaining the peer is logged once per transition, not once per failed retry.
+func TestConnectionLogsEachTransitionOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		down := &domain.PeerUnreachableError{Message: "down"}
+		logs := &infoMessages{}
+		node := startLoggedConnection(t, newStreamLink(
+			watchStep{open: true}, watchStep{err: down}, watchStep{err: down}, watchStep{open: true},
+		), slog.New(logs))
+		node.link.end <- down
+		time.Sleep(domain.PeerRetryFirst + 2*domain.PeerRetryFirst + 4*domain.PeerRetryFirst)
+		synctest.Wait()
+
+		assertStates(t, "切断と 2 回の失敗の後の再接続", node.events, "connected", "unreachable/network", "connected")
+		want := []string{
+			"the paired VVMDM is connected", "the paired VVMDM became unreachable", "the paired VVMDM is connected",
+		}
+		if got := logs.all(); !slices.Equal(got, want) {
+			t.Errorf("info のログ = %q, want %q", got, want)
+		}
 	})
 }

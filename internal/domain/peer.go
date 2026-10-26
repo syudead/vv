@@ -73,6 +73,41 @@ func (e *CertificateUntrustedError) Error() string {
 	return "the peer certificate is not trusted (SPKI " + e.Fingerprint + ")"
 }
 
+// OwnCertificateUntrustedError is the other node refusing the certificate this node's address presents, with
+// that certificate's SPKI fingerprint.
+type OwnCertificateUntrustedError struct {
+	Fingerprint string
+}
+
+func (e *OwnCertificateUntrustedError) Error() string {
+	return "The other VVMDM does not trust the certificate of this one (SPKI " + e.Fingerprint + ")."
+}
+
+func (e *OwnCertificateUntrustedError) Unwrap() error { return ErrPeerUnreachable }
+
+// OwnCertificateUnverifiedError is this node's own https address presenting a certificate the system roots do
+// not verify and the owner has not confirmed; Fingerprint is the SPKI it presents now.
+type OwnCertificateUnverifiedError struct {
+	Fingerprint string
+}
+
+func (e *OwnCertificateUnverifiedError) Error() string {
+	return "the certificate of this VVMDM's own address is not confirmed (SPKI " + e.Fingerprint + ")"
+}
+
+// PresentedCertificate is the certificate an https address presents in a TLS handshake.
+type PresentedCertificate struct {
+	Fingerprint string
+	// Verified reports that the system roots verify it for the address's host.
+	Verified bool
+}
+
+// ValidFingerprint accepts the standard base64 of a 32-byte SHA-256, the form Fingerprint values take.
+func ValidFingerprint(fingerprint string) bool {
+	raw, err := base64.StdEncoding.Strict().DecodeString(fingerprint)
+	return err == nil && len(raw) == 32
+}
+
 // CheckPeerVersions accepts only an equal release version; "dev" therefore matches only "dev".
 func CheckPeerVersions(local, peer string) error {
 	if local != peer {
@@ -189,9 +224,10 @@ func (s *PairingCodeSlot) Issue(random io.Reader, now time.Time) (PairingCode, e
 	return code, nil
 }
 
-// Consume reports whether input is the current, unexpired code and removes it when it is.
-// Letter case and surrounding spaces in input are ignored.
-func (s *PairingCodeSlot) Consume(input string, now time.Time) bool {
+// Matches reports whether input is the current, unexpired code; an expired code is dropped. The code stays
+// until Clear, so a pairing whose callback fails can be repeated with it. Letter case and surrounding spaces
+// in input are ignored.
+func (s *PairingCodeSlot) Matches(input string, now time.Time) bool {
 	if s.code == nil {
 		return false
 	}
@@ -200,14 +236,10 @@ func (s *PairingCodeSlot) Consume(input string, now time.Time) bool {
 		return false
 	}
 	given := strings.ToUpper(strings.TrimSpace(input))
-	if subtle.ConstantTimeCompare([]byte(given), []byte(s.code.Value)) != 1 {
-		return false
-	}
-	s.code = nil
-	return true
+	return subtle.ConstantTimeCompare([]byte(given), []byte(s.code.Value)) == 1
 }
 
-// Clear drops the current code, as pairing does.
+// Clear drops the current code, as a successful pairing does.
 func (s *PairingCodeSlot) Clear() { s.code = nil }
 
 // Rejection sampling keeps every character equally likely.
@@ -268,10 +300,13 @@ type PeerTarget struct {
 
 // PairInput is what the owner typed on the Pairing page.
 type PairInput struct {
-	Address     string
-	Code        string
-	OwnAddress  string
+	Address    string
+	Code       string
+	OwnAddress string
+	// Fingerprint is the other node's certificate the owner confirmed.
 	Fingerprint string
+	// OwnFingerprint is the certificate of OwnAddress the owner confirmed.
+	OwnFingerprint string
 }
 
 // PairingRequest is what the pairing node sends with the other node's code.
@@ -281,6 +316,9 @@ type PairingRequest struct {
 	Address string
 	// Secret is what the receiving node will present to the sender.
 	Secret string
+	// Fingerprint is the SPKI fingerprint of the certificate Address presents, as the sender's owner confirmed
+	// it when the system roots do not verify it; the receiving node pins it. Empty otherwise.
+	Fingerprint string
 }
 
 // PairingAnswer is the receiving node's identity and the secret the sender will present to it.

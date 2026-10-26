@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ type PeerLink interface {
 	// Version reads the release version the node at target reports in its health.
 	Version(ctx context.Context, target domain.PeerTarget) (string, error)
 	RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error)
+	// Certificate completes only a TLS handshake with the https address, sending nothing over the connection,
+	// and returns the certificate the address presents.
+	Certificate(ctx context.Context, address string) (domain.PresentedCertificate, error)
 	// Handshake presents secret and returns the identity the node at target answers with.
 	Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error)
 	// Watch holds the peer's event stream open with secret: it calls opened once the stream is open and
@@ -186,6 +190,10 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err != nil {
 		return domain.PeerState{}, err
 	}
+	ownFingerprint, err := p.ownFingerprint(ctx, ownAddress, input.OwnFingerprint)
+	if err != nil {
+		return domain.PeerState{}, err
+	}
 	target := domain.PeerTarget{Address: address, PinnedSPKI: input.Fingerprint}
 	peerVersion, err := p.link.Version(ctx, target)
 	if err != nil {
@@ -204,6 +212,7 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	defer release()
 	answer, err := p.link.RequestPairing(ctx, target, domain.PairingRequest{
 		Code: input.Code, Node: node, Address: ownAddress, Secret: incoming,
+		Fingerprint: ownFingerprint,
 	})
 	if err != nil {
 		return domain.PeerState{}, err
@@ -222,6 +231,31 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	return p.State(ctx)
 }
 
+// ownFingerprint is the certificate of this node's own address that the other node pins for its callback:
+// empty for an http address or one the system roots verify, and otherwise the SPKI the owner confirmed, which
+// must be the one the address presents now. Only the owner's comparison authenticates it: an on-path proxy
+// would relay any check made over this node's connection to itself, so the probe sends nothing over it.
+func (p *Pairing) ownFingerprint(ctx context.Context, ownAddress, confirmed string) (string, error) {
+	if !strings.HasPrefix(ownAddress, "https://") {
+		return "", nil
+	}
+	presented, err := p.link.Certificate(ctx, ownAddress)
+	if err != nil {
+		// Without a route to itself, such as behind NAT without hairpinning, the other node verifies with the
+		// roots or the pin the owner confirmed earlier.
+		p.logger.Info("could not read the certificate of this VVMDM's own address",
+			slog.String("address", ownAddress), slog.Any("error", err))
+		return confirmed, nil
+	}
+	if presented.Verified {
+		return "", nil
+	}
+	if confirmed != presented.Fingerprint {
+		return "", &domain.OwnCertificateUnverifiedError{Fingerprint: presented.Fingerprint}
+	}
+	return confirmed, nil
+}
+
 func checkPairingAnswer(answer domain.PairingAnswer, ownID, version string) error {
 	if !domain.ValidNodeID(answer.Node.ID) || answer.Node.ID == ownID || !domain.ValidPeerName(answer.Node.Name) ||
 		!domain.ValidPeerSecret(answer.Secret) {
@@ -231,19 +265,20 @@ func checkPairingAnswer(answer domain.PairingAnswer, ownID, version string) erro
 }
 
 // Accept answers another node's PairingRequest: it checks the code, calls the sender back at its
-// address with the secret it sent, and stores the record only after that succeeds.
+// address with the secret it sent, and stores the record only after that succeeds. Only a pairing that
+// succeeded clears the code, so a failed callback can be repeated with it.
 func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain.PairingAnswer, error) {
 	address, err := domain.NormalizePeerAddress(req.Address)
 	if err != nil {
 		return domain.PairingAnswer{}, &domain.InvalidPeerAddressError{Field: "node.address"}
 	}
-	if !domain.ValidNodeID(req.Node.ID) || !domain.ValidPeerName(req.Node.Name) || !domain.ValidPeerSecret(req.Secret) {
+	if !validPairingRequest(req, address) {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingInput
 	}
 	p.pairMu.Lock()
 	defer p.pairMu.Unlock()
 	p.mu.Lock()
-	accepted := p.code.Consume(req.Code, p.now())
+	accepted := p.code.Matches(req.Code, p.now())
 	p.mu.Unlock()
 	if !accepted {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingCode
@@ -262,6 +297,7 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 		return domain.PairingAnswer{}, err
 	}
 	if err := p.callBack(ctx, address, req); err != nil {
+		p.logger.Warn("could not call the pairing VVMDM back", slog.String("address", address), slog.Any("error", err))
 		return domain.PairingAnswer{}, err
 	}
 	incoming, err := domain.NewPeerSecret(p.random)
@@ -269,7 +305,8 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 		return domain.PairingAnswer{}, err
 	}
 	record := domain.PeerRecord{
-		NodeID: req.Node.ID, Name: req.Node.Name, Address: address, OutgoingSecret: req.Secret, PairedAt: p.now(),
+		NodeID: req.Node.ID, Name: req.Node.Name, Address: address, OutgoingSecret: req.Secret,
+		PinnedSPKI: req.Fingerprint, PairedAt: p.now(),
 	}
 	if err := p.store.AddPeer(ctx, record, incoming); err != nil {
 		return domain.PairingAnswer{}, err
@@ -278,9 +315,19 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 	return domain.PairingAnswer{Node: node, Secret: incoming}, nil
 }
 
-// callBack proves the sender's address reaches the node that sent the request.
+// validPairingRequest checks the sender's values; a fingerprint comes only with an https address.
+func validPairingRequest(req domain.PairingRequest, address string) bool {
+	if req.Fingerprint != "" && (!strings.HasPrefix(address, "https://") || !domain.ValidFingerprint(req.Fingerprint)) {
+		return false
+	}
+	return domain.ValidNodeID(req.Node.ID) && domain.ValidPeerName(req.Node.Name) && domain.ValidPeerSecret(req.Secret)
+}
+
+// callBack proves the sender's address reaches the node that sent the request, pinned to the certificate
+// the sender named.
 func (p *Pairing) callBack(ctx context.Context, address string, req domain.PairingRequest) error {
-	answered, err := p.link.Handshake(ctx, domain.PeerTarget{Address: address}, req.Secret)
+	target := domain.PeerTarget{Address: address, PinnedSPKI: req.Fingerprint}
+	answered, err := p.link.Handshake(ctx, target, req.Secret)
 	if err != nil {
 		var untrusted *domain.CertificateUntrustedError
 		if errors.As(err, &untrusted) || errors.Is(err, domain.ErrPeerUnreachable) {

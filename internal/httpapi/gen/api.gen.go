@@ -698,6 +698,7 @@ const (
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
+	ErrorReasonOwnCertificateUnverified      ErrorReason = "own_certificate_unverified"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
 	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
@@ -870,6 +871,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOrganizationParentCycle:
 		return true
 	case ErrorReasonOutputTooLarge:
+		return true
+	case ErrorReasonOwnCertificateUnverified:
 		return true
 	case ErrorReasonPasswordLength:
 		return true
@@ -3648,9 +3651,12 @@ type CreatedAPIToken struct {
 	Token APIToken `json:"token"`
 }
 
-// CreditIdRef Write reference to one person or organization.
+// CreditIdRef Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request.
 type CreditIdRef struct {
-	Id int64 `json:"id"`
+	Id *int64 `json:"id,omitempty"`
+
+	// Name A person or organization the peer may lack, so this node creates nothing for the peer's video.
+	Name *string `json:"name,omitempty"`
 }
 
 // CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
@@ -3746,7 +3752,7 @@ type Error struct {
 	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
-	// Fingerprint Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted.
+	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate.
 	Fingerprint *string `json:"fingerprint,omitempty"`
 
 	// Host Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons.
@@ -4994,6 +5000,9 @@ type PairPeerRequest struct {
 
 	// OwnAddress This node's base URL as the other node can reach it
 	OwnAddress string `json:"ownAddress"`
+
+	// OwnFingerprint The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified
+	OwnFingerprint *string `json:"ownFingerprint,omitempty"`
 }
 
 // PairingAnswer defines model for PairingAnswer.
@@ -5023,7 +5032,10 @@ type PairingRequest struct {
 type PairingRequestNode struct {
 	// Address The sender's base URL as the receiver can reach it
 	Address string `json:"address"`
-	Id      string `json:"id"`
+
+	// Fingerprint Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate.
+	Fingerprint *string `json:"fingerprint,omitempty"`
+	Id          string  `json:"id"`
 
 	// Name 1 to 100 code points
 	Name    string `json:"name"`
@@ -5048,6 +5060,9 @@ type PeerInfo struct {
 
 	// Name The peer's host name at pairing
 	Name string `json:"name"`
+
+	// Pinned Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted
+	Pinned bool `json:"pinned"`
 
 	// Version The peer version last seen; with reason version, the one that differs
 	Version *string `json:"version,omitempty"`
@@ -7678,7 +7693,7 @@ type WorkOrganization struct {
 
 // WorkOrganizationInput defines model for WorkOrganizationInput.
 type WorkOrganizationInput struct {
-	// Organization Write reference to one person or organization.
+	// Organization Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request.
 	Organization CreditIdRef `json:"organization"`
 
 	// Role Organization role in a video.
@@ -7705,7 +7720,7 @@ type WorkPerson struct {
 
 // WorkPersonInput defines model for WorkPersonInput.
 type WorkPersonInput struct {
-	// Person Write reference to one person or organization.
+	// Person Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request.
 	Person CreditIdRef `json:"person"`
 
 	// Role Person role in a video.

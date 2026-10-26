@@ -171,12 +171,12 @@ func workInfoFromInput(input gen.WorkInfoInput, raw json.RawMessage) (domain.Wor
 	}
 	for _, person := range valueOrZero(input.People) {
 		info.People = append(info.People, domain.WorkPerson{
-			Role: domain.PersonRole(person.Role), Person: domain.CreditRef{ID: person.Person.Id},
+			Role: domain.PersonRole(person.Role), Person: domain.CreditRef{ID: valueOrZero(person.Person.Id)},
 		})
 	}
 	for _, organization := range valueOrZero(input.Organizations) {
 		info.Organizations = append(info.Organizations, domain.WorkOrganization{
-			Role: domain.OrganizationRole(organization.Role), Organization: domain.CreditRef{ID: organization.Organization.Id},
+			Role: domain.OrganizationRole(organization.Role), Organization: domain.CreditRef{ID: valueOrZero(organization.Organization.Id)},
 		})
 	}
 	info.URLs = valueOrZero(input.Urls)
@@ -226,7 +226,14 @@ var workInfoInputRequired = []struct {
 		[]string{"source", "value"}, ""},
 }
 
+// workInfoInputRequiredPresent checks the work information of a local video, whose credits are given by id.
 func workInfoInputRequiredPresent(raw json.RawMessage) (string, bool) {
+	return workInfoRequiredPresent(raw, false)
+}
+
+// workInfoRequiredPresent checks required fields; byName also accepts a credit given by name alone, as the
+// peer's video does.
+func workInfoRequiredPresent(raw json.RawMessage, byName bool) (string, bool) {
 	var entries workInfoInputEntries
 	if err := json.Unmarshal(raw, &entries); err != nil {
 		return "The work information must be a JSON object.", false
@@ -241,12 +248,29 @@ func workInfoInputRequiredPresent(raw json.RawMessage) (string, bool) {
 			if list.ref == "" {
 				continue
 			}
-			value, _ := jsonProperty(entry, list.ref)
-			var ref map[string]json.RawMessage
-			if err := json.Unmarshal(value, &ref); err != nil || !jsonPropertyNotNull(ref, "id") {
-				return fmt.Sprintf("%s[%d].%s.id is required.", list.list, i, list.ref), false
+			if message, ok := creditRefPresent(entry, list.ref, fmt.Sprintf("%s[%d].%s", list.list, i, list.ref), byName); !ok {
+				return message, false
 			}
 		}
+	}
+	return "", true
+}
+
+// creditRefPresent requires the id of the reference at path, or with byName exactly one of id and name.
+func creditRefPresent(entry map[string]json.RawMessage, property, path string, byName bool) (string, bool) {
+	value, _ := jsonProperty(entry, property)
+	var ref map[string]json.RawMessage
+	if err := json.Unmarshal(value, &ref); err != nil {
+		return path + ".id is required.", false
+	}
+	id, name := jsonPropertyNotNull(ref, "id"), jsonPropertyNotNull(ref, "name")
+	switch {
+	case !byName && name:
+		return path + ".name is only for a video of the paired VVMDM.", false
+	case byName && id == name:
+		return path + " needs either id or name.", false
+	case !byName && !id:
+		return path + ".id is required.", false
 	}
 	return "", true
 }

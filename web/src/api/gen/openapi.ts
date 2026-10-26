@@ -622,7 +622,7 @@ export interface paths {
         get?: never;
         /**
          * Save display name and work information atomically
-         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed.
+         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed. For the peer's video a person or organization may be given by name, which the peer creates when it lacks it.
          */
         put: operations["setVideoDetails"];
         post?: never;
@@ -1521,7 +1521,7 @@ export interface paths {
         put?: never;
         /**
          * Pair with the node whose code the owner typed
-         * @description Checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * @description An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1581,7 +1581,7 @@ export interface paths {
         put?: never;
         /**
          * Accept a pairing from another node
-         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake and stores the pairing only after that succeeds. An unknown, used or expired code returns 400 invalid_request with invalid_code; malformed values 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify 409 certificate_untrusted with fingerprint.
+         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint.
          */
         post: operations["acceptPairing"];
         delete?: never;
@@ -4876,10 +4876,12 @@ export interface components {
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
         };
-        /** @description Write reference to one person or organization. */
+        /** @description Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request. */
         CreditIdRef: {
             /** Format: int64 */
-            id: number;
+            id?: number;
+            /** @description A person or organization the peer may lack, so this node creates nothing for the peer's video. */
+            name?: string;
         };
         WorkPersonInput: {
             role: components["schemas"]["WorkPersonRole"];
@@ -7311,6 +7313,8 @@ export interface components {
             name: string;
             /** @description The peer's base URL */
             address: string;
+            /** @description Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted */
+            pinned: boolean;
             /** @description The peer version last seen; with reason version, the one that differs */
             version?: string;
         };
@@ -7342,6 +7346,8 @@ export interface components {
             ownAddress: string;
             /** @description The SPKI fingerprint the owner confirmed after certificate_untrusted */
             fingerprint?: string;
+            /** @description The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified */
+            ownFingerprint?: string;
         };
         UpdatePeerAddressRequest: {
             address: string;
@@ -7356,6 +7362,8 @@ export interface components {
             name: string;
             /** @description The sender's base URL as the receiver can reach it */
             address: string;
+            /** @description Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate. */
+            fingerprint?: string;
             version: string;
         };
         PairingRequest: {
@@ -7499,7 +7507,7 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
-            /** @description Base64 SHA-256 of the certificate's SPKI; only for certificate_untrusted. */
+            /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate. */
             fingerprint?: string;
             /** @description This node's release version; only for unsupported_version. */
             localVersion?: string;
@@ -7512,7 +7520,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "own_certificate_unverified";
     };
     responses: {
         /** @description Resource not found */

@@ -10,7 +10,12 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import PairingSection from "./PairingSection";
 
 const NODE = { id: "a1", name: "den-pc", version: "1.4.0" };
-const PEER = { name: "studio-pc", address: "http://192.168.1.20:8080", version: "1.4.0" };
+const PEER = {
+  name: "studio-pc",
+  address: "http://192.168.1.20:8080",
+  version: "1.4.0",
+  pinned: false,
+};
 
 const unpaired: PeerState = { state: "unpaired", node: NODE };
 const connected: PeerState = { state: "connected", peer: PEER, node: NODE };
@@ -207,6 +212,50 @@ describe("PairingSection, unpaired", () => {
       fingerprint: "c2hhMjU2LXBpbg==",
     });
   });
+
+  it("confirms this VVMDM's own certificate, then the other's, and sends both", async () => {
+    const sent = serve(unpaired, {
+      "POST /api/peer/pair": [
+        () => conflict("own_certificate_unverified", { fingerprint: "b3du" }),
+        () => conflict("certificate_untrusted", { fingerprint: "cGVlcg==" }),
+        () => json(connected, 201),
+      ],
+    });
+    const user = userEvent.setup();
+    renderSection();
+
+    await fillForm(user);
+    await user.click(pairButton());
+    expect(
+      await screen.findByText("This VVMDM's certificate can't be verified"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /compare this fingerprint with the certificate this VVMDM serves/i,
+      ),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
+    expect(await screen.findByText("Certificate not trusted")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
+
+    expect(await screen.findByText("Connected")).toBeDefined();
+    expect(sent.map((request) => request.body)).toEqual([
+      { address: PEER.address, code: "ABCDEFGH", ownAddress: window.location.origin },
+      {
+        address: PEER.address,
+        code: "ABCDEFGH",
+        ownAddress: window.location.origin,
+        ownFingerprint: "b3du",
+      },
+      {
+        address: PEER.address,
+        code: "ABCDEFGH",
+        ownAddress: window.location.origin,
+        ownFingerprint: "b3du",
+        fingerprint: "cGVlcg==",
+      },
+    ]);
+  });
 });
 
 describe("PairingSection, paired", () => {
@@ -251,9 +300,30 @@ describe("PairingSection, paired", () => {
     expect(screen.getByText("Can't reach it")).toBeDefined();
   });
 
+  it("asks for a first trust, not a changed certificate, when nothing is pinned", async () => {
+    serve({
+      ...connected,
+      state: "unreachable",
+      reason: "certificate",
+      fingerprint: "b2xk",
+    });
+    renderSection();
+
+    expect(await screen.findByText("Can't verify its certificate")).toBeDefined();
+    expect(screen.getByText("Certificate not trusted")).toBeDefined();
+    expect(screen.queryByText("Certificate changed")).toBeNull();
+    expect(screen.queryByText("Confirm the new certificate")).toBeNull();
+  });
+
   it("trusts the fingerprint it shows, and the new one after fingerprint_changed", async () => {
     const sent = serve(
-      { ...connected, state: "unreachable", reason: "certificate", fingerprint: "b2xk" },
+      {
+        ...connected,
+        peer: { ...PEER, pinned: true },
+        state: "unreachable",
+        reason: "certificate",
+        fingerprint: "b2xk",
+      },
       {
         "POST /api/peer/certificate": [
           () => conflict("fingerprint_changed", { fingerprint: "bmV3" }),
@@ -264,6 +334,8 @@ describe("PairingSection, paired", () => {
     const user = userEvent.setup();
     renderSection();
 
+    expect(await screen.findByText("Certificate changed")).toBeDefined();
+    expect(screen.getByText("Confirm the new certificate")).toBeDefined();
     await user.click(await screen.findByRole("button", { name: "Trust and reconnect" }));
     expect(
       await screen.findByText(

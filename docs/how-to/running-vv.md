@@ -196,13 +196,15 @@ has no environment variable; the owner does it under Settings, Pairing.
 1. On VVMDM A, press **Show pairing code**.
 2. On VVMDM B, enter A's address, A's code and B's own address as A can reach
    it, and press **Pair**.
-3. When B shows a certificate fingerprint, compare it with the certificate in
-   front of A and press **Trust and pair**.
+3. When B's own address is HTTPS with a certificate the system roots cannot
+   verify, such as a self-signed one, B shows that certificate's fingerprint.
+   Compare it with the certificate B serves, such as in the browser's
+   certificate viewer for B's page, and press **Trust and pair**.
+4. When B shows the fingerprint of A's certificate, compare it with the
+   certificate in front of A and press **Trust and pair**.
 
-B confirms only the certificate of the address it enters. When B's own
-address is HTTPS with a certificate A cannot verify, such as a self-signed
-one, pairing from B fails with that certificate's fingerprint in the message;
-pair from A instead, entering B's address and B's code.
+A pins the certificate of B's address that B's owner confirmed in step 3, so
+neither owner confirms a certificate on A.
 
 | Requirement | Why |
 | --- | --- |
