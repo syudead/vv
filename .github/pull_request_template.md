@@ -36,7 +36,6 @@ Use the stage PR template for plan/design PRs; write `なし` in empty sections.
 | 検査 | 結果 |
 | --- | --- |
 | <!-- Scoped check command --> | |
-| `task coverage-changed` | <!-- Its summary line; list each uncovered line and its reason under 残したこと --> |
 
 ## 残したこと
 

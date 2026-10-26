@@ -46,13 +46,6 @@ A required coverage number invites tests written for the number, which
 [Testing policy](testing.md) rules out by choosing the lowest level that
 fails when a behaviour breaks.
 
-The author reads the uncovered changed lines instead: before a push,
-`task coverage-changed` (`scripts/changedcoverage`) lists the changed statement
-lines that ran zero times in the same reports CI uploads, and each is resolved
-by the [changed-line coverage](testing.md#changed-line-coverage) rule. The
-script exits 1 while a line or file is listed, so a skipped step is visible in
-the command output, but no CI job runs it.
-
 | Codecov setting | What a pull request gets |
 | --- | --- |
 | Flags `go` (`cmd/`, `internal/`) and `web` (`web/src/`) | A patch status per flag, so a drop names the side it happened on; coverage per flag on Codecov's Flags page |
@@ -86,7 +79,6 @@ work once flags or components are configured.
 | The measures at the end of the lint groups, on `main` only | They ran one after another and lengthened the lint groups; parallel jobs add no time, so pull requests are measured too |
 | Collecting CI durations from the GitHub API | The Actions pages already show the duration of every run and job |
 | Failing CI on a coverage drop or a complexity rise | A required number invites code written for the number |
-| Leaving the Codecov comment as the only report of uncovered changed lines | It arrives after the push, and implementing agents never read it |
 | A comment layout with flag and component tables, and project statuses | The Developer plan's comment has a fixed form and the plan sets patch statuses only; the Pro plan that allows both is paid |
 | Cancelling a running `main` run on a newer push | The cancelled commit's coverage and E2E results never reached Codecov, and later pull requests lost their base |
 | Bundle Analysis and E2E coverage | Neither has a reader yet; each is a new measure, not a fix of the existing ones |

@@ -49,7 +49,6 @@ pinned tools are not on `PATH`.
 | Shared dependencies, configuration, or unclear impact | `task check` |
 | Markdown, `docs/`, or `specs/` | `task check-docs`, also for mixed changes |
 | Comments only | Check formatting for the changed files and verify the diff changes no code or tool directives |
-| Any Go or Web source change | After the scoped check, `task test-go-report GO_PACKAGES="..."` and/or `task test-web-report -- <test files>`, then `task coverage-changed` |
 
 `task check` defaults to `SCOPE=all`, running Go and Web formatting, lint and
 tests on the host platform. `SCOPE=docs` runs the document checks.
@@ -61,13 +60,6 @@ test-file filters from `web/` and defaults to the whole suite. A source path
 is not necessarily a test-file filter: select its tests and affected callers
 explicitly. No matching tests is a failure. Web type checking always covers
 both TypeScript projects because types cross file boundaries.
-
-`task coverage-changed` compares the working tree, untracked files included,
-with the merge base of `BASE` (default `origin/main`; a feature PR passes
-`BASE=origin/<feature>`) and lists each changed statement line that no test ran
-and each changed file missing from the reports. Resolve every entry by the
-[changed-line coverage](../design-docs/testing.md#changed-line-coverage) rule
-and record the result in the PR's `確認` table.
 
 Include dependent packages, callers and shared fixtures when narrowing a scope.
 For a deletion, select its surviving package or parent directory. Do not narrow

@@ -57,11 +57,6 @@ file into a handbook.
   for CI-only checks and exceptions. Fix formatting in the affected files.
   Reuse passing results until relevant inputs change; after a failure, rerun
   the failed check and checks affected by its fix, not every suite.
-- Every implementation that changes Go or Web source, including review and CI
-  fixes, runs `task coverage-changed` after the coverage report before a push
-  and resolves each listed line by the
-  [changed-line coverage](docs/design-docs/testing.md#changed-line-coverage)
-  rule; the PR's `確認` table records its result.
 - Do not hand-edit generated files (`internal/httpapi/gen/`,
   `internal/httpapi/extgen/`, `web/src/api/gen/`); change `api/openapi.yaml` or
   `api/external-v1.yaml` and run `task generate`.

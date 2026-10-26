@@ -22,10 +22,7 @@ Read [README.md](README.md) first. Input is one native child Issue.
    unavailable, use an equivalent bounded worker when the host supports one, or
    perform this step locally.
 5. Run focused checks and the repository checks required by the change,
-   including the pre-push check from `AGENTS.md` and
-   `task coverage-changed BASE=origin/<feature>`; a worker's return without
-   that result, or with a listed line it gave no reason for, is incomplete.
-   For UI work, check the result
+   including the pre-push check from `AGENTS.md`. For UI work, check the result
    against the review criteria in `ui-design.md`. Leave browser e2e to the
    PR's CI unless a local run tells you something sooner
    ([checks before a push](README.md#checks-before-a-push)).

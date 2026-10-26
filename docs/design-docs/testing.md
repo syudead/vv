@@ -79,23 +79,6 @@ a race; neither proves an ordinary unit contract.
 | Error classification | Inject the error at the dependency boundary |
 | Deadlock protection | A failure guard that successful execution never waits out |
 
-## Changed-line coverage
-
-Every statement line a change adds or modifies runs in a test that would fail
-if its behaviour broke, or the pull request names it with the reason it stays
-uncovered. `task coverage-changed` lists the uncovered lines from the reports
-of `task test-go-report` and `task test-web-report`; CI does not gate on them
-([why](test-quality-monitoring.md#coverage-informs-a-pull-request-and-does-not-block-it)).
-
-| Listed line | Resolution |
-| --- | --- |
-| Behaviour a caller depends on | A case selected for its contract at the lowest level that detects the defect |
-| Code no caller reaches | Delete it |
-| A branch only a real dependency failure, another platform or a build tag reaches | Name the file, lines and reason under `残したこと` in the pull request |
-| File not in the reports | Rerun the report over the package or test files that exercise it |
-
-A test that runs a line without asserting its effect does not resolve it.
-
 ## Changes to existing tests
 
 Slow-test changes first remove duplicate coverage, excessive setup and work outside
