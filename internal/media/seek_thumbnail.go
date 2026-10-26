@@ -23,8 +23,11 @@ const (
 	seekThumbnailTimeout = 30 * time.Minute
 	seekSpriteFastScale  = "scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
 	// Use JPEG q=2 to limit blocking when cards enlarge sprite frames.
-	seekSpriteQuality      = "2"
-	seekSpriteParallel     = 4
+	seekSpriteQuality  = "2"
+	seekSpriteParallel = 4
+	// One interval normally decodes at most a GOP. Some AV1 MP4 files make ffmpeg seeking decode from
+	// the start, so later intervals grow without bound; stop and decode the whole video once instead.
+	seekFrameTimeout       = 2 * time.Minute
 	seekSpriteReadParallel = 8
 	// Require enough distinct indexed keyframes; sparse GOPs need segment extraction to avoid
 	// repeating the same scene.
@@ -227,8 +230,14 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 }
 
 // generateSeekSpriteParallel duplicates nearby frames for empty intervals, failing only on ffmpeg
-// errors or wholly empty output.
+// errors, an interval over seekFrameTimeout or wholly empty output.
 func generateSeekSpriteParallel(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
+	return generateSeekSpriteWithin(ctx, videoPath, outputDir, layout, seekFrameTimeout)
+}
+
+func generateSeekSpriteWithin(
+	ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout, frameTimeout time.Duration,
+) error {
 	temporary, err := os.MkdirTemp(outputDir, ".seek-sprite-")
 	if err != nil {
 		return err
@@ -266,7 +275,12 @@ frames:
 				"-vf", "trim=end=" + strconv.FormatFloat(interval, 'f', 3, 64) + "," + seekSpriteFastScale,
 				"-c:v", "bmp", "-f", "rawvideo", "pipe:1",
 			}
-			data, err := runSeekFFmpeg(workCtx, args)
+			frameCtx, cancelFrame := context.WithTimeout(workCtx, frameTimeout)
+			data, err := runSeekFFmpeg(frameCtx, args)
+			cancelFrame()
+			if errors.Is(err, context.DeadlineExceeded) && workCtx.Err() == nil {
+				err = fmt.Errorf("extraction took longer than %v", frameTimeout)
+			}
 			if err == nil && len(data) == 0 {
 				missing[frame] = true
 				return

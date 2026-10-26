@@ -12,7 +12,7 @@ const commandStopDelay = 5 * time.Second
 
 // command builds every ffmpeg/ffprobe child process this package starts, so
 // OS-specific process settings are applied in one place. On Windows the child
-// gets CREATE_NO_WINDOW and cancellation kills its process tree.
+// gets CREATE_NO_WINDOW; elsewhere nothing is added.
 func command(ctx context.Context, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = commandStopDelay

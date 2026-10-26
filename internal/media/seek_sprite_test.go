@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -240,5 +242,19 @@ func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	}
 	if luma := frameLuma(t, sheets, layout, layout.FrameCount-1); luma < 60 {
 		t.Errorf("末尾のコマの輝度が %d", luma)
+	}
+}
+
+// An interval over the limit fails the stage at once so GenerateSeekSprite moves to full decoding
+// instead of spending the whole generation timeout on extraction.
+func TestGenerateSeekSpriteFailsIntervalOverFrameTimeout(t *testing.T) {
+	t.Parallel()
+
+	requireFFmpeg(t)
+	videoPath := mediaFixture(t, "sparse.mp4")
+
+	err := generateSeekSpriteWithin(context.Background(), videoPath, t.TempDir(), domain.NewSeekSpriteLayout(15_000), time.Nanosecond)
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "longer than") {
+		t.Fatalf("上限を超えた区間で %v（上限超過のエラーのはず）", err)
 	}
 }

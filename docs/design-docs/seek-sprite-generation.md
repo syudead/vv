@@ -44,9 +44,9 @@ flowchart LR
   first -->|yes| next[Next image]
 ```
 
-## Generation from the index (H.264/HEVC in MP4/MOV)
+## Generation from the index (H.264/HEVC/AV1 in MP4/MOV)
 
-When the first video track of an MP4/MOV is H.264 or HEVC, the `moov` sample
+When the first video track of an MP4/MOV is H.264, HEVC or AV1, the `moov` sample
 table is read once and each interval uses one keyframe: the first inside it,
 or else the last before it.
 
@@ -61,7 +61,7 @@ The chosen keyframes go through these steps:
 
 ```mermaid
 flowchart LR
-  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC]
+  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC / av1C]
   prep --> idr{All IDR?}
   idr -->|yes| one[One stream, one decoder]
   idr -->|no| many[One input each, concat]
@@ -75,6 +75,7 @@ flowchart LR
 | --- | --- |
 | Shared keyframe | Intervals that share a keyframe read and decode it once and duplicate the image |
 | All IDR | Concatenated into one stream: an IDR resets the order count and the decoder state |
+| AV1 | Every sync sample is a key frame, so AV1 always takes the one-stream path. Each sample is prefixed with a temporal delimiter, which MP4 samples omit and the raw OBU reader needs, and with the `av1C` configuration OBUs |
 | Some not IDR (CRA in an open GOP, non-IDR I-frame) | One input per keyframe joined by the `concat` filter; in one stream the order count would carry over and frames would reorder across keyframes. Slower by the per-input start-up |
 | Image count differs | Frames would be misaligned, so the result is discarded |
 | Rotation | The raw stream loses the `tkhd` display matrix; a 90-degree-step rotation is reapplied (`transpose`, `hflip,vflip`) before scaling |
@@ -85,7 +86,7 @@ These inputs go straight to per-interval extraction:
 | Input | Why |
 | --- | --- |
 | No `moov` (fragmented MP4 and the like) | No sample table to read |
-| Not MP4/MOV, or video not H.264/HEVC | Outside what the index path reads |
+| Not MP4/MOV, or video not H.264/HEVC/AV1 | Outside what the index path reads |
 | More than one sample description | Resolution or similar changes midway |
 | More than one non-empty edit | A middle section is cut out |
 | Display matrix beyond rotation (a flip, for example) | The transform is not reapplied |
@@ -113,16 +114,24 @@ Temporary BMPs are deleted on success, failure and cancellation, and
 `internal/artifacts` checks the finished output before publication.
 
 Generation falls back to a full decode, with the same frame count, size and
-layout, in two cases.
+layout, in three cases.
 
 ```mermaid
 flowchart LR
   ext[Extraction ends] --> cancel{Cancelled?}
   cancel -->|yes| stop[Stop, no full decode]
   cancel -->|no| err{ffmpeg error or no image?}
-  err -->|no| ok[Tile]
-  err -->|yes| full[Full decode]
+  err -->|no| slow{A frame over 2 minutes?}
+  slow -->|no| ok[Tile]
+  slow -->|yes| full[Full decode]
+  err -->|yes| full
 ```
+
+A frame normally decodes at most one keyframe gap, so 2 minutes per frame is a
+generous bound. Some AV1 MP4 files make `ffmpeg` 8 seeking decode from the
+start of the video, so each later frame costs more and 81 frames never finish
+within the processing limit; the bound stops extraction early and leaves time
+for one full decode.
 
 The 30-minute processing limit covers extraction, tiling and fallback together.
 

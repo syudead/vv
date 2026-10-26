@@ -195,6 +195,29 @@ func TestGenerateSeekSpriteFromIndexReadsHEVC(t *testing.T) {
 	}
 }
 
+// AV1 must not depend on ffmpeg seeking, which decodes from the start of some AV1 MP4 files.
+func TestGenerateSeekSpriteFromIndexReadsAV1(t *testing.T) {
+	t.Parallel()
+
+	requireEncoder(t, "libsvtav1")
+	videoPath := filepath.Join(t.TempDir(), "clock.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "12"),
+		"-c:v", "libsvtav1", "-g", "10", "-crf", "10", "-svtav1-params", "log-level=0", "-y", videoPath)
+
+	layout := domain.NewSeekSpriteLayout(12_000)
+	output := t.TempDir()
+	if err := generateSeekSpriteFromIndex(context.Background(), videoPath, output, layout); err != nil {
+		t.Fatal(err)
+	}
+	sheets := readSheets(t, output)
+	for k := range layout.FrameCount {
+		startSec := float64(k) * float64(layout.IntervalMs) / 1000
+		if got := frameSeconds(t, sheets, layout, k); got < startSec-0.5 || got > startSec+0.5 {
+			t.Errorf("コマ %d の時刻 %.2f 秒（区間の先頭 %.0f 秒のはず）", k, got, startSec)
+		}
+	}
+}
+
 func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 	t.Parallel()
 

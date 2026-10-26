@@ -27,15 +27,15 @@ const (
 	maxKeyframes = 1 << 20
 )
 
-// Indexed extraction supports only H.264/HEVC MP4/MOV sample tables.
+// Indexed extraction supports only H.264/HEVC/AV1 MP4/MOV sample tables.
 var errSeekIndexUnsupported = errors.New("keyframes cannot be read from the index for this input")
 
 type keyframeTrack struct {
-	// Raw ffmpeg input format: h264 or hevc.
+	// Raw ffmpeg input format: h264, hevc or obu (AV1).
 	format string
 	// NAL length-prefix width in bytes.
 	lengthSize int
-	// Prepend decoder configuration NALs from avcC/hvcC to each keyframe.
+	// Prepend decoder configuration NALs from avcC/hvcC, or configOBUs from av1C, to each keyframe.
 	parameterSets [][]byte
 	// Raw decoding loses tkhd display metadata, so reapply rotation to match ffmpeg container
 	// autorotation.
@@ -271,6 +271,8 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 		t.format, configType = "h264", "avcC"
 	case "hvc1", "hev1":
 		t.format, configType = "hevc", "hvcC"
+	case "av01":
+		t.format, configType = "obu", "av1C"
 	default:
 		return fmt.Errorf("%w: video format %q", errSeekIndexUnsupported, entry.boxType)
 	}
@@ -285,10 +287,24 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	if err != nil {
 		return fmt.Errorf("%w: no %s", errSeekIndexUnsupported, configType)
 	}
-	if t.format == "h264" {
+	switch t.format {
+	case "h264":
 		return t.readAVCConfig(config)
+	case "obu":
+		return t.readAV1Config(config)
 	}
 	return t.readHEVCConfig(config)
+}
+
+// av1C holds a four-byte header followed by configOBUs, usually the sequence header.
+func (t *keyframeTrack) readAV1Config(config []byte) error {
+	if len(config) < 4 || config[0] != 0x81 {
+		return fmt.Errorf("%w: av1C has no version 1 marker", errSeekIndexUnsupported)
+	}
+	if len(config) > 4 {
+		t.parameterSets = [][]byte{config[4:]}
+	}
+	return nil
 }
 
 func (t *keyframeTrack) readAVCConfig(config []byte) error {
@@ -645,8 +661,11 @@ func (t *keyframeTrack) pick(layout domain.SeekSpriteLayout) []int {
 }
 
 // Convert length-prefixed NALs to Annex B with decoder parameters prepended, and report whether the
-// frame is IDR.
+// frame is IDR; AV1 samples become temporal units instead.
 func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
+	if t.format == "obu" {
+		return t.temporalUnit(sample), true, nil
+	}
 	startCode := []byte{0, 0, 0, 1}
 	var out []byte
 	for _, unit := range t.parameterSets {
@@ -675,6 +694,22 @@ func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 	}
 	return out, idr, nil
 }
+
+// An AV1 sync sample is a key frame, which resets decoder state like an IDR. ISOBMFF samples omit the
+// temporal delimiter that ffmpeg's obu demuxer splits temporal units on, so restore it.
+func (t *keyframeTrack) temporalUnit(sample []byte) []byte {
+	out := []byte{av1TemporalDelimiter, 0}
+	for _, obus := range t.parameterSets {
+		out = append(out, obus...)
+	}
+	if len(sample) >= 2 && sample[0] == av1TemporalDelimiter {
+		sample = sample[2:]
+	}
+	return append(out, sample...)
+}
+
+// OBU header for obu_type 2 with obu_has_size_field set; its payload size is zero.
+const av1TemporalDelimiter = 0x12
 
 // H.264 IDR uses type 5; HEVC uses types 19 and 20.
 func (t *keyframeTrack) isIDR(header byte) bool {
