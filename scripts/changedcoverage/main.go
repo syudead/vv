@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -248,6 +251,9 @@ func compare(changed map[string][]int, counts lineCounts) []fileReport {
 		}
 		report := fileReport{path: path}
 		fileCounts, measured := counts[path]
+		if !measured && strings.HasSuffix(path, ".go") && !hasGoStatements(path) {
+			continue
+		}
 		report.measured = measured
 		for _, line := range lines {
 			count, statement := fileCounts[line]
@@ -263,6 +269,22 @@ func compare(changed map[string][]int, counts lineCounts) []fileReport {
 	}
 	sort.Slice(reports, func(i, j int) bool { return reports[i].path < reports[j].path })
 	return reports
+}
+
+// hasGoStatements reports whether a Go file has a statement go test can count; a file of declarations only never appears in a coverprofile.
+func hasGoStatements(path string) bool {
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return true
+	}
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		if block, ok := n.(*ast.BlockStmt); ok && len(block.List) > 0 {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // formatReports lists the uncovered changed lines and returns the exit code: 1 when any changed line is unmeasured or uncovered.

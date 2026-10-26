@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -74,5 +76,28 @@ func TestCompareAndPrint(t *testing.T) {
 func TestFormatReportsSucceedsWhenEveryChangedLineRuns(t *testing.T) {
 	if out, code := formatReports(compare(map[string][]int{"cmd/m.go": {1}}, lineCounts{"cmd/m.go": {1: 1}})); code != 0 {
 		t.Fatalf("code = %d, output %s", code, out)
+	}
+}
+
+func TestCompareSkipsGoFilesWithoutStatements(t *testing.T) {
+	dir := t.TempDir()
+	decls := filepath.Join(dir, "internal", "types.go")
+	code := filepath.Join(dir, "internal", "code.go")
+	if err := os.MkdirAll(filepath.Dir(decls), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, body := range map[string]string{
+		decls: "package p\n\ntype T struct{ A int }\n\nconst C = 1\n\nfunc (T) Empty() {}\n",
+		code:  "package p\n\nfunc F() int {\n\treturn 1\n}\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	out, exit := formatReports(compare(map[string][]int{"internal/types.go": {3}, "internal/code.go": {4}}, lineCounts{}))
+	want := "internal/code.go: not in the coverage reports\nchanged statement lines: 0, uncovered: 0, files not measured: 1\n"
+	if exit != 1 || out != want {
+		t.Fatalf("exit %d, output:\n%s\nwant:\n%s", exit, out, want)
 	}
 }
