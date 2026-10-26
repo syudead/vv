@@ -180,6 +180,13 @@ func (l *peerEventLog) stateNames() []string {
 	return names
 }
 
+// snapshot copies the log under its lock, because the connection loop keeps publishing.
+func (l *peerEventLog) snapshot() (states []domain.PeerState, revoked []bool, changed []domain.PeerChanged) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.states), slices.Clone(l.revoked), slices.Clone(l.changed)
+}
+
 type connectionNode struct {
 	pairing *Pairing
 	store   *fakePeerStore
@@ -275,17 +282,19 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 			watchStep{open: true},
 		))
 		assertStates(t, "ストリームが開く", node.events, "connected")
-		if version := node.events.states[0].PeerVersion; version != "1.2.0" {
+		states, _, changed := node.events.snapshot()
+		if version := states[0].PeerVersion; version != "1.2.0" {
 			t.Errorf("connected の PeerVersion = %q, want 1.2.0", version)
 		}
-		if len(node.events.changed) != 1 || node.events.changed[0].VideoIDs[0] != domain.ToRemoteID(7) {
-			t.Errorf("転送されたイベント = %+v, want %+v", node.events.changed, forwarded)
+		if len(changed) != 1 || changed[0].VideoIDs[0] != domain.ToRemoteID(7) {
+			t.Errorf("転送されたイベント = %+v, want %+v", changed, forwarded)
 		}
 
 		node.link.end <- &domain.PeerUnreachableError{Message: "connection reset"}
 		synctest.Wait()
 		assertStates(t, "ストリームが切れる", node.events, "connected", "unreachable/network")
-		if version := node.events.states[1].PeerVersion; version != "1.2.0" {
+		states, _, _ = node.events.snapshot()
+		if version := states[1].PeerVersion; version != "1.2.0" {
 			t.Errorf("切れた後の PeerVersion = %q, want 最後に見た 1.2.0", version)
 		}
 		lost := time.Now()
@@ -302,7 +311,7 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 		node.link.end <- domain.ErrPeerUnknown
 		synctest.Wait()
 		assertStates(t, "401 peer_unknown", node.events, "connected", "unreachable/network", "connected", "revoked")
-		if !node.events.revoked[3] {
+		if _, revoked, _ := node.events.snapshot(); !revoked[3] {
 			t.Error("revoked のイベントの時点で受け取る secret が取り消されていない")
 		}
 		if valid, _ := node.pairing.Authenticate(context.Background(), connectionIncoming); valid {

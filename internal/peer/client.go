@@ -116,34 +116,27 @@ func (c *Client) Certificate(ctx context.Context, address string) (domain.Presen
 	}
 	dialer := &tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: connectTimeout},
-		// The chain is verified below, so an unverified certificate still yields its fingerprint.
-		Config: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true},
+		Config:    &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: c.roots, ServerName: parsed.Hostname()},
 	}
 	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(parsed.Hostname(), port))
-	if err != nil {
-		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{
-			Message: "Could not connect to " + address + ".", Cause: err,
+	if err == nil {
+		defer func() { _ = conn.Close() }()
+		if secure, ok := conn.(*tls.Conn); ok && len(secure.ConnectionState().PeerCertificates) > 0 {
+			leaf := secure.ConnectionState().PeerCertificates[0]
+			return domain.PresentedCertificate{Fingerprint: Fingerprint(leaf), Verified: true}, nil
 		}
-	}
-	var state tls.ConnectionState
-	if secure, ok := conn.(*tls.Conn); ok {
-		state = secure.ConnectionState()
-	}
-	_ = conn.Close()
-	if len(state.PeerCertificates) == 0 {
 		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{Message: address + " presented no certificate."}
 	}
-	leaf := state.PeerCertificates[0]
-	intermediates := x509.NewCertPool()
-	for _, cert := range state.PeerCertificates[1:] {
-		intermediates.AddCert(cert)
+	// A failed verification still carries the certificate it rejected, so its fingerprint needs no skipped check.
+	var unverified *tls.CertificateVerificationError
+	if errors.As(err, &unverified) && len(unverified.UnverifiedCertificates) > 0 {
+		return domain.PresentedCertificate{Fingerprint: Fingerprint(unverified.UnverifiedCertificates[0])}, nil
 	}
-	_, verifyErr := leaf.Verify(x509.VerifyOptions{
-		Roots: c.roots, Intermediates: intermediates, DNSName: parsed.Hostname(),
-	})
-	return domain.PresentedCertificate{Fingerprint: Fingerprint(leaf), Verified: verifyErr == nil}, nil
+	return domain.PresentedCertificate{}, &domain.PeerUnreachableError{
+		Message: "Could not connect to " + address + ".", Cause: err,
+	}
 }
 
 // Version reads the release version the peer's health reports, also while its storage is degraded.
