@@ -238,10 +238,11 @@ tasks:
 
   coverage-changed:
     desc: List changed lines since the merge base with BASE (default origin/main) that no test runs, from the reports test-go-report and test-web-report wrote.
-    vars:
+    # Pass BASE through the environment so a ref is never parsed by the shell.
+    env:
       BASE: '{{.BASE | default "origin/main"}}'
     cmds:
-      - go run ./scripts/changedcoverage -base {{.BASE}}
+      - go run ./scripts/changedcoverage -base "$BASE"
 
   quality-metrics:
     desc: Write the complexity of every function and the duplicated code under reports/quality/.

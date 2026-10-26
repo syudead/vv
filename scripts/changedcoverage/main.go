@@ -73,7 +73,7 @@ func readReport(path string, parse func(io.Reader, lineCounts) error, counts lin
 
 // changedLines returns the added lines of tracked changes since the merge base and of untracked files.
 func changedLines(base string) (map[string][]int, error) {
-	mergeBase, err := gitOutput("merge-base", base, "HEAD")
+	mergeBase, err := gitOutput("merge-base", "--end-of-options", base, "HEAD")
 	if err != nil {
 		return nil, err
 	}
