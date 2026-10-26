@@ -20,11 +20,16 @@ import (
 
 const (
 	seekThumbnailCommand = "ffmpeg"
-	seekThumbnailTimeout = 30 * time.Minute
+	// Indexed reads and per-interval extraction normally finish in seconds; a longer run means the input
+	// will not finish on retry either.
+	seekThumbnailTimeout = 5 * time.Minute
 	seekSpriteFastScale  = "scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
 	// Use JPEG q=2 to limit blocking when cards enlarge sprite frames.
-	seekSpriteQuality      = "2"
-	seekSpriteParallel     = 4
+	seekSpriteQuality  = "2"
+	seekSpriteParallel = 4
+	// One interval normally decodes at most a GOP. Some AV1 MP4 files make ffmpeg seeking decode from
+	// the start, so later intervals grow without bound; fail instead of waiting them out.
+	seekFrameTimeout       = 30 * time.Second
 	seekSpriteReadParallel = 8
 	// Require enough distinct indexed keyframes; sparse GOPs need segment extraction to avoid
 	// repeating the same scene.
@@ -32,46 +37,31 @@ const (
 	seekIndexMinDistinctDen = 4
 )
 
-// GenerateSeekSprite tries indexed keyframes, segment seeking, then full decoding; only the last
-// path counts as substitution. Temporary files stay under outputDir and callers publish results;
-// see docs/design-docs/seek-sprite-generation.md.
-func GenerateSeekSprite(
-	ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout,
-) (fullDecode bool, err error) {
+// GenerateSeekSprite tries indexed keyframes, then segment seeking. Exceeding a time limit wraps
+// domain.ErrFailureRepeats. Temporary files stay under outputDir and callers publish results; see
+// docs/design-docs/seek-sprite-generation.md.
+func GenerateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	processCtx, cancel := context.WithTimeout(ctx, seekThumbnailTimeout)
 	defer cancel()
-	fullDecode, err = generateSeekSprite(processCtx, videoPath, outputDir, layout)
+	err := generateSeekSprite(processCtx, videoPath, outputDir, layout)
+	if ctx.Err() != nil {
+		return fmt.Errorf("seek thumbnail generation was interrupted: %w", ctx.Err())
+	}
 	if processCtx.Err() != nil {
-		return false, fmt.Errorf("seek thumbnail generation was interrupted: %w", processCtx.Err())
+		return fmt.Errorf("%w: seek thumbnail generation took longer than %v", domain.ErrFailureRepeats, seekThumbnailTimeout)
 	}
-	if err != nil {
-		return false, err
-	}
-	return fullDecode, nil
+	return err
 }
 
-func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
+func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	err := generateSeekSpriteFromIndex(ctx, videoPath, outputDir, layout)
-	if err == nil {
-		return false, nil
-	}
-	if ctx.Err() != nil {
-		return false, ctx.Err()
+	if err == nil || ctx.Err() != nil {
+		return err
 	}
 	if !errors.Is(err, errSeekIndexUnsupported) {
 		slog.WarnContext(ctx, "cannot build seek thumbnails from the index; extracting per interval", "error", err)
 	}
-	if err := generateSeekSpriteParallel(ctx, videoPath, outputDir, layout); err == nil {
-		return false, nil
-	} else if ctx.Err() != nil {
-		return false, ctx.Err()
-	} else {
-		slog.WarnContext(ctx, "parallel seek thumbnail extraction was incomplete; generating from the whole video", "error", err)
-	}
-	if _, err := runSeekFFmpeg(ctx, seekSpriteArgs(videoPath, filepath.Join(outputDir, "%03d.jpg"), layout)); err != nil {
-		return false, err
-	}
-	return true, nil
+	return generateSeekSpriteParallel(ctx, videoPath, outputDir, layout)
 }
 
 // Read the movie index once and only selected keyframe bytes; reject unsupported or overly
@@ -226,9 +216,15 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 	return !slices.Contains(idr, false), firstErr
 }
 
-// generateSeekSpriteParallel duplicates nearby frames for empty intervals, failing only on ffmpeg
-// errors or wholly empty output.
+// generateSeekSpriteParallel duplicates nearby frames for empty intervals, failing on ffmpeg errors,
+// an interval over seekFrameTimeout or wholly empty output.
 func generateSeekSpriteParallel(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
+	return generateSeekSpriteWithin(ctx, videoPath, outputDir, layout, seekFrameTimeout)
+}
+
+func generateSeekSpriteWithin(
+	ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout, frameTimeout time.Duration,
+) error {
 	temporary, err := os.MkdirTemp(outputDir, ".seek-sprite-")
 	if err != nil {
 		return err
@@ -266,7 +262,12 @@ frames:
 				"-vf", "trim=end=" + strconv.FormatFloat(interval, 'f', 3, 64) + "," + seekSpriteFastScale,
 				"-c:v", "bmp", "-f", "rawvideo", "pipe:1",
 			}
-			data, err := runSeekFFmpeg(workCtx, args)
+			frameCtx, cancelFrame := context.WithTimeout(workCtx, frameTimeout)
+			data, err := runSeekFFmpeg(frameCtx, args)
+			cancelFrame()
+			if errors.Is(err, context.DeadlineExceeded) && workCtx.Err() == nil {
+				err = fmt.Errorf("%w: extraction took longer than %v", domain.ErrFailureRepeats, frameTimeout)
+			}
 			if err == nil && len(data) == 0 {
 				missing[frame] = true
 				return
@@ -361,32 +362,8 @@ func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, er
 	return data, nil
 }
 
-func seekSpriteArgs(videoPath, outputPattern string, layout domain.SeekSpriteLayout) []string {
-	filters := []string{
-		"tpad=stop_mode=clone:stop=-1",
-		"fps=1000/" + strconv.FormatInt(layout.IntervalMs, 10) + ":round=up:eof_action=pass",
-		"trim=end_frame=" + strconv.Itoa(layout.FrameCount),
-		seekSpriteFastScale,
-		"tile=" + strconv.Itoa(layout.Columns) + "x" + strconv.Itoa(layout.Rows),
-		"format=yuvj420p",
-	}
-	return []string{
-		"-nostdin",
-		"-v", "error",
-		"-i", videoPath,
-		"-map", "0:V:0?",
-		"-vf", strings.Join(filters, ","),
-		"-fps_mode", "passthrough",
-		"-q:v", seekSpriteQuality,
-		"-start_number", "0",
-		"-y",
-		outputPattern,
-	}
-}
-
 // GenerateSeekThumbnailSet is previewbench's generation-only boundary; it requires an existing
-// outputDir and ignores substitution provenance.
+// outputDir.
 func GenerateSeekThumbnailSet(ctx context.Context, videoPath, outputDir string, durationMs int64) error {
-	_, err := GenerateSeekSprite(ctx, videoPath, outputDir, domain.NewSeekSpriteLayout(durationMs))
-	return err
+	return GenerateSeekSprite(ctx, videoPath, outputDir, domain.NewSeekSpriteLayout(durationMs))
 }

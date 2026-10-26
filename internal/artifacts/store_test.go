@@ -71,11 +71,8 @@ func sheetWriter(t *testing.T, sheets int) func(string) error {
 	}
 }
 
-// Tests unrelated to substitution publish without full decoding.
 func publishSeek(s *Store, contentKey string, layout domain.SeekSpriteLayout, write func(string) error) error {
-	_, err := s.PublishSeekThumbnails(contentKey, layout, false, func(dir string) (bool, error) {
-		return false, write(dir)
-	})
+	_, err := s.PublishSeekThumbnails(contentKey, layout, false, write)
 	return err
 }
 
@@ -476,32 +473,41 @@ func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 	}
 }
 
-// Persist substitution provenance across reuse and restart; older sprite.json files have unknown
-// provenance.
+// A new sprite records no substitution; a reused sprite keeps what its sprite.json recorded, and older files without
+// the field have unknown provenance.
 func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		fullDecode bool
-		want       domain.Substitution
+		name     string
+		manifest func([]byte) []byte
+		want     domain.Substitution
 	}{
-		{name: "全編から", fullDecode: true, want: domain.SubstitutionUsed},
-		{name: "代用なし", fullDecode: false, want: domain.SubstitutionNone},
+		{name: "新しく作ったもの", manifest: func(data []byte) []byte { return data }, want: domain.SubstitutionNone},
+		{name: "全編から作った旧いもの", manifest: func(data []byte) []byte {
+			return bytes.Replace(data, []byte(`"fullDecode":false`), []byte(`"fullDecode":true`), 1)
+		}, want: domain.SubstitutionUsed},
+		{name: "記録の無い旧いもの", manifest: func(data []byte) []byte {
+			return bytes.Replace(data, []byte(`,"fullDecode":false`), nil, 1)
+		}, want: domain.SubstitutionUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := New(t.TempDir())
-			write := sheetWriter(t, 2)
-			published, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(dir string) (bool, error) {
-				return tc.fullDecode, write(dir)
-			})
+			root := t.TempDir()
+			store := New(root)
+			published, err := store.PublishSeekThumbnails(key, spriteLayout, false, sheetWriter(t, 2))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if published != tc.want {
-				t.Fatalf("公開したときの代用 = %v, want %v", published, tc.want)
+			if published != domain.SubstitutionNone {
+				t.Fatalf("公開したときの代用 = %v, want None", published)
 			}
-			adopted, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) (bool, error) {
+			manifest := filepath.Join(seekDirOf(root), "sprite.json")
+			data, err := os.ReadFile(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, manifest, tc.manifest(data))
+			adopted, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) error {
 				t.Fatal("完成したシーク用プレビューを作り直した")
-				return false, nil
+				return nil
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -511,34 +517,6 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("記録の無い旧いもの", func(t *testing.T) {
-		root := t.TempDir()
-		store := New(root)
-		if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
-			t.Fatal(err)
-		}
-		manifest := filepath.Join(seekDirOf(root), "sprite.json")
-		data, err := os.ReadFile(manifest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		legacy := bytes.Replace(data, []byte(`,"fullDecode":false`), nil, 1)
-		if bytes.Equal(legacy, data) {
-			t.Fatalf("sprite.json に代用の記録が無い: %s", data)
-		}
-		writeFile(t, manifest, legacy)
-		adopted, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) (bool, error) {
-			t.Fatal("完成したシーク用プレビューを作り直した")
-			return false, nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if adopted != domain.SubstitutionUnknown {
-			t.Fatalf("採用したときの代用 = %v, want Unknown", adopted)
-		}
-	})
 }
 
 func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {

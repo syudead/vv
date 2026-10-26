@@ -11,7 +11,8 @@ made with the old floor stay readable. Frame k covers `[k × intervalMs, (k + 1)
 player picks a frame from `intervalMs`, `frameCount`, `columns` and `rows` in
 the layout ([`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)).
 
-Generation tries the cheapest method first and falls back on failure.
+Generation tries the index first and falls back to per-interval extraction. It
+never decodes a whole video, so a job takes seconds or fails.
 
 ```mermaid
 flowchart LR
@@ -19,10 +20,9 @@ flowchart LR
   fit -->|yes| index[From the index]
   fit -->|no| interval[Per-interval extraction]
   index -->|fails| interval
-  interval -->|fails| full[Full decode]
+  interval -->|fails or too slow| failed[Job fails]
   index --> tile[Tile 9x9 into 000.jpg]
   interval --> tile
-  full --> tile
 ```
 
 ## Frame selection
@@ -44,9 +44,9 @@ flowchart LR
   first -->|yes| next[Next image]
 ```
 
-## Generation from the index (H.264/HEVC in MP4/MOV)
+## Generation from the index (H.264/HEVC/AV1 in MP4/MOV)
 
-When the first video track of an MP4/MOV is H.264 or HEVC, the `moov` sample
+When the first video track of an MP4/MOV is H.264, HEVC or AV1, the `moov` sample
 table is read once and each interval uses one keyframe: the first inside it,
 or else the last before it.
 
@@ -61,7 +61,7 @@ The chosen keyframes go through these steps:
 
 ```mermaid
 flowchart LR
-  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC]
+  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC / av1C]
   prep --> idr{All IDR?}
   idr -->|yes| one[One stream, one decoder]
   idr -->|no| many[One input each, concat]
@@ -75,6 +75,7 @@ flowchart LR
 | --- | --- |
 | Shared keyframe | Intervals that share a keyframe read and decode it once and duplicate the image |
 | All IDR | Concatenated into one stream: an IDR resets the order count and the decoder state |
+| AV1 | Every sync sample is a key frame, so AV1 always takes the one-stream path. Each sample is prefixed with a temporal delimiter, which MP4 samples omit and the raw OBU reader needs, and with the `av1C` configuration OBUs |
 | Some not IDR (CRA in an open GOP, non-IDR I-frame) | One input per keyframe joined by the `concat` filter; in one stream the order count would carry over and frames would reorder across keyframes. Slower by the per-input start-up |
 | Image count differs | Frames would be misaligned, so the result is discarded |
 | Rotation | The raw stream loses the `tkhd` display matrix; a 90-degree-step rotation is reapplied (`transpose`, `hflip,vflip`) before scaling |
@@ -85,7 +86,7 @@ These inputs go straight to per-interval extraction:
 | Input | Why |
 | --- | --- |
 | No `moov` (fragmented MP4 and the like) | No sample table to read |
-| Not MP4/MOV, or video not H.264/HEVC | Outside what the index path reads |
+| Not MP4/MOV, or video not H.264/HEVC/AV1 | Outside what the index path reads |
 | More than one sample description | Resolution or similar changes midway |
 | More than one non-empty edit | A middle section is cut out |
 | Display matrix beyond rotation (a flip, for example) | The transform is not reapplied |
@@ -112,30 +113,35 @@ with several video streams use the first that is not an attached picture.
 Temporary BMPs are deleted on success, failure and cancellation, and
 `internal/artifacts` checks the finished output before publication.
 
-Generation falls back to a full decode, with the same frame count, size and
-layout, in two cases.
+Extraction fails the job when `ffmpeg` fails, when no interval yields an image,
+or when one frame takes longer than 30 seconds. The whole job is limited to 5
+minutes.
 
 ```mermaid
 flowchart LR
   ext[Extraction ends] --> cancel{Cancelled?}
-  cancel -->|yes| stop[Stop, no full decode]
+  cancel -->|yes| stop[Stop, job requeued at startup]
   cancel -->|no| err{ffmpeg error or no image?}
-  err -->|no| ok[Tile]
-  err -->|yes| full[Full decode]
+  err -->|yes| fail[Job fails, retried]
+  err -->|no| slow{A frame over 30 s or the job over 5 min?}
+  slow -->|yes| repeat[Job fails, not retried]
+  slow -->|no| ok[Tile]
 ```
 
-The 30-minute processing limit covers extraction, tiling and fallback together.
+A frame normally decodes at most one keyframe gap, so 30 seconds per frame is a
+generous bound. Some AV1 MP4 files make `ffmpeg` 8 seeking decode from the
+start of the video, so each later frame costs more and 81 frames would take
+hours; that is why AV1 is read from the index.
 
-A full decode is a substitution: it is logged and recorded as a recent import
-problem `seek_thumbnail_full_decode`. Per-interval extraction is the normal path for its inputs and is not a
-substitution.
+A time limit failure wraps `domain.ErrFailureRepeats`, because the next attempt
+would take as long. The job then fails without using its remaining attempts, so
+one slow input does not hold the serial seek worker through every retry.
 
-| Case | Recorded problem |
-| --- | --- |
-| Full decode in this run | Substitution recorded; `fullDecode` stored in `sprite.json` |
-| Rerun after a stop between publication and completion | `fullDecode` read back from `sprite.json` and recorded |
-| Another video with the same content adopts the sprite | `fullDecode` read back and recorded |
-| Older `sprite.json` without `fullDecode` | Problem row left unchanged |
+Generation used to fall back to decoding the whole video, which took minutes
+for a long video and was recorded as the import problem
+`seek_thumbnail_full_decode`. New sprites record `fullDecode` as false. Sprites
+made that way keep their `fullDecode: true` in `sprite.json`, and adopting one
+still records the problem.
 
 Older sprites of up to 600 frames on 6 sheets stay readable. They are not
 regenerated in bulk; the new method applies to newly processed jobs, so the

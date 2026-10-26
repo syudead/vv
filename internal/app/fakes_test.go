@@ -364,7 +364,6 @@ type fakeGenerator struct {
 	// Poster paths passed to Thumbnail and ThumbnailAt.
 	posterOutputs []string
 	firstFrame    bool
-	fullDecode    bool
 	// Complete seek artifacts bypass generation.
 	seekPublished         bool
 	publishedSubstitution domain.Substitution
@@ -440,14 +439,14 @@ func (f *fakeGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int6
 	return f.thumbnailAtErr
 }
 
-func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
+func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) error {
 	f.record("seek")
 	f.recordOutput(outputDir)
 	f.pass("seek")
 	f.mu.Lock()
 	f.seekLayouts = append(f.seekLayouts, layout)
 	f.mu.Unlock()
-	return f.fullDecode, f.seekErr
+	return f.seekErr
 }
 
 func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) error {
@@ -551,7 +550,7 @@ func (f *fakeGenerator) stashCalls() []string {
 }
 
 func (f *fakeGenerator) PublishSeekThumbnails(
-	contentKey string, layout domain.SeekSpriteLayout, force bool, write func(string) (bool, error),
+	contentKey string, layout domain.SeekSpriteLayout, force bool, write func(string) error,
 ) (domain.Substitution, error) {
 	f.mu.Lock()
 	f.publishedLayouts = append(f.publishedLayouts, layout)
@@ -561,11 +560,10 @@ func (f *fakeGenerator) PublishSeekThumbnails(
 	if adopted {
 		return f.publishedSubstitution, nil
 	}
-	fullDecode, err := write("tmp/seek/" + contentKey)
-	if err != nil {
+	if err := write("tmp/seek/" + contentKey); err != nil {
 		return domain.SubstitutionUnknown, err
 	}
-	return domain.SubstitutionOf(fullDecode), nil
+	return domain.SubstitutionNone, nil
 }
 
 func (f *fakeGenerator) PublishPreview(
