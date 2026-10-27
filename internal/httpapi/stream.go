@@ -45,7 +45,8 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		return
 	}
 	defer func() { _ = file.Close() }()
-	defer s.readInForeground(path)()
+	// The opened file is the link target, whose folder may sit on another disk than the link's.
+	defer s.readInForeground(file.Name())()
 
 	w.Header().Set("Content-Type", streamContentType(path))
 	w.Header().Set("Cache-Control", cacheStream)

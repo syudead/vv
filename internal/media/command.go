@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
+	"slices"
 	"sync"
 	"time"
 
@@ -74,17 +76,17 @@ func (c *Cmd) Run() error {
 // commandStderrLimit bounds the standard error Output keeps for an ExitError.
 const commandStderrLimit = 64 << 10
 
-// Output runs the process and returns its standard output; like exec.Cmd.Output, an ExitError carries the start of
-// standard error when the caller set no Stderr.
+// Output runs the process and returns its standard output; like exec.Cmd.Output, an ExitError carries the start and
+// the end of standard error when the caller set no Stderr.
 func (c *Cmd) Output() ([]byte, error) {
 	if c.Stdout != nil {
 		return nil, errors.New("exec: Stdout already set")
 	}
 	var stdout bytes.Buffer
 	c.Stdout = &stdout
-	var stderr *headWriter
+	var stderr *headTailWriter
 	if c.Stderr == nil {
-		stderr = &headWriter{limit: commandStderrLimit}
+		stderr = &headTailWriter{limit: commandStderrLimit}
 		c.Stderr = stderr
 	}
 	err := c.Run()
@@ -107,26 +109,43 @@ func (c *Cmd) CombinedOutput() ([]byte, error) {
 	return output.Bytes(), err
 }
 
-// headWriter keeps the first limit bytes written to it, where FFmpeg reports why it stopped.
-type headWriter struct {
-	mu    sync.Mutex
-	limit int
-	data  []byte
+// headTailWriter keeps the first and the last limit/2 bytes written to it, as exec.Cmd.Output does: errors quote the
+// first line, and FFmpeg reports why it stopped at the end.
+type headTailWriter struct {
+	mu      sync.Mutex
+	limit   int
+	head    []byte
+	tail    []byte
+	skipped int64
 }
 
-func (w *headWriter) Write(p []byte) (int, error) {
+func (w *headTailWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if room := w.limit - len(w.data); room > 0 {
-		w.data = append(w.data, p[:min(room, len(p))]...)
+	n := len(p)
+	half := w.limit / 2
+	room := min(half-len(w.head), len(p))
+	w.head = append(w.head, p[:room]...)
+	p = p[room:]
+	if len(p) == 0 {
+		return n, nil
 	}
-	return len(p), nil
+	w.tail = append(w.tail, p...)
+	if over := len(w.tail) - (w.limit - half); over > 0 {
+		w.skipped += int64(over)
+		w.tail = append(w.tail[:0], w.tail[over:]...)
+	}
+	return n, nil
 }
 
-func (w *headWriter) bytes() []byte {
+func (w *headTailWriter) bytes() []byte {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.data
+	out := slices.Clone(w.head)
+	if w.skipped > 0 {
+		out = fmt.Appendf(out, "\n... omitting %d bytes ...\n", w.skipped)
+	}
+	return append(out, w.tail...)
 }
 
 // ffmpegInvalidData is FFmpeg's message for AVERROR_INVALIDDATA, which reading the same file reproduces every time.
