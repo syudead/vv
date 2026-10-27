@@ -73,7 +73,7 @@ func ProbeMediaInfo(ctx context.Context, path string) domain.MediaInfoProbe {
 // readImportProbe runs the import's ffprobe and the optional reads that complete its media information; ctx bounds
 // the TS read, which has its own deadline, and probeCtx the ffprobe processes.
 func readImportProbe(ctx, probeCtx context.Context, path string) (domain.Probe, error) {
-	output, err := command(probeCtx, probeCommand, importProbeArgs(path)...).Output()
+	output, err := command(probeCtx, PriorityLow, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
 		return domain.Probe{}, probeRunFailure(probeCtx, path, err)
 	}
@@ -143,7 +143,7 @@ func probeArgs(path string) []string {
 // AV1 declares film grain only in its sequence header, which ffprobe reports after decoding a frame, so only
 // AV1 files pay for a second process that decodes one; a failure leaves the item unknown.
 func probeFilmGrain(ctx context.Context, path string) *bool {
-	output, err := command(ctx, probeCommand, filmGrainProbeArgs(path)...).Output()
+	output, err := command(ctx, PriorityLow, probeCommand, filmGrainProbeArgs(path)...).Output()
 	if err != nil {
 		return nil
 	}

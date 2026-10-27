@@ -236,8 +236,8 @@ func run(opts runOptions) error {
 	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
 	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
 	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
-		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Images: db.Overrides(),
-		Applier: ingest, Logger: logger,
+		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
+		Images: db.Overrides(), Applier: ingest, Logger: logger,
 	})
 	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
 	if err := faces.analysis.Recover(backgroundCtx); err != nil {
@@ -436,6 +436,7 @@ func run(opts runOptions) error {
 		Catalog:           catalog,
 		Opener:            fileOpener,
 		Files:             mediaFiles,
+		Foreground:        scheduler,
 		Subtitles:         media.NewSubtitleConverter(),
 		Events:            events,
 		Assets:            web.Dist(),

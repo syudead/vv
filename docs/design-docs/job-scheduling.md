@@ -122,6 +122,56 @@ run at once. On a 1-slot disk the job runs one part at a time.
 | A fixed demand of 4 or 8 slots | Never fits a 1-slot disk, so the job would be skipped forever |
 | A demand of 1 with fixed internal parallelism | Reads 4 to 8 streams while counted as 1 |
 
+## Playback holds its disk to one background read
+
+While the owner waits on a read of a media file, that file's disk has 1 read
+slot for background work, never 0. These readers hold their disk from opening
+the file until they end:
+
+- a direct stream;
+- a live transcode, from its ffprobe until its ffmpeg exits;
+- a frame read for thumbnail editing.
+
+The disk is the one of the deepest media folder holding the opened file,
+after links are followed. When the last reader on the disk ends, it returns
+to the slots of its type and the scheduler wakes. A grant made before the reader opened is not revoked: a
+seek-sprite job drops to one extraction when it next asks for a pair, and a
+thumbnail, preview or face job finishes its current run. Background reads fall
+to 1 within the longest running job, then stay there. A scan's content-key
+read counts as a background read and takes the 1 slot like a job does.
+`httpapi` and `app` declare the interface they call, and `cmd/mdm` passes the
+scheduler.
+
+Sidecar subtitle reads hold nothing: they read kilobytes once per request.
+
+| Rejected | Why |
+| --- | --- |
+| Revoke running grants by killing or suspending the process | A killed encode restarts from the beginning, and Windows has no documented call to suspend another process |
+| Pause background reads | Import would stop for as long as a video plays; the disk schedulers BFQ and mq-deadline also keep a thin share for background requests |
+| OS I/O priority alone | Linux I/O priority works only under the BFQ or mq-deadline disk scheduler, and a container cannot choose the host's |
+
+## Background processes run at low priority
+
+[`media.Command`](../../internal/media/command.go) takes a priority. The
+processes of jobs and the face helper start low; live transcoding, its
+ffprobe, the thumbnail-editing frame, fitting an applied thumbnail image and
+the encoder check stay normal.
+
+| Platform | Low priority |
+| --- | --- |
+| Linux | Right after start, `setpriority` to nice 10 and `ioprio_set` to best-effort level 7 |
+| Windows | `BELOW_NORMAL_PRIORITY_CLASS` in the creation flags |
+
+Go runs no code between fork and exec on Linux, so the child spends its first
+milliseconds at normal priority. A server already above nice 10 cannot raise a
+child back to 10, so the child keeps the server's nice value.
+
+| Rejected | Why |
+| --- | --- |
+| `nice` and `ionice` wrapper commands | The Alpine image and Windows do not guarantee those binaries |
+| The idle I/O class | Its requests may wait until the disk is quiet, which could stall import while anything else reads |
+| Lowering the server's own priority | It would slow streaming too |
+
 ## A scan's content-key reads go first
 
 The scan still computes each new or changed file's content key inline, but it

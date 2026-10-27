@@ -188,7 +188,8 @@ stateDiagram-v2
 
 On Linux `mdm` starts `runtime-v<N>/lib/<loader> --library-path
 runtime-v<N>/lib runtime-v<N>/mdm-face`; on Windows it starts `mdm-face.exe`
-with `CREATE_NO_WINDOW`, through the same command builder as `ffmpeg`. The
+with `CREATE_NO_WINDOW`, through the same command builder as `ffmpeg`, at the
+low priority of job processes ([job scheduling](job-scheduling.md#background-processes-run-at-low-priority)). The
 helper gets half of the CPU cores, at least one, for onnxruntime's threads, so
 playback and live transcoding keep the rest. The client starts the helper on
 its first request; a helper whose stream breaks fails that request and is

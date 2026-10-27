@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -29,7 +30,7 @@ func newFaceRecognition(ctx context.Context, dataDir string, db *store.DB, logge
 	faceRuntime := faceruntime.New(faceruntime.Options{
 		Dir:     filepath.Join(dataDir, "face"),
 		Catalog: faceruntime.DefaultCatalog(runtime.GOOS, runtime.GOARCH),
-		Launch:  faceruntime.ExecLauncher(ctx, media.Command),
+		Launch:  faceruntime.ExecLauncher(ctx, lowPriorityCommand),
 		Logger:  logger,
 		// Videos queued while the runtime was not ready wait for it.
 		Ready: loop.Wake,
@@ -62,4 +63,10 @@ func (f faceRecognition) start(ctx context.Context, logger *slog.Logger) func() 
 		}
 	}()
 	return f.runtime.Stop
+}
+
+// lowPriorityCommand builds a face helper process that starts at low priority, like the jobs it serves.
+func lowPriorityCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, func() error) {
+	cmd := media.Command(ctx, media.PriorityLow, name, args...)
+	return cmd.Cmd, cmd.Start
 }
