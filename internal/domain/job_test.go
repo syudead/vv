@@ -1,6 +1,10 @@
 package domain
 
-import "testing"
+import (
+	"errors"
+	"fmt"
+	"testing"
+)
 
 func TestClaimAttemptsCountsOnlyNewRounds(t *testing.T) {
 	if got := ClaimAttempts(0, true); got != 1 {
@@ -107,5 +111,14 @@ func TestClaimConditionFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	}
 	if JobKinds[len(JobKinds)-1] != JobFingerprint {
 		t.Fatalf("JobKinds = %v, want fingerprint last", JobKinds)
+	}
+}
+
+func TestAttemptsAfterFailureSpendsRemainingAttemptsOnlyForRepeatingFailures(t *testing.T) {
+	if got := AttemptsAfterFailure(1, fmt.Errorf("%w: too slow", ErrFailureRepeats)); got != MaxJobAttempts {
+		t.Errorf("repeating failure = %d, want %d", got, MaxJobAttempts)
+	}
+	if got := AttemptsAfterFailure(1, errors.New("ffmpeg failed")); got != 1 {
+		t.Errorf("other failure = %d, want 1", got)
 	}
 }

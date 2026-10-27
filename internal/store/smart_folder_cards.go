@@ -7,13 +7,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strconv"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SmartFolderCards deduplicates in input order and reads all visible cards in one query; missing predicate references match nothing.
+// smartCardBatch bounds the folders one card statement reads.
+const smartCardBatch = 50
+
+// SmartFolderCards deduplicates in input order and reads visible cards in few queries; missing predicate references
+// match nothing.
 func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -30,8 +35,10 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 		cards[i] = domain.SmartFolderCard{SmartFolderSummary: target.summary, WatchState: domain.WatchStateUnwatched,
 			Previews: []domain.Video{}, Tags: []domain.VideoTag{}, PathRules: target.rules}
 	}
-	if err := readSmartFolderCardValues(ctx, tx, audience, targets, cards); err != nil {
-		return nil, err
+	for start, end := range smartCardBatches(targets) {
+		if err := readSmartFolderCardValues(ctx, tx, audience, targets[start:end], cards[start:end]); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("cannot finish reading the smart folder cards: %w", err)
@@ -39,7 +46,30 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	return cards, nil
 }
 
-// ListSmartFolders includes all owner folders but only nonempty playback folders for guests, at every depth in natural-name order.
+// smartCardBatches splits targets into statements holding at most one search folder: SQLite rejects a statement with
+// two search CTEs as nested too deep.
+func smartCardBatches(targets []smartFolderTarget) iter.Seq2[int, int] {
+	return func(yield func(int, int) bool) {
+		start, searches := 0, 0
+		for i, target := range targets {
+			search := !target.missing && smartMatchFor(target.spec, `s`).search != ""
+			if i > start && (i-start == smartCardBatch || search && searches > 0) {
+				if !yield(start, i) {
+					return
+				}
+				start, searches = i, 0
+			}
+			if search {
+				searches++
+			}
+		}
+		if start < len(targets) {
+			yield(start, len(targets))
+		}
+	}
+}
+
+// ListSmartFolders lists every folder for the owner and none for guests, at every depth in natural-name order.
 func (s *SmartFolderStore) ListSmartFolders(ctx context.Context, audience domain.Audience) ([]domain.SmartFolderSummary, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {

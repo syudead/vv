@@ -5,13 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// Retry only failed claims; empty queues sleep until Wake instead of polling.
-const defaultRetryDelay = 5 * time.Second
 
 // Queue hides persistence from workers.
 type Queue interface {
@@ -36,23 +32,20 @@ type Options struct {
 	Started func(job domain.Job)
 	// Optional callback after recording the outcome.
 	Finished func(job domain.Job)
-	// Zero uses the default claim retry delay.
-	RetryDelay time.Duration
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// Worker processes one stage serially to avoid saturating HDD I/O during initial scans; empty
+// Worker processes one stage serially on a Loop to avoid saturating HDD I/O during initial scans; empty
 // queues sleep until commit notifications call Wake.
 type Worker struct {
+	loop     *Loop
 	kind     domain.JobKind
 	queue    Queue
 	handler  Handler
 	started  func(domain.Job)
 	finished func(domain.Job)
-	retry    time.Duration
 	logger   *slog.Logger
-	wake     chan struct{}
 }
 
 func New(opts Options) *Worker {
@@ -60,20 +53,14 @@ func New(opts Options) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	retry := opts.RetryDelay
-	if retry <= 0 {
-		retry = defaultRetryDelay
-	}
 	return &Worker{
+		loop:     NewLoop(),
 		kind:     opts.Kind,
 		queue:    opts.Queue,
 		handler:  opts.Handler,
 		started:  opts.Started,
 		finished: opts.Finished,
-		retry:    retry,
 		logger:   logger.With(slog.String("stage", string(opts.Kind))),
-		// Buffer one notification to avoid losing a wakeup just before sleep.
-		wake: make(chan struct{}, 1),
 	}
 }
 
@@ -81,56 +68,29 @@ func (w *Worker) Kind() domain.JobKind {
 	return w.kind
 }
 
-// Wake is nonblocking.
 func (w *Worker) Wake() {
-	select {
-	case w.wake <- struct{}{}:
-	default:
-	}
+	w.loop.Wake()
 }
 
 // Run checks the queue immediately on startup to recover leftover work before waiting for
 // notifications.
 func (w *Worker) Run(ctx context.Context) {
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-
-		job, err := w.queue.ClaimJob(ctx, w.kind)
-		switch {
-		case errors.Is(err, domain.ErrNoJob):
-			if !w.sleep(ctx, nil) {
-				return
-			}
-			continue
-		case err != nil:
-			if ctx.Err() != nil {
-				return
-			}
-			w.logger.Warn("could not claim a job", slog.Any("error", err))
-			timer := time.NewTimer(w.retry)
-			ok := w.sleep(ctx, timer.C)
-			timer.Stop()
-			if !ok {
-				return
-			}
-			continue
-		}
-
-		w.process(ctx, job)
-	}
+	w.loop.Run(ctx, w.step)
 }
 
-func (w *Worker) sleep(ctx context.Context, retry <-chan time.Time) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case <-w.wake:
-		return true
-	case <-retry:
-		return true
+func (w *Worker) step(ctx context.Context) domain.WorkerWait {
+	job, err := w.queue.ClaimJob(ctx, w.kind)
+	switch {
+	case errors.Is(err, domain.ErrNoJob):
+		return domain.WorkerIdle
+	case err != nil:
+		if ctx.Err() == nil {
+			w.logger.Warn("could not claim a job", slog.Any("error", err))
+		}
+		return domain.WorkerRetry
 	}
+	w.process(ctx, job)
+	return domain.WorkerNext
 }
 
 // Cancellation leaves running jobs for startup recovery instead of consuming retry attempts as

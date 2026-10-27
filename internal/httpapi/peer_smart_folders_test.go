@@ -164,8 +164,9 @@ func TestSmartFolderShowsAGuestThePublicMatchesOfBothNodes(t *testing.T) {
 	if got, want := pageSmartFolder(t, fa, fb, owner, id), []string{"a:e", "a:d", "b:c", "b:a"}; !slices.Equal(got, want) {
 		t.Errorf("owner = %v, want %v", got, want)
 	}
-	if card := folderCards(t, guest, id)[id]; card.VideoCount != 2 {
-		t.Errorf("guest card counts %d videos, want 2", card.VideoCount)
+	// Guests are not offered smart folder cards, though the folder opens by its URL.
+	if card, shown := folderCards(t, guest, id)[id]; shown {
+		t.Errorf("guest received the card %+v", card)
 	}
 }
 

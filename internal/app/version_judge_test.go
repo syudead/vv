@@ -160,7 +160,7 @@ func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	classifier := &fakeClassifier{}
 	judge, _, _ := newTestVersionJudge(store, classifier)
 
-	if wait := judge.step(context.Background()); wait != 0 {
+	if wait := judge.Step(context.Background()); wait != 0 {
 		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
 	}
 	// Rule-based results omit probability.
@@ -187,7 +187,7 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: c.probability}}
 			judge, _, frames := newTestVersionJudge(store, classifier)
 
-			judge.step(context.Background())
+			judge.Step(context.Background())
 
 			got := store.lastResult(t)
 			if got.Verdict != c.want || got.Probability == nil || *got.Probability != c.probability {
@@ -228,7 +228,7 @@ func TestVersionJudgeClassifierFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 			judge, _, _ := newTestVersionJudge(store, classifier)
-			judge.step(context.Background())
+			judge.Step(context.Background())
 			if got := store.lastResult(t); got.Verdict != domain.VersionFailed || got.Error == "" || got.Probability != nil {
 				t.Errorf("結果 = %+v, want 理由のある failed", got)
 			}
@@ -240,28 +240,30 @@ func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
 	judge, settings, _ := newTestVersionJudge(store, classifier)
+	loop := newTestLoop()
+	judge.Waker = loop.Wake
 	settings.connected = false
 	ctx := context.Background()
 
-	judge.step(ctx)
+	judge.Step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionNoConnection {
 		t.Fatalf("結果 = %+v, want no_connection", got)
 	}
 	if len(classifier.requests) != 0 {
 		t.Fatalf("接続の無いときに分類器を呼んだ")
 	}
-	if wait := judge.step(ctx); wait >= 0 {
+	if wait := judge.Step(ctx); wait >= 0 {
 		t.Fatalf("no_connection の組を取り出した（待ち %v）", wait)
 	}
 
 	settings.connected = true
 	judge.ConnectionSaved(ctx)
 	select {
-	case <-judge.wake:
+	case <-loop.wake:
 	default:
 		t.Fatal("接続の保存で起こさない")
 	}
-	judge.step(ctx)
+	judge.Step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
 		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
 	}
@@ -271,6 +273,8 @@ func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
 	judge, settings, _ := newTestVersionJudge(store, classifier)
+	loop := newTestLoop()
+	judge.Waker = loop.Wake
 	settings.connected = false
 	ctx := context.Background()
 
@@ -287,7 +291,7 @@ func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	judge.step(ctx)
+	judge.Step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
 		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
 	}
@@ -303,7 +307,7 @@ func TestVersionJudgeRecoverResumesPairsWaitingForAConnection(t *testing.T) {
 	if err := judge.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
-	judge.step(ctx)
+	judge.Step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
 		t.Errorf("起動のあと = %+v, want same", got)
 	}
@@ -315,13 +319,13 @@ func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
 	judge, _, _ := newTestVersionJudge(store, &fakeClassifier{})
 	ctx := context.Background()
 
-	if wait := judge.step(ctx); wait != versionJudgeRetryDelay {
-		t.Fatalf("保存できなかったあとの待ち = %v, want %v", wait, versionJudgeRetryDelay)
+	if wait := judge.Step(ctx); wait != domain.WorkerRetry {
+		t.Fatalf("保存できなかったあとの待ち = %v, want %v", wait, domain.WorkerRetry)
 	}
 	store.mu.Lock()
 	store.applyErr = nil
 	store.mu.Unlock()
-	if wait := judge.step(ctx); wait != 0 {
+	if wait := judge.Step(ctx); wait != 0 {
 		t.Fatalf("判定し直しの待ち = %v, want 0", wait)
 	}
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
@@ -351,7 +355,7 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	classifier.judge = judge
 	ctx := context.Background()
 
-	if wait := judge.step(ctx); wait != 0 {
+	if wait := judge.Step(ctx); wait != 0 {
 		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
 	}
 	store.mu.Lock()
@@ -364,7 +368,7 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	if claimed {
 		t.Fatalf("組が待ちに戻っていない（判定 %v）", verdict)
 	}
-	if wait := judge.step(ctx); wait >= 0 {
+	if wait := judge.Step(ctx); wait >= 0 {
 		t.Fatalf("切のあいだに取り出した（待ち %v）", wait)
 	}
 
@@ -372,7 +376,7 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 		t.Fatal(err)
 	}
 	judge.classifier = &classifier.fakeClassifier
-	judge.step(ctx)
+	judge.Step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
 		t.Errorf("入れ直したあと = %+v, want same", got)
 	}
@@ -383,18 +387,9 @@ func TestVersionJudgeIdlesWhileOff(t *testing.T) {
 		store := newFakeVersionJudgeStore()
 		judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
 		settings.enabled = false
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
-		go func() {
-			judge.Run(ctx)
-			close(done)
-		}()
-		defer func() {
-			cancel()
-			// Release the wait even if its cancellation branch regresses.
-			judge.Wake()
-			<-done
-		}()
+		loop := newTestLoop()
+		judge.Waker = loop.Wake
+		loop.run(t, judge.Step)
 		claims := func() int {
 			store.mu.Lock()
 			defer store.mu.Unlock()
@@ -405,20 +400,12 @@ func TestVersionJudgeIdlesWhileOff(t *testing.T) {
 		if got := claims(); got != 0 {
 			t.Fatalf("claims while disabled = %d, want 0", got)
 		}
-		if err := judge.SaveEnabled(ctx, true); err != nil {
+		if err := judge.SaveEnabled(context.Background(), true); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
 		if got := claims(); got != 1 {
 			t.Fatalf("claims after enabling = %d, want 1", got)
-		}
-
-		cancel()
-		synctest.Wait()
-		select {
-		case <-done:
-		default:
-			t.Fatal("worker did not stop when cancelled while idle")
 		}
 	})
 }
@@ -430,11 +417,11 @@ func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
 		Store: store, Settings: &fakeVersionJudgeSettings{enabled: true}, Classifier: &fakeClassifier{},
 		Frames: &fakeVersionFrames{}, Now: func() time.Time { return now },
 	})
-	if wait := judge.step(context.Background()); wait >= 0 {
+	if wait := judge.Step(context.Background()); wait >= 0 {
 		t.Errorf("失敗の組が無いときの待ち = %v, want 起こされるまで", wait)
 	}
 	store.retryAt = now.Add(10 * time.Minute)
-	if wait := judge.step(context.Background()); wait != 10*time.Minute+time.Second {
+	if wait := judge.Step(context.Background()); wait != domain.WorkerWait(10*time.Minute+time.Second) {
 		t.Errorf("待ち = %v, want 10m1s", wait)
 	}
 }
@@ -448,7 +435,7 @@ func TestVersionJudgeLetsMatchingChaptersSkipTheClassifier(t *testing.T) {
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.1}}
 	judge, _, _ := newTestVersionJudge(store, classifier)
 
-	judge.step(context.Background())
+	judge.Step(context.Background())
 
 	got := store.lastResult(t)
 	if got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule || got.Evidence == nil ||

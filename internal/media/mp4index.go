@@ -18,8 +18,9 @@ import (
 
 const (
 	// Even multi-hour movie indexes should fit within tens of megabytes.
-	maxMovieBoxSize      = 256 << 20
-	maxTopLevelBoxes     = 1024
+	maxMovieBoxSize = 256 << 20
+	// A fragmented MP4 has a moof and an mdat per fragment; this allows about nine hours of one-second fragments.
+	maxTopLevelBoxes     = 1 << 16
 	maxKeyframeSize      = 64 << 20
 	maxKeyframeTotalSize = 512 << 20
 	// Bound keyframe allocations independently of total sample count; this allows twelve days at one
@@ -27,15 +28,15 @@ const (
 	maxKeyframes = 1 << 20
 )
 
-// Indexed extraction supports only H.264/HEVC MP4/MOV sample tables.
+// Indexed extraction supports only H.264/HEVC/AV1 MP4/MOV sample tables.
 var errSeekIndexUnsupported = errors.New("keyframes cannot be read from the index for this input")
 
 type keyframeTrack struct {
-	// Raw ffmpeg input format: h264 or hevc.
+	// Raw ffmpeg input format: h264, hevc or obu (AV1).
 	format string
 	// NAL length-prefix width in bytes.
 	lengthSize int
-	// Prepend decoder configuration NALs from avcC/hvcC to each keyframe.
+	// Prepend decoder configuration NALs from avcC/hvcC, or configOBUs from av1C, to each keyframe.
 	parameterSets [][]byte
 	// Raw decoding loses tkhd display metadata, so reapply rotation to match ffmpeg container
 	// autorotation.
@@ -51,9 +52,12 @@ type keyframe struct {
 	size           int64
 }
 
-// Skip non-moov payloads using only their headers.
-func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, error) {
-	var position int64
+// Skip media payloads using only their headers. A moov with mvex announces a fragmented MP4, whose sample tables are
+// in the moof boxes, so reading continues to collect them; otherwise reading stops at moov.
+func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, []movieFragment, error) {
+	var position, fragmentBytes int64
+	var movie []byte
+	var fragments []movieFragment
 	header := make([]byte, 16)
 	for range maxTopLevelBoxes {
 		if position+boxHeaderSize > fileSize {
@@ -64,41 +68,76 @@ func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, e
 			if err == nil || errors.Is(err, io.EOF) {
 				err = io.ErrUnexpectedEOF
 			}
-			return nil, err
+			return nil, nil, err
 		}
-		size := int64(binary.BigEndian.Uint32(header[:4]))
-		boxType := string(header[4:8])
-		headerSize := int64(boxHeaderSize)
-		switch size {
-		case 0:
-			size = fileSize - position
-		case 1:
-			if n < 16 {
-				return nil, fmt.Errorf("%w: box %q header is truncated", errSeekIndexUnsupported, boxType)
-			}
-			size = int64(binary.BigEndian.Uint64(header[8:16]))
-			headerSize = 16
+		size, headerSize, boxType, err := topLevelBox(header[:n], position, fileSize)
+		if err != nil {
+			return nil, nil, err
 		}
-		if size < headerSize || size > fileSize-position {
-			return nil, fmt.Errorf("%w: box %q has size %d", errSeekIndexUnsupported, boxType, size)
-		}
-		if boxType == "moov" {
+		switch boxType {
+		case "moov":
 			if size-headerSize > maxMovieBoxSize {
-				return nil, fmt.Errorf("%w: moov is too large (%d bytes)", errSeekIndexUnsupported, size)
+				return nil, nil, fmt.Errorf("%w: moov is too large (%d bytes)", errSeekIndexUnsupported, size)
 			}
-			movie := make([]byte, size-headerSize)
-			if _, err := readAt(ctx, r, movie, position+headerSize); err != nil {
-				return nil, err
+			if movie, err = readPayload(ctx, r, position+headerSize, size-headerSize); err != nil {
+				return nil, nil, err
 			}
-			return movie, nil
+			if !fragmented(movie) {
+				return movie, nil, nil
+			}
+		case "moof":
+			if fragmentBytes += size; fragmentBytes > maxMovieBoxSize {
+				return nil, nil, fmt.Errorf("%w: moof boxes exceed %d bytes", errSeekIndexUnsupported, maxMovieBoxSize)
+			}
+			payload, err := readPayload(ctx, r, position+headerSize, size-headerSize)
+			if err != nil {
+				return nil, nil, err
+			}
+			fragments = append(fragments, movieFragment{offset: position, payload: payload})
 		}
 		position += size
 	}
-	return nil, fmt.Errorf("%w: no moov", errSeekIndexUnsupported)
+	if movie == nil {
+		return nil, nil, fmt.Errorf("%w: no moov", errSeekIndexUnsupported)
+	}
+	// Fragments past the box limit are unread, and a partial index would repeat the last scene to the end.
+	if position+boxHeaderSize <= fileSize {
+		return nil, nil, fmt.Errorf("%w: more than %d top-level boxes", errSeekIndexUnsupported, maxTopLevelBoxes)
+	}
+	return movie, fragments, nil
+}
+
+// topLevelBox returns the size, header size and type of the box whose header starts the file at position.
+func topLevelBox(header []byte, position, fileSize int64) (size, headerSize int64, boxType string, err error) {
+	size = int64(binary.BigEndian.Uint32(header[:4]))
+	boxType = string(header[4:8])
+	headerSize = boxHeaderSize
+	switch size {
+	case 0:
+		size = fileSize - position
+	case 1:
+		if len(header) < 16 {
+			return 0, 0, "", fmt.Errorf("%w: box %q header is truncated", errSeekIndexUnsupported, boxType)
+		}
+		size = int64(binary.BigEndian.Uint64(header[8:16]))
+		headerSize = 16
+	}
+	if size < headerSize || size > fileSize-position {
+		return 0, 0, "", fmt.Errorf("%w: box %q has size %d", errSeekIndexUnsupported, boxType, size)
+	}
+	return size, headerSize, boxType, nil
+}
+
+func readPayload(ctx context.Context, r io.ReaderAt, offset, size int64) ([]byte, error) {
+	payload := make([]byte, size)
+	if _, err := readAt(ctx, r, payload, offset); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 // Select the first video track like ffmpeg; unsupported codecs return errSeekIndexUnsupported.
-func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
+func parseKeyframeTrack(movie []byte, fragments []movieFragment) (*keyframeTrack, error) {
 	boxes, err := parseBoxes(movie)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errSeekIndexUnsupported, err)
@@ -115,7 +154,7 @@ func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
 		if box.boxType != "trak" {
 			continue
 		}
-		track, err := parseVideoTrak(box.children, movieTimescaleValue)
+		track, err := parseVideoTrak(box.children, movieTimescaleValue, fragmentSource{fragments, boxes})
 		if errors.Is(err, errNotVideoTrack) {
 			continue
 		}
@@ -127,7 +166,7 @@ func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
 // Skip nonvideo and single-image cover tracks, matching ffmpeg 0:V:0.
 var errNotVideoTrack = errors.New("not a video track")
 
-func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, error) {
+func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64, source fragmentSource) (*keyframeTrack, error) {
 	mdia, err := childPayload(trak, "mdia")
 	if err != nil {
 		return nil, errNotVideoTrack
@@ -169,36 +208,27 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 		}
 		return nil, err
 	}
-	if table.count == 0 {
-		return nil, fmt.Errorf("%w: sample table is empty (fragmented MP4 or similar)", errSeekIndexUnsupported)
-	}
 	if track.displayFilter, err = displayFilter(trak); err != nil {
 		return nil, err
 	}
-	sync, err := syncSamples(boxes, table.count)
+	samples, err := table.keyframes(boxes)
+	if table.count == 0 {
+		samples, err = source.keyframes(trak)
+	}
 	if err != nil {
 		return nil, err
 	}
-	decode, err := table.decodeTimes(sync)
-	if err != nil {
-		return nil, err
-	}
-	offsets, err := table.offsets(sync)
-	if err != nil {
-		return nil, err
-	}
-	composition := table.compositionOffsets(sync)
 	shift, endUs, err := presentationWindow(trak, timescale, movieTimescaleValue)
 	if err != nil {
 		return nil, err
 	}
 
-	track.keyframes = make([]keyframe, len(sync))
-	for i, sample := range sync {
+	track.keyframes = make([]keyframe, len(samples))
+	for i, sample := range samples {
 		track.keyframes[i] = keyframe{
-			presentationUs: ticksToMicroseconds(decode[i]+composition[i]-shift, int64(timescale)),
-			offset:         offsets[i],
-			size:           table.size(sample),
+			presentationUs: ticksToMicroseconds(sample.decode+sample.composition-shift, int64(timescale)),
+			offset:         sample.offset,
+			size:           sample.size,
 		}
 	}
 	sort.SliceStable(track.keyframes, func(i, j int) bool {
@@ -271,6 +301,8 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 		t.format, configType = "h264", "avcC"
 	case "hvc1", "hev1":
 		t.format, configType = "hevc", "hvcC"
+	case "av01":
+		t.format, configType = "obu", "av1C"
 	default:
 		return fmt.Errorf("%w: video format %q", errSeekIndexUnsupported, entry.boxType)
 	}
@@ -285,10 +317,24 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	if err != nil {
 		return fmt.Errorf("%w: no %s", errSeekIndexUnsupported, configType)
 	}
-	if t.format == "h264" {
+	switch t.format {
+	case "h264":
 		return t.readAVCConfig(config)
+	case "obu":
+		return t.readAV1Config(config)
 	}
 	return t.readHEVCConfig(config)
+}
+
+// av1C holds a four-byte header followed by configOBUs, usually the sequence header.
+func (t *keyframeTrack) readAV1Config(config []byte) error {
+	if len(config) < 4 || config[0] != 0x81 {
+		return fmt.Errorf("%w: av1C has no version 1 marker", errSeekIndexUnsupported)
+	}
+	if len(config) > 4 {
+		t.parameterSets = [][]byte{config[4:]}
+	}
+	return nil
 }
 
 func (t *keyframeTrack) readAVCConfig(config []byte) error {
@@ -405,6 +451,36 @@ func requiredEntries(boxes []mp4Box, boxType string, entrySize int) ([][]byte, e
 		return nil, err
 	}
 	return fullBoxEntries(payload, entrySize, boxType)
+}
+
+// A keyframe in media timescale ticks, read from a sample table or a fragment.
+type keyframeSample struct {
+	decode, composition int64
+	offset, size        int64
+}
+
+func (s *sampleTable) keyframes(boxes []mp4Box) ([]keyframeSample, error) {
+	if s.count == 0 {
+		return nil, nil
+	}
+	sync, err := syncSamples(boxes, s.count)
+	if err != nil {
+		return nil, err
+	}
+	decode, err := s.decodeTimes(sync)
+	if err != nil {
+		return nil, err
+	}
+	offsets, err := s.offsets(sync)
+	if err != nil {
+		return nil, err
+	}
+	composition := s.compositionOffsets(sync)
+	samples := make([]keyframeSample, len(sync))
+	for i, sample := range sync {
+		samples[i] = keyframeSample{decode: decode[i], composition: composition[i], offset: offsets[i], size: s.size(sample)}
+	}
+	return samples, nil
 }
 
 func (s *sampleTable) size(sample int) int64 {
@@ -645,8 +721,11 @@ func (t *keyframeTrack) pick(layout domain.SeekSpriteLayout) []int {
 }
 
 // Convert length-prefixed NALs to Annex B with decoder parameters prepended, and report whether the
-// frame is IDR.
+// frame is IDR; AV1 samples become temporal units instead.
 func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
+	if t.format == "obu" {
+		return t.temporalUnit(sample), true, nil
+	}
 	startCode := []byte{0, 0, 0, 1}
 	var out []byte
 	for _, unit := range t.parameterSets {
@@ -675,6 +754,22 @@ func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 	}
 	return out, idr, nil
 }
+
+// An AV1 sync sample is a key frame, which resets decoder state like an IDR. ISOBMFF samples omit the
+// temporal delimiter that ffmpeg's obu demuxer splits temporal units on, so restore it.
+func (t *keyframeTrack) temporalUnit(sample []byte) []byte {
+	out := []byte{av1TemporalDelimiter, 0}
+	for _, obus := range t.parameterSets {
+		out = append(out, obus...)
+	}
+	if len(sample) >= 2 && sample[0] == av1TemporalDelimiter {
+		sample = sample[2:]
+	}
+	return append(out, sample...)
+}
+
+// OBU header for obu_type 2 with obu_has_size_field set; its payload size is zero.
+const av1TemporalDelimiter = 0x12
 
 // H.264 IDR uses type 5; HEVC uses types 19 and 20.
 func (t *keyframeTrack) isIDR(header byte) bool {

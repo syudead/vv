@@ -189,13 +189,32 @@ folder names above each video), the folder members of automatic groups, folder
 browsing and the import status are derived from SQLite, never from the
 filesystem.
 
+## Queue workers
+
+Each background queue has one worker that takes one item at a time. The
+waiting is shared: `jobs.Loop` runs a worker's step, then sleeps as the step
+asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
+`internal/app` (`AutoTagger.Step`, `VersionJudge.Step`, `FaceRecognizer.Step`)
+does the work and wakes its loop through the `Wake` function `cmd/mdm` passes
+in, so the application layer never imports the loop.
+
+| Step result | The loop |
+| --- | --- |
+| `WorkerNext` | Steps again at once |
+| `WorkerIdle` (an empty queue, the feature off) | Waits for a wakeup |
+| `WorkerRetry` (a failure that may pass) | Waits 5 seconds or for a wakeup |
+| Any other positive wait (the next scheduled retry) | Waits that long or for a wakeup |
+
+The loop steps once at startup, so work left from before a restart resumes,
+and stops when its context ends.
+
 ## Subsystem map
 
 | Package | Owns | Detail |
 | --- | --- | --- |
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
-| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md) |
+| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [Queue workers](#queue-workers) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |

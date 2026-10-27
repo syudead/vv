@@ -390,14 +390,18 @@ func dropJob(t *testing.T, db *DB, id int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = conn.Close() }()
 	if _, err := conn.ExecContext(ctx, `begin immediate`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().dropUnplacedJob(ctx, conn, id); err != nil {
+	c, err := db.Ingest().dropUnplacedJob(ctx, conn, id)
+	if err != nil {
 		_, _ = conn.ExecContext(ctx, `rollback`)
+	}
+	_ = conn.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
+	db.publish(c)
 }
 
 func TestScanActivityRecordsFailedScansUntilOneSucceeds(t *testing.T) {

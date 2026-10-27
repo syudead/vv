@@ -352,11 +352,11 @@ func TestIngestPassesSubstitutionToStore(t *testing.T) {
 	}{
 		{name: "代用なし", generator: &fakeGenerator{}, wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionNone},
 		{
-			name: "先頭のコマと全編から", generator: &fakeGenerator{firstFrame: true, fullDecode: true},
-			wantThumbnail: domain.SubstitutionUsed, wantSeek: domain.SubstitutionUsed,
+			name: "先頭のコマ", generator: &fakeGenerator{firstFrame: true},
+			wantThumbnail: domain.SubstitutionUsed, wantSeek: domain.SubstitutionNone,
 		},
 		{
-			name: "記録の無い既存のシーク用サムネイルを採用", generator: &fakeGenerator{seekPublished: true, fullDecode: true},
+			name: "記録の無い既存のシーク用サムネイルを採用", generator: &fakeGenerator{seekPublished: true},
 			wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionUnknown,
 		},
 		{

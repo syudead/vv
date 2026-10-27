@@ -71,7 +71,7 @@ type smartFolderTarget struct {
 	missing bool
 }
 
-// Owners see empty folders; guests require at least one playback item.
+// Only owners see smart folders.
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule) (smartFolderTarget, bool, error) {
 	target := smartFolderTarget{
 		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
@@ -88,14 +88,7 @@ func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audien
 		folder.ID).Scan(&target.summary.Favorite); err != nil {
 		return smartFolderTarget{}, false, fmt.Errorf("cannot read the smart folder favorite: %w", err)
 	}
-	if audience.IsOwner() {
-		return target, true, nil
-	}
-	if target.missing {
-		return target, false, nil
-	}
-	shown, err := smartFolderHasItems(ctx, tx, target.spec)
-	return target, shown, err
+	return target, audience.IsOwner(), nil
 }
 
 func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (smartFolderTarget, bool, error) {
@@ -113,8 +106,11 @@ func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	return smartFolderTargetOf(ctx, tx, audience, folder, rules)
 }
 
-// Deduplicate and preserve input order while selecting existing audience-visible folders.
+// Deduplicate and preserve input order while selecting existing folders; guests see none.
 func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64) ([]smartFolderTarget, error) {
+	if !audience.IsOwner() {
+		return nil, nil
+	}
 	targets := make([]smartFolderTarget, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
 	for _, id := range ids {
@@ -131,15 +127,6 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 		}
 	}
 	return targets, nil
-}
-
-func smartFolderHasItems(ctx context.Context, tx *sql.Tx, spec listSpec) (bool, error) {
-	cte, args := libraryItemsCTE(spec)
-	var found bool
-	if err := tx.QueryRowContext(ctx, cte+` select exists (select 1 from items)`, args...).Scan(&found); err != nil {
-		return false, fmt.Errorf("cannot read whether the smart folder has items: %w", err)
-	}
-	return found, nil
 }
 
 type smartFolderQuery struct {

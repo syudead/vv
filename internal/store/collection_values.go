@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -16,15 +17,18 @@ func audienceValue(audience domain.Audience) int {
 	return 0
 }
 
-// Writes refresh collection information before commit. Startup and writes made outside the store
-// use this recovery path; unchanged pages perform only the pending check.
+// Writes only mark collections; list and group reads, and startup, refresh the marks here. Unchanged
+// pages perform only the pending check.
 func (db *DB) RefreshCollectionValues(ctx context.Context) error {
-	var pending bool
-	if err := db.read.QueryRowContext(ctx, `select exists (select 1 from collection_changes)`).Scan(&pending); err != nil {
-		return fmt.Errorf("cannot read collection changes: %w", err)
+	pending, err := db.collectionChangesPending(ctx)
+	if err != nil || !pending {
+		return err
 	}
-	if !pending {
-		return nil
+	db.refreshMu.Lock()
+	defer db.refreshMu.Unlock()
+	// A reader that waited finds the marks cleared by the one before it.
+	if pending, err := db.collectionChangesPending(ctx); err != nil || !pending {
+		return err
 	}
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -37,30 +41,47 @@ func (db *DB) RefreshCollectionValues(ctx context.Context) error {
 	return tx.Commit()
 }
 
+func (db *DB) collectionChangesPending(ctx context.Context) (bool, error) {
+	var pending bool
+	if err := db.read.QueryRowContext(ctx, `select exists (select 1 from collection_changes)`).Scan(&pending); err != nil {
+		return false, fmt.Errorf("cannot read collection changes: %w", err)
+	}
+	return pending, nil
+}
+
 func refreshCollectionValues(ctx context.Context, tx *sql.Tx) error {
-	for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
-		if err := refreshGroupValues(ctx, tx, audience); err != nil {
-			return err
+	ids, err := queryInt64s(ctx, tx, changedGroupsSQL)
+	if err != nil {
+		return fmt.Errorf("cannot read the changed groups: %w", err)
+	}
+	if len(ids) > 0 {
+		// Formatted integers are safe to inline, which keeps the statements free of repeated arguments.
+		rows := make([]string, len(ids))
+		for i, id := range ids {
+			rows[i] = "(" + strconv.FormatInt(id, 10) + ")"
 		}
-		if err := refreshSmartFolderValues(ctx, tx, audience); err != nil {
-			return err
+		roots := `select column1 as id from (values ` + strings.Join(rows, ", ") + `)`
+		for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
+			if err := refreshGroupValues(ctx, tx, audience, roots); err != nil {
+				return err
+			}
 		}
 	}
-	_, err := tx.ExecContext(ctx, `delete from collection_changes`)
+	_, err = tx.ExecContext(ctx, `delete from collection_changes`)
 	return err
 }
 
-func changedCollections(kind, table string) string {
-	return `select id from ` + table + ` where exists (select 1 from collection_changes
-		where kind = '` + kind + `' and id = 0) or id in (select id from collection_changes where kind = '` + kind + `')`
-}
+// changedGroupsSQL selects the marked groups and their ancestors, whose members include a marked group's videos;
+// mark 0 selects every group.
+const changedGroupsSQL = `with recursive marked(id) as (
+		select id from groups where exists (select 1 from collection_changes where kind = 'group' and id = 0)
+		union
+		select id from collection_changes where kind = 'group' and id <> 0
+		union
+		select gi.group_id from group_items gi join marked on gi.child_id = marked.id)
+	select g.id from groups g join marked on marked.id = g.id`
 
-func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audience) error {
-	var pending bool
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from collection_changes where kind = 'group')`).Scan(&pending); err != nil || !pending {
-		return err
-	}
-	roots := changedCollections("group", "groups")
+func refreshGroupValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, roots string) error {
 	a := strconv.Itoa(audienceValue(audience))
 	statements := []string{
 		`delete from group_members where audience = ` + a + ` and group_id in (` + roots + `)`,

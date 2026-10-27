@@ -63,7 +63,10 @@ policy rather than copying neighbouring tests' setup.
    without the fix when practicable; otherwise state the limitation. For
    cancellation or synchronization changes, temporarily disable the behaviour
    and confirm failure as required by the policy. Never commit the mutation.
-4. Run the checks required by the owning workflow and `AGENTS.md`. A delegated
+4. After a push, read Codecov's coverage report on the PR. Each changed line
+   it lists as uncovered needs a selected case, or the report names it with
+   the reason it stays uncovered.
+5. Run the checks required by the owning workflow and `AGENTS.md`. A delegated
    worker runs its focused checks and leaves full validation and push to its
    parent; this skill grants no branch, push or merge authority.
 

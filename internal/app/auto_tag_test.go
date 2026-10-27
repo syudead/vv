@@ -195,16 +195,9 @@ func (f *fakeImages) SeekFramesJPEG(key string, n int) ([][]byte, error) {
 
 func runAutoTagger(t *testing.T, tagger *AutoTagger) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		tagger.Run(ctx)
-		close(done)
-	}()
-	t.Cleanup(func() {
-		cancel()
-		<-done
-	})
+	loop := newTestLoop()
+	tagger.Waker = loop.Wake
+	loop.run(t, tagger.Step)
 }
 
 func waitAutoTagDone(t *testing.T, q *fakeAutoTagQueue) string {
@@ -322,10 +315,12 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 func TestAutoTaggerVideoImagesFinishedOnlyWakes(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{Enabled: true, AfterImport: true}}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
+	woken := 0
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{},
+		Wake: func() { woken++ }})
 
 	tagger.VideoImagesFinished(context.Background(), 5)
-	if len(tagger.wake) != 1 {
+	if woken != 1 {
 		t.Fatal("ワーカーを起こしていない")
 	}
 	if len(queue.queuedIDs) != 0 || len(queue.modes) != 0 {
