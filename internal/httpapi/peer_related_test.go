@@ -3,11 +3,11 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/app"
@@ -140,58 +140,37 @@ func TestRelatedVideosOfARemoteVideoRankLikeOnItsNode(t *testing.T) {
 	}
 }
 
-// peerRelatedScores posts a ranking request to b as its peer a and returns the whole points by b's video name.
-func peerRelatedScores(t *testing.T, onA *peerNode, b *guestFixture, audience, body string) map[string]int64 {
-	t.Helper()
-	header := map[string]string{"Authorization": "VV-Peer " + onA.outgoingSecret(t)}
-	if audience != "" {
-		header[peerAudienceHeader] = audience
-	}
-	rec := b.env.serve(authRequest{method: http.MethodPost, target: peerRelatedPath, body: body, header: header})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("%s: status = %d: %s", body, rec.Code, rec.Body)
-	}
-	names := make(map[int64]string, len(b.ids))
-	for name, id := range b.ids {
-		names[id] = name
-	}
-	scores := map[string]int64{}
-	for _, item := range decode[gen.PeerRelatedPage](t, rec).Items {
-		scores[names[item.Video.Id]] = item.Score / int64(domain.RelatedScoreUnit)
-	}
-	return scores
-}
+// acceptingPairing takes every peer credential; the other pairing operations are not used.
+type acceptingPairing struct{ Pairing }
 
-func TestRankPeerRelatedGivesFolderPointsByTheOpenVideo(t *testing.T) {
-	_, b, onA, _ := relatedNodes(t)
-	id := func(name string) string { return strconv.FormatInt(b.ids[name], 10) }
-	// The clues share nothing with b's videos and are dated long before them, so only the folder can score.
-	request := func(extra string) string {
-		return `{"clues":{"tags":[],"words":[],"addedAt":"2000-01-01T00:00:00Z"}` + extra + `}`
-	}
+func (acceptingPairing) Authenticate(context.Context, string) (bool, error) { return true, nil }
 
+func TestRankPeerRelatedPassesTheOpenVideoID(t *testing.T) {
+	const clues = `"clues":{"tags":[],"words":[],"addedAt":"2000-01-01T00:00:00Z"}`
 	for _, tc := range []struct {
-		name, audience, body string
-		want                 map[string]int64
+		name, body string
+		status     int
+		want       []int64
 	}{
-		{"open video", "", request(`,"exclude":[` + id("a") + `],"openVideoId":` + id("a")),
-			map[string]int64{"b": 20, "c": 0, "d": 0, "e": 0}},
-		{"no open video", "", request(`,"exclude":[` + id("a") + `]`),
-			map[string]int64{"b": 0, "c": 0, "d": 0, "e": 0}},
-		{"unknown id", "", request(`,"exclude":[` + id("a") + `],"openVideoId":999999`),
-			map[string]int64{"b": 0, "c": 0, "d": 0, "e": 0}},
-		// b is not public, so a guest's ranking takes no folder from it.
-		{"hidden from the audience", "guest", request(`,"openVideoId":` + id("b")),
-			map[string]int64{"a": 0, "d": 0}},
+		{"open video", `{` + clues + `,"openVideoId":7}`, http.StatusOK, []int64{7}},
+		{"no open video", `{` + clues + `}`, http.StatusOK, []int64{0}},
+		{"open video 0", `{` + clues + `,"openVideoId":0}`, http.StatusBadRequest, nil},
 	} {
-		if got := peerRelatedScores(t, onA, b, tc.audience, tc.body); !maps.Equal(got, tc.want) {
-			t.Errorf("%s: 点数 = %v, want %v", tc.name, got, tc.want)
+		catalog := &fakeCatalog{}
+		handler := newTestServer(t, Options{Catalog: catalog, Pairing: acceptingPairing{}})
+		req := httptest.NewRequest(http.MethodPost, peerRelatedPath, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "VV-Peer secret")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != tc.status {
+			t.Errorf("%s: status = %d, want %d: %s", tc.name, rec.Code, tc.status, rec.Body)
+		}
+		if !slices.Equal(catalog.peerRelatedOpen, tc.want) {
+			t.Errorf("%s: catalog に渡した openID = %v, want %v", tc.name, catalog.peerRelatedOpen, tc.want)
 		}
 	}
-
-	rec := b.env.serve(authRequest{method: http.MethodPost, target: peerRelatedPath, body: request(`,"openVideoId":0`),
-		header: map[string]string{"Authorization": "VV-Peer " + onA.outgoingSecret(t)}})
-	assertStatus(t, "openVideoId 0", rec, http.StatusBadRequest)
 }
 
 func TestCluesFromRefusesAFingerprintLongerThanASprite(t *testing.T) {
