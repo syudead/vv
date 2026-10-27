@@ -137,7 +137,7 @@ export interface paths {
         };
         /**
          * List videos
-         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, tags, people, organizations, tag kind and favorites. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`, except to the paired VVMDM's credential, which filters for its guests the videos it adds to a smart folder. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -241,7 +241,7 @@ export interface paths {
         };
         /**
          * Return related videos
-         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`.
+         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out.
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -622,7 +622,7 @@ export interface paths {
         get?: never;
         /**
          * Save display name and work information atomically
-         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed.
+         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details. For a virtual video displayName sets its title: contentVersion is required, an empty displayName returns 400 invalid_title, a deleted or merged video returns 404 video_not_found and another contentVersion returns 409 content_changed. For the peer's video a person or organization may be given by name, which the peer creates when it lacks it.
          */
         put: operations["setVideoDetails"];
         post?: never;
@@ -1461,6 +1461,250 @@ export interface paths {
          * @description Unknown IDs also return 204, making repeated revocation idempotent.
          */
         delete: operations["deleteApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the pairing state
+         * @description Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the peer is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the peer's node id and version (reason version when either differs); a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the peer revokes its credential here and gives revoked.
+         */
+        get: operations["getPeer"];
+        put?: never;
+        post?: never;
+        /**
+         * Unpair from the peer
+         * @description Tells the peer through its forgetPeer, best effort, then deletes the peer record and nothing else, which also clears a revoked state. A peer that could not be told learns it from the 401 peer_unknown its next request receives. Without a peer it also returns 204.
+         */
+        delete: operations["unpairPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue this node's pairing code
+         * @description Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired.
+         */
+        post: operations["issuePairingCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pair with the node whose code the owner typed
+         * @description An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         */
+        post: operations["pairPeer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/address": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the peer's address
+         * @description Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found.
+         */
+        put: operations["updatePeerAddress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trust the peer's changed certificate
+         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation.
+         */
+        post: operations["confirmPeerCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a pairing from another node
+         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint.
+         */
+        post: operations["acceptPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/handshake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return this node's identity to the peer
+         * @description Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown.
+         */
+        get: operations["peerHandshake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/pairings/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete the record of a peer that unpaired
+         * @description Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204.
+         */
+        delete: operations["forgetPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Score this node's videos against a video of the other node
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Scores the visible videos of this node, except `exclude`, against `clues` with the related-video scorer and returns one page in the related order (score, then newer addedAt, then larger id) after `cursor`. The clues carry no directory: the same-directory clue counts only when `openVideoId` names this node's video that the caller's audience can see, and then from that video's representative directory, as this node's own related list does. An unknown or hidden `openVideoId` gives no folder points and no error. See docs/design-docs/related-videos.md.
+         */
+        post: operations["rankPeerRelated"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/vocabulary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename, merge or delete a tag, person or organization by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Applies the change by canonical name in one transaction. A missing `name` changes nothing and returns `changed: false`; a merge skips the absent `sources`, returning them in `skipped`, and creates `into` only when a source exists. A person or organization name held by several entries names the lowest id. A `newName` another entry holds returns 409 conflict with tag_name_taken (with `tagName`), person_name_taken or organization_name_taken; a `newName` or `into` that breaks the name rule returns 400 invalid_request with the tag name or work-info reasons. Nothing changes on an error.
+         */
+        post: operations["applyPeerVocabulary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/videos/{id}/clues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the related-video clues of one video
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. A video the request's audience cannot see, or a missing one, returns 404.
+         */
+        get: operations["getPeerRelatedClues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/rule-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count this node's videos matching smart-folder rules given by name
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. For each rule, counts the videos of this node the request's audience can see that match it as a smart folder of this node would: q with the owner's search fields, and tags, kind, person and organization by canonical name, where a name this node lacks matches no video. Returns the counts in the order of rules.
+         */
+        post: operations["countPeerRuleMatches"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2439,7 +2683,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -2459,7 +2703,7 @@ export interface paths {
         put?: never;
         /**
          * Summarize tags on selected videos
-         * @description Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order.
+         * @description Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by tag name; when the peer does not answer, the summary covers this node's videos only.
          */
         post: operations["summarizeVideoTags"];
         delete?: never;
@@ -2478,7 +2722,7 @@ export interface paths {
         get?: never;
         /**
          * Change video visibility
-         * @description Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private.
+         * @description Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         put: operations["updateVideoVisibility"];
         post?: never;
@@ -2499,7 +2743,7 @@ export interface paths {
         put?: never;
         /**
          * Summarize the editable values of selected videos
-         * @description Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has.
+         * @description Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's summary, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Counts merge by the name of the tag, person or organization, a provisional person staying apart; when the peer does not answer, the summary covers this node's videos only.
          */
         post: operations["summarizeVideoEdits"];
         delete?: never;
@@ -2519,7 +2763,7 @@ export interface paths {
         put?: never;
         /**
          * Apply one bulk edit to selected videos
-         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints.
+         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["applyVideoEdits"];
         delete?: never;
@@ -2539,7 +2783,7 @@ export interface paths {
         put?: never;
         /**
          * List the code rows of selected videos
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds, as summarizeVideoEdits does, under a limit of 1–1,000 distinct videos counted before bundling; over it returns 400 too_many_videos with limit 1000. Returns one row per user-data key of the resolved videos in the library, in the order the videos were first listed. A row's video is the owner list item of the key's shown video (a bundle's representative) and code the key's current code, absent when there is none. Uses `Cache-Control: no-store`. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node and reads each node's rows, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. This node's rows come first; when the peer does not answer, the rows cover this node's videos only.
          */
         post: operations["summarizeVideoCodeEdits"];
         delete?: never;
@@ -2559,7 +2803,7 @@ export interface paths {
         put?: never;
         /**
          * Write one code per selected video
-         * @description Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`.
+         * @description Owner-only. Replaces only the code of each item's user-data key, keeping the key's other work information, in one transaction. The code itself is last-write-wins. Errors write nothing and name the item in `field`: 400 invalid_request for no items, over 1,000 items, a repeated videoId (items[i].videoId) or a second item on a key an earlier item already writes (items[i].videoId); 400 work_info_empty, work_info_too_long or work_info_control_characters at items[i].code; 404 video_not_found at items[i].videoId for a missing, hidden or merged video; 409 content_changed at items[i].contentVersion when the video's contentVersion differs from the item's. A missing video is reported before a changed one. Emits the same events as setVideoWorkInfo for every video of each changed key and writes no activity. Uses `Cache-Control: no-store`. Items whose videoId is at or above 2^40 name the paired VVMDM's videos: the local items are applied first in one transaction, then the peer's in one forwarded request; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
          */
         post: operations["applyVideoCodeEdits"];
         delete?: never;
@@ -2579,7 +2823,7 @@ export interface paths {
         put?: never;
         /**
          * Dissolve groups and delete smart folders in bulk
-         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations.
+         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations. Ids at or above 2^40 name the paired VVMDM's collections: the local ids are applied first in one transaction, then the peer's in one forwarded request; the counts cover both nodes, and remote reports the peer's part, with the peer's ids that were not removed when it failed.
          */
         post: operations["deleteCollections"];
         delete?: never;
@@ -2815,7 +3059,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle videos as versions of the same video
-         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit.
+         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found; a virtual video returns 409 virtual_video. Errors change nothing. Emits video events for all members after commit. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["bundleVideos"];
         delete?: never;
@@ -3070,13 +3314,13 @@ export interface paths {
         };
         /**
          * List visible groups by name
-         * @description Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request.
+         * @description Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request. With node=peer the request is forwarded to the paired VVMDM, whose nextCursor is passed through and whose group and video ids carry 2^40; while the peer is not connected it returns 503 service_unavailable with peer_unreachable.
          */
         get: operations["listGroups"];
         put?: never;
         /**
          * Create a group from videos and groups
-         * @description Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything.
+         * @description Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["createGroup"];
         delete?: never;
@@ -3128,7 +3372,7 @@ export interface paths {
         put?: never;
         /**
          * Append videos and groups to a group
-         * @description Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found.
+         * @description Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["addGroupItems"];
         delete?: never;
@@ -3300,7 +3544,7 @@ export interface paths {
         put?: never;
         /**
          * Reorder group items together and return an undo token
-         * @description Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing.
+         * @description Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeReorder"];
         delete?: never;
@@ -3320,7 +3564,7 @@ export interface paths {
         put?: never;
         /**
          * Create a group from dragged videos and the drop target
-         * @description Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing.
+         * @description Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeGroup"];
         delete?: never;
@@ -3340,7 +3584,7 @@ export interface paths {
         put?: never;
         /**
          * Move cards into, between or out of groups and return an undo token
-         * @description Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing.
+         * @description Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeMove"];
         delete?: never;
@@ -3360,7 +3604,7 @@ export interface paths {
         put?: never;
         /**
          * Merge dragged groups and return an undo token
-         * @description Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing.
+         * @description Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeMerge"];
         delete?: never;
@@ -3380,7 +3624,7 @@ export interface paths {
         put?: never;
         /**
          * Bundle dragged videos with the drop target as representative
-         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing.
+         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found; a virtual video returns 409 virtual_video. Errors write nothing. Ids at or above 2^40 name the paired VVMDM's videos and groups: when every id does, the request is forwarded to the peer and its answer's ids carry 2^40; ids of both nodes return 400 invalid_request with mixed_nodes.
          */
         post: operations["organizeBundle"];
         delete?: never;
@@ -3400,7 +3644,7 @@ export interface paths {
         put?: never;
         /**
          * Undo a drag operation
-         * @description Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use.
+         * @description Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use. A token from a forwarded operation is undone on the paired VVMDM.
          */
         post: operations["organizeUndo"];
         delete?: never;
@@ -3478,7 +3722,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates and activity are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4632,10 +4876,12 @@ export interface components {
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
         };
-        /** @description Write reference to one person or organization. */
+        /** @description Write reference to one person or organization: id, or name alone in work information saved for the peer's video (an id at or above 2^40), which the peer resolves by name and creates when it lacks it. A name in any other save, or both or neither, returns 400 invalid_request. */
         CreditIdRef: {
             /** Format: int64 */
-            id: number;
+            id?: number;
+            /** @description A person or organization the peer may lack, so this node creates nothing for the peer's video. */
+            name?: string;
         };
         WorkPersonInput: {
             role: components["schemas"]["WorkPersonRole"];
@@ -4983,6 +5229,7 @@ export interface components {
             tag: components["schemas"]["TagRef"];
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoVisibilityRequest: {
             /** @description Video IDs to change. May be empty when smartFolderIds is not. */
@@ -5003,6 +5250,15 @@ export interface components {
             dissolvedGroups: number;
             /** @description Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted. */
             deletedSmartFolders: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
+        };
+        /** @description The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails. */
+        RemoteSelectionResult: {
+            /** @description Videos or collections changed on the peer. */
+            applied: number;
+            /** @description Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success. */
+            failedVideoIds: number[];
+            reason?: components["schemas"]["ErrorReason"];
         };
         FavoritesRequest: {
             /** @description Video IDs whose favorite state changes. */
@@ -5133,6 +5389,7 @@ export interface components {
             applied: number;
             /** @description The tags of tags.add as resolved, in request order without repeats. */
             tags: components["schemas"]["TagRef"][];
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoCodeEditSummary: {
             /** @description One row per user-data key, in the order the resolved videos were first listed. */
@@ -5161,6 +5418,7 @@ export interface components {
         VideoCodeEditResponse: {
             /** @description Number of user-data keys whose code changed; a key that already had the item's code is not counted. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoEditSummary: {
             total: number;
@@ -5203,6 +5461,7 @@ export interface components {
         VideoVisibilityResponse: {
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state. */
             applied: number;
+            remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoTagsSummaryRequest: {
             /** @description Video IDs to summarize. May be empty when smartFolderIds is not. */
@@ -5268,6 +5527,8 @@ export interface components {
             nextCursor?: string;
             /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
+            /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
@@ -5277,6 +5538,15 @@ export interface components {
             nextCursor?: string;
             /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
+            /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
+        };
+        /** @description One listed item's place for merging lists of two paired VVMDMs. */
+        PeerListItem: {
+            /** @description Cursor that continues the list after this item. */
+            cursor: string;
+            /** @description The item's value under the request's sort as the cursor encodes it; null sorts last. */
+            sortValue: string | null;
         };
         /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards. */
         LibraryItem: {
@@ -5615,6 +5885,7 @@ export interface components {
             tags: components["schemas"]["VideoTag"][];
             /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
+            peerRule?: components["schemas"]["PeerSmartRule"];
         };
         /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {
@@ -5646,12 +5917,16 @@ export interface components {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description Included only when more results remain; pass to listSmartFolderItems. */
             nextCursor?: string;
+            /** @description Requests with the paired VVMDM's credential only: one entry per video or group item, in order, after the child folders. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description GET /api/smart-folders/{id}/items response. */
         SmartFolderItemPage: {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description Included only when more results remain. */
             nextCursor?: string;
+            /** @description Requests with the paired VVMDM's credential only: one entry per item, in order. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description POST /api/smart-folders body. */
         SmartFolderCreate: {
@@ -7025,12 +7300,203 @@ export interface components {
              */
             id: number;
         };
+        PeerNode: {
+            /** @description Node id, a UUID created on first start */
+            id: string;
+            /** @description Host name */
+            name: string;
+            /** @description Release version, as getHealth reports it */
+            version: string;
+        };
+        PeerInfo: {
+            /** @description The peer's host name at pairing */
+            name: string;
+            /** @description The peer's base URL */
+            address: string;
+            /** @description Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted */
+            pinned: boolean;
+            /** @description The peer version last seen; with reason version, the one that differs */
+            version?: string;
+        };
+        /** @description Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity. */
+        PeerState: {
+            /** @enum {string} */
+            state: "unpaired" | "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "version" | "certificate";
+            peer?: components["schemas"]["PeerInfo"];
+            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
+            fingerprint?: string;
+            node?: components["schemas"]["PeerNode"];
+        };
+        PairingCode: {
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        PairPeerRequest: {
+            /** @description The other node's base URL, http or https, without a path */
+            address: string;
+            /** @description The code the other node's Pairing page shows */
+            code: string;
+            /** @description This node's base URL as the other node can reach it */
+            ownAddress: string;
+            /** @description The SPKI fingerprint the owner confirmed after certificate_untrusted */
+            fingerprint?: string;
+            /** @description The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified */
+            ownFingerprint?: string;
+        };
+        UpdatePeerAddressRequest: {
+            address: string;
+        };
+        PeerCertificateRequest: {
+            /** @description The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI */
+            fingerprint: string;
+        };
+        PairingRequestNode: {
+            id: string;
+            /** @description 1 to 100 code points */
+            name: string;
+            /** @description The sender's base URL as the receiver can reach it */
+            address: string;
+            /** @description Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate. */
+            fingerprint?: string;
+            version: string;
+        };
+        PairingRequest: {
+            code: string;
+            node: components["schemas"]["PairingRequestNode"];
+            /** @description What the receiver will present to the sender: vvp_ and 43 base64url characters */
+            secret: string;
+        };
+        PairingAnswer: {
+            node: components["schemas"]["PeerNode"];
+            /** @description What the sender presents to the receiver */
+            secret: string;
+        };
+        PeerHandshake: {
+            node: components["schemas"]["PeerNode"];
+        };
+        /** @description What the node holding a video sends so the other node can score its own videos against it; no directory. */
+        RelatedClues: {
+            fingerprint?: components["schemas"]["RelatedFingerprint"];
+            /** @description Names of the video's confirmed, tentative and folder-name tags */
+            tags: string[];
+            /** @description The words the scorer takes from the title and the file name */
+            words: string[];
+            /** Format: date-time */
+            addedAt: string;
+        };
+        RelatedFingerprint: {
+            version: number;
+            /** Format: int64 */
+            intervalMs: number;
+            /**
+             * Format: byte
+             * @description The encoded frame hashes, as stored
+             */
+            frames: string;
+        };
+        PeerRelatedRequest: {
+            clues: components["schemas"]["RelatedClues"];
+            /** @description This node's video ids to leave out: the open video and its group members when held here */
+            exclude?: number[];
+            /**
+             * Format: int64
+             * @description The open video, in this node's ids, when this node holds it; omit when the caller holds it. It adds the same-directory clue for this node's videos in its directory
+             */
+            openVideoId?: number;
+            /** @description Previous `nextCursor`; omit to start at the beginning */
+            cursor?: string;
+            /** @default 30 */
+            limit: number;
+        };
+        PeerVocabularyRequest: {
+            /** @enum {string} */
+            kind: "tag" | "person" | "organization";
+            /** @enum {string} */
+            action: "rename" | "merge" | "delete";
+            /** @description The current canonical name; required for rename and delete */
+            name?: string;
+            /** @description Required for rename */
+            newName?: string;
+            /** @description The merge destination, created when absent; required for merge */
+            into?: string;
+            /** @description The names merged into `into`; required for merge */
+            sources?: string[];
+        };
+        PeerVocabularyResult: {
+            /** @description False when the entry is absent on this node, or no source of a merge is */
+            changed: boolean;
+            /** @description The merge sources absent on this node */
+            skipped: string[];
+        };
+        PeerRelatedPage: {
+            items: components["schemas"]["PeerRelatedItem"][];
+            /** @description Value for the next cursor; omitted at the end */
+            nextCursor?: string;
+        };
+        PeerRelatedItem: {
+            /**
+             * Format: int64
+             * @description The scorer's points in millionths
+             */
+            score: number;
+            video: components["schemas"]["Video"];
+        };
+        /** @description A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video. */
+        SmartRuleByName: {
+            /** @description Search input; the rules' inputs joined by spaces. */
+            q?: string;
+            /** @description Tags every matching video carries. */
+            tagNames?: string[];
+            tagKindName?: string;
+            personName?: string;
+            organizationName?: string;
+        };
+        /** @description One entity a smart rule names, with its canonical name. */
+        SmartRuleRefName: {
+            /** @enum {string} */
+            kind: "tag" | "tagKind" | "person" | "organization";
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder. */
+        PeerSmartRule: {
+            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos. */
+            favorite: boolean;
+            match?: components["schemas"]["SmartRuleByName"];
+            sort?: components["schemas"]["VideoSort"];
+            /** @description getSmartFolder only, with sort: the entities of this folder's own rule with their names; a missing one is left out. */
+            names?: components["schemas"]["SmartRuleRefName"][];
+        };
+        PeerRuleCountsRequest: {
+            rules: components["schemas"]["SmartRuleByName"][];
+        };
+        PeerRuleCounts: {
+            /** @description In the order of rules. */
+            items: components["schemas"]["PeerRuleCount"][];
+        };
+        PeerRuleCount: {
+            videoCount: number;
+            /**
+             * Format: int64
+             * @description Sum of known durations; omitted when none is known.
+             */
+            durationMs?: number;
+            /** Format: int64 */
+            sizeBytes: number;
+        };
         Error: {
             /**
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -7046,6 +7512,12 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
+            /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate. */
+            fingerprint?: string;
+            /** @description This node's release version; only for unsupported_version. */
+            localVersion?: string;
+            /** @description The other node's release version; only for unsupported_version. */
+            peerVersion?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
         };
@@ -7053,7 +7525,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "unsupported_version" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "own_certificate_unverified";
     };
     responses: {
         /** @description Resource not found */
@@ -7160,12 +7632,20 @@ export interface components {
         VideoId: number;
         /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonFilter: number;
-        /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonRoleFilter: components["schemas"]["WorkPersonRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
         /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
+        /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        TagNameFilter: string[];
+        /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+        TagKindNameFilter: string;
+        /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+        PersonNameFilter: string;
+        /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+        OrganizationNameFilter: string;
         /** @description Media folder ID */
         MediaFolderId: number;
         /** @description API token ID */
@@ -7465,12 +7945,20 @@ export interface operations {
                 tag?: number[];
                 /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
                 /** @description Restrict to videos with a file (`file`) or virtual videos (`virtual`); `all` lists both. */
                 kind?: "all" | "file" | "virtual";
             };
@@ -7515,6 +8003,14 @@ export interface operations {
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
             path?: never;
@@ -9766,6 +10262,328 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pairing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+        };
+    };
+    unpairPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unpaired */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    issuePairingCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pairing code */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingCode"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    pairPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairPeerRequest"];
+            };
+        };
+        responses: {
+            /** @description Paired; the state is connected */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updatePeerAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePeerAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Pairing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    confirmPeerCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerCertificateRequest"];
+            };
+        };
+        responses: {
+            /** @description Pairing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerState"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    acceptPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingRequest"];
+            };
+        };
+        responses: {
+            /** @description Paired; secret is what the sender presents to this node */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingAnswer"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    peerHandshake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerHandshake"];
+                };
+            };
+            /** @description Unknown secret */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    forgetPeer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The caller's node id */
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forgotten */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rankPeerRelated: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerRelatedRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of scored videos */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerRelatedPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyPeerVocabulary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerVocabularyRequest"];
+            };
+        };
+        responses: {
+            /** @description Whether this node changed, and the absent sources */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerVocabularyResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getPeerRelatedClues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The video's clues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedClues"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    countPeerRuleMatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerRuleCountsRequest"];
+            };
+        };
+        responses: {
+            /** @description One count per rule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerRuleCounts"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     listWorkInfoPlugins: {
@@ -12484,12 +13302,20 @@ export interface operations {
                 tag?: number[];
                 /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person` or `personName`; without either, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
                 personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /** @description One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                tagName?: components["parameters"]["TagNameFilter"];
+                /** @description Tag-kind name; follows `tagKind` semantics, and a name no kind has matches no video. */
+                tagKindName?: components["parameters"]["TagKindNameFilter"];
+                /** @description Canonical person name; follows `person` semantics for every person with that name, and `personRole` applies to it as to `person`. A name no person has matches no video. */
+                personName?: components["parameters"]["PersonNameFilter"];
+                /** @description Canonical organization name; follows `organization` semantics, and a name no organization has matches no video. */
+                organizationName?: components["parameters"]["OrganizationNameFilter"];
             };
             header?: never;
             path: {
@@ -12516,6 +13342,8 @@ export interface operations {
     listGroups: {
         parameters: {
             query?: {
+                /** @description Node whose groups are listed: this one (local) or the paired VVMDM (peer). The picker sends the node of the selected videos. */
+                node?: "local" | "peer";
                 /** @description Trimmed, case-insensitive name substring */
                 q?: string;
                 /** @description Opaque `nextCursor` from the previous response */

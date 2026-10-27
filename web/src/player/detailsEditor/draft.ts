@@ -240,11 +240,21 @@ export function draftChanged(draft: Draft, loaded: Draft): boolean {
 /** Map server field paths to details-${control} inputs for errors and focus. */
 export type FieldTargets = ReadonlyMap<string, string>;
 
-/** Omit empty rows and unresolved new credits; map submitted indices back to inputs for field errors. Create new credits before calling. */
-export function toDetailsInput(draft: Draft): {
+/**
+ * Omit empty rows; map submitted indices back to inputs for field errors. New credits are omitted, so
+ * create them before calling, unless byName sends them by name: the peer's video creates them on the
+ * peer, never on this node.
+ */
+export function toDetailsInput(
+  draft: Draft,
+  { byName = false }: { byName?: boolean } = {},
+): {
   body: VideoDetailsInput;
   targets: FieldTargets;
 } {
+  const sent = (chip: Chip) => byName || !isNewChip(chip);
+  const ref = (chip: Chip) => (isNewChip(chip) ? { name: chip.name } : { id: chip.id });
+  const refField = (chip: Chip) => (isNewChip(chip) ? "name" : "id");
   const targets = new Map<string, string>([
     ["displayName", "name"],
     ["code", "code"],
@@ -259,20 +269,19 @@ export function toDetailsInput(draft: Draft): {
     targets.set(`dates[${String(index)}].date`, `date-${date.kind}`);
   });
   const people = workPersonRoles.flatMap((role) =>
-    draft.people[role].flatMap((chip) =>
-      isNewChip(chip) ? [] : [{ role, chip, id: chip.id }],
-    ),
+    draft.people[role].filter(sent).map((chip) => ({ role, chip })),
   );
   people.forEach(({ chip }, index) => {
-    targets.set(`people[${String(index)}].person.id`, `chip-${chip.key}`);
+    targets.set(`people[${String(index)}].person.${refField(chip)}`, `chip-${chip.key}`);
   });
   const organizations = workOrganizationRoles.flatMap((role) =>
-    draft.organizations[role].flatMap((chip) =>
-      isNewChip(chip) ? [] : [{ role, chip, id: chip.id }],
-    ),
+    draft.organizations[role].filter(sent).map((chip) => ({ role, chip })),
   );
   organizations.forEach(({ chip }, index) => {
-    targets.set(`organizations[${String(index)}].organization.id`, `chip-${chip.key}`);
+    targets.set(
+      `organizations[${String(index)}].organization.${refField(chip)}`,
+      `chip-${chip.key}`,
+    );
   });
   const urls = draft.urls.filter((row) => row.url.trim() !== "");
   urls.forEach((row, index) => targets.set(`urls[${String(index)}]`, `url-${row.key}`));
@@ -294,10 +303,10 @@ export function toDetailsInput(draft: Draft): {
         code: code === "" ? null : code,
         description: description === "" ? null : description,
         dates,
-        people: people.map(({ role, id }) => ({ role, person: { id } })),
-        organizations: organizations.map(({ role, id }) => ({
+        people: people.map(({ role, chip }) => ({ role, person: ref(chip) })),
+        organizations: organizations.map(({ role, chip }) => ({
           role,
-          organization: { id },
+          organization: ref(chip),
         })),
         urls: urls.map((row) => row.url.trim()),
         externalIds: externalIds.map((row) => ({

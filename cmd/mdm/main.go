@@ -365,6 +365,9 @@ func run(opts runOptions) error {
 	}
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
+	pairing, peerLink := newPairing(db.Peers(), build, bus, logger)
+	stopPairing := startPairingConnection(pairing)
+	defer stopPairing()
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
 	// per execution so changes apply immediately.
 	pluginProxy := app.NewWorkInfoPluginProxy(settingsStore)
@@ -433,16 +436,19 @@ func run(opts runOptions) error {
 		Logger:            logger,
 		Auth:              httpAuthenticator,
 		APITokens:         apiTokens,
+		Pairing:           pairing,
+		PeerLink:          peerLink,
 		TrustedProxies:    cfg.TrustedProxies,
 	})
 
 	// SSE has no natural end; unsubscribe screen events and close connections before waiting for HTTP
-	// shutdown.
+	// shutdown. The stream to the peer closes with them.
 	beforeShutdown := func() {
 		stopChecks()
 		stopRequestMedia()
 		subscriptions.StopScreen()
 		events.Close()
+		stopPairing()
 	}
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
 }

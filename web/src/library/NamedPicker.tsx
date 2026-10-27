@@ -48,6 +48,7 @@ export default function NamedPicker<T extends NamedTarget>({
   loadAll,
   submit,
   excludeIds,
+  heading,
   createWhileLoading = false,
   side = "bottom",
   align = "end",
@@ -60,6 +61,8 @@ export default function NamedPicker<T extends NamedTarget>({
   loadAll: (signal: AbortSignal) => Promise<T[]>;
   submit: (choice: PickerChoice<T>) => Promise<UiText>;
   excludeIds?: readonly number[];
+  /** A line above the choices naming where they are, such as the peer's groups. */
+  heading?: UiText;
   createWhileLoading?: boolean;
   side?: "top" | "bottom";
   align?: "start" | "end";
@@ -202,6 +205,9 @@ export default function NamedPicker<T extends NamedTarget>({
           <p role="alert" className="py-1 text-xs text-destructive">
             {failure}
           </p>
+        )}
+        {heading !== undefined && (
+          <p className="px-2 pt-1.5 text-xs text-muted-foreground">{heading}</p>
         )}
         {hasRows && (
           <CommandList label={words.list}>

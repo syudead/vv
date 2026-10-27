@@ -22,6 +22,7 @@ import { GroupCard } from "../library/GroupCard";
 import LibraryToolbar from "../library/LibraryToolbar";
 import {
   emptySelection,
+  retainVideos,
   type LibrarySelection,
   selectedGroupOf,
   isGroupSelected,
@@ -41,6 +42,8 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
+import { isRemoteId } from "../lib/remoteId";
+import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { useCollectionCriteria } from "../videoList/useCollectionCriteria";
 import { NoMatches } from "../videoList/states";
 import { Button } from "../ui/shadcn/button";
@@ -208,10 +211,15 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
     [changeGroup, changeVideo],
   );
   useEscapeClearsSelection(selection.ids.size > 0, clear);
+  const retain = useCallback(
+    (kept: ReadonlySet<number>) => setSelection((current) => retainVideos(current, kept)),
+    [],
+  );
 
   return {
     selection,
     clear,
+    retain,
     changeVideo,
     changeGroup,
     changeItem,
@@ -398,6 +406,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             onTagRemoved={refresh}
             onBundled={afterBulk}
             onCollectionsDeleted={afterBulk}
+            onRetain={selection.retain}
             removeFromGroup={{
               count: removable.length,
               pending: edits.removingSelected,
@@ -573,7 +582,11 @@ function GroupHeader({
             {group.name}
           </span>
         }
-        count={t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
+        count={
+          <RemoteCountLine remote={isRemoteId(id)}>
+            {t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
+          </RemoteCountLine>
+        }
         description={group.folder !== undefined && <FolderLine folder={group.folder} />}
         actions={
           <>

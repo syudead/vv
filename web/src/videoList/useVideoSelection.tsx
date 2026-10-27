@@ -11,6 +11,7 @@ import type { LibraryItem } from "../api/client";
 import { itemVideos, videoKey } from "../api/libraryItems";
 import {
   emptySelection,
+  retainVideos,
   keepMembers,
   type LibrarySelection,
   setVideo,
@@ -53,6 +54,10 @@ export function useVideoSelection(
     point(null);
     setSelection(emptySelection);
   }, [point]);
+  const retain = useCallback(
+    (kept: ReadonlySet<number>) => setSelection((current) => retainVideos(current, kept)),
+    [],
+  );
   const selectionMode = selection.ids.size > 0;
   useEscapeClearsSelection(selectionMode, clear);
   const select = useCallback(
@@ -99,6 +104,7 @@ export function useVideoSelection(
       onTagRemoved={onChanged}
       onBundled={afterBulk}
       onCollectionsDeleted={afterBulk}
+      onRetain={retain}
     />
   ) : null;
 

@@ -34,6 +34,16 @@ func (s *server) ListGroups(w http.ResponseWriter, r *http.Request, params gen.L
 		s.internalError(w, "Group queries are not configured.", nil)
 		return
 	}
+	if params.Node != nil {
+		if !params.Node.Valid() {
+			s.invalidRequest(w, "node must be local or peer.")
+			return
+		}
+		if *params.Node == gen.Peer {
+			s.listPeerGroups(w, r)
+			return
+		}
+	}
 	limit := domain.GroupListDefaultLimit
 	if params.Limit != nil {
 		if *params.Limit < 1 || *params.Limit > domain.GroupListMaxLimit {
@@ -81,7 +91,7 @@ func (s *server) ListGroups(w http.ResponseWriter, r *http.Request, params gen.L
 
 func (s *server) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	var body gen.GroupCreate
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.createsGroupLocally(w, r, &body) {
 		return
 	}
 	add, ok := s.groupAdd(w, body.VideoIds, body.GroupIds)
@@ -122,7 +132,7 @@ func (s *server) DissolveGroup(w http.ResponseWriter, r *http.Request, id gen.Gr
 
 func (s *server) AddGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupMembers
-	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) || !s.addsGroupItemsLocally(w, r, id, &body) {
 		return
 	}
 	add, ok := s.groupAdd(w, body.VideoIds, body.GroupIds)

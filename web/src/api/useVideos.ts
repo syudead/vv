@@ -250,8 +250,11 @@ export function useVideos(
       if (libraryRef.current) refreshInPlaceRef.current();
       else refreshGroups(shownGroupIds(itemsRef.current));
     };
+    // The peer's items enter or leave every list when it connects or drops.
+    const peerItems = () => refreshInPlaceRef.current();
     const unsubscribe = owner
       ? subscribeServerEvents({
+          peerItems,
           video: (id) => {
             // Retain events even for visible videos during page loading, or a later stale page could undo their refresh.
             if (pageLoading.current) changedWhileLoading.current.add(id);
@@ -270,6 +273,7 @@ export function useVideos(
           },
         })
       : subscribeServerEvents({
+          peerItems,
           group,
           smartFolder,
           open: (reconnected) => {

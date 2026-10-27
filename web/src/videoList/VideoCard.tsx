@@ -15,6 +15,7 @@ import { updateFavorites } from "../api/favorites";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t } from "../i18n";
 import { cn } from "../lib/cn";
+import { isRemoteId } from "../lib/remoteId";
 import {
   formatBytes,
   formatDuration,
@@ -42,6 +43,7 @@ import {
 import { CardCredits } from "./CardCredits";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { cardLinkState } from "./cardLink";
+import { ItemRemoteMark } from "./RemoteItemMark";
 import { CardMedia, useCardPreview } from "./cardPreview";
 import { type PreviewCoordinator, usePreviewChanges } from "./usePreviewCoordination";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
@@ -138,6 +140,7 @@ function CardDuration({
   versions,
   versionsId,
   virtualId,
+  remoteId,
   publicMark,
   scrubPositionMs,
 }: {
@@ -146,12 +149,16 @@ function CardDuration({
   versions: number | null;
   versionsId: string;
   virtualId: string;
+  remoteId: string;
   publicMark: boolean;
   scrubPositionMs: number | null;
 }) {
-  if (versions === null && !publicMark && duration === "" && !video.virtual) return null;
+  const remote = isRemoteId(video.id);
+  if (!remote && versions === null && !publicMark && duration === "" && !video.virtual)
+    return null;
   return (
     <VideoThumbnailDuration>
+      {remote && <ItemRemoteMark id={remoteId} />}
       {versions !== null && <VersionsMark count={versions} id={versionsId} />}
       {publicMark && <PublicMark />}
       {video.virtual && <VirtualMark id={virtualId} />}
@@ -172,9 +179,13 @@ function describedBy(
   versions: number | null,
   versionsId: string,
   virtualId: string,
+  remoteId: string,
 ): string | undefined {
-  if (video.virtual) return virtualId;
-  return versions === null ? undefined : versionsId;
+  const ids = [
+    isRemoteId(video.id) ? remoteId : undefined,
+    video.virtual ? virtualId : versions === null ? undefined : versionsId,
+  ].filter((id) => id !== undefined);
+  return ids.length === 0 ? undefined : ids.join(" ");
 }
 
 /**
@@ -300,6 +311,7 @@ function VideoCard(props: VideoCardProps) {
   const versions = shownVersionsCount(video);
   const versionsId = useId();
   const virtualId = useId();
+  const remoteId = useId();
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const preview = useCardPreview({ video, selectionMode, previewCoordinator });
   const { startPreview } = preview;
@@ -336,7 +348,7 @@ function VideoCard(props: VideoCardProps) {
         to={to ?? `/videos/${String(video.id)}`}
         state={cardLinkState(backTo, autoplay)}
         aria-label={linkLabel(video, location)}
-        aria-describedby={describedBy(video, versions, versionsId, virtualId)}
+        aria-describedby={describedBy(video, versions, versionsId, virtualId, remoteId)}
         onClick={(event) => {
           previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
@@ -355,6 +367,7 @@ function VideoCard(props: VideoCardProps) {
             versions={versions}
             versionsId={versionsId}
             virtualId={virtualId}
+            remoteId={remoteId}
             publicMark={publicMark}
             scrubPositionMs={scrubPosition?.positionMs ?? null}
           />
@@ -446,6 +459,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
   const owner = useAudience() === "owner";
+  // Favorites and playlists stay on each node; a remote row keeps the cells empty so columns align.
+  const remote = isRemoteId(video.id);
 
   return (
     <TableRow
@@ -514,12 +529,12 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          <VideoFavorite video={video} />
+          {!remote && <VideoFavorite video={video} />}
         </TableCell>
       )}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
-          <VideoAddToPlaylist video={video} />
+          {!remote && <VideoAddToPlaylist video={video} />}
         </TableCell>
       )}
       {owner && (
@@ -537,6 +552,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
         <span className="inline-flex items-center justify-end gap-1.5">
+          {remote && <ItemRemoteMark />}
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}
           {video.virtual && <VirtualMark />}

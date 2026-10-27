@@ -4,6 +4,7 @@ import type { Video } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
 import { formatBytes } from "../../lib/format";
+import { isRemoteId } from "../../lib/remoteId";
 import { FactList } from "../../ui/patterns/fact-list";
 import { Button } from "../../ui/shadcn/button";
 import { useToast } from "../../ui/Toast";
@@ -109,6 +110,8 @@ function LocationActions({
   const toast = useToast();
   const open = useOpenFileRequest(videoId, report);
   const f = t.player.facts;
+  // The file of the paired VVMDM's video is on another PC.
+  const remote = isRemoteId(videoId);
   const copyPath = () => {
     report(null);
     copyText(path, {
@@ -118,7 +121,7 @@ function LocationActions({
   };
   return (
     <div className="flex flex-wrap gap-1.5">
-      {openable && (
+      {openable && !remote && (
         <Button variant="secondary" size="sm" shape="pill" onClick={open}>
           {f.openFile}
         </Button>
@@ -126,7 +129,7 @@ function LocationActions({
       <Button variant="secondary" size="sm" shape="pill" onClick={copyPath}>
         {f.copyPath}
       </Button>
-      <RescanVideoButton videoId={videoId} report={report} />
+      {!remote && <RescanVideoButton videoId={videoId} report={report} />}
     </div>
   );
 }

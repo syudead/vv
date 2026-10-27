@@ -93,6 +93,48 @@ page fetches that video, and a deleted video or one the guest may not see hides
 it. Going back drops the video from the trail, so ‹ again goes one further
 back. Group members keep the group's order for both arrows.
 
+## Both nodes of a pairing
+
+On a paired node the related list holds the videos of both nodes, ranked by
+the same scorer; the code is `internal/app/catalog_peer_related.go` and
+`internal/httpapi/peer_related.go`.
+
+Each node scores and pages its own videos against the clues of the open video,
+which come from the node that holds it. The clues are the fingerprint, the tag
+names, the title and file-name words and the date added; they carry no
+directory, so a video never gets folder points from a video of the other node.
+A tag name the other node lacks still counts among the tags of the open video.
+
+| Case | Behaviour |
+| --- | --- |
+| Merge | The two score-ordered pages merge by score, date added and id; on a tie the peer's video, whose id carries the remote offset, comes first |
+| Cursor | One position per node, joined by `~`; once the peer's part is over, the cursor takes the single-node form |
+| Peer fails or is not connected | Its part is skipped for the rest of the list, and the list continues with this node's videos |
+| Open video on the peer | Its clues and its group come from the peer; the video itself, the versions of its bundle and its group members are excluded on the peer |
+| Next video | The head of the merged list, or the group neighbour as before |
+
+When the open video is remote, the screen's node reads its clues from the peer
+and sends them back to the peer with the video's id in the peer's ids
+(`openVideoId`). The peer looks up that video's representative directory in
+the caller's audience and gives its own videos in that directory the folder
+points, so the peer's videos rank as when the video is opened on the peer
+itself. An id the audience cannot see, or no id, gives no folder points and no
+error. A local open video sends no id, so the peer's videos get no folder
+points.
+
+```mermaid
+sequenceDiagram
+  participant A as Screen's node
+  participant B as Peer holding the open video
+  A->>B: GET /api/peer/videos/{id}/clues
+  B-->>A: clues (no directory)
+  A->>A: score A's videos (no folder points)
+  A->>B: POST /api/peer/related {clues, exclude, openVideoId}
+  B->>B: score B's videos, folder points from openVideoId's directory
+  B-->>A: scored page
+  A->>A: merge both pages
+```
+
 ## Excluded videos
 
 The open video, the other versions of its bundle and the members of its group

@@ -4,13 +4,14 @@ VVMDM has one owner account and a guest audience. Authentication selects an
 audience at the HTTP boundary; storage filters every read before returning
 videos, locations or folders.
 
-The diagram shows the two authentication mechanisms and the shared visibility
-boundary.
+The diagram shows the three authentication mechanisms and the shared
+visibility boundary.
 
 ```mermaid
 flowchart LR
   browser[Browser session] --> http[HTTP boundary]
   external[Bearer token] --> http
+  peer[Peer credential] --> http
   http --> audience[Owner or guest]
   audience --> store[Audience-aware reads]
   store --> visible[Visible results]
@@ -54,3 +55,23 @@ security declarations in [the screen API schema](../../api/openapi.yaml) are
 checked against the HTTP route classification. External operations are
 defined in [the external schema](../../api/external-v1.yaml); token setup and
 examples are in [the external API guide](../how-to/external-api.md).
+
+## Paired VVMDM
+
+A paired VVMDM authenticates with `Authorization: VV-Peer <secret>`, a third
+credential beside the session and the bearer token
+([peer-library.md](peer-library.md#pairing-and-the-peer-credential)). The
+boundary hashes the secret and compares it with the stored hash of the peer
+record, and classifies the request as the owner, or as a guest when
+`X-VV-Peer-Audience: guest` is present, so the paired node applies the
+viewer's audience to its own reads.
+
+| Case | Response |
+| --- | --- |
+| Unknown secret, no peer record, or a record whose incoming secret was revoked | `401` with reason `peer_unknown` |
+| Valid secret on an operation the peer table does not allow | `403` with reason `peer_not_allowed` |
+| Peer credential on `/api/v1` or `/mcp` | `401`; it is not a bearer token |
+
+A peer request sets no cookie and skips the same-origin check. The secret is
+not bound to the account's credentials, so a password or username change
+keeps the pairing while it signs out every session.

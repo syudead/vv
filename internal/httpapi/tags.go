@@ -23,6 +23,10 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	if s.mergesVocabulary(r.Context()) {
+		s.listMergedTags(w, r, query)
+		return
+	}
 	page, err := s.tags.ListTags(r.Context(), query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -175,6 +179,9 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
+	if !s.renameTagOnPeer(w, r, id, body.Name) {
+		return
+	}
 	tag, err := s.tags.RenameTag(r.Context(), id, body.Name)
 	if err != nil {
 		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
@@ -187,6 +194,9 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	if !s.deleteOnPeer(w, r, domain.VocabularyTag, id) {
 		return
 	}
 	if err := s.tags.DeleteTag(r.Context(), id); err != nil {
@@ -214,7 +224,18 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	outcome, err := s.tags.MergeTags(r.Context(), id, body.SourceIds)
+	if propagate, ok := s.vocabularyPeer(w, r); !ok || propagate {
+		if propagate {
+			s.mergeOnBothNodes(w, r, id, body.SourceIds, s.tagMergeSide())
+		}
+		return
+	}
+	s.mergeTagsHere(w, r, id, body.SourceIds, nil)
+}
+
+// mergeTagsHere merges sources into target on this node and answers with the sources missing here or in missing.
+func (s *server) mergeTagsHere(w http.ResponseWriter, r *http.Request, target int64, sources, missing []int64) {
+	outcome, err := s.tags.MergeTags(r.Context(), target, sources)
 	if err != nil {
 		s.writeTagError(w, err, "")
 		return
@@ -222,7 +243,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.TagMergeResponse{
 		Tag:         toAPITag(outcome.Tag),
-		NotFoundIds: nonNilIDs(outcome.NotFoundIDs),
+		NotFoundIds: unionIDs(missing, outcome.NotFoundIDs),
 	}, s.logger)
 }
 
@@ -307,6 +328,14 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
+	}
+	if req.Action == domain.TagBatchDelete {
+		if propagate, ok := s.vocabularyPeer(w, r); !ok || propagate {
+			if propagate {
+				s.batchDeleteOnBothNodes(w, r, req, body.Ids)
+			}
+			return
+		}
 	}
 	outcome, err := s.tags.BatchTags(r.Context(), req, body.Ids)
 	if errors.Is(err, domain.ErrTagKindNotFound) {

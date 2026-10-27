@@ -14,6 +14,7 @@ import {
   SelectionBusyContext,
   WithTooltip,
 } from "../SelectionAction";
+import { type RemotePartial, remotePartial } from "../RemotePartialDialog";
 import { editTargetsOf, type SelectionTarget } from "../selection";
 import CodeEditor from "./CodeEditor";
 import type { CodeEditItem, CodeEditRow } from "./rows";
@@ -38,12 +39,15 @@ export default function EditCodesAction({
   disabledReason,
   blocked,
   onBusyChange,
+  onPartial,
 }: {
   targets: readonly SelectionTarget[];
   disabledReason: UiText | undefined;
   /** Another bar action is in flight. */
   blocked: boolean;
   onBusyChange: (busy: boolean) => void;
+  /** The peer did not change some videos; the bar names them in place of the toast. */
+  onPartial: (partial: RemotePartial) => void;
 }) {
   const c = t.library.codeEdit;
   const toast = useToast();
@@ -97,7 +101,11 @@ export default function EditCodesAction({
   async function apply(items: CodeEditItem[]) {
     if (open === null) return;
     const result = await applyVideoCodeEdits(items, open.targets.smartFolderIds);
-    toast(c.applied(result.applied));
+    // Titles as the editor showed them, so a failure names videos the list may have dropped.
+    const titles = new Map(open.rows.map((row) => [row.video.id, row.video.title]));
+    const partial = remotePartial(result.remote, (id) => titles.get(id), "changed");
+    if (partial === null) toast(c.applied(result.applied));
+    else onPartial(partial);
     setOpen(null);
   }
 

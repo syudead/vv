@@ -11,6 +11,8 @@ import {
   signFor,
   zoneOf,
 } from "./cardDragRules";
+import { groupKey, videoKey } from "../api/libraryItems";
+import { remoteIdOffset } from "../lib/remoteId";
 
 const order = ["a", "b", "c", "d", "e"];
 
@@ -65,6 +67,30 @@ describe("signFor", () => {
     expect(
       signFor({ target: "a", lifted, reorder: false, onto: null, zone: "middle" }),
     ).toBeNull();
+  });
+
+  it("refuses a card of the other node, and accepts one of the same node", () => {
+    const onto = { label: "Put in" };
+    const remoteGroup = groupKey(remoteIdOffset + 4);
+    const localVideo = new Set([videoKey(3)]);
+    expect(
+      signFor({
+        target: remoteGroup,
+        lifted: localVideo,
+        reorder: true,
+        onto,
+        zone: "before",
+      }),
+    ).toEqual({ kind: "refused", key: remoteGroup });
+    expect(
+      signFor({
+        target: remoteGroup,
+        lifted: new Set([videoKey(remoteIdOffset + 3)]),
+        reorder: false,
+        onto,
+        zone: "middle",
+      }),
+    ).toEqual({ kind: "onto", key: remoteGroup, label: "Put in" });
   });
 });
 

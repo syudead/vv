@@ -3,12 +3,15 @@ import { Folder } from "lucide-react";
 import { type LibraryGroup } from "../api/client";
 import { addToGroup, createGroup, listAllGroups } from "../api/groups";
 import { t } from "../i18n";
+import { idNodes } from "../lib/remoteId";
 import NamedPicker, { type PickerChoice } from "../library/NamedPicker";
+import { usePeerName } from "../shell/PeerProvider";
 import { useGroupChanged } from "./groupChanges";
 
 /**
  * Reload all candidates on opening and exclude the source groups; the server rejects descendant
- * cycles. Keep creation available during loading and failures.
+ * cycles. Keep creation available during loading and failures. Remote members list and create the
+ * peer's groups, under a heading that names it.
  */
 export default function GroupPicker({
   open,
@@ -26,6 +29,8 @@ export default function GroupPicker({
   align?: "start" | "end";
 }) {
   const changed = useGroupChanged();
+  const peer = idNodes([...videoIds, ...groupIds]) === "remote";
+  const peerName = t.list.card.remote.name(usePeerName());
 
   // Use the current render's videoIds and groupIds for submission.
   async function submit(choice: PickerChoice<LibraryGroup>) {
@@ -47,9 +52,14 @@ export default function GroupPicker({
       words={t.groups.add}
       icon={Folder}
       memberCount={videoIds.length + groupIds.length}
-      loadAll={listAllGroups}
+      loadAll={
+        peer
+          ? (signal) => listAllGroups(signal, "peer")
+          : (signal) => listAllGroups(signal)
+      }
       submit={submit}
       excludeIds={groupIds}
+      heading={peer ? t.groups.add.peerHeading(peerName) : undefined}
       createWhileLoading
       side={side}
       align={align}

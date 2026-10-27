@@ -20,6 +20,7 @@ export type SettingsSectionId =
   | "work-info-plugins"
   | "transcoding"
   | "network"
+  | "pairing"
   | "account"
   | "api-tokens"
   | "clear-people";
@@ -49,6 +50,7 @@ export const settingsPages: readonly SettingsPageEntry[] = [
   { slug: "plugins", sections: ["work-info-plugins"], anchors: ["work-info-plugins"] },
   { slug: "conversion", sections: ["transcoding"], anchors: [] },
   { slug: "network", sections: ["network"], anchors: [] },
+  { slug: "pairing", sections: ["pairing"], anchors: [] },
   { slug: "account", sections: ["account"], anchors: [] },
   { slug: "api", sections: ["api-tokens"], anchors: [] },
   { slug: "danger-zone", sections: ["clear-people"], anchors: [] },

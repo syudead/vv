@@ -15,6 +15,7 @@ import type { Video } from "../api/client";
 import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
+import { isRemoteId } from "../lib/remoteId";
 import { Button } from "../ui/shadcn/button";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./useOpenFile";
@@ -223,7 +224,7 @@ function ReadFailureActions({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const { open, failure: openFailure } = useOpenFile(video.id);
-  const openable = video.location?.openable === true;
+  const openable = video.location?.openable === true && !isRemoteId(video.id);
 
   const reprobe = () => {
     setBusy(true);

@@ -136,6 +136,8 @@
   --spacing-combobox-list: 16rem;
   --spacing-combobox-panel: 15rem;
   --spacing-combobox-panel-max: 40vh;
+  /* Ten text-sm lines before a list inside a dialog scrolls. */
+  --spacing-dialog-list: 12.5rem;
   --spacing-menu: 11rem;
   /* Detail aside width includes a 224px card plus horizontal padding; wider from xl. */
   --spacing-detail-aside: 16rem;

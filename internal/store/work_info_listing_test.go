@@ -50,6 +50,10 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 		{"人物と団体の AND", domain.VideoQuery{Person: hanako.ID, Organization: makerA.ID}, []string{"ep1"}},
 		{"検索語との AND", domain.VideoQuery{Person: hanako.ID, Query: "ep"}, []string{"ep1"}},
 		{"実体の無い id", domain.VideoQuery{Person: hanako.ID + 1000}, []string{}},
+		{"人物の名前", domain.VideoQuery{PersonName: "山田花子"}, []string{"ep1", "p1", "solo"}},
+		{"人物の名前と役割", domain.VideoQuery{PersonName: "山田花子", PersonRole: domain.PersonDirector}, []string{"solo"}},
+		{"団体の名前", domain.VideoQuery{OrganizationName: "メーカーA"}, []string{"ep1", "p2"}},
+		{"実体の無い名前", domain.VideoQuery{PersonName: "居ない人"}, []string{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

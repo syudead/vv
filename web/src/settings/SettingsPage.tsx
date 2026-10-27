@@ -24,6 +24,7 @@ import MediaFoldersSection from "./MediaFoldersSection";
 import NetworkSection from "./NetworkSection";
 import { ollamaLockNotice } from "./OllamaLockNotice";
 import OllamaSection from "./OllamaSection";
+import PairingSection from "./PairingSection";
 import ScanStatusSection from "./ScanStatusSection";
 import {
   settingsPagePath,
@@ -53,6 +54,7 @@ const sectionComponents: Record<SettingsSectionId, ComponentType | null> = {
   "work-info-plugins": WorkInfoPluginsSection,
   transcoding: TranscodingSection,
   network: NetworkSection,
+  pairing: PairingSection,
   account: AccountSection,
   "api-tokens": APITokensSection,
   "clear-people": ClearPeopleSection,

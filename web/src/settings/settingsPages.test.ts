@@ -68,6 +68,7 @@ describe("settingsPages", () => {
       "plugins",
       "conversion",
       "network",
+      "pairing",
       "account",
       "api",
       "danger-zone",

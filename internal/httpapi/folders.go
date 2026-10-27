@@ -51,11 +51,19 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	folders := s.apiFolders(r.Context(), audience, summaries, groupings)
+	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+		folders = s.withPeerRoots(r, folders)
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: s.apiFolders(r.Context(), audience, summaries, groupings)}, s.logger)
+	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: folders}, s.logger)
 }
 
 func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.GetFolderParams) {
+	if domain.IsRemoteID(rootID) {
+		s.forwardRemoteFolder(w, r, rootID, "", r.URL.Query(), rewriteAs(rewriteRemoteFolderListing))
+		return
+	}
 	root, rel, ok := s.resolveFolderRoot(w, r, rootID, params.Path)
 	if !ok {
 		return
@@ -94,6 +102,10 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 
 // Folder absence takes precedence over scope/query validation and always yields 404.
 func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.ListFolderVideosParams) {
+	if domain.IsRemoteID(rootID) {
+		s.listRemoteFolderVideos(w, r, rootID, params)
+		return
+	}
 	roots, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, params.Path)
 	if !ok {
 		return
@@ -122,11 +134,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		}
 		query.Scope = scope
 	}
-	filters, ok := s.parseVideoQuery(w, audience, videoQueryParams{
-		query: params.Query, sort: params.Sort, seed: params.Seed, cursor: params.Cursor,
-		limit: params.Limit, tag: params.Tag, favorite: params.Favorite, person: params.Person,
-		organization: params.Organization, tagKind: params.TagKind, personRole: params.PersonRole,
-	})
+	filters, ok := s.parseVideoQuery(w, audience, folderVideoQueryParams(params))
 	if !ok {
 		return
 	}
@@ -143,6 +151,16 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	}
 
 	s.writeVideoPage(w, r, page, roots)
+}
+
+func folderVideoQueryParams(params gen.ListFolderVideosParams) videoQueryParams {
+	return videoQueryParams{
+		query: params.Query, sort: params.Sort, seed: params.Seed, cursor: params.Cursor,
+		limit: params.Limit, tag: params.Tag, favorite: params.Favorite, person: params.Person,
+		organization: params.Organization, tagKind: params.TagKind, personRole: params.PersonRole,
+		tagName: params.TagName, tagKindName: params.TagKindName, personName: params.PersonName,
+		organizationName: params.OrganizationName,
+	}
 }
 
 func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootID int64, path *string) (domain.MediaFolder, string, bool) {

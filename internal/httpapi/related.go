@@ -10,30 +10,33 @@ import (
 )
 
 // VideoCatalog owns ranking; the first page also includes a bounded group-member window around the current video.
+// With a peer link, the screens' list holds the videos of both nodes (peer_related.go); the peer's own request
+// gets this node's videos only.
 func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetRelatedVideosParams) {
-	opened := videoContext(params.Group, params.SmartFolder)
-	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize, GroupID: opened.GroupID, SmartFolderID: opened.SmartFolderID}
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > domain.MaxRelatedPageSize {
-			s.invalidRequest(w, "limit must be between 1 and 100.")
-			return
-		}
-		page.Limit = *params.Limit
+	limit, ok := s.relatedLimit(w, params.Limit)
+	if !ok {
+		return
 	}
+	if domain.IsRemoteID(id) {
+		s.remoteRelatedVideos(w, r, id, params, limit)
+		return
+	}
+	if s.peerLink != nil && !isPeerRequest(r.Context()) {
+		s.mergedRelatedVideos(w, r, id, params, limit)
+		return
+	}
+	opened := videoContext(params.Group, params.SmartFolder)
+	page := domain.RelatedPage{Limit: limit, GroupID: opened.GroupID, SmartFolderID: opened.SmartFolderID}
 	if params.Cursor != nil {
 		cursor, err := domain.ParseRelatedCursor(*params.Cursor)
 		if err != nil {
-			s.invalidRequest(w, "cursor is not a value returned as nextCursor.")
+			s.invalidCursor(w)
 			return
 		}
 		page.After = &cursor
 	}
 	video, ok := s.lookupVideo(w, r, id)
-	if !ok {
-		return
-	}
-	if s.catalog == nil {
-		s.internalError(w, "Related video queries are not configured.", nil)
+	if !ok || !s.requireCatalog(w) {
 		return
 	}
 	audience := audienceFrom(r.Context())
@@ -45,36 +48,73 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	}
 
 	// Batch progress/tag reads for related and group-member videos together.
-	shown := related.Items
-	if related.Group != nil {
-		shown = append(slices.Clone(related.Items), related.Group.Members...)
-	}
-	present := s.presenter(r.Context(), audience, shown)
-	payload := gen.RelatedVideos{Items: present(r.Context(), related.Items)}
-	if group := related.Group; group != nil {
-		payload.Group = &gen.RelatedGroup{
-			Id:     group.ID,
-			Name:   group.Name,
-			Items:  present(r.Context(), group.Members),
-			Offset: group.Offset,
-			Total:  group.Total(),
-		}
-	}
+	present := s.presenter(r.Context(), audience, withGroupMembers(related.Items, related.Group))
+	cursor := ""
 	if related.NextCursor != nil {
-		cursor := related.NextCursor.String()
-		payload.NextCursor = &cursor
+		cursor = related.NextCursor.String()
 	}
-	if related.NextID != 0 {
-		next := related.NextID
-		payload.NextId = &next
-	}
-	if related.PrevID != 0 {
-		prev := related.PrevID
-		payload.PrevId = &prev
-	}
-
+	payload := relatedBody(present(r.Context(), related.Items), presentGroup(r.Context(), present, related.Group),
+		cursor, related.NextID, related.PrevID)
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+func (s *server) relatedLimit(w http.ResponseWriter, limit *int) (int, bool) {
+	if limit == nil {
+		return domain.DefaultRelatedPageSize, true
+	}
+	if *limit < 1 || *limit > domain.MaxRelatedPageSize {
+		s.invalidRequest(w, "limit must be between 1 and 100.")
+		return 0, false
+	}
+	return *limit, true
+}
+
+func (s *server) invalidCursor(w http.ResponseWriter) {
+	s.invalidRequest(w, "cursor is not a value returned as nextCursor.")
+}
+
+func (s *server) requireCatalog(w http.ResponseWriter) bool {
+	if s.catalog == nil {
+		s.internalError(w, "Related video queries are not configured.", nil)
+		return false
+	}
+	return true
+}
+
+func withGroupMembers(items []domain.Video, group *domain.VideoGroup) []domain.Video {
+	if group == nil {
+		return items
+	}
+	return append(slices.Clone(items), group.Members...)
+}
+
+func presentGroup(ctx context.Context, present func(context.Context, []domain.Video) []gen.Video, group *domain.VideoGroup) *gen.RelatedGroup {
+	if group == nil {
+		return nil
+	}
+	return &gen.RelatedGroup{
+		Id:     group.ID,
+		Name:   group.Name,
+		Items:  present(ctx, group.Members),
+		Offset: group.Offset,
+		Total:  group.Total(),
+	}
+}
+
+// relatedBody leaves out an empty cursor and zero ids.
+func relatedBody(items []gen.Video, group *gen.RelatedGroup, cursor string, nextID, prevID int64) gen.RelatedVideos {
+	payload := gen.RelatedVideos{Items: items, Group: group}
+	if cursor != "" {
+		payload.NextCursor = &cursor
+	}
+	if nextID != 0 {
+		payload.NextId = &nextID
+	}
+	if prevID != 0 {
+		payload.PrevId = &prevID
+	}
+	return payload
 }
 
 func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.ListVideoGroupMembersParams) {
@@ -94,11 +134,7 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 		window.Limit = *params.Limit
 	}
 	video, ok := s.lookupVideo(w, r, id)
-	if !ok {
-		return
-	}
-	if s.catalog == nil {
-		s.internalError(w, "Related video queries are not configured.", nil)
+	if !ok || !s.requireCatalog(w) {
 		return
 	}
 	audience := audienceFrom(r.Context())

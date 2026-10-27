@@ -8,6 +8,7 @@ import {
 import type { components } from "./gen/openapi";
 
 type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
+type PeerState = components["schemas"]["PeerState"];
 
 /** Events invalidate local data; group IDs include ancestors. Reconnected opens require refresh because disconnected clients miss changes. */
 export interface ServerEventHandlers {
@@ -18,6 +19,10 @@ export interface ServerEventHandlers {
   candidates?: () => void;
   activity?: () => void;
   onboarding?: () => void;
+  /** The pairing state in the viewer's shape, on every change and once on connection. */
+  peer?: (state: PeerState) => void;
+  /** The peer's items entered or left the lists: the state moved to or from connected. */
+  peerItems?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -31,6 +36,8 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+/** Whether the last peer event said connected; undefined until the first one. */
+let peerListed: boolean | undefined;
 
 function dispatch<K extends keyof ServerEventHandlers>(
   kind: K,
@@ -79,6 +86,15 @@ function connect(): void {
     const changed = parse<SmartFolderChanged>(event);
     if (changed !== undefined) dispatch("smartFolder", changed.ids);
   });
+  current.addEventListener("peer", (event) => {
+    const state = parse<PeerState>(event);
+    if (state === undefined) return;
+    dispatch("peer", state);
+    const listed = state.state === "connected";
+    const changed = peerListed !== undefined && peerListed !== listed;
+    peerListed = listed;
+    if (changed) dispatch("peerItems");
+  });
   current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("onboarding", () => dispatch("onboarding"));
@@ -107,6 +123,7 @@ function disconnect(): void {
   reconnectTimer = undefined;
   source?.close();
   source = null;
+  peerListed = undefined;
 }
 
 /** Share one connection across subscribers; subscribe before fetching initial data to avoid missing intervening changes. */

@@ -7,7 +7,9 @@ import { maxCodeEditVideos } from "../api/videoCodeEdits";
 import GroupPicker from "../groups/GroupPicker";
 import NewGroupDialog from "../groups/NewGroupDialog";
 import { t, type UiText } from "../i18n";
+import { idNodes, type IdNodes } from "../lib/remoteId";
 import PlaylistPicker from "../playlists/PlaylistPicker";
+import { usePeerName } from "../shell/PeerProvider";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
@@ -16,6 +18,7 @@ import EditCodesAction from "./codeEdit/EditCodesAction";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
 import FillInfoAction from "./fillInfo/FillInfoAction";
+import RemotePartialDialog, { type RemotePartial } from "./RemotePartialDialog";
 import {
   DisabledReason,
   disabledProps,
@@ -79,6 +82,8 @@ export interface SelectionBarProps {
   onBundled: (versions: VideoVersions) => void;
   /** After selected groups were dissolved and smart folders deleted; callers clear the selection and reload. */
   onCollectionsDeleted: () => void;
+  /** Keep only these videos selected, after the peer did not change them; absent keeps the selection. */
+  onRetain?: (videoIds: ReadonlySet<number>) => void;
   /** Group-only removal; disable oversized batches instead of splitting them. */
   removeFromGroup?: {
     count: number;
@@ -100,15 +105,22 @@ export function selectionReasons({
   favoriteVideoIds,
   favoriteGroupIds,
   smartFolderIds,
+  nodes = "local",
 }: {
   count: number;
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
   smartFolderIds: readonly number[];
+  /** The nodes the selection reaches; a group and a bundle hold videos of one node. */
+  nodes?: IdNodes;
 }) {
   // A smart folder cannot be placed in a group or bundled as a version.
   const videoOnly =
-    smartFolderIds.length > 0 ? t.library.selection.smartFoldersUnsupported : undefined;
+    smartFolderIds.length > 0
+      ? t.library.selection.smartFoldersUnsupported
+      : nodes === "mixed"
+        ? t.library.selection.mixedNodes
+        : undefined;
   const favoriteOverLimit =
     favoriteVideoIds.length + favoriteGroupIds.length + smartFolderIds.length >
     maxVideoTagsSelection;
@@ -164,18 +176,35 @@ export default function SelectionBar({
   onBundled,
   onCollectionsDeleted,
   removeFromGroup,
+  onRetain,
 }: SelectionBarProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [codesBusy, setCodesBusy] = useState(false);
+  const [partial, setPartial] = useState<RemotePartial | null>(null);
+  const peerName = usePeerName();
+  // Edits keep only the peer's failed videos selected, so the owner can retry them.
+  const showPartial = (next: RemotePartial) => {
+    setPartial(next);
+    if (next.kind === "changed") onRetain?.(new Set(next.failedIds));
+  };
   const total = count + smartFolderIds.length;
+  const nodes = idNodes([
+    ...selectedIds,
+    ...favoriteVideoIds,
+    ...favoriteGroupIds,
+    ...smartFolderIds,
+  ]);
+  // Favorites, playlists and plugin fills stay on each node, so a selection with remote items offers none of them.
+  const perNode = nodes === "remote" || nodes === "mixed";
   const reasons = selectionReasons({
     count,
     favoriteVideoIds,
     favoriteGroupIds,
     smartFolderIds,
+    nodes,
   });
   const tagReasonId = useId();
   const favoriteReasonId = useId();
@@ -214,7 +243,15 @@ export default function SelectionBar({
     if (groupBlocked) setGroupOpen(false);
   }, [groupBlocked]);
 
-  if (total === 0) return null;
+  // The dialog outlives the bar: a stopped peer can empty the selection before it is read.
+  const partialDialog = partial !== null && (
+    <RemotePartialDialog
+      partial={partial}
+      peerName={t.list.card.remote.name(peerName)}
+      onClose={() => setPartial(null)}
+    />
+  );
+  if (total === 0) return partialDialog === false ? null : partialDialog;
 
   return (
     // Keep the region wrapper from changing the bar's bottom alignment.
@@ -239,8 +276,9 @@ export default function SelectionBar({
             <BulkEditor
               targets={targets}
               onClose={() => setEditOpen(false)}
-              onApplied={(removed) => {
+              onApplied={(removed, partial) => {
                 for (const tagId of removed) onTagRemoved(tagId);
+                if (partial !== null) showPartial(partial);
               }}
             />
           )}
@@ -250,41 +288,48 @@ export default function SelectionBar({
             disabledReason={reasons.codes}
             blocked={removeFromGroup?.pending ?? false}
             onBusyChange={setCodesBusy}
+            onPartial={showPartial}
           />
 
-          <FillInfoAction
-            videoIds={selectedIds}
-            smartFolderIds={smartFolderIds}
-            disabledReason={reasons.tag}
-          />
+          {!perNode && (
+            <FillInfoAction
+              videoIds={selectedIds}
+              smartFolderIds={smartFolderIds}
+              disabledReason={reasons.tag}
+            />
+          )}
 
-          <FavoriteMenu
-            videoIds={favoriteVideoIds}
-            groupIds={favoriteGroupIds}
-            smartFolderIds={smartFolderIds}
-            overLimit={favoriteBlocked}
-            overLimitId={favoriteReasonId}
-          />
-          <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />
-
-          <PickerAction
-            icon={<ListPlus aria-hidden="true" />}
-            label={t.library.selection.addToPlaylist}
-            disabledReason={reasons.favorite}
-            reasonId={favoriteReasonId}
-            open={playlistOpen}
-            onOpenChange={setPlaylistOpen}
-          >
-            <PlaylistPicker
-              open={playlistOpen}
-              onOpenChange={setPlaylistOpen}
+          {!perNode && (
+            <FavoriteMenu
               videoIds={favoriteVideoIds}
               groupIds={favoriteGroupIds}
               smartFolderIds={smartFolderIds}
-              side="top"
-              align="start"
+              overLimit={favoriteBlocked}
+              overLimitId={favoriteReasonId}
             />
-          </PickerAction>
+          )}
+          {!perNode && <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />}
+
+          {!perNode && (
+            <PickerAction
+              icon={<ListPlus aria-hidden="true" />}
+              label={t.library.selection.addToPlaylist}
+              disabledReason={reasons.favorite}
+              reasonId={favoriteReasonId}
+              open={playlistOpen}
+              onOpenChange={setPlaylistOpen}
+            >
+              <PlaylistPicker
+                open={playlistOpen}
+                onOpenChange={setPlaylistOpen}
+                videoIds={favoriteVideoIds}
+                groupIds={favoriteGroupIds}
+                smartFolderIds={smartFolderIds}
+                side="top"
+                align="start"
+              />
+            </PickerAction>
+          )}
 
           <WithTooltip label={reasons.newGroup ?? t.library.selection.newGroup}>
             <SelectionAction
@@ -358,11 +403,14 @@ export default function SelectionBar({
           <DeleteCollectionsAction
             groupIds={favoriteGroupIds}
             smartFolderIds={smartFolderIds}
+            cards={targets}
             disabledReason={reasons.deleteCollections}
             onDeleted={onCollectionsDeleted}
+            onPartial={showPartial}
           />
         </SelectionBusyContext.Provider>
       </SelectionBarSection>
+      {partialDialog}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Check, Folder } from "lucide-react";
-import { memo, type MouseEvent, type ReactNode } from "react";
+import { memo, type MouseEvent, type ReactNode, useId } from "react";
 import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
@@ -8,6 +8,7 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import { isRemoteId } from "../lib/remoteId";
 import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
@@ -23,6 +24,7 @@ import {
 import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
+import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 
@@ -283,6 +285,8 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   });
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && groupHasTags(group);
+  const remote = isRemoteId(group.id);
+  const remoteId = useId();
 
   return (
     <article
@@ -305,6 +309,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
 
       <Link
         {...linkProps}
+        aria-describedby={remote ? remoteId : undefined}
         onClick={(event) => {
           previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
@@ -324,6 +329,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
           ratio={ratio}
           face={
             <>
+              {remote && <ItemRemoteMark id={remoteId} />}
               <span>{countText}</span>
               {duration !== "" && <span>{duration}</span>}
             </>
@@ -356,6 +362,8 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   const cover = group.previews[0];
+  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  const remote = isRemoteId(group.id);
 
   return (
     <TableRow
@@ -412,12 +420,12 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          <GroupFavorite group={group} variant="row" />
+          {!remote && <GroupFavorite group={group} variant="row" />}
         </TableCell>
       )}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
-          <GroupAddToPlaylist group={group} variant="row" />
+          {!remote && <GroupAddToPlaylist group={group} variant="row" />}
         </TableCell>
       )}
       {owner && (
@@ -426,6 +434,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
         </TableCell>
       )}
       <CollectionValueCells
+        remote={remote}
         state={state}
         watchedCount={watchedCount}
         videoCount={group.videoCount}
@@ -438,6 +447,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
 }
 
 export function CollectionValueCells({
+  remote,
   state,
   watchedCount,
   videoCount,
@@ -445,6 +455,7 @@ export function CollectionValueCells({
   sizeBytes,
   addedAt,
 }: {
+  remote: boolean;
   state: ReturnType<typeof useCollectionFacts>["state"];
   watchedCount: number;
   videoCount: number;
@@ -464,7 +475,10 @@ export function CollectionValueCells({
         {state === "inProgress" && t.library.group.progress(watchedCount, videoCount)}
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
-        {duration}
+        <span className="inline-flex items-center justify-end gap-1.5">
+          {remote && <ItemRemoteMark />}
+          {duration}
+        </span>
       </TableCell>
       <TableCell className="hidden w-list-number pr-4 md:table-cell" />
       <TableCell className="hidden w-list-number-wide pr-4 text-right text-muted-foreground tabular-nums md:table-cell">

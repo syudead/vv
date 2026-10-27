@@ -21,6 +21,9 @@ func matchConditions(spec listSpec) ([]string, []any) {
 		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
 		args = append(args, spec.withinVideos)
 	}
+	if spec.matchNothing {
+		conditions = append(conditions, `0`)
+	}
 	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
@@ -61,22 +64,33 @@ func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	// Unidentified content has no user data.
-	link := func(table, alias, column, extra string) string {
+	link := func(table, alias, match, extra string) string {
 		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
-			`.content_key = ` + userKey + ` and ` + alias + `.` + column + ` = ?` + extra + `))`
+			`.content_key = ` + userKey + ` and ` + match + extra + `))`
 	}
-	if spec.personID != 0 {
+	person := func(match string, value any) {
 		role := ""
-		args = append(args, spec.personID)
+		args = append(args, value)
 		if spec.personRole != "" {
 			role = ` and vp.role = ?`
 			args = append(args, string(spec.personRole))
 		}
-		conditions = append(conditions, link("video_work_people", "vp", "person_id", role))
+		conditions = append(conditions, link("video_work_people", "vp", match, role))
+	}
+	if spec.personID != 0 {
+		person(`vp.person_id = ?`, spec.personID)
+	}
+	if spec.personName != "" {
+		person(creditNameCondition("vp.person_id", "people_names", "person_id"), spec.personName)
 	}
 	if spec.organizationID != 0 {
-		conditions = append(conditions, link("video_work_organizations", "vo", "organization_id", ""))
+		conditions = append(conditions, link("video_work_organizations", "vo", `vo.organization_id = ?`, ""))
 		args = append(args, spec.organizationID)
+	}
+	if spec.organizationName != "" {
+		conditions = append(conditions, link("video_work_organizations", "vo",
+			creditNameCondition("vo.organization_id", "organization_names", "organization_id"), ""))
+		args = append(args, spec.organizationName)
 	}
 	return conditions, args
 }
@@ -89,9 +103,11 @@ func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 		conditions = append(conditions, videoHasTagCondition("videos", userKey))
 		args = append(args, tagID, tagID)
 	}
-	if spec.tagKindID != 0 {
-		conditions = append(conditions, videoHasTagOfKindCondition("videos", userKey))
-		args = append(args, spec.tagKindID, spec.tagKindID)
+	for _, kindID := range []int64{spec.tagKindID, spec.tagKindNameID} {
+		if kindID != 0 {
+			conditions = append(conditions, videoHasTagOfKindCondition("videos", userKey))
+			args = append(args, kindID, kindID)
+		}
 	}
 	return conditions, args
 }
@@ -205,11 +221,11 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
+	filters, err := resolveListFilters(ctx, tx, q)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	spec := libraryListSpec(audience, q, tagIDs)
+	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
 	spec.storedCollections = true
 	list := listLibraryPageTx
 	// Guests do not see smart folders.
@@ -227,7 +243,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err := tx.Commit(); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
-	page.MissingTagIDs = missingTagIDs
+	page.MissingTagIDs = filters.missingTagIDs
 	page.Roots = roots
 	return page, nil
 }
@@ -308,6 +324,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	page := domain.LibraryPage{Total: total, Limit: limit}
 	page.Items, page.NextCursor, err = libraryPageItems(ctx, tx, spec, order, keys, values, limit)
 	if err != nil {
+		return domain.LibraryPage{}, err
+	}
+	ids := make([]int64, len(page.Items))
+	for i := range ids {
+		ids[i] = keys[i].id
+	}
+	if page.ItemCursors, err = order.itemCursors(spec, values, ids); err != nil {
 		return domain.LibraryPage{}, err
 	}
 	return page, nil
