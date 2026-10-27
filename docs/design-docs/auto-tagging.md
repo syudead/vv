@@ -2,7 +2,9 @@
 
 VVMDM asks a decision model which existing tags fit a video, and adds the tags
 whose probability reaches a threshold. The use case is
-[`internal/app/auto_tag.go`](../../internal/app/auto_tag.go) and the queue is
+[`internal/app/auto_tag.go`](../../internal/app/auto_tag.go). Each video to
+judge is an `auto_tag` job that the [job scheduler](job-scheduling.md) runs,
+and the outcome is kept per content key by
 [`internal/store/auto_tags.go`](../../internal/store/auto_tags.go). The model
 is reached through the classifier port, whose provider today is Cloudflare's
 Clef or Clef-flash in Ollama ([ai-layer.md](ai-layer.md)); auto-tagging does
@@ -13,12 +15,13 @@ back.
 
 ```mermaid
 flowchart LR
-  seek[Seek preview stage done] -->|feature and automatic judging on| queue[(auto_tag_queue)]
+  seek[Seek preview stage done] -->|feature and automatic judging on| queue[(auto_tag jobs)]
   owner[Owner] -->|Settings or video page| queue
-  queue --> worker[Auto-tagging worker]
+  queue -->|classifier slot| worker[Job scheduler, AutoTagger]
   worker --> port[Classifier port]
   port -->|probability per tag| worker
   worker -->|tags at or above threshold| tags[(video_tags)]
+  worker -->|done or failed| results[(auto_tag_results)]
   tags --> screen[Video notice to screens]
 ```
 
@@ -123,15 +126,19 @@ tentative tags do.
 
 ## Queue and when a video is judged
 
-Each video's content key has one row in `auto_tag_queue`, and the row stays
-`done` after judging so that automatic judging never repeats on that video.
+A video to judge is an `auto_tag` row in `jobs`, keyed by its content key in
+`subject_key`. The job ends with the answer, and `auto_tag_results` keeps
+`done` or `failed` per content key, so that automatic judging never repeats on
+that video after the job is gone. A content key's state is its unfinished
+job's state, otherwise its result's, otherwise none.
 
 ```mermaid
 stateDiagram-v2
   [*] --> queued: added
-  queued --> running: worker claims
+  queued --> running: scheduler claims
   running --> done: answer recorded
-  running --> failed: classifier error
+  running --> queued: classifier error, after the retry delay
+  running --> failed: classifier error on the last attempt
   running --> queued: restart
   failed --> queued: tag not yet tagged
   done --> queued: tag all again, or the video page
@@ -139,9 +146,9 @@ stateDiagram-v2
 
 | Trigger | Queues |
 | --- | --- |
-| Seek preview stage finishes for good (done, or failed with no retry left), "Tag new videos automatically" on | That video, if it has no row |
+| Seek preview stage finishes for good (done, or failed with no retry left), "Tag new videos automatically" on | That video, if it has no state |
 | Seek preview stage of a forced job (a [force rescan](force-rescan.md#tagging-and-face-analysis-run-again)) finishes for good | That video, unless `running`, as "Tag all videos again" does; "Tag new videos automatically" is not needed |
-| Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
+| Settings, "Tag videos not yet tagged" | Videos with no state or a `failed` result |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
 | Onboarding, picking interests | Every video not `running`, as "Tag all videos again" does |
@@ -153,9 +160,18 @@ that job's `import` entry
 trigger does the same. The import
 pipeline therefore stays `running` until tagging finishes, and does not wait
 when the trigger queues nothing. The `VideoIngestChanged` subscriber only wakes
-the worker. A retry from the activity log and a claim that reopens an
+the scheduler. A retry from the activity log and a claim that reopens an
 interrupted entry join the pipelines of the entry they continue; the other
 triggers are started by the owner and write standalone entries.
+
+The job's [priority class](job-scheduling.md#owner-requests-are-claimed-first)
+follows who asked:
+
+| Trigger | Class |
+| --- | --- |
+| The video page, a retry from the activity log | Owner (0); a request on an already queued job moves that job to the owner class and ends its retry wait |
+| A forced job's seek stage | The forced job's class, the owner's for a force rescan |
+| Import, Settings, onboarding | Import (1), so a bulk request never holds back the owner's request on one video |
 
 Every trigger requires "Use auto-tagging" to be on; while it is off the
 Settings run buttons and the video page button are hidden, and the API refuses
@@ -163,34 +179,44 @@ to queue with `409 auto_tagging_off`. Picking interests is the exception: it
 still makes the interests' tags and smart folders, queues nothing and answers
 `queued: 0`.
 
-Picking interests queues every video, not only those without a row, because a
-video judged before an interest's tag existed was never asked about that tag
-([Home library and setup](home.md)).
+Picking interests queues every video, not only those without a state,
+because a video judged before an interest's tag existed was never asked about
+that tag ([Home library and setup](home.md)).
 
-Keeping `done` rows means a tag the owner removed is not added back by the
-next import of the same content. One worker judges one video at a time, so a
-slow CPU-only provider is not given parallel requests it cannot serve.
+Keeping `done` results means a tag the owner removed is not added back by the
+next import of the same content. An `auto_tag` job demands the scheduler's one
+classifier slot and no read or CPU slot, since it sends generated thumbnails
+and seek frames, never the source file. One video is therefore judged at a
+time, so a slow CPU-only provider is not given parallel requests it cannot
+serve, while imports keep every read slot.
+
+A job whose content key no longer has a registered video is dropped when it is
+claimed, and its entry closes as `completed`.
 
 ## Failures
 
-A failed request marks the row `failed` with the provider's message and the
-worker moves on; nothing retries it until the owner queues it again.
+A failed request goes back to the scheduler, which retries the job with the
+default [retry rule](job-scheduling.md#a-failed-job-retries-after-a-growing-delay):
+30 s after the first attempt and 2 min after the second, and `failed` with the
+provider's message after the third. Each claim counts as one attempt.
 
 Ollama being stopped makes every queued video fail within seconds instead of
-blocking the queue, and the Settings page shows the count and the last
-message. A row still `running` at shutdown goes back to `queued` at the next
-startup.
+blocking the queue, and each waits out its delay before it asks again. The
+Settings page shows the count of `failed` results and the last message. A job
+still `running` at shutdown goes back to `queued` at the next startup, and that
+claim counts as an attempt.
 
 ## Activity entries and undo
 
 Each run of a video is one `auto_tag` activity entry
 ([activity.md](activity.md)). Queuing writes it `running`/`waiting` and the
-queue row keeps its id; the claim makes it `processing`, the answer makes it
-`done`/`completed`, and a failed request makes it `attention`/`failed` with the
-provider's message. A row whose entry is no longer `running` when it is
-claimed, after a restart, opens a new entry, which closes the interrupted one
-as `superseded`. The queuing, the claim, the answer and the failure each write
-the entry in the transaction that changes the row.
+job keeps its id; the claim makes it `processing`, and the answer makes it
+`done`/`completed`. A failed request that will be retried returns it to
+`running`/`waiting` with the provider's message, and the last failed attempt
+makes it `attention`/`failed`. A job whose entry is no longer `running` when
+it is claimed, after a restart, opens a new entry, which closes the
+interrupted one as `superseded`. The queuing, the claim, the answer and the
+failure each write the entry in the transaction that changes the job.
 
 | Run started by | Decider until it finishes | Decider after the answer |
 | --- | --- | --- |
@@ -243,8 +269,11 @@ judge.
 
 Auto-tagging is optional and off by default. While "Use auto-tagging" is off:
 
-- the worker claims no queued video and never contacts the provider, and the
-  queued rows wait until the feature is turned on again;
+- the `auto_tag` kind is [paused](job-scheduling.md#a-feature-that-is-off-pauses-its-kinds):
+  the scheduler claims no queued job and never contacts the provider, and the
+  jobs wait with their attempts until the feature is turned on again, which
+  wakes the scheduler;
+
 - nothing is queued, by import, Settings or the video page;
 - the video page has no "Suggest tags" button;
 - suggested tags already added can still be kept or rejected.

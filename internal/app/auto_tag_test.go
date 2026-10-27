@@ -6,21 +6,19 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 type fakeAutoTagQueue struct {
 	mu            sync.Mutex
-	queued        []string
 	videos        map[string]domain.Video
 	candidates    []domain.AutoTagCandidate
 	candidatesFor []string
 	finished      map[string]domain.AutoTagSelection
-	failed        map[string]string
 	queuedIDs     []int64
 	modes         []domain.AutoTagQueueMode
 	// queueDeciders track initiators; finishDeciders track decision sources.
@@ -28,7 +26,6 @@ type fakeAutoTagQueue struct {
 	finishDeciders map[string]domain.ActivityDecider
 	// retried holds {videoID, entryID} per RetryVideo call.
 	retried [][2]int64
-	done    chan string
 }
 
 func newFakeAutoTagQueue() *fakeAutoTagQueue {
@@ -36,8 +33,6 @@ func newFakeAutoTagQueue() *fakeAutoTagQueue {
 		videos:         map[string]domain.Video{},
 		finished:       map[string]domain.AutoTagSelection{},
 		finishDeciders: map[string]domain.ActivityDecider{},
-		failed:         map[string]string{},
-		done:           make(chan string, 10),
 	}
 }
 
@@ -67,17 +62,6 @@ func (q *fakeAutoTagQueue) QueueLibrary(_ context.Context, mode domain.AutoTagQu
 	return 3, nil
 }
 
-func (q *fakeAutoTagQueue) Claim(context.Context) (domain.AutoTagJob, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if len(q.queued) == 0 {
-		return domain.AutoTagJob{}, domain.ErrNoJob
-	}
-	key := q.queued[0]
-	q.queued = q.queued[1:]
-	return domain.AutoTagJob{ContentKey: key}, nil
-}
-
 func (q *fakeAutoTagQueue) Subject(_ context.Context, key string) (domain.AutoTagVideo, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -105,19 +89,8 @@ func (q *fakeAutoTagQueue) Finish(
 	q.finished[key] = selection
 	q.finishDeciders[key] = decider
 	q.mu.Unlock()
-	q.done <- key
 	return nil
 }
-
-func (q *fakeAutoTagQueue) Fail(_ context.Context, key, reason string) error {
-	q.mu.Lock()
-	q.failed[key] = reason
-	q.mu.Unlock()
-	q.done <- key
-	return nil
-}
-
-func (q *fakeAutoTagQueue) RequeueRunning(context.Context) (int, error) { return 0, nil }
 
 func (q *fakeAutoTagQueue) Counts(context.Context) (domain.AutoTagCounts, error) {
 	return domain.AutoTagCounts{Done: 1}, nil
@@ -193,28 +166,15 @@ func (f *fakeImages) SeekFramesJPEG(key string, n int) ([][]byte, error) {
 	return frames, nil
 }
 
-func runAutoTagger(t *testing.T, tagger *AutoTagger) {
+// handleAutoTag runs the claimed auto_tag job of key as the scheduler does.
+func handleAutoTag(t *testing.T, tagger *AutoTagger, key string) error {
 	t.Helper()
-	loop := newTestLoop()
-	tagger.Waker = loop.Wake
-	loop.run(t, tagger.Step)
-}
-
-func waitAutoTagDone(t *testing.T, q *fakeAutoTagQueue) string {
-	t.Helper()
-	select {
-	case key := <-q.done:
-		return key
-	case <-time.After(5 * time.Second):
-		t.Fatal("判定が終わらない")
-		return ""
-	}
+	return tagger.HandleJob(context.Background(), domain.Job{ID: 1, Kind: domain.JobAutoTag, ContentKey: key})
 }
 
 // Send all candidate questions together; provider adapters own batching.
 func TestAutoTaggerSelectsTags(t *testing.T) {
 	queue := newFakeAutoTagQueue()
-	queue.queued = []string{"k1"}
 	queue.videos["k1"] = domain.Video{
 		Title: "Kyoto", Path: filepath.FromSlash("/media/travel/bamboo.mp4"), ThumbnailState: domain.ThumbnailStateDone,
 		SeekThumbnailState: domain.SeekThumbnailDone,
@@ -235,9 +195,9 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	tagger := NewAutoTagger(AutoTaggerOptions{
 		Queue: queue, Settings: settings, Classifier: classifier, Images: images,
 	})
-	runAutoTagger(t, tagger)
-
-	waitAutoTagDone(t, queue)
+	if err := handleAutoTag(t, tagger, "k1"); err != nil {
+		t.Fatal(err)
+	}
 	want := domain.AutoTagSelection{
 		Confirmed: []int64{1, 40}, Tentative: []int64{2}, Probabilities: map[int64]float64{1: 0.95, 2: 0.5, 40: 0.9},
 	}
@@ -265,23 +225,25 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	}
 }
 
-func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
+// A classifier failure goes back to the scheduler, which retries the job after its delay, instead of being recorded
+// as final; its message is cut to fit the activity's detail.
+func TestAutoTaggerReturnsClassifierFailuresForRetry(t *testing.T) {
 	queue := newFakeAutoTagQueue()
-	queue.queued = []string{"k1", "k2"}
 	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
-	queue.videos["k2"] = domain.Video{Title: "b", Path: "/m/b.mp4"}
 	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
-	classifier := &fakeClassifier{err: errors.New("cannot reach Ollama")}
+	cause := errors.New(strings.Repeat("x", maxClassifierErrorLength+10))
+	classifier := &fakeClassifier{err: cause}
 	tagger := NewAutoTagger(AutoTaggerOptions{
 		Queue: queue, Settings: enabledAutoTagSettings(),
 		Classifier: classifier, Images: &fakeImages{},
 	})
-	runAutoTagger(t, tagger)
 
-	waitAutoTagDone(t, queue)
-	waitAutoTagDone(t, queue)
-	if queue.failed["k1"] != "cannot reach Ollama" || queue.failed["k2"] != "cannot reach Ollama" {
-		t.Fatalf("失敗の記録 = %v", queue.failed)
+	err := handleAutoTag(t, tagger, "k1")
+	if !errors.Is(err, cause) || len(err.Error()) != maxClassifierErrorLength {
+		t.Fatalf("err = %v (%d bytes), want the classifier's cut to %d", err, len(err.Error()), maxClassifierErrorLength)
+	}
+	if len(queue.finished) != 0 {
+		t.Fatalf("失敗した判定を終えた: %v", queue.finished)
 	}
 	if classifier.requests[0].Input.Images != nil {
 		t.Fatal("サムネイルもコマも無い動画に画像を渡した")
@@ -290,15 +252,16 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 
 func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	queue := newFakeAutoTagQueue()
-	queue.queued = []string{"gone", "k1"}
 	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
 	classifier := &fakeClassifier{}
 	tagger := NewAutoTagger(AutoTaggerOptions{
 		Queue: queue, Settings: enabledAutoTagSettings(), Classifier: classifier,
 	})
-	runAutoTagger(t, tagger)
-	waitAutoTagDone(t, queue)
-	waitAutoTagDone(t, queue)
+	for _, key := range []string{"gone", "k1"} {
+		if err := handleAutoTag(t, tagger, key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if len(classifier.requests) != 0 {
 		t.Fatalf("問い合わせた: %d", len(classifier.requests))
 	}
@@ -311,7 +274,7 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	}
 }
 
-// The seek stage's transaction queues after-import tagging, so the subscriber only wakes the worker.
+// The seek stage's transaction queues after-import tagging, so the subscriber only wakes the scheduler.
 func TestAutoTaggerVideoImagesFinishedOnlyWakes(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{Enabled: true, AfterImport: true}}
@@ -357,28 +320,28 @@ func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestAutoTaggerIdlesWhileOff(t *testing.T) {
-	queue := newFakeAutoTagQueue()
-	queue.queued = []string{"k1"}
-	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
-	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
+// While auto-tagging is off its jobs are paused, and turning it on wakes the scheduler to claim them.
+func TestAutoTaggerPausesItsJobsWhileOff(t *testing.T) {
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
-	classifier := &fakeClassifier{answers: map[string]float64{"tag_1": 0.9}}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: classifier})
-	runAutoTagger(t, tagger)
+	woken := 0
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings,
+		Classifier: &fakeClassifier{}, Wake: func() { woken++ }})
+	paused := PausedJobKinds(tagger)
+	ctx := context.Background()
 
-	select {
-	case key := <-queue.done:
-		t.Fatalf("切なのに %s を判定した", key)
-	case <-time.After(100 * time.Millisecond):
+	if got, err := paused(ctx); err != nil || !reflect.DeepEqual(got, map[domain.JobKind]bool{domain.JobAutoTag: true}) {
+		t.Fatalf("切の間に止めた種類 = %v, %v", got, err)
 	}
 	on := domain.DefaultAutoTagSettings()
 	on.Enabled = true
-	if _, err := tagger.SaveSettings(context.Background(), on); err != nil {
+	if _, err := tagger.SaveSettings(ctx, on); err != nil {
 		t.Fatal(err)
 	}
-	if key := waitAutoTagDone(t, queue); key != "k1" {
-		t.Fatalf("判定した = %s", key)
+	if woken != 1 {
+		t.Fatalf("入れたときに起こした回数 = %d, want 1", woken)
+	}
+	if got, err := paused(ctx); err != nil || len(got) != 0 {
+		t.Fatalf("入れた後に止めた種類 = %v, %v", got, err)
 	}
 }
 
@@ -402,13 +365,17 @@ func TestAutoTaggerSaveSettings(t *testing.T) {
 
 func TestAutoTaggerSkipsWhenCandidatesVanish(t *testing.T) {
 	queue := &vanishingQueue{fakeAutoTagQueue: newFakeAutoTagQueue()}
-	queue.queued = []string{"k1"}
 	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
 	classifier := &fakeClassifier{}
 	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: enabledAutoTagSettings(), Classifier: classifier})
-	runAutoTagger(t, tagger)
-	waitAutoTagDone(t, queue.fakeAutoTagQueue)
+	if err := handleAutoTag(t, tagger, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := queue.finished["k1"]; !ok {
+		t.Fatal("候補の消えた動画の判定を終えていない")
+	}
 	if len(classifier.requests) != 0 {
+
 		t.Fatalf("問い合わせた: %d", len(classifier.requests))
 	}
 }

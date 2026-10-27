@@ -67,16 +67,22 @@ func TestJobSchedulingMigrationRoundTripsExistingRows(t *testing.T) {
 
 func jobRows(t *testing.T, q *sql.DB) [][]any {
 	t.Helper()
-	rows, err := q.Query(`select id, kind, video_id, state, attempts, last_error, created_at, updated_at, location_id,
-		location_version, location_path, activity_id, force, force_requested from jobs order by id`)
+	return queryRows(t, q, `select id, kind, video_id, state, attempts, last_error, created_at, updated_at, location_id,
+		location_version, location_path, activity_id, force, force_requested from jobs order by id`, 14)
+}
+
+// queryRows reads every row of query, which selects columns values.
+func queryRows(t *testing.T, q *sql.DB, query string, columns int) [][]any {
+	t.Helper()
+	rows, err := q.Query(query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = rows.Close() }()
 	var got [][]any
 	for rows.Next() {
-		row := make([]any, 14)
-		pointers := make([]any, len(row))
+		row := make([]any, columns)
+		pointers := make([]any, columns)
 		for i := range row {
 			pointers[i] = &row[i]
 		}

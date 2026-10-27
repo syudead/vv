@@ -73,7 +73,7 @@ func TestAfterImportAutoTagFailureLeavesTheImportMemberDone(t *testing.T) {
 	runImportStage(t, db, domain.JobFingerprint)
 	store := db.AutoTags()
 	job := claimAutoTag(t, store)
-	if err := store.Fail(ctx, job.ContentKey, "cannot reach Ollama"); err != nil {
+	if err := failAutoTag(ctx, store, job.ContentKey, "cannot reach Ollama"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -99,7 +99,7 @@ func TestAfterImportAutoTagFailureLeavesTheImportMemberDone(t *testing.T) {
 	if _, err := db.Activity().RecoverInterruptedActivity(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.RequeueRunning(ctx); err != nil {
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)

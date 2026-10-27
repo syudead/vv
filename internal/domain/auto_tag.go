@@ -81,10 +81,6 @@ func (s AutoTagScope) QueueMode() AutoTagQueueMode {
 	return AutoTagQueueUnlessDone
 }
 
-type AutoTagJob struct {
-	ContentKey string
-}
-
 type AutoTagCounts = QueueCounts
 
 type AutoTagStatus struct {
