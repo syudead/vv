@@ -14,22 +14,19 @@ const (
 	JobFingerprint JobKind = "fingerprint"
 )
 
-// Bound retries so one corrupt file cannot monopolize a single worker forever.
-const MaxJobAttempts = 3
+// JobPriority is a job's class; claims serve a lower class strictly first. See docs/design-docs/job-scheduling.md.
+type JobPriority int
+
+const (
+	// JobPriorityOwner is work the owner asked for on one video: a force rescan or a retry.
+	JobPriorityOwner JobPriority = 0
+	// JobPriorityImport is everything an import, a scan or an after-import rule queues.
+	JobPriorityImport JobPriority = 1
+	// JobPriorityBackfill is work that only refreshes stored results.
+	JobPriorityBackfill JobPriority = 2
+)
 
 var ErrNoJob = errors.New("no job to process")
-
-// ErrFailureRepeats marks a failure every retry would reproduce, such as an input too slow to process; the job fails
-// once every current location has failed, without spending its remaining attempts.
-var ErrFailureRepeats = errors.New("retrying would repeat the failure")
-
-// AttemptsAfterFailure counts a repeating failure as the last allowed attempt.
-func AttemptsAfterFailure(attempts int, cause error) int {
-	if errors.Is(cause, ErrFailureRepeats) {
-		return max(attempts, MaxJobAttempts)
-	}
-	return attempts
-}
 
 type Job struct {
 	ID              int64
@@ -45,6 +42,8 @@ type Job struct {
 	LastLocation bool
 	// Attempts includes this claim.
 	Attempts int
+	// StartsRound reports that this claim began a round and so added one to Attempts.
+	StartsRound bool
 	// Force regenerates the artifact whatever the stage state is, and its seek stage queues no follow-up process.
 	Force bool
 }
@@ -67,14 +66,6 @@ func ClaimAttempts(attempts int, startsRound bool) int {
 		return attempts + 1
 	}
 	return attempts
-}
-
-// JobStateAfterFailure requeues stale claims without counting them and fails only after MaxJobAttempts on the last location, ensuring every current location is tried.
-func JobStateAfterFailure(attempts int, lastLocation, claimCurrent bool) JobState {
-	if claimCurrent && lastLocation && attempts >= MaxJobAttempts {
-		return JobFailed
-	}
-	return JobQueued
 }
 
 type JobClaimCondition struct {

@@ -359,7 +359,8 @@ func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, er
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("ffmpeg failed to generate seek thumbnails: %w: %s", err, firstLine(exitErr.Stderr))
+			return nil, exitFailure(
+				fmt.Errorf("ffmpeg failed to generate seek thumbnails: %w: %s", err, firstLine(exitErr.Stderr)), exitErr.Stderr)
 		}
 		return nil, fmt.Errorf("cannot run ffmpeg: %w", err)
 	}

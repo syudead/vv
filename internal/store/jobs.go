@@ -5,9 +5,19 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
+)
+
+// Tests replace these to place claims and failures in time, fix the spread of a retry delay, and override a kind's
+// retry policy.
+var (
+	jobNow         = time.Now
+	jobJitter      = rand.Float64
+	jobRetryPolicy = domain.JobRetryPolicyFor
 )
 
 // EnqueueJob replaces terminal failures but preserves unfinished work through a partial unique index, joining one import activity.
@@ -148,10 +158,10 @@ func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `
-		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		select ?, ?, 'queued', 0, ?, ?
+		insert into jobs (kind, video_id, state, attempts, run_after, created_at, updated_at)
+		select ?, ?, 'queued', 0, ?, ?, ?
 		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
-		string(kind), videoID, now, now, string(kind), videoID, videoID)
+		string(kind), videoID, now, now, now, string(kind), videoID, videoID)
 	if err != nil {
 		return false, fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
@@ -162,7 +172,8 @@ func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int
 	return inserted > 0, nil
 }
 
-// ClaimJob uses BEGIN IMMEDIATE to prevent duplicate claims across workers; an empty queue returns ErrNoJob.
+// ClaimJob takes the kind's queued job of the lowest class, then the earliest run-after time, then the oldest, among
+// those whose run-after time has come. BEGIN IMMEDIATE prevents duplicate claims; an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
@@ -192,9 +203,10 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	var previousPath sql.NullString
 	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
 	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.force, j.location_path from jobs j
-		where j.state = 'queued' and j.kind = ?` + claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
-		order by j.id limit 1`
-	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &previousPath)
+		where j.state = 'queued' and j.kind = ? and j.run_after <= ?` +
+		claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
+		order by j.priority, j.run_after, j.id limit 1`
+	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind), jobNow().Unix()).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &previousPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, domain.ErrNoJob
 	}
@@ -219,6 +231,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 			Scan(&locationID, &locationVersion, &locationPath, &contentKey)
 	}
 	job.Attempts = domain.ClaimAttempts(job.Attempts, startsRound)
+	job.StartsRound = startsRound
 	if errors.Is(err, sql.ErrNoRows) {
 		dropped, dropErr := s.dropUnplacedJob(ctx, conn, job.ID)
 		if dropErr != nil {
@@ -396,14 +409,16 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 	}
 	defer func() { _ = tx.Rollback() }()
 	var attempts int
-	err = tx.QueryRowContext(ctx, `select attempts from jobs where id = ?`, id).Scan(&attempts)
+	var kind string
+	err = tx.QueryRowContext(ctx, `select attempts, kind from jobs where id = ?`, id).Scan(&attempts, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	state := domain.JobStateAfterFailure(attempts, true, true)
+	// Setup wants the state only, so the requeued row keeps its run-after time.
+	state := jobRetryPolicy(domain.JobKind(kind)).AfterFailure(attempts, errors.New(reason), true, 0).State
 	if _, err := tx.ExecContext(ctx, `update jobs set state = ?, last_error = ?, updated_at = ? where id = ?`,
 		string(state), reason, time.Now().Unix(), id); err != nil {
 		return err
@@ -411,7 +426,8 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 	return s.commitJobChange(ctx, tx, id)
 }
 
-// FailClaimedJob applies the domain retry decision and records terminal video failure in the same transaction.
+// FailClaimedJob applies the kind's retry policy: it requeues at once inside a round, waits out the delay after a round,
+// and records a terminal video failure in the same transaction. A snooze requeues without counting the claim.
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -435,16 +451,22 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	if err != nil {
 		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
 	}
-	state := domain.JobStateAfterFailure(domain.AttemptsAfterFailure(attempts, cause), job.LastLocation, current)
+	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, job.LastLocation && current, jobJitter())
+	state := outcome.State
+	if outcome.Uncounted && job.StartsRound {
+		attempts--
+	}
 
-	now := time.Now().Unix()
+	now := jobNow().Unix()
 	res, err := tx.ExecContext(ctx, `
 		update jobs
 		set state = ?,
+		attempts = ?,
 		last_error = ?,
+		run_after = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
 		updated_at = ? where id = ? and state = 'running'`,
-		string(state), reason,
+		string(state), attempts, reason, now+int64(math.Ceil(outcome.Delay.Seconds())),
 		job.LocationID, job.LocationVersion, job.LocationPath,
 		now, job.ID)
 	if err != nil {
@@ -583,6 +605,19 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 		and v.location_generation = ?)`, job.VideoID, job.ContentKey, job.LocationID,
 		job.LocationVersion, job.LocationPath, job.LocationGeneration).Scan(&current)
 	return current == 1, err
+}
+
+// NextJobRunAfter returns the earliest future run-after time of a queued job, or the zero time when none waits.
+func (s *IngestStore) NextJobRunAfter(ctx context.Context) (time.Time, error) {
+	var next sql.NullInt64
+	if err := s.db.sql.QueryRowContext(ctx, `select min(run_after) from jobs where state = 'queued' and run_after > ?`,
+		jobNow().Unix()).Scan(&next); err != nil {
+		return time.Time{}, fmt.Errorf("cannot look up the next job retry time: %w", err)
+	}
+	if !next.Valid {
+		return time.Time{}, nil
+	}
+	return time.Unix(next.Int64, 0), nil
 }
 
 func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {

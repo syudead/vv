@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -19,6 +20,8 @@ type Queue interface {
 	// Failures below the attempt limit requeue; storage extracts the message and ProbeFailure code,
 	// defaulting to internal.
 	FailClaimedJob(ctx context.Context, job domain.Job, cause error) error
+	// NextJobRunAfter returns the earliest future run-after time of a queued job, or the zero time when none waits.
+	NextJobRunAfter(ctx context.Context) (time.Time, error)
 }
 
 // Handler implementations are injected by cmd/mdm; jobs owns claiming and completion, without
@@ -86,7 +89,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // step visits the kinds in turn, claiming one job per kind, until a full turn grants nothing. A kind whose demand
 // does not fit is skipped, not waited for, so it never holds back a kind that fits. The turn resumes after the last
-// granted kind, so a freed slot goes to the next kind instead of always to the first stage.
+// granted kind, so a freed slot goes to the next kind instead of always to the first stage. With nothing granted, it
+// sleeps until the next run-after time.
 func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 	kinds := domain.JobKinds
 	empty := make(map[domain.JobKind]bool, len(kinds))
@@ -115,7 +119,22 @@ func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 		s.grant(ctx, job, demand)
 		idle = 0
 	}
-	return domain.WorkerIdle
+	return s.untilNextRunAfter(ctx)
+}
+
+// untilNextRunAfter lets a job waiting out a retry delay run when the delay ends, without a wakeup.
+func (s *Scheduler) untilNextRunAfter(ctx context.Context) domain.WorkerWait {
+	next, err := s.queue.NextJobRunAfter(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Warn("could not read the next job retry time", slog.Any("error", err))
+		}
+		return domain.WorkerRetry
+	}
+	if next.IsZero() {
+		return domain.WorkerIdle
+	}
+	return domain.WorkerWait(max(time.Until(next), 0))
 }
 
 func (s *Scheduler) reserve(demand domain.JobResources) bool {

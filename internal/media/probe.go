@@ -75,30 +75,43 @@ func ProbeMediaInfo(ctx context.Context, path string) domain.MediaInfoProbe {
 func readImportProbe(ctx, probeCtx context.Context, path string) (domain.Probe, error) {
 	output, err := command(probeCtx, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed, fmt.Errorf(
-				"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)))
-		}
-		if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
-			// Treat per-file timeout as a corrupt input and continue ingestion.
-			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
-				fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
-		}
-		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeUnavailable,
-			fmt.Errorf("could not run %s (%s): %w", probeCommand, path, err))
+		return domain.Probe{}, probeRunFailure(probeCtx, path, err)
 	}
-
-	probe, err := parseProbeOutput(output)
+	probe, err := parseImportProbe(path, output)
 	if err != nil {
-		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata,
-			fmt.Errorf("could not interpret the %s output (%s): %w", probeCommand, path, err))
+		return domain.Probe{}, err
 	}
 	if probe.Media != nil && isTransportStreamPath(path) {
 		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
 	if probe.Media != nil && probe.Media.Video != nil && strings.EqualFold(probe.VideoCodec, "av1") {
 		probe.Media.Video.FilmGrain = probeFilmGrain(probeCtx, path)
+	}
+	return probe, nil
+}
+
+// probeRunFailure classifies an ffprobe run that did not finish; only FFmpeg's invalid-data error repeats.
+func probeRunFailure(probeCtx context.Context, path string, err error) error {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return domain.NewProbeFailure(domain.ProbeErrorProbeFailed, exitFailure(fmt.Errorf(
+			"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)), exitErr.Stderr))
+	}
+	if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
+		// Treat per-file timeout as a corrupt input and continue ingestion; a slow disk may pass, so it retries.
+		return domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
+			fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
+	}
+	return domain.NewProbeFailure(domain.ProbeErrorProbeUnavailable,
+		fmt.Errorf("could not run %s (%s): %w", probeCommand, path, err))
+}
+
+// parseImportProbe reads ffprobe's output; output it cannot interpret is the same on every read, so it repeats.
+func parseImportProbe(path string, output []byte) (domain.Probe, error) {
+	probe, err := parseProbeOutput(output)
+	if err != nil {
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata, domain.FailureRepeats(
+			fmt.Errorf("could not interpret the %s output (%s): %w", probeCommand, path, err)))
 	}
 	return probe, nil
 }

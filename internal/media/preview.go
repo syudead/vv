@@ -38,7 +38,7 @@ func GeneratePreview(ctx context.Context, videoPath, output string, durationMs i
 		if processCtx.Err() != nil {
 			return fmt.Errorf("preview generation was interrupted: %w", processCtx.Err())
 		}
-		return fmt.Errorf("ffmpeg failed to generate the preview: %w: %s", runErr, firstLine(combined))
+		return exitFailure(fmt.Errorf("ffmpeg failed to generate the preview: %w: %s", runErr, firstLine(combined)), combined)
 	}
 	return nil
 }

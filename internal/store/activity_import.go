@@ -40,6 +40,8 @@ type importRun struct {
 	scanID int64
 	// retried is the activity-log entry this run retries.
 	retried int64
+	// request marks the owner's request on one video, whose jobs take the owner class.
+	request bool
 }
 
 func ruleRun() importRun { return importRun{decider: domain.ActivityByRule} }

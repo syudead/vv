@@ -27,6 +27,8 @@ type fakeQueue struct {
 	completed []domain.Job
 	failures  []jobFailure
 	observe   func(string)
+	// runAfter holds a kind's jobs back until that time, as a retry delay does.
+	runAfter time.Time
 }
 
 func newFakeQueue(jobs ...domain.Job) *fakeQueue {
@@ -52,7 +54,7 @@ func (q *fakeQueue) ClaimJob(_ context.Context, kind domain.JobKind) (domain.Job
 		return domain.Job{}, err
 	}
 	queued := q.queued[kind]
-	if len(queued) == 0 {
+	if len(queued) == 0 || time.Now().Before(q.runAfter) {
 		return domain.Job{}, domain.ErrNoJob
 	}
 	q.queued[kind] = queued[1:]
@@ -95,6 +97,15 @@ func (q *fakeQueue) FailClaimedJob(_ context.Context, job domain.Job, cause erro
 		q.observe("fail")
 	}
 	return nil
+}
+
+func (q *fakeQueue) NextJobRunAfter(context.Context) (time.Time, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !time.Now().Before(q.runAfter) {
+		return time.Time{}, nil
+	}
+	return q.runAfter, nil
 }
 
 func (q *fakeQueue) completedIDs() []int64 {
@@ -297,6 +308,31 @@ func TestSchedulerSleepsUntilWoken(t *testing.T) {
 		synctest.Wait()
 		if got, want := queue.completedIDs(), []int64{job.ID}; !slices.Equal(got, want) {
 			t.Fatalf("after Wake: completed=%v, want %v", got, want)
+		}
+	})
+}
+
+func TestSchedulerWaitsUntilTheNextRunAfterTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		queue := newFakeQueue(domain.Job{ID: 7, Kind: domain.JobProbe})
+		queue.runAfter = start.Add(30 * time.Second)
+		var startedAt time.Time
+		_, stop := startScheduler(Options{
+			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+			Started:  func(domain.Job) { startedAt = time.Now() },
+		})
+		defer stop()
+		synctest.Wait()
+		if len(queue.completedIDs()) != 0 {
+			t.Fatalf("completed before the run-after time = %v", queue.completedIDs())
+		}
+		// No wakeup arrives; time is virtual.
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got, want := startedAt.Sub(start), 30*time.Second; got != want || len(queue.completedIDs()) != 1 {
+			t.Fatalf("started after %v with completed %v, want after %v", got, queue.completedIDs(), want)
 		}
 	})
 }

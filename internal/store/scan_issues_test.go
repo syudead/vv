@@ -44,6 +44,14 @@ func failJobOnce(t *testing.T, db *DB, kind domain.JobKind) {
 	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("unreadable")); err != nil {
 		t.Fatal(err)
 	}
+	makeJobsDue(t, db)
+}
+
+func makeJobsDue(t *testing.T, db *DB) {
+	t.Helper()
+	if err := MakeJobsDueForTest(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func runAllJobs(t *testing.T, db *DB) {
@@ -89,6 +97,7 @@ func TestProbeFailureAtLimitBecomesIssue(t *testing.T) {
 			if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("unreadable")); err != nil {
 				t.Fatal(err)
 			}
+			makeJobsDue(t, db)
 			continue
 		}
 		probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}

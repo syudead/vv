@@ -463,25 +463,35 @@ func queueJob(
 }
 
 // A forced insert over a queued row sets its force, and over an unforced running row sets force_requested, because
-// the unique index allows one queued or running row per kind and video.
+// the unique index allows one queued or running row per kind and video. An owner request also raises a queued row to
+// the owner class and ends its retry wait.
 const (
-	keepPendingJob  = `do nothing`
-	forcePendingJob = `do update set
-		force = case when state = 'queued' then 1 else force end,
+	forcePendingJob = `force = case when state = 'queued' then 1 else force end,
 		force_requested = case when state = 'running' and force = 0 then 1 else force_requested end`
+	raisePendingJob = `priority = case when state = 'queued' then min(priority, excluded.priority) else priority end,
+		run_after = case when state = 'queued' then min(run_after, excluded.run_after) else run_after end`
+	// Matches jobs_unfinished_subject_idx.
+	unfinishedJobConflict = `on conflict (kind, coalesce(video_id, 0), coalesce(subject_key, ''), coalesce(subject_key_b, ''))
+		where state in ('queued', 'running') `
 )
 
 func insertQueuedJob(
 	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, run importRun, force bool,
 ) error {
-	onPending := keepPendingJob
-	if force {
-		onPending = forcePendingJob
+	priority := domain.JobPriorityImport
+	onPending := `do nothing`
+	switch {
+	case force:
+		priority = domain.JobPriorityOwner
+		onPending = `do update set ` + forcePendingJob + `, ` + raisePendingJob
+	case run.request:
+		priority = domain.JobPriorityOwner
+		onPending = `do update set ` + raisePendingJob
 	}
-	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, force, created_at, updated_at)
-		values (?, ?, 'queued', 0, ?, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') `+onPending,
-		string(kind), id, boolToInt(force), now, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `insert into jobs
+		(kind, video_id, state, attempts, force, priority, run_after, created_at, updated_at)
+		values (?, ?, 'queued', 0, ?, ?, ?, ?, ?) `+unfinishedJobConflict+onPending,
+		string(kind), id, boolToInt(force), int(priority), now, now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
 	if err := joinImportActivity(ctx, tx, c, id, run, time.Now()); err != nil {
@@ -504,8 +514,12 @@ func queueForceRequest(ctx context.Context, tx *sql.Tx, c *changes, jobID int64)
 	if err != nil {
 		return fmt.Errorf("cannot read the job's force request (id=%d): %w", jobID, err)
 	}
+	// The request came from the owner, so a row back in queued also takes the owner class at once.
 	if _, err := tx.ExecContext(ctx, `update jobs set force_requested = 0,
-		force = case when state = 'queued' then 1 else force end where id = ?`, jobID); err != nil {
+		force = case when state = 'queued' then 1 else force end,
+		priority = case when state = 'queued' then ? else priority end,
+		run_after = case when state = 'queued' then min(run_after, ?) else run_after end
+		where id = ?`, int(domain.JobPriorityOwner), time.Now().Unix(), jobID); err != nil {
 		return fmt.Errorf("cannot take the job's force request (id=%d): %w", jobID, err)
 	}
 	if state == string(domain.JobQueued) {
@@ -554,7 +568,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	kinds := append([]domain.JobKind{domain.JobProbe}, following...)
 	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, id, now, importRun{decider: domain.ActivityByOwner}); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, id, now, importRun{decider: domain.ActivityByOwner, request: true}); err != nil {
 			return err
 		}
 	}
@@ -623,11 +637,16 @@ func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey
 	}
 	var c changes
 	now := time.Now()
-	run := importRun{decider: domain.ActivityByOwner, retried: entryID}
+	run := importRun{decider: domain.ActivityByOwner, retried: entryID, request: true}
 	for _, kind := range kinds {
 		if err := requeueJob(ctx, tx, &c, kind, id, now.Unix(), run); err != nil {
 			return err
 		}
+	}
+	// Stages still waiting out a retry delay run at once too.
+	if _, err := tx.ExecContext(ctx, `update jobs set priority = ?, run_after = min(run_after, ?)
+		where video_id = ? and state = 'queued'`, int(domain.JobPriorityOwner), now.Unix(), id); err != nil {
+		return fmt.Errorf("cannot raise the video's queued jobs (video=%d): %w", id, err)
 	}
 	if err := joinImportActivity(ctx, tx, &c, id, run, now); err != nil {
 		return err

@@ -188,6 +188,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("unreadable location")); err != nil {
 			t.Fatal(err)
 		}
+		makeJobsDue(t, db)
 	}
 	var probeState string
 	if err := db.sql.QueryRow(`select probe_state from videos where id = ?`, videoID).Scan(&probeState); err != nil {
@@ -361,6 +362,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 		if got := jobState(t, db, job.ID); got != wantState {
 			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
 		}
+		makeJobsDue(t, db)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("ClaimJob after final cycle error = %v, want domain.ErrNoJob", err)
