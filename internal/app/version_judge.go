@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -14,12 +13,20 @@ import (
 // An unanswered question is a failure, not zero probability.
 var errNoVersionAnswer = errors.New("the classifier did not answer the question")
 
+// errJudgingTurnedOff snoozes a pair whose judging was turned off mid-judgement, so it waits without spending an
+// attempt.
+var errJudgingTurnedOff = fmt.Errorf("duplicate judging was turned off: %w", domain.ErrJobSnoozed)
+
+// errConnectionSavedMidway snoozes a pair judged no_connection while the connection was being saved, so it is judged
+// again at once with the saved connection.
+var errConnectionSavedMidway = fmt.Errorf("the connection was saved during the judgement: %w", domain.ErrJobSnoozed)
+
 type VersionJudgeStore interface {
-	// Claim the oldest eligible pair with both fingerprints, or return ErrNoJob.
-	ClaimJudgement(ctx context.Context) (domain.VersionJudgeJob, error)
+	// JudgementInput reads both fingerprints and properties of a claimed pair.
+	JudgementInput(ctx context.Context, keys [2]string) (domain.VersionJudgeJob, error)
+	// ApplyJudgement records the result and ends the pair's job, or leaves it waiting out its retry delay.
 	ApplyJudgement(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error)
 	RecoverRunningJudgements(ctx context.Context) (int, error)
-	NextJudgementRetry(ctx context.Context) (at time.Time, found bool, err error)
 	ResetNoConnectionJudgements(ctx context.Context) (int, error)
 }
 
@@ -38,42 +45,33 @@ type VersionJudgeOptions struct {
 	Settings   VersionJudgeSettingsStore
 	Classifier Classifier
 	Frames     VersionFrameSource
-	Wake       Waker
+	// Wake wakes the job scheduler, which runs version_judge jobs through HandleJob.
+	Wake Waker
 	// Nil uses slog.Default.
 	Logger *slog.Logger
-	// Nil uses time.Now.
-	Now func() time.Time
 }
 
-// VersionJudge compares fingerprints before asking the classifier about mismatched intervals,
-// processing pairs serially only while enabled; see docs/design-docs/duplicate-judging.md.
+// VersionJudge judges the version_judge jobs the scheduler grants, one at a time on the classifier slot, comparing
+// fingerprints before asking the classifier about mismatched intervals; see docs/design-docs/duplicate-judging.md.
 type VersionJudge struct {
 	store      VersionJudgeStore
 	settings   VersionJudgeSettingsStore
 	classifier Classifier
 	frames     VersionFrameSource
 	logger     *slog.Logger
-	now        func() time.Time
-	// Wake reacts to processing completion or candidate changes.
+	// Wake reacts to candidate changes and to settings that make pairs claimable.
 	Waker
 
-	// Serialize settings with result application so disabled judging cannot commit an in-flight pair
-	// afterward.
+	// Serialize result application with the judging switch and the connection reset, so no result commits after
+	// judging is turned off and no no_connection result outlives a saved connection.
 	saveMu sync.Mutex
-	// Requeue inside the serial Step after connection saves or failed result writes, avoiding races with
-	// active judgements.
-	requeuePending atomic.Bool
 }
 
-// NewVersionJudge starts no work until its Step runs.
+// NewVersionJudge does not process work until the scheduler runs its HandleJob.
 func NewVersionJudge(opts VersionJudgeOptions) *VersionJudge {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
-	}
-	now := opts.Now
-	if now == nil {
-		now = time.Now
 	}
 	return &VersionJudge{
 		store:      opts.Store,
@@ -81,7 +79,6 @@ func NewVersionJudge(opts VersionJudgeOptions) *VersionJudge {
 		classifier: opts.Classifier,
 		frames:     opts.Frames,
 		logger:     logger.With(slog.String("component", "duplicate-judging")),
-		now:        now,
 		Waker:      opts.Wake,
 	}
 }
@@ -90,7 +87,7 @@ func (j *VersionJudge) Enabled(ctx context.Context) (bool, error) {
 	return j.settings.VersionJudgingEnabled(ctx)
 }
 
-// Saving enablement wakes pending candidates.
+// SaveEnabled wakes the scheduler, so turning judging on resumes the jobs it kept queued while paused.
 func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 	j.saveMu.Lock()
 	err := j.settings.SaveVersionJudgingEnabled(ctx, enabled)
@@ -102,24 +99,33 @@ func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 	return nil
 }
 
-// Queue connection recovery in Step so request cancellation and in-flight no_connection writes
-// cannot lose it; failed requeueing retries before later judgements.
-func (j *VersionJudge) ConnectionSaved(context.Context) {
-	j.requeuePending.Store(true)
+// PausedJobKinds pauses version_judge jobs while judging is off, so they keep their attempts until it is turned on.
+func (j *VersionJudge) PausedJobKinds(ctx context.Context) ([]domain.JobKind, error) {
+	on, err := j.Enabled(ctx)
+	if err != nil || on {
+		return nil, err
+	}
+	return []domain.JobKind{domain.JobVersionJudge}, nil
+}
+
+// ConnectionSaved returns no_connection pairs to waiting with their jobs and wakes the scheduler. A judgement that
+// decided no_connection before the save snoozes instead of recording it, so it cannot outlive this reset.
+func (j *VersionJudge) ConnectionSaved(ctx context.Context) {
+	j.saveMu.Lock()
+	err := j.resetNoConnection(ctx)
+	j.saveMu.Unlock()
+	if err != nil {
+		if ctx.Err() == nil {
+			j.logger.Error("cannot return the duplicate judgements waiting for a connection", slog.Any("error", err))
+		}
+		return
+	}
 	j.Wake()
 }
 
-// Recover before the first Step; failed recovery is retried before the first judgement.
+// Recover returns pairs interrupted by a restart to waiting, and pairs waiting for a connection that was saved; it
+// runs before the scheduler starts.
 func (j *VersionJudge) Recover(ctx context.Context) error {
-	if err := j.requeue(ctx); err != nil {
-		j.requeuePending.Store(true)
-		return err
-	}
-	return nil
-}
-
-// Call requeue only before the first Step or between judgements, never while a pair is being processed.
-func (j *VersionJudge) requeue(ctx context.Context) error {
 	recovered, err := j.store.RecoverRunningJudgements(ctx)
 	if err != nil {
 		return err
@@ -127,6 +133,10 @@ func (j *VersionJudge) requeue(ctx context.Context) error {
 	if recovered > 0 {
 		j.logger.Info("requeued interrupted duplicate judgements", slog.Int("count", recovered))
 	}
+	return j.resetNoConnection(ctx)
+}
+
+func (j *VersionJudge) resetNoConnection(ctx context.Context) error {
 	saved, err := j.settings.OllamaConnectionSaved(ctx)
 	if err != nil || !saved {
 		return err
@@ -141,56 +151,25 @@ func (j *VersionJudge) requeue(ctx context.Context) error {
 	return nil
 }
 
-// Step judges one pair while enabled; with no eligible pair it waits for a wakeup or the next retry time.
-func (j *VersionJudge) Step(ctx context.Context) domain.WorkerWait {
-	if j.requeuePending.Swap(false) {
-		if err := j.requeue(ctx); err != nil {
-			j.requeuePending.Store(true)
-			return retryStep(ctx, j.logger, "cannot requeue the duplicate judgements", err)
-		}
-	}
-	on, err := j.Enabled(ctx)
+// HandleJob judges the claimed pair and records the result, which ends the job or schedules its retry. An error goes
+// back to the scheduler, which records it as a failed judgement, or as a snooze for errJudgingTurnedOff.
+func (j *VersionJudge) HandleJob(ctx context.Context, job domain.Job) error {
+	input, err := j.store.JudgementInput(ctx, [2]string{job.ContentKey, job.ContentKeyB})
 	if err != nil {
-		return retryStep(ctx, j.logger, "cannot read the duplicate judging setting", err)
+		return err
 	}
-	if !on {
-		return domain.WorkerIdle
+	result := j.judge(ctx, input)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	job, err := j.store.ClaimJudgement(ctx)
-	if errors.Is(err, domain.ErrNoJob) {
-		return j.untilNextRetry(ctx)
-	}
-	if err != nil {
-		return retryStep(ctx, j.logger, "cannot claim a possible duplicate", err)
-	}
-	if err := j.process(ctx, job); err != nil {
-		return retryStep(ctx, j.logger, "cannot record the duplicate judgement", err)
-	}
-	return domain.WorkerNext
+	return j.record(ctx, input.Keys, result)
 }
 
-func (j *VersionJudge) untilNextRetry(ctx context.Context) domain.WorkerWait {
-	at, found, err := j.store.NextJudgementRetry(ctx)
-	if err != nil {
-		return retryStep(ctx, j.logger, "cannot read the next duplicate judgement retry", err)
-	}
-	if !found {
-		return domain.WorkerIdle
-	}
-	// Wait until after the timestamp stored at second precision.
-	return domain.WorkerWait(max(at.Sub(j.now()), 0) + time.Second)
-}
-
-// Leave shutdown-interrupted work for startup recovery; failed result writes trigger requeueing
-// before the next judgement.
-func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) error {
+func (j *VersionJudge) judge(ctx context.Context, job domain.VersionJudgeJob) domain.VersionJudgeResult {
 	rule := domain.JudgeVersionFrames(job.Fingerprints[0], job.Fingerprints[1])
 	properties := domain.CompareVersionProperties(job.Properties[0], job.Properties[1])
 	leaning := domain.LeanVersionProperties(properties)
 	result, probability := j.decide(ctx, job, rule, leaning)
-	if ctx.Err() != nil {
-		return nil
-	}
 	result.Evidence = domain.NewVersionJudgeEvidence(job.Fingerprints[0], job.Fingerprints[1], rule)
 	result.Evidence.Properties = properties
 	result = settleByProperties(result, leaning)
@@ -207,15 +186,11 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 		attrs = append(attrs, slog.String("error", result.Error))
 	}
 	j.logger.Info("judged a possible duplicate", attrs...)
-	if err := j.record(ctx, job.Keys, result); err != nil {
-		j.requeuePending.Store(true)
-		return err
-	}
-	return nil
+	return result
 }
 
-// Apply results under the settings lock only while enabled; disabling returns in-flight pairs to
-// pending so no bundling/rejection can commit after SaveEnabled(false) returns.
+// record applies the result under the settings lock only while judging is on; otherwise the pair snoozes, so no
+// bundle or dismissal commits after SaveEnabled(false) returns.
 func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) error {
 	j.saveMu.Lock()
 	defer j.saveMu.Unlock()
@@ -223,16 +198,22 @@ func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain
 	if err != nil {
 		return err
 	}
-	if on {
-		_, err = j.store.ApplyJudgement(ctx, keys, result)
-		return err
+	if !on {
+		j.logger.Info("discarded a duplicate judgement because judging was turned off",
+			slog.String("key_a", keys[0]), slog.String("key_b", keys[1]))
+		return errJudgingTurnedOff
 	}
-	if _, err := j.store.RecoverRunningJudgements(ctx); err != nil {
-		return err
+	if result.Verdict == domain.VersionNoConnection {
+		saved, err := j.settings.OllamaConnectionSaved(ctx)
+		if err != nil {
+			return err
+		}
+		if saved {
+			return errConnectionSavedMidway
+		}
 	}
-	j.logger.Info("discarded a duplicate judgement because judging was turned off",
-		slog.String("key_a", keys[0]), slog.String("key_b", keys[1]))
-	return nil
+	_, err = j.store.ApplyJudgement(ctx, keys, result)
+	return err
 }
 
 // Matching fingerprints need no classifier; incomparable pairs remain for the owner, while

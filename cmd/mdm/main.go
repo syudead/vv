@@ -205,17 +205,28 @@ func run(opts runOptions) error {
 		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,
 	})
+	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
+	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
+	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
+		Store:      db.Versions(),
+		Settings:   settingsStore,
+		Classifier: classifier,
+		Frames:     artifactStore,
+		Wake:       func() { scheduler.Wake() },
+		Logger:     logger,
+	})
 	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
 	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.JobKinds {
 		handlers[kind] = ingest.Handler(kind)
 	}
 	handlers[domain.JobAutoTag] = autoTagger.HandleJob
+	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Handlers: handlers,
 		Capacity: domain.JobCapacity(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger),
+		Paused:   app.PausedJobKinds(autoTagger, versionJudge),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -242,17 +253,6 @@ func run(opts runOptions) error {
 	// Recover activity before workers start; recovery needs only storage, not retry/cancel
 	// dispatchers.
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
-	// Compare fingerprints before asking the classifier about mismatched intervals; see
-	// docs/design-docs/duplicate-judging.md.
-	versionJudgeLoop := jobs.NewLoop()
-	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
-		Store:      db.Versions(),
-		Settings:   settingsStore,
-		Classifier: classifier,
-		Frames:     artifactStore,
-		Wake:       versionJudgeLoop.Wake,
-		Logger:     logger,
-	})
 	if err := versionJudge.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
@@ -300,7 +300,6 @@ func run(opts runOptions) error {
 	})
 	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
 
-	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
 	workersDone.Go(func() { faces.run(backgroundCtx) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()

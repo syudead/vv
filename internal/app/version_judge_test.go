@@ -6,48 +6,45 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Empty state means pending in the in-memory fake.
+// The in-memory fake keeps the inputs of claimable pairs and the results applied to them.
 type fakeVersionJudgeStore struct {
-	mu      sync.Mutex
-	jobs    []domain.VersionJudgeJob
-	states  map[[2]string]domain.VersionVerdict
-	results []domain.VersionJudgeResult
-	claims  int
-	retryAt time.Time
+	mu        sync.Mutex
+	inputs    map[[2]string]domain.VersionJudgeJob
+	results   []domain.VersionJudgeResult
+	recovered int
+	reset     int
 
+	inputErr error
 	applyErr error
 }
 
 func newFakeVersionJudgeStore(jobs ...domain.VersionJudgeJob) *fakeVersionJudgeStore {
-	return &fakeVersionJudgeStore{jobs: jobs, states: map[[2]string]domain.VersionVerdict{}}
+	s := &fakeVersionJudgeStore{inputs: map[[2]string]domain.VersionJudgeJob{}}
+	for _, job := range jobs {
+		s.inputs[job.Keys] = job
+	}
+	return s
 }
 
-func (s *fakeVersionJudgeStore) ClaimJudgement(context.Context) (domain.VersionJudgeJob, error) {
+func (s *fakeVersionJudgeStore) JudgementInput(_ context.Context, keys [2]string) (domain.VersionJudgeJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.claims++
-	for _, job := range s.jobs {
-		if _, judged := s.states[job.Keys]; !judged {
-			s.states[job.Keys] = 0
-			return job, nil
-		}
+	if s.inputErr != nil {
+		return domain.VersionJudgeJob{}, s.inputErr
 	}
-	return domain.VersionJudgeJob{}, domain.ErrNoJob
+	return s.inputs[keys], nil
 }
 
-func (s *fakeVersionJudgeStore) ApplyJudgement(_ context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error) {
+func (s *fakeVersionJudgeStore) ApplyJudgement(_ context.Context, _ [2]string, result domain.VersionJudgeResult) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.applyErr != nil {
 		return false, s.applyErr
 	}
-	s.states[keys] = result.Verdict
 	s.results = append(s.results, result)
 	return true, nil
 }
@@ -55,31 +52,15 @@ func (s *fakeVersionJudgeStore) ApplyJudgement(_ context.Context, keys [2]string
 func (s *fakeVersionJudgeStore) RecoverRunningJudgements(context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	recovered := 0
-	for keys, verdict := range s.states {
-		if verdict == 0 {
-			delete(s.states, keys)
-			recovered++
-		}
-	}
-	return recovered, nil
-}
-
-func (s *fakeVersionJudgeStore) NextJudgementRetry(context.Context) (time.Time, bool, error) {
-	return s.retryAt, !s.retryAt.IsZero(), nil
+	s.recovered++
+	return 1, nil
 }
 
 func (s *fakeVersionJudgeStore) ResetNoConnectionJudgements(context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	reset := 0
-	for keys, verdict := range s.states {
-		if verdict == domain.VersionNoConnection {
-			delete(s.states, keys)
-			reset++
-		}
-	}
-	return reset, nil
+	s.reset++
+	return 1, nil
 }
 
 func (s *fakeVersionJudgeStore) lastResult(t *testing.T) domain.VersionJudgeResult {
@@ -92,10 +73,18 @@ func (s *fakeVersionJudgeStore) lastResult(t *testing.T) domain.VersionJudgeResu
 	return s.results[len(s.results)-1]
 }
 
+func (s *fakeVersionJudgeStore) resultCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.results)
+}
+
 type fakeVersionJudgeSettings struct {
 	mu        sync.Mutex
 	enabled   bool
 	connected bool
+	// savedAfterRead turns connected on after the first read, as a save made while a judgement runs does.
+	savedAfterRead bool
 }
 
 func (s *fakeVersionJudgeSettings) VersionJudgingEnabled(context.Context) (bool, error) {
@@ -114,7 +103,11 @@ func (s *fakeVersionJudgeSettings) SaveVersionJudgingEnabled(_ context.Context, 
 func (s *fakeVersionJudgeSettings) OllamaConnectionSaved(context.Context) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.connected, nil
+	connected := s.connected
+	if s.savedAfterRead {
+		s.connected = true
+	}
+	return connected, nil
 }
 
 type fakeVersionFrames struct {
@@ -155,13 +148,19 @@ func newTestVersionJudge(store *fakeVersionJudgeStore, classifier *fakeClassifie
 	return judge, settings, frames
 }
 
+func handleVersionJudge(t *testing.T, judge *VersionJudge, keys [2]string) error {
+	t.Helper()
+	return judge.HandleJob(context.Background(),
+		domain.Job{Kind: domain.JobVersionJudge, ContentKey: keys[0], ContentKeyB: keys[1], Attempts: 1})
+}
+
 func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob())
 	classifier := &fakeClassifier{}
 	judge, _, _ := newTestVersionJudge(store, classifier)
 
-	if wait := judge.Step(context.Background()); wait != 0 {
-		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
+	if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); err != nil {
+		t.Fatal(err)
 	}
 	// Rule-based results omit probability.
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule ||
@@ -187,7 +186,9 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: c.probability}}
 			judge, _, frames := newTestVersionJudge(store, classifier)
 
-			judge.Step(context.Background())
+			if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); err != nil {
+				t.Fatal(err)
+			}
 
 			got := store.lastResult(t)
 			if got.Verdict != c.want || got.Probability == nil || *got.Probability != c.probability {
@@ -220,6 +221,8 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 	}
 }
 
+// A classifier that fails or does not answer is recorded as a failed judgement, whose job the store retries after
+// the kind's delay.
 func TestVersionJudgeClassifierFailures(t *testing.T) {
 	for name, classifier := range map[string]*fakeClassifier{
 		"誤り":   {err: errors.New("cannot reach Ollama")},
@@ -228,7 +231,9 @@ func TestVersionJudgeClassifierFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 			judge, _, _ := newTestVersionJudge(store, classifier)
-			judge.Step(context.Background())
+			if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); err != nil {
+				t.Fatal(err)
+			}
 			if got := store.lastResult(t); got.Verdict != domain.VersionFailed || got.Error == "" || got.Probability != nil {
 				t.Errorf("結果 = %+v, want 理由のある failed", got)
 			}
@@ -240,96 +245,80 @@ func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
 	judge, settings, _ := newTestVersionJudge(store, classifier)
-	loop := newTestLoop()
-	judge.Waker = loop.Wake
+	woken := 0
+	judge.Waker = func() { woken++ }
 	settings.connected = false
 	ctx := context.Background()
 
-	judge.Step(ctx)
+	if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); err != nil {
+		t.Fatal(err)
+	}
 	if got := store.lastResult(t); got.Verdict != domain.VersionNoConnection {
 		t.Fatalf("結果 = %+v, want no_connection", got)
 	}
 	if len(classifier.requests) != 0 {
 		t.Fatalf("接続の無いときに分類器を呼んだ")
 	}
-	if wait := judge.Step(ctx); wait >= 0 {
-		t.Fatalf("no_connection の組を取り出した（待ち %v）", wait)
-	}
 
 	settings.connected = true
 	judge.ConnectionSaved(ctx)
-	select {
-	case <-loop.wake:
-	default:
-		t.Fatal("接続の保存で起こさない")
-	}
-	judge.Step(ctx)
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
-		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
+	if store.reset != 1 || woken != 1 {
+		t.Fatalf("接続の保存で待ちに戻した回数 %d、起こした回数 %d, want 1, 1", store.reset, woken)
 	}
 }
 
+// A no_connection result decided before the connection was saved snoozes instead of being recorded, so the pair is
+// judged again with the saved connection.
 func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
 	judge, settings, _ := newTestVersionJudge(store, classifier)
-	loop := newTestLoop()
-	judge.Waker = loop.Wake
-	settings.connected = false
-	ctx := context.Background()
+	settings.connected, settings.savedAfterRead = false, true
 
-	// Save connection settings between reading no_connection and applying that result.
-	job, err := store.ClaimJudgement(ctx)
-	if err != nil {
-		t.Fatal(err)
+	if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); !errors.Is(err, domain.ErrJobSnoozed) {
+		t.Fatalf("HandleJob = %v, want domain.ErrJobSnoozed", err)
 	}
-	settings.connected = true
-	cancelled, cancel := context.WithCancel(ctx)
-	cancel()
-	judge.ConnectionSaved(cancelled)
-	if _, err := store.ApplyJudgement(ctx, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionNoConnection}); err != nil {
-		t.Fatal(err)
-	}
-
-	judge.Step(ctx)
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
-		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
+	if n := store.resultCount(); n != 0 {
+		t.Fatalf("保存のあとに no_connection を記録した: %+v", store.lastResult(t))
 	}
 }
 
 func TestVersionJudgeRecoverResumesPairsWaitingForAConnection(t *testing.T) {
-	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
-	store.states[versionJudgeJob().Keys] = domain.VersionNoConnection
-	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
-	judge, _, _ := newTestVersionJudge(store, classifier)
+	store := newFakeVersionJudgeStore()
+	judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
 	ctx := context.Background()
 
+	settings.connected = false
 	if err := judge.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
-	judge.Step(ctx)
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
-		t.Errorf("起動のあと = %+v, want same", got)
+	if store.recovered != 1 || store.reset != 0 {
+		t.Fatalf("接続の無い起動: 回復 %d、待ちに戻す %d, want 1, 0", store.recovered, store.reset)
+	}
+	settings.connected = true
+	if err := judge.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if store.reset != 1 {
+		t.Errorf("接続のある起動で待ちに戻した回数 = %d, want 1", store.reset)
 	}
 }
 
-func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
-	store := newFakeVersionJudgeStore(versionJudgeJob())
-	store.applyErr = errors.New("database is locked")
-	judge, _, _ := newTestVersionJudge(store, &fakeClassifier{})
-	ctx := context.Background()
-
-	if wait := judge.Step(ctx); wait != domain.WorkerRetry {
-		t.Fatalf("保存できなかったあとの待ち = %v, want %v", wait, domain.WorkerRetry)
-	}
-	store.mu.Lock()
-	store.applyErr = nil
-	store.mu.Unlock()
-	if wait := judge.Step(ctx); wait != 0 {
-		t.Fatalf("判定し直しの待ち = %v, want 0", wait)
-	}
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
-		t.Errorf("判定し直した結果 = %+v, want same", got)
+// An input or a result that cannot be read or written goes back to the scheduler, which records the failure.
+func TestVersionJudgeReturnsStoreErrors(t *testing.T) {
+	cause := errors.New("database is locked")
+	for name, set := range map[string]func(*fakeVersionJudgeStore){
+		"読めない": func(s *fakeVersionJudgeStore) { s.inputErr = cause },
+		"書けない": func(s *fakeVersionJudgeStore) { s.applyErr = cause },
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeVersionJudgeStore(versionJudgeJob())
+			set(store)
+			judge, _, _ := newTestVersionJudge(store, &fakeClassifier{})
+			if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); !errors.Is(err, cause) {
+				t.Fatalf("HandleJob = %v, want %v", err, cause)
+			}
+		})
 	}
 }
 
@@ -346,83 +335,44 @@ func (c *switchingClassifier) Classify(ctx context.Context, req domain.Classifie
 	return c.fakeClassifier.Classify(ctx, req)
 }
 
+// A judgement finished after judging was turned off records nothing and snoozes, so the pair waits for judging to be
+// turned on without spending an attempt.
 func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	answers := map[string]float64{domain.VersionJudgeQuestionKey: 0.9}
 	classifier := &switchingClassifier{fakeClassifier: fakeClassifier{answers: answers}}
-	judge, settings, _ := newTestVersionJudge(store, &classifier.fakeClassifier)
+	judge, _, _ := newTestVersionJudge(store, &classifier.fakeClassifier)
 	judge.classifier = classifier
 	classifier.judge = judge
-	ctx := context.Background()
 
-	if wait := judge.Step(ctx); wait != 0 {
-		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
+	if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); !errors.Is(err, domain.ErrJobSnoozed) {
+		t.Fatalf("HandleJob = %v, want domain.ErrJobSnoozed", err)
 	}
-	store.mu.Lock()
-	results := len(store.results)
-	verdict, claimed := store.states[versionJudgeJob().Keys]
-	store.mu.Unlock()
-	if results != 0 {
+	if n := store.resultCount(); n != 0 {
 		t.Fatalf("切ったあとに結果を反映した: %+v", store.lastResult(t))
 	}
-	if claimed {
-		t.Fatalf("組が待ちに戻っていない（判定 %v）", verdict)
-	}
-	if wait := judge.Step(ctx); wait >= 0 {
-		t.Fatalf("切のあいだに取り出した（待ち %v）", wait)
-	}
+}
 
-	if err := settings.SaveVersionJudgingEnabled(ctx, true); err != nil {
+// While judging is off its jobs are paused, and turning it on wakes the scheduler to claim them.
+func TestVersionJudgePausesItsJobsWhileOff(t *testing.T) {
+	judge, settings, _ := newTestVersionJudge(newFakeVersionJudgeStore(), &fakeClassifier{})
+	settings.enabled = false
+	woken := 0
+	judge.Waker = func() { woken++ }
+	paused := PausedJobKinds(judge)
+	ctx := context.Background()
+
+	if got, err := paused(ctx); err != nil || !reflect.DeepEqual(got, map[domain.JobKind]bool{domain.JobVersionJudge: true}) {
+		t.Fatalf("切の間に止めた種類 = %v, %v", got, err)
+	}
+	if err := judge.SaveEnabled(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	judge.classifier = &classifier.fakeClassifier
-	judge.Step(ctx)
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
-		t.Errorf("入れ直したあと = %+v, want same", got)
+	if woken != 1 {
+		t.Fatalf("入れたときに起こした回数 = %d, want 1", woken)
 	}
-}
-
-func TestVersionJudgeIdlesWhileOff(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		store := newFakeVersionJudgeStore()
-		judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
-		settings.enabled = false
-		loop := newTestLoop()
-		judge.Waker = loop.Wake
-		loop.run(t, judge.Step)
-		claims := func() int {
-			store.mu.Lock()
-			defer store.mu.Unlock()
-			return store.claims
-		}
-
-		synctest.Wait()
-		if got := claims(); got != 0 {
-			t.Fatalf("claims while disabled = %d, want 0", got)
-		}
-		if err := judge.SaveEnabled(context.Background(), true); err != nil {
-			t.Fatal(err)
-		}
-		synctest.Wait()
-		if got := claims(); got != 1 {
-			t.Fatalf("claims after enabling = %d, want 1", got)
-		}
-	})
-}
-
-func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
-	store := newFakeVersionJudgeStore()
-	now := time.Unix(1_700_000_000, 0)
-	judge := NewVersionJudge(VersionJudgeOptions{
-		Store: store, Settings: &fakeVersionJudgeSettings{enabled: true}, Classifier: &fakeClassifier{},
-		Frames: &fakeVersionFrames{}, Now: func() time.Time { return now },
-	})
-	if wait := judge.Step(context.Background()); wait >= 0 {
-		t.Errorf("失敗の組が無いときの待ち = %v, want 起こされるまで", wait)
-	}
-	store.retryAt = now.Add(10 * time.Minute)
-	if wait := judge.Step(context.Background()); wait != domain.WorkerWait(10*time.Minute+time.Second) {
-		t.Errorf("待ち = %v, want 10m1s", wait)
+	if got, err := paused(ctx); err != nil || len(got) != 0 {
+		t.Fatalf("入れた後に止めた種類 = %v, %v", got, err)
 	}
 }
 
@@ -435,7 +385,9 @@ func TestVersionJudgeLetsMatchingChaptersSkipTheClassifier(t *testing.T) {
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.1}}
 	judge, _, _ := newTestVersionJudge(store, classifier)
 
-	judge.Step(context.Background())
+	if err := handleVersionJudge(t, judge, job.Keys); err != nil {
+		t.Fatal(err)
+	}
 
 	got := store.lastResult(t)
 	if got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule || got.Evidence == nil ||

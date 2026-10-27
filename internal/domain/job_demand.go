@@ -34,6 +34,9 @@ func JobDemand(kind JobKind) JobResources {
 	case JobAutoTag:
 		// Sends generated thumbnails and seek frames, never the source file.
 		return JobResources{Classifier: 1}
+	case JobVersionJudge:
+		// Compares stored fingerprints and sends frames cut from the seek previews.
+		return JobResources{Classifier: 1}
 	default:
 		return JobResources{}
 	}

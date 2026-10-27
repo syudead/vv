@@ -191,15 +191,15 @@ filesystem.
 
 ## Queue workers
 
-Ingest and auto-tagging jobs run under one scheduler that grants each job its
+Ingest, auto-tagging and duplicate-judging jobs run under one scheduler that grants each job its
 kind's read, CPU and classifier slots from shared capacities, so several jobs
 run at once, and skips the kinds of a feature that is off
 ([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
 background queue has one worker that takes one item at a time. The waiting is
 shared: `jobs.Loop` runs a worker's or the scheduler's step, then sleeps as the
 step asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
-`internal/app` (`VersionJudge.Step`, `FaceRecognizer.Step`) or a job handler
-(`AutoTagger.HandleJob`) does the work and wakes its loop through the `Wake`
+`internal/app` (`FaceRecognizer.Step`) or a job handler
+(`AutoTagger.HandleJob`, `VersionJudge.HandleJob`) does the work and wakes its loop through the `Wake`
 function `cmd/mdm` passes in, so the application layer never imports the loop.
 
 
@@ -231,7 +231,7 @@ and stops when its context ends.
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title, tags and work details in one transaction that re-checks the plugin's approval, matches the fetched people and organizations again and creates only the entities the merge keeps | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
-| `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
+| `internal/app` (`VersionJudge`), `internal/store` (`version_judge` jobs, `VersionStore.ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
 | `internal/app` (`FaceRecognitionSettings`), `internal/faceruntime` | Downloading the pinned face runtime and models only while face recognition is on, reading their state from the files at startup, and starting the face helper and talking to it | [face-recognition.md](docs/design-docs/face-recognition.md#the-runtime-is-downloaded-only-when-the-feature-is-on) |
 | `cmd/mdm-face`, `internal/faceinfer`, `internal/faceproto` | The face helper: a second binary, shipped in the face runtime archive, that runs face detection and recognition through onnxruntime, and the protocol `mdm` speaks to it | [face-recognition.md](docs/design-docs/face-recognition.md) |

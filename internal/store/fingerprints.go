@@ -120,6 +120,9 @@ func rebuildVersionCandidates(
 			return err
 		}
 	}
+	if err := queueJudgeJobs(ctx, tx, c, `c.key_a = ? or c.key_b = ?`, key, key); err != nil {
+		return err
+	}
 	now := time.Now()
 	if err := syncPairActivities(ctx, tx, c, []string{key}, finder, now); err != nil {
 		return err
@@ -268,7 +271,7 @@ type candidatePair struct {
 
 func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]candidatePair, error) {
 	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.key_a, c.key_b, c.distance, coalesce(c.judgement, ''),
-		coalesce(c.activity_id, 0), c.probability, coalesce(c.judgement_error, ''), c.retry_at,
+		coalesce(c.activity_id, 0), c.probability, coalesce(c.judgement_error, ''), `+judgeRetryAtColumn+`,
 		coalesce((select e.evidence from activity_entries e where e.id = c.activity_id), ''),
 		exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 		  or exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)

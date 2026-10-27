@@ -135,7 +135,7 @@ func TestCandidatesDeriveEvidenceJudgedBeforeItWasStored(t *testing.T) {
 	}
 }
 
-func TestClaimJudgementReadsBothSidesProperties(t *testing.T) {
+func TestJudgementInputReadsBothSidesProperties(t *testing.T) {
 	db, ids := judgementFixture(t)
 	media := &domain.MediaInfo{
 		Chapters: []domain.MediaChapter{{StartMs: 0, EndMs: 1000, Title: "A"}},

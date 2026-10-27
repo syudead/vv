@@ -2,18 +2,21 @@
 
 VVMDM judges each possible duplicate, one pair at a time, first from the two
 stored fingerprints and only then, for a section where the frames differ, by
-asking the classifier port. The worker is
+asking the classifier port. Each pair's work is a `version_judge` job that the
+[job scheduler](job-scheduling.md) grants. The handler is
 [`internal/app/version_judge.go`](../../internal/app/version_judge.go), the
 frame rule is
 [`internal/domain/version_frames.go`](../../internal/domain/version_frames.go),
-and the queue and the results are
+the jobs are
+[`internal/store/version_judge_jobs.go`](../../internal/store/version_judge_jobs.go),
+and the results are
 [`internal/store/version_judgements.go`](../../internal/store/version_judgements.go).
 
 The diagram shows one candidate from the claim to its result.
 
 ```mermaid
 flowchart LR
-  claim[Claim the oldest waiting pair] --> rule{Frames compared by time}
+  claim[Claim the next version_judge job] --> rule{Frames compared by time}
   rule -->|all match| same[Same video]
   rule -->|cannot be compared| undecided[Undecided]
   rule -->|a run differs| conn{Ollama connection saved?}
@@ -116,8 +119,8 @@ reads as between the 20% and 80% that would decide.
 ## The owner can judge a pair again
 
 `POST /api/version-candidates/rejudge` returns an `undecided`, `failed` or
-`no_connection` pair to waiting with its attempt count reset, its entry to
-`running`/`waiting` and its evidence cleared, and wakes the worker
+`no_connection` pair to waiting with a new job in the owner class, its entry to
+`running`/`waiting` and its evidence cleared, and wakes the scheduler
 ([`internal/app/version_judge_review.go`](../../internal/app/version_judge_review.go)).
 It covers the results that leave a pair on Duplicates: an owner who changed
 the model or its connection, or rescanned a file, has no other way to ask
@@ -158,23 +161,49 @@ evidence, and the evidence marks `byProperties`. File names, folders and work
 information are not used: they are often empty at import, and they tell
 whether two files are the same file.
 
-## The worker runs only while it is on
+## The work is a job per pair
 
-One goroutine, like `AutoTagger`, claims one pair at a time while
-`version_judging.enabled` is true, and sleeps otherwise.
+Every waiting candidate has one unfinished `version_judge` job, keyed by the
+pair's two content keys (`subject_key` < `subject_key_b`), in the same
+transaction that makes the candidate wait. The candidate row keeps only the
+judgement; the job holds the class, the attempts and the retry time. A trigger
+deletes the job with its candidate row, whichever statement removes the row,
+so a rebuilt candidate starts with a new job.
 
-| Wakes on | Why |
+| Queued by | Class |
 | --- | --- |
-| Startup | Pairs found while the server was stopped |
-| `ProcessingChanged` | A finished fingerprint job may have written a candidate |
-| `VersionCandidatesChanged` | Removing a version lists its pairs again |
-| Saving the setting | Turning it on judges every waiting pair |
-| Saving the Ollama connection | `no_connection` pairs return to waiting |
-| A retry or undo from the activity log | A retried pair is claimable now |
-| `Judge again` on Duplicates | A pair returned to waiting is claimable now |
-| The earliest `retry_at` of a failed pair | Retries need nothing from the owner  |
+| A candidate being created or rebuilt, including a pair a force rescan lists again | Import |
+| A pair returned to waiting: a restart, a saved connection, a verdict whose side left the library | Import |
+| A retry from the activity log, or `Judge again` on Duplicates | Owner, ending any retry wait |
 
-The worker asks the store whether an `ollama.endpoint` row exists before a
+The claim takes the lowest class, then the earliest run-after time, among jobs
+whose pair is judgeable now. A held, unbundled or unregistered pair keeps its
+job queued and is claimed once the hold or the unbundle is undone, or its
+location is registered again; `ProcessingChanged` and
+`VersionCandidatesChanged` wake the scheduler for that. Each claim is one
+attempt.
+
+| Result | The job |
+| --- | --- |
+| `same`, `different`, `undecided`, `no_connection` | Ends |
+| `failed` | Waits 10 minutes, 1 hour, 6 hours, then a day after each later failure, without a limit, through the kind's override of the [retry delay](job-scheduling.md#a-failed-job-retries-after-a-growing-delay) |
+| Judging turned off during the judgement | Snoozes: queued again at once without counting the attempt, and the pair waits |
+| `no_connection` decided while the connection was being saved | Snoozes, so the pair is judged again with the saved connection |
+
+`version_judge` is paused while `version_judging.enabled` is false, so its jobs
+keep their attempts until judging is turned on, and turning it on wakes the
+scheduler. Saving the Ollama connection returns `no_connection` pairs to
+waiting with new jobs; the handler records a `no_connection` result only after
+checking, under the same lock, that the connection is still unsaved. The
+Duplicates list, the activity log and the API's `retryAt` read a failed pair's
+retry time from the `run_after` of its queued job.
+
+| Rejected | Why |
+| --- | --- |
+| Create the job only when a pair becomes judgeable | Lifting a hold or undoing an unbundle would also have to queue it; the claim already checks eligibility each time |
+| Keep `attempts` and `retry_at` on the candidate | Claim order, delays and startup recovery would exist outside the one job table |
+
+The handler asks the store whether an `ollama.endpoint` row exists before a
 request, so a pair is never sent to the default address the owner never set.
 Each pair's frame-rule outcome, frame counts, verdict and probability go to
 the log under `component=duplicate-judging`.
@@ -245,7 +274,7 @@ owner adding a video to the automatic bundle does not hold its undo. For
 `dismiss` entry on the same pair means the owner decided the pair again, and
 the undo keeps the dismissal.
 
-| Undone | State change | Keeps the worker from deciding it again |
+| Undone | State change | Keeps automatic judging from deciding it again |
 | --- | --- | --- |
 | `same` | The joined side leaves the bundle as `Unbundle` removes one video; a side of two or more leaves as one bundle with its former representative and a copy of the merged bundle's user data | `video_version_unbundles`, only for pairs across the two sides |
 | `different` | The dismissal is deleted and both keys' candidates are rebuilt, so the pair is listed on Duplicates again | `video_version_judging_holds` |

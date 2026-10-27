@@ -17,6 +17,8 @@ const (
 	JobFingerprint JobKind = "fingerprint"
 	// JobAutoTag classifies one content key; its subject is Job.ContentKey, not a video.
 	JobAutoTag JobKind = "auto_tag"
+	// JobVersionJudge judges one possible duplicate; its subject is the pair Job.ContentKey, Job.ContentKeyB.
+	JobVersionJudge JobKind = "version_judge"
 )
 
 // JobPriority is a job's class; claims serve a lower class strictly first. See docs/design-docs/job-scheduling.md.
@@ -34,10 +36,12 @@ const (
 var ErrNoJob = errors.New("no job to process")
 
 type Job struct {
-	ID              int64
-	Kind            JobKind
-	VideoID         int64
-	ContentKey      string
+	ID         int64
+	Kind       JobKind
+	VideoID    int64
+	ContentKey string
+	// ContentKeyB is the second key of a version_judge pair, greater than ContentKey.
+	ContentKeyB     string
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
@@ -60,7 +64,7 @@ var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, J
 
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.
-var ScheduledJobKinds = append(slices.Clone(JobKinds), JobAutoTag)
+var ScheduledJobKinds = append(slices.Clone(JobKinds), JobAutoTag, JobVersionJudge)
 
 type JobState string
 
