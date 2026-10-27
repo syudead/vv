@@ -15,10 +15,36 @@ type capacity struct {
 	classifierUsed int
 	readSlots      map[string]int
 	readUsed       map[string]int
+	// foreground counts the open foreground readers per disk, which hold its background reads to one slot.
+	foreground map[string]int
 }
 
 func newCapacity(cpu int) *capacity {
-	return &capacity{cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}}
+	return &capacity{cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}, foreground: map[string]int{}}
+}
+
+// holdForeground caps the disk's background reads at one slot until releaseForeground; slots already granted stay
+// granted.
+func (c *capacity) holdForeground(disk string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.foreground[disk]++
+}
+
+func (c *capacity) releaseForeground(disk string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.foreground[disk]--; c.foreground[disk] <= 0 {
+		delete(c.foreground, disk)
+	}
+}
+
+// readLimitLocked is never 0 while a foreground reader is open, so background work slows but does not stop.
+func (c *capacity) readLimitLocked(disk string) int {
+	if c.foreground[disk] > 0 {
+		return min(c.readSlots[disk], 1)
+	}
+	return c.readSlots[disk]
 }
 
 // setDisks replaces each disk's read slots; slots already held on a disk stay counted until released.
@@ -35,7 +61,7 @@ func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots {
 		return false
 	}
-	if demand.Read > 0 && c.readUsed[disk]+demand.Read > c.readSlots[disk] {
+	if demand.Read > 0 && c.readUsed[disk]+demand.Read > c.readLimitLocked(disk) {
 		return false
 	}
 	c.cpuUsed += demand.CPU

@@ -33,7 +33,7 @@ func probeKeyframes(ctx context.Context, path string, timeout time.Duration) dom
 	result.Source = domain.FileStampOf(before)
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := command(probeCtx, probeCommand,
+	cmd := command(probeCtx, PriorityLow, probeCommand,
 		"-v", "error", "-select_streams", "V:0", "-read_intervals", "%+16",
 		"-show_packets", "-show_entries", "packet=pts_time,flags", "-of", "compact=p=0:nk=0", "--", path)
 	output, err := cmd.StdoutPipe()

@@ -768,6 +768,116 @@ func TestSchedulerLendsExtractionSlotsUpToTheDiskSlots(t *testing.T) {
 	}
 }
 
+// extractionRounds runs a seek-sprite job that, on each round the test sends, returns its lent pairs and borrows as
+// many as the scheduler lends, as one extraction batch does; closing rounds ends the job.
+type extractionRounds struct {
+	rounds chan struct{}
+	mu     sync.Mutex
+	lent   []int
+}
+
+func (e *extractionRounds) handle(ctx context.Context, _ domain.Job) error {
+	slots := domain.JobSlotsFrom(ctx)
+	pair := domain.JobResources{Read: 1, CPU: 1}
+	held := 0
+	for range e.rounds {
+		for range held {
+			slots.Release(pair)
+		}
+		held = 0
+		for held < domain.MaxDiskReadSlots-1 && slots.TryAcquire(pair) {
+			held++
+		}
+		e.mu.Lock()
+		e.lent = append(e.lent, held)
+		e.mu.Unlock()
+	}
+	for range held {
+		slots.Release(pair)
+	}
+	return nil
+}
+
+func (e *extractionRounds) lastLent() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.lent[len(e.lent)-1]
+}
+
+// A foreground reader lets running grants finish, refuses new grants and further extractions until one read is left,
+// never takes that one, and frees the disk again when it closes.
+func TestSchedulerHoldsAForegroundDiskToOneBackgroundRead(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobPreview}, domain.Job{ID: 2, Kind: domain.JobSeekThumbnail})
+		jobs := newBlockingJobs()
+		sprite := &extractionRounds{rounds: make(chan struct{})}
+		handlers := jobs.handlers()
+		handlers[domain.JobSeekThumbnail] = sprite.handle
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: handlers, CPUSlots: 8, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+		sprite.rounds <- struct{}{}
+		synctest.Wait()
+		if got := sprite.lastLent(); got != 2 {
+			t.Fatalf("pairs lent beside the preview = %d, want 2", got)
+		}
+
+		end := scheduler.ReadInForeground("/a/movie.mp4")
+		var queued []domain.Job
+		for id := int64(3); id <= 7; id++ {
+			queued = append(queued, domain.Job{ID: id, Kind: domain.JobThumbnail})
+		}
+		queue.add(queued...)
+		scheduler.Wake()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("running with a foreground reader = %v, want the preview only", got)
+		}
+		sprite.rounds <- struct{}{}
+		synctest.Wait()
+		if got := sprite.lastLent(); got != 0 {
+			t.Fatalf("pairs lent with a foreground reader = %d, want 0", got)
+		}
+		close(sprite.rounds)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("running after the seek sprite = %v, want the preview kept", got)
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{3}; !slices.Equal(got, want) {
+			t.Fatalf("running after the preview = %v, want one thumbnail", got)
+		}
+
+		end()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{3, 4, 5, 6}; !slices.Equal(got, want) {
+			t.Fatalf("running after the reader closed = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestSchedulerIgnoresAForegroundReadOutsideTheFolders(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue()
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 8, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+		defer scheduler.ReadInForeground("/elsewhere/movie.mp4")()
+		queue.add(domain.Job{ID: 1, Kind: domain.JobProbe}, domain.Job{ID: 2, Kind: domain.JobProbe})
+		scheduler.Wake()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerParksAnUnreadableFolderUntilARecheck(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

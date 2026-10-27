@@ -110,6 +110,23 @@ func (s *Scheduler) RecheckRoots() {
 	s.Wake()
 }
 
+// ReadInForeground holds the disk of the media file at path to one background read until end is called, so a stream
+// the owner is waiting on keeps the disk without stopping background work. Grants made before are not revoked. A path
+// outside the resolved media folders holds nothing.
+func (s *Scheduler) ReadInForeground(path string) (end func()) {
+	disk, ok := s.roots.diskOf(path)
+	if !ok {
+		return func() {}
+	}
+	s.capacity.holdForeground(disk)
+	s.logger.Debug("a foreground reader opened a disk", slog.String("disk", disk))
+	return sync.OnceFunc(func() {
+		s.capacity.releaseForeground(disk)
+		s.logger.Debug("a foreground reader closed a disk", slog.String("disk", disk))
+		s.Wake()
+	})
+}
+
 // Run grants at once on startup to recover leftover work, and returns when ctx ends and every running job has
 // returned.
 func (s *Scheduler) Run(ctx context.Context) {

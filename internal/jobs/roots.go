@@ -199,6 +199,24 @@ func (r *roots) path(id int64) (string, bool) {
 	return state.path, ok
 }
 
+// diskOf returns the disk of the media folder that holds path, taking the deepest folder when folders nest; it is
+// false when no resolved folder holds path.
+func (r *roots) diskOf(path string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var disk, root string
+	found := false
+	for _, state := range r.known {
+		if state.disk.Key == "" || !domain.PathWithinRoot(state.path, path) {
+			continue
+		}
+		if !found || len(state.path) > len(root) {
+			disk, root, found = state.disk.Key, state.path, true
+		}
+	}
+	return disk, found
+}
+
 func (r *roots) anyUnavailable() bool {
 	for _, state := range r.known {
 		if state.unavailable {

@@ -45,7 +45,7 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	}
 	return &LiveTranscoder{
 		serverDone:     serverDone,
-		commandContext: command,
+		commandContext: normalCommand,
 	}
 }
 

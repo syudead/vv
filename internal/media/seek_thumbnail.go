@@ -334,7 +334,7 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 
 // Use relative inputs from dir to keep multi-input command lines short.
 func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, error) {
-	cmd := command(ctx, seekThumbnailCommand, args...)
+	cmd := command(ctx, PriorityLow, seekThumbnailCommand, args...)
 	cmd.Dir = dir
 	data, err := cmd.Output()
 	if err != nil {

@@ -45,11 +45,20 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		return
 	}
 	defer func() { _ = file.Close() }()
+	defer s.readInForeground(path)()
 
 	w.Header().Set("Content-Type", streamContentType(path))
 	w.Header().Set("Cache-Control", cacheStream)
 
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
+}
+
+// readInForeground holds the disk of path to one background read until the returned end is called.
+func (s *server) readInForeground(path string) (end func()) {
+	if s.foreground == nil {
+		return func() {}
+	}
+	return s.foreground.ReadInForeground(path)
 }
 
 // openMediaFile returns the unresolved location path for filename/Content-Type; MediaFiles validates the opened target.

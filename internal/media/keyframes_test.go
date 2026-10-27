@@ -80,7 +80,7 @@ func TestProbeKeyframesRealMKV(t *testing.T) {
 						codecs = append(codecs, args[i+1])
 					}
 				}
-				return command(ctx, name, args...)
+				return normalCommand(ctx, name, args...)
 			}
 			started, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
 				Path: path, Source: probe.Source, Probe: probe.Transcode, StartMs: 17000,

@@ -63,12 +63,14 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	file, info, _, ok := s.openMediaFile(r, video)
+	file, info, path, ok := s.openMediaFile(r, video)
 	if !ok {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
 	defer func() { _ = file.Close() }()
+	// Held from the probe until the process has exited.
+	defer s.readInForeground(path)()
 
 	// Compare the stamp of the actually opened location, not another location with the same content key.
 	source := domain.FileStampOf(info)
