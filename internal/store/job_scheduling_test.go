@@ -103,13 +103,19 @@ func TestFailedRoundsWaitGrowingDelaysBeforeTheirRunAfterTime(t *testing.T) {
 		if wait < base*9/10 || wait > base*11/10 {
 			t.Fatalf("round %d: wait = %ds, want %ds ±10%%", round+1, wait, base)
 		}
-		next, err := db.Ingest().NextJobRunAfter(context.Background())
-		if err != nil || next.Unix() != now.Unix()+wait {
-			t.Fatalf("round %d: NextJobRunAfter = %v, %v; want the job's run-after time", round+1, next, err)
-		}
 		*now = now.Add(time.Duration(wait-1) * time.Second)
 		assertNoDueProbe(t, db)
+		claimedAt := *now
 		*now = now.Add(time.Second)
+		// The job came due after the claim, so the lookup from the claim still reports it.
+		next, err := db.Ingest().NextJobRunAfter(context.Background(), claimedAt)
+		if err != nil || !next.Equal(*now) {
+			t.Fatalf("round %d: NextJobRunAfter = %v, %v; want the job's run-after time %v", round+1, next, err, *now)
+		}
+		// A claim from now sees the due job, so the lookup must not report it again.
+		if next, err := db.Ingest().NextJobRunAfter(context.Background(), *now); err != nil || !next.IsZero() {
+			t.Fatalf("round %d: NextJobRunAfter from the due time = %v, %v; want none", round+1, next, err)
+		}
 	}
 	job := claimProbe(t, db)
 	failJob(t, db, job, errors.New("unreadable"))
@@ -189,6 +195,34 @@ func TestOwnerRequestEndsARetryWait(t *testing.T) {
 	}
 	if job := claimProbe(t, db); job.Attempts != 2 || !job.Force {
 		t.Fatalf("claim after the request = %+v, want the forced job in round 2", job)
+	}
+}
+
+func TestStagesQueuedByAnOwnerRetryKeepTheOwnerClass(t *testing.T) {
+	db, retried := failedVideoFixture(t)
+	imported := addVideo(t, db, "imported")
+	ctx := context.Background()
+	if err := db.Ingest().RetryProbe(ctx, retried); err != nil {
+		t.Fatal(err)
+	}
+	enqueueProbe(t, db, imported)
+
+	for _, want := range []struct {
+		videoID  int64
+		priority domain.JobPriority
+	}{{retried, domain.JobPriorityOwner}, {imported, domain.JobPriorityImport}} {
+		job := claimProbe(t, db)
+		if job.VideoID != want.videoID || job.Priority != want.priority {
+			t.Fatalf("claimed video %d in class %d, want video %d in class %d", job.VideoID, job.Priority, want.videoID, want.priority)
+		}
+		if written, err := db.Ingest().ApplyProbeForJob(ctx, job, domain.Probe{VideoCodec: "h264"},
+			domain.Playability{Playable: true}); err != nil || !written {
+			t.Fatalf("ApplyProbeForJob = %v, %v", written, err)
+		}
+		got := countRows(t, db, fmt.Sprintf(`select priority from jobs where kind = 'preview' and video_id = %d`, job.VideoID))
+		if got != int64(want.priority) {
+			t.Fatalf("video %d: preview class = %d, want %d", job.VideoID, got, want.priority)
+		}
 	}
 }
 

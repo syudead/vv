@@ -29,6 +29,8 @@ type fakeQueue struct {
 	observe   func(string)
 	// runAfter holds a kind's jobs back until that time, as a retry delay does.
 	runAfter time.Time
+	// claimDelay passes after each claim answers, so time moves on between a turn's claims and its lookup.
+	claimDelay time.Duration
 }
 
 func newFakeQueue(jobs ...domain.Job) *fakeQueue {
@@ -47,6 +49,8 @@ func (q *fakeQueue) add(jobs ...domain.Job) {
 
 func (q *fakeQueue) ClaimJob(_ context.Context, kind domain.JobKind) (domain.Job, error) {
 	q.mu.Lock()
+	// Deferred first, so the delay runs after the unlock.
+	defer time.Sleep(q.claimDelay)
 	defer q.mu.Unlock()
 	q.claims = append(q.claims, kind)
 	if err := q.claimErr; err != nil {
@@ -99,10 +103,10 @@ func (q *fakeQueue) FailClaimedJob(_ context.Context, job domain.Job, cause erro
 	return nil
 }
 
-func (q *fakeQueue) NextJobRunAfter(context.Context) (time.Time, error) {
+func (q *fakeQueue) NextJobRunAfter(_ context.Context, since time.Time) (time.Time, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if !time.Now().Before(q.runAfter) {
+	if !q.runAfter.After(since) {
 		return time.Time{}, nil
 	}
 	return q.runAfter, nil
@@ -333,6 +337,26 @@ func TestSchedulerWaitsUntilTheNextRunAfterTime(t *testing.T) {
 		synctest.Wait()
 		if got, want := startedAt.Sub(start), 30*time.Second; got != want || len(queue.completedIDs()) != 1 {
 			t.Fatalf("started after %v with completed %v, want after %v", got, queue.completedIDs(), want)
+		}
+	})
+}
+
+func TestSchedulerRunsAJobThatCameDueDuringItsClaims(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 7, Kind: domain.JobProbe})
+		// The probe claim misses the job by a second, and it is due before the turn's lookup.
+		queue.runAfter = time.Now().Add(time.Second)
+		queue.claimDelay = 2 * time.Second
+		_, stop := startScheduler(Options{
+			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+		})
+		defer stop()
+		// No wakeup arrives; time is virtual.
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{7}; !slices.Equal(got, want) {
+			t.Fatalf("completed = %v, want %v", got, want)
 		}
 	})
 }

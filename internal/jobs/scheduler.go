@@ -20,8 +20,9 @@ type Queue interface {
 	// Failures below the attempt limit requeue; storage extracts the message and ProbeFailure code,
 	// defaulting to internal.
 	FailClaimedJob(ctx context.Context, job domain.Job, cause error) error
-	// NextJobRunAfter returns the earliest future run-after time of a queued job, or the zero time when none waits.
-	NextJobRunAfter(ctx context.Context) (time.Time, error)
+	// NextJobRunAfter returns the earliest run-after time of a queued job after since, or the zero time when none
+	// is; a time already past means the job came due after claims that began at since.
+	NextJobRunAfter(ctx context.Context, since time.Time) (time.Time, error)
 }
 
 // Handler implementations are injected by cmd/mdm; jobs owns claiming and completion, without
@@ -92,6 +93,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 // granted kind, so a freed slot goes to the next kind instead of always to the first stage. With nothing granted, it
 // sleeps until the next run-after time.
 func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
+	// The turn's claims see every job due by now, so the lookup from now also finds one that came due mid-turn.
+	since := time.Now()
 	kinds := domain.JobKinds
 	empty := make(map[domain.JobKind]bool, len(kinds))
 	for idle := 0; idle < len(kinds); s.next = (s.next + 1) % len(kinds) {
@@ -119,12 +122,12 @@ func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 		s.grant(ctx, job, demand)
 		idle = 0
 	}
-	return s.untilNextRunAfter(ctx)
+	return s.untilNextRunAfter(ctx, since)
 }
 
 // untilNextRunAfter lets a job waiting out a retry delay run when the delay ends, without a wakeup.
-func (s *Scheduler) untilNextRunAfter(ctx context.Context) domain.WorkerWait {
-	next, err := s.queue.NextJobRunAfter(ctx)
+func (s *Scheduler) untilNextRunAfter(ctx context.Context, since time.Time) domain.WorkerWait {
+	next, err := s.queue.NextJobRunAfter(ctx, since)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.logger.Warn("could not read the next job retry time", slog.Any("error", err))

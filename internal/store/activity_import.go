@@ -46,6 +46,13 @@ type importRun struct {
 
 func ruleRun() importRun { return importRun{decider: domain.ActivityByRule} }
 
+// followingRun queues the stages after a successful job; an owner request's stages keep its class.
+func followingRun(job domain.Job) importRun {
+	run := ruleRun()
+	run.request = job.Priority == domain.JobPriorityOwner
+	return run
+}
+
 // scanRun is the run of a scan's queueing (EnqueueJobs, EnsureJobs); the scan in progress, if any, opened it.
 func scanRun(ctx context.Context, q rowQueryer, decider domain.ActivityDecider) (importRun, error) {
 	id, err := runningScanID(ctx, q)

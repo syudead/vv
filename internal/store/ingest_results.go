@@ -113,7 +113,7 @@ func (s *IngestStore) ApplyProbeForJob(
 		return false, err
 	}
 	var c changes
-	if err := queueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), ruleRun(), job.Force); err != nil {
+	if err := queueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), followingRun(job), job.Force); err != nil {
 		return false, err
 	}
 	// If probing finishes after the scan, resolve same-path succession here.
@@ -224,7 +224,7 @@ func (s *IngestStore) setStageStateForJob(
 	var c changes
 	if succeeded && len(next) > 0 {
 		for _, following := range next {
-			if err := queueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), ruleRun(), job.Force); err != nil {
+			if err := queueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), followingRun(job), job.Force); err != nil {
 				return false, err
 			}
 		}

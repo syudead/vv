@@ -202,11 +202,11 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	var kindName string
 	var previousPath sql.NullString
 	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
-	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.force, j.location_path from jobs j
+	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.force, j.priority, j.location_path from jobs j
 		where j.state = 'queued' and j.kind = ? and j.run_after <= ?` +
 		claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
 		order by j.priority, j.run_after, j.id limit 1`
-	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind), jobNow().Unix()).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &previousPath)
+	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind), jobNow().Unix()).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &job.Priority, &previousPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, domain.ErrNoJob
 	}
@@ -607,11 +607,12 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 	return current == 1, err
 }
 
-// NextJobRunAfter returns the earliest future run-after time of a queued job, or the zero time when none waits.
-func (s *IngestStore) NextJobRunAfter(ctx context.Context) (time.Time, error) {
+// NextJobRunAfter returns the earliest run-after time of a queued job after since, or the zero time when none is.
+// A time already past means the job came due after claims that began at since.
+func (s *IngestStore) NextJobRunAfter(ctx context.Context, since time.Time) (time.Time, error) {
 	var next sql.NullInt64
 	if err := s.db.sql.QueryRowContext(ctx, `select min(run_after) from jobs where state = 'queued' and run_after > ?`,
-		jobNow().Unix()).Scan(&next); err != nil {
+		since.Unix()).Scan(&next); err != nil {
 		return time.Time{}, fmt.Errorf("cannot look up the next job retry time: %w", err)
 	}
 	if !next.Valid {

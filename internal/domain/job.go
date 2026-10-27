@@ -46,6 +46,8 @@ type Job struct {
 	StartsRound bool
 	// Force regenerates the artifact whatever the stage state is, and its seek stage queues no follow-up process.
 	Force bool
+	// Priority is the job's class; the stages a successful owner-class job queues take the owner class too.
+	Priority JobPriority
 }
 
 // JobKinds defines stage order and worker creation; omitted kinds are never processed.
