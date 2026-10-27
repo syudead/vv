@@ -87,8 +87,7 @@ header, reads every `moof`, and takes the sync samples of the video track from
 `tfhd`, `tfdt` and `trun`, with `trex` defaults. Data offsets count from the
 `moof` start unless `tfhd` gives a base. Without `sidx` or `mfra`, `ffmpeg` 8
 seeking reads such a file from its start, so per-interval extraction would
-decode up to every interval; a 49-minute file with 571 fragments behaved that
-way.
+decode up to every interval.
 
 These inputs go straight to per-interval extraction:
 
