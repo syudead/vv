@@ -43,7 +43,7 @@ func (c *Catalog) MergedRelatedVideos(ctx context.Context, audience domain.Audie
 // against the video's clues and the peer its own, except the peer ids in exclude. The caller reads the
 // video's group from the peer.
 func (c *Catalog) RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error) {
-	ranked, err := c.rankByClues(ctx, audience, clues, nil)
+	ranked, err := c.rankByClues(ctx, audience, clues, 0, nil)
 	if err != nil {
 		return domain.MergedRelated{}, err
 	}
@@ -51,8 +51,9 @@ func (c *Catalog) RemoteRelatedVideos(ctx context.Context, audience domain.Audie
 }
 
 // PeerRelated is one page of this node's videos, except exclude, scored against the clues the peer sent.
-func (c *Catalog) PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error) {
-	ranked, err := c.rankByClues(ctx, audience, clues, exclude)
+// openID, when not 0, is the open video in this node's ids; its directory adds the folder points.
+func (c *Catalog) PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error) {
+	ranked, err := c.rankByClues(ctx, audience, clues, openID, exclude)
 	if err != nil {
 		return domain.ScoredRelated{}, err
 	}
@@ -91,16 +92,21 @@ func (c *Catalog) RelatedClues(ctx context.Context, audience domain.Audience, id
 	return domain.CluesOf(candidates[index], names), true, nil
 }
 
-// rankByClues ranks every visible video of this node except exclude against clues of a video it does not hold.
-func (c *Catalog) rankByClues(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64) ([]domain.RankedRelated, error) {
-	// No video has id 0, so no video is taken as the reference or has its versions left out.
-	candidates, err := c.index.RelatedCandidates(ctx, audience, 0)
+// rankByClues ranks every visible video of this node except exclude against the clues of the open video.
+// openID, when not 0, is the open video in this node's ids, shown by the peer; it supplies the directory the
+// clues lack, so this node's videos in it score as in this node's own related list.
+func (c *Catalog) rankByClues(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64) ([]domain.RankedRelated, error) {
+	candidates, open, err := c.clueCandidates(ctx, audience, openID)
 	if err != nil {
 		return nil, err
 	}
 	ids, err := c.index.RelatedTagIDs(ctx, clues.TagNames)
 	if err != nil {
 		return nil, err
+	}
+	reference := clues.Candidate(ids)
+	if open != nil {
+		reference.VideoID, reference.Path = open.VideoID, open.Path
 	}
 	left := make(map[int64]struct{}, len(exclude))
 	for _, id := range exclude {
@@ -110,7 +116,26 @@ func (c *Catalog) rankByClues(ctx context.Context, audience domain.Audience, clu
 		_, out := left[candidate.VideoID]
 		return out
 	})
-	return domain.RankRelated(c.scorer, clues.Candidate(ids), candidates), nil
+	return domain.RankRelated(c.scorer, reference, candidates), nil
+}
+
+// clueCandidates reads this node's candidates and, when the audience can see the video openID, that video.
+// An id it cannot see reads as no id, so neither the scores nor the candidates tell that the video exists.
+func (c *Catalog) clueCandidates(ctx context.Context, audience domain.Audience, openID int64) ([]domain.RelatedCandidate, *domain.RelatedCandidate, error) {
+	if openID > 0 {
+		candidates, err := c.index.RelatedCandidates(ctx, audience, openID)
+		if err != nil {
+			return nil, nil, err
+		}
+		index := slices.IndexFunc(candidates, func(candidate domain.RelatedCandidate) bool { return candidate.VideoID == openID })
+		if index >= 0 {
+			open := candidates[index]
+			return candidates, &open, nil
+		}
+	}
+	// No video has id 0, so no video is taken as the reference or has its versions left out.
+	candidates, err := c.index.RelatedCandidates(ctx, audience, 0)
+	return candidates, nil, err
 }
 
 // mergeRelated pages this node's ranked list and the peer's after the cursor and merges them.

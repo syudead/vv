@@ -342,6 +342,9 @@ type fakeCatalog struct {
 	groupContexts []int64
 
 	retry func(domain.Video) error
+
+	// peerRelatedOpen keeps the open video id of each peer ranking request.
+	peerRelatedOpen []int64
 }
 
 func (f *fakeCatalog) PresentVideos(_ context.Context, videos []domain.Video) []domain.VideoView {
@@ -389,8 +392,11 @@ func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, doma
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 
-func (f *fakeCatalog) PeerRelated(context.Context, domain.Audience, domain.RelatedClues, []int64, *domain.RelatedCursor, int) (domain.ScoredRelated, error) {
-	return domain.ScoredRelated{}, errFakeCatalogMerged
+func (f *fakeCatalog) PeerRelated(_ context.Context, _ domain.Audience, _ domain.RelatedClues, openID int64, _ []int64, _ *domain.RelatedCursor, _ int) (domain.ScoredRelated, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.peerRelatedOpen = append(f.peerRelatedOpen, openID)
+	return domain.ScoredRelated{}, nil
 }
 
 func (f *fakeCatalog) RelatedClues(context.Context, domain.Audience, int64) (domain.RelatedClues, bool, error) {

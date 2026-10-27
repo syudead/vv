@@ -1641,7 +1641,7 @@ export interface paths {
         put?: never;
         /**
          * Score this node's videos against a video of the other node
-         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Scores the visible videos of this node, except `exclude`, against `clues` with the related-video scorer and returns one page in the related order (score, then newer addedAt, then larger id) after `cursor`. The clues carry no directory, so the same-directory clue is 0. See docs/design-docs/related-videos.md.
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Scores the visible videos of this node, except `exclude`, against `clues` with the related-video scorer and returns one page in the related order (score, then newer addedAt, then larger id) after `cursor`. The clues carry no directory: the same-directory clue counts only when `openVideoId` names this node's video that the caller's audience can see, and then from that video's representative directory, as this node's own related list does. An unknown or hidden `openVideoId` gives no folder points and no error. See docs/design-docs/related-videos.md.
          */
         post: operations["rankPeerRelated"];
         delete?: never;
@@ -7404,6 +7404,11 @@ export interface components {
             clues: components["schemas"]["RelatedClues"];
             /** @description This node's video ids to leave out: the open video and its group members when held here */
             exclude?: number[];
+            /**
+             * Format: int64
+             * @description The open video, in this node's ids, when this node holds it; omit when the caller holds it. It adds the same-directory clue for this node's videos in its directory
+             */
+            openVideoId?: number;
             /** @description Previous `nextCursor`; omit to start at the beginning */
             cursor?: string;
             /** @default 30 */

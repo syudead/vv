@@ -5117,6 +5117,9 @@ type PeerRelatedRequest struct {
 	// Exclude This node's video ids to leave out: the open video and its group members when held here
 	Exclude *[]int64 `json:"exclude,omitempty"`
 	Limit   *int     `json:"limit,omitempty"`
+
+	// OpenVideoId The open video, in this node's ids, when this node holds it; omit when the caller holds it. It adds the same-directory clue for this node's videos in its directory
+	OpenVideoId *int64 `json:"openVideoId,omitempty"`
 }
 
 // PeerRuleCount defines model for PeerRuleCount.

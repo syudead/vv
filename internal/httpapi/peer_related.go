@@ -66,6 +66,7 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	peerID := domain.FromRemoteID(id)
+	peer.open = peerID
 	var body gen.RelatedClues
 	if err := peer.call(ctx, http.MethodGet, peerCluesPath(peerID), nil, &body); err != nil {
 		s.writePeerCallError(w, err)
@@ -154,7 +155,8 @@ func (s *server) writePeerCallError(w http.ResponseWriter, err error) {
 	}
 }
 
-// RankPeerRelated scores this node's videos for the peer, which sends the clues of a video it holds.
+// RankPeerRelated scores this node's videos for the peer, which sends the clues of the open video and, when
+// this node holds that video, its id.
 func (s *server) RankPeerRelated(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePeerCaller(w, r) || !s.requireCatalog(w) {
 		return
@@ -185,8 +187,15 @@ func (s *server) RankPeerRelated(w http.ResponseWriter, r *http.Request) {
 	if body.Exclude != nil {
 		exclude = *body.Exclude
 	}
+	var openID int64
+	if body.OpenVideoId != nil {
+		if openID = *body.OpenVideoId; openID < 1 {
+			s.invalidRequest(w, "openVideoId must be at least 1.")
+			return
+		}
+	}
 	audience := audienceFrom(r.Context())
-	scored, err := s.catalog.PeerRelated(r.Context(), audience, clues, exclude, after, limit)
+	scored, err := s.catalog.PeerRelated(r.Context(), audience, clues, openID, exclude, after, limit)
 	if err != nil {
 		s.internalError(w, "Could not score related videos.", err)
 		return
@@ -271,9 +280,11 @@ func cluesFrom(body gen.RelatedClues) (domain.RelatedClues, error) {
 // relatedPeer is domain.RelatedPeer over the peer link for one screen request, in its audience. It keeps the
 // peer's videos it read, rewritten and by remote id, for the answer.
 type relatedPeer struct {
-	link   PeerLink
-	guest  bool
-	join   domain.VocabularyJoin
+	link  PeerLink
+	guest bool
+	join  domain.VocabularyJoin
+	// open is the open video in the peer's ids when the peer holds it, so the peer adds the folder points.
+	open   int64
 	videos map[int64]gen.Video
 }
 
@@ -293,6 +304,9 @@ func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, ex
 	body := gen.PeerRelatedRequest{Clues: cluesBody(clues), Limit: &limit}
 	if len(exclude) > 0 {
 		body.Exclude = &exclude
+	}
+	if p.open != 0 {
+		body.OpenVideoId = &p.open
 	}
 	if after != nil {
 		cursor := after.String()

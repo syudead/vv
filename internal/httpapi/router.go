@@ -198,8 +198,9 @@ type VideoCatalog interface {
 	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
 	// RemoteRelatedVideos is the related list over both nodes of a peer video with clues; exclude holds peer ids.
 	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
-	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent.
-	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)
+	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent; openID, when not
+	// 0, is the open video in this node's ids, whose directory adds the folder points.
+	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)
 	// RelatedClues reports false for a video the audience cannot see.
 	RelatedClues(ctx context.Context, audience domain.Audience, id int64) (domain.RelatedClues, bool, error)
 	// VideoGroup returns visible playback order and reads detail only inside window; false means no

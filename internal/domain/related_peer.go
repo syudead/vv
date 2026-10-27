@@ -8,7 +8,8 @@ import (
 )
 
 // RelatedClues are what the node holding the open video sends so the other node scores its own videos
-// against it. They carry no directory, since two disks share none.
+// against it. They carry no directory, since two disks share none; when the other node holds the open video,
+// it finds the directory by the video's id.
 type RelatedClues struct {
 	Fingerprint *Fingerprint
 	// TagNames join the tags by name, as the vocabulary of both nodes is joined.

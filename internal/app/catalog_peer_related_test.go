@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -117,5 +119,62 @@ func TestRemoteRelatedVideosScoresLocalVideosByClues(t *testing.T) {
 	// 1 and 3 share both tags by name; 2 and 5 only the date, so the larger id comes first.
 	if want := []int64{3, 1, 5, 2}; !slices.Equal(related.IDs, want) {
 		t.Fatalf("ids = %v, want %v", related.IDs, want)
+	}
+}
+
+func TestPeerRelatedGivesFolderPointsByTheOpenVideo(t *testing.T) {
+	owner, guest := domain.AudienceOwner, domain.AudienceGuest
+	// The clues share nothing with the videos and are dated long before them, so only the folder can score.
+	clues := domain.RelatedClues{TagNames: []string{}, Words: []string{}, AddedAt: relatedBase.AddDate(-20, 0, 0)}
+	for _, tc := range []struct {
+		name     string
+		audience domain.Audience
+		openID   int64
+		want     map[int64]int64
+		reads    []candidateRead
+	}{
+		{"open video", owner, 1, map[int64]int64{2: 20, 3: 0}, []candidateRead{{owner, 1}}},
+		{"no open video", owner, 0, map[int64]int64{1: 0, 2: 0, 3: 0}, []candidateRead{{owner, 0}}},
+		{"unknown id", owner, 9, map[int64]int64{1: 0, 2: 0, 3: 0}, []candidateRead{{owner, 9}, {owner, 0}}},
+		// 2 shares 1's folder, but a guest's ranking must not take that folder from it.
+		{"hidden from the audience", guest, 2, map[int64]int64{1: 0, 3: 0}, []candidateRead{{guest, 2}, {guest, 0}}},
+	} {
+		store := relatedFixture(
+			relatedEntry(1, "/media/show/a.mp4"),
+			relatedEntry(2, "/media/show/b.mp4"),
+			relatedEntry(3, "/media/other/c.mp4"),
+		)
+		store.ownerOnly = map[int64]bool{2: true}
+		catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+
+		page, err := catalog.PeerRelated(context.Background(), tc.audience, clues, tc.openID, nil, nil, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[int64]int64{}
+		for _, item := range page.Items {
+			got[item.Video.ID] = int64(item.Score / domain.RelatedScoreUnit)
+		}
+		if !maps.Equal(got, tc.want) {
+			t.Errorf("%s: 点数 = %v, want %v", tc.name, got, tc.want)
+		}
+		if !slices.Equal(store.candidateReads, tc.reads) {
+			t.Errorf("%s: 候補の読み出し = %+v, want %+v", tc.name, store.candidateReads, tc.reads)
+		}
+	}
+}
+
+func TestPeerRelatedFailsWhenTheOpenVideoCannotBeRead(t *testing.T) {
+	store := relatedFixture(relatedEntry(1, "/media/show/a.mp4"))
+	store.candidatesErr = errors.New("disk I/O error")
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+
+	_, err := catalog.PeerRelated(context.Background(), domain.AudienceOwner, domain.RelatedClues{}, 1, nil, nil, 10)
+	if !errors.Is(err, store.candidatesErr) {
+		t.Fatalf("err = %v, want the read error", err)
+	}
+	// A failed read must not fall back to ranking without the open video.
+	if want := []candidateRead{{domain.AudienceOwner, 1}}; !slices.Equal(store.candidateReads, want) {
+		t.Errorf("候補の読み出し = %+v, want %+v", store.candidateReads, want)
 	}
 }

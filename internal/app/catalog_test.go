@@ -33,6 +33,12 @@ type fakeCatalogStore struct {
 	windows    []domain.GroupWindow
 	contexts   []int64
 	audiences  []domain.Audience
+
+	// ownerOnly holds the candidates a guest cannot see.
+	ownerOnly map[int64]bool
+	// candidateReads keeps the audience and self id of each candidate read.
+	candidateReads []candidateRead
+	candidatesErr  error
 }
 
 func (f *fakeCatalogStore) RequeueMissingPreview(_ context.Context, id int64, _ string) (bool, error) {
@@ -68,9 +74,23 @@ func (f *fakeCatalogStore) RetryProbe(_ context.Context, id int64) error {
 	return nil
 }
 
-func (f *fakeCatalogStore) RelatedCandidates(_ context.Context, audience domain.Audience, _ int64) ([]domain.RelatedCandidate, error) {
+type candidateRead struct {
+	audience domain.Audience
+	self     int64
+}
+
+func (f *fakeCatalogStore) RelatedCandidates(_ context.Context, audience domain.Audience, self int64) ([]domain.RelatedCandidate, error) {
 	f.audiences = append(f.audiences, audience)
-	return f.candidates, nil
+	f.candidateReads = append(f.candidateReads, candidateRead{audience: audience, self: self})
+	if f.candidatesErr != nil {
+		return nil, f.candidatesErr
+	}
+	if audience.IsOwner() || len(f.ownerOnly) == 0 {
+		return f.candidates, nil
+	}
+	return slices.DeleteFunc(slices.Clone(f.candidates), func(candidate domain.RelatedCandidate) bool {
+		return f.ownerOnly[candidate.VideoID]
+	}), nil
 }
 
 func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error) {

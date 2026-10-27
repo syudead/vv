@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/app"
@@ -15,9 +16,9 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// relatedNodes pairs two nodes that each hold the guest fixture; the screens use b. On b, video b no longer
+// relatedNodes pairs two nodes that each hold the guest fixture, with their screens. On b, video b no longer
 // has the tag, so its only clue shared with a is the folder.
-func relatedNodes(t *testing.T) (a, b *guestFixture, screens *peerNode) {
+func relatedNodes(t *testing.T) (a, b *guestFixture, onA, onB *peerNode) {
 	t.Helper()
 	nodes := make([]*peerNode, 2)
 	fixtures := make([]*guestFixture, 2)
@@ -35,7 +36,7 @@ func relatedNodes(t *testing.T) (a, b *guestFixture, screens *peerNode) {
 	if _, _, err := b.env.db.Tags().DetachTag(context.Background(), []int64{b.ids["b"]}, b.tagID); err != nil {
 		t.Fatal(err)
 	}
-	return a, b, nodes[1]
+	return a, b, nodes[0], nodes[1]
 }
 
 func (f *guestFixture) remoteID(name string) int64 {
@@ -56,7 +57,7 @@ func relatedIDs(t *testing.T, rec *httptest.ResponseRecorder) (gen.RelatedVideos
 }
 
 func TestRelatedVideosOfALocalVideoRankBothNodes(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	related, ids := relatedIDs(t, screens.owner(http.MethodGet, b.videoPath("a", "/related"), ""))
 	// a's a and b share the tag (30 points) and outrank b's b, which shares only the folder (20); a's b was
@@ -94,7 +95,7 @@ func TestRelatedVideosOfALocalVideoRankBothNodes(t *testing.T) {
 }
 
 func TestRelatedVideosOfARemoteVideoScoreLocalVideos(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	related, ids := relatedIDs(t, screens.owner(http.MethodGet, a.remotePath("a", "/related"), ""))
 	// b's a shares the tag by name, as a's b does on a; a's b was added later.
@@ -110,7 +111,7 @@ func TestRelatedVideosOfARemoteVideoScoreLocalVideos(t *testing.T) {
 }
 
 func TestRelatedVideosOfARemoteVersionLeaveOutItsBundle(t *testing.T) {
-	a, _, screens := relatedNodes(t)
+	a, _, _, screens := relatedNodes(t)
 	if _, err := a.env.db.Versions().Bundle(context.Background(), []int64{a.ids["a"], a.ids["b"]}, a.ids["b"]); err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +123,53 @@ func TestRelatedVideosOfARemoteVersionLeaveOutItsBundle(t *testing.T) {
 	}
 	if related.NextId != nil && *related.NextId == a.remoteID("b") {
 		t.Errorf("nextId = 開いている版の代表 %d", *related.NextId)
+	}
+}
+
+func TestRelatedVideosOfARemoteVideoRankLikeOnItsNode(t *testing.T) {
+	a, b, onA, onB := relatedNodes(t)
+
+	// b's b shares only the folder with b's a, so it follows a's two tagged videos only with the folder points.
+	_, direct := relatedIDs(t, onB.owner(http.MethodGet, b.videoPath("a", "/related"), ""))
+	if want := []int64{a.remoteID("b"), a.remoteID("a"), b.ids["b"]}; len(direct) < 3 || !slices.Equal(direct[:3], want) {
+		t.Fatalf("b で開いた ids = %v, want %v で始まる", direct, want)
+	}
+	_, remote := relatedIDs(t, onA.owner(http.MethodGet, b.remotePath("a", "/related"), ""))
+	if want := []int64{a.ids["b"], a.ids["a"], b.remoteID("b")}; len(remote) < 3 || !slices.Equal(remote[:3], want) {
+		t.Fatalf("a で開いた ids = %v, want %v で始まる（b で開いたときと同じ順）", remote, want)
+	}
+}
+
+// acceptingPairing takes every peer credential; the other pairing operations are not used.
+type acceptingPairing struct{ Pairing }
+
+func (acceptingPairing) Authenticate(context.Context, string) (bool, error) { return true, nil }
+
+func TestRankPeerRelatedPassesTheOpenVideoID(t *testing.T) {
+	const clues = `"clues":{"tags":[],"words":[],"addedAt":"2000-01-01T00:00:00Z"}`
+	for _, tc := range []struct {
+		name, body string
+		status     int
+		want       []int64
+	}{
+		{"open video", `{` + clues + `,"openVideoId":7}`, http.StatusOK, []int64{7}},
+		{"no open video", `{` + clues + `}`, http.StatusOK, []int64{0}},
+		{"open video 0", `{` + clues + `,"openVideoId":0}`, http.StatusBadRequest, nil},
+	} {
+		catalog := &fakeCatalog{}
+		handler := newTestServer(t, Options{Catalog: catalog, Pairing: acceptingPairing{}})
+		req := httptest.NewRequest(http.MethodPost, peerRelatedPath, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "VV-Peer secret")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != tc.status {
+			t.Errorf("%s: status = %d, want %d: %s", tc.name, rec.Code, tc.status, rec.Body)
+		}
+		if !slices.Equal(catalog.peerRelatedOpen, tc.want) {
+			t.Errorf("%s: catalog に渡した openID = %v, want %v", tc.name, catalog.peerRelatedOpen, tc.want)
+		}
 	}
 }
 
@@ -145,7 +193,7 @@ func TestCluesFromRefusesAFingerprintLongerThanASprite(t *testing.T) {
 }
 
 func TestGuestRelatedVideosHoldPublicVideosOfBothNodes(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	_, ids := relatedIDs(t, screens.env.get(b.videoPath("a", "/related")))
 	slices.Sort(ids)
