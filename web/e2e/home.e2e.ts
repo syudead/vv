@@ -216,32 +216,15 @@ test.describe.serial("home", () => {
     await expect(folderCard(page)).toHaveCount(0);
   });
 
-  test("guest previews contain only public videos", async ({ browser, request }) => {
+  test("guests see public videos but no smart folders", async ({ browser, request }) => {
     await setPublic(request, allTitles, false);
     await setPublic(request, publicTitles, true);
     const context = await guestContext(browser);
     try {
       const page = await context.newPage();
       await page.goto("/");
-      const card = folderCard(page);
-      const art = card.locator("[data-folder-art]");
-      await expect(art.locator("[data-folder-preview]")).toHaveCount(2);
-      const bounds = await art.boundingBox();
-      expect(bounds).not.toBeNull();
-      const names: string[] = [];
-      for (let index = 0; index < publicTitles.length; index++) {
-        await art.hover({
-          position: {
-            x: ((bounds?.width ?? 0) * (index + 0.5)) / publicTitles.length,
-            y: 30,
-          },
-        });
-        const link = card.getByRole("link", { name: /^Play / });
-        names.push((await link.getAttribute("aria-label")) ?? "");
-      }
-      expect(names.sort()).toEqual(
-        publicTitles.map((title) => `Play "${title}" from "${folderName}"`).sort(),
-      );
+      await expect.poll(() => cardTitles(page)).toEqual([...publicTitles].sort());
+      await expect(folderCard(page)).toHaveCount(0);
     } finally {
       await context.close();
       await setPublic(request, publicTitles, false);
