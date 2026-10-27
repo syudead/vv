@@ -139,16 +139,6 @@ func (c *Client) Certificate(ctx context.Context, address string) (domain.Presen
 	}
 }
 
-// Version reads the release version the peer's health reports, also while its storage is degraded.
-func (c *Client) Version(ctx context.Context, target domain.PeerTarget) (string, error) {
-	var health gen.Health
-	if err := c.call(ctx, target, http.MethodGet, "/api/health", "", nil, &health,
-		http.StatusOK, http.StatusServiceUnavailable); err != nil {
-		return "", err
-	}
-	return health.Version, nil
-}
-
 func (c *Client) RequestPairing(
 	ctx context.Context, target domain.PeerTarget, req domain.PairingRequest,
 ) (domain.PairingAnswer, error) {
@@ -271,6 +261,9 @@ func (c *Client) do(req *http.Request, target domain.PeerTarget, bounds limits) 
 	return resp, nil
 }
 
+// legacyVersionRefusal is the reason a build that still compared versions gives when this node's differs.
+const legacyVersionRefusal gen.ErrorReason = "unsupported_version"
+
 // refusal maps the peer's error body to the domain error of the same meaning.
 func refusal(status int, body []byte, address string) error {
 	var answer gen.Error
@@ -286,9 +279,10 @@ func refusal(status int, body []byte, address string) error {
 		return domain.ErrAlreadyPaired
 	case gen.ErrorReasonPeerUnknown:
 		return domain.ErrPeerUnknown
-	case gen.ErrorReasonUnsupportedVersion:
-		// The peer names itself local; seen from here the two swap.
-		return &domain.UnsupportedVersionError{Local: deref(answer.PeerVersion), Peer: deref(answer.LocalVersion)}
+	case legacyVersionRefusal:
+		return &domain.PeerUnreachableError{
+			Message: "The other VVMDM runs an older build that pairs only with its own version. Update it and try again.",
+		}
 	case gen.ErrorReasonPeerUnreachable:
 		return &domain.PeerUnreachableError{Message: "The other VVMDM could not reach this one: " + answer.Message}
 	case gen.ErrorReasonCertificateUntrusted:

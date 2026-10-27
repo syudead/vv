@@ -158,7 +158,7 @@ func (p *Pairing) waitWake(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
-// connect runs one attempt: the handshake checks the peer's node id and version, then the event stream
+// connect runs one attempt: the handshake checks the peer's node id, then the event stream
 // is held open until it ends. It reports whether the stream opened.
 func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 	attempt, cancel := context.WithCancel(ctx)
@@ -176,8 +176,8 @@ func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 	opened := false
 	target := peerTarget(record)
 	node, err := p.link.Handshake(attempt, target, record.OutgoingSecret)
-	if err == nil {
-		err = p.checkPeerNode(record, node)
+	if err == nil && node.ID != record.NodeID {
+		err = &domain.PeerUnreachableError{Message: "The paired address answers as another VVMDM."}
 	}
 	if err == nil {
 		err = p.link.Watch(attempt, target, record.OutgoingSecret, func() {
@@ -190,14 +190,6 @@ func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 		p.fail(ctx, generation, record, err)
 	}
 	return opened
-}
-
-// checkPeerNode refuses a peer that answers as another node or runs another release.
-func (p *Pairing) checkPeerNode(record domain.PeerRecord, node domain.PeerNode) error {
-	if node.ID != record.NodeID {
-		return &domain.UnsupportedVersionError{Local: p.version, Peer: node.Version}
-	}
-	return domain.CheckPeerVersions(p.version, node.Version)
 }
 
 // Connection returns how to reach the peer and the secret to present while it is connected; ok is false in
@@ -240,7 +232,6 @@ func (p *Pairing) confirmUnknown(ctx context.Context, record domain.PeerRecord, 
 func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.PeerRecord, err error) {
 	var (
 		untrusted *domain.CertificateUntrustedError
-		version   *domain.UnsupportedVersionError
 	)
 	switch {
 	case errors.Is(err, domain.ErrPeerUnknown):
@@ -249,10 +240,6 @@ func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.Pee
 		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonCertificate, fingerprint: untrusted.Fingerprint,
 			peerVersion: p.seenPeerVersion(),
-		}, err)
-	case errors.As(err, &version):
-		p.applyStatus(generation, peerStatus{
-			state: domain.PeerUnreachable, reason: domain.PeerReasonVersion, peerVersion: version.Peer,
 		}, err)
 	default:
 		p.logger.Debug("the paired VVMDM is unreachable", slog.Any("error", err))

@@ -355,7 +355,6 @@ func reasonRef(reason gen.ErrorReason) *gen.ErrorReason { return &reason }
 func (s *server) writePairingError(w http.ResponseWriter, err error, fallback string) {
 	var (
 		address     *domain.InvalidPeerAddressError
-		version     *domain.UnsupportedVersionError
 		untrusted   *domain.CertificateUntrustedError
 		distrusted  *domain.OwnCertificateUntrustedError
 		unverified  *domain.OwnCertificateUnverifiedError
@@ -373,12 +372,6 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 		s.invalidRequest(w, "The pairing request has invalid values.")
 	case errors.Is(err, domain.ErrAlreadyPaired):
 		s.conflictReason(w, gen.ErrorReasonAlreadyPaired, "One of the two VVMDMs is already paired.")
-	case errors.As(err, &version):
-		s.writeErrorBody(w, http.StatusConflict, gen.Error{
-			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonUnsupportedVersion),
-			LocalVersion: &version.Local, PeerVersion: &version.Peer,
-			Message: "The two VVMDMs run different versions.",
-		})
 	case errors.As(err, &untrusted):
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
 			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonCertificateUntrusted), Fingerprint: &untrusted.Fingerprint,

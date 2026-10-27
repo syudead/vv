@@ -132,11 +132,6 @@ describe("PairingSection, unpaired", () => {
       "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
     ],
     [
-      "unsupported_version",
-      conflict("unsupported_version", { localVersion: "1.4.0", peerVersion: "1.3.2" }),
-      "The other VVMDM runs VVMDM 1.3.2 and this one 1.4.0. Update both to the same version.",
-    ],
-    [
       "peer_unreachable",
       json(
         {

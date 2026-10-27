@@ -46,13 +46,6 @@ function stateLine(state: PeerState): StateLine {
       detail: state.peer?.pinned === true ? text.certificateDetail : text.untrustedDetail,
       tone: "warning",
     };
-  if (state.reason === "version")
-    return {
-      icon: Unplug,
-      word: text.version,
-      detail: text.versionDetail(state.peer?.version ?? "", state.node?.version ?? ""),
-      tone: "warning",
-    };
   return {
     icon: Unplug,
     word: text.network,
@@ -278,15 +271,7 @@ export function PairedSection({
       <FactList
         facts={[
           { id: "name", term: text.name, value: name },
-          {
-            id: "version",
-            term: text.version,
-            value: (
-              <span className={cn(state.reason === "version" && "text-warning")}>
-                {peer?.version ?? ""}
-              </span>
-            ),
-          },
+          { id: "version", term: text.version, value: peer?.version ?? "" },
         ]}
       />
       {!revoked && peer !== undefined && (

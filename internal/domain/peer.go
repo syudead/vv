@@ -27,7 +27,8 @@ type PeerRecord struct {
 	PairedAt   time.Time
 }
 
-// PeerNode identifies one node to the other: its node id, host name and release version.
+// PeerNode identifies one node to the other: its node id, host name and release version, which is shown for
+// reference only and never compared.
 type PeerNode struct {
 	ID      string
 	Name    string
@@ -37,22 +38,10 @@ type PeerNode struct {
 var (
 	ErrAlreadyPaired       = errors.New("this node is already paired")
 	ErrInvalidPairingCode  = errors.New("the pairing code is unknown, used or expired")
-	ErrUnsupportedVersion  = errors.New("the peer runs another version")
 	ErrPeerUnreachable     = errors.New("the peer could not be reached")
 	ErrInvalidPeerAddress  = errors.New("invalid peer address")
 	ErrInvalidPairingInput = errors.New("invalid pairing request")
 )
-
-// UnsupportedVersionError carries both versions so the screen can name them.
-type UnsupportedVersionError struct {
-	Local, Peer string
-}
-
-func (e *UnsupportedVersionError) Error() string {
-	return fmt.Sprintf("the peer runs %s and this node %s", e.Peer, e.Local)
-}
-
-func (e *UnsupportedVersionError) Unwrap() error { return ErrUnsupportedVersion }
 
 // PeerUnreachableError says which call failed; Message is English and free of secrets.
 type PeerUnreachableError struct {
@@ -106,14 +95,6 @@ type PresentedCertificate struct {
 func ValidFingerprint(fingerprint string) bool {
 	raw, err := base64.StdEncoding.Strict().DecodeString(fingerprint)
 	return err == nil && len(raw) == 32
-}
-
-// CheckPeerVersions accepts only an equal release version; "dev" therefore matches only "dev".
-func CheckPeerVersions(local, peer string) error {
-	if local != peer {
-		return &UnsupportedVersionError{Local: local, Peer: peer}
-	}
-	return nil
 }
 
 // NormalizePeerAddress accepts an http or https URL with a host and no path, query, fragment or user,
@@ -275,7 +256,6 @@ type PeerUnreachableReason string
 
 const (
 	PeerReasonNetwork     PeerUnreachableReason = "network"
-	PeerReasonVersion     PeerUnreachableReason = "version"
 	PeerReasonCertificate PeerUnreachableReason = "certificate"
 )
 

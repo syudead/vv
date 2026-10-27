@@ -189,7 +189,7 @@ together at startup.
 
 ## Pair two VVMDMs
 
-Two VVMDMs of the same release on one LAN can be paired so that each shows
+Two VVMDMs on one LAN can be paired so that each shows
 both libraries ([peer-library.md](../design-docs/peer-library.md)). Pairing
 has no environment variable; the owner does it under Settings, Pairing.
 
@@ -209,7 +209,7 @@ neither owner confirms a certificate on A.
 | Requirement | Why |
 | --- | --- |
 | Each VVMDM reaches the other at the address entered, over `http://` or `https://` | Every merged list and every forwarded request calls the other VVMDM |
-| Both run the same release | A different version shows the pairing as not connected until both are updated |
+| Both run the same release | Pairing does not compare versions; an operation one release lacks fails on the other and leaves out that VVMDM's part, so update both together |
 | The address has no path | VVMDM is served at the root of its address |
 
 A paired VVMDM that stops answering hides its videos, groups and smart folders

@@ -743,7 +743,6 @@ const (
 	ErrorReasonUndoConflict                  ErrorReason = "undo_conflict"
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
-	ErrorReasonUnsupportedVersion            ErrorReason = "unsupported_version"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
 	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
@@ -961,8 +960,6 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUndoExpired:
 		return true
 	case ErrorReasonUnreachable:
-		return true
-	case ErrorReasonUnsupportedVersion:
 		return true
 	case ErrorReasonUsernameLength:
 		return true
@@ -1381,7 +1378,6 @@ func (e OrganizeRefKind) Valid() bool {
 const (
 	PeerStateReasonCertificate PeerStateReason = "certificate"
 	PeerStateReasonNetwork     PeerStateReason = "network"
-	PeerStateReasonVersion     PeerStateReason = "version"
 )
 
 // Valid indicates whether the value is a known member of the PeerStateReason enum.
@@ -1390,8 +1386,6 @@ func (e PeerStateReason) Valid() bool {
 	case PeerStateReasonCertificate:
 		return true
 	case PeerStateReasonNetwork:
-		return true
-	case PeerStateReasonVersion:
 		return true
 	default:
 		return false
@@ -3764,14 +3758,8 @@ type Error struct {
 	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
 	Links *[]string `json:"links,omitempty"`
 
-	// LocalVersion This node's release version; only for unsupported_version.
-	LocalVersion *string `json:"localVersion,omitempty"`
-
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
-
-	// PeerVersion The other node's release version; only for unsupported_version.
-	PeerVersion *string `json:"peerVersion,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -5064,7 +5052,7 @@ type PeerInfo struct {
 	// Pinned Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted
 	Pinned bool `json:"pinned"`
 
-	// Version The peer version last seen; with reason version, the one that differs
+	// Version The peer version last seen, shown for reference
 	Version *string `json:"version,omitempty"`
 }
 
@@ -5085,7 +5073,7 @@ type PeerNode struct {
 	// Name Host name
 	Name string `json:"name"`
 
-	// Version Release version, as getHealth reports it
+	// Version Release version, as getHealth reports it; shown for reference, never compared
 	Version string `json:"version"`
 }
 

@@ -133,14 +133,6 @@ func (l *directLink) node(target domain.PeerTarget) (*Pairing, error) {
 	return node, nil
 }
 
-func (l *directLink) Version(_ context.Context, target domain.PeerTarget) (string, error) {
-	node, err := l.node(target)
-	if err != nil {
-		return "", err
-	}
-	return node.version, nil
-}
-
 func (l *directLink) RequestPairing(
 	ctx context.Context, target domain.PeerTarget, req domain.PairingRequest,
 ) (domain.PairingAnswer, error) {
@@ -277,30 +269,24 @@ func TestPairingStoresBothSecrets(t *testing.T) {
 
 func TestPairingRefusalsStoreNothing(t *testing.T) {
 	cases := []struct {
-		name     string
-		versionB string
-		prepare  func(t *testing.T, n *pairingNodes) string
-		want     error
+		name    string
+		prepare func(t *testing.T, n *pairingNodes) string
+		want    error
 	}{
-		{name: "誤ったコード", versionB: "1.2.0", want: domain.ErrInvalidPairingCode,
+		{name: "誤ったコード", want: domain.ErrInvalidPairingCode,
 			prepare: func(t *testing.T, n *pairingNodes) string {
 				t.Helper()
 				n.issueCodeOnA(t)
 				return "WRONGCOD"
 			}},
-		{name: "期限切れのコード", versionB: "1.2.0", want: domain.ErrInvalidPairingCode,
+		{name: "期限切れのコード", want: domain.ErrInvalidPairingCode,
 			prepare: func(t *testing.T, n *pairingNodes) string {
 				t.Helper()
 				code := n.issueCodeOnA(t)
 				n.now = n.now.Add(domain.PairingCodeLifetime)
 				return code
 			}},
-		{name: "バージョンの不一致", versionB: "1.3.0", want: domain.ErrUnsupportedVersion,
-			prepare: func(t *testing.T, n *pairingNodes) string {
-				t.Helper()
-				return n.issueCodeOnA(t)
-			}},
-		{name: "コールバックの失敗", versionB: "1.2.0", want: domain.ErrPeerUnreachable,
+		{name: "コールバックの失敗", want: domain.ErrPeerUnreachable,
 			prepare: func(t *testing.T, n *pairingNodes) string {
 				t.Helper()
 				n.link.failHandshake = true
@@ -309,7 +295,7 @@ func TestPairingRefusalsStoreNothing(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			n := newPairingNodes(t, "1.2.0", tc.versionB)
+			n := newPairingNodes(t, "1.2.0", "1.2.0")
 			err := n.pairFromB(tc.prepare(t, n))
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("Pair err = %v, want %v", err, tc.want)
@@ -342,14 +328,22 @@ func TestAcceptRefusesAPairedNode(t *testing.T) {
 	}
 }
 
-func TestPairVersionMismatchCallsNoPairing(t *testing.T) {
-	n := newPairingNodes(t, "1.2.0", "dev")
-	var version *domain.UnsupportedVersionError
-	if err := n.pairFromB(n.issueCodeOnA(t)); !errors.As(err, &version) || version.Local != "dev" || version.Peer != "1.2.0" {
-		t.Fatalf("Pair err = %v, want 両方の版を持つ UnsupportedVersionError", err)
+// The version is a build label, so builds of the same source can differ in it; it is shown, never compared.
+func TestPairingIgnoresTheVersionLabels(t *testing.T) {
+	ctx := context.Background()
+	const sha = "f1672930f88eac63ac8f92b96985c8ef76e32036"
+	n := newPairingNodes(t, sha, domain.DefaultVersion)
+	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
+		t.Fatalf("Pair: %v", err)
 	}
-	if n.link.requests != 0 {
-		t.Errorf("版の確認の後に A へ %d 回ペアリングを送った", n.link.requests)
+	for _, check := range []struct {
+		label string
+		node  *Pairing
+		peer  string
+	}{{"A", n.a, domain.DefaultVersion}, {"B", n.b, sha}} {
+		if state, err := check.node.State(ctx); err != nil || state.State != domain.PeerConnected || state.PeerVersion != check.peer {
+			t.Errorf("%s の State = %+v, %v, want connected with PeerVersion %s", check.label, state, err, check.peer)
+		}
 	}
 }
 
