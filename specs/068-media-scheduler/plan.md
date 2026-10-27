@@ -107,8 +107,9 @@ their shape and read their numbers from the new tables.
 | `cmd/mdm` | Wiring; startup keeps only recovery and key rebuilds |
 
 **New paths**: `internal/jobs/scheduler.go`, `internal/mediafs/disk_linux.go`,
-`internal/mediafs/disk_windows.go`, `internal/mediafs/disk_other.go`, one
-migration per unit in `internal/store/migrations`,
+`internal/mediafs/disk_windows.go`, `internal/mediafs/disk_other.go`, the
+`jobs` rebuild and three data migrations in `internal/store/migrations`
+([data-model.md](data-model.md#migration)),
 `docs/design-docs/job-scheduling.md`.
 
 **Structure decision**: Disk identity lives in `internal/mediafs`, which
@@ -129,9 +130,9 @@ flowchart LR
   u3 --> u5[Scan reads]
   u2 --> u6[Backfills as jobs]
   u3 --> u6
-  u2 --> u7[Content queues as jobs]
-  u3 --> u7
-  u7 --> u8[Face duties as jobs]
+  u2 --> u7[Auto-tagging as jobs]
+  u7 --> u8[Face lane as jobs]
+  u3 --> u8
   u7 --> u9[Judging as jobs]
 ```
 
@@ -179,13 +180,16 @@ run-after time.
 - a job not claimed before its run-after time and claimed after it;
 - delays of 30 s, 2 min and 8 min within ±10% at round ends, and an immediate
   requeue mid-round;
-- an invalid-data error failing at the end of its first round, while a probe
-  timeout and an `EIO` exit requeue;
+- a job failing with `ErrFailureRepeats` failing at the end of its first round,
+  while a plain error requeues;
 - a kind's overridden delay and unlimited attempts applied in place of the
   default;
 - startup recovery counting one attempt.
 
-A scheduler test shows the wait ending at the next run-after time. The
+Media tests with fake process output show FFmpeg's invalid-data message and
+an `invalid_metadata` parse failure wrapping `ErrFailureRepeats`, while an
+`EIO` message and a timeout do not. A scheduler test shows the wait ending at
+the next run-after time. The
 migration test round-trips existing rows down and up.
 
 ### Give each disk its own read slots and serve disks in turn
@@ -290,72 +294,82 @@ the job queue; Give each disk its own read slots and serve disks in turn
   before any backfill job runs.
 - **No polling**: no code polls for backfill work.
 
-### Move the auto-tagging and face-analysis queues into the job table
+### Move the auto-tagging queue into the job table and pause kinds whose feature is off
 
-**Scope**: `auto_tag` and `face` jobs keyed by `subject_key`, and the
-`auto_tag_queue` and `face_queue` rows carried over into `jobs` and the result
-tables ([data-model.md](data-model.md#auto_tag_results-and-face_results),
-[R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)).
+**Scope**:
 
-- **Activity**: the activity rules of `content_queue.go` move to the enqueue,
-  claim and finish paths of these kinds.
-- **State checks**: every check of a content state in `auto_tags.go`,
-  `faces.go`, `face_clear.go`, `face_settings.go` and
-  `video_face_appearances.go` reads the result row and the unfinished job
-  together.
-- **Paused kinds**: the scheduler gains them
-  ([Paused kinds](research.md#paused-kinds)), and `auto_tag` and `face` use
-  them.
-- **Demands**: `auto_tag` uses the classifier; `face` uses read, CPU and the
-  face lane, and its claim fills `location_*`.
-- **Loops**: the auto-tagging loop goes, and the face loop stops claiming
-  analyses.
+- **Jobs**: `auto_tag` jobs keyed by `subject_key`. The data migration carries
+  `auto_tag_queue` rows over into `jobs` and `auto_tag_results`
+  ([data-model.md](data-model.md#auto_tag_results-and-face_results),
+  [R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)).
+- **Activity**: the activity rules of `content_queue.go` gain a `jobs` path,
+  which auto-tagging uses. Face analysis keeps the table path until the next
+  unit removes it.
+- **State checks**: every auto-tagging state check in `auto_tags.go` reads
+  the result row and the unfinished job together.
+- **Paused kinds**: the scheduler gains them, with `internal/app` owning the
+  set and the existing settings callbacks waking the scheduler
+  ([Paused kinds](research.md#paused-kinds)).
+- **Removed**: the auto-tagging loop goes.
 - **Documents**: `auto-tagging.md` describes the queue as jobs.
 
 **Dependencies**: Add priority classes, retry delays and failure outcomes to
-the job queue; Give each disk its own read slots and serve disks in turn
+the job queue
 
 **Acceptance**:
 
-- **Migration**: a test carries queued, running, done and failed rows of both
-  tables to the end state and back.
+- **Migration**: a test carries queued, running, done and failed rows to the
+  end state and back.
 - **Retry**: an app test shows an auto-tagging failure retried after its
   delay. Today a failure stays failed until the owner queues it again.
 - **Owner first**: an owner's retry is claimed before queued after-import
   tagging.
-- **Paused**: with auto-tagging off, a queued `auto_tag` job is not claimed
-  and keeps its attempts. Turning auto-tagging on gets it claimed.
+- **Paused**: with auto-tagging off, a queued job is not claimed and keeps its
+  attempts. Turning auto-tagging on wakes the scheduler and the job is
+  claimed.
 - **Slots**: a scheduler test shows an `auto_tag` job granted while every read
-  slot is busy, and at most one classifier job and one face-lane job at a
-  time.
-- **Existing behaviour**: existing auto-tagging and face tests pass, with
-  their queue assertions reading `jobs`.
+  slot is busy, and at most one classifier job at a time.
+- **Existing behaviour**: existing auto-tagging tests pass, with their queue
+  assertions reading `jobs`.
 
-### Run face-image embedding and the cast rule as face-lane jobs
+### Run face analysis, face-image embedding and the cast rule as face-lane jobs
 
-**Scope**: The face loop's remaining duties become jobs on the face lane
-([R-1](research.md#r-1-one-scheduler-grants-declared-demands)):
+**Scope**: Every face duty becomes a job on the face lane in one step, so the
+lane stays exclusive throughout
+([R-1](research.md#r-1-one-scheduler-grants-declared-demands),
+[R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)):
 
-- `face_image` jobs, enqueued on an image upload or change, and
-  `queue_face_images` after a recognizer change;
-- `face_cast` jobs, enqueued when a video's work information changes;
-- the helper closing when the face lane has no queued job.
+- **`face`**: jobs keyed by content key; the data migration carries
+  `face_queue` rows over into `jobs` and `face_results`. The claim fills
+  `location_*`, and the face state checks in `faces.go`, `face_clear.go`,
+  `face_settings.go` and `video_face_appearances.go` read the result row and
+  the unfinished job together.
+- **`face_image`**: jobs keyed by person, enqueued by the person-image write
+  and by `queue_face_images`. The migration queues `queue_face_images` once.
+- **`face_cast`**: jobs enqueued when a video's work information changes.
+- **Pausing and helper**: the face kinds pause while face recognition is off
+  or its runtime is not ready. The helper closes when the lane has no queued
+  job.
+- **Removed**: the table path of `content_queue.go` and the face loop go.
+- **Documents**: `face-recognition.md` describes the lane.
 
-The face loop goes, and `face-recognition.md` describes the lane.
+**Dependencies**: Move the auto-tagging queue into the job table and pause
+kinds whose feature is off; Give each disk its own read slots and serve disks
+in turn
 
-**Dependencies**: Move the auto-tagging and face-analysis queues into the job
-table
+**Acceptance**:
 
-**Acceptance**: App tests show the following:
-
-- an uploaded image embedded through a `face_image` job;
-- a recognizer change queuing one job per stale image;
-- a cast change applied through `face_cast` and never at the same time as a
-  `face` job;
-- the helper closed after the last face-lane job and started again by the
-  next.
-
-Existing face tests pass.
+- **Migration**: a test carries `face_queue` rows to the end state and back,
+  and shows a person stale before the upgrade embedded after it.
+- **Triggers**: an uploaded image and a naming each get a `face_image` job in
+  their transaction. A recognizer change queues one job per stale person.
+- **Exclusive lane**: a scheduler test shows `face`, `face_image` and
+  `face_cast` jobs never granted together.
+- **Paused**: a runtime that becomes ready wakes the scheduler.
+- **Helper**: the helper is closed after the last face-lane job and started
+  again by the next.
+- **Existing behaviour**: existing face tests pass, with their queue
+  assertions reading `jobs`.
 
 ### Move duplicate-judging work into the job table
 
@@ -376,8 +390,8 @@ Existing face tests pass.
   `NextJudgementRetry` go.
 - **Documents**: `duplicate-judging.md` describes the queue as jobs.
 
-**Dependencies**: Move the auto-tagging and face-analysis queues into the job
-table
+**Dependencies**: Move the auto-tagging queue into the job table and pause
+kinds whose feature is off
 
 **Acceptance**:
 

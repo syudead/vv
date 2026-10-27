@@ -28,6 +28,7 @@ Rows are carried over as follows:
 | `auto_tag_queue` rows `queued` or `running` | `auto_tag` jobs, `queued`, with the row's `activity_id` and class 1 | Nothing; the row is deleted |
 | `auto_tag_queue` rows `done` or `failed` | None | The row, in `auto_tag_results` |
 | `face_queue` rows | As for `auto_tag_queue`, kind `face` | `done` and `failed` rows, in `face_results` |
+| None | One `queue_face_images` job, so people stale at upgrade are embedded | Nothing |
 | `video_version_candidates` with `judgement` null or `running` | `version_judge` jobs, `queued`, with the pair's activity and class 1 | `judgement` reset to null |
 | `video_version_candidates` with `judgement = 'no_connection'` | None; saving the connection enqueues them, as today | The row |
 | `video_version_candidates` with `judgement = 'failed'` and a `retry_at` | `version_judge` jobs with `attempts` carried over and `run_after = retry_at` | `judgement` and `judgement_error` |
@@ -41,7 +42,7 @@ Each down migration restores the previous tables from these rows. It drops
 | --- | --- | --- | --- |
 | `kind` | text | No | Drops the unused `metadata` (its rows were deleted in migration 00053). Adds `keyframes`, `media_info`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` ([R-13](research.md#r-13-startup-work-becomes-jobs-queued-by-queue-all-jobs)), and `auto_tag`, `face`, `face_image`, `face_cast`, `queue_face_images`, `version_judge` ([R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)) |
 | `video_id` | integer | Yes | Now nullable. Set for the five import kinds, `keyframes`, `media_info` and `face_cast`; still deleted with its video |
-| `subject_key` | text | Yes | The content key of an `auto_tag` or `face` job, the image id of a `face_image` job, and the first key of a `version_judge` pair |
+| `subject_key` | text | Yes | The content key of an `auto_tag` or `face` job, the person id of a `face_image` job, and the first key of a `version_judge` pair |
 | `subject_key_b` | text | Yes | The second key of a `version_judge` pair, greater than `subject_key`; named as in `activity_entries` |
 | `priority` | integer | No | `0` owner request, `1` import, `2` backfill; lower is served first ([R-4](research.md#r-4-priority-classes-are-strict)) |
 | `run_after` | integer | No | Unix seconds before which the job is not claimed; written as the insert time when not delayed ([R-7](research.md#r-7-handlers-return-one-of-four-outcomes)) |
@@ -100,7 +101,7 @@ The Activity list, the candidate list and the API's `retryAt` read the job's
 | A claim takes the lowest class, then the earliest `run_after`, then the oldest row. It considers only jobs whose demand fits ([R-1](research.md#capacities)) and whose chosen location is on the disk being visited and under an available root | `internal/store` claim statement, given the class, the disk's roots and the unavailable roots |
 | A job whose video or content key has no registered location left is dropped at claim. One whose locations are all under unavailable roots stays queued | `internal/store` claim |
 | A `version_judge` job whose pair is not judgeable now (held, unbundled, unregistered) stays queued and is skipped; it is deleted with its candidate row | `internal/store` claim and candidate deletion |
-| A paused kind is not claimed ([Paused kinds](research.md#paused-kinds)) | `internal/store` claim, given the paused kinds |
+| A paused kind is not claimed ([Paused kinds](research.md#paused-kinds)) | `internal/store` claim, given the paused set that `internal/app` computes |
 | A kind may override the delay and the attempt limit; `version_judge` waits 10 min, 1 h, 6 h, then daily, without limit | `internal/domain` delay rule |
 | A failure that ends a round sets `run_after` from the delay rule. One that leaves locations in the round requeues at once. A snooze requeues at once and leaves `attempts` unchanged | `internal/domain` delay rule, written by `internal/store` |
 | A repeating failure (`ErrFailureRepeats`) fails the job when its round ends | `internal/domain` `AttemptsAfterFailure`, as today |

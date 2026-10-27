@@ -90,9 +90,9 @@ disk of the location the claim picks (R-3).
 | `virtual_thumbnails` | 0 | 0 | 0 | 0 | Copies stored image bytes into thumbnail files |
 | `auto_tag` | 0 | 0 | 1 | 0 | Sends generated thumbnails and seek frames, never the source |
 | `face` | 1 | 1 | 0 | 1 | ffmpeg decodes source frames for the helper |
-| `face_image` | 0 | 0 | 0 | 1 | Sends one stored face image to the helper |
+| `face_image` | 0 | 0 | 0 | 1 | Sends one person's stored face image to the helper |
 | `face_cast` | 0 | 0 | 0 | 1 | Merges people in the database, serialized with analysis |
-| `queue_face_images` | 0 | 0 | 0 | 0 | Inserts one `face_image` job per image without a current vector |
+| `queue_face_images` | 0 | 0 | 0 | 0 | Inserts one `face_image` job per person whose vector is missing, of an old image revision or of another recognizer (the `StaleFaceImage` condition) |
 | `version_judge` | 0 | 0 | 1 | 0 | Compares stored fingerprints and sends generated seek frames |
 
 A kind with an empty demand always fits and still waits for its priority class.
@@ -111,6 +111,14 @@ and so does Sidekiq's queue `pause`.
 
 Pausing at claim, rather than claiming and failing, keeps attempts intact while
 a feature is off, which is what the loops do today.
+
+`internal/app` owns the paused set. Each feature component reports whether its
+kinds may run: the auto-tagging and judging settings, and the face settings
+together with the in-memory runtime state. `cmd/mdm` hands the scheduler a
+function that collects these, and the scheduler passes the set to each claim.
+Changing a setting already calls `SettingsChanged` or `SaveEnabled`. The face
+runtime becoming ready already calls its `Ready` callback. Each of these now
+wakes the scheduler instead of its own loop.
 
 ### Readers outside the job table
 
@@ -168,8 +176,8 @@ attempt counting per round unchanged.
 
 | Class | Value | Work |
 | --- | --- | --- |
-| Owner request | 0 | A force rescan, a retry from the Activity screen, one video queued from its page |
-| Import | 1 | Everything an import, a scan or an after-import rule queues; Settings' "tag or analyse all" requests |
+| Owner request | 0 | A force rescan, a retry from the Activity screen, one video queued from its page, a person's face image set, replaced, merged or named |
+| Import | 1 | Everything an import, a scan or an after-import rule queues; Settings' library-wide requests, including a recognizer change and the `queue_face_images` job it queues |
 | Backfill | 2 | `keyframes`, `media_info`, `virtual_thumbnails` |
 
 A scan's content-key read goes before every class (R-9).
@@ -415,6 +423,20 @@ a hold being lifted or an unbundle being undone, and today's claim checks
   names `activity_entries` uses.
 - The claim fills `location_*` for a `face` job, as it does for import jobs,
   so the handler no longer resolves a path itself.
+- A `face_image` job is keyed by person id. Today the face loop finds stale
+  people with the level-triggered `StaleFaceImage` query, and the
+  `PersonImageChanged` event only moves a person to the front. Jobs keep both
+  routes:
+  - The person-image write that raises `PersonImageChanged`
+    ([`person_images.go`](../../internal/store/person_images.go)) inserts the
+    person's job in its transaction. That write covers setting, replacing,
+    merging and naming.
+  - A recognizer change queues `queue_face_images`, which inserts a job for
+    every person matching the `StaleFaceImage` condition.
+  - The data migration queues `queue_face_images` once, so people already
+    stale at upgrade are embedded.
+  - The handler re-reads the person's revision and recognizer, and finishes
+    without work when the vector is already current.
 - Like a job whose video lost its last registered location, a job whose
   content key no longer has a registered video is dropped at claim.
 - [`content_queue.go`](../../internal/store/content_queue.go) already shares
