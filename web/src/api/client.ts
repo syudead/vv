@@ -63,6 +63,7 @@ export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
 export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
+export type MediaFolderUsage = components["schemas"]["MediaFolderUsage"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
 export type FolderSummary = components["schemas"]["FolderSummary"];
@@ -1248,6 +1249,13 @@ export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<
 
 export function listMediaFolders(signal?: AbortSignal): Promise<MediaFolder[]> {
   return request<MediaFolder[]>("/api/media-folders", { signal });
+}
+
+export function getMediaFolderUsage(
+  id: number,
+  signal?: AbortSignal,
+): Promise<MediaFolderUsage> {
+  return request<MediaFolderUsage>(`/api/media-folders/${String(id)}/usage`, { signal });
 }
 
 /** Invalidate snapshots after root changes so returning lists cannot show removed folders or stale items. */

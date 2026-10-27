@@ -139,3 +139,44 @@ func request(t *testing.T, handler http.Handler, method, target, body string, he
 	handler.ServeHTTP(rec, req)
 	return rec
 }
+
+type fakeFolderUsage struct {
+	usage  domain.MediaFolderUsage
+	err    error
+	lastID int64
+}
+
+func (f *fakeFolderUsage) MediaFolderUsage(_ context.Context, id int64) (domain.MediaFolderUsage, error) {
+	f.lastID = id
+	return f.usage, f.err
+}
+
+func TestGetMediaFolderUsage(t *testing.T) {
+	tests := []struct {
+		name  string
+		usage fakeFolderUsage
+		code  int
+		body  string
+	}{
+		{"with disk", fakeFolderUsage{usage: domain.MediaFolderUsage{VideoBytes: 3, Disk: &domain.DiskUsage{FreeBytes: 5, TotalBytes: 9}}},
+			http.StatusOK, `{"disk":{"freeBytes":5,"totalBytes":9},"videoBytes":3}` + "\n"},
+		{"unreadable disk", fakeFolderUsage{usage: domain.MediaFolderUsage{VideoBytes: 0}}, http.StatusOK, `{"videoBytes":0}` + "\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := do(t, newTestServer(t, Options{FolderUsage: &tt.usage}), http.MethodGet, "/api/media-folders/4/usage")
+			if rec.Code != tt.code || rec.Body.String() != tt.body || tt.usage.lastID != 4 {
+				t.Fatalf("response = %d %q for id %d", rec.Code, rec.Body.String(), tt.usage.lastID)
+			}
+			if rec.Header().Get("Cache-Control") != cacheNoStore {
+				t.Fatal("media folder usage is cacheable")
+			}
+		})
+	}
+
+	missing := &fakeFolderUsage{err: domain.ErrNotFound}
+	rec := do(t, newTestServer(t, Options{FolderUsage: missing}), http.MethodGet, "/api/media-folders/4/usage")
+	if rec.Code != http.StatusNotFound || decode[gen.Error](t, rec).Code != gen.ErrorCodeMediaFolderNotFound {
+		t.Fatalf("missing folder = %d %s", rec.Code, rec.Body)
+	}
+}

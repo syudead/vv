@@ -236,6 +236,19 @@ type MediaFolder struct {
 	UpdatedAt time.Time
 }
 
+// MediaFolderUsage is a media folder's indexed video size and, when readable, its volume's space.
+type MediaFolderUsage struct {
+	VideoBytes int64
+	// Disk is nil when the volume cannot be read.
+	Disk *DiskUsage
+}
+
+// DiskUsage is a volume's space as the OS reports it to this process.
+type DiskUsage struct {
+	FreeBytes  int64
+	TotalBytes int64
+}
+
 // VideoLocation is one current filesystem location for a logical video.
 type VideoLocation struct {
 	ID        int64

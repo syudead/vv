@@ -892,6 +892,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media-folders/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a media folder's video size and disk space
+         * @description Owner-only. Reads the volume when called, so the values reflect the moment of the request. `videoBytes` sums every indexed file below the folder, each location once. `disk` is the space of the volume holding the folder as the OS reports it to the server process; it is omitted when the volume cannot be read or does not answer within a few seconds. Folders on the same volume report the same `disk`. Uses `Cache-Control: no-store`.
+         */
+        get: operations["getMediaFolderUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/transcoding": {
         parameters: {
             query?: never;
@@ -3802,6 +3822,20 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        MediaFolderUsage: {
+            /** Format: int64 */
+            videoBytes: number;
+            disk?: components["schemas"]["DiskUsage"];
+        };
+        DiskUsage: {
+            /**
+             * Format: int64
+             * @description Space the server process can still write.
+             */
+            freeBytes: number;
+            /** Format: int64 */
+            totalBytes: number;
         };
         CreateMediaFolderRequest: {
             path: string;
@@ -9308,6 +9342,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getMediaFolderUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media folder ID */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage of the media folder */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolderUsage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     getTranscodingSettings: {

@@ -356,7 +356,9 @@ func run(opts runOptions) error {
 	})
 	// Share mediafs access rules across streaming, opening, registration, and directory selection.
 	mediaFiles := mediafs.New()
-	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles, Changes: autoImport})
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{
+		Store: settingsStore, Checker: mediaFiles, Changes: autoImport, VideoBytes: settingsStore, Disk: mediaFiles,
+	})
 
 	// Probe encoders asynchronously so HTTP startup does not wait; cancel probing on shutdown.
 	transcodeSettings, err = startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
@@ -381,6 +383,7 @@ func run(opts runOptions) error {
 		Playback:         playbackStore,
 		Scans:            scans,
 		MediaFolders:     mediaFolders,
+		FolderUsage:      mediaFolders,
 		Tags:             db.Tags(),
 		Credits:          db.Credits(),
 		WorkInfo:         db.WorkInfo(),

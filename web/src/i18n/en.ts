@@ -4537,6 +4537,13 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+      usage: {
+        loading: "Checking disk space",
+        free: (size: string) => `${size} free`,
+        ofTotal: (size: string) => `of ${size}`,
+        videos: (size: string) => `Videos ${size}`,
+        unavailable: "Disk space unavailable",
+      },
       forceRescan: "Force rescan folder",
       forceRescanShort: "Force rescan",
       rescanDialog: {

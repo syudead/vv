@@ -3716,6 +3716,13 @@ type DirectoryListing struct {
 	ParentPath  *string          `json:"parentPath"`
 }
 
+// DiskUsage defines model for DiskUsage.
+type DiskUsage struct {
+	// FreeBytes Space the server process can still write.
+	FreeBytes  int64 `json:"freeBytes"`
+	TotalBytes int64 `json:"totalBytes"`
+}
+
 // DisplayNameUpdate defines model for DisplayNameUpdate.
 type DisplayNameUpdate struct {
 	// ContentVersion The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
@@ -4423,6 +4430,12 @@ type MediaFolder struct {
 	Path      string    `json:"path"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Version   int64     `json:"version"`
+}
+
+// MediaFolderUsage defines model for MediaFolderUsage.
+type MediaFolderUsage struct {
+	Disk       *DiskUsage `json:"disk,omitempty"`
+	VideoBytes int64      `json:"videoBytes"`
 }
 
 // MediaInfo Additional video metadata; omit unavailable fields and objects with no fields.
@@ -8896,6 +8909,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder Change a media folder path
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetMediaFolderUsage Return a media folder's video size and disk space
+	// (GET /api/media-folders/{id}/usage)
+	GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// GetOnboarding オンボードの段階を返す
 	// (GET /api/onboarding)
 	GetOnboarding(w http.ResponseWriter, r *http.Request)
@@ -11094,6 +11110,32 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMediaFolderUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMediaFolderUsage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16503,6 +16545,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders/{id}/usage", wrapper.GetMediaFolderUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
