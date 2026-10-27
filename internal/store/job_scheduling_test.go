@@ -226,6 +226,33 @@ func TestStagesQueuedByAnOwnerRetryKeepTheOwnerClass(t *testing.T) {
 	}
 }
 
+func TestStartupRecoveryRaisesAForceRequestToTheOwnerClass(t *testing.T) {
+	db := migratedDB(t)
+	requested, plain := addVideo(t, db, "requested"), addVideo(t, db, "plain")
+	enqueueProbe(t, db, requested)
+	enqueueProbe(t, db, plain)
+	requestedJob, plainJob := claimProbe(t, db), claimProbe(t, db)
+	ctx := context.Background()
+	if err := db.Ingest().ForceJobs(ctx, requested, domain.ActivityByOwner, domain.JobProbe); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []struct {
+		id       int64
+		force    int64
+		priority domain.JobPriority
+	}{{requestedJob.ID, 1, domain.JobPriorityOwner}, {plainJob.ID, 0, domain.JobPriorityImport}} {
+		force := countRows(t, db, fmt.Sprintf(`select force from jobs where id = %d`, want.id))
+		priority := countRows(t, db, fmt.Sprintf(`select priority from jobs where id = %d`, want.id))
+		if force != want.force || priority != int64(want.priority) {
+			t.Fatalf("job %d: force = %d, class = %d; want %d, %d", want.id, force, priority, want.force, want.priority)
+		}
+	}
+}
+
 func TestStartupRecoveryCountsTheInterruptedClaim(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	enqueueProbe(t, db, videoID)

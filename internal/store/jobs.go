@@ -632,7 +632,7 @@ func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 }
 
 // RequeueRunningJobs recovers interrupted work at startup and recomputes completion using runtime OS-specific
-// eligibility; a row with a force request comes back forced.
+// eligibility; a row with a force request comes back forced and in the owner class, as queueForceRequest would.
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -640,9 +640,10 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`update jobs set state = 'queued', force = max(force, force_requested), force_requested = 0, updated_at = ?
+		`update jobs set state = 'queued', force = max(force, force_requested),
+		priority = case when force_requested = 1 then ? else priority end, force_requested = 0, updated_at = ?
 		where state = 'running'`,
-		time.Now().Unix())
+		int(domain.JobPriorityOwner), time.Now().Unix())
 	if err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
