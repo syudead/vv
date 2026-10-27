@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-const faceJobsVersion = 85
+const faceJobsVersion = 86
 
 // Unfinished face analysis becomes face jobs and outcomes become results, and a library with faces gets one
 // queue_face_images job, which queues the face that was stale at the upgrade; going back restores the queue.
