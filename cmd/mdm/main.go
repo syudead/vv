@@ -190,23 +190,25 @@ func run(opts runOptions) error {
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
 	})
-	// Workers wake after committed queue changes instead of polling.
-	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
+	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.JobKinds))
+	for _, kind := range domain.JobKinds {
+		handlers[kind] = ingest.Handler(kind)
+	}
+	scheduler := jobs.NewScheduler(jobs.Options{
+		Queue:    ingestStore,
+		Handlers: handlers,
+		Capacity: domain.JobCapacity(runtime.NumCPU()),
+		Started:  scans.JobStarted,
+		Finished: func(job domain.Job) {
+			scans.JobFinished(job)
+			ingest.JobFinished(job)
+		},
+		Logger: logger,
+	})
 	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
 	for _, kind := range domain.JobKinds {
-		worker := jobs.New(jobs.Options{
-			Kind:    kind,
-			Queue:   ingestStore,
-			Handler: ingest.Handler(kind),
-			Started: scans.JobStarted,
-			Finished: func(job domain.Job) {
-				scans.JobFinished(job)
-				ingest.JobFinished(job)
-			},
-			Logger: logger,
-		})
-		workers = append(workers, worker)
-		wakers[kind] = worker
+		wakers[kind] = scheduler
 	}
 	// Provider adapters own connection settings and expose app.Classifier; see
 	// docs/design-docs/ai-layer.md.
@@ -290,9 +292,7 @@ func run(opts runOptions) error {
 	var transcodeSettings *app.TranscodeSettings
 
 	var workersDone sync.WaitGroup
-	for _, worker := range workers {
-		workersDone.Go(func() { worker.Run(backgroundCtx) })
-	}
+	workersDone.Go(func() { scheduler.Run(backgroundCtx) })
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() {
 		if err := ingest.RepublishVirtualThumbnails(backgroundCtx); err != nil {

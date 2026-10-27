@@ -119,12 +119,13 @@ func (probeOnlyGenerator) FitThumbnailSource(_ context.Context, image []byte, _ 
 
 type emptyClaims struct {
 	jobs.Queue
+	kind  domain.JobKind
 	empty chan struct{}
 }
 
 func (q emptyClaims) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
 	job, err := q.Queue.ClaimJob(ctx, kind)
-	if errors.Is(err, domain.ErrNoJob) {
+	if kind == q.kind && errors.Is(err, domain.ErrNoJob) {
 		select {
 		case q.empty <- struct{}{}:
 		default:
@@ -149,7 +150,7 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 	return ctx, db, mediaDir
 }
 
-// Verify the subscription alone starts thumbnail work after probing, without queue polling.
+// Verify a queued probe wakes the sleeping scheduler and its completion starts thumbnail work, without queue polling.
 func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
@@ -171,21 +172,20 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		Publisher: bus, Logger: logger,
 	})
 	thumbnailStarted := make(chan domain.Job, 1)
-	thumbnailQueue := emptyClaims{Queue: db.Ingest(), empty: make(chan struct{}, 1)}
-	thumbnail := jobs.New(jobs.Options{
-		Kind: domain.JobThumbnail, Queue: thumbnailQueue, Logger: logger,
-		Handler: func(_ context.Context, job domain.Job) error {
-			thumbnailStarted <- job
-			return nil
+	queue := emptyClaims{Queue: db.Ingest(), kind: domain.JobThumbnail, empty: make(chan struct{}, 1)}
+	scheduler := jobs.NewScheduler(jobs.Options{
+		Queue: queue, Capacity: domain.JobCapacity(1), Logger: logger,
+		Handlers: map[domain.JobKind]jobs.Handler{
+			domain.JobProbe: ingest.Handler(domain.JobProbe),
+			domain.JobThumbnail: func(_ context.Context, job domain.Job) error {
+				thumbnailStarted <- job
+				return nil
+			},
 		},
 		Finished: ingest.JobFinished,
 	})
-	probe := jobs.New(jobs.Options{
-		Kind: domain.JobProbe, Queue: db.Ingest(), Logger: logger,
-		Handler: ingest.Handler(domain.JobProbe), Finished: ingest.JobFinished,
-	})
 	subs := subscribeEvents(bus, eventSubscribers{Workers: map[domain.JobKind]waker{
-		domain.JobProbe: probe, domain.JobThumbnail: thumbnail,
+		domain.JobProbe: scheduler, domain.JobThumbnail: scheduler,
 	}})
 
 	runCtx, stop := context.WithCancel(ctx)
@@ -196,15 +196,14 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		running.Wait()
 		bus.Close()
 	}()
-	running.Go(func() { thumbnail.Run(runCtx) })
-	// Before probing, the thumbnail worker finds no claim and sleeps.
+	running.Go(func() { scheduler.Run(runCtx) })
+	// Before probing, the scheduler finds no claimable thumbnail and sleeps.
 	select {
-	case <-thumbnailQueue.empty:
+	case <-queue.empty:
 	case <-time.After(5 * time.Second):
-		t.Fatal("サムネイルのワーカーが待ち行列を見ない")
+		t.Fatal("スケジューラーがサムネイルの待ち行列を見ない")
 	}
 
-	running.Go(func() { probe.Run(runCtx) })
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
