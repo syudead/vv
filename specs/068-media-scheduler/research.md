@@ -141,16 +141,19 @@ undecodable or unsupported is a cancel.
 
 ## R-8: An unavailable folder parks its jobs
 
-**Decision**: When a media folder root cannot be read, its disk has zero read
-slots until the root is readable again, so its jobs stay queued without
-attempts; a job that finds its source gone mid-run snoozes and marks the root
-for a check.
+**Decision**: When a media folder root cannot be read, the scheduler marks
+that root unavailable and the claim skips jobs whose video lies under it, so
+they stay queued without attempts until the root is readable again; a job
+that finds its source gone mid-run snoozes and marks its root for a check.
+The disk's read slots are unchanged, because other folders on the same disk
+may still be readable.
 
 | Option | Verdict |
 | --- | --- |
-| **Zero capacity until readable** (Kubernetes parks unschedulable pods until a relevant event) | Chosen: no state is added to the job row |
+| **Skip the unavailable root's jobs until readable** (Kubernetes parks unschedulable pods until a relevant event) | Chosen: no state is added to the job row, and other roots on the disk keep running |
+| Zero read slots for the root's disk | Rejected: two registered folders can share a disk, and one unreadable folder would stop the other |
 | Fail each job (current behaviour) | Rejected: requirement 13 of the parent Issue |
-| A `parked` job state | Rejected: duplicates what zero capacity already expresses |
+| A `parked` job state | Rejected: duplicates what skipping at claim already expresses |
 
 Immich, Jellyfin and PhotoPrism likewise skip an inaccessible library root
 instead of deleting or failing its items.

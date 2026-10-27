@@ -155,16 +155,17 @@ more grants than capacity. Existing ingest tests in `cmd/mdm` pass unchanged.
 the unknown fallback ([R-5](research.md#r-5-read-slots-per-disk-follow-the-disk-type));
 round robin over disks within a class ([R-3](research.md#r-3-disks-take-turns-within-a-priority-class));
 the seek-sprite job's elastic grant ([R-6](research.md#r-6-a-splittable-job-takes-the-free-slots-on-start));
-zero capacity for an unreadable root and the snooze on a vanished source
+claims skip an unreadable root's jobs, and a vanished source snoozes
 ([R-8](research.md#r-8-an-unavailable-folder-parks-its-jobs)).
 
 **Dependencies**: Run every ingest stage on one resource scheduler
 
 **Acceptance**: Scheduler tests show two disks granted at once, a disk with
-1,000 queued jobs alternating with a disk of 3, an HDD never above 1 slot, a
+4 queued jobs alternating with a disk of 2 while both have work, then
+continuing alone once the other is empty, an HDD never above 1 slot, a
 seek-sprite job granted 1 slot on an HDD and up to 4 on an SSD, and an
 unreadable root's jobs left queued with unchanged attempts until it is
-readable. A Linux test resolves a loop or tmpfs path to a key, and a Windows
+readable while another root on the same disk is still granted. A Linux test resolves a loop or tmpfs path to a key, and a Windows
 CI build compiles the IOCTL path. The quickstart's HDD timing is recorded in
 the PR.
 

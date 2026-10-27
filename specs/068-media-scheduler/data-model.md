@@ -40,7 +40,7 @@ it joins the scheduler's limits and classes only.
 
 | Rule | Enforced in |
 | --- | --- |
-| Claims order by priority, then run-after, then age, among jobs whose disk has a free slot | `internal/store` claim statement, with the free disks passed in |
+| Claims order by priority, then run-after, then age, among jobs whose disk has a free slot and whose folder root is available | `internal/store` claim statement, with the free disks and unavailable roots passed in |
 | A retry sets `run_after` from the attempt count; a snooze sets it without counting an attempt | `internal/domain` delay rule, written by `internal/store` |
 | A cancel ends the job as `failed` with its error, whatever the attempt count | `internal/store` |
 | An owner request on a queued or waiting job raises it to class `0` and clears `run_after` | `internal/store` enqueue and force paths |
