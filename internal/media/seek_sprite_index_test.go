@@ -308,6 +308,21 @@ func TestGenerateSeekSpriteFromIndexReadsFragmentedMP4(t *testing.T) {
 	}
 }
 
+// Fragments past the top-level box limit stay unread, so a partial fragment index is rejected rather than returned.
+func TestReadMovieBoxRejectsFragmentsPastBoxLimit(t *testing.T) {
+	file := append(be32(16), []byte("moov")...)
+	file = append(file, be32(8)...)
+	file = append(file, []byte("mvex")...)
+	for range maxTopLevelBoxes {
+		file = append(file, be32(8)...)
+		file = append(file, []byte("free")...)
+	}
+	_, _, err := readMovieBox(context.Background(), bytes.NewReader(file), int64(len(file)))
+	if !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("上限を超えたボックスで %v（errSeekIndexUnsupported のはず）", err)
+	}
+}
+
 func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 	t.Parallel()
 

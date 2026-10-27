@@ -100,6 +100,10 @@ func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, [
 	if movie == nil {
 		return nil, nil, fmt.Errorf("%w: no moov", errSeekIndexUnsupported)
 	}
+	// Fragments past the box limit are unread, and a partial index would repeat the last scene to the end.
+	if position+boxHeaderSize <= fileSize {
+		return nil, nil, fmt.Errorf("%w: more than %d top-level boxes", errSeekIndexUnsupported, maxTopLevelBoxes)
+	}
 	return movie, fragments, nil
 }
 
