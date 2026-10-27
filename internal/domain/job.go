@@ -53,6 +53,25 @@ type Job struct {
 	Force bool
 	// Priority is the job's class; the stages a successful owner-class job queues take the owner class too.
 	Priority JobPriority
+	// RootID is the media folder holding the claimed location.
+	RootID int64
+}
+
+// JobClaim selects the job one claim may take: a kind, its class, and where its next location may be.
+type JobClaim struct {
+	Kind JobKind
+	// MaxPriority admits this class and every more urgent one.
+	MaxPriority JobPriority
+	// Roots admits only jobs whose next location is under one of these media folders, the folders of one disk; nil
+	// admits any folder.
+	Roots []int64
+	// Unavailable media folders' locations are passed over, so a job stored only under them stays queued.
+	Unavailable []int64
+}
+
+// AnyJobClaim admits every queued job of kind, as a claim outside the scheduler does.
+func AnyJobClaim(kind JobKind) JobClaim {
+	return JobClaim{Kind: kind, MaxPriority: JobPriorityBackfill}
 }
 
 // JobKinds are the import stages in stage order; only they join import activity and scan settling.

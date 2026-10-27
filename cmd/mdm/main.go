@@ -172,16 +172,6 @@ func run(opts runOptions) error {
 		Logger:    logger,
 	})
 
-	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, logger)
-
-	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
-		return err
-	}
-	if opts.OnBusyProbe != nil {
-		opts.OnBusyProbe(scans.Busy)
-	}
-
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// Clean temporary artifacts before workers start so active output cannot be removed.
 	if err := artifactStore.RemoveTemporary(); err != nil {
@@ -213,8 +203,10 @@ func run(opts runOptions) error {
 	handlers[domain.JobAutoTag] = autoTagger.HandleJob
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
+		Folders:  scanIndexStore,
+		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
-		Capacity: domain.JobCapacity(runtime.NumCPU()),
+		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
 		Paused:   app.PausedJobKinds(autoTagger),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
@@ -223,6 +215,16 @@ func run(opts runOptions) error {
 		},
 		Logger: logger,
 	})
+	// Start filesystem watching only after interrupted scans have been recovered and restarted.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+
+	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
+		return err
+	}
+	if opts.OnBusyProbe != nil {
+		opts.OnBusyProbe(scans.Busy)
+	}
+
 	wakers := make(map[domain.JobKind]waker, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.ScheduledJobKinds {
 		wakers[kind] = scheduler

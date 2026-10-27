@@ -120,3 +120,19 @@ func TestAutoTagClaimDropsContentWithoutARegisteredVideo(t *testing.T) {
 		}
 	}
 }
+
+// The scheduler serves classes strictly in order, so a claim for the owner's class leaves after-import tagging queued.
+func TestClaimJobOnTakesAnAutoTagJobOnlyWithinTheClaimsClass(t *testing.T) {
+	db, ids := itemsFixture(t)
+	queueAutoTag(t, db.AutoTags(), ids[fixturePath("/media/solo.mp4")], domain.AutoTagQueueIfNew, domain.ActivityByRule)
+
+	owner := domain.JobClaim{Kind: domain.JobAutoTag, MaxPriority: domain.JobPriorityOwner}
+	if job, err := db.Ingest().ClaimJobOn(context.Background(), owner); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("claim in the owner's class = %+v, %v; want domain.ErrNoJob", job, err)
+	}
+	job, err := db.Ingest().ClaimJobOn(context.Background(),
+		domain.JobClaim{Kind: domain.JobAutoTag, MaxPriority: domain.JobPriorityImport})
+	if err != nil || job.Priority != domain.JobPriorityImport {
+		t.Fatalf("claim in the import class = %+v, %v; want the queued job", job, err)
+	}
+}

@@ -35,7 +35,11 @@ func registrationSeparators() []rune {
 }
 
 func registeredLocationCondition(alias string) string {
-	pathExpr := alias + `.path`
+	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + `)`
+}
+
+// inMediaFolderCondition matches pathExpr against media folder mf: the folder itself or any path under it.
+func inMediaFolderCondition(pathExpr string) string {
 	rootExpr := `mf.path`
 	if runtime.GOOS == "windows" {
 		pathExpr = `lower(` + pathExpr + `)`
@@ -47,7 +51,7 @@ func registeredLocationCondition(alias string) string {
 		chars = append(chars, `char(`+strconv.Itoa(int(separator))+`)`)
 	}
 	trimmedRoot := `rtrim(` + rootExpr + `, ` + strings.Join(chars, ` || `) + `)`
-	condition := `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr
+	condition := `(` + pathExpr + ` = ` + rootExpr
 	for _, char := range chars {
 		condition += ` or instr(` + pathExpr + `, ` + trimmedRoot + ` || ` + char + `) = 1`
 	}
