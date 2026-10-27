@@ -18,7 +18,7 @@ type eventSubscribers struct {
 	Screen           func(domain.Event)
 	Workers          map[domain.JobKind]waker
 	ReleaseArtifacts func(domain.ContentUnreferenced)
-	// Wakes the auto-tagging worker after the seek stage, whose result transaction queued the video;
+	// Wakes the scheduler for auto-tagging after the seek stage, whose result transaction queued the video;
 	// see docs/design-docs/auto-tagging.md.
 	ImagesFinished func(videoID int64)
 	// Has the face worker apply the cast rule; see docs/design-docs/face-recognition.md.

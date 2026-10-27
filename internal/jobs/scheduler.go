@@ -31,9 +31,12 @@ type Handler func(ctx context.Context, job domain.Job) error
 
 type Options struct {
 	Queue Queue
-	// A kind of domain.JobKinds without a handler fails its jobs.
+	// A kind of domain.ScheduledJobKinds without a handler fails its jobs.
 	Handlers map[domain.JobKind]Handler
 	Capacity domain.JobResources
+	// Paused reports the kinds whose feature is off; their jobs stay queued and are not claimed. Whoever turns a
+	// feature back on must Wake the scheduler. Nil pauses nothing.
+	Paused func(ctx context.Context) (map[domain.JobKind]bool, error)
 	// Optional callback after claiming and immediately before handling.
 	Started func(job domain.Job)
 	// Optional callback after recording the outcome.
@@ -52,8 +55,9 @@ type Scheduler struct {
 	capacity domain.JobResources
 	started  func(domain.Job)
 	finished func(domain.Job)
+	paused   func(context.Context) (map[domain.JobKind]bool, error)
 	logger   *slog.Logger
-	// next indexes domain.JobKinds; only step, on the loop goroutine, uses it.
+	// next indexes domain.ScheduledJobKinds; only step, on the loop goroutine, uses it.
 	next int
 
 	mu      sync.Mutex
@@ -73,6 +77,7 @@ func NewScheduler(opts Options) *Scheduler {
 		capacity: opts.Capacity,
 		started:  opts.Started,
 		finished: opts.Finished,
+		paused:   opts.Paused,
 		logger:   logger,
 	}
 }
@@ -90,17 +95,23 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // step visits the kinds in turn, claiming one job per kind, until a full turn grants nothing. A kind whose demand
 // does not fit is skipped, not waited for, so it never holds back a kind that fits. The turn resumes after the last
-// granted kind, so a freed slot goes to the next kind instead of always to the first stage. With nothing granted, it
-// sleeps until the next run-after time.
+// granted kind, so a freed slot goes to the next kind instead of always to the first stage. A paused kind is skipped
+// like an empty one. With nothing granted, it sleeps until the next run-after time.
 func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 	// The turn's claims see every job due by now, so the lookup from now also finds one that came due mid-turn.
 	since := time.Now()
-	kinds := domain.JobKinds
-	empty := make(map[domain.JobKind]bool, len(kinds))
+	kinds := domain.ScheduledJobKinds
+	skipped, err := s.pausedKinds(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.Warn("could not read the paused job kinds", slog.Any("error", err))
+		}
+		return domain.WorkerRetry
+	}
 	for idle := 0; idle < len(kinds); s.next = (s.next + 1) % len(kinds) {
 		idle++
 		kind := kinds[s.next]
-		if empty[kind] {
+		if skipped[kind] {
 			continue
 		}
 		demand := domain.JobDemand(kind)
@@ -111,7 +122,7 @@ func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 		if err != nil {
 			s.unreserve(demand)
 			if errors.Is(err, domain.ErrNoJob) {
-				empty[kind] = true
+				skipped[kind] = true
 				continue
 			}
 			if ctx.Err() == nil {
@@ -123,6 +134,22 @@ func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
 		idle = 0
 	}
 	return s.untilNextRunAfter(ctx, since)
+}
+
+// pausedKinds returns a set the turn may also mark empty kinds in.
+func (s *Scheduler) pausedKinds(ctx context.Context) (map[domain.JobKind]bool, error) {
+	skipped := make(map[domain.JobKind]bool, len(domain.ScheduledJobKinds))
+	if s.paused == nil {
+		return skipped, nil
+	}
+	paused, err := s.paused(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for kind, on := range paused {
+		skipped[kind] = on
+	}
+	return skipped, nil
 }
 
 // untilNextRunAfter lets a job waiting out a retry delay run when the delay ends, without a wakeup.
@@ -175,7 +202,8 @@ func jobAttrs(job domain.Job, demand, used domain.JobResources) []any {
 	return []any{
 		slog.Int64("job", job.ID), slog.String("stage", string(job.Kind)),
 		slog.Int("read", demand.Read), slog.Int("cpu", demand.CPU),
-		slog.Int("readInUse", used.Read), slog.Int("cpuInUse", used.CPU),
+		slog.Int("classifier", demand.Classifier),
+		slog.Int("readInUse", used.Read), slog.Int("cpuInUse", used.CPU), slog.Int("classifierInUse", used.Classifier),
 	}
 }
 

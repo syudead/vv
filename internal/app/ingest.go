@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -157,9 +158,9 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 }
 
 // Publish stage completion; cmd/mdm subscriptions wire downstream worker wakeups without direct
-// stage coupling.
+// stage coupling. Other kinds the scheduler runs, such as auto-tagging, change no video's ingest state.
 func (i *Ingest) JobFinished(job domain.Job) {
-	if i.publisher == nil {
+	if i.publisher == nil || !slices.Contains(domain.JobKinds, job.Kind) {
 		return
 	}
 	i.publisher.Publish(

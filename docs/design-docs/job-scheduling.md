@@ -1,7 +1,8 @@
 # Job scheduling: one scheduler for every ingest stage
 
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
-job the resources its kind declares, from one set of capacities, and runs it.
+job, and every auto-tagging job, the resources its kind declares, from one set
+of capacities, and runs it.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -9,7 +10,8 @@ The diagram shows what wakes the scheduler and what a grant runs.
 flowchart LR
   ev[Enqueue, stage done, release, run-after time] -->|wake| sch[Scheduler]
   jobs[(jobs)] -->|claim by kind, class, run-after| sch
-  sch -->|grant demand| run[Ingest handler]
+  paused[Features that are off] -->|paused kinds| sch
+  sch -->|grant demand| run[Handler of the kind]
   run -->|done, retry, repeats, snooze| jobs
   run -->|release| sch
 ```
@@ -19,15 +21,17 @@ flowchart LR
 A job holds a fixed number of slots of each resource while it runs; its kind
 declares them in [`domain.JobDemand`](../../internal/domain/job_demand.go). A
 read slot is the right to read one source file; a CPU slot is the right to run
-one ffmpeg decode or encode.
+one ffmpeg decode or encode; a classifier slot is the right to send one request
+to the classifier.
 
-| Kind | Read | CPU | Why |
-| --- | --- | --- | --- |
-| `probe` | 1 | 0 | ffprobe reads the container header |
-| `thumbnail` | 1 | 1 | ffmpeg decodes frames of the source |
-| `seek_thumbnail` | 1 | 1 | ffmpeg decodes frames of the source |
-| `preview` | 1 | 1 | ffmpeg decodes and encodes the source |
-| `fingerprint` | 0 | 1 | Reads sprite frames from the data directory, not the source |
+| Kind | Read | CPU | Classifier | Why |
+| --- | --- | --- | --- | --- |
+| `probe` | 1 | 0 | 0 | ffprobe reads the container header |
+| `thumbnail` | 1 | 1 | 0 | ffmpeg decodes frames of the source |
+| `seek_thumbnail` | 1 | 1 | 0 | ffmpeg decodes frames of the source |
+| `preview` | 1 | 1 | 0 | ffmpeg decodes and encodes the source |
+| `fingerprint` | 0 | 1 | 0 | Reads sprite frames from the data directory, not the source |
+| `auto_tag` | 0 | 0 | 1 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
 
 The demand counts the source reads a job starts; the seek-sprite job's own
 parallel extractions are not counted separately yet.
@@ -41,6 +45,7 @@ within the capacity ([`domain.JobCapacity`](../../internal/domain/job_demand.go)
 | --- | --- | --- |
 | Read slots | 4, shared by every disk | Matches the seek-sprite job's parallel reads, so throughput on a solid-state disk does not fall |
 | CPU slots | `NumCPU / 4 + 1` | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest |
+| Classifier slots | 1 | A CPU-only provider cannot serve parallel requests |
 
 ## A job that does not fit is skipped
 
@@ -78,8 +83,8 @@ and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
 
 | Class | Value | Work |
 | --- | --- | --- |
-| Owner request | 0 | A force rescan, a retry from the activity log, and a re-probe from the video page, with the stages they queue |
-| Import | 1 | Everything an import, a scan or an after-import rule queues |
+| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue |
+| Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
 | Backfill | 2 | Work that only refreshes stored results; no kind queues it yet |
 
 An owner request over a job that is already queued raises it to class 0 and
@@ -126,7 +131,28 @@ interrupted run counts as an attempt.
 | Many attempts over hours (River `attempt^4` s, Oban `15 + 2^attempt` s) | With three rounds, a few minutes already cover a transient outage |
 | Treat every ffprobe exit error as repeating | ffprobe also exits with an error on `EIO`, `EACCES` or a file removed mid-read |
 
+## A feature that is off pauses its kinds
+
+A kind can be paused: its jobs stay queued and are not claimed, so they keep
+their attempts, as River and Oban pause a queue. `internal/app` owns the
+paused set. Each feature reports the kinds it holds back
+([`app.PausedJobKinds`](../../internal/app/paused_jobs.go)), `cmd/mdm` hands
+the collected set to the scheduler, and the scheduler reads it before each
+round and skips a paused kind like an empty one.
+
+| Kind | Paused while |
+| --- | --- |
+| `auto_tag` | "Use auto-tagging" is off |
+
+Turning a feature back on wakes the scheduler through the feature's existing
+settings callback, so its queued jobs are claimed at once.
+
+| Rejected | Why |
+| --- | --- |
+| Claim the job and fail it while the feature is off | Each claim would spend an attempt, and the jobs would fail before the owner turns the feature on |
+
 ## The scheduler sleeps until woken or until a retry is due
+
 
 Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
 for a wakeup or for the earliest run-after time of a queued job, whichever

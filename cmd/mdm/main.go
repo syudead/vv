@@ -190,15 +190,32 @@ func run(opts runOptions) error {
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
 	})
+	// Provider adapters own connection settings and expose app.Classifier; see
+	// docs/design-docs/ai-layer.md.
+	classifier := ollama.New(settingsStore)
+	// Auto-tagging runs as auto_tag jobs on the scheduler, paused while the feature is off; see
+	// docs/design-docs/auto-tagging.md. Startup recovery has already requeued interrupted jobs.
+	var scheduler *jobs.Scheduler
+	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
+		Queue:      db.AutoTags(),
+		Settings:   settingsStore,
+		Undo:       db.Activity(),
+		Classifier: classifier,
+		Images:     videoImageSource{artifacts: artifactStore},
+		Wake:       func() { scheduler.Wake() },
+		Logger:     logger,
+	})
 	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
-	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.JobKinds))
+	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.JobKinds {
 		handlers[kind] = ingest.Handler(kind)
 	}
-	scheduler := jobs.NewScheduler(jobs.Options{
+	handlers[domain.JobAutoTag] = autoTagger.HandleJob
+	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Handlers: handlers,
 		Capacity: domain.JobCapacity(runtime.NumCPU()),
+		Paused:   app.PausedJobKinds(autoTagger),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -206,13 +223,10 @@ func run(opts runOptions) error {
 		},
 		Logger: logger,
 	})
-	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
-	for _, kind := range domain.JobKinds {
+	wakers := make(map[domain.JobKind]waker, len(domain.ScheduledJobKinds))
+	for _, kind := range domain.ScheduledJobKinds {
 		wakers[kind] = scheduler
 	}
-	// Provider adapters own connection settings and expose app.Classifier; see
-	// docs/design-docs/ai-layer.md.
-	classifier := ollama.New(settingsStore)
 	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
 	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
 	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
@@ -221,21 +235,6 @@ func run(opts runOptions) error {
 		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Images: db.Overrides(),
 		Applier: ingest, Logger: logger,
 	})
-	// Recover interrupted classifications before starting automatic tagging; see
-	// docs/design-docs/auto-tagging.md.
-	autoTagLoop := jobs.NewLoop()
-	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
-		Queue:      db.AutoTags(),
-		Settings:   settingsStore,
-		Undo:       db.Activity(),
-		Classifier: classifier,
-		Images:     videoImageSource{artifacts: artifactStore},
-		Wake:       autoTagLoop.Wake,
-		Logger:     logger,
-	})
-	if err := autoTagger.Recover(backgroundCtx); err != nil {
-		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
-	}
 	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
 	if err := faces.analysis.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted face analyses", slog.Any("error", err))
@@ -300,7 +299,7 @@ func run(opts runOptions) error {
 		}
 	})
 	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
-	workersDone.Go(func() { autoTagLoop.Run(backgroundCtx, autoTagger.Step) })
+
 	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
 	workersDone.Go(func() { faces.run(backgroundCtx) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)

@@ -529,8 +529,8 @@ has any more keeps its rows, and a returning file keeps its links.
 ## The face queue mirrors the auto-tagging queue
 
 `face_queue` holds one row per content key in the states `queued`, `running`,
-`done` and `failed`, and shares its queueing, claiming, failure and recovery
-code with `auto_tag_queue`
+`done` and `failed`, and shares the activity rules of its queueing, claiming
+and failure with auto-tagging, whose items are `auto_tag` jobs
 ([`content_queue.go`](../../internal/store/content_queue.go)). While
 `face.enabled` is `true`, the transaction that records the seek stage's final
 result queues a video with no row, and its `face_analysis` entry joins the
