@@ -18,6 +18,12 @@ func SetJobAttemptsForTest(ctx context.Context, db *DB, kind domain.JobKind, vid
 	return err
 }
 
+// MakeJobsDueForTest ends every retry wait, for tests whose contract lies past a failed round rather than in its delay.
+func MakeJobsDueForTest(ctx context.Context, db *DB) error {
+	_, err := db.sql.ExecContext(ctx, `update jobs set run_after = 0 where state = 'queued'`)
+	return err
+}
+
 func DeleteJobsForTest(ctx context.Context, db *DB) error {
 	_, err := db.sql.ExecContext(ctx, `delete from jobs`)
 	return err

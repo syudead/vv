@@ -7,10 +7,10 @@ The diagram shows what wakes the scheduler and what a grant runs.
 
 ```mermaid
 flowchart LR
-  ev[Enqueue, stage done, release] -->|wake| sch[Scheduler]
-  jobs[(jobs)] -->|claim by kind| sch
+  ev[Enqueue, stage done, release, run-after time] -->|wake| sch[Scheduler]
+  jobs[(jobs)] -->|claim by kind, class, run-after| sch
   sch -->|grant demand| run[Ingest handler]
-  run -->|done or failed| jobs
+  run -->|done, retry, repeats, snooze| jobs
   run -->|release| sch
 ```
 
@@ -70,10 +70,67 @@ every demand is at most one slot of each resource.
 | Stop at the first job that does not fit (Go `semaphore.Weighted`) | A busy resource stalls every kind behind it |
 | Start every round at the first stage | Each freed read slot goes to the next probe, so thumbnails wait for the probe backlog to empty |
 
-## The scheduler sleeps until woken
+## Owner requests are claimed first
+
+Every job has a priority class. A claim of a kind takes the lowest class
+first, then the earliest run-after time, then the oldest row, the order River
+and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
+
+| Class | Value | Work |
+| --- | --- | --- |
+| Owner request | 0 | A force rescan, a retry from the activity log, and a re-probe from the video page, with the stages they queue |
+| Import | 1 | Everything an import, a scan or an after-import rule queues |
+| Backfill | 2 | Work that only refreshes stored results; no kind queues it yet |
+
+An owner request over a job that is already queued raises it to class 0 and
+ends its retry wait, so the owner never waits behind a delay or a bulk import.
+Owner requests touch one video, so they cannot starve the import class.
+
+| Rejected | Why |
+| --- | --- |
+| Weighted queues (asynq 6:3:1, Sidekiq weighted) | A force rescan would share time with the bulk import it should overtake |
+
+## A failed job retries after a growing delay
+
+A handler's error ends the claim with one of four outcomes
+([`JobRetryPolicy.AfterFailure`](../../internal/domain/job_retry.go)).
+Attempts count rounds over a video's registered locations, so a failure that
+leaves untried locations in the round requeues at once.
+
+| Outcome | Returned for | Effect |
+| --- | --- | --- |
+| Done | No error | The job is done |
+| Retry | Any other error | At the end of a round the job waits 30 s × 4^(round − 1) ± 10%: 30 s after the first round and 2 min after the second. It fails after the third round |
+| Repeats | `domain.ErrFailureRepeats` | The job fails when the round ends, without the remaining rounds |
+| Snooze | `domain.ErrJobSnoozed` | The job is requeued at once, and the claim does not count as an attempt |
+
+A failure repeats when every retry would reproduce it:
+
+- an extraction slower than its timeout;
+- ffmpeg or ffprobe reporting FFmpeg's invalid-data error ("Invalid data found
+  when processing input");
+- ffprobe output that cannot be parsed (`invalid_metadata`).
+
+An I/O or permission error and an ffprobe timeout may pass, so they retry. The
+spread keeps jobs that failed together, such as every file on a disk that
+stopped answering, from retrying together.
+
+A kind may override the delay and the attempt limit, as a River or Oban worker
+can; an override without a limit retries until the job succeeds or repeats.
+Startup recovery requeues a running job without refunding its claim, so an
+interrupted run counts as an attempt.
+
+| Rejected | Why |
+| --- | --- |
+| Retry at once three times | A disk spinning up or a share reconnecting fails all three rounds within seconds |
+| Many attempts over hours (River `attempt^4` s, Oban `15 + 2^attempt` s) | With three rounds, a few minutes already cover a transient outage |
+| Treat every ffprobe exit error as repeating | ffprobe also exits with an error on `EIO`, `EACCES` or a file removed mid-read |
+
+## The scheduler sleeps until woken or until a retry is due
 
 Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
-for a wakeup; it never polls an empty queue. A committed enqueue, a finished
+for a wakeup or for the earliest run-after time of a queued job, whichever
+comes first; it never polls an empty queue. A committed enqueue, a finished
 stage and every release wake it. A claim error waits 5 seconds or for a
 wakeup. Grants and releases are logged at debug level with the slots in use.
 

@@ -353,6 +353,7 @@ func TestForcedThumbnailFailureKeepsAnOwnerEditSinceTheClaim(t *testing.T) {
 		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("ffmpeg failed")); err != nil {
 			t.Fatal(err)
 		}
+		makeJobsDue(t, db)
 	}
 
 	if got := getOwnerVideo(t, db, videoID).ThumbnailState; got != domain.ThumbnailStateDone {
