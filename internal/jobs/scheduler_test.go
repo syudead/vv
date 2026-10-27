@@ -671,8 +671,11 @@ func TestSchedulerLendsExtractionSlotsUpToTheDiskSlots(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobSeekThumbnail})
 				var lent []int
-				// The job asks for one more read and CPU pair per extraction until the scheduler refuses.
+				// The job waits until the scheduler is idle, because a turn's empty claim holds a pair for a moment,
+				// then asks for one more read and CPU pair per extraction until the scheduler refuses.
+				proceed := make(chan struct{})
 				extract := func(ctx context.Context, _ domain.Job) error {
+					<-proceed
 					slots := domain.JobSlotsFrom(ctx)
 					pair := domain.JobResources{Read: 1, CPU: 1}
 					n := 0
@@ -691,9 +694,13 @@ func TestSchedulerLendsExtractionSlotsUpToTheDiskSlots(t *testing.T) {
 				})
 				defer stop()
 				synctest.Wait()
+				proceed <- struct{}{}
+				synctest.Wait()
 				// A second job gets the same pairs, so the first returned them.
 				queue.add(domain.Job{ID: 2, Kind: domain.JobSeekThumbnail})
 				scheduler.Wake()
+				synctest.Wait()
+				proceed <- struct{}{}
 				synctest.Wait()
 				if want := []int{tc.lent, tc.lent}; !slices.Equal(lent, want) {
 					t.Fatalf("lent pairs = %v, want %v", lent, want)
