@@ -712,6 +712,60 @@ func TestSchedulerGrantsAWaitingScanReadBeforeQueuedJobs(t *testing.T) {
 	})
 }
 
+// Between two reads of one scan, a slot the scan returned stays free from jobs until the scan is done with the disk,
+// while jobs keep the disk's other slots.
+func TestSchedulerKeepsASlotForAScanBetweenItsReads(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue()
+		for id := int64(1); id <= 5; id++ {
+			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
+		}
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+
+		done := scheduler.KeepAhead("/a")
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running while the scan is ahead = %v, want %v", got, want)
+		}
+		release, err := scheduler.AcquireRead(context.Background(), "/a")
+		if err != nil {
+			t.Fatalf("AcquireRead: %v", err)
+		}
+		release()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running between the scan's reads = %v, want %v", got, want)
+		}
+		done()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4, 5}; !slices.Equal(got, want) {
+			t.Fatalf("running after the scan = %v, want %v", got, want)
+		}
+	})
+}
+
+// A folder whose disk cannot be resolved refuses the scan read instead of letting it read outside every limit.
+func TestSchedulerRefusesAScanReadOnAnUnreadableFolder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := oneDisk(domain.DiskSolidState)
+		disks.setReadable("/b", false)
+		scheduler, stop := startScheduler(Options{Queue: newFakeQueue(), Disks: disks.resolve})
+		defer stop()
+		synctest.Wait()
+
+		release, err := scheduler.AcquireRead(context.Background(), "/b")
+		if err == nil || release != nil {
+			t.Fatalf("AcquireRead = (release %v, %v), want an error and no release", release != nil, err)
+		}
+	})
+}
+
 func TestSchedulerGrantsTwoDisksAtOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(

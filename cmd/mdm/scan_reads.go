@@ -15,3 +15,7 @@ type scanReadSlots struct {
 func (s scanReadSlots) AcquireRead(ctx context.Context, root string) (func(), error) {
 	return (*s.scheduler).AcquireRead(ctx, root)
 }
+
+func (s scanReadSlots) KeepAhead(root string) func() {
+	return (*s.scheduler).KeepAhead(root)
+}

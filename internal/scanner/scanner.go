@@ -71,6 +71,9 @@ type Queue interface {
 type ReadSlots interface {
 	// AcquireRead waits for a read slot on the disk of the media folder at root; release returns it.
 	AcquireRead(ctx context.Context, root string) (release func(), err error)
+	// KeepAhead keeps the scan ahead of jobs on the disk of the media folder at root between its reads there, until
+	// done is called.
+	KeepAhead(root string) (done func())
 }
 
 // Reporter is optional and hides progress/error persistence from the scanner.
@@ -320,10 +323,13 @@ func (s *Scanner) finishPass(
 }
 
 func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *domain.ScanResult) error {
+	ahead := readsAhead{slots: s.readSlots}
+	defer ahead.end()
 	for _, target := range pass.targets {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		ahead.moveTo(pass.rootOf(target.path))
 		videoID := pass.indexed[target.path].ID
 		s.reportFile(target.path, videoID)
 		if err := s.ingest(ctx, pass, target, result); err != nil {
@@ -673,16 +679,15 @@ func (s *Scanner) readTarget(
 	return file, info, nil
 }
 
-// readContentKey holds a read slot of the file's media folder disk while it reads the content key.
+// readContentKey holds a read slot of the file's media folder disk while it reads the content key. A file outside
+// every media folder has no disk to read within, so it is not read.
 func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path string) (string, error) {
 	if s.readSlots == nil {
 		return s.contentKey(path)
 	}
-	root := ""
-	for _, folder := range pass.folders {
-		if domain.PathWithinRoot(folder.Path, path) && len(folder.Path) > len(root) {
-			root = folder.Path
-		}
+	root := pass.rootOf(path)
+	if root == "" {
+		return "", fmt.Errorf("the file is outside every media folder (%s)", path)
 	}
 	release, err := s.readSlots.AcquireRead(ctx, root)
 	if err != nil {
@@ -690,6 +695,40 @@ func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path strin
 	}
 	defer release()
 	return s.contentKey(path)
+}
+
+// rootOf returns the innermost media folder that holds path, or "" for none.
+func (p *scanPass) rootOf(path string) string {
+	root := ""
+	for _, folder := range p.folders {
+		if domain.PathWithinRoot(folder.Path, path) && len(folder.Path) > len(root) {
+			root = folder.Path
+		}
+	}
+	return root
+}
+
+// readsAhead keeps the scan ahead of jobs on the disk of the media folder its consecutive targets are under, so a
+// job does not take a 1-slot disk between two of the scan's reads.
+type readsAhead struct {
+	slots ReadSlots
+	root  string
+	done  func()
+}
+
+func (a *readsAhead) moveTo(root string) {
+	if a.slots == nil || root == "" || (a.done != nil && root == a.root) {
+		return
+	}
+	a.end()
+	a.root, a.done = root, a.slots.KeepAhead(root)
+}
+
+func (a *readsAhead) end() {
+	if a.done != nil {
+		a.done()
+		a.done = nil
+	}
 }
 
 func sameFile(existing domain.IndexedVideo, info fs.FileInfo) bool {

@@ -129,10 +129,16 @@ holds a read slot on the disk of the file's media folder for each read
 ([`Scheduler.AcquireRead`](../../internal/jobs/scheduler.go)). A waiting scan
 read takes the next free slot of its disk before any job class, and while it
 waits no job takes a read slot on that disk. It never stops a running job, so
-on a 1-slot disk the first read waits at most for the running job. The scanner
-reads one file at a time, so on a 4-slot disk jobs keep the other three slots.
-Unchanged files are not read and take no slot. `internal/scanner` declares the
-interface it calls, and `cmd/mdm` wires the scheduler to it.
+on a 1-slot disk the first read waits at most for the running job. While the
+scan works through consecutive files of one media folder
+([`Scheduler.KeepAhead`](../../internal/jobs/scheduler.go)), the slot a read
+returns stays free from jobs until its next read, so on a 1-slot disk jobs wait
+until the scan leaves the folder. The scanner reads one file at a time, so on a
+4-slot disk jobs keep the other three slots. Unchanged files are not read and
+take no slot. A folder whose disk cannot be resolved fails the read instead of
+reading without a slot, and a file outside every media folder is not read.
+`internal/scanner` declares the interface it calls, and `cmd/mdm` wires the
+scheduler to it.
 
 | Rejected | Why |
 | --- | --- |
@@ -247,8 +253,9 @@ settings callback, so its queued jobs are claimed at once.
 Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
 for a wakeup, for the earliest run-after time of a queued job, or for the next
 recheck of an unavailable folder, whichever comes first; it never polls an
-empty queue. A committed enqueue, a finished stage, every release and a
-returned lent slot or scan read wake it. A claim error waits 5 seconds or for a wakeup.
+empty queue. A committed enqueue, a finished stage, every release, a returned
+lent slot or scan read, and the end of a scan's turn on a disk wake it. A claim
+error waits 5 seconds or for a wakeup.
 Grants, releases and lent slots are logged at debug level with the disk key
 and the slots in use, and each resolved disk with its type and read slots.
 
