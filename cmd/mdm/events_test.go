@@ -17,6 +17,7 @@ import (
 	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -123,9 +124,9 @@ type emptyClaims struct {
 	empty chan struct{}
 }
 
-func (q emptyClaims) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
-	job, err := q.Queue.ClaimJob(ctx, kind)
-	if kind == q.kind && errors.Is(err, domain.ErrNoJob) {
+func (q emptyClaims) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
+	job, err := q.Queue.ClaimJobOn(ctx, claim)
+	if claim.Kind == q.kind && errors.Is(err, domain.ErrNoJob) {
 		select {
 		case q.empty <- struct{}{}:
 		default:
@@ -174,7 +175,8 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	thumbnailStarted := make(chan domain.Job, 1)
 	queue := emptyClaims{Queue: db.Ingest(), kind: domain.JobThumbnail, empty: make(chan struct{}, 1)}
 	scheduler := jobs.NewScheduler(jobs.Options{
-		Queue: queue, Capacity: domain.JobCapacity(1), Logger: logger,
+		Queue: queue, Folders: db.ScanIndex(), Disks: mediafs.New().ResolveDisk, CPUSlots: domain.JobCPUSlots(1),
+		Logger: logger,
 		Handlers: map[domain.JobKind]jobs.Handler{
 			domain.JobProbe: ingest.Handler(domain.JobProbe),
 			domain.JobThumbnail: func(_ context.Context, job domain.Job) error {

@@ -191,9 +191,9 @@ filesystem.
 
 ## Queue workers
 
-Ingest jobs run under one scheduler that grants each job its kind's read and
-CPU slots from shared capacities, so several jobs run at once
-([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
+Ingest jobs run under one scheduler that grants each job its kind's CPU slots
+and read slots of its disk, taking disks in turn, so several jobs and disks run
+at once ([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
 background queue has one worker that takes one item at a time. The waiting is
 shared: `jobs.Loop` runs a worker's or the scheduler's step, then sleeps as the
 step asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
@@ -217,7 +217,7 @@ and stops when its context ends.
 | --- | --- | --- |
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
-| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One scheduler that grants every ingest stage from shared read and CPU slots over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [job-scheduling.md](docs/design-docs/job-scheduling.md), [Queue workers](#queue-workers) |
+| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One scheduler that grants every ingest stage from shared CPU slots and per-disk read slots over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [job-scheduling.md](docs/design-docs/job-scheduling.md), [Queue workers](#queue-workers) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |

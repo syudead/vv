@@ -18,15 +18,24 @@ type jobFailure struct {
 	cause error
 }
 
-// The queue hands out scripted jobs per kind, without reproducing the store's claim conditions or retry policy.
+// The test folders: rootA on disk "a" and rootB on disk "b", unless a test resolves them otherwise.
+const (
+	rootA int64 = 1
+	rootB int64 = 2
+)
+
+// The queue hands out scripted jobs per kind in order, honouring the claim's class and folders, without reproducing
+// the store's claim conditions or retry policy. A snoozed job goes back to the queue.
 type fakeQueue struct {
-	mu        sync.Mutex
-	queued    map[domain.JobKind][]domain.Job
-	claimErr  error
-	claims    []domain.JobKind
-	completed []domain.Job
-	failures  []jobFailure
-	observe   func(string)
+	mu       sync.Mutex
+	queued   map[domain.JobKind][]domain.Job
+	claimErr error
+	claims   []domain.JobKind
+	// claimRecords holds every claim the scheduler made, in order.
+	claimRecords []domain.JobClaim
+	completed    []domain.Job
+	failures     []jobFailure
+	observe      func(string)
 	// runAfter holds a kind's jobs back until that time, as a retry delay does.
 	runAfter time.Time
 	// claimDelay passes after each claim answers, so time moves on between a turn's claims and its lookup.
@@ -43,26 +52,64 @@ func (q *fakeQueue) add(jobs ...domain.Job) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, job := range jobs {
+		if job.RootID == 0 {
+			job.RootID = rootA
+		}
 		q.queued[job.Kind] = append(q.queued[job.Kind], job)
 	}
 }
 
-func (q *fakeQueue) ClaimJob(_ context.Context, kind domain.JobKind) (domain.Job, error) {
+func (q *fakeQueue) ClaimJobOn(_ context.Context, claim domain.JobClaim) (domain.Job, error) {
 	q.mu.Lock()
 	// Deferred first, so the delay runs after the unlock.
 	defer time.Sleep(q.claimDelay)
 	defer q.mu.Unlock()
-	q.claims = append(q.claims, kind)
+	q.claims = append(q.claims, claim.Kind)
+	q.claimRecords = append(q.claimRecords, claim)
 	if err := q.claimErr; err != nil {
 		q.claimErr = nil
 		return domain.Job{}, err
 	}
-	queued := q.queued[kind]
-	if len(queued) == 0 || time.Now().Before(q.runAfter) {
+	if time.Now().Before(q.runAfter) {
 		return domain.Job{}, domain.ErrNoJob
 	}
-	q.queued[kind] = queued[1:]
-	return queued[0], nil
+	queued := q.queued[claim.Kind]
+	for i, job := range queued {
+		if job.Priority > claim.MaxPriority || slices.Contains(claim.Unavailable, job.RootID) ||
+			(claim.Roots != nil && !slices.Contains(claim.Roots, job.RootID)) {
+			continue
+		}
+		q.queued[claim.Kind] = slices.Delete(slices.Clone(queued), i, i+1)
+		return job, nil
+	}
+	return domain.Job{}, domain.ErrNoJob
+}
+
+func (q *fakeQueue) DueJobKinds(context.Context) (map[domain.JobKind]domain.JobPriority, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	due := map[domain.JobKind]domain.JobPriority{}
+	if time.Now().Before(q.runAfter) {
+		return due, nil
+	}
+	for kind, queued := range q.queued {
+		for _, job := range queued {
+			if class, ok := due[kind]; !ok || job.Priority < class {
+				due[kind] = job.Priority
+			}
+		}
+	}
+	return due, nil
+}
+
+// lastUnavailable reports the unavailable folders the last claim passed over.
+func (q *fakeQueue) lastUnavailable() []int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.claimRecords) == 0 {
+		return nil
+	}
+	return q.claimRecords[len(q.claimRecords)-1].Unavailable
 }
 
 func (q *fakeQueue) claimed(kind domain.JobKind) int {
@@ -97,6 +144,9 @@ func (q *fakeQueue) FailClaimedJob(_ context.Context, job domain.Job, cause erro
 	q.mu.Lock()
 	q.failures = append(q.failures, jobFailure{job, cause})
 	q.mu.Unlock()
+	if errors.Is(cause, domain.ErrJobSnoozed) {
+		q.add(job)
+	}
 	if q.observe != nil {
 		q.observe("fail")
 	}
@@ -174,9 +224,63 @@ func (b *blockingJobs) handlers() map[domain.JobKind]Handler {
 	return handlers
 }
 
+// fakeDisks resolves each test folder path to its disk, or fails for a folder the test made unreadable.
+type fakeDisks struct {
+	mu         sync.Mutex
+	disks      map[string]domain.Disk
+	unreadable map[string]bool
+}
+
+func newFakeDisks(disks map[string]domain.Disk) *fakeDisks {
+	return &fakeDisks{disks: disks, unreadable: map[string]bool{}}
+}
+
+func (d *fakeDisks) resolve(path string) (domain.Disk, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.unreadable[path] {
+		return domain.Disk{}, errors.New("the folder cannot be read")
+	}
+	return d.disks[path], nil
+}
+
+func (d *fakeDisks) setReadable(path string, readable bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.unreadable[path] = !readable
+}
+
+type fakeFolders []domain.MediaFolder
+
+func (f fakeFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	return f, nil
+}
+
+// twoFolders places rootA at /a and rootB at /b.
+var twoFolders = fakeFolders{{ID: rootA, Path: "/a"}, {ID: rootB, Path: "/b"}}
+
+// oneDisk puts every test folder on one disk of the given type.
+func oneDisk(diskType domain.DiskType) *fakeDisks {
+	disk := domain.Disk{Key: "a", Type: diskType}
+	return newFakeDisks(map[string]domain.Disk{"/a": disk, "/b": disk})
+}
+
+// twoDisks puts rootA and rootB on two rotational disks.
+func twoDisks() *fakeDisks {
+	return newFakeDisks(map[string]domain.Disk{
+		"/a": {Key: "a", Type: domain.DiskRotational}, "/b": {Key: "b", Type: domain.DiskRotational},
+	})
+}
+
 // Call only inside a synctest bubble. A scheduler that cannot stop makes the bubble fail instead of consuming a
-// wall-clock timeout.
+// wall-clock timeout. Without folders, the test folders sit on one rotational disk.
 func startScheduler(opts Options) (*Scheduler, func()) {
+	if opts.Folders == nil {
+		opts.Folders = twoFolders
+	}
+	if opts.Disks == nil {
+		opts.Disks = oneDisk(domain.DiskRotational).resolve
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	scheduler := NewScheduler(opts)
 	finished := make(chan struct{})
@@ -196,7 +300,7 @@ func TestSchedulerGrantsCPUOnlyJobWhileReadSlotsAreFull(t *testing.T) {
 		)
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
-			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1,
 		})
 		defer stop()
 		synctest.Wait()
@@ -216,7 +320,7 @@ func TestSchedulerSkipsJobThatDoesNotFit(t *testing.T) {
 		)
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
-			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 1, CPU: 2},
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 2,
 		})
 		defer stop()
 		synctest.Wait()
@@ -245,7 +349,7 @@ func TestSchedulerGivesFreedSlotToNextKind(t *testing.T) {
 		)
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
-			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1,
 		})
 		defer stop()
 		synctest.Wait()
@@ -262,26 +366,29 @@ func TestSchedulerGivesFreedSlotToNextKind(t *testing.T) {
 
 func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
+		// A solid-state disk has 4 read slots.
 		queue := newFakeQueue(
 			domain.Job{ID: 1, Kind: domain.JobProbe},
 			domain.Job{ID: 2, Kind: domain.JobProbe},
 			domain.Job{ID: 3, Kind: domain.JobProbe},
+			domain.Job{ID: 4, Kind: domain.JobProbe},
+			domain.Job{ID: 5, Kind: domain.JobProbe},
 		)
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
-			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 2, CPU: 2},
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 2, Disks: oneDisk(domain.DiskSolidState).resolve,
 		})
 		defer stop()
 		synctest.Wait()
-		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+		if got, want := jobs.ids(), []int64{1, 2, 3, 4}; !slices.Equal(got, want) {
 			t.Fatalf("running = %v, want %v", got, want)
 		}
-		if n := queue.claimed(domain.JobProbe); n != 2 {
-			t.Fatalf("probe claims at capacity = %d, want 2", n)
+		if n := queue.claimed(domain.JobProbe); n != 4 {
+			t.Fatalf("probe claims at capacity = %d, want 4", n)
 		}
 		jobs.release(1)
 		synctest.Wait()
-		if got, want := jobs.ids(), []int64{2, 3}; !slices.Equal(got, want) {
+		if got, want := jobs.ids(), []int64{2, 3, 4, 5}; !slices.Equal(got, want) {
 			t.Fatalf("running after a release = %v, want %v", got, want)
 		}
 		if got, want := queue.completedIDs(), []int64{1}; !slices.Equal(got, want) {
@@ -294,7 +401,7 @@ func TestSchedulerSleepsUntilWoken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue()
 		scheduler, stop := startScheduler(Options{
-			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
 		})
 		defer stop()
@@ -323,7 +430,7 @@ func TestSchedulerWaitsUntilTheNextRunAfterTime(t *testing.T) {
 		queue.runAfter = start.Add(30 * time.Second)
 		var startedAt time.Time
 		_, stop := startScheduler(Options{
-			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
 			Started:  func(domain.Job) { startedAt = time.Now() },
 		})
@@ -348,7 +455,7 @@ func TestSchedulerRunsAJobThatCameDueDuringItsClaims(t *testing.T) {
 		queue.runAfter = time.Now().Add(time.Second)
 		queue.claimDelay = 2 * time.Second
 		_, stop := startScheduler(Options{
-			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
 		})
 		defer stop()
@@ -367,7 +474,7 @@ func TestSchedulerRetriesClaimFailure(t *testing.T) {
 		queue := newFakeQueue(job)
 		queue.claimErr = errors.New("queue unavailable")
 		_, stop := startScheduler(Options{
-			Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
 		})
 		defer stop()
@@ -389,7 +496,7 @@ func TestSchedulerStopsWithoutWaitingForRetry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue()
 		queue.claimErr = errors.New("queue unavailable")
-		_, stop := startScheduler(Options{Queue: queue, Capacity: domain.JobResources{Read: 1, CPU: 1}})
+		_, stop := startScheduler(Options{Queue: queue, CPUSlots: 1})
 		synctest.Wait()
 		before := time.Now()
 		stop()
@@ -406,7 +513,7 @@ func TestSchedulerStopWaitsForRunningJobs(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
-			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 1, CPU: 1},
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1,
 		})
 		synctest.Wait()
 		if got := jobs.ids(); !slices.Equal(got, []int64{1}) {
@@ -490,4 +597,179 @@ func TestSchedulerProcessResult(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (q *fakeQueue) failureCauses() []error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	causes := make([]error, 0, len(q.failures))
+	for _, failure := range q.failures {
+		causes = append(causes, failure.cause)
+	}
+	return causes
+}
+
+func TestSchedulerGrantsTwoDisksAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 3, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve})
+		defer stop()
+		synctest.Wait()
+		// Disk a has one slot, so its second probe waits while disk b reads.
+		if got, want := jobs.ids(), []int64{1, 3}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3}; !slices.Equal(got, want) {
+			t.Fatalf("running after disk a's first probe = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestSchedulerAlternatesDisksWhileBothHaveWork(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// One CPU slot runs one thumbnail at a time, so the start order shows the turns.
+		var queued []domain.Job
+		for id := int64(1); id <= 4; id++ {
+			queued = append(queued, domain.Job{ID: id, Kind: domain.JobThumbnail, RootID: rootA})
+		}
+		for id := int64(5); id <= 6; id++ {
+			queued = append(queued, domain.Job{ID: id, Kind: domain.JobThumbnail, RootID: rootB})
+		}
+		queue := newFakeQueue(queued...)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve})
+		defer stop()
+		var order []int64
+		for range queued {
+			synctest.Wait()
+			running := jobs.ids()
+			if len(running) != 1 {
+				t.Fatalf("running = %v, want one thumbnail", running)
+			}
+			order = append(order, running[0])
+			jobs.release(running[0])
+		}
+		if want := []int64{1, 5, 2, 6, 3, 4}; !slices.Equal(order, want) {
+			t.Fatalf("start order = %v, want %v", order, want)
+		}
+	})
+}
+
+func TestSchedulerLendsExtractionSlotsUpToTheDiskSlots(t *testing.T) {
+	for _, tc := range []struct {
+		disk domain.DiskType
+		lent int
+	}{{domain.DiskRotational, 0}, {domain.DiskSolidState, 3}} {
+		t.Run(tc.disk.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobSeekThumbnail})
+				var lent []int
+				// The job asks for one more read and CPU pair per extraction until the scheduler refuses.
+				extract := func(ctx context.Context, _ domain.Job) error {
+					slots := domain.JobSlotsFrom(ctx)
+					pair := domain.JobResources{Read: 1, CPU: 1}
+					n := 0
+					for n < domain.MaxDiskReadSlots && slots.TryAcquire(pair) {
+						n++
+					}
+					for range n {
+						slots.Release(pair)
+					}
+					lent = append(lent, n)
+					return nil
+				}
+				scheduler, stop := startScheduler(Options{
+					Queue: queue, CPUSlots: 8, Disks: oneDisk(tc.disk).resolve,
+					Handlers: map[domain.JobKind]Handler{domain.JobSeekThumbnail: extract},
+				})
+				defer stop()
+				synctest.Wait()
+				// A second job gets the same pairs, so the first returned them.
+				queue.add(domain.Job{ID: 2, Kind: domain.JobSeekThumbnail})
+				scheduler.Wake()
+				synctest.Wait()
+				if want := []int{tc.lent, tc.lent}; !slices.Equal(lent, want) {
+					t.Fatalf("lent pairs = %v, want %v", lent, want)
+				}
+			})
+		})
+	}
+}
+
+func TestSchedulerParksAnUnreadableFolderUntilARecheck(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		recheck func(*Scheduler)
+	}{
+		{name: "every minute", recheck: func(*Scheduler) { time.Sleep(time.Second) }},
+		{name: "on an event", recheck: func(s *Scheduler) { s.RecheckRoots() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				disks := twoDisks()
+				queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA})
+				var mu sync.Mutex
+				calls := 0
+				// The first run finds its folder unplugged.
+				probe := func(context.Context, domain.Job) error {
+					mu.Lock()
+					defer mu.Unlock()
+					calls++
+					if calls == 1 {
+						disks.setReadable("/a", false)
+						return errors.New("cannot open the file")
+					}
+					return nil
+				}
+				scheduler, stop := startScheduler(Options{
+					Queue: queue, CPUSlots: 1, Disks: disks.resolve,
+					Handlers: map[domain.JobKind]Handler{domain.JobProbe: probe},
+				})
+				defer stop()
+				synctest.Wait()
+				causes := queue.failureCauses()
+				if len(causes) != 1 || !errors.Is(causes[0], domain.ErrJobSnoozed) {
+					t.Fatalf("failures = %v, want one snooze", causes)
+				}
+				if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+					t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+				}
+				disks.setReadable("/a", true)
+				time.Sleep(RootRecheckInterval - time.Second)
+				synctest.Wait()
+				if got := queue.completedIDs(); len(got) != 0 {
+					t.Fatalf("completed before the recheck = %v", got)
+				}
+				tc.recheck(scheduler)
+				synctest.Wait()
+				if got, want := queue.completedIDs(), []int64{1}; !slices.Equal(got, want) {
+					t.Fatalf("completed after the recheck = %v, want %v", got, want)
+				}
+			})
+		})
+	}
+}
+
+func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})
+		cause := errors.New("the file was deleted")
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return cause }},
+		})
+		defer stop()
+		synctest.Wait()
+		causes := queue.failureCauses()
+		if len(causes) != 1 || !errors.Is(causes[0], cause) || errors.Is(causes[0], domain.ErrJobSnoozed) {
+			t.Fatalf("failures = %v, want %v without a snooze", causes, cause)
+		}
+	})
 }

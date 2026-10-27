@@ -1,15 +1,17 @@
 # Job scheduling: one scheduler for every ingest stage
 
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
-job the resources its kind declares, from one set of capacities, and runs it.
+job the resources its kind declares, from the CPU slots and the read slots of
+the job's disk, and runs it.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
 ```mermaid
 flowchart LR
-  ev[Enqueue, stage done, release, run-after time] -->|wake| sch[Scheduler]
-  jobs[(jobs)] -->|claim by kind, class, run-after| sch
+  ev[Enqueue, stage done, release, run-after time, root check] -->|wake| sch[Scheduler]
+  jobs[(jobs)] -->|claim by class, disk, kind, run-after| sch
   sch -->|grant demand| run[Ingest handler]
+  run -->|lend and return slots per extraction| sch
   run -->|done, retry, repeats, snooze| jobs
   run -->|release| sch
 ```
@@ -18,57 +20,122 @@ flowchart LR
 
 A job holds a fixed number of slots of each resource while it runs; its kind
 declares them in [`domain.JobDemand`](../../internal/domain/job_demand.go). A
-read slot is the right to read one source file; a CPU slot is the right to run
-one ffmpeg decode or encode.
+read slot is the right to read one source file on one disk; a CPU slot is the
+right to run one ffmpeg decode or encode.
 
 | Kind | Read | CPU | Why |
 | --- | --- | --- | --- |
 | `probe` | 1 | 0 | ffprobe reads the container header |
 | `thumbnail` | 1 | 1 | ffmpeg decodes frames of the source |
-| `seek_thumbnail` | 1 | 1 | ffmpeg decodes frames of the source |
+| `seek_thumbnail` | 1, plus one per further extraction | 1, plus one per further extraction | One ffmpeg per frame, or one read per keyframe |
 | `preview` | 1 | 1 | ffmpeg decodes and encodes the source |
 | `fingerprint` | 0 | 1 | Reads sprite frames from the data directory, not the source |
 
-The demand counts the source reads a job starts; the seek-sprite job's own
-parallel extractions are not counted separately yet.
+A read slot belongs to the disk of the location the claim picks: the next
+available registered location in path order after the previous attempt's.
 
 ## Capacities
 
 The scheduler grants a job only while the slots in use plus its demand stay
-within the capacity ([`domain.JobCapacity`](../../internal/domain/job_demand.go)).
+within the capacity.
 
 | Resource | Capacity | Why |
 | --- | --- | --- |
-| Read slots | 4, shared by every disk | Matches the seek-sprite job's parallel reads, so throughput on a solid-state disk does not fall |
+| Read slots of one disk | 1 for a rotational or unknown disk, 4 for a solid-state one ([`domain.Disk`](../../internal/domain/job_demand.go)) | Parallel sequential reads make a rotational disk seek; 4 matches the seek-sprite job's former parallelism, so a solid-state disk keeps its throughput |
 | CPU slots | `NumCPU / 4 + 1` | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest |
 
-## A job that does not fit is skipped
+The scheduler resolves a media folder's disk the first time it serves the
+folder, and again when it rechecks an unavailable folder; the result lives in
+memory only, because a remount or a replaced disk would make a stored value
+wrong. Folders on one disk share its read slots.
 
-The scheduler visits the kinds in turn, claiming one job per kind, and skips a
-kind whose demand does not fit instead of waiting for it. A full turn that
-grants nothing ends the round. The next round resumes after the last granted
-kind, so a freed slot goes to the next kind rather than always to `probe`.
+| Platform | Disk key | Type |
+| --- | --- | --- |
+| Linux | The folder's `st_dev`, mapped through `/sys/dev/block/<maj>:<min>` to its whole disk | That disk's `queue/rotational` |
+| Windows | The physical device number of the folder's volume (`IOCTL_STORAGE_GET_DEVICE_NUMBER`) | The seek penalty (`IOCTL_STORAGE_QUERY_PROPERTY`) |
+| Either, when a lookup fails | `st_dev` or the volume alone | Unknown: 1 slot |
+
+Btrfs, ZFS, overlayfs, network shares and Docker Desktop's shared folders have
+no whole-disk sysfs entry, so they read with 1 slot. Windows reports no seek
+penalty for some virtual disks, which then count as solid-state.
+
+| Rejected | Why |
+| --- | --- |
+| One read limit shared by every disk | A busy disk takes the slots an idle disk could use |
+| An adaptive limit from disk latency or stall time | Oscillates, depends on a baseline, and reads different signals on Linux and Windows |
+| An owner setting for the slots | Most owners cannot judge it |
+
+## Disks take turns, and a job that does not fit is skipped
+
+The scheduler serves the classes strictly in order. Within a class it visits
+the disks in turn, then one more group for the kinds that read no source file,
+and claims one job per visit. Within a disk it visits the kinds in turn,
+skipping a kind whose demand does not fit instead of waiting for it. A full
+turn over the disks that grants nothing ends the class. The next visit resumes
+after the last granted disk and, within a disk, after the last granted kind.
 
 ```mermaid
 flowchart LR
-  kind[Next kind] --> fits{Demand fits?}
+  disk[Next disk] --> kind[Next kind]
+  kind --> fits{Demand fits?}
   fits -->|no| kind
   fits -->|yes| claim{Job claimed?}
   claim -->|no| kind
   claim -->|yes| grant[Grant and run]
-  grant --> kind
+  grant --> disk
 ```
 
-Skipping lets a CPU-only fingerprint run while every read slot is held, and
-taking kinds in turn keeps the stages interleaved during a large import, so a
-probe backlog does not hold back thumbnails. No job waits forever, because
-every demand is at most one slot of each resource.
+Taking disks in turn lets a folder with a few videos finish while another disk
+works through thousands, and lets two disks read at once. Skipping lets a
+CPU-only fingerprint run while every read slot is held, and taking kinds in
+turn keeps the stages interleaved during a large import, so a probe backlog
+does not hold back thumbnails. No job waits forever, because every demand is
+at most one slot of each resource. Before a turn, one query lists the kinds
+with due jobs and their most urgent class, so an idle queue costs no claims.
 
 | Rejected | Why |
 | --- | --- |
 | One worker per stage | Five stages each read a disk with no shared limit |
+| One queue in age order across disks | A disk with 10,000 queued jobs delays every other disk |
+| Weighted fair queuing | There are no weights to express; equal turns suffice |
 | Stop at the first job that does not fit (Go `semaphore.Weighted`) | A busy resource stalls every kind behind it |
 | Start every round at the first stage | Each freed read slot goes to the next probe, so thumbnails wait for the probe backlog to empty |
+
+## A job that splits its work borrows slots per part
+
+The seek-sprite job runs its first extraction on its own read and CPU slot.
+For each further extraction it asks the scheduler, without waiting, for one
+more pair on the same disk, runs the extraction in parallel when it gets one,
+and returns the pair when the extraction ends. Reading keyframes from the
+index borrows one read slot per concurrent read the same way. At most 4 parts
+run at once. On a 1-slot disk the job runs one part at a time.
+
+| Rejected | Why |
+| --- | --- |
+| Take the extra slots at the start and hold them to the end | Idle slots stay held while the job finishes its last parts |
+| A fixed demand of 4 or 8 slots | Never fits a 1-slot disk, so the job would be skipped forever |
+| A demand of 1 with fixed internal parallelism | Reads 4 to 8 streams while counted as 1 |
+
+## An unreadable media folder parks its jobs
+
+A job whose handler fails while its media folder cannot be opened and listed
+is snoozed: it is requeued without counting an attempt, and the folder becomes
+unavailable. A folder that cannot be read when its disk is resolved becomes
+unavailable too. Claims pass over locations under an unavailable folder, so a
+video with another readable location is claimed there, and a job stored only
+under unavailable folders stays queued. A file missing under a readable folder
+was deleted, so its failure is retried as usual.
+
+The scheduler checks unavailable folders again when a scan starts, the folder
+watcher reports a change or an unreachable folder, and once a minute while any
+folder is unavailable. A folder registered later is resolved when first
+served. A healthy library is never polled.
+
+| Rejected | Why |
+| --- | --- |
+| Zero read slots for the folder's disk | Two folders can share a disk, and one unreadable folder would stop the other |
+| Snooze each job for a fixed delay | Every job of an unplugged disk would wake and fail to open its file each delay |
+| Recheck only on events | The watcher is off unless automatic import is on, so a remounted disk would wait for the next scan |
 
 ## Owner requests are claimed first
 
@@ -129,10 +196,12 @@ interrupted run counts as an attempt.
 ## The scheduler sleeps until woken or until a retry is due
 
 Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
-for a wakeup or for the earliest run-after time of a queued job, whichever
-comes first; it never polls an empty queue. A committed enqueue, a finished
-stage and every release wake it. A claim error waits 5 seconds or for a
-wakeup. Grants and releases are logged at debug level with the slots in use.
+for a wakeup, for the earliest run-after time of a queued job, or for the next
+recheck of an unavailable folder, whichever comes first; it never polls an
+empty queue. A committed enqueue, a finished stage, every release and a
+returned lent slot wake it. A claim error waits 5 seconds or for a wakeup.
+Grants, releases and lent slots are logged at debug level with the disk key
+and the slots in use, and each resolved disk with its type and read slots.
 
 On shutdown the scheduler stops granting and waits for running jobs to return.
 A cancelled job records no outcome, so startup recovery requeues it
