@@ -13,16 +13,16 @@ import (
 )
 
 // sizedSheetWriter writes the layout's sheets at the given size, so a test can tell builds apart by frame width.
-func sizedSheetWriter(t *testing.T, width, height int) func(string) (bool, error) {
+func sizedSheetWriter(t *testing.T, width, height int) func(string) error {
 	t.Helper()
 	sheet := sheetJPEG(t, width, height)
-	return func(dir string) (bool, error) {
+	return func(dir string) error {
 		for i := range spriteLayout.SheetCount {
 			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%03d.jpg", i)), sheet, 0o644); err != nil {
-				return false, err
+				return err
 			}
 		}
-		return false, nil
+		return nil
 	}
 }
 
@@ -62,7 +62,7 @@ func TestForcedSeekPublishSwitchesBuild(t *testing.T) {
 	}
 
 	called := false
-	_, err = store.PublishSeekThumbnails(key, spriteLayout, true, func(dir string) (bool, error) {
+	_, err = store.PublishSeekThumbnails(key, spriteLayout, true, func(dir string) error {
 		called = true
 		if got := frameWidth(t, store); got != 32 {
 			t.Errorf("書き込み中の SeekSprite の幅 = %d, want 32 (古い build)", got)
@@ -86,9 +86,9 @@ func TestForcedSeekPublishSwitchesBuild(t *testing.T) {
 	}
 
 	// An unforced publish adopts the current build, whichever build the pointer names.
-	if _, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) (bool, error) {
+	if _, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) error {
 		t.Error("完成したスプライトの上で write を呼んだ")
-		return false, nil
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +161,9 @@ func TestForcedPublishFailureKeepsBuild(t *testing.T) {
 		if _, err := store.PublishSeekThumbnails(key, spriteLayout, false, sizedSheetWriter(t, 320, 180)); err != nil {
 			t.Fatal(err)
 		}
-		_, err := store.PublishSeekThumbnails(key, spriteLayout, true, func(dir string) (bool, error) {
-			_, _ = sizedSheetWriter(t, 640, 360)(dir)
-			return false, failure
+		_, err := store.PublishSeekThumbnails(key, spriteLayout, true, func(dir string) error {
+			_ = sizedSheetWriter(t, 640, 360)(dir)
+			return failure
 		})
 		if !errors.Is(err, failure) {
 			t.Fatalf("err = %v, want %v", err, failure)

@@ -12,3 +12,11 @@ func TestCommandKeepsNameAndArguments(t *testing.T) {
 		t.Fatalf("Args = %q", got)
 	}
 }
+
+// A grandchild that keeps the output pipes open must not block Wait after cancellation.
+func TestCommandBoundsWaitForOutputPipes(t *testing.T) {
+	cmd := command(context.Background(), transcodeCommand, "-version")
+	if cmd.WaitDelay != commandStopDelay {
+		t.Fatalf("WaitDelay = %v, want %v", cmd.WaitDelay, commandStopDelay)
+	}
+}

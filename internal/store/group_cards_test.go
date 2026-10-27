@@ -13,6 +13,7 @@ func TestGroupCardsReturnReadFailuresInsteadOfPartialCards(t *testing.T) {
 	video := looseVideo(t, db, "cover")
 	id := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
 	execSQL(t, db, `update videos set thumbnail_state = 'done'`)
+	refreshCollections(t, db)
 	for _, tc := range []struct{ name, fault, message string }{
 		{"summary", `update group_values set duration_ms = 'invalid duration'`, "invalid duration"},
 		{"preview", `update videos set width = 'invalid width'`, "invalid width"},

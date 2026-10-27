@@ -157,7 +157,7 @@ export interface paths {
         };
         /**
          * List library items (videos and groups)
-         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Sorting uses item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. Without filters, the owner's smart folders come first by name in every sort and count toward `limit` and `total`; guests get none. Sorting uses item values for the rest. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
@@ -3450,7 +3450,7 @@ export interface paths {
         };
         /**
          * List visible smart folders with parent IDs
-         * @description Unpaginated list for parent selectors and folder trees, in natural name order then ID across all depths. Owners see all folders; guests see only folders with nonempty playback order. favorite appears only for owners.
+         * @description Unpaginated list for parent selectors and folder trees, in natural name order then ID across all depths. Owners see all folders; guests see none. favorite appears only for owners.
          */
         get: operations["listSmartFolders"];
         put?: never;
@@ -3474,7 +3474,7 @@ export interface paths {
         };
         /**
          * Return values for displayed smart-folder cards
-         * @description Returns distinct requested IDs in input order. Values aggregate visible videos matching all path rules, without grouping. Skips missing folders and guest-invisible folders with empty playback order. Missing, empty, noninteger or over-60 IDs return 400 invalid_request. Guests omit watchedCount, watchState, lastPlayedAt and favorite, with empty tags.
+         * @description Returns distinct requested IDs in input order. Values aggregate visible videos matching all path rules, without grouping. Skips missing folders, and every folder for guests. Missing, empty, noninteger or over-60 IDs return 400 invalid_request. Guests omit watchedCount, watchState, lastPlayedAt and favorite, with empty tags.
          */
         get: operations["listSmartFolderCards"];
         put?: never;
@@ -3494,7 +3494,7 @@ export interface paths {
         };
         /**
          * Return a smart folder, ancestors and first content page
-         * @description Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found.
+         * @description Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name for the owner, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found.
          */
         get: operations["getSmartFolder"];
         put?: never;
@@ -5548,7 +5548,7 @@ export interface components {
             /** @description The item's value under the request's sort as the cursor encodes it; null sorts last. */
             sortValue: string | null;
         };
-        /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards. */
+        /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode, for the owner only; fetch card values with listSmartFolderCards. */
         LibraryItem: {
             /** @enum {string} */
             kind: "video" | "group" | "smartFolder";

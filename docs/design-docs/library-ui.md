@@ -430,8 +430,8 @@ full name in `title`. On `/folders` the owner also sees each media folder's
 path, truncated to favour its end, full in `title`. An empty registered root
 says to place files there and import.
 
-The library reads `GET /api/library`, which pages mixed video, group and smart-folder
-keys using [stored collection information](home.md#collection-information-and-paging);
+The library reads `GET /api/library`, which pages the owner's smart folders and then mixed
+video and group keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
@@ -441,9 +441,10 @@ On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
-Root smart folders stand among the groups and videos of the unfiltered library
-(favorites only keeps the favorited ones) and of a smart folder page's child
-list. The list carries only each folder's name; a card draws a `Skeleton` count
+For the owner, root smart folders lead the unfiltered library by name, ahead of
+its groups and videos in any sort (favorites only keeps the favorited ones),
+and child folders lead a smart folder page by name. Guests see no smart folders
+there. The list carries only each folder's name; a card draws a `Skeleton` count
 panel until it scrolls into view, and the cards then on screen are read 60 at a
 time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest

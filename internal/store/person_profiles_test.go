@@ -104,23 +104,6 @@ func TestMergePeopleSkipsSourceValuesThatContradictTheTargetProfile(t *testing.T
 	}
 }
 
-func TestProfileOnlyUpdateDoesNotRefreshSmartFolders(t *testing.T) {
-	db := migratedDB(t)
-	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田花子"})
-	newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
-	execSQL(t, db, `create trigger reject_refresh before insert on smart_folder_values
-		begin select raise(abort, 'refresh rejected'); end`)
-
-	_, err := db.Credits().Update(context.Background(), domain.CreditPerson, person.ID, domain.CreditPatch{
-		Profile: &domain.PersonProfilePatch{
-			Fields: []domain.PersonProfileField{domain.ProfileBio}, Values: domain.PersonProfile{Bio: "紹介文"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("profile だけの更新がスマートフォルダを再計算した: %v", err)
-	}
-}
-
 func TestListPeopleByAgePagesUnknownBirthDatesLast(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

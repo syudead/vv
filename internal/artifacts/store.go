@@ -269,7 +269,7 @@ func copyToFile(path string, source io.Reader) error {
 // substitution status (unknown for older metadata); callers serialize publication and deletion.
 func (s *Store) PublishSeekThumbnails(
 	contentKey string, layout domain.SeekSpriteLayout, force bool,
-	write func(outputDir string) (fullDecode bool, err error),
+	write func(outputDir string) error,
 ) (domain.Substitution, error) {
 	unknown := domain.SubstitutionUnknown
 	if _, err := s.publishTarget(func(key string) (string, bool) { return s.seekDir(key, 0) }, contentKey); err != nil {
@@ -320,10 +320,9 @@ func (s *Store) PublishSeekThumbnails(
 
 // stageSeekSprite has write generate the sheets in dir and adds the metadata that marks them complete.
 func stageSeekSprite(
-	dir, contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) (bool, error),
+	dir, contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) error,
 ) (spriteFile, error) {
-	fullDecode, err := write(dir)
-	if err != nil {
+	if err := write(dir); err != nil {
 		return spriteFile{}, err
 	}
 	sprite, err := describeSheets(dir, layout)
@@ -331,6 +330,8 @@ func stageSeekSprite(
 		return spriteFile{}, fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
 	}
 	file := spriteFileFrom(sprite)
+	// Generation no longer decodes whole videos, so a new sprite clears any earlier substitution.
+	fullDecode := false
 	file.FullDecode = &fullDecode
 	data, err := json.Marshal(file)
 	if err != nil {
@@ -589,7 +590,8 @@ type spriteFile struct {
 	FrameWidth  int   `json:"frameWidth"`
 	FrameHeight int   `json:"frameHeight"`
 	SheetCount  int   `json:"sheetCount"`
-	// Absent in metadata written before full-decode tracking.
+	// Absent in metadata written before full-decode tracking; true only in sprites from before full
+	// decoding was removed.
 	FullDecode *bool `json:"fullDecode,omitempty"`
 }
 

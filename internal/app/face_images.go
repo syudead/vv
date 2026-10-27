@@ -20,10 +20,10 @@ import (
 // docs/design-docs/face-recognition.md.
 
 // embedNext applies one face waiting for the worker, those named by events first, and reports false when none waits.
-func (f *FaceRecognizer) embedNext(run context.Context, settings domain.FaceSettings) (faceStep, bool) {
+func (f *FaceRecognizer) embedNext(run context.Context, settings domain.FaceSettings) (domain.WorkerWait, bool) {
 	job, err := f.nextFaceImage(run)
 	if errors.Is(err, domain.ErrNoJob) {
-		return faceNext, false
+		return domain.WorkerNext, false
 	}
 	if err != nil {
 		return f.retryUnless(run, "cannot read a face image", err), true
@@ -32,7 +32,7 @@ func (f *FaceRecognizer) embedNext(run context.Context, settings domain.FaceSett
 	if job.Recognizer != settings.Recognizer || run.Err() != nil {
 		// The settings changed after the read; the face is read again under the new ones.
 		f.pend(job.PersonID)
-		return faceNext, true
+		return domain.WorkerNext, true
 	}
 	return f.embed(run, job), true
 }
@@ -74,7 +74,7 @@ func (f *FaceRecognizer) popPending() (int64, bool) {
 // embed computes the face's vector unless one is stored, and stores it with the face-image rule's decision. A face
 // whose attempt was cancelled, fenced, or hit a helper start or database error stays pending; a merge refused for good
 // is not tried again, since retrying cannot change it.
-func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) faceStep {
+func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) domain.WorkerWait {
 	vector, err := job.Vector, error(nil)
 	if !job.Embedded {
 		vector, err = f.embedFace(run, f.helperFor(job.Recognizer), job)
@@ -89,19 +89,19 @@ func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) fac
 			f.logger.Info("merged a provisional person by face", slog.Int64("person", job.PersonID),
 				slog.Int64("provisional", decision.MergeID))
 		}
-		return faceNext
+		return domain.WorkerNext
 	case errors.Is(err, domain.ErrFaceMergeRefused):
 		f.logger.Warn("the face-image rule's merge was refused", slog.Int64("person", job.PersonID),
 			slog.Any("error", err))
-		return faceNext
+		return domain.WorkerNext
 	case run.Err() != nil, errors.Is(err, domain.ErrFaceGenerationChanged), errors.Is(err, domain.ErrFaceHelperStart):
 		// Read again under the new settings, or once the runtime is ready again.
 		f.pend(job.PersonID)
-		return faceNext
+		return domain.WorkerNext
 	}
 	f.logger.Error("cannot store a face image vector", slog.Int64("person", job.PersonID), slog.Any("error", err))
 	f.pend(job.PersonID)
-	return faceRetry
+	return domain.WorkerRetry
 }
 
 // embedFace returns the vector of the face's only good face, nil when it has none or several or the helper cannot
