@@ -46,13 +46,6 @@ export function pairFailure(failure: unknown): PairFailure {
       return { kind: "field", field: "code", text: text.form.invalidCode };
     case "already_paired":
       return { kind: "alert", text: text.form.alreadyPaired };
-    case "unsupported_version":
-      if (failure.peerVersion !== undefined && failure.localVersion !== undefined)
-        return {
-          kind: "alert",
-          text: text.form.versions(failure.peerVersion, failure.localVersion),
-        };
-      break;
     case "peer_unreachable":
       // The server's message says which direction failed; the Words table shows it as given.
       if (failure.message !== "")

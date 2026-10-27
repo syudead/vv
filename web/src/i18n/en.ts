@@ -419,8 +419,6 @@ const errorReasons = {
     "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
   already_paired:
     "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
-  unsupported_version:
-    "The two VVMDMs run different versions. Update both to the same version.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
@@ -3853,9 +3851,6 @@ export const en = {
     peer: {
       networkTitle: (name: string) => `Can't reach ${name}`,
       networkBody: "Its videos, groups and smart folders are hidden until it answers.",
-      versionTitle: (name: string) => `Can't connect to ${name}`,
-      versionBody: (theirs: string, ours: string) =>
-        `It runs VVMDM ${theirs} and this one ${ours}.`,
       certificateTitle: (name: string) => `${name}'s certificate changed`,
       certificateBody: "Confirm it in Pairing to reconnect.",
       revokedTitle: (name: string) => `Unpaired by ${name}`,
@@ -4665,8 +4660,6 @@ export const en = {
           "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
         alreadyPaired:
           "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
-        versions: (theirs: string, ours: string) =>
-          `The other VVMDM runs VVMDM ${theirs} and this one ${ours}. Update both to the same version.`,
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",
@@ -4699,9 +4692,6 @@ export const en = {
         network: "Can't reach it",
         networkDetail:
           "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.",
-        version: "Versions differ",
-        versionDetail: (theirs: string, ours: string) =>
-          `It runs VVMDM ${theirs} and this one ${ours}. Update both to the same version.`,
         certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",

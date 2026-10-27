@@ -52,10 +52,6 @@ func newStreamLink(steps ...watchStep) *streamLink {
 	}
 }
 
-func (l *streamLink) Version(context.Context, domain.PeerTarget) (string, error) {
-	return "", errors.New("not used")
-}
-
 func (l *streamLink) RequestPairing(context.Context, domain.PeerTarget, domain.PairingRequest) (domain.PairingAnswer, error) {
 	return domain.PairingAnswer{}, errors.New("not used")
 }
@@ -333,19 +329,32 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 	})
 }
 
-func TestConnectionRefusesAnotherVersion(t *testing.T) {
+// This node runs 1.2.0; a peer built with another label still connects and shows its own.
+func TestConnectionIgnoresTheVersionLabel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		link := newStreamLink()
-		link.node.Version = "1.3.0"
+		link := newStreamLink(watchStep{open: true})
+		link.node.Version = domain.DefaultVersion
+		node := startConnection(t, link)
+
+		assertStates(t, "版の違う相手", node.events, "connected")
+		if state, _ := node.pairing.State(context.Background()); state.PeerVersion != domain.DefaultVersion {
+			t.Errorf("PeerVersion = %q, want %s", state.PeerVersion, domain.DefaultVersion)
+		}
+	})
+}
+
+func TestConnectionRefusesAnotherNode(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		link := newStreamLink(watchStep{open: true})
+		link.node.ID = "0b9d3f1e-2c4a-4e6b-9d8c-7a6b5c4d3e2f"
 		node := startConnection(t, link)
 
 		state, _ := node.pairing.State(context.Background())
-		if state.State != domain.PeerUnreachable || state.Reason != domain.PeerReasonVersion || state.PeerVersion != "1.3.0" {
-			t.Errorf("State = %+v, want unreachable/version と 1.3.0", state)
+		if state.State != domain.PeerUnreachable || state.Reason != domain.PeerReasonNetwork {
+			t.Errorf("State = %s/%s, want unreachable/network", state.State, state.Reason)
 		}
-		assertStates(t, "版の不一致", node.events, "unreachable/version")
 		if attempts := len(link.attemptTimes()); attempts != 0 {
-			t.Errorf("版の違う相手のストリームを %d 回開いた", attempts)
+			t.Errorf("別の VVMDM のストリームを %d 回開いた", attempts)
 		}
 	})
 }

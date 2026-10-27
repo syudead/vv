@@ -100,7 +100,7 @@ audience before paging ([authentication.md](authentication.md)).
 
 | Rule | Reason |
 | --- | --- |
-| Both nodes run the same release `version`; pairing and every reconnection compare it | The peer reads the screen API, which changes between releases without notice |
+| Versions are not compared; pairing, the handshake and every reconnection carry the release `version` only so the Pairing page shows the peer's | `version` is a build label (the commit SHA in the CI image, `dev` in a local or untagged build), so two builds of the same source differ in it, and a gate on it refused them |
 | The secret is per direction (`vvp_` plus 32 random bytes), hashed on the receiving node and kept in the `peer` table, not tied to `account_version` | A password change keeps the pairing, while it signs out sessions |
 | The pairing code is 8 characters, one per node, valid 10 minutes, cleared by the pairing it completes and kept in memory | A restart ending the code is the wanted behaviour |
 | A node has at most one peer; a second pairing answers `409 already_paired` | The owner unpairs first |
@@ -111,6 +111,18 @@ audience before paging ([authentication.md](authentication.md)).
 | --- | --- |
 | A separate peer contract with its own generated client | It would restate about 30 screen operations and drift from them |
 | Reusing API tokens | A credential change revokes them |
+| Refusing a peer whose `version`, or a hash of the API definition, differs | A label refuses identical code, and a hash refuses the whole library over one changed operation; the owner compares the versions the Pairing page shows instead |
+
+### Mixed versions
+
+Each node serves the screen API of its own release, so a request the other
+release does not know fails like any other failed peer request: the list or
+operation skips or reports the peer's part, and the connection stays up. For
+example, peer request bodies reject unknown fields, so a peer older than
+`openVideoId` answers `400 invalid_request` to `POST /api/peer/related`, and
+the related list leaves out that peer's videos
+([related-videos.md](related-videos.md)). Owners keep both nodes on the same
+release; the Pairing page shows the peer's version next to its name.
 
 ## Connection state
 
@@ -137,7 +149,8 @@ failed stream retries after 5 s, doubling to 60 s, or at once when the peer
 presents its credential at the handshake: the node that accepted a pairing
 connects before the requesting node has stored it, and that node's first
 handshake after storing it wakes the retry. `unreachable` names a
-reason (`network`, `version` or `certificate`). Moving from `connected` to
+reason (`network` or `certificate`); an address that answers the handshake
+with another node id gives `network`. Moving from `connected` to
 `unreachable`, and into `connected`, logs one info line with the reason and
 error; each failed retry logs at debug level. While the peer is not
 `connected`, reads skip it without a request and answer with the local part,

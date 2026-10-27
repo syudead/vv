@@ -48,17 +48,6 @@ describe("pairFailure", () => {
     expect(pairFailure(failure)).toMatchObject({ kind: "field", field: "code" });
   });
 
-  it("names both versions, the other node's first", () => {
-    const failure = conflict("unsupported_version", {
-      localVersion: "1.4.0",
-      peerVersion: "1.3.2",
-    });
-    expect(pairFailure(failure)).toEqual({
-      kind: "alert",
-      text: "The other VVMDM runs VVMDM 1.3.2 and this one 1.4.0. Update both to the same version.",
-    });
-  });
-
   it("asks to trust the fingerprint of an untrusted certificate", () => {
     const failure = conflict("certificate_untrusted", { fingerprint: "c2hh" });
     expect(pairFailure(failure)).toEqual({ kind: "untrusted", fingerprint: "c2hh" });

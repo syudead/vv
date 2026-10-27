@@ -35,8 +35,6 @@ type PeerStore interface {
 // PeerLink calls the other node. A failed call answers *domain.PeerUnreachableError or
 // *domain.CertificateUntrustedError; a refusal answers the domain error the other node named.
 type PeerLink interface {
-	// Version reads the release version the node at target reports in its health.
-	Version(ctx context.Context, target domain.PeerTarget) (string, error)
 	RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error)
 	// Certificate completes only a TLS handshake with the https address, sending nothing over the connection,
 	// and returns the certificate the address presents.
@@ -53,7 +51,7 @@ type PeerLink interface {
 type PairingOptions struct {
 	Store PeerStore
 	Link  PeerLink
-	// Version is this node's release version, compared with the peer's.
+	// Version is this node's release version, which the peer shows for reference.
 	Version string
 	// NodeName is this node's host name, shown on the peer's screens.
 	NodeName string
@@ -195,13 +193,6 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 		return domain.PeerState{}, err
 	}
 	target := domain.PeerTarget{Address: address, PinnedSPKI: input.Fingerprint}
-	peerVersion, err := p.link.Version(ctx, target)
-	if err != nil {
-		return domain.PeerState{}, err
-	}
-	if err := domain.CheckPeerVersions(p.version, peerVersion); err != nil {
-		return domain.PeerState{}, err
-	}
 	incoming, err := domain.NewPeerSecret(p.random)
 	if err != nil {
 		return domain.PeerState{}, err
@@ -217,7 +208,7 @@ func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.Peer
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	if err := checkPairingAnswer(answer, node.ID, p.version); err != nil {
+	if err := checkPairingAnswer(answer, node.ID); err != nil {
 		return domain.PeerState{}, err
 	}
 	record := domain.PeerRecord{
@@ -256,12 +247,12 @@ func (p *Pairing) ownFingerprint(ctx context.Context, ownAddress, confirmed stri
 	return confirmed, nil
 }
 
-func checkPairingAnswer(answer domain.PairingAnswer, ownID, version string) error {
+func checkPairingAnswer(answer domain.PairingAnswer, ownID string) error {
 	if !domain.ValidNodeID(answer.Node.ID) || answer.Node.ID == ownID || !domain.ValidPeerName(answer.Node.Name) ||
 		!domain.ValidPeerSecret(answer.Secret) {
 		return &domain.PeerUnreachableError{Message: "The other VVMDM answered the pairing with values this one cannot use."}
 	}
-	return domain.CheckPeerVersions(version, answer.Node.Version)
+	return nil
 }
 
 // Accept answers another node's PairingRequest: it checks the code, calls the sender back at its
@@ -292,9 +283,6 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 	}
 	if req.Node.ID == node.ID {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingInput
-	}
-	if err := domain.CheckPeerVersions(p.version, req.Node.Version); err != nil {
-		return domain.PairingAnswer{}, err
 	}
 	if err := p.callBack(ctx, address, req); err != nil {
 		p.logger.Warn("could not call the pairing VVMDM back", slog.String("address", address), slog.Any("error", err))
@@ -342,7 +330,7 @@ func (p *Pairing) callBack(ctx context.Context, address string, req domain.Pairi
 			Message: "The address " + address + " answers as another VVMDM than the one pairing.",
 		}
 	}
-	return domain.CheckPeerVersions(p.version, answered.Version)
+	return nil
 }
 
 func (p *Pairing) refuseWhenPaired(ctx context.Context) error {
