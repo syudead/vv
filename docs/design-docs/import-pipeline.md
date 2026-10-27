@@ -10,8 +10,8 @@ flowchart LR
   scan[Scan locations] --> tx[Enqueue transaction]
   tx --> jobs[Persistent jobs]
   tx --> members[Latest scan videos]
-  jobs --> workers[Ingest workers]
-  workers --> jobs
+  jobs --> scheduler[Job scheduler]
+  scheduler --> jobs
   jobs --> progress[Progress read]
   members --> progress
 ```
@@ -34,7 +34,8 @@ discovery is closed and the set has no remaining preparation jobs.
 
 ## Recovery and reporting
 
-Startup recovers interrupted scans and jobs before normal workers proceed
+Startup recovers interrupted scans and jobs before the
+[job scheduler](job-scheduling.md) grants new work
 ([process lifecycle](process-lifecycle.md)). The latest scan's issues explain
 its problems; the persistent [activity log](activity.md) records runs and
 owner operations separately. User-initiated full scans and automatic scans of
