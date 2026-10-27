@@ -156,6 +156,8 @@ func run(opts runOptions) error {
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
 
+	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
+	var scheduler *jobs.Scheduler
 	scans := app.NewScans(app.ScansOptions{
 		Store:          scanStore,
 		Jobs:           ingestStore,
@@ -163,7 +165,8 @@ func run(opts runOptions) error {
 		FolderIndex:    scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
-				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
+				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter,
+				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
 		Folders:   scanIndexStore,
@@ -185,7 +188,6 @@ func run(opts runOptions) error {
 	classifier := ollama.New(settingsStore)
 	// Auto-tagging runs as auto_tag jobs on the scheduler, paused while the feature is off; see
 	// docs/design-docs/auto-tagging.md. Startup recovery has already requeued interrupted jobs.
-	var scheduler *jobs.Scheduler
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
