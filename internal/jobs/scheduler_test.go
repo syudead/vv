@@ -667,6 +667,51 @@ func (q *fakeQueue) failureCauses() []error {
 	return causes
 }
 
+// A scan read waits for a running job instead of stopping it, then takes the freed slot ahead of a queued owner job,
+// while jobs keep the disk's other slots.
+func TestSchedulerGrantsAWaitingScanReadBeforeQueuedJobs(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue()
+		for id := int64(1); id <= 5; id++ {
+			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
+		}
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+
+		var release func()
+		go func() {
+			var err error
+			if release, err = scheduler.AcquireRead(context.Background(), "/a"); err != nil {
+				t.Errorf("AcquireRead: %v", err)
+			}
+		}()
+		synctest.Wait()
+		if release != nil {
+			t.Fatal("the scan read was granted while every slot was held")
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if release == nil {
+			t.Fatal("the scan read was not granted the freed slot")
+		}
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running during the scan read = %v, want %v", got, want)
+		}
+		release()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4, 5}; !slices.Equal(got, want) {
+			t.Fatalf("running after the scan read = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerGrantsTwoDisksAtOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(

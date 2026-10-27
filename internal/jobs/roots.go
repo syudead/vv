@@ -199,6 +199,18 @@ func (r *roots) path(id int64) (string, bool) {
 	return state.path, ok
 }
 
+// disk returns the resolved disk of the available folder at path.
+func (r *roots) disk(path string) (domain.Disk, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, state := range r.known {
+		if state.path == path && !state.resolving && !state.unavailable {
+			return state.disk, true
+		}
+	}
+	return domain.Disk{}, false
+}
+
 func (r *roots) anyUnavailable() bool {
 	for _, state := range r.known {
 		if state.unavailable {

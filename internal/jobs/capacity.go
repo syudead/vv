@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"sync"
 
 	"github.com/syudead/vv/internal/domain"
@@ -15,10 +16,17 @@ type capacity struct {
 	classifierUsed int
 	readSlots      map[string]int
 	readUsed       map[string]int
+	// scanWaiting counts the scan reads waiting for each disk; while one waits, no job takes a read slot there.
+	scanWaiting map[string]int
+	// changed is closed and replaced whenever slots may have become free, to wake the waiting scan reads.
+	changed chan struct{}
 }
 
 func newCapacity(cpu int) *capacity {
-	return &capacity{cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}}
+	return &capacity{
+		cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}, scanWaiting: map[string]int{},
+		changed: make(chan struct{}),
+	}
 }
 
 // setDisks replaces each disk's read slots; slots already held on a disk stay counted until released.
@@ -26,16 +34,52 @@ func (c *capacity) setDisks(slots map[string]int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.readSlots = slots
+	c.broadcastLocked()
 }
 
-// reserve takes demand on disk when it fits; a demand without reads ignores the disk.
+func (c *capacity) broadcastLocked() {
+	close(c.changed)
+	c.changed = make(chan struct{})
+}
+
+// acquireScanRead waits for one read slot on disk and takes it ahead of every job; it never takes a slot a job holds.
+// A disk the scheduler has not served yet counts its slots from its type.
+func (c *capacity) acquireScanRead(ctx context.Context, disk domain.Disk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for {
+		slots, ok := c.readSlots[disk.Key]
+		if !ok {
+			slots = disk.ReadSlots()
+		}
+		if c.readUsed[disk.Key] < slots {
+			c.readUsed[disk.Key]++
+			return nil
+		}
+		changed := c.changed
+		c.scanWaiting[disk.Key]++
+		c.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+		}
+		c.mu.Lock()
+		c.scanWaiting[disk.Key]--
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+}
+
+// reserve takes demand on disk when it fits; a demand without reads ignores the disk, and a waiting scan read keeps
+// the disk's read slots from jobs.
 func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots {
 		return false
 	}
-	if demand.Read > 0 && c.readUsed[disk]+demand.Read > c.readSlots[disk] {
+	if demand.Read > 0 && (c.scanWaiting[disk] > 0 || c.readUsed[disk]+demand.Read > c.readSlots[disk]) {
 		return false
 	}
 	c.cpuUsed += demand.CPU
@@ -50,6 +94,7 @@ func (c *capacity) release(disk string, demand domain.JobResources) {
 	c.cpuUsed -= demand.CPU
 	c.classifierUsed -= demand.Classifier
 	c.readUsed[disk] -= demand.Read
+	c.broadcastLocked()
 }
 
 // inUse reports the slots in use, with the disk's read slots, for the debug log.

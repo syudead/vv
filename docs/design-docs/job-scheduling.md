@@ -3,6 +3,7 @@
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
 job, and every auto-tagging job, the resources its kind declares, from the CPU
 slots, the classifier slots and the read slots of the job's disk, and runs it.
+A scan's content-key reads take read slots from the same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -11,6 +12,7 @@ flowchart LR
   ev[Enqueue, stage done, release, run-after time, root check] -->|wake| sch[Scheduler]
   jobs[(jobs)] -->|claim by class, disk, kind, run-after| sch
   paused[Features that are off] -->|paused kinds| sch
+  scan[Scan content-key read] -->|wait for a read slot, ahead of jobs| sch
   sch -->|grant demand| run[Handler of the kind]
   run -->|lend and return slots per extraction| sch
   run -->|done, retry, repeats, snooze| jobs
@@ -120,6 +122,24 @@ run at once. On a 1-slot disk the job runs one part at a time.
 | A fixed demand of 4 or 8 slots | Never fits a 1-slot disk, so the job would be skipped forever |
 | A demand of 1 with fixed internal parallelism | Reads 4 to 8 streams while counted as 1 |
 
+## A scan's content-key reads go first
+
+The scan still computes each new or changed file's content key inline, but it
+holds a read slot on the disk of the file's media folder for each read
+([`Scheduler.AcquireRead`](../../internal/jobs/scheduler.go)). A waiting scan
+read takes the next free slot of its disk before any job class, and while it
+waits no job takes a read slot on that disk. It never stops a running job, so
+on a 1-slot disk the first read waits at most for the running job. The scanner
+reads one file at a time, so on a 4-slot disk jobs keep the other three slots.
+Unchanged files are not read and take no slot. `internal/scanner` declares the
+interface it calls, and `cmd/mdm` wires the scheduler to it.
+
+| Rejected | Why |
+| --- | --- |
+| Defer the content key to a job | A move between scans would no longer be detected by content |
+| Stop a running job for the scan | An interrupted encode restarts from the beginning |
+| Scan reads take turns with jobs | On a 1-slot disk each read would wait for a whole job, and those jobs need the scan's output |
+
 ## An unreadable media folder parks its jobs
 
 A job whose handler fails while its media folder cannot be opened and listed
@@ -228,7 +248,7 @@ Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queu
 for a wakeup, for the earliest run-after time of a queued job, or for the next
 recheck of an unavailable folder, whichever comes first; it never polls an
 empty queue. A committed enqueue, a finished stage, every release and a
-returned lent slot wake it. A claim error waits 5 seconds or for a wakeup.
+returned lent slot or scan read wake it. A claim error waits 5 seconds or for a wakeup.
 Grants, releases and lent slots are logged at debug level with the disk key
 and the slots in use, and each resolved disk with its type and read slots.
 

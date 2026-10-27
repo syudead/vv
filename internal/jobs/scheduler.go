@@ -262,6 +262,33 @@ func (s *Scheduler) grant(ctx context.Context, job domain.Job, disk string, dema
 	})
 }
 
+// AcquireRead waits for a read slot on the disk of the media folder at root, for one content-key read of a scan. A
+// waiting scan read takes the next free slot of its disk before any job, but never stops a running job. A folder whose
+// disk cannot be resolved reads without a slot, because the read then fails on its own. Release returns the slot.
+func (s *Scheduler) AcquireRead(ctx context.Context, root string) (release func(), err error) {
+	disk, ok := s.roots.disk(root)
+	if !ok {
+		if disk, err = s.disks(root); err != nil {
+			return func() {}, nil
+		}
+	}
+	if err := s.capacity.acquireScanRead(ctx, disk); err != nil {
+		// A job refused while this read waited needs another turn.
+		s.Wake()
+		return nil, err
+	}
+	s.logger.Debug("granted a scan read", s.scanAttrs(disk.Key)...)
+	return sync.OnceFunc(func() {
+		s.capacity.release(disk.Key, domain.JobResources{Read: 1})
+		s.logger.Debug("released a scan read", s.scanAttrs(disk.Key)...)
+		s.Wake()
+	}), nil
+}
+
+func (s *Scheduler) scanAttrs(disk string) []any {
+	return []any{slog.String("disk", disk), slog.Int("readInUse", s.capacity.inUse(disk).Read)}
+}
+
 func (s *Scheduler) slotAttrs(job domain.Job, disk string, demand domain.JobResources) []any {
 	used := s.capacity.inUse(disk)
 	return []any{

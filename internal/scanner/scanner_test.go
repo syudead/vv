@@ -636,6 +636,47 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 	}
 }
 
+// recordingSlots records each read slot taken and returned, in the same log as the content-key reads.
+type recordingSlots struct {
+	events *[]string
+}
+
+func (r recordingSlots) AcquireRead(_ context.Context, root string) (func(), error) {
+	*r.events = append(*r.events, "acquire "+root)
+	return func() { *r.events = append(*r.events, "release "+root) }, nil
+}
+
+func TestScanHoldsAReadSlotForEachContentKeyRead(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "unchanged", "b.mp4": "before"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	b := filepath.Join(root, "b.mp4")
+	if err := os.WriteFile(b, []byte("after, with another size"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "c.mp4"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []string
+	scanner := New(Options{Index: index, Queue: index, Reporter: index, ReadSlots: recordingSlots{events: &events}})
+	scanner.contentKey = func(path string) (string, error) {
+		events = append(events, "read "+filepath.Base(path))
+		return ContentKey(path)
+	}
+	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); err != nil {
+		t.Fatal(err)
+	}
+	// The unchanged a.mp4 is not read and takes no slot.
+	want := []string{
+		"acquire " + root, "read b.mp4", "release " + root,
+		"acquire " + root, "read c.mp4", "release " + root,
+	}
+	if !slices.Equal(events, want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+}
+
 func TestScanDetectsMoveWithoutDuplicating(t *testing.T) {
 	root := mediaTree(t, map[string]string{"海辺の散歩.mp4": "同じ内容"})
 
