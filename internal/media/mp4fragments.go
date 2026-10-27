@@ -33,6 +33,9 @@ const (
 	trunSampleFlags       = 0x000400
 	trunCompositionOffset = 0x000800
 	sampleIsNonSyncSample = 0x010000
+	// A trun without per-sample fields takes no bytes per sample, so its count alone cannot be trusted; this allows
+	// about 155 hours at 30 frames per second and keeps the walk over all runs well under a second.
+	maxFragmentSamples = 1 << 24
 )
 
 // fragmented reports whether a moov declares movie fragments.
@@ -116,6 +119,7 @@ type fragmentReader struct {
 	trackID   uint32
 	trex      sampleDefaults
 	decode    int64
+	samples   int
 	keyframes []keyframeSample
 }
 
@@ -240,6 +244,9 @@ func (r *fragmentReader) readRun(trun []byte, header trackFragment, position int
 	entry := runEntryLayout(flags)
 	if count < 0 || len(rest) < count*entry.size {
 		return 0, fmt.Errorf("%w: trun has too few entries", errSeekIndexUnsupported)
+	}
+	if r.samples += count; r.samples > maxFragmentSamples {
+		return 0, fmt.Errorf("%w: movie fragments hold more than %d samples", errSeekIndexUnsupported, maxFragmentSamples)
 	}
 	for i := range count {
 		sample := entry.read(rest[i*entry.size:], header.defaults)

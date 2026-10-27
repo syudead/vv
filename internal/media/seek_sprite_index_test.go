@@ -323,6 +323,17 @@ func TestReadMovieBoxRejectsFragmentsPastBoxLimit(t *testing.T) {
 	}
 }
 
+// A trun without per-sample fields takes no bytes per sample, so a huge count of non-sync samples, which never reaches
+// the keyframe limit, is rejected before the walk.
+func TestReadRunRejectsSampleCountPastLimit(t *testing.T) {
+	reader := fragmentReader{trackID: 1}
+	trun := be32(0, 0xffffffff)
+	header := trackFragment{trackID: 1, defaults: sampleDefaults{flags: sampleIsNonSyncSample}}
+	if _, err := reader.readRun(trun, header, 0); !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("サンプル数 0xffffffff で %v（errSeekIndexUnsupported のはず）", err)
+	}
+}
+
 func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 	t.Parallel()
 
