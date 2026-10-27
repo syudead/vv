@@ -220,6 +220,31 @@ func TestSchedulerSkipsJobThatDoesNotFit(t *testing.T) {
 	})
 }
 
+func TestSchedulerGivesFreedSlotToNextKind(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// A probe backlog must not keep the shared read slot from the queued thumbnail.
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe},
+			domain.Job{ID: 2, Kind: domain.JobProbe},
+			domain.Job{ID: 3, Kind: domain.JobThumbnail},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), Capacity: domain.JobResources{Read: 1, CPU: 1},
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{3}; !slices.Equal(got, want) {
+			t.Fatalf("running after the probe = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(

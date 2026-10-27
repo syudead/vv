@@ -49,6 +49,8 @@ type Scheduler struct {
 	started  func(domain.Job)
 	finished func(domain.Job)
 	logger   *slog.Logger
+	// next indexes domain.JobKinds; only step, on the loop goroutine, uses it.
+	next int
 
 	mu      sync.Mutex
 	used    domain.JobResources
@@ -82,39 +84,38 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.running.Wait()
 }
 
-// step claims one job per kind in each pass, so stages interleave, until a pass grants nothing. A kind whose demand
-// does not fit is skipped, not waited for, so it never holds back a kind that fits.
+// step visits the kinds in turn, claiming one job per kind, until a full turn grants nothing. A kind whose demand
+// does not fit is skipped, not waited for, so it never holds back a kind that fits. The turn resumes after the last
+// granted kind, so a freed slot goes to the next kind instead of always to the first stage.
 func (s *Scheduler) step(ctx context.Context) domain.WorkerWait {
-	empty := make(map[domain.JobKind]bool, len(domain.JobKinds))
-	for {
-		granted := false
-		for _, kind := range domain.JobKinds {
-			if empty[kind] {
+	kinds := domain.JobKinds
+	empty := make(map[domain.JobKind]bool, len(kinds))
+	for idle := 0; idle < len(kinds); s.next = (s.next + 1) % len(kinds) {
+		idle++
+		kind := kinds[s.next]
+		if empty[kind] {
+			continue
+		}
+		demand := domain.JobDemand(kind)
+		if !s.reserve(demand) {
+			continue
+		}
+		job, err := s.queue.ClaimJob(ctx, kind)
+		if err != nil {
+			s.unreserve(demand)
+			if errors.Is(err, domain.ErrNoJob) {
+				empty[kind] = true
 				continue
 			}
-			demand := domain.JobDemand(kind)
-			if !s.reserve(demand) {
-				continue
+			if ctx.Err() == nil {
+				s.logger.Warn("could not claim a job", slog.String("stage", string(kind)), slog.Any("error", err))
 			}
-			job, err := s.queue.ClaimJob(ctx, kind)
-			if err != nil {
-				s.unreserve(demand)
-				if errors.Is(err, domain.ErrNoJob) {
-					empty[kind] = true
-					continue
-				}
-				if ctx.Err() == nil {
-					s.logger.Warn("could not claim a job", slog.String("stage", string(kind)), slog.Any("error", err))
-				}
-				return domain.WorkerRetry
-			}
-			s.grant(ctx, job, demand)
-			granted = true
+			return domain.WorkerRetry
 		}
-		if !granted {
-			return domain.WorkerIdle
-		}
+		s.grant(ctx, job, demand)
+		idle = 0
 	}
+	return domain.WorkerIdle
 }
 
 func (s *Scheduler) reserve(demand domain.JobResources) bool {

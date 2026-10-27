@@ -44,9 +44,10 @@ within the capacity ([`domain.JobCapacity`](../../internal/domain/job_demand.go)
 
 ## A job that does not fit is skipped
 
-The scheduler claims one job per kind in each pass, in stage order, and skips
-a kind whose demand does not fit instead of waiting for it. A pass that grants
-nothing ends the round.
+The scheduler visits the kinds in turn, claiming one job per kind, and skips a
+kind whose demand does not fit instead of waiting for it. A full turn that
+grants nothing ends the round. The next round resumes after the last granted
+kind, so a freed slot goes to the next kind rather than always to `probe`.
 
 ```mermaid
 flowchart LR
@@ -59,13 +60,15 @@ flowchart LR
 ```
 
 Skipping lets a CPU-only fingerprint run while every read slot is held, and
-one pass per kind keeps the stages interleaved during a large import. No job
-waits forever, because every demand is at most one slot of each resource.
+taking kinds in turn keeps the stages interleaved during a large import, so a
+probe backlog does not hold back thumbnails. No job waits forever, because
+every demand is at most one slot of each resource.
 
 | Rejected | Why |
 | --- | --- |
 | One worker per stage | Five stages each read a disk with no shared limit |
 | Stop at the first job that does not fit (Go `semaphore.Weighted`) | A busy resource stalls every kind behind it |
+| Start every round at the first stage | Each freed read slot goes to the next probe, so thumbnails wait for the probe backlog to empty |
 
 ## The scheduler sleeps until woken
 
