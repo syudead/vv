@@ -15,6 +15,8 @@ type LibraryPage struct {
 	NextCursor    string
 	Limit         int
 	MissingTagIDs []int64
+	// ItemCursors holds each item's place in order, for merging with the paired node's list.
+	ItemCursors []ItemCursor
 	// Roots shares the items' read snapshot and supplies response VideoFolder values.
 	Roots []MediaFolder
 }

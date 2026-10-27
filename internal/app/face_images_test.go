@@ -278,7 +278,7 @@ func TestFaceRecognizerRetriesAFaceAfterADatabaseError(t *testing.T) {
 		}
 
 		f.images.setFault(nil)
-		time.Sleep(faceRetryDelay)
+		time.Sleep(time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if stored, _ := f.images.read(); len(stored) != 1 || stored[0].job.PersonID != 7 {
 			t.Fatalf("stored = %+v, want person 7's vector after the back-off", stored)
@@ -295,7 +295,7 @@ func TestFaceRecognizerDoesNotRetryAMergeRefusedForGood(t *testing.T) {
 		f.run(t)
 		synctest.Wait()
 
-		time.Sleep(2 * faceRetryDelay)
+		time.Sleep(2 * time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if _, attempts := f.images.read(); attempts != 1 {
 			t.Fatalf("attempts = %d, want 1 with no retry", attempts)

@@ -53,6 +53,7 @@ import { useVideoGroupContext } from "./useVideoGroupContext";
 import { useUnplayableSkip, useVideoPlaylist } from "./useVideoPlaylist";
 import StallWarning from "./StallWarning";
 import { useTheaterMode } from "./theaterMode";
+import { isRemoteId } from "../lib/remoteId";
 import VideoHeader from "./VideoHeader";
 import VideoPageAside from "./VideoPageAside";
 import VideoPageDetails from "./VideoPageDetails";
@@ -81,6 +82,9 @@ export default function VideoPage() {
   //
   const audience = useAudience();
   const owner = audience === "owner";
+  // The paired VVMDM's video: no progress, favorites, playlists or file actions.
+  const remote = isRemoteId(id);
+  const localOwner = ownsLocalVideo(owner, id);
   //
   const playlistQuery = parsePlaylistQuery(location.search);
   const itemId = playlistQuery?.itemId ?? 0;
@@ -233,7 +237,7 @@ export default function VideoPage() {
   // Wait for positioning before the first identified save; release the watch ID after ended.
   const { rememberProgress, savePlayerProgress, markPlayed } = useProgressSaving(
     id,
-    owner,
+    localOwner,
     {
       positioned: status.positioned,
       ended: status.ended,
@@ -342,7 +346,7 @@ export default function VideoPage() {
     detail,
     failure,
     onRetryLoad: refresh,
-    onReprobe: owner ? reprobe : undefined,
+    onReprobe: localOwner ? reprobe : undefined,
     onRetryPlayback: retryPlayback,
   });
   const showPlayer = isPlayable(video) && detail.kind === "ready";
@@ -400,6 +404,7 @@ export default function VideoPage() {
           <VideoHeader
             folder={video?.folder}
             virtual={thumbnail.video !== undefined}
+            remote={remote}
             onClose={close}
           />
         }
@@ -547,4 +552,9 @@ function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSPro
   const style: Record<string, string> = { "--vv-video-aspect": String(aspect) };
   if (nativeWidth !== undefined) style["--vv-video-width"] = `${String(nativeWidth)}px`;
   return style as CSSProperties;
+}
+
+/** Only the owner saves progress and rescans, and only for a video on this VVMDM. */
+function ownsLocalVideo(owner: boolean, id: number): boolean {
+  return owner && !isRemoteId(id);
 }

@@ -8,13 +8,16 @@ import TopBar from "./TopBar";
 const railOnly = () => undefined;
 
 /**
- * Desktop stays collapsed; SidebarProvider owns only the narrow-screen drawer state. `panel` takes one
+ * Desktop stays collapsed; SidebarProvider owns only the narrow-screen drawer state. `notice` is one
+ * Alert at the top of the content column, above the page, with the page's side padding. `panel` takes one
  * SidePanel after the content, which narrows the content row from lg.
  */
 export default function AppShell({
+  notice,
   children,
   panel,
 }: {
+  notice?: ReactNode;
   children: ReactNode;
   panel?: ReactNode;
 }) {
@@ -28,7 +31,14 @@ export default function AppShell({
       <TopBar />
       <div className="flex flex-1 pt-navbar">
         <Sidebar />
-        <SidebarInset>{children}</SidebarInset>
+        <SidebarInset>
+          {notice !== undefined && notice !== null && (
+            <div data-slot="app-shell-notice" className="px-3 pt-3 sm:px-4 sm:pt-4">
+              {notice}
+            </div>
+          )}
+          {children}
+        </SidebarInset>
         {panel}
       </div>
     </SidebarProvider>

@@ -165,8 +165,8 @@ func TestSmartFolderGuestAccess(t *testing.T) {
 		assertUnauthenticated(t, "ゲストの "+tc.method, f.groupRequest(tc.method, tc.target, tc.body))
 	}
 
-	list := decode[gen.SmartFolderList](t, f.env.get("/api/smart-folders"))
-	if len(list.SmartFolders) != 1 || list.SmartFolders[0].Id != open.Id || list.SmartFolders[0].Favorite != nil {
+	// Guests are not offered smart folders, but a folder they reach by its URL still opens.
+	if list := decode[gen.SmartFolderList](t, f.env.get("/api/smart-folders")); len(list.SmartFolders) != 0 {
 		t.Errorf("ゲストの一覧 = %+v", list.SmartFolders)
 	}
 	rec := f.env.get(smartFolderPath(open.Id, ""))
@@ -279,22 +279,9 @@ func TestSmartFolderCardsStatuses(t *testing.T) {
 		owner.Cards[1].OpenVideoId == nil || !slices.ContainsFunc(owner.Cards[1].Tags, func(tag gen.VideoTag) bool { return tag.Id == shown }) {
 		t.Errorf("所有者のカード = %+v", owner.Cards)
 	}
-	if err := f.env.db.Ingest().SetThumbnailState(context.Background(), f.ids["solo"], domain.ThumbnailStateDone); err != nil {
-		t.Fatal(err)
-	}
-	guest := decode[gen.SmartFolderCards](t, f.env.get(target))
-	if len(guest.Cards) != 1 || guest.Cards[0].Id != open.Id || guest.Cards[0].VideoCount != 1 ||
-		guest.Cards[0].WatchState != nil || guest.Cards[0].Favorite != nil || len(guest.Cards[0].Tags) != 0 {
+	if guest := decode[gen.SmartFolderCards](t, f.env.get(target)); len(guest.Cards) != 0 {
 		t.Errorf("ゲストのカード = %+v", guest.Cards)
 	}
-	if len(guest.Cards) != 1 || len(guest.Cards[0].Previews) != 1 {
-		t.Fatalf("guest previews = %+v", guest.Cards)
-	}
-	preview := guest.Cards[0].Previews[0]
-	if preview.VideoId != f.ids["solo"] || preview.Title == nil || *preview.Title != "solo" {
-		t.Errorf("guest preview = %+v, want the public solo video's title and ID", preview)
-	}
-
 }
 
 func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
@@ -408,6 +395,10 @@ func (failingSmartFolders) SmartFolderCards(context.Context, domain.Audience, []
 }
 
 func (failingSmartFolders) SmartFolderVideoIDs(context.Context, []int64) ([]int64, error) {
+	return nil, errSmartFolderStore
+}
+
+func (failingSmartFolders) SmartRuleCounts(context.Context, domain.Audience, []domain.VideoQuery) ([]domain.SmartRuleCount, error) {
 	return nil, errSmartFolderStore
 }
 

@@ -196,12 +196,11 @@ describe("FolderPage", () => {
       if (url === "/api/folders") return Promise.resolve(json(roots));
       if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
       if (url === "/api/folders/3") return Promise.resolve(json(folderRoot));
-      // The person filter's chip reads its person; a 404 would drop the filter from the URL.
-      if (url === "/api/people/2") {
+      // A person the URL filters by; an unknown one is a deleted filter the page removes from the URL.
+      if (url === "/api/people/2")
         return Promise.resolve(
-          json({ id: 2, name: "Aoi", aliases: [], externalIds: [], videoCount: 1 }),
+          json({ id: 2, name: "Alice", aliases: [], externalIds: [], videoCount: 1 }),
         );
-      }
       if (url.startsWith("/api/folders/3/videos?")) {
         const params = new URL(url, "http://localhost").searchParams;
         if (params.get("path") !== "A")
@@ -1040,6 +1039,8 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?tag=1&person=2");
     await screen.findByRole("link", { name: "x" });
+    // The person chip has resolved, so a lost person below is not a pending lookup.
+    await screen.findByText("Alice");
     const sent = requests.find((url) => url.startsWith("/api/folders/3/videos?path=A"));
     const params = new URL(sent ?? "", "http://localhost").searchParams;
     expect(params.getAll("tag")).toEqual(["1"]);

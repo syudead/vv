@@ -23,6 +23,9 @@ flowchart LR
   browser[Browser SPA] -->|/api and SSE| http[HTTP layer]
   ext[External clients] -->|/api/v1 and MCP| http
   http --> app[Application layer]
+  http -->|merged reads, forwarding| peer[Peer client]
+  app --> peer
+  peer -->|/api with peer credential| other[Paired VVMDM]
   http --> store[Store]
   http --> mediafs[File access]
   http -->|live transcoding| media[Media and ffmpeg]
@@ -67,7 +70,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
 | Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging, the assistant) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime` | Talking to the outside world | Each other and `internal/app` |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime`, `peer` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -82,6 +85,9 @@ because an external `package x_test` imports its own package.
 `web/embed.go` is the one deliberate exception: Go's embed directive cannot
 reference a parent directory, so the declaration that pulls `web/dist` into the
 binary lives next to the SPA, and `internal/httpapi` consumes it as an `fs.FS`.
+`internal/peer` imports the generated types under `internal/httpapi/gen`, never
+`internal/httpapi` itself: it decodes the paired VVMDM's answers in the screen
+API's own shapes ([peer-library.md](docs/design-docs/peer-library.md)).
 
 ## Composition root
 
@@ -162,7 +168,16 @@ or folders takes a `domain.Audience`, whose zero value is the guest. The HTTP
 layer classifies every request at its outermost layer, before routing, by path
 into bearer, anyone, guests too or owner only, matching each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Hidden videos answer
-the same `404` as missing ones.
+the same `404` as missing ones. A paired VVMDM's request carries the peer
+credential and the viewer's audience, so the paired node filters before paging
+too ([authentication.md](docs/design-docs/authentication.md#paired-vvmdm)).
+
+**Remote ids carry an offset.** An id at or above `2^40` in the screen API
+names an entity of the paired VVMDM, whose own id is the value minus the
+offset; local ids stay below it, and the HTTP layer forwards such a request
+to the paired node instead of reading the store
+([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
+table stores a remote entity, so pairing and unpairing change no user data.
 
 **Only a scan walks the media folders.** Only a scan reads the media folders'
 trees and identifies their files, and only a user-started scan walks them
@@ -174,13 +189,32 @@ folder names above each video), the folder members of automatic groups, folder
 browsing and the import status are derived from SQLite, never from the
 filesystem.
 
+## Queue workers
+
+Each background queue has one worker that takes one item at a time. The
+waiting is shared: `jobs.Loop` runs a worker's step, then sleeps as the step
+asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
+`internal/app` (`AutoTagger.Step`, `VersionJudge.Step`, `FaceRecognizer.Step`)
+does the work and wakes its loop through the `Wake` function `cmd/mdm` passes
+in, so the application layer never imports the loop.
+
+| Step result | The loop |
+| --- | --- |
+| `WorkerNext` | Steps again at once |
+| `WorkerIdle` (an empty queue, the feature off) | Waits for a wakeup |
+| `WorkerRetry` (a failure that may pass) | Waits 5 seconds or for a wakeup |
+| Any other positive wait (the next scheduled retry) | Waits that long or for a wakeup |
+
+The loop steps once at startup, so work left from before a restart resumes,
+and stops when its context ends.
+
 ## Subsystem map
 
 | Package | Owns | Detail |
 | --- | --- | --- |
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
-| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md) |
+| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [Queue workers](#queue-workers) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
@@ -197,6 +231,7 @@ filesystem.
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
 | `internal/app` (`FaceRecognitionSettings`), `internal/faceruntime` | Downloading the pinned face runtime and models only while face recognition is on, reading their state from the files at startup, and starting the face helper and talking to it | [face-recognition.md](docs/design-docs/face-recognition.md#the-runtime-is-downloaded-only-when-the-feature-is-on) |
 | `cmd/mdm-face`, `internal/faceinfer`, `internal/faceproto` | The face helper: a second binary, shipped in the face runtime archive, that runs face detection and recognition through onnxruntime, and the protocol `mdm` speaks to it | [face-recognition.md](docs/design-docs/face-recognition.md) |
+| `internal/app` (`Pairing`), `internal/store` (`PeerStore`), `internal/peer`, `internal/httpapi` (`peer*.go`) | Pairing with one other VVMDM: the pairing code, the peer record and credential, the connection state and the peer's events, and the merged lists and forwarded requests that show both libraries as one | [peer-library.md](docs/design-docs/peer-library.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [Screen API](api/openapi.yaml) |
 | `internal/password` | Argon2id hashing in PHC strings | [authentication.md](docs/design-docs/authentication.md) |
 | `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [authentication.md](docs/design-docs/authentication.md), [external-api.md](docs/how-to/external-api.md) |

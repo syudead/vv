@@ -25,6 +25,10 @@ func (s *server) ListTagKinds(w http.ResponseWriter, r *http.Request) {
 	for _, kind := range kinds {
 		items = append(items, toAPITagKind(kind))
 	}
+	if s.mergesVocabulary(r.Context()) {
+		s.listMergedTagKinds(w, r, items)
+		return
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.TagKindList{Items: items}, s.logger)
 }

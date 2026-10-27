@@ -7,6 +7,7 @@ import AssistantTrigger from "../assistant/AssistantTrigger";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { usePeerName } from "../shell/PeerProvider";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import {
   Breadcrumb,
@@ -18,6 +19,7 @@ import {
 } from "../ui/shadcn/breadcrumb";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 
 interface FolderCrumb {
   label: string;
@@ -44,11 +46,14 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
 export default function VideoHeader({
   folder,
   virtual = false,
+  remote = false,
   onClose,
 }: {
   folder: VideoFolder | undefined;
   /** A virtual video has no folder; the band names what it is instead, not as a link. */
   virtual?: boolean;
+  /** The paired VVMDM holds the video; the band names it before the breadcrumb. */
+  remote?: boolean;
   onClose: () => void;
 }) {
   const crumbs = folderCrumbs(folder);
@@ -64,6 +69,8 @@ export default function VideoHeader({
           <span className="truncate">{t.player.virtual.band}</span>
         </p>
       )}
+
+      {remote && <RemoteBand />}
 
       {crumbs.length > 0 && (
         <Breadcrumb
@@ -120,5 +127,21 @@ export default function VideoHeader({
         <TooltipContent>{t.common.close}</TooltipContent>
       </Tooltip>
     </header>
+  );
+}
+
+function RemoteBand() {
+  const name = t.list.card.remote.name(usePeerName());
+  return (
+    <p className="flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground">
+      <ItemRemoteMark size="md" />
+      <span
+        aria-hidden="true"
+        title={name}
+        className="max-w-chip-label truncate md:max-w-none"
+      >
+        {name}
+      </span>
+    </p>
   );
 }

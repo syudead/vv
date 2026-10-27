@@ -3,18 +3,11 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "@playwright/test";
 
+import { mainNode, nodeEnv, nodeURL, serverBinary } from "./e2e/nodes";
 import { ownerStorageState } from "./e2e/owner-account";
 
 const webRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(webRoot, "..");
-const runRoot = process.env.MDM_E2E_RUN_ROOT;
-if (runRoot === undefined) throw new Error("MDM_E2E_RUN_ROOT is not configured");
-const dataDir = path.join(runRoot, "data");
-const serverBinary = path.join(
-  runRoot,
-  "bin",
-  process.platform === "win32" ? "mdm.exe" : "mdm",
-);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -62,16 +55,14 @@ export default defineConfig({
       use: { storageState: ownerStorageState },
     },
   ],
+  // The second node (e2e/nodes.ts) is not a web server here: the pairing spec stops it mid-test, which
+  // Playwright cannot do to a server it started.
   webServer: [
     {
       command: JSON.stringify(serverBinary),
       cwd: repoRoot,
-      env: {
-        MDM_ADDR: "127.0.0.1:18080",
-        MDM_DATA_DIR: dataDir,
-        MDM_LOG_LEVEL: "debug",
-      },
-      url: "http://127.0.0.1:18080/api/health",
+      env: nodeEnv(mainNode),
+      url: `${nodeURL(mainNode)}/api/health`,
       reuseExistingServer: false,
       timeout: 180_000,
     },
@@ -79,7 +70,7 @@ export default defineConfig({
       command: "npm run dev -- --host 127.0.0.1 --port 15173 --strictPort",
       cwd: webRoot,
       env: {
-        MDM_API_TARGET: "http://127.0.0.1:18080",
+        MDM_API_TARGET: nodeURL(mainNode),
       },
       url: "http://127.0.0.1:15173/settings",
       reuseExistingServer: false,

@@ -132,6 +132,7 @@ row, so the schema does not let the model name them.
 | Images, thumbnail edit sessions, plugin fetches, face appearances, drag operations | The input is a file, a drag token, or a choice made by looking at images or candidates |
 | `retryActivity`, `undoActivity`, `putVideoProgress`, `openVideoFile`, `setVideoDetails` | They act on an entry chosen in the log, belong to the player or the server PC, or are covered by two catalog rows |
 | Reads and tests sent as `POST` (`tagImpact`, `checkOllama`, …), and `/api/assistant/*` | They write nothing, or are the assistant itself |
+| Pairing with another node (`pairPeer`, `confirmPeerCertificate`, …) and `applyPeerVocabulary` | Pairing is a trust decision made with the other node's code and certificate fingerprint on the Pairing page; the vocabulary call is the paired node's, with its credential ([peer-library.md](peer-library.md)) |
 
 ## A write is a proposal the worker executes
 

@@ -65,9 +65,6 @@ func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domai
 	if err != nil {
 		return err
 	}
-	if err := refreshCollectionValues(ctx, tx); err != nil {
-		return err
-	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -87,9 +84,6 @@ func (db *DB) commitMatchChangeIf(ctx context.Context, tx *sql.Tx, matched bool,
 func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Event) error {
 	events, err := withMatchNotice(ctx, tx, events)
 	if err != nil {
-		return err
-	}
-	if err := refreshCollectionValues(ctx, tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

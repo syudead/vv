@@ -267,6 +267,7 @@ const errorCodes = {
   proposal_not_pending: "This proposal was already handled",
   assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
   assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
+  service_unavailable: "This isn't available right now. Try again later.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -440,6 +441,32 @@ const errorReasons = {
     "Save the Ollama URL in Settings, Connections, then choose a generation model.",
   generation_model_unset:
     "Pick a generation model in Settings, Connections. The decision model used for tagging can't chat.",
+  peer_unknown: "The other VVMDM no longer knows this one.",
+  peer_not_allowed: "The other VVMDM can't use this operation.",
+  invalid_address:
+    "Enter an address starting with http:// or https://, with a host and no path.",
+  invalid_code:
+    "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
+  already_paired:
+    "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
+  unsupported_version:
+    "The two VVMDMs run different versions. Update both to the same version.",
+  peer_unreachable: "Couldn't reach the other VVMDM",
+  certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
+  fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
+  own_certificate_unverified:
+    "This VVMDM's own certificate can't be verified. Confirm its fingerprint to pair.",
+  mixed_nodes:
+    "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
+  tag_name_taken: ({ tagName }) =>
+    tagName === undefined
+      ? "A tag on the other VVMDM already has that name."
+      : `"${tagName}" is already a tag on the other VVMDM.`,
+  person_name_taken: "A person on this or the other VVMDM already has that name.",
+  organization_name_taken:
+    "An organization on this or the other VVMDM already has that name.",
+  provisional_person_remote:
+    "Give the person a name before adding them to videos on the other VVMDM",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -618,7 +645,11 @@ export const en = {
         anyTime: "Any time",
         today: "Today",
       },
-      thumbnail: { duration: "49:10", watched: "Share of the video watched" },
+      thumbnail: {
+        duration: "49:10",
+        watched: "Share of the video watched",
+        remote: "On studio-pc",
+      },
       favoriteOff: "Add to favorites",
       favoriteOn: "Remove from favorites",
       tentativeTag: "kyoto",
@@ -997,6 +1028,12 @@ export const en = {
       watched: "Watched",
       noImage: "No image",
       preparing: "Preparing",
+      // `name` is the peer's host name, which guests do not receive.
+      remote: {
+        on: (name: string | undefined) =>
+          name === undefined ? "On the other VVMDM" : `On ${name}`,
+        name: (name: string | undefined) => name ?? "Other VVMDM",
+      },
     },
   },
   library: {
@@ -1240,6 +1277,18 @@ export const en = {
           ? `${smartFolders(folderCount)} selected`
           : `${videos(videoCount)} and ${smartFolders(folderCount)} selected`,
       smartFoldersUnsupported: "Not available for smart folders",
+      mixedNodes: "Select videos from one VVMDM to do this",
+      remotePartial: {
+        changedTitle: (name: string) => `Not changed on ${name}`,
+        changed: (count: number, name: string, reason: string) =>
+          `${videos(count)} on ${name} ${count === 1 ? "wasn't" : "weren't"} changed: ${reason}. The others were saved.`,
+        changedList: "Videos not changed",
+        deletedTitle: (name: string) => `Not deleted on ${name}`,
+        deleted: (count: number, name: string, reason: string) =>
+          `${formatNumber(count)} on ${name} ${count === 1 ? "wasn't" : "weren't"} deleted: ${reason}. The others were.`,
+        deletedList: "Groups and smart folders not deleted",
+        close: "Close",
+      },
       clear: "Clear selection (Esc)",
       addTag: "Add tag",
       removeTag: "Remove tag",
@@ -3603,6 +3652,7 @@ export const en = {
       label: "Add to group",
       search: "Search or create a group",
       list: "Groups",
+      peerHeading: (name: string) => `Groups on ${name}`,
       create: (name: string) => `Create "${name}"`,
       none: "No groups yet. Type a name to create one.",
       nameTooLong: "Use a name of up to 100 characters",
@@ -3860,6 +3910,20 @@ export const en = {
       logoutFailed: "Couldn't sign out",
       menu: "Menu",
       closeMenu: "Close menu",
+    },
+    peer: {
+      networkTitle: (name: string) => `Can't reach ${name}`,
+      networkBody: "Its videos, groups and smart folders are hidden until it answers.",
+      versionTitle: (name: string) => `Can't connect to ${name}`,
+      versionBody: (theirs: string, ours: string) =>
+        `It runs VVMDM ${theirs} and this one ${ours}.`,
+      certificateTitle: (name: string) => `${name}'s certificate changed`,
+      certificateBody: "Confirm it in Pairing to reconnect.",
+      revokedTitle: (name: string) => `Unpaired by ${name}`,
+      revokedBody: "It no longer shares its library with this VVMDM.",
+      guestTitle: "The other library isn't available right now",
+      guestBody: "Some videos aren't shown until it is.",
+      openPairing: "Open Pairing",
     },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
@@ -4358,6 +4422,7 @@ export const en = {
       plugins: "Plugins",
       conversion: "Video conversion",
       network: "Network",
+      pairing: "Pairing",
       account: "Account",
       api: "API",
       "danger-zone": "Danger zone",
@@ -5034,6 +5099,104 @@ export const en = {
       addresses: "Open one of these addresses on the other device:",
       noAddresses:
         "This PC has no local network address right now. Connect it to a network and reload this page.",
+    },
+    pairing: {
+      loading: "Loading the pairing",
+      invalidAddress:
+        "Enter an address starting with http:// or https://, with a host and no path.",
+      certificateBody: (address: string) =>
+        `${address} uses a certificate this VVMDM can't verify. Compare this fingerprint with the certificate on the other side before you trust it.`,
+      ownCertificateBody: (address: string) =>
+        `${address} is this VVMDM's own address, and its certificate can't be verified. Compare this fingerprint with the certificate this VVMDM serves, such as in your browser's certificate viewer for this page, before you trust it. The other VVMDM will trust only this certificate when it calls this one back.`,
+      loadFailed: (reason: string) => `Couldn't load the pairing: ${reason}`,
+      unpaired: {
+        heading: "Pair with another VVMDM",
+        description:
+          "Pair this VVMDM with one other on your local network to browse, play and organize both libraries from either one. Show a pairing code on one of them and enter it on the other.",
+      },
+      code: {
+        label: "Pairing code",
+        description: "Show a code here when you are pairing from the other VVMDM.",
+        show: "Show pairing code",
+        hint: "Enter this code on the other VVMDM, together with an address it can reach this one at, such as",
+        expiresIn: (time: string) => `Expires in ${time}`,
+        expired: "Expired",
+        renew: "New code",
+        copy: "Copy",
+        copied: "Copied",
+        copyFailed: "Couldn't copy. Select the code and copy it yourself.",
+        failed: (reason: string) => `Couldn't make a pairing code: ${reason}`,
+      },
+      form: {
+        title: "Enter the other VVMDM's code",
+        address: "Address of the other VVMDM",
+        addressPlaceholder: "http://192.168.1.20:8080",
+        addressDescription: "http:// or https://, as you open it in a browser.",
+        code: "Its pairing code",
+        codeDescription: "The 8 characters its Pairing page shows.",
+        ownAddress: "Address of this VVMDM",
+        ownAddressDescription:
+          "How the other VVMDM reaches this one. Change it when this page's address only works on this PC, such as localhost.",
+        submit: "Pair",
+        submitting: "Pairing…",
+        invalidCode:
+          "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
+        alreadyPaired:
+          "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
+        versions: (theirs: string, ours: string) =>
+          `The other VVMDM runs VVMDM ${theirs} and this one ${ours}. Update both to the same version.`,
+        unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
+        failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
+        untrustedTitle: "Certificate not trusted",
+        ownUntrustedTitle: "This VVMDM's certificate can't be verified",
+        trust: "Trust and pair",
+      },
+      paired: {
+        heading: "Paired VVMDM",
+        description:
+          "Both libraries show as one on either VVMDM while they are connected.",
+        name: "Name",
+        version: "Version",
+        address: "Address",
+        addressDescription:
+          "Changing it keeps the pairing; the connection is retried at once.",
+        saving: "Saving…",
+        saved: "Saved.",
+        saveFailed: (reason: string) => `Couldn't change the address: ${reason}`,
+        certificateTitle: "Confirm the new certificate",
+        certificateChanged: "The certificate changed again. Compare the new fingerprint.",
+        certificateFailed: (reason: string) =>
+          `Couldn't trust the certificate: ${reason}`,
+        trust: "Trust and reconnect",
+        unpair: "Unpair",
+        remove: "Remove pairing",
+        removeFailed: (reason: string) => `Couldn't remove the pairing: ${reason}`,
+      },
+      state: {
+        connected: "Connected",
+        network: "Can't reach it",
+        networkDetail:
+          "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.",
+        version: "Versions differ",
+        versionDetail: (theirs: string, ours: string) =>
+          `It runs VVMDM ${theirs} and this one ${ours}. Update both to the same version.`,
+        certificate: "Certificate changed",
+        certificateDetail:
+          "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
+        untrusted: "Can't verify its certificate",
+        untrustedDetail: "Confirm its certificate below to connect.",
+        revoked: "Unpaired by the other side",
+        revokedDetail:
+          "It no longer shares its library with this VVMDM. Remove the pairing to pair again from either side.",
+      },
+      unpairDialog: {
+        title: (name: string) => `Unpair from ${name}?`,
+        description:
+          "Each VVMDM keeps its own videos, tags, groups and smart folders; neither shows the other's any more.",
+        action: "Unpair",
+        done: (name: string) => `Unpaired from ${name}`,
+        failed: (reason: string) => `Couldn't unpair: ${reason}`,
+      },
     },
     apiTokens: {
       heading: "API tokens",

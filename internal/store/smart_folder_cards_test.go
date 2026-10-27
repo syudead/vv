@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -61,25 +62,20 @@ func TestSmartFolderCardsReadValuesOverMatchingVideos(t *testing.T) {
 	}
 }
 
-func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
+// Guests do not see smart folders, so they get no cards; their library and folder list leave folders out too.
+func TestSmartFolderCardsLeaveOutEveryFolderForGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
 	if _, err := db.Visibility().SetVideosPublic(context.Background(), []int64{solo}, true); err != nil {
 		t.Fatal(err)
 	}
 	cat := attachNamedTag(t, db, "猫", solo, x)
-	private := attachNamedTag(t, db, "非公開", x)
 	shown := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
-	hidden := newSmartFolder(t, db, "非公開", domain.SmartRule{Tags: []int64{private}}, domain.SortTitleAsc, 0)
 
-	cards := smartFolderCards(t, db, domain.AudienceGuest, hidden, shown)
-	if len(cards) != 1 || cards[0].ID != shown {
-		t.Fatalf("ゲストのカード = %+v, want [猫]", cards)
+	if cards := smartFolderCards(t, db, domain.AudienceGuest, shown); len(cards) != 0 {
+		t.Fatalf("ゲストのカード = %+v, want none", cards)
 	}
-	if cards[0].VideoCount != 1 || cards[0].OpenVideoID != solo || len(cards[0].Tags) != 0 {
-		t.Errorf("ゲストの 猫 のカード = %+v", cards[0])
-	}
-	if got := smartFolderCards(t, db, domain.AudienceOwner, hidden, shown); len(got) != 2 || got[1].VideoCount != 2 {
+	if got := smartFolderCards(t, db, domain.AudienceOwner, shown); len(got) != 1 || got[0].VideoCount != 2 {
 		t.Errorf("所有者のカード = %+v", got)
 	}
 }
@@ -113,8 +109,8 @@ func TestListSmartFoldersByNameWithParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(guest, want[:2]) {
-		t.Errorf("ゲストの一覧 = %+v, want %+v", guest, want[:2])
+	if len(guest) != 0 {
+		t.Errorf("ゲストの一覧 = %+v, want none", guest)
 	}
 }
 
@@ -202,5 +198,21 @@ func TestSmartFolderCardsCarryTheirOwnRuleConditions(t *testing.T) {
 	}
 	if cards[1].Conditions.HasCondition() {
 		t.Errorf("child conditions = %+v, want none", cards[1].Conditions)
+	}
+}
+
+// Many search folders on one screen must not exceed SQLite's limits on one statement.
+func TestSmartFolderCardsOfManySearchFolders(t *testing.T) {
+	db, _ := itemsFixture(t)
+	var ids []int64
+	for i := range 40 {
+		ids = append(ids, newSmartFolder(t, db, fmt.Sprintf("f%d", i), domain.SmartRule{Q: fmt.Sprintf("ep%d", i)}, domain.SortTitleAsc, 0))
+	}
+	cards, err := db.SmartFolders().SmartFolderCards(context.Background(), domain.AudienceOwner, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != len(ids) || cards[2].ID != ids[2] || cards[2].VideoCount != 1 {
+		t.Fatalf("cards = %d, third = %+v; want %d cards and ep2 in f2", len(cards), cards[2], len(ids))
 	}
 }

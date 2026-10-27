@@ -21,6 +21,9 @@ func matchConditions(spec listSpec) ([]string, []any) {
 		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
 		args = append(args, spec.withinVideos)
 	}
+	if spec.matchNothing {
+		conditions = append(conditions, `0`)
+	}
 	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
@@ -94,22 +97,33 @@ func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	// Unidentified content has no user data.
-	link := func(table, alias, column, extra string) string {
+	link := func(table, alias, match, extra string) string {
 		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
-			`.content_key = ` + userKey + ` and ` + alias + `.` + column + ` = ?` + extra + `))`
+			`.content_key = ` + userKey + ` and ` + match + extra + `))`
 	}
-	if spec.personID != 0 {
+	person := func(match string, value any) {
 		role := ""
-		args = append(args, spec.personID)
+		args = append(args, value)
 		if spec.personRole != "" {
 			role = ` and vp.role = ?`
 			args = append(args, string(spec.personRole))
 		}
-		conditions = append(conditions, link("video_work_people", "vp", "person_id", role))
+		conditions = append(conditions, link("video_work_people", "vp", match, role))
+	}
+	if spec.personID != 0 {
+		person(`vp.person_id = ?`, spec.personID)
+	}
+	if spec.personName != "" {
+		person(creditNameCondition("vp.person_id", "people_names", "person_id"), spec.personName)
 	}
 	if spec.organizationID != 0 {
-		conditions = append(conditions, link("video_work_organizations", "vo", "organization_id", ""))
+		conditions = append(conditions, link("video_work_organizations", "vo", `vo.organization_id = ?`, ""))
 		args = append(args, spec.organizationID)
+	}
+	if spec.organizationName != "" {
+		conditions = append(conditions, link("video_work_organizations", "vo",
+			creditNameCondition("vo.organization_id", "organization_names", "organization_id"), ""))
+		args = append(args, spec.organizationName)
 	}
 	return conditions, args
 }
@@ -122,9 +136,11 @@ func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 		conditions = append(conditions, videoHasTagCondition("videos", userKey))
 		args = append(args, tagID, tagID)
 	}
-	if spec.tagKindID != 0 {
-		conditions = append(conditions, videoHasTagOfKindCondition("videos", userKey))
-		args = append(args, spec.tagKindID, spec.tagKindID)
+	for _, kindID := range []int64{spec.tagKindID, spec.tagKindNameID} {
+		if kindID != 0 {
+			conditions = append(conditions, videoHasTagOfKindCondition("videos", userKey))
+			args = append(args, kindID, kindID)
+		}
 	}
 	return conditions, args
 }
@@ -163,10 +179,6 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
 			videoAlias + `.content_key <> ''`
 	}
-	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
-	if spec.storedCollections {
-		folderItems, folderArgs = storedSmartFolderItemsSQL(spec), nil
-	}
 	roots := topGroupsSelect
 	videoFavorite := ""
 	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
@@ -174,11 +186,12 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
-	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)`
+	whole := `select distinct hits.group_id from hits where hits.n > 0 and hits.n = hits.total`
 	// Stored group values count every member, so a kind that drops some members must count the matched ones.
 	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() && spec.scope.choosesAllKinds() {
 		whole = storedWholeGroupsSQL(spec, roots)
 	}
+	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not, so reference hits, matched and gm as few times as possible.
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
 	cte += `,
 	matched as (
@@ -186,15 +199,13 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		from chosen join videos on videos.id = chosen.video_id` + where + `),
 	` + groupSQL.members + `,
 	hits as (
-		select gm.group_id, count(*) as n from matched
-		join gm on gm.video_id = matched.video_id
-		group by gm.group_id),
+		select gm.group_id, gm.video_id, count(matched.video_id) over (partition by gm.group_id) as n,
+			` + groupSQL.total + ` as total
+		from gm left join matched on matched.video_id = gm.video_id),
 	whole as materialized (
 		` + whole + `),
 	carded as materialized (
-		select video_id from gm where group_id in (select group_id from whole)
-		except
-		select video_id from gm where group_id not in (select group_id from whole)),
+		` + groupSQL.carded + `),
 ` + groupSQL.values + `,
 	items as (
 		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
@@ -207,8 +218,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
 		where matched.video_id not in (select video_id from carded)` + videoFavorite + `
 		union all
-` + groupSQL.items + folderItems + `)`
-	return cte, append(args, folderArgs...)
+` + groupSQL.items + `)`
+	return cte, args
 }
 
 // Reuse listOrders cursor semantics with item-specific value expressions.
@@ -243,14 +254,18 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
+	filters, err := resolveListFilters(ctx, tx, q)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	spec := libraryListSpec(audience, q, tagIDs)
+	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
 	spec.storedCollections = true
-	spec.includeSmartFolders = q.ListsSmartFolders()
-	page, err := listLibraryPageTx(ctx, tx, spec)
+	list := listLibraryPageTx
+	// Guests do not see smart folders.
+	if audience.IsOwner() && q.ListsSmartFolders() {
+		list = listLibraryWithFolders
+	}
+	page, err := list(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
@@ -261,12 +276,12 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err := tx.Commit(); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
-	page.MissingTagIDs = missingTagIDs
+	page.MissingTagIDs = filters.missingTagIDs
 	page.Roots = roots
 	return page, nil
 }
 
-// Item IDs are keyset keys; negative IDs encode smart folders, while videoID holds a video's actual ID.
+// Item IDs are keyset keys; videoID holds a video's actual ID.
 type itemRow struct {
 	groupID sql.NullInt64
 	id      int64
@@ -294,14 +309,15 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 
 	cte, args := libraryItemsCTE(spec)
 
-	// Materialize items once for page and count; count before applying the cursor and bind arguments in SQL order.
+	// Count before applying the cursor and bind arguments in SQL order. A window count keeps items referenced once:
+	// SQLite 3.54 rejects a statement whose CTE references expand past a fixed size, materialized or not.
 	cteArgs := append([]any{}, args...)
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
 	query := cte + `, filtered as materialized (select items.*, ` + order.value +
-		` as sort_value from items)
-	select group_id, id, video_id, path, sort_value, (select count(*) from filtered) from filtered`
+		` as sort_value, count(*) over () as total from items)
+	select group_id, id, video_id, path, sort_value, total from filtered`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
@@ -343,6 +359,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
+	ids := make([]int64, len(page.Items))
+	for i := range ids {
+		ids[i] = keys[i].id
+	}
+	if page.ItemCursors, err = order.itemCursors(spec, values, ids); err != nil {
+		return domain.LibraryPage{}, err
+	}
 	return page, nil
 }
 
@@ -356,20 +379,19 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 			return nil, "", err
 		}
 	}
-	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.smartFolders, spec.storedCollections)
+	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.storedCollections)
 	if err != nil {
 		return nil, "", err
 	}
 	return items, next, nil
 }
 
-// Video items use their chosen location; group values use all visible descendants and smart folders use prepared summaries.
-func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder, compact bool) ([]domain.LibraryItem, error) {
+// Video items use their chosen location; group values use all visible descendants.
+func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, compact bool) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
 		switch {
-		case key.id < 0:
 		case key.groupID.Valid:
 			groupIDs = append(groupIDs, key.groupID.Int64)
 		default:
@@ -383,12 +405,6 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	if compact {
-		folders, err = readLibraryFolderSummaries(ctx, tx, audience, keys)
-		if err != nil {
-			return nil, err
-		}
-	}
 	groups, err := loadLibraryGroups(ctx, tx, audience, groupIDs, compact)
 	if err != nil {
 		return nil, err
@@ -396,14 +412,6 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 
 	items := make([]domain.LibraryItem, 0, len(keys))
 	for _, key := range keys {
-		if key.id < 0 {
-			summary, ok := librarySmartFolderSummary(folders, -key.id)
-			if !ok {
-				return nil, fmt.Errorf("cannot read the smart folder (id=%d)", -key.id)
-			}
-			items = append(items, domain.LibraryItem{SmartFolder: summary})
-			continue
-		}
 		if key.groupID.Valid {
 			group, ok := groups[key.groupID.Int64]
 			if !ok {
@@ -467,7 +475,7 @@ func (s extraScanner) Scan(dest ...any) error {
 	return s.rows.Scan(append(dest, s.extra...)...)
 }
 
-type groupListSQL struct{ members, count, values, items string }
+type groupListSQL struct{ members, total, carded, values, items string }
 
 func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
 	audience := spec.scope.audience
@@ -477,13 +485,15 @@ func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
 	return groupListSQL{
 		members: groupDescendantsCTE(roots, audience) + `,
 		gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc)`,
-		count: `select count(*) from gm c where c.group_id = hits.group_id`,
+		total: `count(*) over (partition by gm.group_id)`,
+		carded: `select video_id from hits group by video_id
+		having count(*) = sum(hits.n > 0 and hits.n = hits.total)`,
 		values: `mv as (
-		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
+		select hits.group_id, hits.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at
-		from gm join whole on whole.group_id = gm.group_id
-		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progress + `)`,
+		from hits join videos v on v.id = hits.video_id` + representativeLocationJoin("hits", audience) + progress + `
+		where hits.n > 0 and hits.n = hits.total)`,
 		items: `select g.id, g.id * 2 + 1, null, null,
 			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
 			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `

@@ -9,6 +9,8 @@ import VideoPage from "../player/VideoPage";
 import AssistantPanel from "../assistant/AssistantPanel";
 import { AssistantProvider } from "../assistant/AssistantProvider";
 import AppShell from "../shell/AppShell";
+import PeerNotice, { usePeerNoticeShown } from "../shell/PeerNotice";
+import { PeerProvider } from "../shell/PeerProvider";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -97,9 +99,17 @@ const DesignSystemPage = import.meta.env.DEV
   ? lazy(() => import("../designSystem/DesignSystemPage"))
   : null;
 
-/** Every shell page has the assistant's panel slot; the panel draws itself for owners only. */
-function Shell({ children }: { children: ReactNode }) {
-  return <AppShell panel={<AssistantPanel />}>{children}</AppShell>;
+/**
+ * A shell page with the peer notice above it while the peer cannot be reached, and the assistant's
+ * panel slot; the panel draws itself for owners only.
+ */
+function ShellPage({ children }: { children: ReactNode }) {
+  const notice = usePeerNoticeShown();
+  return (
+    <AppShell notice={notice ? <PeerNotice /> : undefined} panel={<AssistantPanel />}>
+      {children}
+    </AppShell>
+  );
 }
 
 function AppRoutes() {
@@ -118,9 +128,9 @@ function AppRoutes() {
           <Route
             path={LIBRARY_PATH}
             element={
-              <Shell>
+              <ShellPage>
                 <LibraryPage />
-              </Shell>
+              </ShellPage>
             }
           />
           {["/folders", "/folders/*"].map((path) => (
@@ -128,9 +138,9 @@ function AppRoutes() {
               key={path}
               path={path}
               element={
-                <Shell>
+                <ShellPage>
                   <FolderPage />
-                </Shell>
+                </ShellPage>
               }
             />
           ))}
@@ -139,122 +149,122 @@ function AppRoutes() {
               key={path}
               path={path}
               element={
-                <Shell>
+                <ShellPage>
                   <SettingsPage />
-                </Shell>
+                </ShellPage>
               }
             />
           ))}
           <Route
             path="/tags"
             element={
-              <Shell>
+              <ShellPage>
                 <TagsPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/people"
             element={
-              <Shell>
+              <ShellPage>
                 <PeoplePage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/people/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <PersonPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/people/:id/faces"
             element={
-              <Shell>
+              <ShellPage>
                 <PersonFacesPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/organizations"
             element={
-              <Shell>
+              <ShellPage>
                 <OrganizationsPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/history"
             element={
-              <Shell>
+              <ShellPage>
                 <HistoryPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/playlists"
             element={
-              <Shell>
+              <ShellPage>
                 <PlaylistsPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/playlists/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <PlaylistPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/groups/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <GroupPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/smart-folders/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <SmartFolderPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/duplicates"
             element={
-              <Shell>
+              <ShellPage>
                 <DuplicatesPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/activity"
             element={
-              <Shell>
+              <ShellPage>
                 <ActivityPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/activity/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <ActivityDetailPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route
             path="/assistant/reviews/:id"
             element={
-              <Shell>
+              <ShellPage>
                 <ReviewPage />
-              </Shell>
+              </ShellPage>
             }
           />
           <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
@@ -282,9 +292,11 @@ function LibraryApp() {
     <TooltipProvider>
       <ScanProvider>
         <ScanNoticeProvider>
-          <AssistantProvider>
-            <AppRoutes />
-          </AssistantProvider>
+          <PeerProvider>
+            <AssistantProvider>
+              <AppRoutes />
+            </AssistantProvider>
+          </PeerProvider>
         </ScanNoticeProvider>
       </ScanProvider>
     </TooltipProvider>

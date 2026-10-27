@@ -221,12 +221,14 @@ func run(opts runOptions) error {
 	})
 	// Recover interrupted classifications before starting automatic tagging; see
 	// docs/design-docs/auto-tagging.md.
+	autoTagLoop := jobs.NewLoop()
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
 		Undo:       db.Activity(),
 		Classifier: classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
+		Wake:       autoTagLoop.Wake,
 		Logger:     logger,
 	})
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
@@ -241,11 +243,13 @@ func run(opts runOptions) error {
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
 	// Compare fingerprints before asking the classifier about mismatched intervals; see
 	// docs/design-docs/duplicate-judging.md.
+	versionJudgeLoop := jobs.NewLoop()
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
 		Store:      db.Versions(),
 		Settings:   settingsStore,
 		Classifier: classifier,
 		Frames:     artifactStore,
+		Wake:       versionJudgeLoop.Wake,
 		Logger:     logger,
 	})
 	if err := versionJudge.Recover(backgroundCtx); err != nil {
@@ -306,9 +310,9 @@ func run(opts runOptions) error {
 		}
 	})
 	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
-	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
-	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
-	workersDone.Go(func() { faces.analysis.Run(backgroundCtx) })
+	workersDone.Go(func() { autoTagLoop.Run(backgroundCtx, autoTagger.Step) })
+	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
+	workersDone.Go(func() { faces.run(backgroundCtx) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
@@ -373,6 +377,9 @@ func run(opts runOptions) error {
 	}
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
+	pairing, peerLink := newPairing(db.Peers(), build, bus, logger)
+	stopPairing := startPairingConnection(pairing)
+	defer stopPairing()
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
 	// per execution so changes apply immediately.
 	pluginProxy := app.NewWorkInfoPluginProxy(settingsStore)
@@ -442,17 +449,20 @@ func run(opts runOptions) error {
 		Logger:            logger,
 		Auth:              httpAuthenticator,
 		APITokens:         apiTokens,
+		Pairing:           pairing,
+		PeerLink:          peerLink,
 		TrustedProxies:    cfg.TrustedProxies,
 	})
 	assistant.UseRunner(assistantRunner)
 
 	// SSE has no natural end; unsubscribe screen events and close connections before waiting for HTTP
-	// shutdown.
+	// shutdown. The stream to the peer closes with them.
 	beforeShutdown := func() {
 		stopChecks()
 		stopRequestMedia()
 		subscriptions.StopScreen()
 		events.Close()
+		stopPairing()
 	}
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
 }

@@ -53,6 +53,15 @@ example block and a section here.
 - **One primary action per area**: the header's `actions`, a dialog footer, an
   empty state, a centered form and a steps page's footer each hold at most one
   `default` button.
+- **Shell notice**: `AppShell` takes one `notice`, a `warning` `Alert` at the
+  top of the content column, under the top bar and above the page, with the
+  page's side padding (`p-3`, `p-4` from `sm`) and nothing below it but the
+  page, so the page's own header keeps its place under the notice's bottom
+  edge. It is not sticky and has no close button; it is drawn while a
+  condition holds and leaves when it ends, as the paired VVMDM's notice does
+  while that node cannot be reached. Without `notice` nothing is drawn. Do not
+  use it for a finished action (use a toast) or for one screen's message (use
+  an `Alert` in that screen).
 
 ## List page
 

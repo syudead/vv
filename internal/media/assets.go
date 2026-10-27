@@ -52,8 +52,7 @@ func (a *Assets) ThumbnailAt(ctx context.Context, path string, positionMs int64,
 	return ThumbnailAt(ctx, path, positionMs, output, poster)
 }
 
-// SeekSprite reports whether full decoding was required.
-func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
+func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) error {
 	return GenerateSeekSprite(ctx, path, outputDir, layout)
 }
 

@@ -106,8 +106,8 @@ func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string, st
 func (probeOnlyGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {
 	return domain.Fingerprint{}, nil
 }
-func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
-	return false, nil
+func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) error {
+	return nil
 }
 func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error { return nil }
 func (probeOnlyGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {
@@ -170,12 +170,10 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		Store: db.Ingest(), Generator: probeOnlyGenerator{}, Artifacts: artifacts.New(t.TempDir()),
 		Publisher: bus, Logger: logger,
 	})
-	// Prevent retry wakeups from masking missing event delivery.
-	const noRetry = time.Hour
 	thumbnailStarted := make(chan domain.Job, 1)
 	thumbnailQueue := emptyClaims{Queue: db.Ingest(), empty: make(chan struct{}, 1)}
 	thumbnail := jobs.New(jobs.Options{
-		Kind: domain.JobThumbnail, Queue: thumbnailQueue, RetryDelay: noRetry, Logger: logger,
+		Kind: domain.JobThumbnail, Queue: thumbnailQueue, Logger: logger,
 		Handler: func(_ context.Context, job domain.Job) error {
 			thumbnailStarted <- job
 			return nil
@@ -183,7 +181,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		Finished: ingest.JobFinished,
 	})
 	probe := jobs.New(jobs.Options{
-		Kind: domain.JobProbe, Queue: db.Ingest(), RetryDelay: noRetry, Logger: logger,
+		Kind: domain.JobProbe, Queue: db.Ingest(), Logger: logger,
 		Handler: ingest.Handler(domain.JobProbe), Finished: ingest.JobFinished,
 	})
 	subs := subscribeEvents(bus, eventSubscribers{Workers: map[domain.JobKind]waker{

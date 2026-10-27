@@ -20,6 +20,7 @@ import {
   generateHomeFixtures,
   generateOnboardingFixtures,
   generateMediaFixtures,
+  generatePeerFixtures,
   generateSearchFixtures,
   generateTagsFixtures,
   generateVideoTabsFixtures,
@@ -46,6 +47,7 @@ function fixtureDirs(root) {
     workInfoMediaDir: path.join(root, "work-info-media"),
     videoTabsMediaDir: path.join(root, "video-tabs-media"),
     assistantMediaDir: path.join(root, "assistant-media"),
+    peerMediaDir: path.join(root, "peer-media"),
   };
 }
 
@@ -61,6 +63,7 @@ function generateFixtures(dirs) {
   generateWorkInfoFixtures(dirs.workInfoMediaDir);
   generateVideoTabsFixtures(dirs.videoTabsMediaDir);
   generateAssistantFixtures(dirs.assistantMediaDir);
+  generatePeerFixtures(dirs.peerMediaDir);
 }
 
 // Cache FFmpeg fixtures by generator sources, directory layout and FFmpeg version; CI preserves this cache between runs.
@@ -156,6 +159,7 @@ function run() {
           MDM_E2E_WORK_INFO_MEDIA_DIR: fixtures.workInfoMediaDir,
           MDM_E2E_VIDEO_TABS_MEDIA_DIR: fixtures.videoTabsMediaDir,
           MDM_E2E_ASSISTANT_MEDIA_DIR: fixtures.assistantMediaDir,
+          MDM_E2E_PEER_MEDIA_DIR: fixtures.peerMediaDir,
         },
         stdio: "inherit",
       },

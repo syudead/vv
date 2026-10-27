@@ -18,6 +18,7 @@ import { LibraryTableHeader } from "../library/LibraryPage";
 import LibraryToolbar from "../library/LibraryToolbar";
 import {
   emptySelection,
+  retainVideos,
   isGroupSelected,
   keepMembers,
   keepSmartFolders,
@@ -45,6 +46,8 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
+import { isRemoteId } from "../lib/remoteId";
+import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { Button } from "../ui/shadcn/button";
 import { TableBody } from "../ui/shadcn/table";
 import { Grid } from "../videoList/Grid";
@@ -119,6 +122,11 @@ function useFolderSelection(items: readonly LibraryItem[]) {
   return {
     selection,
     clear,
+    retain: useCallback(
+      (kept: ReadonlySet<number>) =>
+        setSelection((current) => retainVideos(current, kept)),
+      [],
+    ),
     changeVideo: useCallback(
       (videoId: number, selected: boolean) =>
         setSelection((current) => setVideo(current, videoId, selected)),
@@ -195,10 +203,11 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   );
   const { clear } = selection;
   useEffect(() => clear(), [controls.key, clear]);
+  // Refresh in place: a loading state would unmount the bar and its partial-result dialog.
   const afterBulk = useCallback(() => {
     clear();
-    reload();
-  }, [clear, reload]);
+    refresh();
+  }, [clear, refresh]);
 
   return (
     <SmartFolderCardsProvider>
@@ -234,9 +243,10 @@ function SmartFolderScreen({ id }: { id: number | null }) {
               favoriteGroupIds={favorites.groupIds}
               smartFolderIds={favorites.smartFolderIds}
               onClear={selection.clear}
-              onTagRemoved={reload}
+              onTagRemoved={refresh}
               onBundled={afterBulk}
               onCollectionsDeleted={afterBulk}
+              onRetain={selection.retain}
             />
           )
         }
@@ -424,10 +434,11 @@ function SmartFolderHeader({
             {folder.name}
           </span>
         }
-        count={t.groups.detail.count(
-          folder.videoCount,
-          formatDuration(folder.durationMs),
-        )}
+        count={
+          <RemoteCountLine remote={isRemoteId(folder.id)}>
+            {t.groups.detail.count(folder.videoCount, formatDuration(folder.durationMs))}
+          </RemoteCountLine>
+        }
         description={
           owner &&
           settings !== undefined && (

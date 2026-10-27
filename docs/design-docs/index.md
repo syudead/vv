@@ -51,6 +51,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Test and CI quality monitoring](test-quality-monitoring.md)
 - [Complexity and duplication](complexity-and-duplication.md)
 - [Authentication and visibility](authentication.md)
+- [Paired library: two VVMDMs as one library](peer-library.md)
 - [Catalog organization and persistent identity](catalog-organization.md)
 - [People: profiles and faces](people.md)
 - [Face recognition](face-recognition.md)

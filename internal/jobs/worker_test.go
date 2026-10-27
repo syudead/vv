@@ -133,7 +133,7 @@ func TestWorkerSleepsUntilWoken(t *testing.T) {
 		job := domain.Job{ID: 7, Kind: domain.JobProbe}
 		queue.next = []claimResult{{job: job}}
 		// Even the retry interval must not poll an empty queue. Time is virtual.
-		time.Sleep(defaultRetryDelay)
+		time.Sleep(time.Duration(domain.WorkerRetry))
 		synctest.Wait()
 		if len(queue.claims) != 1 || len(queue.completed) != 0 {
 			t.Fatalf("before Wake: claims=%v completed=%v", queue.claims, queue.completed)
@@ -187,7 +187,7 @@ func TestWorkerRetriesClaimFailure(t *testing.T) {
 		_, stop := startWorker(Options{Kind: domain.JobProbe, Queue: queue, Handler: func(context.Context, domain.Job) error { return nil }})
 		defer stop()
 		synctest.Wait()
-		time.Sleep(defaultRetryDelay - time.Nanosecond)
+		time.Sleep(time.Duration(domain.WorkerRetry) - time.Nanosecond)
 		synctest.Wait()
 		if claims := queue.claimCount(); claims != 1 {
 			t.Fatalf("claims before retry = %d", claims)

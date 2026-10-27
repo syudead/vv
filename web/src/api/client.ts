@@ -151,6 +151,11 @@ export interface RequestFailedDetails {
   settingKeys?: readonly string[];
   /** The person's links a plugin handles; only for person_link_ambiguous. */
   links?: readonly string[];
+  /** Base64 SHA-256 of a certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
+  fingerprint?: string;
+  /** Both nodes' versions; only for unsupported_version. */
+  localVersion?: string;
+  peerVersion?: string;
 }
 
 /** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
@@ -165,6 +170,9 @@ export class RequestFailed extends Error {
   readonly host: string | undefined;
   readonly settingKeys: readonly string[] | undefined;
   readonly links: readonly string[] | undefined;
+  readonly fingerprint: string | undefined;
+  readonly localVersion: string | undefined;
+  readonly peerVersion: string | undefined;
 
   constructor(
     status: number,
@@ -184,6 +192,9 @@ export class RequestFailed extends Error {
     this.host = details.host;
     this.settingKeys = details.settingKeys;
     this.links = details.links;
+    this.fingerprint = details.fingerprint;
+    this.localVersion = details.localVersion;
+    this.peerVersion = details.peerVersion;
   }
 }
 
@@ -258,6 +269,10 @@ function stringArray(value: unknown): readonly string[] | undefined {
     : undefined;
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export async function toRequestFailed(response: Response): Promise<RequestFailed> {
   let body: Partial<ApiError> | null = null;
   try {
@@ -282,6 +297,9 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       host: typeof body.host === "string" ? body.host : undefined,
       settingKeys: stringArray(body.settingKeys),
       links: stringArray(body.links),
+      fingerprint: optionalString(body.fingerprint),
+      localVersion: optionalString(body.localVersion),
+      peerVersion: optionalString(body.peerVersion),
     },
   );
 }

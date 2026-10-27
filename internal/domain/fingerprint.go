@@ -22,6 +22,9 @@ const (
 
 	fingerprintLowFrequency = 8
 	fingerprintFrameBytes   = 9
+
+	// MaxFingerprintBytes bounds an encoded fingerprint, which hashes the frames of one seek sprite.
+	MaxFingerprintBytes = SeekSpriteMaxFrames * fingerprintFrameBytes
 )
 
 type FrameHash struct {

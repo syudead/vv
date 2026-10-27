@@ -14,9 +14,6 @@ import (
 	"github.com/syudead/vv/internal/faceproto"
 )
 
-// faceRetryDelay spaces attempts after the settings or the queue could not be read.
-const faceRetryDelay = 5 * time.Second
-
 // faceDetectTimeout bounds one frame's round trip to the helper, its start included; a helper silent for this
 // long is treated as hung and the video fails.
 const faceDetectTimeout = 2 * time.Minute
@@ -92,6 +89,7 @@ type FaceRecognizerOptions struct {
 	MediaFolders MediaFolderLister
 	MediaFiles   MediaFileResolver
 	Cast         FaceCastMerger
+	Wake         Waker
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -110,7 +108,7 @@ type FaceRecognizer struct {
 	mediaFiles   MediaFileResolver
 	cast         FaceCastMerger
 	logger       *slog.Logger
-	wake         chan struct{}
+	Waker
 
 	mu sync.Mutex
 	// run is the worker's current attempt, from before it reads the settings until the video ends.
@@ -142,16 +140,8 @@ func NewFaceRecognizer(opts FaceRecognizerOptions) *FaceRecognizer {
 	return &FaceRecognizer{
 		queue: opts.Queue, images: opts.Images, settings: opts.Settings, runtime: opts.Runtime, newHelper: opts.Helper,
 		frames: opts.Frames, mediaFolders: opts.MediaFolders, mediaFiles: opts.MediaFiles, cast: opts.Cast,
-		logger: logger.With(slog.String("component", "face-recognition")),
-		wake:   make(chan struct{}, 1), pending: map[int64]bool{},
-	}
-}
-
-// Wake is nonblocking.
-func (f *FaceRecognizer) Wake() {
-	select {
-	case f.wake <- struct{}{}:
-	default:
+		logger: logger.With(slog.String("component", "face-recognition")), Waker: opts.Wake,
+		pending: map[int64]bool{},
 	}
 }
 
@@ -230,7 +220,7 @@ func (f *FaceRecognizer) mergeByCast(ctx context.Context) error {
 	return nil
 }
 
-// Recover must run before Run.
+// Recover must run before the first Step.
 func (f *FaceRecognizer) Recover(ctx context.Context) error {
 	requeued, err := f.queue.RequeueRunning(ctx)
 	if err != nil {
@@ -302,39 +292,22 @@ func (f *FaceRecognizer) RetryActivity(ctx context.Context, entry domain.Activit
 	return nil
 }
 
-// faceStep is what the worker does after one attempt.
-type faceStep int
-
-const (
-	faceNext faceStep = iota
-	// faceIdle waits for a wake: the feature is off, the runtime is not ready, or nothing is queued.
-	faceIdle
-	faceRetry
-)
-
-// Run analyses one video at a time until ctx ends; a video interrupted by the end of ctx stays running for Recover.
-func (f *FaceRecognizer) Run(ctx context.Context) {
-	defer f.closeHelper()
-	for ctx.Err() == nil {
-		var wait <-chan time.Time
-		switch f.step(ctx) {
-		case faceNext:
-			continue
-		case faceIdle:
-			// The helper holds the models in memory; it starts again with the next video.
-			f.closeHelper()
-		case faceRetry:
-			wait = time.After(faceRetryDelay)
-		}
-		select {
-		case <-ctx.Done():
-		case <-f.wake:
-		case <-wait:
-		}
+// Step analyses one video, or embeds one face, at a time; a video interrupted by the end of ctx stays running for
+// Recover. Idling stops the helper, which holds the models in memory; it starts again with the next video.
+func (f *FaceRecognizer) Step(ctx context.Context) domain.WorkerWait {
+	wait := f.step(ctx)
+	if wait == domain.WorkerIdle {
+		f.closeHelper()
 	}
+	return wait
 }
 
-func (f *FaceRecognizer) step(ctx context.Context) faceStep {
+// Close stops the helper once the loop running Step has returned.
+func (f *FaceRecognizer) Close() {
+	f.closeHelper()
+}
+
+func (f *FaceRecognizer) step(ctx context.Context) domain.WorkerWait {
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
 	f.begin(cancel)
@@ -351,20 +324,20 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 	}
 	if !settings.Enabled {
 		f.takeCastChecks()
-		return faceIdle
+		return domain.WorkerIdle
 	}
 	if err := f.mergeByCast(run); err != nil {
 		return f.retryUnless(run, "cannot apply the cast rule", err)
 	}
 	if f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
-		return faceIdle
+		return domain.WorkerIdle
 	}
 	if step, ok := f.embedNext(run, settings); ok {
 		return step
 	}
 	job, err := f.queue.Claim(run)
 	if errors.Is(err, domain.ErrNoJob) {
-		return faceIdle
+		return domain.WorkerIdle
 	}
 	if err != nil {
 		return f.retryUnless(run, "cannot claim a face analysis job", err)
@@ -373,17 +346,17 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 	if job.Recognizer != settings.Recognizer || run.Err() != nil {
 		// The settings changed between the read and the claim.
 		f.requeue(ctx, job)
-		return faceNext
+		return domain.WorkerNext
 	}
 	return f.process(ctx, run, job)
 }
 
-func (f *FaceRecognizer) retryUnless(run context.Context, message string, err error) faceStep {
+// retryUnless steps again at once when a settings change cancelled run, which the error then only reports.
+func (f *FaceRecognizer) retryUnless(run context.Context, message string, err error) domain.WorkerWait {
 	if run.Err() != nil {
-		return faceNext
+		return domain.WorkerNext
 	}
-	f.logger.Error(message, slog.Any("error", err))
-	return faceRetry
+	return retryStep(run, f.logger, message, err)
 }
 
 func (f *FaceRecognizer) begin(cancel context.CancelFunc) {
@@ -406,7 +379,7 @@ func (f *FaceRecognizer) end() {
 
 // process analyses and stores one claimed video. run ends when the settings change; ctx when the server stops.
 // A database error returns the video to the queue and backs off, so a transient error does not strand it running.
-func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) faceStep {
+func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) domain.WorkerWait {
 	result, err := f.analyse(run, job)
 	if err == nil {
 		if err = f.queue.Store(run, result); err != nil && !errors.Is(err, domain.ErrFaceGenerationChanged) {
@@ -426,16 +399,16 @@ func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) f
 	case errors.Is(err, errFaceDatabase):
 		f.logger.Error("face analysis hit a database error", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 		f.requeue(ctx, job)
-		return faceRetry
+		return domain.WorkerRetry
 	default:
 		f.logger.Warn("face analysis failed", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 		if err := f.queue.Fail(ctx, job.ContentKey, failureReason(err)); err != nil {
 			f.logger.Error("cannot record the face analysis failure", slog.Any("error", err))
 			f.requeue(ctx, job)
-			return faceRetry
+			return domain.WorkerRetry
 		}
 	}
-	return faceNext
+	return domain.WorkerNext
 }
 
 func (f *FaceRecognizer) requeue(ctx context.Context, job domain.FaceJob) {

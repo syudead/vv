@@ -16,6 +16,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceproto"
+	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
@@ -153,10 +154,11 @@ func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
 		db: db, queue: idleFaceQueue{FaceStore: db.Faces(), idle: make(chan struct{}, 1)},
 		images: &storedFaceImages{FaceStore: db.Faces(), stored: make(chan int64, 16)},
 	}
+	loop := jobs.NewLoop()
 	f.recognizer = app.NewFaceRecognizer(app.FaceRecognizerOptions{
 		Queue: f.queue, Images: f.images, Settings: db.Settings(), Runtime: readyFaceRuntime{},
 		Helper: func(domain.FaceRecognizer) app.FaceHelper { return scriptedFaceHelper{} },
-		Frames: scriptedFaceFrames, MediaFolders: db.Settings(), MediaFiles: mediafs.New(),
+		Frames: scriptedFaceFrames, MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Wake: loop.Wake,
 	})
 	if n, err := f.recognizer.QueueLibrary(ctx, domain.FaceQueueMissing); err != nil || n != 3 {
 		t.Fatalf("QueueLibrary = %d, %v; want 3", n, err)
@@ -165,7 +167,8 @@ func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		f.recognizer.Run(runCtx)
+		loop.Run(runCtx, f.recognizer.Step)
+		f.recognizer.Close()
 	}()
 	t.Cleanup(func() {
 		stop()

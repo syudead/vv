@@ -7,13 +7,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strconv"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SmartFolderCards deduplicates in input order and reads all visible cards in one query; missing predicate references match nothing.
+// smartCardBatch bounds the folders one card statement reads.
+const smartCardBatch = 50
+
+// SmartFolderCards deduplicates in input order and reads visible cards in few queries; missing predicate references
+// match nothing.
 func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -28,10 +33,12 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	cards := make([]domain.SmartFolderCard, len(targets))
 	for i, target := range targets {
 		cards[i] = domain.SmartFolderCard{SmartFolderSummary: target.summary, WatchState: domain.WatchStateUnwatched,
-			Previews: []domain.Video{}, Tags: []domain.VideoTag{}, Conditions: target.conditions}
+			Previews: []domain.Video{}, Tags: []domain.VideoTag{}, Conditions: target.conditions, PathRules: target.rules}
 	}
-	if err := readSmartFolderCardValues(ctx, tx, audience, targets, cards); err != nil {
-		return nil, err
+	for start, end := range smartCardBatches(targets) {
+		if err := readSmartFolderCardValues(ctx, tx, audience, targets[start:end], cards[start:end]); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("cannot finish reading the smart folder cards: %w", err)
@@ -39,7 +46,30 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	return cards, nil
 }
 
-// ListSmartFolders includes all owner folders but only nonempty playback folders for guests, at every depth in natural-name order.
+// smartCardBatches splits targets into statements holding at most one search folder: SQLite rejects a statement with
+// two search CTEs as nested too deep.
+func smartCardBatches(targets []smartFolderTarget) iter.Seq2[int, int] {
+	return func(yield func(int, int) bool) {
+		start, searches := 0, 0
+		for i, target := range targets {
+			search := !target.missing && smartMatchFor(target.spec, `s`).search != ""
+			if i > start && (i-start == smartCardBatch || search && searches > 0) {
+				if !yield(start, i) {
+					return
+				}
+				start, searches = i, 0
+			}
+			if search {
+				searches++
+			}
+		}
+		if start < len(targets) {
+			yield(start, len(targets))
+		}
+	}
+}
+
+// ListSmartFolders lists every folder for the owner and none for guests, at every depth in natural-name order.
 func (s *SmartFolderStore) ListSmartFolders(ctx context.Context, audience domain.Audience) ([]domain.SmartFolderSummary, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -113,10 +143,10 @@ func readSmartFolderCardValues(ctx context.Context, tx *sql.Tx, audience domain.
 		return fmt.Errorf("cannot read the smart folder cards: %w", err)
 	}
 	for index, earlier := range query.same {
-		// Folders sharing a match keep their own identity and rule conditions.
-		summary, conditions := cards[index].SmartFolderSummary, cards[index].Conditions
+		// Folders sharing a match keep their own identity, rule conditions and path rules.
+		summary, conditions, rules := cards[index].SmartFolderSummary, cards[index].Conditions, cards[index].PathRules
 		cards[index] = cards[earlier]
-		cards[index].SmartFolderSummary, cards[index].Conditions = summary, conditions
+		cards[index].SmartFolderSummary, cards[index].Conditions, cards[index].PathRules = summary, conditions, rules
 		previews[index] = previews[earlier]
 	}
 	return loadSmartCardPreviews(ctx, tx, audience, previews, cards)
@@ -225,6 +255,68 @@ func loadSmartCardPreviews(ctx context.Context, tx *sql.Tx, audience domain.Audi
 		for _, id := range list {
 			cards[index].Previews = append(cards[index].Previews, byID[id])
 		}
+	}
+	return nil
+}
+
+// SmartRuleCounts counts the visible videos matching each query as a smart folder's rule would, with the
+// owner's search fields; a tag, kind, person or organization name this node lacks matches nothing.
+func (s *SmartFolderStore) SmartRuleCounts(ctx context.Context, audience domain.Audience, rules []domain.VideoQuery) ([]domain.SmartRuleCount, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start counting the smart rules: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	targets := make([]smartFolderTarget, len(rules))
+	for i, rule := range rules {
+		filters, err := resolveListFilters(ctx, tx, rule)
+		if err != nil {
+			return nil, err
+		}
+		spec := filters.narrow(libraryListSpec(audience, rule, filters.tagIDs))
+		spec.ownerSearch = true
+		targets[i] = smartFolderTarget{sort: domain.SortAddedDesc, spec: spec, missing: filters.nothing}
+	}
+	query := smartFolderBranches(targets, func(query *smartFolderQuery, index int, _ smartFolderTarget, match smartMatch) {
+		m := `m` + strconv.Itoa(index)
+		query.ctes = append(query.ctes, m+` as materialized (select videos.* from smart_base videos where `+match.condition+`)`)
+		query.cteArgs = append(query.cteArgs, match.args...)
+		query.parts = append(query.parts,
+			`select `+strconv.Itoa(index)+`, count(*), coalesce(sum(size_bytes), 0), sum(duration_ms) from `+m)
+	})
+	counts := make([]domain.SmartRuleCount, len(rules))
+	if err := readSmartRuleCounts(ctx, tx, audience, query, counts); err != nil {
+		return nil, err
+	}
+	for index, earlier := range query.same {
+		counts[index] = counts[earlier]
+	}
+	return counts, tx.Commit()
+}
+
+func readSmartRuleCounts(ctx context.Context, tx *sql.Tx, audience domain.Audience, query smartFolderQuery, counts []domain.SmartRuleCount) error {
+	rows, err := query.run(ctx, tx, audience)
+	if err != nil {
+		return fmt.Errorf("cannot count the smart rules: %w", err)
+	}
+	if rows == nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var index int
+		var count domain.SmartRuleCount
+		var duration sql.NullInt64
+		if err := rows.Scan(&index, &count.VideoCount, &count.SizeBytes, &duration); err != nil {
+			return fmt.Errorf("cannot count the smart rules: %w", err)
+		}
+		if duration.Valid {
+			count.DurationMs = &duration.Int64
+		}
+		counts[index] = count
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("cannot count the smart rules: %w", err)
 	}
 	return nil
 }

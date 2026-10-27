@@ -168,6 +168,13 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
 	}
+	// Publish after returning the connection, so a subscriber that reads the store never waits for it.
+	var published *changes
+	defer func() {
+		if published != nil {
+			s.db.publish(published)
+		}
+	}()
 	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, `begin immediate`); err != nil {
@@ -213,9 +220,11 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	}
 	job.Attempts = domain.ClaimAttempts(job.Attempts, startsRound)
 	if errors.Is(err, sql.ErrNoRows) {
-		if dropErr := s.dropUnplacedJob(ctx, conn, job.ID); dropErr != nil {
+		dropped, dropErr := s.dropUnplacedJob(ctx, conn, job.ID)
+		if dropErr != nil {
 			return domain.Job{}, dropErr
 		}
+		published = dropped
 		committed = true
 		return domain.Job{}, domain.ErrNoJob
 	}
@@ -258,41 +267,41 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
 	committed = true
-	s.db.publish(&c)
+	published = &c
 
 	return job, nil
 }
 
-// Drop an unplaced job and settle its activity inside the claim's BEGIN IMMEDIATE transaction.
-func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id int64) error {
+// Drop an unplaced job and settle its activity inside the claim's BEGIN IMMEDIATE transaction; the caller publishes the
+// returned changes.
+func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id int64) (*changes, error) {
 	var activityID sql.NullInt64
 	if err := conn.QueryRowContext(ctx, `select activity_id from jobs where id = ?`, id).Scan(&activityID); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := conn.ExecContext(ctx, `delete from jobs where id = ?`, id); err != nil {
-		return err
+		return nil, err
 	}
 	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
-		return err
+		return nil, err
 	}
 	// The last pending job closes as gone rather than completed when registered locations disappear.
 	var c changes
 	if activityID.Valid {
 		closed, err := closeGoneImportActivity(ctx, conn, &c, activityID.Int64, time.Now())
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if !closed {
 			if err := settleImportActivity(ctx, conn, &c, activityID.Int64, time.Now()); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
-		return err
+		return nil, err
 	}
-	s.db.publish(&c)
-	return nil
+	return &c, nil
 }
 
 // Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows.
@@ -426,7 +435,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	if err != nil {
 		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
 	}
-	state := domain.JobStateAfterFailure(attempts, job.LastLocation, current)
+	state := domain.JobStateAfterFailure(domain.AttemptsAfterFailure(attempts, cause), job.LastLocation, current)
 
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `

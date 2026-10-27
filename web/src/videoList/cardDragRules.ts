@@ -1,3 +1,5 @@
+import { isRemoteId } from "../lib/remoteId";
+
 export type Side = "before" | "after";
 
 /** x means a multi-column grid; y means one column or a list. */
@@ -50,10 +52,30 @@ export function signFor<L>({
   zone,
 }: SignInput<L>): DropSign<L> | null {
   if (lifted.has(target)) return { kind: "refused", key: target };
+  if (crossesNodes(target, lifted)) return { kind: "refused", key: target };
   if (reorder && zone !== "middle") return { kind: "between", key: target, side: zone };
   if (onto === null) return null;
   if (onto === "refused") return { kind: "refused", key: target };
   return { kind: "onto", key: target, label: onto.label };
+}
+
+const itemKeyPrefixes = ["video\0", "group\0", "smartFolder\0"];
+
+/** The node of a video, group or smart-folder card key; undefined for other keys, such as crumbs. */
+function keyRemote(key: string): boolean | undefined {
+  if (!itemKeyPrefixes.some((prefix) => key.startsWith(prefix))) return undefined;
+  return isRemoteId(Number(key.slice(key.indexOf("\0") + 1)));
+}
+
+/** A drop never moves items to the other node: groups and folders hold one node's items. */
+function crossesNodes(target: string, lifted: ReadonlySet<string>): boolean {
+  const remote = keyRemote(target);
+  if (remote === undefined) return false;
+  for (const key of lifted) {
+    const other = keyRemote(key);
+    if (other !== undefined && other !== remote) return true;
+  }
+  return false;
 }
 
 /**

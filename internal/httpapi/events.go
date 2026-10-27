@@ -42,6 +42,7 @@ type eventSubscriber struct {
 	smartFolders map[int64]struct{}
 	onboarding   bool
 	assistant    bool
+	peer         bool
 	ready        chan struct{}
 }
 
@@ -64,6 +65,7 @@ type pendingEvents struct {
 	smartFolders []int64
 	onboarding   bool
 	assistant    bool
+	peer         bool
 }
 
 func (s *eventSubscriber) take() pendingEvents {
@@ -72,8 +74,9 @@ func (s *eventSubscriber) take() pendingEvents {
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
 		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
-		assistant: s.assistant,
+		assistant: s.assistant, peer: s.peer,
 	}
+	s.peer = false
 	s.scan = false
 	s.candidates = false
 	s.activity = false
@@ -100,7 +103,10 @@ func (e *Events) subscribe() (*eventSubscriber, func()) {
 		ready: make(chan struct{}, 1),
 	}
 	// Send current state on connection to recover changes missed while disconnected.
-	sub.mark(func(s *eventSubscriber) { s.scan = true })
+	sub.mark(func(s *eventSubscriber) {
+		s.scan = true
+		s.peer = true
+	})
 	e.mu.Lock()
 	e.subs[sub] = struct{}{}
 	e.mu.Unlock()
@@ -181,6 +187,20 @@ func (e *Events) OnboardingChanged() {
 func (e *Events) AssistantChanged() {
 	e.publish(func(s *eventSubscriber) { s.assistant = true })
 }
+
+// PeerStateChanged has no payload; delivery reads the pairing state for each audience.
+func (e *Events) PeerStateChanged() {
+	e.publish(func(s *eventSubscriber) { s.peer = true })
+}
+
+// peerChanged forwards the peer's notifications, whose ids already carry the remote offset.
+func (e *Events) peerChanged(event domain.PeerChanged) {
+	for _, id := range event.VideoIDs {
+		e.VideoChanged(id)
+	}
+	e.GroupsChanged(event.GroupIDs)
+	e.SmartFoldersChanged(event.SmartFolderIDs)
+}
 func (e *Events) Handle(event domain.Event) {
 	switch event := event.(type) {
 	case domain.ScanChanged:
@@ -219,6 +239,10 @@ func (e *Events) Handle(event domain.Event) {
 		e.OnboardingChanged()
 	case domain.AssistantChanged:
 		e.AssistantChanged()
+	case domain.PeerStateChanged:
+		e.PeerStateChanged()
+	case domain.PeerChanged:
+		e.peerChanged(event)
 	}
 }
 
@@ -336,6 +360,11 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			return err
 		}
 	}
+	if pending.peer && s.pairing != nil {
+		if err := s.writePeerEvent(ctx, w, guest); err != nil {
+			return err
+		}
+	}
 	if pending.onboarding && !guest {
 		// candidates と同じく中身の無い知らせで、data は空のオブジェクトにする。
 		if err := writeEvent(w, "onboarding", struct{}{}); err != nil {
@@ -343,6 +372,18 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		}
 	}
 	return nil
+}
+
+func (s *server) writePeerEvent(ctx context.Context, w http.ResponseWriter, guest bool) error {
+	state, err := s.pairing.State(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot read the pairing state: %w", err)
+	}
+	audience := domain.AudienceOwner
+	if guest {
+		audience = domain.AudienceGuest
+	}
+	return writeEvent(w, "peer", peerStateBody(state, audience))
 }
 
 func writeEvent(w http.ResponseWriter, name string, payload any) error {

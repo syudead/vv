@@ -46,6 +46,12 @@ const guestSecretTag = "秘密の名前"
 
 func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 	t.Helper()
+	return newGuestFixtureWith(t, configure, nil)
+}
+
+// newGuestFixtureWith lets extend add options, such as the pairing, before the router is built.
+func newGuestFixtureWith(t *testing.T, configure bool, extend func(db *store.DB, opts *Options)) *guestFixture {
+	t.Helper()
 	ctx := context.Background()
 	f := &guestFixture{mediaDir: t.TempDir(), otherDir: t.TempDir(), ids: map[string]int64{}, transcode: &fakeTranscoder{body: "fragmented-mp4"}}
 	artifactDir := t.TempDir()
@@ -55,7 +61,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		library := db.Library()
 		f.thumbnails = &fakeThumbnailPicker{db: db}
 		f.edits = newEditFakes(db)
-		return Options{
+		opts := Options{
 			Videos:         library,
 			Folders:        library,
 			Playback:       db.Playback(),
@@ -79,6 +85,10 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Transcoder:      f.transcode,
 			Subtitles:       media.NewSubtitleConverter(),
 		}
+		if extend != nil {
+			extend(db, &opts)
+		}
+		return opts
 	})
 	db := f.env.db
 	if configure {
@@ -568,13 +578,14 @@ func TestGuestOperationsRequireConfiguredAccount(t *testing.T) {
 			continue
 		}
 		target := strings.ReplaceAll(operationTarget(op), "/1", "/"+strconv.FormatInt(configured.ids["a"], 10))
-		rec := configured.env.get(target)
+		req := authRequest{method: op.method, target: target}
+		rec := configured.env.serve(req)
 		if rec.Code == http.StatusUnauthorized {
 			t.Errorf("設定済みの %s: 401: %s", target, rec.Body)
 		}
 		assertAudience(t, "設定済みの "+target, rec, "guest")
 
-		assertUnauthenticated(t, "未設定の "+target, unconfigured.env.get(target))
-		assertAudience(t, "未設定の "+target, unconfigured.env.get(target), "guest")
+		assertUnauthenticated(t, "未設定の "+target, unconfigured.env.serve(req))
+		assertAudience(t, "未設定の "+target, unconfigured.env.serve(req), "guest")
 	}
 }

@@ -31,6 +31,8 @@ type DB struct {
 	read     *sql.DB
 	path     string
 	folderMu sync.Mutex
+	// refreshMu lets one reader refresh collection values while concurrent readers wait without a connection.
+	refreshMu sync.Mutex
 
 	revisionMu            sync.Mutex
 	lastThumbnailRevision int64
@@ -168,9 +170,6 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 		}
 		c.smartFolders = ids
 	}
-	if err := refreshCollectionValues(ctx, tx); err != nil {
-		return err
-	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -270,6 +269,9 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("cannot open the read-only database (%s): %w", path, err)
 	}
 
+	// SQLite runs one writer at a time; queue writers in Go instead of in SQLite's busy wait, which also bounds the
+	// connections concurrent requests can open.
+	handle.SetMaxOpenConns(1)
 	db := &DB{sql: handle, read: read, path: path}
 	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()

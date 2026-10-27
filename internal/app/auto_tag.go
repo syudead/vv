@@ -11,8 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-const autoTagRetryDelay = 5 * time.Second
-
 // Model loading can take minutes, so allow a longer classifier check.
 const classifierCheckTimeout = 5 * time.Minute
 
@@ -72,6 +70,7 @@ type AutoTaggerOptions struct {
 	Undo       AutoTagUndoStore
 	Classifier Classifier
 	Images     VideoImageSource
+	Wake       Waker
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -85,12 +84,12 @@ type AutoTagger struct {
 	classifier Classifier
 	images     VideoImageSource
 	logger     *slog.Logger
-	wake       chan struct{}
+	Waker
 
 	saveMu sync.Mutex
 }
 
-// NewAutoTagger does not process work until Run.
+// NewAutoTagger does not process work until its Step runs.
 func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 	logger := opts.Logger
 	if logger == nil {
@@ -103,16 +102,7 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 		classifier: opts.Classifier,
 		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
-		// Coalesce wakeups in a one-element buffer.
-		wake: make(chan struct{}, 1),
-	}
-}
-
-// Wake is nonblocking.
-func (a *AutoTagger) Wake() {
-	select {
-	case a.wake <- struct{}{}:
-	default:
+		Waker:      opts.Wake,
 	}
 }
 
@@ -251,7 +241,7 @@ func (a *AutoTagger) VideoImagesFinished(context.Context, int64) {
 	a.Wake()
 }
 
-// Recover must run before Run.
+// Recover must run before the first Step.
 func (a *AutoTagger) Recover(ctx context.Context) error {
 	requeued, err := a.queue.RequeueRunning(ctx)
 	if err != nil {
@@ -263,57 +253,25 @@ func (a *AutoTagger) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Run checks immediately at startup, then processes serially; disabled tagging retains queued work
-// without contacting the classifier until SaveSettings wakes it.
-func (a *AutoTagger) Run(ctx context.Context) {
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		on, err := a.enabled(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			a.logger.Error("cannot read the auto-tagging settings", slog.Any("error", err))
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(autoTagRetryDelay):
-			}
-			continue
-		}
-		if !on {
-			select {
-			case <-ctx.Done():
-				return
-			case <-a.wake:
-			}
-			continue
-		}
-		job, err := a.queue.Claim(ctx)
-		switch {
-		case errors.Is(err, domain.ErrNoJob):
-			select {
-			case <-ctx.Done():
-				return
-			case <-a.wake:
-			}
-			continue
-		case err != nil:
-			if ctx.Err() != nil {
-				return
-			}
-			a.logger.Error("cannot claim an auto-tagging job", slog.Any("error", err))
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(autoTagRetryDelay):
-			}
-			continue
-		}
-		a.process(ctx, job)
+// Step classifies one queued video; disabled tagging retains queued work without contacting the classifier until
+// SaveSettings wakes it.
+func (a *AutoTagger) Step(ctx context.Context) domain.WorkerWait {
+	on, err := a.enabled(ctx)
+	if err != nil {
+		return retryStep(ctx, a.logger, "cannot read the auto-tagging settings", err)
 	}
+	if !on {
+		return domain.WorkerIdle
+	}
+	job, err := a.queue.Claim(ctx)
+	if errors.Is(err, domain.ErrNoJob) {
+		return domain.WorkerIdle
+	}
+	if err != nil {
+		return retryStep(ctx, a.logger, "cannot claim an auto-tagging job", err)
+	}
+	a.process(ctx, job)
+	return domain.WorkerNext
 }
 
 // Interrupted work is left for startup Recover rather than recorded as failed.

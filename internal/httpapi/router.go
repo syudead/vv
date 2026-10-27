@@ -37,6 +37,11 @@ type Library interface {
 	// domain.TranscodeProbeUsable.
 	TranscodeProbe(ctx context.Context, videoID int64) (*domain.StoredTranscodeProbe, error)
 	KeyframeSpacing(ctx context.Context, videoID int64) (domain.KeyframeProbe, error)
+	// NameFilters replaces q's tag, kind, person and organization IDs by names for the paired node; found is
+	// false when one names nothing.
+	NameFilters(ctx context.Context, q domain.VideoQuery) (named domain.VideoQuery, found bool, err error)
+	// VocabularyJoin holds this node's tags, kinds, people and organizations by name for the peer's answers.
+	VocabularyJoin(ctx context.Context) (domain.VocabularyJoin, error)
 }
 
 // Playback survives deleted video rows through content keys and writes history atomically when
@@ -97,6 +102,12 @@ type Tags interface {
 
 	// BatchTags rejects nonexistent kind IDs without writes.
 	BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error)
+	// LookupTagName finds the tag holding the normalized name as its canonical name or a synonym.
+	LookupTagName(ctx context.Context, normalized string) (domain.TagRef, bool, error)
+	TagNames(ctx context.Context, ids []int64) (map[int64]string, error)
+	// ApplyTagByName applies a change of the paired node by canonical name, refusing a taken new name with
+	// *domain.TagNameConflict.
+	ApplyTagByName(ctx context.Context, change domain.VocabularyChange) (domain.VocabularyOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
@@ -183,6 +194,15 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
+	// MergedRelatedVideos is RelatedVideos over both nodes; a nil or failing peer is skipped.
+	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// RemoteRelatedVideos is the related list over both nodes of a peer video with clues; exclude holds peer ids.
+	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent; openID, when not
+	// 0, is the open video in this node's ids, whose directory adds the folder points.
+	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)
+	// RelatedClues reports false for a video the audience cannot see.
+	RelatedClues(ctx context.Context, audience domain.Audience, id int64) (domain.RelatedClues, bool, error)
 	// VideoGroup returns visible playback order and reads detail only inside window; false means no
 	// group context.
 	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
@@ -337,6 +357,10 @@ type Options struct {
 	APITokens APITokens
 
 	ExternalVideos ExternalVideos
+	// Nil Pairing fails the pairing routes with 500 and refuses every peer credential.
+	Pairing Pairing
+	// Nil PeerLink answers every request for a remote id as if the peer were unreachable.
+	PeerLink PeerLink
 	// SessionRecheck defaults to thirty seconds when zero.
 	SessionRecheck time.Duration
 	// Nil Now uses time.Now for cookie Max-Age.
@@ -415,6 +439,8 @@ type server struct {
 	auth            Authenticator
 	apiTokens       APITokens
 	externalVideos  ExternalVideos
+	pairing         Pairing
+	peerLink        PeerLink
 	sessions        *sessionLedger
 
 	guests *guestLedger
@@ -504,6 +530,8 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		auth:                   opts.Auth,
 		apiTokens:              opts.APITokens,
 		externalVideos:         opts.ExternalVideos,
+		pairing:                opts.Pairing,
+		peerLink:               opts.PeerLink,
 		sessions:               newSessionLedger(opts.SessionRecheck, logger),
 		guests:                 newGuestLedger(),
 		now:                    opts.Now,
@@ -524,7 +552,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 	mux.Handle(mcpPath, newMCPHandler(srv))
 	generated := gen.HandlerWithOptions(srv, generatedOptions(mux, logger))
 	runner := &ActionRunner{api: gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger))}
-	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated)))), runner
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated))))), runner
 }
 
 func generatedOptions(base *http.ServeMux, logger *slog.Logger) gen.StdHTTPServerOptions {
@@ -584,9 +612,10 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			// Origin checks protect automatic cookie credentials; Bearer routes ignore cookies and need no
-			// Origin restriction.
-			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
+			// Origin checks protect automatic cookie credentials; Bearer routes and peer requests ignore
+			// cookies and need no Origin restriction.
+			if class, _ := classifyRequest(r); class != accessBearer && !isPeerRequest(r.Context()) &&
+				!s.acceptsSameOrigin(w, r) {
 				return
 			}
 		}
@@ -641,7 +670,9 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
-		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete":
+		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
+		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
+		"/api/peer/rule-counts":
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
@@ -692,6 +723,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":          true,
 	"/api/settings/version-judging":  true,
 	"/api/onboarding":                true,
+	"/api/peer/address":              true,
 }
 
 func requiresPutJSONBody(path string) bool {

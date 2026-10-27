@@ -72,6 +72,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `profile-page-example`     | Block         | Copy to start a profile page                                                 |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
+| `remote-mark`              | vv component  | The mark of an item the paired VVMDM holds, naming it in a tooltip           |
 | `record-page`              | Page skeleton | One record to read inside the shell: an entry's full detail                  |
 | `record-page-example`      | Block         | Copy to start a record page                                                  |
 | `scrub-preview`            | vv component  | The card scrub inside a thumbnail                                            |

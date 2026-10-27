@@ -195,30 +195,39 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, err := creditByID(ctx, tx, t, id)
+	current, updated, changes, err := updateCreditInTx(ctx, tx, t, id, patch)
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	next, err := patchedCredit(current, patch)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	changes := creditChanges(t, current, next)
 	if !changes.any() {
 		return current, tx.Commit()
-	}
-	if err := applyCreditChanges(ctx, tx, t, id, next, patch, changes); err != nil {
-		return domain.Credit{}, err
-	}
-	updated, err := creditByID(ctx, tx, t, id)
-	if err != nil {
-		return domain.Credit{}, err
 	}
 	// Smart-folder notices and collection values depend on names and links, not on profiles.
 	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched(), personFaceEvents(current, updated)...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
+}
+
+// updateCreditInTx applies patch to entity id and reads it before and after; unchanged values are not written.
+func updateCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64, patch domain.CreditPatch) (
+	current, updated domain.Credit, changes creditChangeSet, err error,
+) {
+	if current, err = creditByID(ctx, tx, t, id); err != nil {
+		return domain.Credit{}, domain.Credit{}, creditChangeSet{}, err
+	}
+	next, err := patchedCredit(current, patch)
+	if err != nil {
+		return domain.Credit{}, domain.Credit{}, creditChangeSet{}, err
+	}
+	if changes = creditChanges(t, current, next); !changes.any() {
+		return current, current, changes, nil
+	}
+	if err := applyCreditChanges(ctx, tx, t, id, next, patch, changes); err != nil {
+		return domain.Credit{}, domain.Credit{}, creditChangeSet{}, err
+	}
+	updated, err = creditByID(ctx, tx, t, id)
+	return current, updated, changes, err
 }
 
 // When aliases are unchanged, a duplicate can only come from the new name; report it against the submitted name field.
@@ -345,6 +354,16 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := deleteCreditInTx(ctx, tx, t, id); err != nil {
+		return err
+	}
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
+	}
+	return nil
+}
+
+func deleteCreditInTx(ctx context.Context, tx *sql.Tx, t creditTables, id int64) error {
 	existing, err := existingCreditIDs(ctx, tx, t, []int64{id})
 	if err != nil {
 		return err
@@ -362,15 +381,9 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 		}
 	}
 	if _, err := tx.ExecContext(ctx, t.q(`delete from {entity} where id = ?`), id); err != nil {
-		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
+		return fmt.Errorf("cannot delete %s %d: %w", t.kind, id, err)
 	}
-	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
-		return err
-	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
-	}
-	return nil
+	return renumberCreditLinks(ctx, tx, t, affected)
 }
 
 // Merge transfers links, aliases, external IDs, children and face data and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.

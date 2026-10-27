@@ -342,6 +342,9 @@ type fakeCatalog struct {
 	groupContexts []int64
 
 	retry func(domain.Video) error
+
+	// peerRelatedOpen keeps the open video id of each peer ranking request.
+	peerRelatedOpen []int64
 }
 
 func (f *fakeCatalog) PresentVideos(_ context.Context, videos []domain.Video) []domain.VideoView {
@@ -378,6 +381,28 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 	return f.related, f.relatedErr
 }
 
+// The related list over both nodes is tested with the real catalog (peer_related_test.go).
+var errFakeCatalogMerged = errors.New("the fake catalog has no related list over both nodes")
+
+func (f *fakeCatalog) MergedRelatedVideos(context.Context, domain.Audience, domain.Video, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+	return domain.MergedRelated{}, errFakeCatalogMerged
+}
+
+func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, domain.RelatedClues, []int64, domain.MergedRelatedPage, domain.RelatedPeer) (domain.MergedRelated, error) {
+	return domain.MergedRelated{}, errFakeCatalogMerged
+}
+
+func (f *fakeCatalog) PeerRelated(_ context.Context, _ domain.Audience, _ domain.RelatedClues, openID int64, _ []int64, _ *domain.RelatedCursor, _ int) (domain.ScoredRelated, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.peerRelatedOpen = append(f.peerRelatedOpen, openID)
+	return domain.ScoredRelated{}, nil
+}
+
+func (f *fakeCatalog) RelatedClues(context.Context, domain.Audience, int64) (domain.RelatedClues, bool, error) {
+	return domain.RelatedClues{}, false, errFakeCatalogMerged
+}
+
 func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.groupWindows = append(f.groupWindows, window)
 	f.groupContexts = append(f.groupContexts, opened.GroupID)
@@ -389,6 +414,14 @@ func (f *fakeCatalog) RetryProbe(_ context.Context, video domain.Video) error {
 		return nil
 	}
 	return f.retry(video)
+}
+
+func (f *fakeLibrary) NameFilters(_ context.Context, q domain.VideoQuery) (domain.VideoQuery, bool, error) {
+	return q, true, nil
+}
+
+func (f *fakeLibrary) VocabularyJoin(context.Context) (domain.VocabularyJoin, error) {
+	return domain.VocabularyJoin{}, nil
 }
 
 func (f *fakeLibrary) KeyframeSpacing(context.Context, int64) (domain.KeyframeProbe, error) {

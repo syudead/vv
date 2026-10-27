@@ -42,7 +42,7 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 	}
 	page := domain.SmartFolderPage{
 		SmartFolder: view.card, Folder: folder, Missing: view.missing,
-		Items: []domain.LibraryItem{}, NextCursor: view.nextCursor,
+		Items: []domain.LibraryItem{}, NextCursor: view.nextCursor, ItemCursors: view.cursors, PathRules: rules,
 	}
 	if page.Trail, err = smartFolderTrail(ctx, tx, id); err != nil {
 		return domain.SmartFolderPage{}, err
@@ -52,7 +52,7 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 		if err != nil {
 			return domain.SmartFolderPage{}, err
 		}
-		view.items, page.NextCursor = filtered.Items, filtered.NextCursor
+		view.items, page.NextCursor, page.ItemCursors = filtered.Items, filtered.NextCursor, filtered.ItemCursors
 	}
 	if cursor == "" && !hasCollectionConditions(query) {
 		if page.Items, err = smartFolderChildren(ctx, tx, audience, id, rules); err != nil {
@@ -79,6 +79,7 @@ type smartFolderView struct {
 	missing    []domain.SmartRuleRef
 	items      []domain.LibraryItem
 	nextCursor string
+	cursors    []domain.ItemCursor
 }
 
 func (v smartFolderView) shown(audience domain.Audience) bool {
@@ -111,6 +112,9 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 			view.items, view.nextCursor, err = libraryPageItems(ctx, tx, spec, contents.order, contents.keys,
 				contents.values, contents.limit)
 			if err != nil {
+				return smartFolderView{}, err
+			}
+			if view.cursors, err = contents.pageCursors(spec); err != nil {
 				return smartFolderView{}, err
 			}
 		}
@@ -151,6 +155,16 @@ type smartFolderContents struct {
 	values []any
 	order  listOrder
 	limit  int
+}
+
+// pageCursors gives each item of the page its cursor and sort value.
+func (c smartFolderContents) pageCursors(spec listSpec) ([]domain.ItemCursor, error) {
+	n := min(len(c.keys), c.limit)
+	ids := make([]int64, n)
+	for i, key := range c.keys[:n] {
+		ids[i] = key.id
+	}
+	return c.order.itemCursors(spec, c.values[:n], ids)
 }
 
 // Expand group items into playback order and deduplicate videos at first occurrence, collecting page keys in the same read.

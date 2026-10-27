@@ -52,6 +52,7 @@ function sectionResponses(): Record<string, () => Response> {
     "/api/api-tokens": () => json({ items: [] }),
     "/api/settings/network": () => json({ code: "not_found", message: "not found" }, 404),
     "/api/settings/plugin-proxy": () => json({ url: "" }),
+    "/api/peer": () => json({ state: "unpaired" }),
     "/api/settings/auto-import": () => json({ enabled: false, watch: { state: "off" } }),
     "/api/settings/ollama": () =>
       json({

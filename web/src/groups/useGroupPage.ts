@@ -132,6 +132,10 @@ export function useGroupPage(
     let videoTimer: ReturnType<typeof setTimeout> | undefined;
     // Subscribe before reading to avoid missing changes after the snapshot.
     const unsubscribe = subscribeServerEvents({
+      // A remote group's page fails while the peer is away and reads again when it returns.
+      peerItems: () => {
+        if (stateRef.current.kind !== "gone") refresh();
+      },
       group: (ids) => {
         if (id !== null && ids.includes(id) && stateRef.current.kind !== "gone") {
           refresh();

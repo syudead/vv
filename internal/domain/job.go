@@ -19,6 +19,18 @@ const MaxJobAttempts = 3
 
 var ErrNoJob = errors.New("no job to process")
 
+// ErrFailureRepeats marks a failure every retry would reproduce, such as an input too slow to process; the job fails
+// once every current location has failed, without spending its remaining attempts.
+var ErrFailureRepeats = errors.New("retrying would repeat the failure")
+
+// AttemptsAfterFailure counts a repeating failure as the last allowed attempt.
+func AttemptsAfterFailure(attempts int, cause error) int {
+	if errors.Is(cause, ErrFailureRepeats) {
+		return max(attempts, MaxJobAttempts)
+	}
+	return attempts
+}
+
 type Job struct {
 	ID              int64
 	Kind            JobKind

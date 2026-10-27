@@ -518,6 +518,25 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	}
 }
 
+// A failure that every retry would repeat ends the job on its first attempt.
+func TestFailClaimedJobDoesNotRetryRepeatingFailure(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().FailClaimedJob(ctx, job, fmt.Errorf("%w: too slow", domain.ErrFailureRepeats)); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "failed" {
+		t.Fatalf("job state = %q, want failed", got)
+	}
+}
+
 func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()

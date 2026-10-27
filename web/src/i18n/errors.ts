@@ -44,6 +44,12 @@ export function errorText(error: unknown): UiText {
   return t.errors.unexpected;
 }
 
+/** A reason reported inside a successful answer, such as an operation's remote part. */
+export function errorReasonText(reason: string): UiText {
+  const entry = lookup(t.errors.reason, reason);
+  return entry === undefined ? t.errors.unexpected : render(entry, {});
+}
+
 /** Ignore freeform probeError; legacy records without a code get a generic summary. */
 export function probeErrorText(code: ProbeErrorCode | undefined): UiText {
   const entry = lookup(t.errors.probe, code);

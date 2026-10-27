@@ -63,7 +63,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`, `c
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `viewport-inset`, `chip-label`,
-`combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
+`combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `dialog-list` (a list in a dialog that scrolls past ten lines), `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
 `profile-aside`, `profile-aside-max`,
 `settings-nav`, `settings-nav-max`, `assistant-panel` (a side panel's width),
