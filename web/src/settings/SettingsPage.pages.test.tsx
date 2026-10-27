@@ -38,7 +38,7 @@ const pages: [string, string, string[]][] = [
   ["/settings/plugins", "Plugins", ["Work-info plugins", "Person plugins"]],
   ["/settings/conversion", "Video conversion", ["Encoder"]],
   ["/settings/network", "Network", ["Local network"]],
-  ["/settings/pairing", "Pairing", ["Pair with another VVMDM"]],
+  ["/settings/pairing", "Pairing", ["Read another VVMDM", "VVMDMs that read this one"]],
   ["/settings/account", "Account", ["Account"]],
   ["/settings/api", "API", ["API tokens"]],
   ["/settings/danger-zone", "Danger zone", ["Delete all people"]],

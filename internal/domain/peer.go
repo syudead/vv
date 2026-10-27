@@ -13,18 +13,26 @@ import (
 	"unicode/utf8"
 )
 
-// PeerRecord is the one peer this node is paired with. The incoming secret is never held in plain text.
-type PeerRecord struct {
+// PeerLink is the one VVMDM this node reads: the outgoing direction of a pairing.
+type PeerLink struct {
 	NodeID  string
 	Name    string
 	Address string
-	// OutgoingSecret is what this node presents to the peer.
-	OutgoingSecret string
-	// IncomingRevoked is true once the incoming secret hash was cleared; the peer credential is then refused.
-	IncomingRevoked bool
+	// Secret is what this node presents to the peer.
+	Secret string
+	// Revoked is true once the peer refused the secret as unknown; the owner removes the link to pair again.
+	Revoked bool
 	// PinnedSPKI is empty when the system roots verify the peer or the address is http://.
 	PinnedSPKI string
 	PairedAt   time.Time
+}
+
+// PeerGrant is the one VVMDM that reads this node: the incoming direction of a pairing. The secret it
+// presents is never held in plain text.
+type PeerGrant struct {
+	NodeID   string
+	Name     string
+	PairedAt time.Time
 }
 
 // PeerNode identifies one node to the other: its node id, host name and release version, which is shown for
@@ -60,35 +68,6 @@ type CertificateUntrustedError struct {
 
 func (e *CertificateUntrustedError) Error() string {
 	return "the peer certificate is not trusted (SPKI " + e.Fingerprint + ")"
-}
-
-// OwnCertificateUntrustedError is the other node refusing the certificate this node's address presents, with
-// that certificate's SPKI fingerprint.
-type OwnCertificateUntrustedError struct {
-	Fingerprint string
-}
-
-func (e *OwnCertificateUntrustedError) Error() string {
-	return "The other VVMDM does not trust the certificate of this one (SPKI " + e.Fingerprint + ")."
-}
-
-func (e *OwnCertificateUntrustedError) Unwrap() error { return ErrPeerUnreachable }
-
-// OwnCertificateUnverifiedError is this node's own https address presenting a certificate the system roots do
-// not verify and the owner has not confirmed; Fingerprint is the SPKI it presents now.
-type OwnCertificateUnverifiedError struct {
-	Fingerprint string
-}
-
-func (e *OwnCertificateUnverifiedError) Error() string {
-	return "the certificate of this VVMDM's own address is not confirmed (SPKI " + e.Fingerprint + ")"
-}
-
-// PresentedCertificate is the certificate an https address presents in a TLS handshake.
-type PresentedCertificate struct {
-	Fingerprint string
-	// Verified reports that the system roots verify it for the address's host.
-	Verified bool
 }
 
 // ValidFingerprint accepts the standard base64 of a 32-byte SHA-256, the form Fingerprint values take.
@@ -206,8 +185,8 @@ func (s *PairingCodeSlot) Issue(random io.Reader, now time.Time) (PairingCode, e
 }
 
 // Matches reports whether input is the current, unexpired code; an expired code is dropped. The code stays
-// until Clear, so a pairing whose callback fails can be repeated with it. Letter case and surrounding spaces
-// in input are ignored.
+// until Clear, so a pairing that failed after the check can be repeated with it. Letter case and surrounding
+// spaces in input are ignored.
 func (s *PairingCodeSlot) Matches(input string, now time.Time) bool {
 	if s.code == nil {
 		return false
@@ -259,13 +238,15 @@ const (
 	PeerReasonCertificate PeerUnreachableReason = "certificate"
 )
 
-// PeerState is what GET /api/peer answers; Peer is nil when unpaired.
+// PeerState is what GET /api/peer answers: the outgoing link with its connection state, and the incoming
+// grant. Link is nil while State is PeerUnpaired; Grant is nil while no VVMDM reads this one.
 type PeerState struct {
 	State       PeerConnection
 	Reason      PeerUnreachableReason
-	Peer        *PeerRecord
+	Link        *PeerLink
 	PeerVersion string
 	Fingerprint string
+	Grant       *PeerGrant
 	Node        PeerNode
 }
 
@@ -280,25 +261,17 @@ type PeerTarget struct {
 
 // PairInput is what the owner typed on the Pairing page.
 type PairInput struct {
-	Address    string
-	Code       string
-	OwnAddress string
+	Address string
+	Code    string
 	// Fingerprint is the other node's certificate the owner confirmed.
 	Fingerprint string
-	// OwnFingerprint is the certificate of OwnAddress the owner confirmed.
-	OwnFingerprint string
 }
 
-// PairingRequest is what the pairing node sends with the other node's code.
+// PairingRequest is what the reading node sends with the other node's code: the code and its own identity.
+// It names no address, because the receiving node never connects to the sender.
 type PairingRequest struct {
-	Code    string
-	Node    PeerNode
-	Address string
-	// Secret is what the receiving node will present to the sender.
-	Secret string
-	// Fingerprint is the SPKI fingerprint of the certificate Address presents, as the sender's owner confirmed
-	// it when the system roots do not verify it; the receiving node pins it. Empty otherwise.
-	Fingerprint string
+	Code string
+	Node PeerNode
 }
 
 // PairingAnswer is the receiving node's identity and the secret the sender will present to it.
@@ -316,13 +289,13 @@ func (e *InvalidPeerAddressError) Error() string { return "invalid peer address 
 
 func (e *InvalidPeerAddressError) Unwrap() error { return ErrInvalidPeerAddress }
 
-// InitialPeerState is the state after a start, before any connection: unpaired without a record,
-// revoked when the record lost its incoming secret, and unreachable otherwise.
-func InitialPeerState(record *PeerRecord) (PeerConnection, PeerUnreachableReason) {
+// InitialPeerState is the state after a start, before any connection: unpaired without a link, revoked when
+// the peer refused the link's secret, and unreachable otherwise.
+func InitialPeerState(link *PeerLink) (PeerConnection, PeerUnreachableReason) {
 	switch {
-	case record == nil:
+	case link == nil:
 		return PeerUnpaired, ""
-	case record.IncomingRevoked:
+	case link.Revoked:
 		return PeerRevoked, ""
 	default:
 		return PeerUnreachable, PeerReasonNetwork

@@ -27,7 +27,7 @@ export function PeerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let changed = false;
     const apply = (state: PeerState) =>
-      setView((current) => ({ state, name: state.peer?.name ?? current.name }));
+      setView((current) => ({ state, name: state.link?.name ?? current.name }));
     const unsubscribe = owner
       ? subscribeServerEvents({
           peer: (state) => {
@@ -69,7 +69,7 @@ export function StaticPeer({
   children: ReactNode;
 }) {
   return (
-    <PeerContext.Provider value={{ state, name: state.peer?.name }}>
+    <PeerContext.Provider value={{ state, name: state.link?.name }}>
       {children}
     </PeerContext.Provider>
   );

@@ -418,12 +418,10 @@ const errorReasons = {
   invalid_code:
     "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
   already_paired:
-    "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
+    "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing first.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
-  own_certificate_unverified:
-    "This VVMDM's own certificate can't be verified. Confirm its fingerprint to pair.",
   mixed_nodes:
     "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
@@ -3853,7 +3851,7 @@ export const en = {
       networkBody: "Its videos, groups and smart folders are hidden until it answers.",
       certificateTitle: (name: string) => `${name}'s certificate changed`,
       certificateBody: "Confirm it in Pairing to reconnect.",
-      revokedTitle: (name: string) => `Unpaired by ${name}`,
+      revokedTitle: (name: string) => `Access removed by ${name}`,
       revokedBody: "It no longer shares its library with this VVMDM.",
       guestTitle: "The other library isn't available right now",
       guestBody: "Some videos aren't shown until it is.",
@@ -4623,17 +4621,31 @@ export const en = {
         "Enter an address starting with http:// or https://, with a host and no path.",
       certificateBody: (address: string) =>
         `${address} uses a certificate this VVMDM can't verify. Compare this fingerprint with the certificate on the other side before you trust it.`,
-      ownCertificateBody: (address: string) =>
-        `${address} is this VVMDM's own address, and its certificate can't be verified. Compare this fingerprint with the certificate this VVMDM serves, such as in your browser's certificate viewer for this page, before you trust it. The other VVMDM will trust only this certificate when it calls this one back.`,
       loadFailed: (reason: string) => `Couldn't load the pairing: ${reason}`,
-      unpaired: {
-        heading: "Pair with another VVMDM",
+      read: {
+        heading: "Read another VVMDM",
         description:
-          "Pair this VVMDM with one other on your local network to browse, play and organize both libraries from either one. Show a pairing code on one of them and enter it on the other.",
+          "Enter the pairing code another VVMDM on your local network shows to browse, play and organize its library from this one. Only this VVMDM connects to it, so it needs no address of this one.",
+      },
+      readers: {
+        heading: "VVMDMs that read this one",
+        description:
+          "Show a pairing code here and enter it on the other VVMDM. It can then browse, play and organize this library; this VVMDM never connects to it.",
+        reads: (name: string) => `${name} can read and organize this VVMDM`,
+        pairedAt: (when: string) => `Paired ${when}`,
+        remove: "Remove access",
+        removeDialog: {
+          title: (name: string) => `Remove ${name}'s access?`,
+          description:
+            "It no longer sees this library. To let it read this VVMDM again, show a new code and enter it there.",
+          action: "Remove access",
+          done: (name: string) => `Removed ${name}'s access`,
+          failed: (reason: string) => `Couldn't remove the access: ${reason}`,
+        },
       },
       code: {
         label: "Pairing code",
-        description: "Show a code here when you are pairing from the other VVMDM.",
+        description: "Show a code here when another VVMDM should read this one.",
         show: "Show pairing code",
         hint: "Enter this code on the other VVMDM, together with an address it can reach this one at, such as",
         expiresIn: (time: string) => `Expires in ${time}`,
@@ -4651,25 +4663,20 @@ export const en = {
         addressDescription: "http:// or https://, as you open it in a browser.",
         code: "Its pairing code",
         codeDescription: "The 8 characters its Pairing page shows.",
-        ownAddress: "Address of this VVMDM",
-        ownAddressDescription:
-          "How the other VVMDM reaches this one. Change it when this page's address only works on this PC, such as localhost.",
         submit: "Pair",
         submitting: "Pairing…",
         invalidCode:
           "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
         alreadyPaired:
-          "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
+          "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing on its Pairing page first.",
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",
-        ownUntrustedTitle: "This VVMDM's certificate can't be verified",
         trust: "Trust and pair",
       },
-      paired: {
-        heading: "Paired VVMDM",
+      link: {
         description:
-          "Both libraries show as one on either VVMDM while they are connected.",
+          "Its videos, groups and smart folders show in this library while it is connected.",
         name: "Name",
         version: "Version",
         address: "Address",
@@ -4697,14 +4704,14 @@ export const en = {
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
         untrusted: "Can't verify its certificate",
         untrustedDetail: "Confirm its certificate below to connect.",
-        revoked: "Unpaired by the other side",
+        revoked: "Access removed by the other side",
         revokedDetail:
-          "It no longer shares its library with this VVMDM. Remove the pairing to pair again from either side.",
+          "It no longer shares its library with this VVMDM. Remove the pairing, then enter a new code from it to read it again.",
       },
       unpairDialog: {
-        title: (name: string) => `Unpair from ${name}?`,
+        title: (name: string) => `Stop reading ${name}?`,
         description:
-          "Each VVMDM keeps its own videos, tags, groups and smart folders; neither shows the other's any more.",
+          "This VVMDM keeps its own videos, tags, groups and smart folders and no longer shows those of the other.",
         action: "Unpair",
         done: (name: string) => `Unpaired from ${name}`,
         failed: (reason: string) => `Couldn't unpair: ${reason}`,

@@ -1495,16 +1495,52 @@ export interface paths {
         };
         /**
          * Return the pairing state
-         * @description Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the peer is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the peer's node id (reason network when it differs); versions are never compared, and the peer's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the peer revokes its credential here and gives revoked.
+         * @description Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
          */
         get: operations["getPeer"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
         /**
-         * Unpair from the peer
-         * @description Tells the peer through its forgetPeer, best effort, then deletes the peer record and nothing else, which also clears a revoked state. A peer that could not be told learns it from the 401 peer_unknown its next request receives. Without a peer it also returns 204.
+         * Stop reading the other VVMDM
+         * @description Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204.
          */
         delete: operations["unpairPeer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw the reading VVMDM's access
+         * @description Deletes the grant and cancels the reading node's requests in flight; its next request receives 401 peer_unknown, after which it shows this node as revoked. The link, if any, stays. Without a grant it also returns 204.
+         */
+        delete: operations["revokePeerGrant"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1521,7 +1557,7 @@ export interface paths {
         put?: never;
         /**
          * Issue this node's pairing code
-         * @description Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired.
+         * @description Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A node another VVMDM already reads returns 409 conflict with already_paired; the owner withdraws that access first.
          */
         post: operations["issuePairingCode"];
         delete?: never;
@@ -1540,8 +1576,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Pair with the node whose code the owner typed
-         * @description An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * Read the node whose code the owner typed
+         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1559,8 +1595,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the peer's address
-         * @description Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found.
+         * Change the read node's address
+         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found.
          */
         put: operations["updatePeerAddress"];
         post?: never;
@@ -1580,8 +1616,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Trust the peer's changed certificate
-         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation.
+         * Trust the read node's changed certificate
+         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found.
          */
         post: operations["confirmPeerCertificate"];
         delete?: never;
@@ -1600,8 +1636,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept a pairing from another node
-         * @description Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint.
+         * Grant the sender read access to this node
+         * @description Called by the node that will read this one, never by the screens; the code authenticates it. Stores the grant with the sender's identity and answers the secret the sender presents from then on; this node never connects to the sender. Only a pairing that succeeded clears the code. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or the node's own id, 400 invalid_request; a node another VVMDM already reads 409 already_paired.
          */
         post: operations["acceptPairing"];
         delete?: never;
@@ -1618,8 +1654,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Return this node's identity to the peer
-         * @description Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown.
+         * Return this node's identity to the reading node
+         * @description Requires `Authorization: VV-Peer <secret>` with the grant's credential. Anything else returns 401 unauthenticated with peer_unknown.
          */
         get: operations["peerHandshake"];
         put?: never;
@@ -1641,8 +1677,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete the record of a peer that unpaired
-         * @description Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204.
+         * Delete the grant of a reading node that unpaired
+         * @description Called by the reading node with its credential after it removed its link. Deletes the grant when nodeId matches; a missing or different grant also returns 204.
          */
         delete: operations["forgetPeer"];
         options?: never;
@@ -7342,28 +7378,40 @@ export interface components {
             /** @description Release version, as getHealth reports it; shown for reference, never compared */
             version: string;
         };
-        PeerInfo: {
-            /** @description The peer's host name at pairing */
+        /** @description The VVMDM this node reads */
+        PeerLink: {
+            /** @description Its host name at pairing */
             name: string;
-            /** @description The peer's base URL */
+            /** @description Its base URL */
             address: string;
-            /** @description Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted */
+            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted */
             pinned: boolean;
-            /** @description The peer version last seen, shown for reference */
+            /** @description Its version last seen, shown for reference */
             version?: string;
         };
-        /** @description Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity. */
+        /** @description The VVMDM that reads this one */
+        PeerGrant: {
+            /** @description Its host name at pairing */
+            name: string;
+            /** Format: date-time */
+            pairedAt: string;
+        };
+        /** @description Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity. */
         PeerState: {
-            /** @enum {string} */
+            /**
+             * @description The connection to the VVMDM this node reads; unpaired without link
+             * @enum {string}
+             */
             state: "unpaired" | "connected" | "unreachable" | "revoked";
             /**
              * @description Present with unreachable
              * @enum {string}
              */
             reason?: "network" | "certificate";
-            peer?: components["schemas"]["PeerInfo"];
+            link?: components["schemas"]["PeerLink"];
             /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
             fingerprint?: string;
+            grant?: components["schemas"]["PeerGrant"];
             node?: components["schemas"]["PeerNode"];
         };
         PairingCode: {
@@ -7376,12 +7424,8 @@ export interface components {
             address: string;
             /** @description The code the other node's Pairing page shows */
             code: string;
-            /** @description This node's base URL as the other node can reach it */
-            ownAddress: string;
             /** @description The SPKI fingerprint the owner confirmed after certificate_untrusted */
             fingerprint?: string;
-            /** @description The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified */
-            ownFingerprint?: string;
         };
         UpdatePeerAddressRequest: {
             address: string;
@@ -7390,25 +7434,14 @@ export interface components {
             /** @description The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI */
             fingerprint: string;
         };
-        PairingRequestNode: {
-            id: string;
-            /** @description 1 to 100 code points */
-            name: string;
-            /** @description The sender's base URL as the receiver can reach it */
-            address: string;
-            /** @description Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate. */
-            fingerprint?: string;
-            version: string;
-        };
+        /** @description The sender's identity; no address, because the receiver never connects to the sender. */
         PairingRequest: {
             code: string;
-            node: components["schemas"]["PairingRequestNode"];
-            /** @description What the receiver will present to the sender: vvp_ and 43 base64url characters */
-            secret: string;
+            node: components["schemas"]["PeerNode"];
         };
         PairingAnswer: {
             node: components["schemas"]["PeerNode"];
-            /** @description What the sender presents to the receiver */
+            /** @description What the sender presents to the receiver from then on: vvp_ and 43 base64url characters */
             secret: string;
         };
         PeerHandshake: {
@@ -7546,7 +7579,7 @@ export interface components {
             host?: string;
             /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
-            /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate. */
+            /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
             fingerprint?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
@@ -7555,7 +7588,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed" | "own_certificate_unverified";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -10349,6 +10382,25 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Unpaired */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokePeerGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
             204: {
                 headers: {
                     [name: string]: unknown;

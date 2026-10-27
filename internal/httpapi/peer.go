@@ -18,28 +18,31 @@ const (
 	maxPeerBodyBytes   = 8 << 10
 )
 
-// Pairing is app.Pairing: the pairing code, pairing in both directions, unpairing and the state.
+// Pairing is app.Pairing: the pairing code, the outgoing link this node reads with its state, and the
+// incoming grant of the node that reads this one.
 type Pairing interface {
 	State(ctx context.Context) (domain.PeerState, error)
-	// IssueCode answers domain.ErrAlreadyPaired on a paired node.
+	// IssueCode answers domain.ErrAlreadyPaired on a node another VVMDM reads.
 	IssueCode(ctx context.Context) (domain.PairingCode, error)
 	Pair(ctx context.Context, input domain.PairInput) (domain.PeerState, error)
-	// ChangeAddress answers domain.ErrNotFound without a peer.
+	// ChangeAddress answers domain.ErrNotFound without a link.
 	ChangeAddress(ctx context.Context, address string) (domain.PeerState, error)
 	// ConfirmCertificate answers domain.ErrFingerprintChanged unless fingerprint is the one waiting.
 	ConfirmCertificate(ctx context.Context, fingerprint string) (domain.PeerState, error)
+	// Unpair removes the link; RevokeGrant removes the grant. Each does nothing without one.
 	Unpair(ctx context.Context) error
+	RevokeGrant(ctx context.Context) error
 	Accept(ctx context.Context, req domain.PairingRequest) (domain.PairingAnswer, error)
-	// Handshake answers domain.ErrPeerUnknown for a secret that is neither the credential nor pending.
+	// Handshake answers domain.ErrPeerUnknown for a secret that is not the grant's credential.
 	Handshake(ctx context.Context, secret string) (domain.PeerNode, error)
 	Forget(ctx context.Context, nodeID string) error
-	// Authenticate reports whether secret is the peer credential.
+	// Authenticate reports whether secret is the grant's credential.
 	Authenticate(ctx context.Context, secret string) (bool, error)
 }
 
 type peerRequestKey struct{}
 
-// peerLedgerKey tracks every peer-credential request under one key, since a node has at most one peer;
+// peerLedgerKey tracks every peer-credential request under one key, since a node has at most one grant;
 // the colon namespace cannot collide with base64url session IDs.
 const peerLedgerKey = "peer:"
 
@@ -166,11 +169,14 @@ func peerStateBody(state domain.PeerState, audience domain.Audience) gen.PeerSta
 	}
 	node := peerNodeBody(state.Node)
 	body.Node = &node
-	if state.Peer != nil {
-		body.Peer = &gen.PeerInfo{Name: state.Peer.Name, Address: state.Peer.Address, Pinned: state.Peer.PinnedSPKI != ""}
+	if state.Link != nil {
+		body.Link = &gen.PeerLink{Name: state.Link.Name, Address: state.Link.Address, Pinned: state.Link.PinnedSPKI != ""}
 		if state.PeerVersion != "" {
-			body.Peer.Version = &state.PeerVersion
+			body.Link.Version = &state.PeerVersion
 		}
+	}
+	if state.Grant != nil {
+		body.Grant = &gen.PeerGrant{Name: state.Grant.Name, PairedAt: state.Grant.PairedAt}
 	}
 	if state.Fingerprint != "" {
 		body.Fingerprint = &state.Fingerprint
@@ -182,12 +188,30 @@ func peerNodeBody(node domain.PeerNode) gen.PeerNode {
 	return gen.PeerNode{Id: node.ID, Name: node.Name, Version: node.Version}
 }
 
+// UnpairPeer removes the link; the grant's credential stays valid, so no peer request is canceled.
 func (s *server) UnpairPeer(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePairing(w) {
 		return
 	}
 	if err := s.pairing.Unpair(r.Context()); err != nil {
 		s.internalError(w, "Could not unpair.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) RevokePeerGrant(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePairing(w) {
+		return
+	}
+	s.dropGrant(w, r, s.pairing.RevokeGrant)
+}
+
+// dropGrant deletes the grant through drop and cancels the reading node's requests in flight.
+func (s *server) dropGrant(w http.ResponseWriter, r *http.Request, drop func(context.Context) error) {
+	if err := drop(r.Context()); err != nil {
+		s.internalError(w, "Could not revoke the access.", err)
 		return
 	}
 	s.revokePeerRequests(r.Context())
@@ -217,10 +241,7 @@ func (s *server) PairPeer(w http.ResponseWriter, r *http.Request) {
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	input := domain.PairInput{
-		Address: body.Address, Code: body.Code, OwnAddress: body.OwnAddress,
-		Fingerprint: valueOrZero(body.Fingerprint), OwnFingerprint: valueOrZero(body.OwnFingerprint),
-	}
+	input := domain.PairInput{Address: body.Address, Code: body.Code, Fingerprint: valueOrZero(body.Fingerprint)}
 	state, err := s.pairing.Pair(r.Context(), input)
 	if err != nil {
 		s.writePairingError(w, err, "Could not pair.")
@@ -299,11 +320,8 @@ func (s *server) AcceptPairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer, err := s.pairing.Accept(r.Context(), domain.PairingRequest{
-		Code:        body.Code,
-		Node:        domain.PeerNode{ID: body.Node.Id, Name: body.Node.Name, Version: body.Node.Version},
-		Address:     body.Node.Address,
-		Secret:      body.Secret,
-		Fingerprint: valueOrZero(body.Node.Fingerprint),
+		Code: body.Code,
+		Node: domain.PeerNode{ID: body.Node.Id, Name: body.Node.Name, Version: body.Node.Version},
 	})
 	if err != nil {
 		s.writePairingError(w, err, "Could not accept the pairing.")
@@ -313,8 +331,8 @@ func (s *server) AcceptPairing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, gen.PairingAnswer{Node: peerNodeBody(answer.Node), Secret: answer.Secret}, s.logger)
 }
 
-// PeerHandshake is public at the boundary because a pairing in progress has no record yet; the
-// handler checks the secret itself.
+// PeerHandshake is public at the boundary so the reading node can tell an unknown credential from a
+// refused operation; the handler checks the secret itself.
 func (s *server) PeerHandshake(w http.ResponseWriter, r *http.Request) {
 	if !s.requirePairing(w) {
 		return
@@ -337,17 +355,12 @@ func (s *server) PeerHandshake(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.PeerHandshake{Node: peerNodeBody(node)}, s.logger)
 }
 
+// ForgetPeer drops the grant of the reading node that asks, after it removed its link.
 func (s *server) ForgetPeer(w http.ResponseWriter, r *http.Request, nodeID string) {
 	if !s.requirePairing(w) {
 		return
 	}
-	if err := s.pairing.Forget(r.Context(), nodeID); err != nil {
-		s.internalError(w, "Could not unpair.", err)
-		return
-	}
-	s.revokePeerRequests(r.Context())
-	w.Header().Set("Cache-Control", cacheNoStore)
-	w.WriteHeader(http.StatusNoContent)
+	s.dropGrant(w, r, func(ctx context.Context) error { return s.pairing.Forget(ctx, nodeID) })
 }
 
 func reasonRef(reason gen.ErrorReason) *gen.ErrorReason { return &reason }
@@ -356,8 +369,6 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 	var (
 		address     *domain.InvalidPeerAddressError
 		untrusted   *domain.CertificateUntrustedError
-		distrusted  *domain.OwnCertificateUntrustedError
-		unverified  *domain.OwnCertificateUnverifiedError
 		unreachable *domain.PeerUnreachableError
 	)
 	switch {
@@ -371,22 +382,11 @@ func (s *server) writePairingError(w http.ResponseWriter, err error, fallback st
 	case errors.Is(err, domain.ErrInvalidPairingInput):
 		s.invalidRequest(w, "The pairing request has invalid values.")
 	case errors.Is(err, domain.ErrAlreadyPaired):
-		s.conflictReason(w, gen.ErrorReasonAlreadyPaired, "One of the two VVMDMs is already paired.")
+		s.conflictReason(w, gen.ErrorReasonAlreadyPaired, "This VVMDM already reads one, or the other VVMDM is already read by one.")
 	case errors.As(err, &untrusted):
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
 			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonCertificateUntrusted), Fingerprint: &untrusted.Fingerprint,
 			Message: "The certificate of the other VVMDM is not trusted.",
-		})
-	case errors.As(err, &unverified):
-		s.writeErrorBody(w, http.StatusConflict, gen.Error{
-			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonOwnCertificateUnverified), Fingerprint: &unverified.Fingerprint,
-			Message: "The certificate of this VVMDM's own address is not confirmed.",
-		})
-	case errors.As(err, &distrusted):
-		s.logger.Info("pairing failed", slog.Any("error", err))
-		s.writeErrorBody(w, http.StatusConflict, gen.Error{
-			Code: codeConflict, Reason: reasonRef(gen.ErrorReasonPeerUnreachable), Fingerprint: &distrusted.Fingerprint,
-			Message: distrusted.Error(),
 		})
 	case errors.As(err, &unreachable):
 		s.logger.Info("pairing failed", slog.Any("error", err))

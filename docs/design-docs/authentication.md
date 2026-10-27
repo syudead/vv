@@ -58,17 +58,18 @@ examples are in [the external API guide](../how-to/external-api.md).
 
 ## Paired VVMDM
 
-A paired VVMDM authenticates with `Authorization: VV-Peer <secret>`, a third
-credential beside the session and the bearer token
+The VVMDM that reads this one authenticates with
+`Authorization: VV-Peer <secret>`, a third credential beside the session and
+the bearer token
 ([peer-library.md](peer-library.md#pairing-and-the-peer-credential)). The
 boundary hashes the secret and compares it with the stored hash of the peer
-record, and classifies the request as the owner, or as a guest when
-`X-VV-Peer-Audience: guest` is present, so the paired node applies the
+grant, and classifies the request as the owner, or as a guest when
+`X-VV-Peer-Audience: guest` is present, so the read node applies the
 viewer's audience to its own reads.
 
 | Case | Response |
 | --- | --- |
-| Unknown secret, no peer record, or a record whose incoming secret was revoked | `401` with reason `peer_unknown` |
+| Unknown secret, or no grant: the reading VVMDM was never granted access, or its access was withdrawn | `401` with reason `peer_unknown` |
 | Valid secret on an operation the peer table does not allow | `403` with reason `peer_not_allowed` |
 | Peer credential on `/api/v1` or `/mcp` | `401`; it is not a bearer token |
 

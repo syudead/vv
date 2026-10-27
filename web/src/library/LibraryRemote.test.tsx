@@ -24,11 +24,11 @@ const peerInfo = {
   version: "1",
   pinned: false,
 };
-const connected: PeerState = { state: "connected", peer: peerInfo };
+const connected: PeerState = { state: "connected", link: peerInfo };
 const unreachable: PeerState = {
   state: "unreachable",
   reason: "network",
-  peer: peerInfo,
+  link: peerInfo,
 };
 
 function video(id: number, title: string): Video {

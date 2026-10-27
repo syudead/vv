@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// peerStatus is the connection state with what the Settings page shows beside it.
+// peerStatus is the link's connection state with what the Settings page shows beside it.
 type peerStatus struct {
 	state       domain.PeerConnection
 	reason      domain.PeerUnreachableReason
@@ -17,17 +17,17 @@ type peerStatus struct {
 	fingerprint string
 }
 
-func peerTarget(record domain.PeerRecord) domain.PeerTarget {
-	return domain.PeerTarget{Address: record.Address, PinnedSPKI: record.PinnedSPKI}
+func peerTarget(link domain.PeerLink) domain.PeerTarget {
+	return domain.PeerTarget{Address: link.Address, PinnedSPKI: link.PinnedSPKI}
 }
 
-// loadStatus derives the state from the record on the first read; without a record it is unpaired
+// loadStatus derives the state from the link on the first read; without a link it is unpaired
 // whatever was held.
-func (p *Pairing) loadStatus(record *domain.PeerRecord) peerStatus {
+func (p *Pairing) loadStatus(link *domain.PeerLink) peerStatus {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.loaded || record == nil {
-		state, reason := domain.InitialPeerState(record)
+	if !p.loaded || link == nil {
+		state, reason := domain.InitialPeerState(link)
 		p.status = peerStatus{state: state, reason: reason}
 		p.loaded = true
 	}
@@ -59,9 +59,9 @@ func (p *Pairing) logTransition(previous domain.PeerConnection, next peerStatus,
 	switch {
 	case previous == next.state:
 	case next.state == domain.PeerConnected:
-		p.logger.Info("the paired VVMDM is connected", slog.String("previous", string(previous)))
+		p.logger.Info("the read VVMDM is connected", slog.String("previous", string(previous)))
 	case next.state == domain.PeerUnreachable && previous == domain.PeerConnected:
-		p.logger.Info("the paired VVMDM became unreachable",
+		p.logger.Info("the read VVMDM became unreachable",
 			slog.String("reason", string(next.reason)), slog.Any("error", cause))
 	}
 }
@@ -106,30 +106,30 @@ func (p *Pairing) seenPeerVersion() string {
 	return p.status.peerVersion
 }
 
-// Run keeps one event stream open to the peer while a record with an incoming secret exists, and returns
-// when ctx ends. After a failure it waits domain.PeerRetryDelay, unless pairing, an address change or a
-// certificate confirmation wakes it.
+// Run keeps one event stream open to the read node while an unrevoked link exists, and returns when ctx
+// ends. After a failure it waits domain.PeerRetryDelay, unless pairing, an address change or a certificate
+// confirmation wakes it.
 func (p *Pairing) Run(ctx context.Context) {
 	failures := 0
 	for ctx.Err() == nil {
-		record, found, err := p.store.Peer(ctx)
+		link, found, err := p.store.Link(ctx)
 		switch {
 		case err != nil:
-			p.logger.Warn("could not read the peer record", slog.Any("error", err))
+			p.logger.Warn("could not read the peer link", slog.Any("error", err))
 			failures++
-		case !found || record.IncomingRevoked:
-			// Nothing to connect to until the owner pairs or clears the revoked record.
-			var held *domain.PeerRecord
+		case !found || link.Revoked:
+			// Nothing to connect to until the owner pairs or removes the revoked link.
+			var held *domain.PeerLink
 			if found {
-				held = &record
+				held = &link
 			}
 			p.loadStatus(held)
 			failures = 0
 			p.waitWake(ctx, 0)
 			continue
 		default:
-			p.loadStatus(&record)
-			if p.connect(ctx, record) {
+			p.loadStatus(&link)
+			if p.connect(ctx, link) {
 				failures = 0
 			}
 			failures++
@@ -160,7 +160,7 @@ func (p *Pairing) waitWake(ctx context.Context, delay time.Duration) bool {
 
 // connect runs one attempt: the handshake checks the peer's node id, then the event stream
 // is held open until it ends. It reports whether the stream opened.
-func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
+func (p *Pairing) connect(ctx context.Context, link domain.PeerLink) bool {
 	attempt, cancel := context.WithCancel(ctx)
 	defer cancel()
 	p.mu.Lock()
@@ -174,85 +174,68 @@ func (p *Pairing) connect(ctx context.Context, record domain.PeerRecord) bool {
 	}()
 
 	opened := false
-	target := peerTarget(record)
-	node, err := p.link.Handshake(attempt, target, record.OutgoingSecret)
-	if err == nil && node.ID != record.NodeID {
+	target := peerTarget(link)
+	node, err := p.client.Handshake(attempt, target, link.Secret)
+	if err == nil && node.ID != link.NodeID {
 		err = &domain.PeerUnreachableError{Message: "The paired address answers as another VVMDM."}
 	}
 	if err == nil {
-		err = p.link.Watch(attempt, target, record.OutgoingSecret, func() {
+		err = p.client.Watch(attempt, target, link.Secret, func() {
 			opened = true
 			p.setStatus(generation, peerStatus{state: domain.PeerConnected, peerVersion: node.Version})
 		}, func(changed domain.PeerChanged) { p.publish(changed) })
-		err = p.confirmUnknown(attempt, record, err)
 	}
 	if ctx.Err() == nil {
-		p.fail(ctx, generation, record, err)
+		p.fail(ctx, generation, link, err)
 	}
 	return opened
 }
 
-// Connection returns how to reach the peer and the secret to present while it is connected; ok is false in
-// any other state, so a forwarded request does not wait on a peer the connection loop already lost.
+// Connection returns how to reach the read node and the secret to present while it is connected; ok is
+// false in any other state, so a forwarded request does not wait on a peer the connection loop already lost.
 func (p *Pairing) Connection(ctx context.Context) (target domain.PeerTarget, secret string, ok bool, err error) {
-	record, found, err := p.store.Peer(ctx)
+	link, found, err := p.store.Link(ctx)
 	if err != nil || !found {
 		return domain.PeerTarget{}, "", false, err
 	}
-	if p.loadStatus(&record).state != domain.PeerConnected {
+	if p.loadStatus(&link).state != domain.PeerConnected {
 		return domain.PeerTarget{}, "", false, nil
 	}
-	return peerTarget(record), record.OutgoingSecret, true, nil
+	return peerTarget(link), link.Secret, true, nil
 }
 
-// ReportFailure records a failed request to the peer: the state becomes unreachable at once, or revoked
-// on domain.ErrPeerUnknown that the handshake confirms, and the stream is reopened by the loop alone.
+// ReportFailure records a failed request to the read node: the state becomes unreachable at once, or
+// revoked on domain.ErrPeerUnknown, and the stream is reopened by the loop alone.
 func (p *Pairing) ReportFailure(ctx context.Context, err error) {
-	record, found, readErr := p.store.Peer(ctx)
-	if readErr != nil || !found || record.IncomingRevoked {
+	link, found, readErr := p.store.Link(ctx)
+	if readErr != nil || !found || link.Revoked {
 		return
 	}
 	generation := p.interrupt(false)
-	p.fail(ctx, generation, record, p.confirmUnknown(ctx, record, err))
+	p.fail(ctx, generation, link, err)
 }
 
-// confirmUnknown asks the handshake again when another request answered domain.ErrPeerUnknown. A peer
-// that requested the pairing accepts the secret at its handshake alone until it has stored its record, so
-// only a refused handshake means the peer no longer knows this node.
-func (p *Pairing) confirmUnknown(ctx context.Context, record domain.PeerRecord, err error) error {
-	if !errors.Is(err, domain.ErrPeerUnknown) {
-		return err
-	}
-	if _, err := p.link.Handshake(ctx, peerTarget(record), record.OutgoingSecret); err != nil {
-		return err
-	}
-	return &domain.PeerUnreachableError{Message: "The other VVMDM has not stored the pairing yet."}
-}
-
-func (p *Pairing) fail(ctx context.Context, generation uint64, record domain.PeerRecord, err error) {
-	var (
-		untrusted *domain.CertificateUntrustedError
-	)
+func (p *Pairing) fail(ctx context.Context, generation uint64, link domain.PeerLink, err error) {
+	var untrusted *domain.CertificateUntrustedError
 	switch {
 	case errors.Is(err, domain.ErrPeerUnknown):
-		p.revoke(ctx, generation, record)
+		p.revoke(ctx, generation, link)
 	case errors.As(err, &untrusted):
 		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonCertificate, fingerprint: untrusted.Fingerprint,
 			peerVersion: p.seenPeerVersion(),
 		}, err)
 	default:
-		p.logger.Debug("the paired VVMDM is unreachable", slog.Any("error", err))
+		p.logger.Debug("the read VVMDM is unreachable", slog.Any("error", err))
 		p.applyStatus(generation, peerStatus{
 			state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork, peerVersion: p.seenPeerVersion(),
 		}, err)
 	}
 }
 
-// revoke clears the incoming secret before the state shows revoked, so the peer that no longer knows this
-// node cannot use its credential here. An interrupted attempt revokes nothing, and an interruption waits
-// until a running revocation has set its state.
-func (p *Pairing) revoke(ctx context.Context, generation uint64, record domain.PeerRecord) {
+// revoke marks the link revoked before the state shows it, so a start shows revoked too. An interrupted
+// attempt revokes nothing, and an interruption waits until a running revocation has set its state.
+func (p *Pairing) revoke(ctx context.Context, generation uint64, link domain.PeerLink) {
 	p.revokeMu.Lock()
 	defer p.revokeMu.Unlock()
 	p.mu.Lock()
@@ -261,8 +244,8 @@ func (p *Pairing) revoke(ctx context.Context, generation uint64, record domain.P
 	if !current {
 		return
 	}
-	if err := p.store.RevokeIncomingSecret(ctx, record.NodeID); err != nil {
-		p.logger.Warn("could not revoke the paired VVMDM's credential", slog.Any("error", err))
+	if err := p.store.MarkLinkRevoked(ctx, link.NodeID); err != nil {
+		p.logger.Warn("could not mark the peer link revoked", slog.Any("error", err))
 		p.setStatus(generation, peerStatus{state: domain.PeerUnreachable, reason: domain.PeerReasonNetwork})
 		return
 	}
@@ -278,14 +261,14 @@ func (p *Pairing) ConfirmCertificate(ctx context.Context, fingerprint string) (d
 	if waiting == "" || fingerprint != waiting {
 		return domain.PeerState{}, domain.ErrFingerprintChanged
 	}
-	record, found, err := p.store.Peer(ctx)
+	link, found, err := p.store.Link(ctx)
 	if err != nil {
 		return domain.PeerState{}, err
 	}
 	if !found {
 		return domain.PeerState{}, domain.ErrNotFound
 	}
-	if err := p.store.PinPeerCertificate(ctx, record.NodeID, fingerprint); err != nil {
+	if err := p.store.PinLinkCertificate(ctx, link.NodeID, fingerprint); err != nil {
 		return domain.PeerState{}, err
 	}
 	p.interrupt(true)
