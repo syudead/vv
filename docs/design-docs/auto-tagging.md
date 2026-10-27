@@ -211,7 +211,7 @@ claim counts as an attempt.
 Each run of a video is one `auto_tag` activity entry
 ([activity.md](activity.md)). Queuing writes it `running`/`waiting` and the
 job keeps its id; the claim makes it `processing`, and the answer makes it
-`done`/`completed`. A failed request that will be retried returns it to
+`done`/`completed` and clears any message an earlier attempt left. A failed request that will be retried returns it to
 `running`/`waiting` with the provider's message, and the last failed attempt
 makes it `attention`/`failed`. A job whose entry is no longer `running` when
 it is claimed, after a restart, opens a new entry, which closes the

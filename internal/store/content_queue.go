@@ -448,7 +448,8 @@ func claimQueueActivity(
 	return recordContinuedActivity(ctx, tx, c, q.entry(key, label, domain.ActivityProcessing, decider), continued, now)
 }
 
-// closeQueueActivity ignores legacy zero activity IDs; completed entries retain a decision mark for undo.
+// closeQueueActivity ignores legacy zero activity IDs; completed entries retain a decision mark for undo. An empty
+// detail keeps the stored one, except that a done entry drops the message of an earlier failed attempt.
 func closeQueueActivity(
 	ctx context.Context, tx *sql.Tx, c *changes, id int64, state domain.ActivityState, decider domain.ActivityDecider,
 	detail string, now time.Time,
@@ -456,9 +457,10 @@ func closeQueueActivity(
 	if id == 0 {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, outcome = ?,
-		decider = coalesce(nullif(?, ''), decider), detail = coalesce(nullif(?, ''), detail), updated_at = ?
-		where id = ?`, string(state.Status), nullString(string(state.Reason)), nullString(string(state.Outcome)),
+	_, err := tx.ExecContext(ctx, `update activity_entries set status = ?1, reason = ?2, outcome = ?3,
+		decider = coalesce(nullif(?4, ''), decider),
+		detail = case when ?1 = 'done' then nullif(?5, '') else coalesce(nullif(?5, ''), detail) end, updated_at = ?6
+		where id = ?7`, string(state.Status), nullString(string(state.Reason)), nullString(string(state.Outcome)),
 		string(decider), detail, now.UnixMilli(), id)
 	if err != nil {
 		return fmt.Errorf("cannot update the activity (id=%d): %w", id, err)

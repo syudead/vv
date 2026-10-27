@@ -23,8 +23,8 @@ func assertNoDueAutoTag(t *testing.T, db *DB) {
 	}
 }
 
-// A failed classification waits out the retry delay with its entry waiting, then is claimed again; before jobs it
-// stayed failed until the owner queued it again.
+// A failed classification waits out the retry delay with its entry waiting, then is claimed again, and its success
+// clears the failure from the entry; before jobs it stayed failed until the owner queued it again.
 func TestAutoTagFailureRetriesAfterItsDelay(t *testing.T) {
 	db, ids := itemsFixture(t)
 	now := fixJobClock(t)
@@ -58,6 +58,12 @@ func TestAutoTagFailureRetriesAfterItsDelay(t *testing.T) {
 	}
 	if got := latestAutoTagEntry(t, db); got.ID != waiting.ID || got.Reason != domain.ActivityProcessing {
 		t.Fatalf("entry on the retry = %+v, want entry %d processing", got, waiting.ID)
+	}
+	if err := store.Finish(context.Background(), soloKey, domain.AutoTagSelection{}, domain.ActivityByAI); err != nil {
+		t.Fatal(err)
+	}
+	if done := latestAutoTagEntry(t, db); entryState(done) != activityDone || done.Detail != "" {
+		t.Fatalf("entry after the retry succeeded = %+v, want done without the earlier failure", done)
 	}
 }
 
