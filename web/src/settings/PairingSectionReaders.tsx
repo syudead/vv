@@ -1,15 +1,11 @@
 import { BookOpen } from "lucide-react";
-import { useState } from "react";
 
 import { type PeerGrant, revokePeerGrant } from "../api/peer";
-import { errorText, formatDateTime, t, type UiText } from "../i18n";
-import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
+import { formatDateTime, t } from "../i18n";
 import { PageSection } from "../ui/patterns/page-section";
-import { Button } from "../ui/shadcn/button";
-import { useToast } from "../ui/Toast";
 
+import { PairingRemoveDialog } from "./PairingRemoveDialog";
 import { PairingCodeRow } from "./PairingSectionCode";
-import { FailureAlert } from "./SaveStatus";
 
 function RemoveAccessAction({
   name,
@@ -19,46 +15,20 @@ function RemoveAccessAction({
   onRevoked: () => void;
 }) {
   const text = t.settings.pairing.readers.removeDialog;
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
-
-  const revoke = async () => {
-    setPending(true);
-    setFailure(null);
-    try {
-      await revokePeerGrant();
-      toast(text.done(name));
-      onRevoked();
-    } catch (error) {
-      setFailure(text.failed(errorText(error)));
-      setPending(false);
-    }
-  };
-
   return (
-    <ConfirmDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (pending) return;
-        setOpen(next);
-        if (next) setFailure(null);
+    <PairingRemoveDialog
+      words={{
+        trigger: t.settings.pairing.readers.remove,
+        title: text.title(name),
+        description: text.description,
+        action: text.action,
+        cancel: t.common.cancel,
+        done: text.done(name),
+        failed: text.failed,
       }}
-      trigger={
-        <Button variant="ghost-destructive" size="sm">
-          {t.settings.pairing.readers.remove}
-        </Button>
-      }
-      title={text.title(name)}
-      description={text.description}
-      actionLabel={text.action}
-      cancelLabel={t.common.cancel}
-      pending={pending}
-      onConfirm={() => void revoke()}
-    >
-      {failure !== null && <FailureAlert text={failure} />}
-    </ConfirmDialog>
+      remove={() => revokePeerGrant()}
+      onRemoved={onRevoked}
+    />
   );
 }
 

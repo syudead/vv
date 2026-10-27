@@ -58,8 +58,9 @@ examples are in [the external API guide](../how-to/external-api.md).
 
 ## Paired VVMDM
 
-The VVMDM that reads this one authenticates with `Authorization: VV-Peer
-<secret>`, a third credential beside the session and the bearer token
+The VVMDM that reads this one authenticates with
+`Authorization: VV-Peer <secret>`, a third credential beside the session and
+the bearer token
 ([peer-library.md](peer-library.md#pairing-and-the-peer-credential)). The
 boundary hashes the secret and compares it with the stored hash of the peer
 grant, and classifies the request as the owner, or as a guest when

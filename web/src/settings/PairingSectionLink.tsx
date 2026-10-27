@@ -10,11 +10,10 @@ import {
 } from "../api/peer";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { FactList } from "../ui/patterns/fact-list";
 import { Button } from "../ui/shadcn/button";
-import { useToast } from "../ui/Toast";
 
+import { PairingRemoveDialog } from "./PairingRemoveDialog";
 import { FingerprintAlert } from "./PairingSectionFingerprint";
 import { FailureAlert } from "./SaveStatus";
 import { TextSettingRow, useTextSettingSave } from "./TextSettingRow";
@@ -173,46 +172,20 @@ function CertificateRow({
 
 function UnpairAction({ name, onUnpaired }: { name: string; onUnpaired: () => void }) {
   const text = t.settings.pairing.unpairDialog;
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<UiText | null>(null);
-
-  const unpair = async () => {
-    setPending(true);
-    setFailure(null);
-    try {
-      await unpairPeer();
-      toast(text.done(name));
-      onUnpaired();
-    } catch (error) {
-      setFailure(text.failed(errorText(error)));
-      setPending(false);
-    }
-  };
-
   return (
-    <ConfirmDialog
-      open={open}
-      onOpenChange={(next) => {
-        if (pending) return;
-        setOpen(next);
-        if (next) setFailure(null);
+    <PairingRemoveDialog
+      words={{
+        trigger: t.settings.pairing.link.unpair,
+        title: text.title(name),
+        description: text.description,
+        action: text.action,
+        cancel: t.common.cancel,
+        done: text.done(name),
+        failed: text.failed,
       }}
-      trigger={
-        <Button variant="ghost-destructive" size="sm">
-          {t.settings.pairing.link.unpair}
-        </Button>
-      }
-      title={text.title(name)}
-      description={text.description}
-      actionLabel={text.action}
-      cancelLabel={t.common.cancel}
-      pending={pending}
-      onConfirm={() => void unpair()}
-    >
-      {failure !== null && <FailureAlert text={failure} />}
-    </ConfirmDialog>
+      remove={() => unpairPeer()}
+      onRemoved={onUnpaired}
+    />
   );
 }
 
