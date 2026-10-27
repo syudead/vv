@@ -645,7 +645,8 @@ func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey
 	}
 	// Stages still waiting out a retry delay run at once too.
 	if _, err := tx.ExecContext(ctx, `update jobs set priority = ?, run_after = min(run_after, ?)
-		where video_id = ? and state = 'queued'`, int(domain.JobPriorityOwner), now.Unix(), id); err != nil {
+		where video_id = ? and state = 'queued' and kind in (`+importJobKinds+`)`,
+		int(domain.JobPriorityOwner), now.Unix(), id); err != nil {
 		return fmt.Errorf("cannot raise the video's queued jobs (video=%d): %w", id, err)
 	}
 	if err := joinImportActivity(ctx, tx, &c, id, run, now); err != nil {

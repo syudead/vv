@@ -393,20 +393,7 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority d
 // takeContentJob marks the next due job of the jobs path, in maxPriority or a more urgent class, running and counts
 // the attempt.
 func takeContentJob(ctx context.Context, tx *sql.Tx, q contentQueue, maxPriority domain.JobPriority) (domain.Job, int64, error) {
-	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
-	var activityID int64
-	err := tx.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
-		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1 and priority <= ?3
-			order by priority, run_after, id limit 1)
-		returning id, subject_key, attempts, priority, coalesce(activity_id, 0)`,
-		jobNow().Unix(), string(q.job), int(maxPriority)).Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Job{}, 0, domain.ErrNoJob
-	}
-	if err != nil {
-		return domain.Job{}, 0, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
-	}
-	return job, activityID, nil
+	return takeJob(ctx, tx, q.job, maxPriority)
 }
 
 // dropContentJob ends the running job of content that is gone, recording no result, and completes its entry.

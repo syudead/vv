@@ -29,6 +29,9 @@ func JobDemand(kind JobKind) JobResources {
 		return JobResources{Read: 1}
 	case JobThumbnail, JobSeekThumbnail, JobPreview:
 		return JobResources{Read: 1, CPU: 1}
+	case JobKeyframes, JobMediaInfo:
+		// ffprobe reads the packet index or the container.
+		return JobResources{Read: 1}
 	case JobFingerprint:
 		// Reads sprite frames from the data directory, not the source file.
 		return JobResources{CPU: 1}

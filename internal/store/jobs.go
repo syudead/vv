@@ -191,11 +191,15 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 // ClaimJobOn takes the claim's queued job of the lowest class, then the earliest run-after time, then the oldest,
 // among those whose run-after time has come and whose next location is under the claim's roots. The next location is
 // the first available one in path order after the previous attempt's, so a job stored only under unavailable roots
-// stays queued. A content job has no location, so only its class applies. BEGIN IMMEDIATE prevents duplicate claims;
-// an empty queue returns ErrNoJob.
+// stays queued. A content job or a job without a subject has no location, so only its class applies. BEGIN IMMEDIATE
+// prevents duplicate claims; an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
 	if q, ok := contentJobQueue(claim.Kind); ok {
 		return s.db.claimContentJob(ctx, q, claim.MaxPriority)
+	}
+	if isSubjectlessJob(claim.Kind) {
+		job, _, err := takeJob(ctx, s.db.sql, claim.Kind, claim.MaxPriority)
+		return job, err
 	}
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
@@ -249,12 +253,8 @@ func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (do
 	); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
-	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
-		return domain.Job{}, err
-	}
-	// Interrupted or legacy jobs start a new rule-owned processing activity.
 	var c changes
-	if err := joinImportActivity(ctx, conn, &c, job.VideoID, ruleRun(), time.Now()); err != nil {
+	if err := trackImportClaim(ctx, conn, &c, job); err != nil {
 		return domain.Job{}, err
 	}
 
@@ -265,6 +265,19 @@ func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (do
 	published = &c
 
 	return job, nil
+}
+
+// trackImportClaim refreshes the current scan's settling and joins the claimed stage to its import activity. A
+// backfill job stays out of both.
+func trackImportClaim(ctx context.Context, conn *sql.Conn, c *changes, job domain.Job) error {
+	if isBackfillJob(job.Kind) {
+		return nil
+	}
+	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
+		return err
+	}
+	// Interrupted or legacy jobs start a new rule-owned processing activity.
+	return joinImportActivity(ctx, conn, c, job.VideoID, ruleRun(), time.Now())
 }
 
 // claimableJob is the job a claim selected, before its location is taken.
@@ -405,10 +418,14 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []i
 }
 
 // CompleteClaimedJob requeues when the claimed location or content changed. A content job's handler has already
-// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record.
+// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record, and a backfill job is
+// deleted.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
 	if _, ok := contentJobQueue(job.Kind); ok {
 		return nil
+	}
+	if isBackfillJob(job.Kind) {
+		return s.completeBackfillJob(ctx, job)
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -516,9 +533,12 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	if err != nil {
 		return fmt.Errorf("cannot check the job attempt count (id=%d): %w", job.ID, err)
 	}
-	current, err := jobIdentityCurrent(ctx, tx, job)
-	if err != nil {
-		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
+	// A job without a subject has no location to change, so each claim ends its round.
+	current := isSubjectlessJob(job.Kind)
+	if !current {
+		if current, err = jobIdentityCurrent(ctx, tx, job); err != nil {
+			return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
+		}
 	}
 	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, job.LastLocation && current, jobJitter())
 	state := outcome.State
@@ -552,6 +572,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
 	}
 
+	if isBackfillJob(job.Kind) {
+		return s.commitBackfillFailure(ctx, tx, job, state)
+	}
 	var c changes
 	if state == domain.JobFailed {
 		if err := recordTerminalFailure(ctx, tx, job, cause, now, forced); err != nil {

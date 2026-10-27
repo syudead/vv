@@ -167,15 +167,16 @@ A sparse sample can make a later copyable seek encode unnecessarily, but its
 start position remains correct. Starts from zero and `Normalize` requests
 keep their existing behaviour. Sampling never runs in a playback request.
 
-A single background loop fills missing samples for previously imported H.264
-videos ([`app/keyframes.go`](../../internal/app/keyframes.go)). It selects
-registered locations from SQLite, skips videos with pending probe jobs, and
-samples one file at a time with 250 ms between files and one minute between
-passes. It starts with the other workers and is cancelled and joined before
-the database closes. It does not change import progress, media information,
-playability or generated assets.
+Backfill jobs fill missing samples for previously imported H.264 videos
+([`app/keyframes.go`](../../internal/app/keyframes.go)). At each startup the
+`queue_keyframes` job selects registered locations from SQLite, skips videos
+with pending probe jobs, and queues a backfill-class `keyframes` job per video
+([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)).
+Each job samples one file within its disk's read slots
+([job scheduling](job-scheduling.md)). The jobs do not change import progress,
+media information, playability or generated assets.
 
-The saved rows, including unknown results, survive restarts. The loop checks
+The saved rows, including unknown results, survive restarts. The save checks
 content and location identity again in the save transaction and leaves a
 concurrent import's sample for the same source intact. Scans retain the file's
 nanosecond modification time in `video_locations.mtime_ns`, and both scan
