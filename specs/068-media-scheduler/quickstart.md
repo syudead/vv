@@ -7,8 +7,8 @@ and release is logged at debug level with its disk key and slot count.
 
 ## Prerequisites
 
-- Two media folders on different block devices, one of them an HDD.
-- A few hundred videos for the HDD folder and a few for the other.
+- Two media folders on different block devices: one on an HDD, one on an SSD.
+- A few hundred videos for the HDD folder and a few dozen for the SSD folder.
 - The current `main` build for the timing comparison.
 
 ## Two disks proceed together
@@ -22,11 +22,11 @@ the large one (acceptance criteria 1–3).
 
 ## Playback holds one slot
 
-1. While the HDD folder imports, play a video from it.
+1. While the SSD folder imports, play a video from it.
 2. Stop playback.
 
-Expected: during playback exactly one background ffmpeg reads the HDD; after
-playback the count returns to the disk's slots (acceptance criterion 4).
+Expected: during playback exactly one background ffmpeg reads the SSD. After
+playback, the count returns to up to 4 (acceptance criterion 4).
 
 ## An owner request goes first
 
@@ -37,10 +37,11 @@ criterion 5).
 
 ## An unplugged folder parks its jobs
 
-1. Unmount the HDD folder mid-import, wait a minute, mount it again.
+1. Unmount the HDD folder mid-import, wait two minutes, mount it again.
 
-Expected: no job of that folder fails or loses an attempt, and import resumes
-after the mount (acceptance criterion 8).
+Expected: no job of that folder fails or loses an attempt, the other folder
+keeps importing, and import of the HDD folder resumes within a minute of the
+mount (acceptance criterion 8).
 
 ## HDD import time
 
@@ -50,3 +51,13 @@ after the mount (acceptance criterion 8).
 
 Expected: the feature build is not slower. Record both times in the PR that
 lands per-disk slots (acceptance criterion 10).
+
+## Unknown-disk import time
+
+1. Repeat the HDD timing for a folder whose disk resolves as unknown: a
+   Btrfs or ZFS volume, or a network share.
+
+Expected: the debug log shows the root with 1 read slot. Record both times in
+the same PR. A slowdown is the cost of
+[R-5](research.md#r-5-read-slots-per-disk-follow-the-disk-type) and is
+reported, not fixed in this feature.
