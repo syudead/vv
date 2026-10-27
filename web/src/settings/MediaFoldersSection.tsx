@@ -37,6 +37,7 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
+import MediaFolderUsage from "./MediaFolderUsage";
 import RescanDialog from "./RescanDialog";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
@@ -317,6 +318,7 @@ export default function MediaFoldersSection() {
                       <code className="block break-all" title={folder.path}>
                         {folder.path}
                       </code>
+                      <MediaFolderUsage folder={folder} />
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

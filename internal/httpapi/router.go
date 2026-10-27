@@ -72,6 +72,10 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
+type MediaFolderUsage interface {
+	MediaFolderUsage(ctx context.Context, id int64) (domain.MediaFolderUsage, error)
+}
+
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
 	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
@@ -253,6 +257,8 @@ type Options struct {
 	Scans Scans
 
 	MediaFolders MediaFolders
+	// Nil FolderUsage makes usage reads fail.
+	FolderUsage MediaFolderUsage
 
 	Tags Tags
 
@@ -378,6 +384,7 @@ type server struct {
 	playback     Playback
 	scans        Scans
 	mediaFolders MediaFolders
+	folderUsage  MediaFolderUsage
 	tags         Tags
 	credits      Credits
 	workInfo     WorkInfo
@@ -467,6 +474,7 @@ func NewRouter(opts Options) http.Handler {
 		playback:               opts.Playback,
 		scans:                  opts.Scans,
 		mediaFolders:           opts.MediaFolders,
+		folderUsage:            opts.FolderUsage,
 		tags:                   opts.Tags,
 		credits:                opts.Credits,
 		workInfo:               opts.WorkInfo,

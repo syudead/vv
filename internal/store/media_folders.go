@@ -322,3 +322,14 @@ func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 	}
 	return nil
 }
+
+// MediaFolderVideoBytes sums every indexed file below dir, each location once, whether or not it represents its video.
+func (s *SettingsStore) MediaFolderVideoBytes(ctx context.Context, dir string) (int64, error) {
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	var total int64
+	if err := s.db.sql.QueryRowContext(ctx, `select coalesce(sum(l.size_bytes), 0) from video_locations l where `+inFolder,
+		args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("cannot sum the media folder's video sizes: %w", err)
+	}
+	return total, nil
+}

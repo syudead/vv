@@ -56,3 +56,4 @@ reference documents; retain lasting decisions here before deleting them.
 - [Face recognition](face-recognition.md)
 - [Import progress and recovery](import-pipeline.md)
 - [Force rescan](force-rescan.md)
+- [Media folder usage](media-folder-usage.md)

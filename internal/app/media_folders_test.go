@@ -20,13 +20,14 @@ func (f *fakeFolderChecker) CheckMediaFolder(path string) (string, error) {
 }
 
 type fakeMediaFolderStore struct {
+	folders  []domain.MediaFolder
 	added    []string
 	replaced []string
 	deleted  []int64
 }
 
 func (f *fakeMediaFolderStore) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
-	return nil, nil
+	return f.folders, nil
 }
 
 func (f *fakeMediaFolderStore) AddMediaFolder(_ context.Context, path string) (domain.MediaFolder, error) {
@@ -76,5 +77,72 @@ func TestMediaFoldersDoNotSaveRejectedPath(t *testing.T) {
 	}
 	if len(store.added) != 0 || len(store.replaced) != 0 {
 		t.Fatalf("rejected path was saved: add=%q replace=%q", store.added, store.replaced)
+	}
+}
+
+type fakeVideoBytes struct{ dirs []string }
+
+func (f *fakeVideoBytes) MediaFolderVideoBytes(_ context.Context, dir string) (int64, error) {
+	f.dirs = append(f.dirs, dir)
+	return 42, nil
+}
+
+type fakeDisk struct {
+	usage domain.DiskUsage
+	err   error
+	// A non-nil block holds the call until closed, like an unresponsive network volume.
+	block chan struct{}
+	paths []string
+}
+
+func (f *fakeDisk) DiskUsage(path string) (domain.DiskUsage, error) {
+	f.paths = append(f.paths, path)
+	if f.block != nil {
+		<-f.block
+	}
+	return f.usage, f.err
+}
+
+func usageFolders(disk *fakeDisk, sizes *fakeVideoBytes) *MediaFolders {
+	store := &fakeMediaFolderStore{folders: []domain.MediaFolder{{ID: 1, Path: "/a"}, {ID: 2, Path: "/b"}}}
+	return NewMediaFolders(MediaFoldersOptions{Store: store, VideoBytes: sizes, Disk: disk})
+}
+
+func TestMediaFolderUsageReadsTheFolderPath(t *testing.T) {
+	disk := &fakeDisk{usage: domain.DiskUsage{FreeBytes: 5, TotalBytes: 9}}
+	sizes := &fakeVideoBytes{}
+	got, err := usageFolders(disk, sizes).MediaFolderUsage(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VideoBytes != 42 || got.Disk == nil || *got.Disk != disk.usage {
+		t.Fatalf("usage = %+v, disk %+v", got, got.Disk)
+	}
+	if len(sizes.dirs) != 1 || sizes.dirs[0] != "/b" || len(disk.paths) != 1 || disk.paths[0] != "/b" {
+		t.Fatalf("read sizes %q and disk %q, want /b", sizes.dirs, disk.paths)
+	}
+}
+
+func TestMediaFolderUsageOmitsAnUnreadableDisk(t *testing.T) {
+	failing := &fakeDisk{err: errors.New("no such device")}
+	got, err := usageFolders(failing, &fakeVideoBytes{}).MediaFolderUsage(context.Background(), 1)
+	if err != nil || got.Disk != nil || got.VideoBytes != 42 {
+		t.Fatalf("failing disk: usage = %+v, err = %v; want video bytes without disk", got, err)
+	}
+
+	hung := &fakeDisk{block: make(chan struct{})}
+	t.Cleanup(func() { close(hung.block) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	got, err = usageFolders(hung, &fakeVideoBytes{}).MediaFolderUsage(ctx, 1)
+	if err != nil || got.Disk != nil {
+		t.Fatalf("hung disk: usage = %+v, err = %v; want no disk", got, err)
+	}
+}
+
+func TestMediaFolderUsageRejectsAnUnknownFolder(t *testing.T) {
+	_, err := usageFolders(&fakeDisk{}, &fakeVideoBytes{}).MediaFolderUsage(context.Background(), 3)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
 }

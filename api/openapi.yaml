@@ -1494,6 +1494,25 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/media-folders/{id}/usage:
+    get:
+      operationId: getMediaFolderUsage
+      summary: "Return a media folder's video size and disk space"
+      description: "Owner-only. Reads the volume when called, so the values reflect the moment of the request. `videoBytes` sums every indexed file below the folder, each location once. `disk` is the space of the volume holding the folder as the OS reports it to the server process; it is omitted when the volume cannot be read or does not answer within a few seconds. Folders on the same volume report the same `disk`. Uses `Cache-Control: no-store`."
+      parameters:
+        - $ref: "#/components/parameters/MediaFolderId"
+      responses:
+        "200":
+          description: "Usage of the media folder"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaFolderUsage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/settings/transcoding:
     get:
       operationId: getTranscodingSettings
@@ -6264,6 +6283,30 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    MediaFolderUsage:
+      type: object
+      required: [videoBytes]
+      additionalProperties: false
+      properties:
+        videoBytes:
+          type: integer
+          format: int64
+        disk:
+          $ref: "#/components/schemas/DiskUsage"
+
+    DiskUsage:
+      type: object
+      required: [freeBytes, totalBytes]
+      additionalProperties: false
+      properties:
+        freeBytes:
+          type: integer
+          format: int64
+          description: "Space the server process can still write."
+        totalBytes:
+          type: integer
+          format: int64
 
     CreateMediaFolderRequest:
       type: object
