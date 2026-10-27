@@ -9,12 +9,17 @@ type JobResources struct {
 	Read int
 	// CPU slots allow one ffmpeg decode or encode each.
 	CPU int
+	// Classifier slots allow one request to the classifier each.
+	Classifier int
 }
 
 // JobCPUSlots leaves CPU for streaming, since ffmpeg already spreads one decode or encode over several threads.
 func JobCPUSlots(numCPU int) int {
 	return numCPU/4 + 1
 }
+
+// JobClassifierSlots is 1 because a CPU-only classifier provider cannot serve parallel requests.
+const JobClassifierSlots = 1
 
 // JobDemand is the fixed demand a kind declares; a kind with no demand always fits.
 func JobDemand(kind JobKind) JobResources {
@@ -27,6 +32,9 @@ func JobDemand(kind JobKind) JobResources {
 	case JobFingerprint:
 		// Reads sprite frames from the data directory, not the source file.
 		return JobResources{CPU: 1}
+	case JobAutoTag:
+		// Sends generated thumbnails and seek frames, never the source file.
+		return JobResources{Classifier: 1}
 	default:
 		return JobResources{}
 	}

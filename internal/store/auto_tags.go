@@ -167,22 +167,28 @@ func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error 
 	return nil
 }
 
-// QueueVideos queues registered content and opens activities; mode controls existing rows, but running rows never move.
+// QueueVideos queues registered content and opens activities; mode controls existing work, but running jobs never
+// move. The owner's request is claimed first, and also moves the videos' queued jobs first.
 func (s *AutoTagStore) QueueVideos(
 	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 ) (int, error) {
-	return s.queueVideos(ctx, videoIDs, mode, decider, nil)
+	priority := domain.JobPriorityImport
+	if decider == domain.ActivityByOwner {
+		priority = domain.JobPriorityOwner
+	}
+	return s.queueVideos(ctx, videoIDs, mode, contentRequest{decider: decider, priority: priority})
 }
 
 // RetryVideo queues the video again for the owner's retry of entryID, unless it is running; the new entry joins
-// every pipeline of the retried entry.
+// every pipeline of the retried entry, and its job is claimed first.
 func (s *AutoTagStore) RetryVideo(ctx context.Context, videoID, entryID int64) (int, error) {
-	return s.queueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain, domain.ActivityByOwner, []int64{entryID})
+	return s.queueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain, contentRequest{
+		decider: domain.ActivityByOwner, continued: []int64{entryID}, priority: domain.JobPriorityOwner,
+	})
 }
 
 func (s *AutoTagStore) queueVideos(
-	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
-	continued []int64,
+	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, req contentRequest,
 ) (int, error) {
 	if len(videoIDs) == 0 {
 		return 0, nil
@@ -193,16 +199,18 @@ func (s *AutoTagStore) queueVideos(
 	}
 	return s.queue(ctx, `select v.content_key from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v"), []any{string(encoded)}, mode, decider, continued)
+		registeredVideoCondition("v"), []any{string(encoded)}, mode, req)
 }
 
-// QueueLibrary applies QueueVideos semantics to all registered content.
+// QueueLibrary applies QueueVideos semantics to all registered content, in the import class: a bulk request must not
+// hold back the owner's requests on single videos.
 func (s *AutoTagStore) QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
 	return s.queue(ctx, `select v.content_key from videos v
-		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode, decider, nil)
+		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode,
+		contentRequest{decider: decider, priority: domain.JobPriorityImport})
 }
 
-// An empty state represents a missing queue row.
+// An empty state represents content neither queued nor recorded.
 func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	switch mode {
 	case domain.AutoTagQueueIfNew:
@@ -217,23 +225,13 @@ func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 }
 
 func (s *AutoTagStore) queue(
-	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
-	continued []int64,
+	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, req contentRequest,
 ) (int, error) {
 	states, err := queueableStates(mode)
 	if err != nil {
 		return 0, err
 	}
-	return s.db.queueContent(ctx, autoTagQueue, selectKeys, args, states, decider, continued)
-}
-
-// Claim takes the oldest queued item or returns domain.ErrNoJob, creating a processing activity if necessary.
-func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
-	key, err := s.db.claimContent(ctx, autoTagQueue, nil)
-	if err != nil {
-		return domain.AutoTagJob{}, err
-	}
-	return domain.AutoTagJob{ContentKey: key}, nil
+	return s.db.queueContentFor(ctx, autoTagQueue, selectKeys, args, states, req)
 }
 
 // Subject returns the owner view with the deepest registered folder containing its representative location.
@@ -310,7 +308,8 @@ func (s *AutoTagStore) Candidates(ctx context.Context, contentKey string) ([]dom
 	return candidates, nil
 }
 
-// Finish applies only to a still-running item, preserves owner attachments and rejections, and records activity in the same transaction.
+// Finish applies only to a still-running job, preserves owner attachments and rejections, and records the result and
+// activity in the same transaction; the job ends with it.
 func (s *AutoTagStore) Finish(
 	ctx context.Context, contentKey string, selection domain.AutoTagSelection, decider domain.ActivityDecider,
 ) error {
@@ -330,8 +329,8 @@ func (s *AutoTagStore) Finish(
 
 	videoID, err := videoIDForContent(ctx, tx, contentKey)
 	if errors.Is(err, domain.ErrNotFound) {
-		if _, err := tx.ExecContext(ctx, `delete from auto_tag_queue where content_key = ?`, contentKey); err != nil {
-			return fmt.Errorf("cannot remove the auto-tagging job: %w", err)
+		if err := endContentJob(ctx, tx, autoTagQueue, contentKey, "", "", now); err != nil {
+			return err
 		}
 		if err := closeQueueActivity(ctx, tx, c, activityID, completed, "", "", now); err != nil {
 			return err
@@ -359,9 +358,8 @@ func (s *AutoTagStore) Finish(
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `update auto_tag_queue set state = 'done', error = '', updated_at = ?
-		where content_key = ?`, now.UnixMilli(), contentKey); err != nil {
-		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
+	if err := endContentJob(ctx, tx, autoTagQueue, contentKey, string(domain.JobDone), "", now); err != nil {
+		return err
 	}
 	if err := closeQueueActivity(ctx, tx, c, activityID, completed, decider, "", now); err != nil {
 		return err
@@ -476,16 +474,6 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
 	}
 	return nil
-}
-
-// Fail ignores items no longer running and records the failure with their activity atomically.
-func (s *AutoTagStore) Fail(ctx context.Context, contentKey, reason string) error {
-	return s.db.failContent(ctx, autoTagQueue, contentKey, reason)
-}
-
-// RequeueRunning recovers interrupted items before judging starts at startup.
-func (s *AutoTagStore) RequeueRunning(ctx context.Context) (int, error) {
-	return s.db.requeueRunning(ctx, autoTagQueue)
 }
 
 func (s *AutoTagStore) Counts(ctx context.Context) (domain.AutoTagCounts, error) {

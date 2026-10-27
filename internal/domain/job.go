@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 // Only expensive processing is queued; scans themselves are not jobs.
 type JobKind string
@@ -12,6 +15,8 @@ const (
 	JobPreview       JobKind = "preview"
 	// JobFingerprint reads sprite frames without ffmpeg or the source file.
 	JobFingerprint JobKind = "fingerprint"
+	// JobAutoTag classifies one content key; its subject is Job.ContentKey, not a video.
+	JobAutoTag JobKind = "auto_tag"
 )
 
 // JobPriority is a job's class; claims serve a lower class strictly first. See docs/design-docs/job-scheduling.md.
@@ -69,8 +74,12 @@ func AnyJobClaim(kind JobKind) JobClaim {
 	return JobClaim{Kind: kind, MaxPriority: JobPriorityBackfill}
 }
 
-// JobKinds defines stage order and worker creation; omitted kinds are never processed.
+// JobKinds are the import stages in stage order; only they join import activity and scan settling.
 var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, JobFingerprint}
+
+// ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
+// processed.
+var ScheduledJobKinds = append(slices.Clone(JobKinds), JobAutoTag)
 
 type JobState string
 

@@ -6,14 +6,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// capacity counts the slots in use against the CPU slots and each disk's read slots; it is safe for concurrent use,
-// because running jobs borrow and return slots while the scheduler grants.
+// capacity counts the slots in use against the CPU slots, the classifier slots and each disk's read slots; it is safe
+// for concurrent use, because running jobs borrow and return slots while the scheduler grants.
 type capacity struct {
-	mu        sync.Mutex
-	cpu       int
-	cpuUsed   int
-	readSlots map[string]int
-	readUsed  map[string]int
+	mu             sync.Mutex
+	cpu            int
+	cpuUsed        int
+	classifierUsed int
+	readSlots      map[string]int
+	readUsed       map[string]int
 }
 
 func newCapacity(cpu int) *capacity {
@@ -31,13 +32,14 @@ func (c *capacity) setDisks(slots map[string]int) {
 func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cpuUsed+demand.CPU > c.cpu {
+	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots {
 		return false
 	}
 	if demand.Read > 0 && c.readUsed[disk]+demand.Read > c.readSlots[disk] {
 		return false
 	}
 	c.cpuUsed += demand.CPU
+	c.classifierUsed += demand.Classifier
 	c.readUsed[disk] += demand.Read
 	return true
 }
@@ -46,12 +48,13 @@ func (c *capacity) release(disk string, demand domain.JobResources) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cpuUsed -= demand.CPU
+	c.classifierUsed -= demand.Classifier
 	c.readUsed[disk] -= demand.Read
 }
 
-// inUse reports the CPU slots and disk's read slots in use, for the debug log.
-func (c *capacity) inUse(disk string) (cpu, read int) {
+// inUse reports the slots in use, with the disk's read slots, for the debug log.
+func (c *capacity) inUse(disk string) domain.JobResources {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.cpuUsed, c.readUsed[disk]
+	return domain.JobResources{Read: c.readUsed[disk], CPU: c.cpuUsed, Classifier: c.classifierUsed}
 }

@@ -14,6 +14,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// importJobKinds lists domain.JobKinds as SQL values.
+var importJobKinds = func() string {
+	values := make([]string, len(domain.JobKinds))
+	for i, kind := range domain.JobKinds {
+		values[i] = `'` + string(kind) + `'`
+	}
+	return strings.Join(values, ", ")
+}()
+
 // Tests replace these to place claims and failures in time, fix the spread of a retry delay, and override a kind's
 // retry policy.
 var (
@@ -182,8 +191,12 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 // ClaimJobOn takes the claim's queued job of the lowest class, then the earliest run-after time, then the oldest,
 // among those whose run-after time has come and whose next location is under the claim's roots. The next location is
 // the first available one in path order after the previous attempt's, so a job stored only under unavailable roots
-// stays queued. BEGIN IMMEDIATE prevents duplicate claims; an empty queue returns ErrNoJob.
+// stays queued. A content job has no location, so only its class applies. BEGIN IMMEDIATE prevents duplicate claims;
+// an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
+	if q, ok := contentJobQueue(claim.Kind); ok {
+		return s.db.claimContentJob(ctx, q, claim.MaxPriority)
+	}
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
@@ -391,8 +404,12 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []i
 	return cond
 }
 
-// CompleteClaimedJob requeues when the claimed location or content changed.
+// CompleteClaimedJob requeues when the claimed location or content changed. A content job's handler has already
+// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
+	if _, ok := contentJobQueue(job.Kind); ok {
+		return nil
+	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot start recording job completion (id=%d): %w", job.ID, err)
@@ -478,6 +495,9 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 // FailClaimedJob applies the kind's retry policy: it requeues at once inside a round, waits out the delay after a round,
 // and records a terminal video failure in the same transaction. A snooze requeues without counting the claim.
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
+	if q, ok := contentJobQueue(job.Kind); ok {
+		return s.db.failContentJob(ctx, q, job, cause)
+	}
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -697,10 +717,11 @@ func (s *IngestStore) DueJobKinds(ctx context.Context) (map[domain.JobKind]domai
 	return due, nil
 }
 
+// HasUnfinishedJobs reports unfinished import stages only; other kinds do not hold back an import.
 func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	var found bool
 	err := s.db.sql.QueryRowContext(ctx,
-		`select exists (select 1 from jobs where state in ('queued', 'running'))`).Scan(&found)
+		`select exists (select 1 from jobs where state in ('queued', 'running') and kind in (`+importJobKinds+`))`).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("cannot look up unfinished jobs: %w", err)
 	}
@@ -731,8 +752,9 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	var c changes
 	c.remainingChanged()
 	if affected > 0 {
-		c.jobsQueued(domain.JobKinds...)
+		c.jobsQueued(domain.ScheduledJobKinds...)
 	}
+
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}

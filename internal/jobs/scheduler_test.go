@@ -218,7 +218,7 @@ func (b *blockingJobs) release(id int64) {
 
 func (b *blockingJobs) handlers() map[domain.JobKind]Handler {
 	handlers := map[domain.JobKind]Handler{}
-	for _, kind := range domain.JobKinds {
+	for _, kind := range domain.ScheduledJobKinds {
 		handlers[kind] = b.handle
 	}
 	return handlers
@@ -397,7 +397,65 @@ func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 	})
 }
 
+// Auto-tagging reads no source file, so it runs while every read slot is held, but the classifier takes one job at
+// a time.
+func TestSchedulerGrantsAutoTagOnTheClassifierSlotOnly(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe},
+			domain.Job{ID: 2, Kind: domain.JobAutoTag},
+			domain.Job{ID: 3, Kind: domain.JobAutoTag},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1,
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+		jobs.release(2)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 3}; !slices.Equal(got, want) {
+			t.Fatalf("running after the first classification = %v, want %v", got, want)
+		}
+	})
+}
+
+// A paused kind is not claimed, so its job keeps its attempts; resuming it and waking the scheduler claims the job.
+func TestSchedulerLeavesPausedKindsQueuedUntilWoken(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobAutoTag})
+		var mu sync.Mutex
+		paused := true
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1,
+			Paused: func(context.Context) (map[domain.JobKind]bool, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				return map[domain.JobKind]bool{domain.JobAutoTag: paused}, nil
+			},
+		})
+		defer stop()
+		synctest.Wait()
+		if n := queue.claimed(domain.JobAutoTag); n != 0 {
+			t.Fatalf("claims of a paused kind = %d, want 0", n)
+		}
+		mu.Lock()
+		paused = false
+		mu.Unlock()
+		scheduler.Wake()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("running after resuming = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerSleepsUntilWoken(t *testing.T) {
+
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue()
 		scheduler, stop := startScheduler(Options{

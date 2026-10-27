@@ -41,9 +41,12 @@ type Options struct {
 	Folders Folders
 	// Disks resolves a media folder's disk; an error marks the folder unavailable.
 	Disks DiskResolver
-	// A kind of domain.JobKinds without a handler fails its jobs.
+	// A kind of domain.ScheduledJobKinds without a handler fails its jobs.
 	Handlers map[domain.JobKind]Handler
 	CPUSlots int
+	// Paused reports the kinds whose feature is off; their jobs stay queued and are not claimed. Whoever turns a
+	// feature back on must Wake the scheduler. Nil pauses nothing.
+	Paused func(ctx context.Context) (map[domain.JobKind]bool, error)
 	// Optional callback after claiming and immediately before handling.
 	Started func(job domain.Job)
 	// Optional callback after recording the outcome.
@@ -63,6 +66,7 @@ type Scheduler struct {
 	handlers map[domain.JobKind]Handler
 	started  func(domain.Job)
 	finished func(domain.Job)
+	paused   func(context.Context) (map[domain.JobKind]bool, error)
 	logger   *slog.Logger
 	capacity *capacity
 	roots    *roots
@@ -86,6 +90,7 @@ func NewScheduler(opts Options) *Scheduler {
 		handlers: opts.Handlers,
 		started:  opts.Started,
 		finished: opts.Finished,
+		paused:   opts.Paused,
 		logger:   logger,
 		capacity: newCapacity(opts.CPUSlots),
 		nextKind: map[string]int{},
@@ -113,10 +118,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // turn is what one step knows while it grants: the disks in rotation, the most urgent due class of each kind, the
-// class being served and the unavailable folders.
+// paused kinds, the class being served and the unavailable folders.
 type turn struct {
 	groups      []diskGroup
 	due         map[domain.JobKind]domain.JobPriority
+	paused      map[domain.JobKind]bool
 	class       domain.JobPriority
 	unavailable []int64
 }
@@ -155,6 +161,11 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 	if t.due, err = s.queue.DueJobKinds(ctx); err != nil {
 		return turn{}, err
 	}
+	if s.paused != nil {
+		if t.paused, err = s.paused(ctx); err != nil {
+			return turn{}, fmt.Errorf("cannot read the paused job kinds: %w", err)
+		}
+	}
 	return t, nil
 }
 
@@ -179,14 +190,15 @@ func (s *Scheduler) grantClass(ctx context.Context, t turn) error {
 }
 
 // grantIn claims one job of the disk's kinds in turn, resuming after the last granted kind so a freed slot goes to the
-// next stage instead of always to the first. A kind whose demand does not fit is skipped, not waited for.
+// next stage instead of always to the first. A kind whose demand does not fit is skipped, not waited for, and a
+// paused kind is skipped like an empty one.
 func (s *Scheduler) grantIn(ctx context.Context, g diskGroup, t turn, empty map[string]bool) (bool, error) {
 	start := s.nextKind[g.disk]
 	for i := range g.kinds {
 		at := (start + i) % len(g.kinds)
 		kind := g.kinds[at]
 		key := g.disk + "\x00" + string(kind)
-		if class, ok := t.due[kind]; !ok || class > t.class || empty[key] {
+		if class, ok := t.due[kind]; !ok || class > t.class || empty[key] || t.paused[kind] {
 			continue
 		}
 		demand := domain.JobDemand(kind)
@@ -251,11 +263,12 @@ func (s *Scheduler) grant(ctx context.Context, job domain.Job, disk string, dema
 }
 
 func (s *Scheduler) slotAttrs(job domain.Job, disk string, demand domain.JobResources) []any {
-	cpu, read := s.capacity.inUse(disk)
+	used := s.capacity.inUse(disk)
 	return []any{
 		slog.Int64("job", job.ID), slog.String("stage", string(job.Kind)), slog.String("disk", disk),
 		slog.Int("read", demand.Read), slog.Int("cpu", demand.CPU),
-		slog.Int("readInUse", read), slog.Int("cpuInUse", cpu),
+		slog.Int("classifier", demand.Classifier),
+		slog.Int("readInUse", used.Read), slog.Int("cpuInUse", used.CPU), slog.Int("classifierInUse", used.Classifier),
 	}
 }
 

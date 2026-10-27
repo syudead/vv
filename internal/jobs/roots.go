@@ -41,7 +41,7 @@ type diskGroup struct {
 var readKinds, noReadKinds = splitKindsByRead()
 
 func splitKindsByRead() (read, noRead []domain.JobKind) {
-	for _, kind := range domain.JobKinds {
+	for _, kind := range domain.ScheduledJobKinds {
 		if domain.JobDemand(kind).Read > 0 {
 			read = append(read, kind)
 		} else {
