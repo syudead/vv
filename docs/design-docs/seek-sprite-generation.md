@@ -81,11 +81,19 @@ flowchart LR
 | Rotation | The raw stream loses the `tkhd` display matrix; a 90-degree-step rotation is reapplied (`transpose`, `hflip,vflip`) before scaling |
 | Deadline or stop | Reads return without waiting, so an unresponsive storage location cannot hang the job |
 
+A fragmented MP4 keeps an empty sample table in `moov` and announces its
+fragments with `mvex`. The index reader then skips over each `mdat` by its
+header, reads every `moof`, and takes the sync samples of the video track from
+`tfhd`, `tfdt` and `trun`, with `trex` defaults. Data offsets count from the
+`moof` start unless `tfhd` gives a base. Without `sidx` or `mfra`, `ffmpeg` 8
+seeking reads such a file from its start, so per-interval extraction would
+decode up to every interval.
+
 These inputs go straight to per-interval extraction:
 
 | Input | Why |
 | --- | --- |
-| No `moov` (fragmented MP4 and the like) | No sample table to read |
+| No `moov` | No sample table to read |
 | Not MP4/MOV, or video not H.264/HEVC/AV1 | Outside what the index path reads |
 | More than one sample description | Resolution or similar changes midway |
 | More than one non-empty edit | A middle section is cut out |

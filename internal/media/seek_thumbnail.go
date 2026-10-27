@@ -76,11 +76,11 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	if err != nil {
 		return err
 	}
-	movie, err := readMovieBox(ctx, file, info.Size())
+	movie, fragments, err := readMovieBox(ctx, file, info.Size())
 	if err != nil {
 		return err
 	}
-	track, err := parseKeyframeTrack(movie)
+	track, err := parseKeyframeTrack(movie, fragments)
 	if err != nil {
 		return err
 	}

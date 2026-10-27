@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// A killed child can leave a grandchild holding its output pipes, such as the real ffmpeg behind a
-// Scoop shim; without a bound, Wait would block until that grandchild exits.
+// A killed child can leave a grandchild holding its output pipes, such as the program a launcher
+// started; without a bound, Wait would block until that grandchild exits.
 const commandStopDelay = 5 * time.Second
 
 // command builds every ffmpeg/ffprobe child process this package starts, so

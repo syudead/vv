@@ -59,11 +59,11 @@ func TestParseKeyframeTrackReadsKeyframeTimes(t *testing.T) {
 			}
 			defer func() { _ = file.Close() }()
 			info, _ := file.Stat()
-			movie, err := readMovieBox(context.Background(), file, info.Size())
+			movie, _, err := readMovieBox(context.Background(), file, info.Size())
 			if err != nil {
 				t.Fatal(err)
 			}
-			track, err := parseKeyframeTrack(movie)
+			track, err := parseKeyframeTrack(movie, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,11 +232,11 @@ func TestGenerateSeekSpriteReusesPreviousFrameForDamagedInterval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	movie, err := readMovieBox(context.Background(), file, info.Size())
+	movie, _, err := readMovieBox(context.Background(), file, info.Size())
 	if err != nil {
 		t.Fatal(err)
 	}
-	track, err := parseKeyframeTrack(movie)
+	track, err := parseKeyframeTrack(movie, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +268,69 @@ func TestSeekFrameArgsToleratesDecodeErrors(t *testing.T) {
 		if !strings.Contains(args, want) {
 			t.Errorf("引数に %q が無い: %s", want, args)
 		}
+	}
+}
+
+// Fragmented MP4 without sidx or mfra makes ffmpeg seeking read from the start, so its keyframes come from the
+// moof boxes instead.
+func TestGenerateSeekSpriteFromIndexReadsFragmentedMP4(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		encoder  string
+		encoding []string
+	}{
+		{"h264", "libx264", []string{"-c:v", "libx264", "-g", "10", "-bf", "2", "-crf", "10"}},
+		{"av1", "libsvtav1", []string{"-c:v", "libsvtav1", "-g", "10", "-crf", "10", "-svtav1-params", "log-level=0"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			requireEncoder(t, tc.encoder)
+			videoPath := filepath.Join(t.TempDir(), "fragmented.mp4")
+			args := append([]string{"-f", "lavfi", "-i", timeGraySource("64x64", "12")}, tc.encoding...)
+			args = append(args, "-movflags", "frag_keyframe+empty_moov+default_base_moof+skip_trailer", "-y", videoPath)
+			runFFmpeg(t, args...)
+
+			layout := domain.NewSeekSpriteLayout(12_000)
+			output := t.TempDir()
+			if err := generateSeekSpriteFromIndex(context.Background(), videoPath, output, layout); err != nil {
+				t.Fatal(err)
+			}
+			sheets := readSheets(t, output)
+			for k := range layout.FrameCount {
+				startSec := float64(k) * float64(layout.IntervalMs) / 1000
+				if got := frameSeconds(t, sheets, layout, k); got < startSec-0.5 || got > startSec+0.5 {
+					t.Errorf("コマ %d の時刻 %.2f 秒（区間の先頭 %.0f 秒のはず）", k, got, startSec)
+				}
+			}
+		})
+	}
+}
+
+// Fragments past the top-level box limit stay unread, so a partial fragment index is rejected rather than returned.
+func TestReadMovieBoxRejectsFragmentsPastBoxLimit(t *testing.T) {
+	file := append(be32(16), []byte("moov")...)
+	file = append(file, be32(8)...)
+	file = append(file, []byte("mvex")...)
+	for range maxTopLevelBoxes {
+		file = append(file, be32(8)...)
+		file = append(file, []byte("free")...)
+	}
+	_, _, err := readMovieBox(context.Background(), bytes.NewReader(file), int64(len(file)))
+	if !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("上限を超えたボックスで %v（errSeekIndexUnsupported のはず）", err)
+	}
+}
+
+// A trun without per-sample fields takes no bytes per sample, so a huge count of non-sync samples, which never reaches
+// the keyframe limit, is rejected before the walk.
+func TestReadRunRejectsSampleCountPastLimit(t *testing.T) {
+	reader := fragmentReader{trackID: 1}
+	trun := be32(0, 0xffffffff)
+	header := trackFragment{trackID: 1, defaults: sampleDefaults{flags: sampleIsNonSyncSample}}
+	if _, err := reader.readRun(trun, header, 0); !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("サンプル数 0xffffffff で %v（errSeekIndexUnsupported のはず）", err)
 	}
 }
 
@@ -319,7 +382,7 @@ func TestParseKeyframeTrackSurvivesDamagedIndex(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 	info, _ := file.Stat()
-	movie, err := readMovieBox(context.Background(), file, info.Size())
+	movie, _, err := readMovieBox(context.Background(), file, info.Size())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +393,7 @@ func TestParseKeyframeTrackSurvivesDamagedIndex(t *testing.T) {
 				t.Fatalf("%s でパニックした: %v", name, r)
 			}
 		}()
-		track, err := parseKeyframeTrack(data)
+		track, err := parseKeyframeTrack(data, nil)
 		if err != nil {
 			return
 		}
@@ -652,7 +715,7 @@ func TestReadMovieBoxReturnsWhenContextEnds(t *testing.T) {
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := readMovieBox(ctx, reader, 1<<20)
+			_, _, err := readMovieBox(ctx, reader, 1<<20)
 			done <- err
 		}()
 		select {
