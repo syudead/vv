@@ -99,8 +99,8 @@ On a paired node the related list holds the videos of both nodes, ranked by
 the same scorer; the code is `internal/app/catalog_peer_related.go` and
 `internal/httpapi/peer_related.go`.
 
-The node that holds the open video sends its clues to the other node, and each
-node scores and pages its own videos. The clues are the fingerprint, the tag
+Each node scores and pages its own videos against the clues of the open video,
+which come from the node that holds it. The clues are the fingerprint, the tag
 names, the title and file-name words and the date added; they carry no
 directory, so a video never gets folder points from a video of the other node.
 A tag name the other node lacks still counts among the tags of the open video.
@@ -113,9 +113,27 @@ A tag name the other node lacks still counts among the tags of the open video.
 | Open video on the peer | Its clues and its group come from the peer; the video itself, the versions of its bundle and its group members are excluded on the peer |
 | Next video | The head of the merged list, or the group neighbour as before |
 
-The open video's own node scores its videos from the clues too when the video
-is remote, so for a remote video the peer's videos in its folder get no folder
-points either.
+When the open video is remote, the screen's node reads its clues from the peer
+and sends them back to the peer with the video's id in the peer's ids
+(`openVideoId`). The peer looks up that video's representative directory in
+the caller's audience and gives its own videos in that directory the folder
+points, so the peer's videos rank as when the video is opened on the peer
+itself. An id the audience cannot see, or no id, gives no folder points and no
+error. A local open video sends no id, so the peer's videos get no folder
+points.
+
+```mermaid
+sequenceDiagram
+  participant A as Screen's node
+  participant B as Peer holding the open video
+  A->>B: GET /api/peer/videos/{id}/clues
+  B-->>A: clues (no directory)
+  A->>A: score A's videos (no folder points)
+  A->>B: POST /api/peer/related {clues, exclude, openVideoId}
+  B->>B: score B's videos, folder points from openVideoId's directory
+  B-->>A: scored page
+  A->>A: merge both pages
+```
 
 ## Excluded videos
 

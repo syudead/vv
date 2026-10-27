@@ -389,7 +389,7 @@ func (f *fakeCatalog) RemoteRelatedVideos(context.Context, domain.Audience, doma
 	return domain.MergedRelated{}, errFakeCatalogMerged
 }
 
-func (f *fakeCatalog) PeerRelated(context.Context, domain.Audience, domain.RelatedClues, []int64, *domain.RelatedCursor, int) (domain.ScoredRelated, error) {
+func (f *fakeCatalog) PeerRelated(context.Context, domain.Audience, domain.RelatedClues, int64, []int64, *domain.RelatedCursor, int) (domain.ScoredRelated, error) {
 	return domain.ScoredRelated{}, errFakeCatalogMerged
 }
 

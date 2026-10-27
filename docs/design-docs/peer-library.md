@@ -234,7 +234,9 @@ The related list of any video ranks both nodes' videos with the scorer of
 supplies its clues, each node scores its own candidates
 (`POST /api/peer/related`), and the two score-ordered pages merge by score,
 `addedAt` and id. The same-directory clue is 0 across nodes, since two disks
-share no directory.
+share no directory. When the peer holds the open video, the ranking request
+names it by the peer's id (`openVideoId`), and the peer gives its videos in
+that video's directory the folder points, as its own related list does.
 
 ## Edits of remote videos
 

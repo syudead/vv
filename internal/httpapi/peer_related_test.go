@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,9 +16,9 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// relatedNodes pairs two nodes that each hold the guest fixture; the screens use b. On b, video b no longer
+// relatedNodes pairs two nodes that each hold the guest fixture, with their screens. On b, video b no longer
 // has the tag, so its only clue shared with a is the folder.
-func relatedNodes(t *testing.T) (a, b *guestFixture, screens *peerNode) {
+func relatedNodes(t *testing.T) (a, b *guestFixture, onA, onB *peerNode) {
 	t.Helper()
 	nodes := make([]*peerNode, 2)
 	fixtures := make([]*guestFixture, 2)
@@ -35,7 +36,7 @@ func relatedNodes(t *testing.T) (a, b *guestFixture, screens *peerNode) {
 	if _, _, err := b.env.db.Tags().DetachTag(context.Background(), []int64{b.ids["b"]}, b.tagID); err != nil {
 		t.Fatal(err)
 	}
-	return a, b, nodes[1]
+	return a, b, nodes[0], nodes[1]
 }
 
 func (f *guestFixture) remoteID(name string) int64 {
@@ -56,7 +57,7 @@ func relatedIDs(t *testing.T, rec *httptest.ResponseRecorder) (gen.RelatedVideos
 }
 
 func TestRelatedVideosOfALocalVideoRankBothNodes(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	related, ids := relatedIDs(t, screens.owner(http.MethodGet, b.videoPath("a", "/related"), ""))
 	// a's a and b share the tag (30 points) and outrank b's b, which shares only the folder (20); a's b was
@@ -94,7 +95,7 @@ func TestRelatedVideosOfALocalVideoRankBothNodes(t *testing.T) {
 }
 
 func TestRelatedVideosOfARemoteVideoScoreLocalVideos(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	related, ids := relatedIDs(t, screens.owner(http.MethodGet, a.remotePath("a", "/related"), ""))
 	// b's a shares the tag by name, as a's b does on a; a's b was added later.
@@ -110,7 +111,7 @@ func TestRelatedVideosOfARemoteVideoScoreLocalVideos(t *testing.T) {
 }
 
 func TestRelatedVideosOfARemoteVersionLeaveOutItsBundle(t *testing.T) {
-	a, _, screens := relatedNodes(t)
+	a, _, _, screens := relatedNodes(t)
 	if _, err := a.env.db.Versions().Bundle(context.Background(), []int64{a.ids["a"], a.ids["b"]}, a.ids["b"]); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +124,74 @@ func TestRelatedVideosOfARemoteVersionLeaveOutItsBundle(t *testing.T) {
 	if related.NextId != nil && *related.NextId == a.remoteID("b") {
 		t.Errorf("nextId = 開いている版の代表 %d", *related.NextId)
 	}
+}
+
+func TestRelatedVideosOfARemoteVideoRankLikeOnItsNode(t *testing.T) {
+	a, b, onA, onB := relatedNodes(t)
+
+	// b's b shares only the folder with b's a, so it follows a's two tagged videos only with the folder points.
+	_, direct := relatedIDs(t, onB.owner(http.MethodGet, b.videoPath("a", "/related"), ""))
+	if want := []int64{a.remoteID("b"), a.remoteID("a"), b.ids["b"]}; len(direct) < 3 || !slices.Equal(direct[:3], want) {
+		t.Fatalf("b で開いた ids = %v, want %v で始まる", direct, want)
+	}
+	_, remote := relatedIDs(t, onA.owner(http.MethodGet, b.remotePath("a", "/related"), ""))
+	if want := []int64{a.ids["b"], a.ids["a"], b.remoteID("b")}; len(remote) < 3 || !slices.Equal(remote[:3], want) {
+		t.Fatalf("a で開いた ids = %v, want %v で始まる（b で開いたときと同じ順）", remote, want)
+	}
+}
+
+// peerRelatedScores posts a ranking request to b as its peer a and returns the whole points by b's video name.
+func peerRelatedScores(t *testing.T, onA *peerNode, b *guestFixture, audience, body string) map[string]int64 {
+	t.Helper()
+	header := map[string]string{"Authorization": "VV-Peer " + onA.outgoingSecret(t)}
+	if audience != "" {
+		header[peerAudienceHeader] = audience
+	}
+	rec := b.env.serve(authRequest{method: http.MethodPost, target: peerRelatedPath, body: body, header: header})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: status = %d: %s", body, rec.Code, rec.Body)
+	}
+	names := make(map[int64]string, len(b.ids))
+	for name, id := range b.ids {
+		names[id] = name
+	}
+	scores := map[string]int64{}
+	for _, item := range decode[gen.PeerRelatedPage](t, rec).Items {
+		scores[names[item.Video.Id]] = item.Score / int64(domain.RelatedScoreUnit)
+	}
+	return scores
+}
+
+func TestRankPeerRelatedGivesFolderPointsByTheOpenVideo(t *testing.T) {
+	_, b, onA, _ := relatedNodes(t)
+	id := func(name string) string { return strconv.FormatInt(b.ids[name], 10) }
+	// The clues share nothing with b's videos and are dated long before them, so only the folder can score.
+	request := func(extra string) string {
+		return `{"clues":{"tags":[],"words":[],"addedAt":"2000-01-01T00:00:00Z"}` + extra + `}`
+	}
+
+	for _, tc := range []struct {
+		name, audience, body string
+		want                 map[string]int64
+	}{
+		{"open video", "", request(`,"exclude":[` + id("a") + `],"openVideoId":` + id("a")),
+			map[string]int64{"b": 20, "c": 0, "d": 0, "e": 0}},
+		{"no open video", "", request(`,"exclude":[` + id("a") + `]`),
+			map[string]int64{"b": 0, "c": 0, "d": 0, "e": 0}},
+		{"unknown id", "", request(`,"exclude":[` + id("a") + `],"openVideoId":999999`),
+			map[string]int64{"b": 0, "c": 0, "d": 0, "e": 0}},
+		// b is not public, so a guest's ranking takes no folder from it.
+		{"hidden from the audience", "guest", request(`,"openVideoId":` + id("b")),
+			map[string]int64{"a": 0, "d": 0}},
+	} {
+		if got := peerRelatedScores(t, onA, b, tc.audience, tc.body); !maps.Equal(got, tc.want) {
+			t.Errorf("%s: 点数 = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+
+	rec := b.env.serve(authRequest{method: http.MethodPost, target: peerRelatedPath, body: request(`,"openVideoId":0`),
+		header: map[string]string{"Authorization": "VV-Peer " + onA.outgoingSecret(t)}})
+	assertStatus(t, "openVideoId 0", rec, http.StatusBadRequest)
 }
 
 func TestCluesFromRefusesAFingerprintLongerThanASprite(t *testing.T) {
@@ -145,7 +214,7 @@ func TestCluesFromRefusesAFingerprintLongerThanASprite(t *testing.T) {
 }
 
 func TestGuestRelatedVideosHoldPublicVideosOfBothNodes(t *testing.T) {
-	a, b, screens := relatedNodes(t)
+	a, b, _, screens := relatedNodes(t)
 
 	_, ids := relatedIDs(t, screens.env.get(b.videoPath("a", "/related")))
 	slices.Sort(ids)
