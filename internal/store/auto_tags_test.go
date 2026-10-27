@@ -24,11 +24,8 @@ func autoTagState(t *testing.T, db *DB, contentKey string) string {
 // contentItem reads the state of key in q and the entry of its unfinished work, if any.
 func contentItem(t *testing.T, db *DB, q contentQueue, key string) (string, sql.NullInt64) {
 	t.Helper()
-	activity := `(select activity_id from ` + q.table + ` where content_key = ?1)`
-	if q.job != "" {
-		activity = `(select activity_id from jobs where kind = '` + string(q.job) + `' and subject_key = ?1
-			and state in ('queued', 'running'))`
-	}
+	activity := `(select activity_id from jobs where kind = '` + string(q.job) + `' and subject_key = ?1
+		and state in ('queued', 'running'))`
 	var state string
 	var activityID sql.NullInt64
 	if err := db.sql.QueryRow(`select `+q.stateOf("?1")+`, `+activity, key).Scan(&state, &activityID); err != nil {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -25,23 +24,22 @@ type FaceAnalysisQueue interface {
 	RetryVideo(ctx context.Context, contentKey string, entryID int64) (int, error)
 	// ClearPeople deletes every person and face appearance and leaves every video to be analysed again.
 	ClearPeople(ctx context.Context) (domain.PeopleCleared, error)
-	// Claim takes the next queued video with the recognizer and generation current at the claim, or ErrNoJob.
-	Claim(ctx context.Context) (domain.FaceJob, error)
-	// VideoPaths returns the registered locations of the content, or ErrNotFound when the library lost it.
-	VideoPaths(ctx context.Context, contentKey string) ([]string, error)
+	// FaceJob reads the recognizer and generation current now, for an analysis of the content key that starts now.
+	FaceJob(ctx context.Context, contentKey string) (domain.FaceJob, error)
 	// Store refuses a result of an older generation with ErrFaceGenerationChanged and writes nothing.
 	Store(ctx context.Context, result domain.FaceAnalysis) error
-	Fail(ctx context.Context, contentKey, reason string) error
-	RequeueRunning(ctx context.Context) (int, error)
+	// HasHelperWork reports a due face or face_image job, for which the helper is kept running.
+	HasHelperWork(ctx context.Context) (bool, error)
 }
 
 // FaceImageStore keeps the vectors of people's face images and applies the face-image rule.
 type FaceImageStore interface {
 	// FaceImage returns the person's face with its stored vector, or ErrNotFound when the person has none.
 	FaceImage(ctx context.Context, personID int64) (domain.FaceImageJob, error)
-	// StaleFaceImage returns a face without a current vector, or ErrNoJob.
-	StaleFaceImage(ctx context.Context) (domain.FaceImageJob, error)
-	// StoreFaceImageVector refuses a job of an older generation with ErrFaceGenerationChanged and writes nothing.
+	// QueueStaleFaceImages queues a face_image job for every face without a current vector.
+	QueueStaleFaceImages(ctx context.Context) (int, error)
+	// StoreFaceImageVector refuses a job of an older generation with ErrFaceGenerationChanged, and one whose face
+	// was replaced with ErrFaceImageChanged, and writes nothing.
 	StoreFaceImageVector(ctx context.Context, job domain.FaceImageJob, vector []float32) (domain.FaceImageDecision, error)
 }
 
@@ -89,14 +87,15 @@ type FaceRecognizerOptions struct {
 	MediaFolders MediaFolderLister
 	MediaFiles   MediaFileResolver
 	Cast         FaceCastMerger
-	Wake         Waker
+	// Wake wakes the job scheduler, which runs the face jobs through HandleJob.
+	Wake Waker
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// FaceRecognizer analyses queued videos for faces one at a time while the feature is on and the runtime is ready,
-// and stops the running video when the feature is turned off or the recognizer changes; see
-// docs/design-docs/face-recognition.md.
+// FaceRecognizer runs the face jobs the scheduler grants on the one face lane: it analyses videos, embeds people's
+// face images and applies the cast rule. Its kinds are paused while the feature is off or the runtime is not ready,
+// and a settings change stops the running analysis or embedding; see docs/design-docs/face-recognition.md.
 type FaceRecognizer struct {
 	queue        FaceAnalysisQueue
 	images       FaceImageStore
@@ -111,27 +110,22 @@ type FaceRecognizer struct {
 	Waker
 
 	mu sync.Mutex
-	// run is the worker's current attempt, from before it reads the settings until the video ends.
+	// run is the face lane's running analysis or embedding, from before it reads the settings until it ends.
 	run *faceRun
-	// castChecks are the videos whose work information changed since the worker last applied the cast rule.
-	castChecks map[int64]struct{}
-	// pending holds people whose face changed or was named since; the worker applies their face before the next video.
-	pending map[int64]bool
 
-	// helper is used by the worker goroutine only.
+	// helperMu guards the helper, which the running job uses and a settings change or shutdown may stop.
+	helperMu         sync.Mutex
 	helper           FaceHelper
 	helperRecognizer domain.FaceRecognizer
-	// stranded marks a claimed video left running because returning it to the queue failed; the worker returns it
-	// before the next claim, since the owner's runs and retries skip running videos.
-	stranded bool
 }
 
 type faceRun struct {
 	cancel context.CancelFunc
-	// recognizer is the claimed job's, empty before the claim.
+	// recognizer is the job's, empty before the job read the settings.
 	recognizer domain.FaceRecognizer
 }
 
+// NewFaceRecognizer does not process work until the scheduler runs its HandleJob.
 func NewFaceRecognizer(opts FaceRecognizerOptions) *FaceRecognizer {
 	logger := opts.Logger
 	if logger == nil {
@@ -141,96 +135,40 @@ func NewFaceRecognizer(opts FaceRecognizerOptions) *FaceRecognizer {
 		queue: opts.Queue, images: opts.Images, settings: opts.Settings, runtime: opts.Runtime, newHelper: opts.Helper,
 		frames: opts.Frames, mediaFolders: opts.MediaFolders, mediaFiles: opts.MediaFiles, cast: opts.Cast,
 		logger: logger.With(slog.String("component", "face-recognition")), Waker: opts.Wake,
-		pending: map[int64]bool{},
 	}
 }
 
 // SettingsChanged is called after the settings are saved: turning the feature off or switching the recognizer
-// cancels the running video, which goes back to the queue.
+// cancels the running analysis or embedding, which goes back to the queue, and turning it off stops an idle helper.
+// It wakes the scheduler, so turning the feature on resumes the paused jobs.
 func (f *FaceRecognizer) SettingsChanged(settings domain.FaceSettings) {
 	f.mu.Lock()
-	if r := f.run; r != nil && (!settings.Enabled || r.recognizer != settings.Recognizer) {
-		// Before the claim the recognizer is empty, so the worker reads the new settings again.
+	switch r := f.run; {
+	case r != nil && (!settings.Enabled || r.recognizer != settings.Recognizer):
+		// Before the job read the settings its recognizer is empty, so it reads the new ones again.
 		r.cancel()
+	case r == nil && !settings.Enabled:
+		f.closeHelper()
 	}
 	f.mu.Unlock()
 	f.Wake()
 }
 
-// PersonImageChanged has the worker embed the person's face, or apply it again after a naming, before the next video.
-func (f *FaceRecognizer) PersonImageChanged(event domain.PersonImageChanged) {
-	f.pend(event.PersonID)
-	f.Wake()
-}
-
-func (f *FaceRecognizer) pend(personID int64) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.pending[personID] = true
-}
-
-// VideoImagesFinished only wakes the worker: the transaction that finishes the seek stage queued the video.
-func (f *FaceRecognizer) VideoImagesFinished(context.Context, int64) { f.Wake() }
-
-// WorkInfoChanged has the worker apply the cast rule to the videos while the feature is on; changes made while it is
-// off are not checked later.
-func (f *FaceRecognizer) WorkInfoChanged(videoIDs []int64) {
-	f.addCastChecks(videoIDs)
-	f.Wake()
-}
-
-func (f *FaceRecognizer) addCastChecks(videoIDs []int64) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.castChecks == nil {
-		f.castChecks = map[int64]struct{}{}
-	}
-	for _, id := range videoIDs {
-		f.castChecks[id] = struct{}{}
-	}
-}
-
-func (f *FaceRecognizer) takeCastChecks() []int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	ids := slices.Sorted(maps.Keys(f.castChecks))
-	f.castChecks = nil
-	return ids
-}
-
-// mergeByCast applies the cast rule to each video whose work information changed; the videos it could not check
-// for a store error stay for the next attempt, and a merge refused for good is dropped, since retrying it would hold
-// up the queue.
-func (f *FaceRecognizer) mergeByCast(ctx context.Context) error {
-	ids := f.takeCastChecks()
-	for i, id := range ids {
-		merged, err := f.cast.MergeByCast(ctx, id)
-		switch {
-		case errors.Is(err, domain.ErrNotFound):
-		case errors.Is(err, domain.ErrFaceMergeRefused):
-			f.logger.Warn("the cast rule's merge was refused", slog.Int64("video_id", id), slog.Any("error", err))
-		case err != nil:
-			f.addCastChecks(ids[i:])
-			return err
-		case merged:
-			f.logger.Info("merged a provisional person into the only performer without a face",
-				slog.Int64("video_id", id))
-		}
-	}
-	return nil
-}
-
-// Recover must run before the first Step.
-func (f *FaceRecognizer) Recover(ctx context.Context) error {
-	requeued, err := f.queue.RequeueRunning(ctx)
+// PausedJobKinds pauses the face lane while the feature is off or the recognizer's runtime is not ready, so its
+// jobs keep their attempts until the runtime's Ready or a settings change wakes the scheduler.
+func (f *FaceRecognizer) PausedJobKinds(ctx context.Context) ([]domain.JobKind, error) {
+	settings, err := f.settings.FaceSettings(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if requeued > 0 {
-		f.logger.Info("requeued interrupted face analyses", slog.Int("count", requeued))
+	if settings.Enabled && f.runtime.Status(settings.Recognizer).State == domain.FaceRuntimeReady {
+		return nil, nil
 	}
-	return nil
+	return slices.Clone(domain.FaceLaneJobKinds), nil
 }
+
+// VideoImagesFinished only wakes the scheduler: the transaction that finishes the seek stage queued the video.
+func (f *FaceRecognizer) VideoImagesFinished(context.Context, int64) { f.Wake() }
 
 func (f *FaceRecognizer) enabled(ctx context.Context) error {
 	settings, err := f.settings.FaceSettings(ctx)
@@ -262,8 +200,8 @@ func (f *FaceRecognizer) QueueLibrary(ctx context.Context, scope domain.FaceQueu
 	return queued, nil
 }
 
-// ClearPeople deletes every person and all face data, whether the feature is on or off, and wakes the worker for the
-// videos it queued.
+// ClearPeople deletes every person and all face data, whether the feature is on or off, and wakes the scheduler for
+// the videos it queued.
 func (f *FaceRecognizer) ClearPeople(ctx context.Context) (domain.PeopleCleared, error) {
 	cleared, err := f.queue.ClearPeople(ctx)
 	if err == nil && cleared.Queued > 0 {
@@ -292,158 +230,139 @@ func (f *FaceRecognizer) RetryActivity(ctx context.Context, entry domain.Activit
 	return nil
 }
 
-// Step analyses one video, or embeds one face, at a time; a video interrupted by the end of ctx stays running for
-// Recover. Idling stops the helper, which holds the models in memory; it starts again with the next video.
-func (f *FaceRecognizer) Step(ctx context.Context) domain.WorkerWait {
-	wait := f.step(ctx)
-	if wait == domain.WorkerIdle {
-		f.closeHelper()
+// HandleJob runs one job of the face lane. Work that a settings change, a recognizer switch, a replaced face or a
+// helper that did not start interrupted returns a snooze, so it runs again without counting an attempt; any other
+// failure is retried after its delay. After the job the helper, which holds the models in memory, stops unless
+// another analysis or embedding is due; the next one starts it again.
+func (f *FaceRecognizer) HandleJob(ctx context.Context, job domain.Job) error {
+	var err error
+	switch job.Kind {
+	case domain.JobFace:
+		err = f.analyseJob(ctx, job)
+	case domain.JobFaceImage:
+		err = f.embedJob(ctx, job)
+	case domain.JobFaceCast:
+		err = f.castJob(ctx, job)
+	case domain.JobQueueFaceImages:
+		_, err = f.images.QueueStaleFaceImages(ctx)
+	default:
+		err = fmt.Errorf("unknown face job kind %q", job.Kind)
 	}
-	return wait
+	f.closeIdleHelper(ctx)
+	return err
 }
 
-// Close stops the helper once the loop running Step has returned.
+// Close stops the helper once the scheduler has returned.
 func (f *FaceRecognizer) Close() {
+	f.helperMu.Lock()
+	defer f.helperMu.Unlock()
+	f.closeHelperLocked()
+}
+
+// closeIdleHelper stops the helper unless another analysis or embedding is due and the lane may run it.
+func (f *FaceRecognizer) closeIdleHelper(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	due, err := f.queue.HasHelperWork(ctx)
+	if err == nil && due {
+		paused, pausedErr := f.PausedJobKinds(ctx)
+		if pausedErr == nil && len(paused) == 0 {
+			return
+		}
+	}
 	f.closeHelper()
 }
 
-func (f *FaceRecognizer) step(ctx context.Context) domain.WorkerWait {
-	run, cancel := context.WithCancel(ctx)
-	defer cancel()
-	f.begin(cancel)
-	defer f.end()
-	settings, err := f.settings.FaceSettings(run)
+// analyseJob analyses and stores the video of a claimed face job, read from the location the claim took.
+func (f *FaceRecognizer) analyseJob(ctx context.Context, job domain.Job) error {
+	run, end := f.begin(ctx)
+	defer end()
+	face, err := f.queue.FaceJob(run, job.ContentKey)
 	if err != nil {
-		return f.retryUnless(run, "cannot read the face recognition settings", err)
+		return f.outcome(ctx, run, fmt.Errorf("%w: %w", errFaceDatabase, err))
 	}
-	if f.stranded {
-		if _, err := f.queue.RequeueRunning(run); err != nil {
-			return f.retryUnless(run, "cannot return the face analysis to the queue", err)
-		}
-		f.stranded = false
+	if err := f.start(run, face.Recognizer); err != nil {
+		return f.outcome(ctx, run, err)
 	}
-	if !settings.Enabled {
-		f.takeCastChecks()
-		return domain.WorkerIdle
-	}
-	if err := f.mergeByCast(run); err != nil {
-		return f.retryUnless(run, "cannot apply the cast rule", err)
-	}
-	if f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
-		return domain.WorkerIdle
-	}
-	if step, ok := f.embedNext(run, settings); ok {
-		return step
-	}
-	job, err := f.queue.Claim(run)
-	if errors.Is(err, domain.ErrNoJob) {
-		return domain.WorkerIdle
-	}
-	if err != nil {
-		return f.retryUnless(run, "cannot claim a face analysis job", err)
-	}
-	f.claimed(job.Recognizer)
-	if job.Recognizer != settings.Recognizer || run.Err() != nil {
-		// The settings changed between the read and the claim.
-		f.requeue(ctx, job)
-		return domain.WorkerNext
-	}
-	return f.process(ctx, run, job)
-}
-
-// retryUnless steps again at once when a settings change cancelled run, which the error then only reports.
-func (f *FaceRecognizer) retryUnless(run context.Context, message string, err error) domain.WorkerWait {
-	if run.Err() != nil {
-		return domain.WorkerNext
-	}
-	return retryStep(run, f.logger, message, err)
-}
-
-func (f *FaceRecognizer) begin(cancel context.CancelFunc) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.run = &faceRun{cancel: cancel}
-}
-
-func (f *FaceRecognizer) claimed(recognizer domain.FaceRecognizer) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.run.recognizer = recognizer
-}
-
-func (f *FaceRecognizer) end() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.run = nil
-}
-
-// process analyses and stores one claimed video. run ends when the settings change; ctx when the server stops.
-// A database error returns the video to the queue and backs off, so a transient error does not strand it running.
-func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) domain.WorkerWait {
-	result, err := f.analyse(run, job)
+	result, err := f.analyse(run, face, job.LocationPath)
 	if err == nil {
 		if err = f.queue.Store(run, result); err != nil && !errors.Is(err, domain.ErrFaceGenerationChanged) {
 			err = fmt.Errorf("%w: %w", errFaceDatabase, err)
 		}
 	}
-	switch {
-	case err == nil:
-	case ctx.Err() != nil:
-		// The server is stopping; Recover queues the video again at startup.
-	case run.Err() != nil, errors.Is(err, domain.ErrFaceGenerationChanged):
-		f.requeue(ctx, job)
-	case errors.Is(err, domain.ErrFaceHelperStart):
+	if errors.Is(err, domain.ErrFaceHelperStart) {
 		// The runtime is marked failed; the video waits until it is ready again.
 		f.logger.Warn("the face helper did not start", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		f.requeue(ctx, job)
-	case errors.Is(err, errFaceDatabase):
-		f.logger.Error("face analysis hit a database error", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		f.requeue(ctx, job)
-		return domain.WorkerRetry
+	}
+	return f.outcome(ctx, run, err)
+}
+
+// start records the job's recognizer, so a switch cancels it, and refuses a job the feature or recognizer no longer
+// allows.
+func (f *FaceRecognizer) start(run context.Context, recognizer domain.FaceRecognizer) error {
+	settings, err := f.settings.FaceSettings(run)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errFaceDatabase, err)
+	}
+	f.mu.Lock()
+	f.run.recognizer = recognizer
+	f.mu.Unlock()
+	if !settings.Enabled || settings.Recognizer != recognizer {
+		return errFaceSettingsChanged
+	}
+	return run.Err()
+}
+
+// begin registers the job's run, which a settings change cancels, until end.
+func (f *FaceRecognizer) begin(ctx context.Context) (context.Context, func()) {
+	run, cancel := context.WithCancel(ctx)
+	f.mu.Lock()
+	f.run = &faceRun{cancel: cancel}
+	f.mu.Unlock()
+	return run, func() {
+		f.mu.Lock()
+		f.run = nil
+		f.mu.Unlock()
+		cancel()
+	}
+}
+
+// outcome turns a face job's error into the scheduler's outcome. A stop of the server is returned as it is, since the
+// scheduler leaves the job for startup recovery.
+func (f *FaceRecognizer) outcome(ctx, run context.Context, err error) error {
+	switch {
+	case err == nil, ctx.Err() != nil:
+		return err
+	case run.Err() != nil, errors.Is(err, errFaceSettingsChanged), errors.Is(err, domain.ErrFaceGenerationChanged),
+		errors.Is(err, domain.ErrFaceImageChanged), errors.Is(err, domain.ErrFaceHelperStart):
+		return fmt.Errorf("%w: %w", domain.ErrJobSnoozed, err)
 	default:
-		f.logger.Warn("face analysis failed", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		if err := f.queue.Fail(ctx, job.ContentKey, failureReason(err)); err != nil {
-			f.logger.Error("cannot record the face analysis failure", slog.Any("error", err))
-			f.requeue(ctx, job)
-			return domain.WorkerRetry
-		}
-	}
-	return domain.WorkerNext
-}
-
-func (f *FaceRecognizer) requeue(ctx context.Context, job domain.FaceJob) {
-	if _, err := f.queue.RequeueRunning(ctx); err != nil {
-		f.stranded = true
-		f.logger.Error("cannot return the face analysis to the queue", slog.String("content_key", job.ContentKey),
-			slog.Any("error", err))
+		return shortFailure{err}
 	}
 }
 
-// errFaceDatabase marks a failure of the database rather than of the video.
-var errFaceDatabase = errors.New("face analysis database error")
+var (
+	// errFaceDatabase marks a failure of the database rather than of the video.
+	errFaceDatabase = errors.New("face analysis database error")
+	// errFaceSettingsChanged marks a job the feature or the recognizer no longer allows when it starts.
+	errFaceSettingsChanged = errors.New("the face recognition settings changed")
+)
 
-// analyse reads every sampled frame of the video and returns its main people. A video no longer in the library
-// gives an empty result, which removes its queue row.
-func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob) (domain.FaceAnalysis, error) {
+// analyse reads every sampled frame of the video at path and returns its main people.
+func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob, path string) (domain.FaceAnalysis, error) {
 	result := domain.FaceAnalysis{ContentKey: job.ContentKey, Recognizer: job.Recognizer, Generation: job.Generation}
 	spec, ok := domain.LookupFaceRecognizer(job.Recognizer)
 	if !ok {
 		return result, fmt.Errorf("unknown face recognizer %q", job.Recognizer)
 	}
-	paths, err := f.queue.VideoPaths(ctx, job.ContentKey)
-	if errors.Is(err, domain.ErrNotFound) {
-		return result, nil
-	}
-	if err != nil {
-		return result, fmt.Errorf("%w: %w", errFaceDatabase, err)
-	}
-	path, err := f.resolve(ctx, paths)
+	resolved, err := f.resolve(ctx, path)
 	if err != nil {
 		return result, err
 	}
 	helper := f.helperFor(job.Recognizer)
 	video := newFaceVideo(spec.Thresholds)
-	err = f.frames(ctx, path, func(pix []byte) error {
+	err = f.frames(ctx, resolved, func(pix []byte) error {
 		faces, err := detectFaces(ctx, helper, faceproto.DetectRequest{
 			Width: domain.FaceFrameSide, Height: domain.FaceFrameSide, Pix: pix,
 		})
@@ -459,8 +378,8 @@ func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob) (domai
 	return result, nil
 }
 
-// resolve returns the first location the media folders' access rules let another process open.
-func (f *FaceRecognizer) resolve(ctx context.Context, paths []string) (string, error) {
+// resolve returns the path the media folders' access rules let another process open.
+func (f *FaceRecognizer) resolve(ctx context.Context, path string) (string, error) {
 	folders, err := f.mediaFolders.ListMediaFolders(ctx)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errFaceDatabase, err)
@@ -469,15 +388,28 @@ func (f *FaceRecognizer) resolve(ctx context.Context, paths []string) (string, e
 	for i, folder := range folders {
 		roots[i] = folder.Path
 	}
-	var errs []error
-	for _, path := range paths {
-		resolved, err := f.mediaFiles.ResolveMediaFile(roots, path)
-		if err == nil {
-			return resolved, nil
-		}
-		errs = append(errs, err)
+	resolved, err := f.mediaFiles.ResolveMediaFile(roots, path)
+	if err != nil {
+		return "", fmt.Errorf("cannot open the video's file: %w", err)
 	}
-	return "", fmt.Errorf("cannot open the video's file: %w", errors.Join(errs...))
+	return resolved, nil
+}
+
+// castJob applies the cast rule to the job's video. A video gone from the library needs nothing, and a merge refused
+// for good is logged and not tried again, since retrying cannot change it.
+func (f *FaceRecognizer) castJob(ctx context.Context, job domain.Job) error {
+	merged, err := f.cast.MergeByCast(ctx, job.VideoID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, domain.ErrFaceMergeRefused):
+		f.logger.Warn("the cast rule's merge was refused", slog.Int64("video_id", job.VideoID), slog.Any("error", err))
+	case err != nil:
+		return err
+	case merged:
+		f.logger.Info("merged a provisional person into the only performer without a face",
+			slog.Int64("video_id", job.VideoID))
+	}
+	return nil
 }
 
 func detectFaces(ctx context.Context, helper FaceHelper, req faceproto.DetectRequest) ([]domain.FaceDetection, error) {
@@ -493,17 +425,25 @@ func detectFaces(ctx context.Context, helper FaceHelper, req faceproto.DetectReq
 	return faceDetections(d), nil
 }
 
-// helperFor keeps one helper for the recognizer across videos and stops the other recognizer's.
+// helperFor keeps one helper for the recognizer across jobs and stops the other recognizer's.
 func (f *FaceRecognizer) helperFor(r domain.FaceRecognizer) FaceHelper {
+	f.helperMu.Lock()
+	defer f.helperMu.Unlock()
 	if f.helper != nil && f.helperRecognizer == r {
 		return f.helper
 	}
-	f.closeHelper()
+	f.closeHelperLocked()
 	f.helper, f.helperRecognizer = f.newHelper(r), r
 	return f.helper
 }
 
 func (f *FaceRecognizer) closeHelper() {
+	f.helperMu.Lock()
+	defer f.helperMu.Unlock()
+	f.closeHelperLocked()
+}
+
+func (f *FaceRecognizer) closeHelperLocked() {
 	if f.helper == nil {
 		return
 	}

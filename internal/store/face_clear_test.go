@@ -38,7 +38,7 @@ func TestClearPeopleDeletesEveryPersonAndAnalysesTheVideosAfresh(t *testing.T) {
 			if got := countRows(t, f.db, `select cast(value as integer) from settings where key = 'face.generation'`); got != generation+1 {
 				t.Errorf("face.generation = %d, want %d", got, generation+1)
 			}
-			if got := countRows(t, f.db, `select count(*) from face_queue where state = 'queued'`); got != int64(want.Queued) {
+			if got := countRows(t, f.db, `select count(*) from jobs where kind = 'face' and state = 'queued'`); got != int64(want.Queued) {
 				t.Errorf("queued rows = %d, want %d", got, want.Queued)
 			}
 

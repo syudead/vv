@@ -197,19 +197,27 @@ func run(opts runOptions) error {
 		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,
 	})
+	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
+	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
 	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
 	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.JobKinds {
 		handlers[kind] = ingest.Handler(kind)
 	}
 	handlers[domain.JobAutoTag] = autoTagger.HandleJob
+	for _, kind := range []domain.JobKind{
+		domain.JobFace, domain.JobFaceImage, domain.JobFaceCast, domain.JobQueueFaceImages,
+	} {
+		handlers[kind] = faces.analysis.HandleJob
+	}
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Folders:  scanIndexStore,
 		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger),
+		Paused:   app.PausedJobKinds(autoTagger, faces.analysis),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -239,10 +247,6 @@ func run(opts runOptions) error {
 		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
 		Images: db.Overrides(), Applier: ingest, Logger: logger,
 	})
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
-	if err := faces.analysis.Recover(backgroundCtx); err != nil {
-		logger.Warn("could not requeue interrupted face analyses", slog.Any("error", err))
-	}
 	// Recover activity before workers start; recovery needs only storage, not retry/cancel
 	// dispatchers.
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
@@ -286,16 +290,18 @@ func run(opts runOptions) error {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 			faces.analysis.VideoImagesFinished(backgroundCtx, videoID)
 		},
-		WorkInfoChanged:    faces.analysis.WorkInfoChanged,
-		VersionJudge:       versionJudge,
-		PersonImageChanged: faces.analysis.PersonImageChanged,
+		VersionJudge: versionJudge,
 	})
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
 	defer stopChecks()
 	var transcodeSettings *app.TranscodeSettings
 
 	var workersDone sync.WaitGroup
-	workersDone.Go(func() { scheduler.Run(backgroundCtx) })
+	workersDone.Go(func() {
+		scheduler.Run(backgroundCtx)
+		// No face job runs any more, so the helper can stop.
+		faces.analysis.Close()
+	})
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() {
 		if err := ingest.RepublishVirtualThumbnails(backgroundCtx); err != nil {
@@ -305,7 +311,6 @@ func run(opts runOptions) error {
 	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
 
 	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
-	workersDone.Go(func() { faces.run(backgroundCtx) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })

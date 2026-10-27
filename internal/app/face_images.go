@@ -8,7 +8,6 @@ import (
 	"image"
 	"image/jpeg"
 	"log/slog"
-	"slices"
 
 	"golang.org/x/image/draw"
 
@@ -16,92 +15,50 @@ import (
 	"github.com/syudead/vv/internal/faceproto"
 )
 
-// People's face images are embedded between videos and checked on the owner's upload; see
+// People's face images are embedded by face_image jobs and checked on the owner's upload; see
 // docs/design-docs/face-recognition.md.
 
-// embedNext applies one face waiting for the worker, those named by events first, and reports false when none waits.
-func (f *FaceRecognizer) embedNext(run context.Context, settings domain.FaceSettings) (domain.WorkerWait, bool) {
-	job, err := f.nextFaceImage(run)
-	if errors.Is(err, domain.ErrNoJob) {
-		return domain.WorkerNext, false
+// embedJob embeds the face of the job's person unless a vector of it is stored, and stores it with the face-image
+// rule's decision; a person without a face needs nothing.
+func (f *FaceRecognizer) embedJob(ctx context.Context, job domain.Job) error {
+	run, end := f.begin(ctx)
+	defer end()
+	image, err := f.images.FaceImage(run, job.PersonID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
 	}
 	if err != nil {
-		return f.retryUnless(run, "cannot read a face image", err), true
+		return f.outcome(ctx, run, err)
 	}
-	f.claimed(job.Recognizer)
-	if job.Recognizer != settings.Recognizer || run.Err() != nil {
-		// The settings changed after the read; the face is read again under the new ones.
-		f.pend(job.PersonID)
-		return domain.WorkerNext, true
+	if err := f.start(run, image.Recognizer); err != nil {
+		return f.outcome(ctx, run, err)
 	}
-	return f.embed(run, job), true
+	return f.outcome(ctx, run, f.embed(run, image))
 }
 
-// nextFaceImage returns the face of a pending person, then any face without a current vector, or ErrNoJob.
-func (f *FaceRecognizer) nextFaceImage(ctx context.Context) (domain.FaceImageJob, error) {
-	for {
-		id, ok := f.popPending()
-		if !ok {
-			return f.images.StaleFaceImage(ctx)
-		}
-		job, err := f.images.FaceImage(ctx, id)
-		switch {
-		case errors.Is(err, domain.ErrNotFound):
-			continue
-		case err != nil:
-			f.pend(id)
-		}
-		return job, err
-	}
-}
-
-func (f *FaceRecognizer) popPending() (int64, bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.pending) == 0 {
-		return 0, false
-	}
-	// The smallest id keeps the order stable.
-	ids := make([]int64, 0, len(f.pending))
-	for id := range f.pending {
-		ids = append(ids, id)
-	}
-	id := slices.Min(ids)
-	delete(f.pending, id)
-	return id, true
-}
-
-// embed computes the face's vector unless one is stored, and stores it with the face-image rule's decision. A face
-// whose attempt was cancelled, fenced, or hit a helper start or database error stays pending; a merge refused for good
-// is not tried again, since retrying cannot change it.
-func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) domain.WorkerWait {
+// embed computes the face's vector unless one is stored, and stores it; a merge refused for good is logged and not
+// tried again, since retrying cannot change it.
+func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) error {
 	vector, err := job.Vector, error(nil)
 	if !job.Embedded {
 		vector, err = f.embedFace(run, f.helperFor(job.Recognizer), job)
 	}
-	var decision domain.FaceImageDecision
-	if err == nil {
-		decision, err = f.images.StoreFaceImageVector(run, job, vector)
+	if err != nil {
+		return err
 	}
+	decision, err := f.images.StoreFaceImageVector(run, job, vector)
 	switch {
-	case err == nil:
-		if decision.MergeID != 0 {
-			f.logger.Info("merged a provisional person by face", slog.Int64("person", job.PersonID),
-				slog.Int64("provisional", decision.MergeID))
-		}
-		return domain.WorkerNext
 	case errors.Is(err, domain.ErrFaceMergeRefused):
 		f.logger.Warn("the face-image rule's merge was refused", slog.Int64("person", job.PersonID),
 			slog.Any("error", err))
-		return domain.WorkerNext
-	case run.Err() != nil, errors.Is(err, domain.ErrFaceGenerationChanged), errors.Is(err, domain.ErrFaceHelperStart):
-		// Read again under the new settings, or once the runtime is ready again.
-		f.pend(job.PersonID)
-		return domain.WorkerNext
+		return nil
+	case err != nil:
+		return err
+	case decision.MergeID != 0:
+		f.logger.Info("merged a provisional person by face", slog.Int64("person", job.PersonID),
+			slog.Int64("provisional", decision.MergeID))
 	}
-	f.logger.Error("cannot store a face image vector", slog.Int64("person", job.PersonID), slog.Any("error", err))
-	f.pend(job.PersonID)
-	return domain.WorkerRetry
+	return nil
 }
 
 // embedFace returns the vector of the face's only good face, nil when it has none or several or the helper cannot

@@ -191,11 +191,14 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 // ClaimJobOn takes the claim's queued job of the lowest class, then the earliest run-after time, then the oldest,
 // among those whose run-after time has come and whose next location is under the claim's roots. The next location is
 // the first available one in path order after the previous attempt's, so a job stored only under unavailable roots
-// stays queued. A content job has no location, so only its class applies. BEGIN IMMEDIATE prevents duplicate claims;
-// an empty queue returns ErrNoJob.
+// stays queued. A content job other than face analysis, and a subject job, has no location, so only its class
+// applies. BEGIN IMMEDIATE prevents duplicate claims; an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
 	if q, ok := contentJobQueue(claim.Kind); ok {
-		return s.db.claimContentJob(ctx, q, claim.MaxPriority)
+		return s.db.claimContentJob(ctx, q, claim)
+	}
+	if subjectJobKind(claim.Kind) {
+		return s.db.claimSubjectJob(ctx, claim)
 	}
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
@@ -405,10 +408,13 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []i
 }
 
 // CompleteClaimedJob requeues when the claimed location or content changed. A content job's handler has already
-// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record.
+// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record; a subject job is deleted.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
 	if _, ok := contentJobQueue(job.Kind); ok {
 		return nil
+	}
+	if subjectJobKind(job.Kind) {
+		return s.db.completeSubjectJob(ctx, job)
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -497,6 +503,9 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
 	if q, ok := contentJobQueue(job.Kind); ok {
 		return s.db.failContentJob(ctx, q, job, cause)
+	}
+	if subjectJobKind(job.Kind) {
+		return s.db.failSubjectJob(ctx, job, cause)
 	}
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)

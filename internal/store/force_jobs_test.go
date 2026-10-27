@@ -150,8 +150,9 @@ func finishFollowUps(t *testing.T, db *DB, contentKey string) {
 	for _, statement := range []string{
 		`insert into auto_tag_results (content_key, state, error, updated_at) values (?, 'done', '', 0)
 			on conflict (content_key) do update set state = 'done'`,
-		`insert into face_queue (content_key, state, updated_at) values (?, 'done', 0)
-			on conflict (content_key) do update set state = 'done', activity_id = null`,
+		`delete from jobs where kind = 'face' and subject_key = ?`,
+		`insert into face_results (content_key, state, updated_at) values (?, 'done', 0)
+			on conflict (content_key) do update set state = 'done'`,
 	} {
 		if _, err := db.sql.Exec(statement, contentKey); err != nil {
 			t.Fatal(err)

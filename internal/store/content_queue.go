@@ -6,30 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 // contentQueue describes per-content-key work whose items carry one activity entry each, such as auto-tagging and
-// face analysis; a running item never moves when content is queued again. On the table path, rows of table outlive
-// their work. On the jobs path, the work is a jobs row of kind job, deleted when it ends, and results holds the
-// outcome.
+// face analysis; a running item never moves when content is queued again. The work is a jobs row of kind job, deleted
+// when it ends, and results holds the outcome.
 type contentQueue struct {
-	table string
-	kind  domain.ActivityKind
+	kind domain.ActivityKind
 	// what names the work in error messages.
 	what string
-	// upsert queues ?1 (the content key) at ?2 (Unix ms) for the waiting entry ?3; table path only.
-	upsert string
-	// claimOrder orders queued rows, the next one first; table path only.
-	claimOrder string
 	// failure is the column that holds the reason of a failed item.
 	failure string
-	// job is the job kind of the jobs path; empty selects the table path.
-	job domain.JobKind
-	// results holds the done or failed outcome per content key on the jobs path.
+	job     domain.JobKind
+	// results holds the done or failed outcome per content key.
 	results string
+	// located marks work that reads the source: its claim takes a location, as an import job's does.
+	located bool
 }
 
 var autoTagQueue = contentQueue{
@@ -38,17 +34,16 @@ var autoTagQueue = contentQueue{
 }
 
 var faceQueue = contentQueue{
-	table: "face_queue", kind: domain.ActivityFaceAnalysis, what: "face analysis",
-	upsert: `insert into face_queue (content_key, state, updated_at, activity_id) values (?1, 'queued', ?2, ?3)
-		on conflict (content_key) do update set state = 'queued', reason = null, updated_at = excluded.updated_at,
-			activity_id = excluded.activity_id`,
-	claimOrder: `updated_at, content_key`, failure: `reason`,
+	kind: domain.ActivityFaceAnalysis, what: "face analysis", failure: `reason`,
+	job: domain.JobFace, results: "face_results", located: true,
 }
 
 // contentJobQueue returns the content queue whose work runs as jobs of kind.
 func contentJobQueue(kind domain.JobKind) (contentQueue, bool) {
-	if kind == autoTagQueue.job {
-		return autoTagQueue, true
+	for _, q := range []contentQueue{autoTagQueue, faceQueue} {
+		if q.job == kind {
+			return q, true
+		}
 	}
 	return contentQueue{}, false
 }
@@ -63,29 +58,19 @@ func (q contentQueue) entry(key, label string, reason domain.ActivityReason, dec
 	}
 }
 
-// stateOf is the SQL of the state of the content key keyExpr, empty when nothing is queued or recorded for it. On the
-// jobs path an unfinished job's state comes before the recorded result.
+// stateOf is the SQL of the state of the content key keyExpr, empty when nothing is queued or recorded for it; an
+// unfinished job's state comes before the recorded result.
 func (q contentQueue) stateOf(keyExpr string) string {
-	if q.job == "" {
-		return `coalesce((select q.state from ` + q.table + ` q where q.content_key = ` + keyExpr + `), '')`
-	}
 	return `coalesce((select j.state from jobs j where j.kind = '` + string(q.job) + `' and j.subject_key = ` + keyExpr +
 		` and j.state in ('queued', 'running')), (select r.state from ` + q.results + ` r where r.content_key = ` +
 		keyExpr + `), '')`
 }
 
-// enqueue writes the queued item of key for the waiting entry activityID. The jobs path inserts a job in class
-// priority and drops the previous result, as the table path overwrites its row; callers queue only a key without
-// unfinished work.
+// enqueue inserts the job of key in class priority for the waiting entry activityID and drops the previous result;
+// callers queue only a key without unfinished work.
 func (q contentQueue) enqueue(
 	ctx context.Context, tx *sql.Tx, c *changes, key string, activityID int64, priority domain.JobPriority, now time.Time,
 ) error {
-	if q.job == "" {
-		if _, err := tx.ExecContext(ctx, q.upsert, key, now.UnixMilli(), activityID); err != nil {
-			return fmt.Errorf("cannot queue videos for %s: %w", q.what, err)
-		}
-		return nil
-	}
 	if _, err := tx.ExecContext(ctx, `delete from `+q.results+` where content_key = ?`, key); err != nil {
 		return fmt.Errorf("cannot queue videos for %s: %w", q.what, err)
 	}
@@ -100,7 +85,7 @@ func (q contentQueue) enqueue(
 }
 
 // contentRequest is who queues content: the decider of the new entries, the entries they continue, and the class of
-// the jobs on the jobs path.
+// the jobs.
 type contentRequest struct {
 	decider   domain.ActivityDecider
 	continued []int64
@@ -163,7 +148,7 @@ func queueContentRequest(
 			return 0, err
 		}
 	}
-	if q.job != "" && req.priority == domain.JobPriorityOwner {
+	if req.priority == domain.JobPriorityOwner {
 		if err := raiseQueuedContent(ctx, tx, c, q, selectKeys, args, now); err != nil {
 			return 0, err
 		}
@@ -298,54 +283,11 @@ func queueableSubjects(ctx context.Context, tx *sql.Tx, query string, args []any
 	return subjects, nil
 }
 
-// claimContent takes the next queued row of the table path or returns domain.ErrNoJob, creating a processing activity
-// if necessary; read, when set, runs in the claim's transaction.
-func (db *DB) claimContent(ctx context.Context, q contentQueue, read func(tx *sql.Tx) error) (string, error) {
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := time.Now()
-	var key string
-	var activityID int64
-	err = tx.QueryRowContext(ctx, `
-		update `+q.table+` set state = 'running', updated_at = ?
-		where content_key = (select content_key from `+q.table+` where state = 'queued'
-			order by `+q.claimOrder+` limit 1)
-		returning content_key, coalesce(activity_id, 0)`, now.UnixMilli()).Scan(&key, &activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", domain.ErrNoJob
-	}
-	if err != nil {
-		return "", fmt.Errorf("cannot claim a %s job: %w", q.what, err)
-	}
-	if read != nil {
-		if err := read(tx); err != nil {
-			return "", err
-		}
-	}
-	c := &changes{}
-	linked, err := claimQueueActivity(ctx, tx, c, q, key, activityID, now)
-	if err != nil {
-		return "", err
-	}
-	if linked != 0 {
-		if _, err := tx.ExecContext(ctx, `update `+q.table+` set activity_id = ? where content_key = ?`,
-			linked, key); err != nil {
-			return "", fmt.Errorf("cannot link the %s job to its activity: %w", q.what, err)
-		}
-	}
-	if err := db.commit(ctx, tx, c); err != nil {
-		return "", fmt.Errorf("cannot claim a %s job: %w", q.what, err)
-	}
-	return key, nil
-}
-
-// claimContentJob takes the next due job of the jobs path in class, run-after and age order; each claim is one
-// attempt. A job whose content key has no registered video left is dropped and its entry completed, and the next one
-// is taken. An empty queue returns domain.ErrNoJob.
-func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority domain.JobPriority) (domain.Job, error) {
+// claimContentJob takes the claim's next due job in class, run-after and age order; each claim is one attempt. A
+// located job takes the first available location, in path order, of any video with its content key. A job whose
+// content key has no registered video left is dropped and its entry completed, and the next one is taken. An empty
+// queue returns domain.ErrNoJob.
+func (db *DB) claimContentJob(ctx context.Context, q contentQueue, claim domain.JobClaim) (domain.Job, error) {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
@@ -353,7 +295,7 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority d
 	defer func() { _ = tx.Rollback() }()
 	c := &changes{}
 	for {
-		job, activityID, err := takeContentJob(ctx, tx, q, maxPriority)
+		job, activityID, gone, err := takeContentJob(ctx, tx, q, claim)
 		if errors.Is(err, domain.ErrNoJob) {
 			if err := db.commit(ctx, tx, c); err != nil {
 				return domain.Job{}, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
@@ -364,15 +306,11 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority d
 			return domain.Job{}, err
 		}
 		now := time.Now()
-		_, err = videoIDForContent(ctx, tx, job.ContentKey)
-		if errors.Is(err, domain.ErrNotFound) {
-			if err := dropContentJob(ctx, tx, c, q, job.ContentKey, activityID, now); err != nil {
+		if gone {
+			if err := dropContentJob(ctx, tx, c, q, job.ID, activityID, now); err != nil {
 				return domain.Job{}, err
 			}
 			continue
-		}
-		if err != nil {
-			return domain.Job{}, err
 		}
 		linked, err := claimQueueActivity(ctx, tx, c, q, job.ContentKey, activityID, now)
 		if err != nil {
@@ -390,31 +328,112 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority d
 	}
 }
 
-// takeContentJob marks the next due job of the jobs path, in maxPriority or a more urgent class, running and counts
-// the attempt.
-func takeContentJob(ctx context.Context, tx *sql.Tx, q contentQueue, maxPriority domain.JobPriority) (domain.Job, int64, error) {
-	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
+// takeContentJob marks the claim's next due job running and counts the attempt; gone reports a job whose content key
+// has no registered video left.
+func takeContentJob(
+	ctx context.Context, tx *sql.Tx, q contentQueue, claim domain.JobClaim,
+) (job domain.Job, activityID int64, gone bool, err error) {
+	if q.located {
+		return takeLocatedContentJob(ctx, tx, q, claim)
+	}
+	job, activityID, err = takeJob(ctx, tx, q.job, claim.MaxPriority, q.what)
+	if err != nil {
+		return domain.Job{}, 0, false, err
+	}
+	_, err = videoIDForContent(ctx, tx, job.ContentKey)
+	if errors.Is(err, domain.ErrNotFound) {
+		return job, activityID, true, nil
+	}
+	return job, activityID, false, err
+}
+
+// takeJob marks the next due job of kind, in maxPriority or a more urgent class, running and counts the attempt. Its
+// subject_key is the job's content key, or the person of a face_image job.
+func takeJob(
+	ctx context.Context, tx *sql.Tx, kind domain.JobKind, maxPriority domain.JobPriority, what string,
+) (domain.Job, int64, error) {
+	job := domain.Job{Kind: kind, StartsRound: true, LastLocation: true}
 	var activityID int64
 	err := tx.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
 		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1 and priority <= ?3
 			order by priority, run_after, id limit 1)
-		returning id, subject_key, attempts, priority, coalesce(activity_id, 0)`,
-		jobNow().Unix(), string(q.job), int(maxPriority)).Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
+		returning id, coalesce(video_id, 0), coalesce(subject_key, ''), attempts, priority, coalesce(activity_id, 0)`,
+		jobNow().Unix(), string(kind), int(maxPriority)).
+		Scan(&job.ID, &job.VideoID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, 0, domain.ErrNoJob
 	}
 	if err != nil {
-		return domain.Job{}, 0, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
+		return domain.Job{}, 0, fmt.Errorf("cannot claim a %s job: %w", what, err)
+	}
+	if kind == domain.JobFaceImage {
+		if job.PersonID, err = strconv.ParseInt(job.ContentKey, 10, 64); err != nil {
+			return domain.Job{}, 0, fmt.Errorf("cannot read the person of face image job %d: %w", job.ID, err)
+		}
+		job.ContentKey = ""
 	}
 	return job, activityID, nil
 }
 
-// dropContentJob ends the running job of content that is gone, recording no result, and completes its entry.
+// takeLocatedContentJob takes the next due job whose content has an available location under the claim's roots, or
+// whose content has no registered video left, and fills the location; a job stored only under unavailable or other
+// roots stays queued.
+func takeLocatedContentJob(
+	ctx context.Context, tx *sql.Tx, q contentQueue, claim domain.JobClaim,
+) (domain.Job, int64, bool, error) {
+	var onRoots string
+	if claim.Roots != nil {
+		onRoots = ` and exists (select 1 from media_folders mf where mf.id in (` + idList(claim.Roots) + `) and ` +
+			inMediaFolderCondition("c.next_path") + `)`
+	}
+	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
+	var activityID int64
+	var registered bool
+	var next sql.NullString
+	now := jobNow().Unix()
+	err := tx.QueryRowContext(ctx, `select c.id, c.subject_key, c.attempts, c.priority, c.activity_id, c.next_path,
+			c.registered from (
+		select j.id, j.subject_key, j.attempts, j.priority, j.run_after, coalesce(j.activity_id, 0) as activity_id,
+			(select l.path from videos v join video_locations l on l.video_id = v.id
+				where v.content_key = j.subject_key and `+availableLocationCondition("l", claim.Unavailable)+`
+				order by l.path limit 1) as next_path,
+			exists (select 1 from videos v where v.content_key = j.subject_key and `+registeredVideoCondition("v")+`)
+				as registered
+		from jobs j where j.kind = ? and j.state = 'queued' and j.run_after <= ? and j.priority <= ?) c
+		where not c.registered or (c.next_path is not null`+onRoots+`)
+		order by c.priority, c.run_after, c.id limit 1`, string(q.job), now, int(claim.MaxPriority)).
+		Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID, &next, &registered)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Job{}, 0, false, domain.ErrNoJob
+	}
+	if err != nil {
+		return domain.Job{}, 0, false, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
+	}
+	if !registered {
+		return job, activityID, true, nil
+	}
+	job.Attempts++
+	if err := tx.QueryRowContext(ctx, `select l.id, l.version, l.path,
+		coalesce((select mf.id from media_folders mf where `+inMediaFolderCondition("l.path")+`
+			order by length(mf.path) desc limit 1), 0)
+		from video_locations l where l.path = ?`, next.String).
+		Scan(&job.LocationID, &job.LocationVersion, &job.LocationPath, &job.RootID); err != nil {
+		return domain.Job{}, 0, false, fmt.Errorf("cannot choose a location for the %s job: %w", q.what, err)
+	}
+	if _, err := tx.ExecContext(ctx, `update jobs set state = 'running', attempts = ?, location_id = ?,
+		location_version = ?, location_path = ?, updated_at = ? where id = ?`,
+		job.Attempts, job.LocationID, job.LocationVersion, job.LocationPath, now, job.ID); err != nil {
+		return domain.Job{}, 0, false, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
+	}
+	return job, activityID, false, nil
+}
+
+// dropContentJob deletes the job of content that is gone, recording no result, and completes its entry.
 func dropContentJob(
-	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, key string, activityID int64, now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, id, activityID int64, now time.Time,
 ) error {
-	if err := endContentJob(ctx, tx, q, key, "", "", now); err != nil {
-		return err
+	if _, err := tx.ExecContext(ctx, `delete from jobs where id = ?`, id); err != nil {
+		return fmt.Errorf("cannot end the %s job: %w", q.what, err)
 	}
 	completed := domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityCompleted}
 	return closeQueueActivity(ctx, tx, c, activityID, completed, "", "", now)
@@ -475,16 +494,11 @@ func closeQueueActivity(
 	return rollUpPipelines(ctx, tx, []int64{id}, now.UnixMilli())
 }
 
-// runningContent reads a running item's activity; found is false for an item that is missing or no longer running.
+// runningContent reads a running job's activity; found is false for content without a running job.
 func runningContent(ctx context.Context, tx *sql.Tx, q contentQueue, key string) (activityID int64, found bool, err error) {
-	var state string
-	query, args := `select state, coalesce(activity_id, 0) from `+q.table+` where content_key = ?`, []any{key}
-	if q.job != "" {
-		query = `select state, coalesce(activity_id, 0) from jobs where kind = ? and subject_key = ? and state = 'running'`
-		args = []any{string(q.job), key}
-	}
-	err = tx.QueryRowContext(ctx, query, args...).Scan(&state, &activityID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && state != "running") {
+	err = tx.QueryRowContext(ctx, `select coalesce(activity_id, 0) from jobs
+		where kind = ? and subject_key = ? and state = 'running'`, string(q.job), key).Scan(&activityID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -493,7 +507,7 @@ func runningContent(ctx context.Context, tx *sql.Tx, q contentQueue, key string)
 	return activityID, true, nil
 }
 
-// endContentJob deletes the running job of key on the jobs path and records state ("done" or "failed") with reason as
+// endContentJob deletes the running job of key and records state ("done" or "failed") with reason as
 // its result; an empty state records nothing, for content that is gone.
 func endContentJob(ctx context.Context, tx *sql.Tx, q contentQueue, key, state, reason string, now time.Time) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and subject_key = ? and state = 'running'`,
@@ -512,36 +526,7 @@ func endContentJob(ctx context.Context, tx *sql.Tx, q contentQueue, key, state, 
 	return nil
 }
 
-// failContent ignores rows no longer running and records the failure with their activity atomically.
-func (db *DB) failContent(ctx context.Context, q contentQueue, key, reason string) error {
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := time.Now()
-	var activityID int64
-	err = tx.QueryRowContext(ctx, `update `+q.table+` set state = 'failed', `+q.failure+` = ?, updated_at = ?
-		where content_key = ? and state = 'running' returning coalesce(activity_id, 0)`,
-		reason, now.UnixMilli(), key).Scan(&activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("cannot record the %s failure: %w", q.what, err)
-	}
-	c := &changes{}
-	if err := closeQueueActivity(ctx, tx, c, activityID,
-		domain.ActivityState{Status: domain.ActivityAttention, Reason: domain.ActivityFailed}, "", reason, now); err != nil {
-		return err
-	}
-	if err := db.commit(ctx, tx, c); err != nil {
-		return fmt.Errorf("cannot record the %s failure: %w", q.what, err)
-	}
-	return nil
-}
-
-// failContentJob applies the kind's retry policy to a claimed job of the jobs path: a retry requeues it after the
+// failContentJob applies the kind's retry policy to a claimed job: a retry requeues it after the
 // delay with its entry waiting, and a final failure records the failed result with its entry needing attention. A job
 // no longer running is ignored.
 func (db *DB) failContentJob(ctx context.Context, q contentQueue, job domain.Job, cause error) error {
@@ -570,7 +555,7 @@ func (db *DB) failContentJob(ctx context.Context, q contentQueue, job domain.Job
 		err = endContentJob(ctx, tx, q, job.ContentKey, string(domain.JobFailed), reason, now)
 	} else {
 		state = domain.ActivityState{Status: domain.ActivityRunning, Reason: domain.ActivityWaiting}
-		err = requeueContentJob(ctx, tx, c, q, job.ID, attempts, outcome, reason)
+		err = requeueClaimedJob(ctx, tx, c, job, attempts, outcome, reason)
 	}
 	if err != nil {
 		return err
@@ -584,62 +569,34 @@ func (db *DB) failContentJob(ctx context.Context, q contentQueue, job domain.Job
 	return nil
 }
 
-// requeueContentJob queues the job again after the outcome's delay; a snooze refunds the claim's attempt.
-func requeueContentJob(
-	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, id int64, attempts int, outcome domain.JobFailure,
-	reason string,
+// requeueClaimedJob queues the claimed job again after the outcome's delay; a snooze refunds the claim's attempt.
+func requeueClaimedJob(
+	ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, attempts int, outcome domain.JobFailure, reason string,
 ) error {
 	if outcome.Uncounted {
 		attempts--
 	}
 	at := jobNow().Unix()
 	if _, err := tx.ExecContext(ctx, `update jobs set state = 'queued', attempts = ?, last_error = ?, run_after = ?,
-		updated_at = ? where id = ?`, attempts, reason, at+int64(math.Ceil(outcome.Delay.Seconds())), at, id); err != nil {
-		return fmt.Errorf("cannot requeue the %s job (id=%d): %w", q.what, id, err)
+		updated_at = ? where id = ?`, attempts, reason, at+int64(math.Ceil(outcome.Delay.Seconds())), at, job.ID); err != nil {
+		return fmt.Errorf("cannot requeue the %s job (id=%d): %w", job.Kind, job.ID, err)
 	}
-	c.jobsQueued(q.job)
+	c.jobsQueued(job.Kind)
 	return nil
 }
 
-// requeueRunning puts running rows of the table path back to queued, keeping their activity for the next claim.
-func (db *DB) requeueRunning(ctx context.Context, q contentQueue) (int, error) {
-	result, err := db.sql.ExecContext(ctx, `update `+q.table+` set state = 'queued', updated_at = ?
-		where state = 'running'`, time.Now().UnixMilli())
-	if err != nil {
-		return 0, fmt.Errorf("cannot requeue interrupted %s jobs: %w", q.what, err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("cannot requeue interrupted %s jobs: %w", q.what, err)
-	}
-	return int(affected), nil
-}
-
-// contentCounts counts q's items by state, with the reason of the latest failure. The jobs path reads unfinished
-// work from jobs and outcomes from the results.
+// contentCounts counts q's work by state, with the reason of the latest failure: unfinished work from jobs and
+// outcomes from the results.
 func (db *DB) contentCounts(ctx context.Context, q contentQueue) (domain.QueueCounts, error) {
-	query, args := `
-		select
-			coalesce(sum(state = 'queued'), 0),
-			coalesce(sum(state = 'running'), 0),
-			coalesce(sum(state = 'done'), 0),
-			coalesce(sum(state = 'failed'), 0),
-			coalesce((select `+q.failure+` from `+q.table+` where state = 'failed'
-				order by updated_at desc, content_key limit 1), '')
-		from `+q.table, []any(nil)
-	if q.job != "" {
-		query = `
+	var counts domain.QueueCounts
+	err := db.sql.QueryRowContext(ctx, `
 		select
 			(select count(*) from jobs where kind = ?1 and state = 'queued'),
 			(select count(*) from jobs where kind = ?1 and state = 'running'),
-			(select count(*) from ` + q.results + ` where state = 'done'),
-			(select count(*) from ` + q.results + ` where state = 'failed'),
-			coalesce((select ` + q.failure + ` from ` + q.results + ` where state = 'failed'
-				order by updated_at desc, content_key limit 1), '')`
-		args = []any{string(q.job)}
-	}
-	var counts domain.QueueCounts
-	err := db.sql.QueryRowContext(ctx, query, args...).
+			(select count(*) from `+q.results+` where state = 'done'),
+			(select count(*) from `+q.results+` where state = 'failed'),
+			coalesce((select `+q.failure+` from `+q.results+` where state = 'failed'
+				order by updated_at desc, content_key limit 1), '')`, string(q.job)).
 		Scan(&counts.Queued, &counts.Running, &counts.Done, &counts.Failed, &counts.LastError)
 	if err != nil {
 		return domain.QueueCounts{}, fmt.Errorf("cannot count %s jobs: %w", q.what, err)

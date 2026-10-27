@@ -7,13 +7,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// capacity counts the slots in use against the CPU slots, the classifier slots and each disk's read slots; it is safe
+// capacity counts the slots in use against the CPU, classifier and face lane slots and each disk's read slots; it is safe
 // for concurrent use, because running jobs borrow and return slots while the scheduler grants.
 type capacity struct {
 	mu             sync.Mutex
 	cpu            int
 	cpuUsed        int
 	classifierUsed int
+	faceLaneUsed   int
 	readSlots      map[string]int
 	readUsed       map[string]int
 	// foreground counts the open foreground readers per disk, which hold its background reads to one slot.
@@ -132,7 +133,8 @@ func (c *capacity) keepScanAhead(disk string) (done func()) {
 func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots {
+	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots ||
+		c.faceLaneUsed+demand.FaceLane > domain.JobFaceLaneSlots {
 		return false
 	}
 	kept := max(c.scanAhead[disk]-c.scanHeld[disk], 0)
@@ -142,6 +144,7 @@ func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	}
 	c.cpuUsed += demand.CPU
 	c.classifierUsed += demand.Classifier
+	c.faceLaneUsed += demand.FaceLane
 	c.readUsed[disk] += demand.Read
 	return true
 }
@@ -151,6 +154,7 @@ func (c *capacity) release(disk string, demand domain.JobResources) {
 	defer c.mu.Unlock()
 	c.cpuUsed -= demand.CPU
 	c.classifierUsed -= demand.Classifier
+	c.faceLaneUsed -= demand.FaceLane
 	c.readUsed[disk] -= demand.Read
 	c.broadcastLocked()
 }
@@ -159,5 +163,7 @@ func (c *capacity) release(disk string, demand domain.JobResources) {
 func (c *capacity) inUse(disk string) domain.JobResources {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return domain.JobResources{Read: c.readUsed[disk], CPU: c.cpuUsed, Classifier: c.classifierUsed}
+	return domain.JobResources{
+		Read: c.readUsed[disk], CPU: c.cpuUsed, Classifier: c.classifierUsed, FaceLane: c.faceLaneUsed,
+	}
 }

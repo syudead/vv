@@ -202,8 +202,12 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	if !changes.any() {
 		return current, tx.Commit()
 	}
+	events, err := queuePersonFace(ctx, tx, current, updated)
+	if err != nil {
+		return domain.Credit{}, err
+	}
 	// Smart-folder notices and collection values depend on names and links, not on profiles.
-	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched(), personFaceEvents(current, updated)...); err != nil {
+	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched(), events...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -433,7 +437,11 @@ func mergeCreditsInTx(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	if err != nil {
 		return domain.CreditMergeOutcome{}, nil, err
 	}
-	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, personFaceEvents(before, credit), nil
+	events, err := queuePersonFace(ctx, tx, before, credit)
+	if err != nil {
+		return domain.CreditMergeOutcome{}, nil, err
+	}
+	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, events, nil
 }
 
 // Validate the target, self-merges and parent cycles; deduplicate sources in input order and report missing IDs.

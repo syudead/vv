@@ -56,7 +56,7 @@ type Options struct {
 }
 
 // Scheduler grants each claimed job its kind's demand from free capacity and runs it, so every ingest stage shares
-// one CPU limit and each disk's read limit. It sleeps on a Loop until a commit notification or a release calls Wake.
+// one CPU limit and each disk's read limit, and the face kinds share one face lane. It sleeps on a Loop until a commit notification or a release calls Wake.
 // See docs/design-docs/job-scheduling.md.
 type Scheduler struct {
 	loop     *Loop
@@ -336,8 +336,9 @@ func (s *Scheduler) slotAttrs(job domain.Job, disk string, demand domain.JobReso
 	return []any{
 		slog.Int64("job", job.ID), slog.String("stage", string(job.Kind)), slog.String("disk", disk),
 		slog.Int("read", demand.Read), slog.Int("cpu", demand.CPU),
-		slog.Int("classifier", demand.Classifier),
+		slog.Int("classifier", demand.Classifier), slog.Int("faceLane", demand.FaceLane),
 		slog.Int("readInUse", used.Read), slog.Int("cpuInUse", used.CPU), slog.Int("classifierInUse", used.Classifier),
+		slog.Int("faceLaneInUse", used.FaceLane),
 	}
 }
 

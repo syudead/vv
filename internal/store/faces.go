@@ -44,78 +44,53 @@ func (s *FaceStore) QueueLibrary(ctx context.Context, scope domain.FaceQueueScop
 }
 
 // RetryVideo queues the content again for the owner's retry of entryID, unless it is running; the new entry joins
-// every pipeline of the retried entry.
+// every pipeline of the retried entry, and its job is claimed first.
 func (s *FaceStore) RetryVideo(ctx context.Context, contentKey string, entryID int64) (int, error) {
-	return s.db.queueContent(ctx, faceQueue, `select v.content_key from videos v
+	return s.db.queueContentFor(ctx, faceQueue, `select v.content_key from videos v
 		where v.content_key = ? and v.content_key <> '' and `+registeredVideoCondition("v"), []any{contentKey},
-		queueAgainStates, domain.ActivityByOwner, []int64{entryID})
+		queueAgainStates, contentRequest{
+			decider: domain.ActivityByOwner, continued: []int64{entryID}, priority: domain.JobPriorityOwner,
+		})
 }
 
-// Claim takes the next queued video or returns domain.ErrNoJob, creating a processing activity if necessary. The
-// job carries the recognizer and face.generation read in the claim's transaction.
-func (s *FaceStore) Claim(ctx context.Context) (domain.FaceJob, error) {
-	var job domain.FaceJob
-	key, err := s.db.claimContent(ctx, faceQueue, func(tx *sql.Tx) error {
-		var err error
-		if job.Recognizer, err = faceRecognizer(ctx, tx); err != nil {
-			return err
-		}
-		job.Generation, err = faceGeneration(ctx, tx)
-		return err
-	})
+// FaceJob reads the recognizer and face.generation current now, together, for an analysis of the content key that
+// starts now.
+func (s *FaceStore) FaceJob(ctx context.Context, contentKey string) (domain.FaceJob, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.FaceJob{}, err
 	}
-	job.ContentKey = key
+	defer func() { _ = tx.Rollback() }()
+	job := domain.FaceJob{ContentKey: contentKey}
+	if job.Recognizer, err = faceRecognizer(ctx, tx); err != nil {
+		return domain.FaceJob{}, err
+	}
+	if job.Generation, err = faceGeneration(ctx, tx); err != nil {
+		return domain.FaceJob{}, err
+	}
 	return job, nil
 }
 
-// VideoPaths returns the registered locations of the video with the content key, or domain.ErrNotFound when the
-// library no longer has it.
-func (s *FaceStore) VideoPaths(ctx context.Context, contentKey string) ([]string, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select l.path from videos v join video_locations l on l.video_id = v.id
-		where v.content_key = ? and v.content_key <> '' and `+registeredLocationCondition("l")+` order by l.path`,
-		contentKey)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
+// HasHelperWork reports a face or face_image job that is due, for which the face helper is kept running.
+func (s *FaceStore) HasHelperWork(ctx context.Context) (bool, error) {
+	var found bool
+	if err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from jobs where kind in (?, ?)
+		and state = 'queued' and run_after <= ?)`, string(domain.JobFace), string(domain.JobFaceImage),
+		jobNow().Unix()).Scan(&found); err != nil {
+		return false, fmt.Errorf("cannot look up face jobs: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-	var paths []string
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
-		}
-		paths = append(paths, path)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
-	}
-	if len(paths) == 0 {
-		return nil, domain.ErrNotFound
-	}
-	return paths, nil
+	return found, nil
 }
 
-// Fail ignores videos no longer running and records the failure with their activity atomically.
-func (s *FaceStore) Fail(ctx context.Context, contentKey, reason string) error {
-	return s.db.failContent(ctx, faceQueue, contentKey, reason)
-}
-
-// RequeueRunning puts running analyses back in the queue, at startup and when the feature is turned off.
-func (s *FaceStore) RequeueRunning(ctx context.Context) (int, error) {
-	return s.db.requeueRunning(ctx, faceQueue)
-}
-
-// Counts counts the face queue's rows by state, with the reason of the latest failure.
+// Counts counts the face analysis work by state, with the reason of the latest failure.
 func (s *FaceStore) Counts(ctx context.Context) (domain.QueueCounts, error) {
 	return s.db.contentCounts(ctx, faceQueue)
 }
 
 // Store writes one video's result in one transaction: appearances with carry-over, provisional people with their
 // crop as face, performer rows, candidates, the completed face_analysis entry with its links, and the cast rule's
-// face_merge. A result computed under an older face.generation returns domain.ErrFaceGenerationChanged; one whose
-// row no longer runs writes nothing.
+// face_merge, and ends the job with a done result. A result computed under an older face.generation returns
+// domain.ErrFaceGenerationChanged; one whose job no longer runs writes nothing.
 func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error {
 	spec, ok := domain.LookupFaceRecognizer(result.Recognizer)
 	if !ok {
@@ -143,8 +118,8 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	userKey, err := faceUserKey(ctx, tx, result.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
 		// The video left the library during the analysis; its stored appearances stay for a returning file.
-		if _, err := tx.ExecContext(ctx, `delete from face_queue where content_key = ?`, result.ContentKey); err != nil {
-			return fmt.Errorf("cannot remove the face analysis job: %w", err)
+		if err := endContentJob(ctx, tx, faceQueue, result.ContentKey, "", "", now); err != nil {
+			return err
 		}
 		if err := closeQueueActivity(ctx, tx, c, activityID, completed, "", "", now); err != nil {
 			return err
@@ -158,8 +133,11 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `update face_queue set state = 'done', recognizer = ?, reason = null,
-		updated_at = ? where content_key = ?`, string(result.Recognizer), now.UnixMilli(), result.ContentKey); err != nil {
+	if err := endContentJob(ctx, tx, faceQueue, result.ContentKey, string(domain.JobDone), "", now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `update face_results set recognizer = ?, reason = null where content_key = ?`,
+		string(result.Recognizer), result.ContentKey); err != nil {
 		return fmt.Errorf("cannot finish the face analysis job: %w", err)
 	}
 	if err := closeQueueActivity(ctx, tx, c, activityID, completed, domain.ActivityByRule, "", now); err != nil {
@@ -403,7 +381,7 @@ func createFacePerson(ctx context.Context, tx *sql.Tx, crop domain.PersonImage, 
 	return id, bumpPersonImageRevision(ctx, tx, id)
 }
 
-// storeCreatedFaceVector stores the vector of the crop's face as the new person's face vector, so the face worker
+// storeCreatedFaceVector stores the vector of the crop's face as the new person's face vector, so a face_image job
 // does not embed the crop again and the next video already offers the person as a candidate.
 func storeCreatedFaceVector(
 	ctx context.Context, tx *sql.Tx, personID int64, recognizer domain.FaceRecognizer, p domain.FaceAnalysedPerson,

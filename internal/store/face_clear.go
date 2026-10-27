@@ -9,7 +9,7 @@ import (
 )
 
 // ClearPeople deletes every person with every face appearance, and leaves every analysed video to be analysed
-// again: done and failed face_queue rows go, and while the feature is on every video is queued. face.generation
+// again: the done and failed face results go, and while the feature is on every video is queued. face.generation
 // increases, so a running analysis or face embedding started before the clear writes nothing. It returns the
 // number of people deleted and of videos queued. See docs/design-docs/face-recognition.md.
 func (s *FaceStore) ClearPeople(ctx context.Context) (domain.PeopleCleared, error) {
@@ -34,7 +34,7 @@ func (s *FaceStore) ClearPeople(ctx context.Context) (domain.PeopleCleared, erro
 	for _, stmt := range []string{
 		`delete from face_appearances`,
 		`delete from people`,
-		`delete from face_queue where state in ('done', 'failed')`,
+		`delete from face_results`,
 	} {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return domain.PeopleCleared{}, fmt.Errorf("cannot clear the people (%s): %w", stmt, err)

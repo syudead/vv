@@ -68,13 +68,22 @@ func (f faceFixture) analyse(t *testing.T, people ...domain.FaceAnalysedPerson) 
 // claim queues the video unless it is queued already and claims it.
 func (f faceFixture) claim(t *testing.T) domain.FaceJob {
 	t.Helper()
-	ctx := context.Background()
 	queueAllFaces(t, f.db)
-	job, err := f.db.Faces().Claim(ctx)
+	job, err := claimFace(f.db)
 	if err != nil || job.ContentKey != f.key {
-		t.Fatalf("Claim = %+v, %v", job, err)
+		t.Fatalf("claimFace = %+v, %v", job, err)
 	}
 	return job
+}
+
+// claimFace claims the next face job as the scheduler does and reads the settings its analysis starts under.
+func claimFace(db *DB) (domain.FaceJob, error) {
+	ctx := context.Background()
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobFace)
+	if err != nil {
+		return domain.FaceJob{}, err
+	}
+	return db.Faces().FaceJob(ctx, job.ContentKey)
 }
 
 // queueAllFaces queues every registered video for face analysis again, as a recognizer switch does, and returns how

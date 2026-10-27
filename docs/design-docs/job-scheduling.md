@@ -1,8 +1,9 @@
 # Job scheduling: one scheduler for every ingest stage
 
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
-job, and every auto-tagging job, the resources its kind declares, from the CPU
-slots, the classifier slots and the read slots of the job's disk, and runs it.
+job, every auto-tagging job and every face job the resources its kind
+declares, from the CPU slots, the classifier slots, the face lane and the read
+slots of the job's disk, and runs it.
 A scan's content-key reads take read slots from the same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
@@ -25,16 +26,21 @@ A job holds a fixed number of slots of each resource while it runs; its kind
 declares them in [`domain.JobDemand`](../../internal/domain/job_demand.go). A
 read slot is the right to read one source file on one disk; a CPU slot is the
 right to run one ffmpeg decode or encode; a classifier slot is the right to
-send one request to the classifier.
+send one request to the classifier; the face lane slot is the right to run one
+face job.
 
-| Kind | Read | CPU | Classifier | Why |
-| --- | --- | --- | --- | --- |
-| `probe` | 1 | 0 | 0 | ffprobe reads the container header |
-| `thumbnail` | 1 | 1 | 0 | ffmpeg decodes frames of the source |
-| `seek_thumbnail` | 1, plus one per further extraction | 1, plus one per further extraction | 0 | One ffmpeg per frame, or one read per keyframe |
-| `preview` | 1 | 1 | 0 | ffmpeg decodes and encodes the source |
-| `fingerprint` | 0 | 1 | 0 | Reads sprite frames from the data directory, not the source |
-| `auto_tag` | 0 | 0 | 1 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
+| Kind | Read | CPU | Classifier | Face lane | Why |
+| --- | --- | --- | --- | --- | --- |
+| `probe` | 1 | 0 | 0 | 0 | ffprobe reads the container header |
+| `thumbnail` | 1 | 1 | 0 | 0 | ffmpeg decodes frames of the source |
+| `seek_thumbnail` | 1, plus one per further extraction | 1, plus one per further extraction | 0 | 0 | One ffmpeg per frame, or one read per keyframe |
+| `preview` | 1 | 1 | 0 | 0 | ffmpeg decodes and encodes the source |
+| `fingerprint` | 0 | 1 | 0 | 0 | Reads sprite frames from the data directory, not the source |
+| `auto_tag` | 0 | 0 | 1 | 0 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
+| `face` | 1 | 1 | 0 | 1 | ffmpeg decodes source frames for the face helper ([face recognition](face-recognition.md#the-face-lane-runs-one-face-job-at-a-time)) |
+| `face_image` | 0 | 0 | 0 | 1 | Sends one person's stored face image to the helper |
+| `face_cast` | 0 | 0 | 0 | 1 | Merges people in the database, never beside an analysis |
+| `queue_face_images` | 0 | 0 | 0 | 0 | Queues a `face_image` job per face without a current vector |
 
 A read slot belongs to the disk of the location the claim picks: the next
 available registered location in path order after the previous attempt's.
@@ -49,6 +55,7 @@ within the capacity.
 | Read slots of one disk | 1 for a rotational or unknown disk, 4 for a solid-state one ([`domain.Disk`](../../internal/domain/job_demand.go)) | Parallel sequential reads make a rotational disk seek; 4 matches the seek-sprite job's former parallelism, so a solid-state disk keeps its throughput |
 | CPU slots | `NumCPU / 4 + 1` | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest |
 | Classifier slots | 1 | A CPU-only provider cannot serve parallel requests |
+| Face lane slots | 1 | The face helper answers one request at a time, and the cast rule must not interleave with an analysis |
 
 The scheduler resolves a media folder's disk the first time it serves the
 folder, and again when it rechecks an unavailable folder; the result lives in
@@ -290,9 +297,11 @@ round and skips a paused kind like an empty one.
 | Kind | Paused while |
 | --- | --- |
 | `auto_tag` | "Use auto-tagging" is off |
+| `face`, `face_image`, `face_cast` | Face recognition is off, or the chosen recognizer's runtime is not ready |
 
 Turning a feature back on wakes the scheduler through the feature's existing
-settings callback, so its queued jobs are claimed at once.
+settings callback, so its queued jobs are claimed at once; the face runtime's
+`Ready` callback, after a download or a helper check, wakes it the same way.
 
 | Rejected | Why |
 | --- | --- |

@@ -10,48 +10,42 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceruntime"
-	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
 
-// faceRecognition is the face runtime, its settings and the analysis worker; see
+// faceRecognition is the face runtime, its settings and the handler of the face lane's jobs; see
 // docs/design-docs/face-recognition.md.
 type faceRecognition struct {
 	settings *app.FaceRecognitionSettings
 	analysis *app.FaceRecognizer
-	loop     *jobs.Loop
 	runtime  *faceruntime.Manager
 }
 
-func newFaceRecognition(ctx context.Context, dataDir string, db *store.DB, logger *slog.Logger) faceRecognition {
-	loop := jobs.NewLoop()
+// newFaceRecognition wakes the job scheduler through wake, also when the runtime becomes ready, which ends the pause
+// of the face lane.
+func newFaceRecognition(
+	ctx context.Context, dataDir string, db *store.DB, wake func(), logger *slog.Logger,
+) faceRecognition {
 	faceRuntime := faceruntime.New(faceruntime.Options{
 		Dir:     filepath.Join(dataDir, "face"),
 		Catalog: faceruntime.DefaultCatalog(runtime.GOOS, runtime.GOARCH),
 		Launch:  faceruntime.ExecLauncher(ctx, lowPriorityCommand),
 		Logger:  logger,
-		// Videos queued while the runtime was not ready wait for it.
-		Ready: loop.Wake,
+		Ready:   wake,
 	})
 	analysis := app.NewFaceRecognizer(app.FaceRecognizerOptions{
 		Queue: db.Faces(), Images: db.Faces(), Settings: db.Settings(), Runtime: faceRuntime,
 		Helper:       func(r domain.FaceRecognizer) app.FaceHelper { return faceRuntime.Helper(r) },
 		Frames:       media.FaceFrames,
 		MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Cast: db.Faces(),
-		Wake: loop.Wake, Logger: logger,
+		Wake: wake, Logger: logger,
 	})
 	settings := app.NewFaceRecognitionSettings(app.FaceRecognitionSettingsOptions{
 		Settings: db.Settings(), Queue: db.Faces(), Runtime: faceRuntime, Analysis: analysis,
 	})
-	return faceRecognition{settings: settings, analysis: analysis, loop: loop, runtime: faceRuntime}
-}
-
-// run analyses queued videos until ctx ends, then stops the face helper.
-func (f faceRecognition) run(ctx context.Context) {
-	f.loop.Run(ctx, f.analysis.Step)
-	f.analysis.Close()
+	return faceRecognition{settings: settings, analysis: analysis, runtime: faceRuntime}
 }
 
 // start reads the face runtime's files in the background and resumes a download interrupted while the feature was

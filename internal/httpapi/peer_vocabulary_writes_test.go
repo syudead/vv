@@ -219,7 +219,11 @@ func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
 	if _, err := faces.QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
-	job, err := faces.Claim(ctx)
+	claimed, err := f.env.db.Ingest().ClaimJob(ctx, domain.JobFace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := faces.FaceJob(ctx, claimed.ContentKey)
 	if err != nil {
 		t.Fatal(err)
 	}

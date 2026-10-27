@@ -9,7 +9,6 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceproto"
@@ -36,12 +35,6 @@ func (h *fakeFaceHelpers) detectImage(ctx context.Context, r domain.FaceRecogniz
 		d.Faces = append(d.Faces, scriptedFace(r, float32(10+200*i)))
 	}
 	return d, nil
-}
-
-func (h *fakeFaceHelpers) set(change func(h *fakeFaceHelpers)) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	change(h)
 }
 
 func (h *fakeFaceHelpers) imageRequests() int {
@@ -82,6 +75,8 @@ type fakeFaceImageStore struct {
 	stored   []fakeStoredFaceImage
 	attempts int
 	fault    error
+	// staleQueued counts QueueStaleFaceImages calls.
+	staleQueued int
 	// refusal, when set, is returned after each accepted vector, as a merge refused for good is.
 	refusal error
 	// onStore, when set, runs with each accepted vector.
@@ -116,19 +111,11 @@ func (s *fakeFaceImageStore) FaceImage(_ context.Context, id int64) (domain.Face
 	return s.job(id), nil
 }
 
-func (s *fakeFaceImageStore) StaleFaceImage(context.Context) (domain.FaceImageJob, error) {
+func (s *fakeFaceImageStore) QueueStaleFaceImages(context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var ids []int64
-	for id := range s.faces {
-		if job := s.job(id); !job.Embedded {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return domain.FaceImageJob{}, domain.ErrNoJob
-	}
-	return s.job(slices.Min(ids)), nil
+	s.staleQueued++
+	return 0, nil
 }
 
 func (s *fakeFaceImageStore) StoreFaceImageVector(_ context.Context, job domain.FaceImageJob, vector []float32) (
@@ -170,7 +157,12 @@ func (s *fakeFaceImageStore) read() ([]fakeStoredFaceImage, int) {
 	return slices.Clone(s.stored), s.attempts
 }
 
-func TestFaceRecognizerEmbedsAFaceBeforeTheNextVideo(t *testing.T) {
+// faceImageJob is the claimed face_image job of the person.
+func faceImageJob(personID int64) domain.Job {
+	return domain.Job{Kind: domain.JobFaceImage, PersonID: personID}
+}
+
+func TestFaceRecognizerEmbedsAFace(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		faces  int
@@ -181,57 +173,52 @@ func TestFaceRecognizerEmbedsAFaceBeforeTheNextVideo(t *testing.T) {
 		{"two faces", 2, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				f := newFaceWorkerFixture("key-a")
-				f.helpers.imageFaces = tc.faces
-				f.images.add(7, faceJPEG(t))
-				claimsAtStore := -1
-				f.images.onStore = func() { claimsAtStore = f.queue.state().claims }
-				f.run(t)
-				synctest.Wait()
+			f := newFaceWorkerFixture()
+			f.helpers.imageFaces = tc.faces
+			f.images.add(7, faceJPEG(t))
+			if err := f.rec.HandleJob(context.Background(), faceImageJob(7)); err != nil {
+				t.Fatal(err)
+			}
 
-				if claimsAtStore != 0 {
-					t.Fatalf("videos claimed before the face was stored = %d, want 0", claimsAtStore)
-				}
-				stored, _ := f.images.read()
-				if len(stored) != 1 || stored[0].job.PersonID != 7 || (stored[0].vector != nil) != tc.vector {
-					t.Fatalf("stored = %+v, want person 7's vector present %v", stored, tc.vector)
-				}
-				if tc.vector && (len(stored[0].vector) != 128 || stored[0].vector[0] != 1) {
-					t.Fatalf("vector = %v, want the face's", stored[0].vector)
-				}
-				// The face, stored once even without a vector, is not embedded again before or after the video.
-				if f.helpers.imageRequests() != 1 || len(f.queue.state().stored) != 1 {
-					t.Fatalf("image requests %d, videos stored %d; want 1 and 1",
-						f.helpers.imageRequests(), len(f.queue.state().stored))
-				}
-			})
+			stored, _ := f.images.read()
+			if len(stored) != 1 || stored[0].job.PersonID != 7 || (stored[0].vector != nil) != tc.vector {
+				t.Fatalf("stored = %+v, want person 7's vector present %v", stored, tc.vector)
+			}
+			if tc.vector && (len(stored[0].vector) != 128 || stored[0].vector[0] != 1) {
+				t.Fatalf("vector = %v, want the face's", stored[0].vector)
+			}
+			if f.helpers.imageRequests() != 1 {
+				t.Fatalf("image requests = %d, want 1", f.helpers.imageRequests())
+			}
 		})
 	}
 }
 
-func TestFaceRecognizerAppliesANamedFaceAgainWithoutTheHelper(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture()
-		f.images.add(7, faceJPEG(t))
-		f.images.vectors[7] = fakeFaceVector{revision: 1, recognizer: domain.FaceRecognizerSFaceInt8, vector: []float32{1}}
-		f.run(t)
-		synctest.Wait()
+// A face embedded already, as after a naming, is applied again without the helper; a person without a face needs
+// nothing.
+func TestFaceRecognizerAppliesAnEmbeddedFaceAgainWithoutTheHelper(t *testing.T) {
+	f := newFaceWorkerFixture()
+	f.images.add(7, faceJPEG(t))
+	f.images.vectors[7] = fakeFaceVector{revision: 1, recognizer: domain.FaceRecognizerSFaceInt8, vector: []float32{1}}
+	ctx := context.Background()
 
-		f.rec.PersonImageChanged(domain.PersonImageChanged{PersonID: 8}) // gone since
-		f.rec.PersonImageChanged(domain.PersonImageChanged{PersonID: 7})
-		synctest.Wait()
-		stored, _ := f.images.read()
-		if len(stored) != 1 || !stored[0].job.Embedded || !slices.Equal(stored[0].vector, []float32{1}) {
-			t.Fatalf("stored = %+v, want person 7's stored vector applied again", stored)
-		}
-		if f.helpers.imageRequests() != 0 {
-			t.Fatalf("image requests = %d, want none", f.helpers.imageRequests())
-		}
-	})
+	if err := f.rec.HandleJob(ctx, faceImageJob(8)); err != nil {
+		t.Fatalf("job of a person gone since = %v, want done", err)
+	}
+	if err := f.rec.HandleJob(ctx, faceImageJob(7)); err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := f.images.read()
+	if len(stored) != 1 || !stored[0].job.Embedded || !slices.Equal(stored[0].vector, []float32{1}) {
+		t.Fatalf("stored = %+v, want person 7's stored vector applied again", stored)
+	}
+	if f.helpers.imageRequests() != 0 {
+		t.Fatalf("image requests = %d, want none", f.helpers.imageRequests())
+	}
 }
 
-// A vector computed for the recognizer the owner switched away from is never stored.
+// A vector computed for the recognizer the owner switched away from is never stored; the job runs again under the
+// new one.
 func TestFaceRecognizerSwitchedMidEmbeddingStoresOnlyTheNewRecognizersVector(t *testing.T) {
 	arcface := domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerArcFaceR50}
 	for _, tc := range []struct {
@@ -249,12 +236,17 @@ func TestFaceRecognizerSwitchedMidEmbeddingStoresOnlyTheNewRecognizersVector(t *
 				f := newFaceWorkerFixture()
 				f.helpers.imageFaces, f.helpers.holdImage = 1, true
 				f.images.add(7, faceJPEG(t))
-				f.run(t)
+				done := f.start(faceImageJob(7))
 				synctest.Wait()
 
 				tc.switchTo(f)
+				if err := <-done; !errors.Is(err, domain.ErrJobSnoozed) {
+					t.Fatalf("old recognizer's embedding = %v, want a snooze", err)
+				}
 				f.helpers.set(func(h *fakeFaceHelpers) { h.holdImage = false })
-				synctest.Wait()
+				if err := <-f.start(faceImageJob(7)); err != nil {
+					t.Fatal(err)
+				}
 				stored, _ := f.images.read()
 				if len(stored) != 1 || stored[0].job.Recognizer != domain.FaceRecognizerArcFaceR50 ||
 					stored[0].job.Generation != 1 || len(stored[0].vector) != 512 {
@@ -265,40 +257,43 @@ func TestFaceRecognizerSwitchedMidEmbeddingStoresOnlyTheNewRecognizersVector(t *
 	}
 }
 
-func TestFaceRecognizerRetriesAFaceAfterADatabaseError(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture()
-		f.helpers.imageFaces = 1
-		f.images.add(7, faceJPEG(t))
-		f.images.setFault(errors.New("database is locked"))
-		f.run(t)
-		synctest.Wait()
-		if _, attempts := f.images.read(); attempts != 1 {
-			t.Fatalf("attempts before the back-off = %d, want 1", attempts)
-		}
-
-		f.images.setFault(nil)
-		time.Sleep(time.Duration(domain.WorkerRetry))
-		synctest.Wait()
-		if stored, _ := f.images.read(); len(stored) != 1 || stored[0].job.PersonID != 7 {
-			t.Fatalf("stored = %+v, want person 7's vector after the back-off", stored)
-		}
-	})
+// A face replaced while its vector was computed runs again without an attempt; a database error is retried after
+// its delay, and a merge refused for good ends the job, since a retry cannot change it.
+func TestFaceRecognizerClassifiesFaceImageOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		store   func(s *fakeFaceImageStore)
+		snoozed bool
+		failed  bool
+	}{
+		{name: "replaced", snoozed: true, failed: true,
+			store: func(s *fakeFaceImageStore) { s.setFault(domain.ErrFaceImageChanged) }},
+		{name: "database error", failed: true,
+			store: func(s *fakeFaceImageStore) { s.setFault(errors.New("database is locked")) }},
+		{name: "merge refused",
+			store: func(s *fakeFaceImageStore) {
+				s.refusal = fmt.Errorf("%w: person 9 into person 7", domain.ErrFaceMergeRefused)
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFaceWorkerFixture()
+			f.helpers.imageFaces = 1
+			f.images.add(7, faceJPEG(t))
+			tc.store(f.images)
+			err := f.rec.HandleJob(context.Background(), faceImageJob(7))
+			if (err != nil) != tc.failed || errors.Is(err, domain.ErrJobSnoozed) != tc.snoozed {
+				t.Fatalf("HandleJob = %v; want failed %v, snoozed %v", err, tc.failed, tc.snoozed)
+			}
+		})
+	}
 }
 
-func TestFaceRecognizerDoesNotRetryAMergeRefusedForGood(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture()
-		f.helpers.imageFaces = 1
-		f.images.add(7, faceJPEG(t))
-		f.images.refusal = fmt.Errorf("%w: person 9 into person 7", domain.ErrFaceMergeRefused)
-		f.run(t)
-		synctest.Wait()
-
-		time.Sleep(2 * time.Duration(domain.WorkerRetry))
-		synctest.Wait()
-		if _, attempts := f.images.read(); attempts != 1 {
-			t.Fatalf("attempts = %d, want 1 with no retry", attempts)
-		}
-	})
+func TestFaceRecognizerQueuesTheStaleFaces(t *testing.T) {
+	f := newFaceWorkerFixture()
+	if err := f.rec.HandleJob(context.Background(), domain.Job{Kind: domain.JobQueueFaceImages}); err != nil {
+		t.Fatal(err)
+	}
+	if f.images.staleQueued != 1 {
+		t.Fatalf("QueueStaleFaceImages calls = %d, want 1", f.images.staleQueued)
+	}
 }
