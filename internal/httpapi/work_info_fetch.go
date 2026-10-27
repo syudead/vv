@@ -90,15 +90,13 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	var fetch domain.WorkInfoFetchResult
-	var err error
-	if body.Link != nil {
-		fetch, err = s.workInfoPlugins.FetchWorkInfoByLink(r.Context(), id, *body.PluginID, *body.Link)
-	} else {
-		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
-	}
+	fetch, err := s.fetchWorkInfo(r, id, *body.PluginID, body.ID, body.Link)
 	if errors.Is(err, domain.ErrWorkInfoLinkUnsupported) {
 		s.writeError(w, http.StatusBadRequest, codeWorkInfoLinkUnsupported, "The plugin does not read links from this site.")
+		return
+	}
+	if errors.Is(err, domain.ErrPeerUnreachable) {
+		s.peerUnreachable(w)
 		return
 	}
 	if err != nil {
@@ -107,6 +105,23 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
+}
+
+// fetchWorkInfo fetches by link when link is set, else by id; the peer holds a remote video.
+func (s *server) fetchWorkInfo(
+	r *http.Request, videoID, pluginID int64, id, link *string,
+) (domain.WorkInfoFetchResult, error) {
+	ctx, remote := r.Context(), domain.IsRemoteID(videoID)
+	switch {
+	case remote && link != nil:
+		return s.workInfoPlugins.FetchPeerWorkInfoByLink(ctx, s.peerWorkInfo(r), videoID, pluginID, *link)
+	case remote:
+		return s.workInfoPlugins.FetchPeerWorkInfo(ctx, s.peerWorkInfo(r), videoID, pluginID, *id)
+	case link != nil:
+		return s.workInfoPlugins.FetchWorkInfoByLink(ctx, videoID, pluginID, *link)
+	default:
+		return s.workInfoPlugins.FetchWorkInfo(ctx, videoID, pluginID, *id)
+	}
 }
 
 // ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key.
@@ -274,10 +289,18 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	if body.CoverIndex != nil {
 		selection.CoverIndex = *body.CoverIndex
 	}
-	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(
-		r.Context(), id, fetchID, selection, body.CoverByPage != nil && *body.CoverByPage,
-	)
+	coverByPage := body.CoverByPage != nil && *body.CoverByPage
+	var applied domain.WorkInfoApplied
+	var err error
+	if domain.IsRemoteID(id) {
+		applied, err = s.workInfoPlugins.ApplyPeerWorkInfoFetch(r.Context(), s.peerWorkInfo(r), id, fetchID, selection, coverByPage)
+	} else {
+		applied, err = s.workInfoPlugins.ApplyWorkInfoFetch(r.Context(), id, fetchID, selection, coverByPage)
+	}
 	switch {
+	case errors.Is(err, domain.ErrPeerUnreachable):
+		s.peerUnreachable(w)
+		return
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
 		s.invalidRequest(w, "Select at least one value the result carries. Whole fields need a value; people, "+
 			"organizations, urls and externalIds go in their own lists; samePeople pairs a chosen performer with one person "+
@@ -295,7 +318,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		return
 	}
 	// After commit, return success even if detail enrichment fails: the result is single-use and cannot be retried. The emitted video event lets the UI reload missing fields.
-	video, err := s.videoDetail(r, applied.Video, domain.VideoContext{})
+	video, err := s.appliedVideoDetail(r, applied.Video)
 	if err != nil {
 		s.logger.Warn("cannot load part of the video after applying the fetched work information",
 			slog.Int64("video", id), slog.Any("error", err))
@@ -304,20 +327,32 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	for _, tag := range applied.SkippedTags {
 		skippedTags = append(skippedTags, gen.SkippedTag{Name: tag.Name, Reason: gen.SkippedTagReason(tag.Reason)})
 	}
-	skipped := make([]gen.SkippedWorkInfoValue, 0, len(applied.Skipped))
-	for _, value := range applied.Skipped {
-		skipped = append(skipped, gen.SkippedWorkInfoValue{
-			Field: gen.WorkInfoField(value.Field), Value: value.Value, Reason: gen.SkippedWorkInfoReason(value.Reason),
-		})
-	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	linked := applied.LinkedPeople
 	if linked == nil {
 		linked = []int64{}
 	}
 	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{
-		Video: video, SkippedTags: skippedTags, Skipped: skipped, LinkedPeople: linked,
+		Video: video, SkippedTags: skippedTags, Skipped: toAPISkippedWorkInfoValues(applied.Skipped), LinkedPeople: linked,
 	}, s.logger)
+}
+
+// appliedVideoDetail is the applied video as the screens read it; the peer gives its own video.
+func (s *server) appliedVideoDetail(r *http.Request, video domain.Video) (gen.Video, error) {
+	if domain.IsRemoteID(video.ID) {
+		return s.peerVideoDetail(r, video.ID)
+	}
+	return s.videoDetail(r, video, domain.VideoContext{})
+}
+
+func toAPISkippedWorkInfoValues(values []domain.SkippedWorkInfoValue) []gen.SkippedWorkInfoValue {
+	out := make([]gen.SkippedWorkInfoValue, 0, len(values))
+	for _, value := range values {
+		out = append(out, gen.SkippedWorkInfoValue{
+			Field: gen.WorkInfoField(value.Field), Value: value.Value, Reason: gen.SkippedWorkInfoReason(value.Reason),
+		})
+	}
+	return out
 }
 
 // Omitted tags means all tags (nil). Reject null, empty selections, or tags without the tags field selected; the registry validates names against the fetch result.

@@ -55,6 +55,11 @@ type remoteCollection struct {
 var remoteCollections = []remoteCollection{
 	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations, map[string]bool{
 		"GET /api/videos/{id}/related": true,
+		// Plugins and their kept results are this node's; the peer is reached for the video and the writes.
+		"POST /api/videos/{id}/work-info-fetches":                               true,
+		"POST /api/videos/{id}/work-info-fetches/{fetchId}/apply":               true,
+		"GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}":       true,
+		"GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image": true,
 	}),
 	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, vocabularyWrites("tags")),
 	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, vocabularyWrites("people")),

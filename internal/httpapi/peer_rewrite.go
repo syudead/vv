@@ -38,6 +38,7 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/transcode-start":        {},
 	"PUT /api/videos/{id}/display-name":           {rewrite: rewriteAs(rewriteRemoteVideo)},
 	"PUT /api/videos/{id}/thumbnail-position":     {media: true, rewrite: rewriteAs(rewriteRemoteVideo)},
+	"POST /api/videos/{id}/thumbnail-image":       {media: true, rewrite: rewriteAs(rewriteRemoteVideo)},
 	"GET /api/videos/{id}/stream":                 {media: true},
 	"GET /api/videos/{id}/preview":                {media: true},
 	"GET /api/videos/{id}/transcode.mp4":          {media: true},
