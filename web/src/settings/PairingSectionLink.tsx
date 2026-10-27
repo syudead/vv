@@ -12,7 +12,6 @@ import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { FactList } from "../ui/patterns/fact-list";
-import { PageSection } from "../ui/patterns/page-section";
 import { Button } from "../ui/shadcn/button";
 import { useToast } from "../ui/Toast";
 
@@ -42,8 +41,8 @@ function stateLine(state: PeerState): StateLine {
   if (state.reason === "certificate")
     return {
       icon: ShieldAlert,
-      word: state.peer?.pinned === true ? text.certificate : text.untrusted,
-      detail: state.peer?.pinned === true ? text.certificateDetail : text.untrustedDetail,
+      word: state.link?.pinned === true ? text.certificate : text.untrusted,
+      detail: state.link?.pinned === true ? text.certificateDetail : text.untrustedDetail,
       tone: "warning",
     };
   return {
@@ -75,7 +74,7 @@ function StateRow({ state }: { state: PeerState }) {
   );
 }
 
-/** Saved on blur or Enter; the answer updates the peer's details, the next peer event the state. */
+/** Saved on blur or Enter; the answer updates the link's details, the next peer event the state. */
 function AddressRow({
   address,
   onSaved,
@@ -83,14 +82,14 @@ function AddressRow({
   address: string;
   onSaved: (state: PeerState) => void;
 }) {
-  const text = t.settings.pairing.paired;
+  const text = t.settings.pairing.link;
   const id = useId();
   const setting = useTextSettingSave({
     initial: address,
     save: async (next) => {
       const answer = await updatePeerAddress(next);
       onSaved(answer);
-      return answer.peer?.address ?? next;
+      return answer.link?.address ?? next;
     },
     isInvalid: (failure) =>
       failure instanceof RequestFailed && failure.reason === "invalid_address",
@@ -112,7 +111,7 @@ function AddressRow({
 
 /**
  * Sends the fingerprint on screen; fingerprint_changed replaces it with the one now waiting. An
- * unpinned peer gets the first-trust wording that pairing uses.
+ * unpinned link gets the first-trust wording that pairing uses.
  */
 function CertificateRow({
   address,
@@ -143,7 +142,7 @@ function CertificateRow({
         setShown(error.fingerprint);
         setChanged(true);
       } else {
-        setFailure(text.paired.certificateFailed(errorText(error)));
+        setFailure(text.link.certificateFailed(errorText(error)));
       }
     } finally {
       setPending(false);
@@ -155,14 +154,14 @@ function CertificateRow({
       <FingerprintAlert
         title={
           changed
-            ? text.paired.certificateChanged
+            ? text.link.certificateChanged
             : pinned
-              ? text.paired.certificateTitle
+              ? text.link.certificateTitle
               : text.form.untrustedTitle
         }
         address={address}
         fingerprint={shown}
-        action={text.paired.trust}
+        action={text.link.trust}
         pending={pending}
         destructive={changed}
         onTrust={() => void trust()}
@@ -202,7 +201,7 @@ function UnpairAction({ name, onUnpaired }: { name: string; onUnpaired: () => vo
       }}
       trigger={
         <Button variant="ghost-destructive" size="sm">
-          {t.settings.pairing.paired.unpair}
+          {t.settings.pairing.link.unpair}
         </Button>
       }
       title={text.title(name)}
@@ -217,9 +216,9 @@ function UnpairAction({ name, onUnpaired }: { name: string; onUnpaired: () => vo
   );
 }
 
-/** Revoked needs no confirmation: the other side already ended the pairing. */
+/** Revoked needs no confirmation: the other side already withdrew the access. */
 function RemoveAction({ onRemoved }: { onRemoved: () => void }) {
-  const text = t.settings.pairing.paired;
+  const text = t.settings.pairing.link;
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
   const remove = async () => {
@@ -248,41 +247,45 @@ function RemoveAction({ onRemoved }: { onRemoved: () => void }) {
   );
 }
 
-export function PairedSection({
+/** The face of the VVMDM this one reads: its state, details, address, certificate and removal. */
+export function LinkDetails({
   state,
-  onPeerAnswer,
+  onLinkAnswer,
   onUnpaired,
 }: {
   state: PeerState;
-  onPeerAnswer: (state: PeerState) => void;
+  onLinkAnswer: (state: PeerState) => void;
   onUnpaired: () => void;
 }) {
-  const text = t.settings.pairing.paired;
-  const peer = state.peer;
-  const name = peer?.name ?? "";
+  const text = t.settings.pairing.link;
+  const link = state.link;
+  const name = link?.name ?? "";
   const revoked = state.state === "revoked";
   const certificate =
     state.state === "unreachable" && state.reason === "certificate"
       ? state.fingerprint
       : undefined;
   return (
-    <PageSection title={text.heading} description={text.description}>
-      <StateRow state={state} />
+    <>
+      <div className="flex flex-col gap-3">
+        <StateRow state={state} />
+        <p className="text-sm text-muted-foreground">{text.description}</p>
+      </div>
       <FactList
         facts={[
           { id: "name", term: text.name, value: name },
-          { id: "version", term: text.version, value: peer?.version ?? "" },
+          { id: "version", term: text.version, value: link?.version ?? "" },
         ]}
       />
-      {!revoked && peer !== undefined && (
-        <AddressRow address={peer.address} onSaved={onPeerAnswer} />
+      {!revoked && link !== undefined && (
+        <AddressRow address={link.address} onSaved={onLinkAnswer} />
       )}
       {certificate !== undefined && (
         <CertificateRow
           key={certificate}
-          address={peer?.address ?? ""}
+          address={link?.address ?? ""}
           fingerprint={certificate}
-          pinned={peer?.pinned === true}
+          pinned={link?.pinned === true}
         />
       )}
       <div>
@@ -292,6 +295,6 @@ export function PairedSection({
           <UnpairAction name={name} onUnpaired={onUnpaired} />
         )}
       </div>
-    </PageSection>
+    </>
   );
 }

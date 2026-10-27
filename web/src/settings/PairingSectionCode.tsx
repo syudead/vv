@@ -33,12 +33,10 @@ function useRemaining(expiresAt: string | null): number {
 function ShownCode({
   code,
   issuing,
-  disabled,
   onRenew,
 }: {
   code: PairingCode;
   issuing: boolean;
-  disabled: boolean;
   onRenew: () => void;
 }) {
   const text = t.settings.pairing.code;
@@ -74,12 +72,7 @@ function ShownCode({
         <p role="status" className="text-xs text-muted-foreground tabular-nums">
           {expired ? text.expired : text.expiresIn(formatCountdown(remaining))}
         </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={disabled || issuing}
-          onClick={onRenew}
-        >
+        <Button variant="ghost" size="sm" disabled={issuing} onClick={onRenew}>
           {text.renew}
         </Button>
       </div>
@@ -90,8 +83,8 @@ function ShownCode({
   );
 }
 
-/** Showing a code never touches the pairing form; a new code replaces the one shown. */
-export function PairingCodeRow({ disabled }: { disabled: boolean }) {
+/** A new code replaces the one shown; the row stays while no other VVMDM reads this one. */
+export function PairingCodeRow() {
   const text = t.settings.pairing.code;
   const codeId = useId();
   const errorId = useId();
@@ -118,19 +111,14 @@ export function PairingCodeRow({ disabled }: { disabled: boolean }) {
           <Button
             variant="outline"
             size="sm"
-            disabled={disabled || issuing}
+            disabled={issuing}
             aria-describedby={failure === null ? undefined : errorId}
             onClick={() => void issue()}
           >
             {text.show}
           </Button>
         ) : (
-          <ShownCode
-            code={code}
-            issuing={issuing}
-            disabled={disabled}
-            onRenew={() => void issue()}
-          />
+          <ShownCode code={code} issuing={issuing} onRenew={() => void issue()} />
         )}
         {failure !== null && <FieldError id={errorId}>{failure}</FieldError>}
       </div>

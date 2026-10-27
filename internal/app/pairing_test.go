@@ -2,11 +2,9 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -14,14 +12,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakePeerStore keeps the record and the hash of the incoming secret like the SQLite role.
+// fakePeerStore keeps one link and one grant, hashing the grant's secret like the SQLite role.
 type fakePeerStore struct {
-	mu           sync.Mutex
-	nodeID       string
-	record       *domain.PeerRecord
-	incomingHash [32]byte
-	// beforeAdd, when set, runs as AddPeer starts, before the record is stored.
-	beforeAdd func(incoming string)
+	mu        sync.Mutex
+	nodeID    string
+	link      *domain.PeerLink
+	grant     *domain.PeerGrant
+	grantHash [32]byte
 }
 
 func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (string, error) {
@@ -33,89 +30,119 @@ func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (strin
 	return f.nodeID, nil
 }
 
-func (f *fakePeerStore) Peer(context.Context) (domain.PeerRecord, bool, error) {
+func (f *fakePeerStore) Link(context.Context) (domain.PeerLink, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record == nil {
-		return domain.PeerRecord{}, false, nil
+	if f.link == nil {
+		return domain.PeerLink{}, false, nil
 	}
-	return *f.record, true, nil
+	return *f.link, true, nil
 }
 
-func (f *fakePeerStore) AddPeer(_ context.Context, record domain.PeerRecord, incoming string) error {
-	if f.beforeAdd != nil {
-		f.beforeAdd(incoming)
-	}
+func (f *fakePeerStore) AddLink(_ context.Context, link domain.PeerLink) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record != nil {
+	if f.link != nil {
 		return domain.ErrAlreadyPaired
 	}
-	f.record, f.incomingHash = &record, sha256.Sum256([]byte(incoming))
+	f.link = &link
 	return nil
 }
 
-func (f *fakePeerStore) PeerBySecret(_ context.Context, secret string) (domain.PeerRecord, bool, error) {
+func (f *fakePeerStore) UpdateLinkAddress(_ context.Context, address string) (domain.PeerLink, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record == nil || f.incomingHash != sha256.Sum256([]byte(secret)) {
-		return domain.PeerRecord{}, false, nil
+	if f.link == nil {
+		return domain.PeerLink{}, domain.ErrNotFound
 	}
-	return *f.record, true, nil
+	f.link.Address = address
+	return *f.link, nil
 }
 
-func (f *fakePeerStore) UpdatePeerAddress(_ context.Context, address string) (domain.PeerRecord, error) {
+func (f *fakePeerStore) PinLinkCertificate(_ context.Context, nodeID, spki string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record == nil {
-		return domain.PeerRecord{}, domain.ErrNotFound
+	if f.link == nil || f.link.NodeID != nodeID {
+		return domain.ErrNotFound
 	}
-	f.record.Address = address
-	return *f.record, nil
+	f.link.PinnedSPKI = spki
+	return nil
 }
 
-func (f *fakePeerStore) DeletePeer(_ context.Context, nodeID string) (bool, error) {
+func (f *fakePeerStore) MarkLinkRevoked(_ context.Context, nodeID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record == nil || f.record.NodeID != nodeID {
+	if f.link != nil && f.link.NodeID == nodeID {
+		f.link.Revoked = true
+	}
+	return nil
+}
+
+func (f *fakePeerStore) DeleteLink(_ context.Context, nodeID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.link == nil || f.link.NodeID != nodeID {
 		return false, nil
 	}
-	f.record = nil
+	f.link = nil
 	return true, nil
 }
 
-func (f *fakePeerStore) RevokeIncomingSecret(_ context.Context, nodeID string) error {
+func (f *fakePeerStore) Grant(context.Context) (domain.PeerGrant, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record != nil && f.record.NodeID == nodeID {
-		f.record.IncomingRevoked, f.incomingHash = true, [32]byte{}
+	if f.grant == nil {
+		return domain.PeerGrant{}, false, nil
 	}
+	return *f.grant, true, nil
+}
+
+func (f *fakePeerStore) AddGrant(_ context.Context, grant domain.PeerGrant, secret string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.grant != nil {
+		return domain.ErrAlreadyPaired
+	}
+	f.grant, f.grantHash = &grant, sha256.Sum256([]byte(secret))
 	return nil
 }
 
-func (f *fakePeerStore) PinPeerCertificate(_ context.Context, nodeID, spki string) error {
+func (f *fakePeerStore) GrantBySecret(_ context.Context, secret string) (domain.PeerGrant, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.record == nil || f.record.NodeID != nodeID {
-		return domain.ErrNotFound
+	if f.grant == nil || f.grantHash != sha256.Sum256([]byte(secret)) {
+		return domain.PeerGrant{}, false, nil
 	}
-	f.record.PinnedSPKI = spki
-	return nil
+	return *f.grant, true, nil
 }
 
-func (f *fakePeerStore) stored() *domain.PeerRecord {
+func (f *fakePeerStore) DeleteGrant(_ context.Context, nodeID string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.record
+	if f.grant == nil || f.grant.NodeID != nodeID {
+		return false, nil
+	}
+	f.grant = nil
+	return true, nil
+}
+
+func (f *fakePeerStore) storedLink() *domain.PeerLink {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.link
+}
+
+func (f *fakePeerStore) storedGrant() *domain.PeerGrant {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.grant
 }
 
 // directLink routes calls to the Pairing registered at the address, as two nodes on one LAN.
 type directLink struct {
 	nodes map[string]*Pairing
-	// failHandshake makes every callback fail, as an unreachable return address.
-	failHandshake bool
-	requests      int
-	// handshakes lists the address of each handshake, the only call besides RequestPairing that carries a secret.
+	// handshakes lists the address of each handshake; a pairing makes none, since the accepting node
+	// never calls the sender.
 	handshakes []string
 	// certificates holds the SPKI of each address that presents a self-signed certificate, which a call
 	// reaches only when pinned to it.
@@ -136,7 +163,6 @@ func (l *directLink) node(target domain.PeerTarget) (*Pairing, error) {
 func (l *directLink) RequestPairing(
 	ctx context.Context, target domain.PeerTarget, req domain.PairingRequest,
 ) (domain.PairingAnswer, error) {
-	l.requests++
 	node, err := l.node(target)
 	if err != nil {
 		return domain.PairingAnswer{}, err
@@ -144,20 +170,8 @@ func (l *directLink) RequestPairing(
 	return node.Accept(ctx, req)
 }
 
-// Certificate presents the self-signed certificate of address, or one the roots verify.
-func (l *directLink) Certificate(_ context.Context, address string) (domain.PresentedCertificate, error) {
-	if _, err := l.node(domain.PeerTarget{Address: address, PinnedSPKI: l.certificates[address]}); err != nil {
-		return domain.PresentedCertificate{}, err
-	}
-	spki, selfSigned := l.certificates[address]
-	return domain.PresentedCertificate{Fingerprint: spki, Verified: !selfSigned}, nil
-}
-
 func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error) {
 	l.handshakes = append(l.handshakes, target.Address)
-	if l.failHandshake {
-		return domain.PeerNode{}, &domain.PeerUnreachableError{Message: "callback refused"}
-	}
 	node, err := l.node(target)
 	if err != nil {
 		return domain.PeerNode{}, err
@@ -198,106 +212,125 @@ func newPairingNodes(t *testing.T, versionA, versionB string) *pairingNodes {
 		link: &directLink{nodes: map[string]*Pairing{}},
 	}
 	clock := func() time.Time { return n.now }
-	n.a = NewPairing(PairingOptions{Store: n.storeA, Link: n.link, Version: versionA, NodeName: "a", Now: clock})
-	n.b = NewPairing(PairingOptions{Store: n.storeB, Link: n.link, Version: versionB, NodeName: "b", Now: clock})
+	n.a = NewPairing(PairingOptions{Store: n.storeA, Client: n.link, Version: versionA, NodeName: "a", Now: clock})
+	n.b = NewPairing(PairingOptions{Store: n.storeB, Client: n.link, Version: versionB, NodeName: "b", Now: clock})
 	n.link.nodes[addressA], n.link.nodes[addressB] = n.a, n.b
 	return n
 }
 
-func (n *pairingNodes) issueCodeOnA(t *testing.T) string {
+func (n *pairingNodes) issueCode(t *testing.T, node *Pairing) string {
 	t.Helper()
-	code, err := n.a.IssueCode(context.Background())
+	code, err := node.IssueCode(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return code.Value
 }
 
+// pairFromB makes B read A with A's code.
 func (n *pairingNodes) pairFromB(code string) error {
-	_, err := n.b.Pair(context.Background(), domain.PairInput{Address: addressA, Code: code, OwnAddress: addressB})
+	_, err := n.b.Pair(context.Background(), domain.PairInput{Address: addressA, Code: code})
 	return err
 }
 
 func (n *pairingNodes) assertNothingStored(t *testing.T) {
 	t.Helper()
-	if n.storeA.stored() != nil || n.storeB.stored() != nil {
-		t.Errorf("記録が保存された: A %+v, B %+v", n.storeA.stored(), n.storeB.stored())
+	for label, store := range map[string]*fakePeerStore{"A": n.storeA, "B": n.storeB} {
+		if store.storedLink() != nil || store.storedGrant() != nil {
+			t.Errorf("%s に記録が保存された: link %+v, grant %+v", label, store.storedLink(), store.storedGrant())
+		}
 	}
 }
 
-func TestPairingStoresBothSecrets(t *testing.T) {
+func assertState(t *testing.T, label string, node *Pairing, want domain.PeerConnection, peerVersion string) {
+	t.Helper()
+	state, err := node.State(context.Background())
+	if err != nil || state.State != want || state.PeerVersion != peerVersion {
+		t.Errorf("%s の State = %+v, %v, want %s と PeerVersion %q", label, state, err, want, peerVersion)
+	}
+}
+
+// Entering A's code on B grants B read access to A and nothing else: B holds the link with the secret A
+// authenticates, A holds the grant, and A never calls B.
+func TestPairingGrantsOneDirection(t *testing.T) {
 	ctx := context.Background()
 	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
+	code := n.issueCode(t, n.a)
+	if err := n.pairFromB(code); err != nil {
 		t.Fatalf("Pair: %v", err)
 	}
 
-	onA, onB := n.storeA.stored(), n.storeB.stored()
-	if onA == nil || onB == nil {
-		t.Fatalf("両方に記録が無い: A %+v, B %+v", onA, onB)
-	}
 	nodeA, _ := n.a.Node(ctx)
 	nodeB, _ := n.b.Node(ctx)
-	if onA.NodeID != nodeB.ID || onA.Address != addressB || onA.Name != "b" {
-		t.Errorf("A の記録 = %+v, want B (%s)", onA, nodeB.ID)
+	link, grant := n.storeB.storedLink(), n.storeA.storedGrant()
+	if link == nil || link.NodeID != nodeA.ID || link.Address != addressA || link.Name != "a" || link.Revoked {
+		t.Errorf("B の link = %+v, want A (%s)", link, nodeA.ID)
 	}
-	if onB.NodeID != nodeA.ID || onB.Address != addressA || onB.Name != "a" {
-		t.Errorf("B の記録 = %+v, want A (%s)", onB, nodeA.ID)
+	if grant == nil || grant.NodeID != nodeB.ID || grant.Name != "b" || !grant.PairedAt.Equal(n.now) {
+		t.Errorf("A の grant = %+v, want B (%s)", grant, nodeB.ID)
 	}
-	// Each node's outgoing secret is the other's incoming credential.
-	for _, check := range []struct {
-		label    string
-		receiver *Pairing
-		secret   string
-	}{{"B が A に示す secret", n.a, onB.OutgoingSecret}, {"A が B に示す secret", n.b, onA.OutgoingSecret}} {
-		if valid, err := check.receiver.Authenticate(ctx, check.secret); err != nil || !valid {
-			t.Errorf("%s が通らない: %v, %v", check.label, valid, err)
-		}
+	if n.storeA.storedLink() != nil || n.storeB.storedGrant() != nil {
+		t.Errorf("逆方向が保存された: A の link %+v, B の grant %+v", n.storeA.storedLink(), n.storeB.storedGrant())
 	}
-	if onA.OutgoingSecret == onB.OutgoingSecret {
-		t.Error("両方向の secret が同じ")
+	if valid, err := n.a.Authenticate(ctx, link.Secret); err != nil || !valid {
+		t.Errorf("B の secret が A で通らない: %v, %v", valid, err)
 	}
-	for _, node := range []*Pairing{n.a, n.b} {
-		if state, err := node.State(ctx); err != nil || state.State != domain.PeerConnected || state.PeerVersion != "1.2.0" {
-			t.Errorf("State = %+v, %v, want connected with PeerVersion 1.2.0", state, err)
-		}
+	if len(n.link.handshakes) != 0 {
+		t.Errorf("ペアリング中に handshake が呼ばれた: %v", n.link.handshakes)
+	}
+	assertState(t, "B", n.b, domain.PeerConnected, "1.2.0")
+	assertState(t, "A", n.a, domain.PeerUnpaired, "")
+	if state, _ := n.a.State(ctx); state.Grant == nil || state.Grant.Name != "b" || state.Link != nil {
+		t.Errorf("A の State = %+v, want grant だけ", state)
+	}
+
+	// The code is used up, each direction holds one row, and A's code is refused while B reads it.
+	secondB := NewPairing(PairingOptions{Store: &fakePeerStore{}, Client: n.link, Version: "1.2.0", NodeName: "b2"})
+	if _, err := secondB.Pair(ctx, domain.PairInput{Address: addressA, Code: code}); !errors.Is(err, domain.ErrInvalidPairingCode) {
+		t.Errorf("使ったコードでの Pair err = %v, want ErrInvalidPairingCode", err)
 	}
 	if err := n.pairFromB("ANYCODE2"); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Errorf("ペアリング済みの B の Pair err = %v, want ErrAlreadyPaired", err)
+		t.Errorf("読む相手がある B の Pair err = %v, want ErrAlreadyPaired", err)
+	}
+	if _, err := n.a.IssueCode(ctx); !errors.Is(err, domain.ErrAlreadyPaired) {
+		t.Errorf("読まれている A の IssueCode err = %v, want ErrAlreadyPaired", err)
 	}
 }
 
 func TestPairingRefusalsStoreNothing(t *testing.T) {
 	cases := []struct {
 		name    string
-		prepare func(t *testing.T, n *pairingNodes) string
+		prepare func(t *testing.T, n *pairingNodes) domain.PairInput
 		want    error
 	}{
 		{name: "誤ったコード", want: domain.ErrInvalidPairingCode,
-			prepare: func(t *testing.T, n *pairingNodes) string {
+			prepare: func(t *testing.T, n *pairingNodes) domain.PairInput {
 				t.Helper()
-				n.issueCodeOnA(t)
-				return "WRONGCOD"
+				n.issueCode(t, n.a)
+				return domain.PairInput{Address: addressA, Code: "WRONGCOD"}
 			}},
 		{name: "期限切れのコード", want: domain.ErrInvalidPairingCode,
-			prepare: func(t *testing.T, n *pairingNodes) string {
+			prepare: func(t *testing.T, n *pairingNodes) domain.PairInput {
 				t.Helper()
-				code := n.issueCodeOnA(t)
+				code := n.issueCode(t, n.a)
 				n.now = n.now.Add(domain.PairingCodeLifetime)
-				return code
+				return domain.PairInput{Address: addressA, Code: code}
 			}},
-		{name: "コールバックの失敗", want: domain.ErrPeerUnreachable,
-			prepare: func(t *testing.T, n *pairingNodes) string {
+		{name: "届かないアドレス", want: domain.ErrPeerUnreachable,
+			prepare: func(t *testing.T, n *pairingNodes) domain.PairInput {
 				t.Helper()
-				n.link.failHandshake = true
-				return n.issueCodeOnA(t)
+				return domain.PairInput{Address: "http://c.local", Code: n.issueCode(t, n.a)}
+			}},
+		{name: "不正なアドレス", want: domain.ErrInvalidPeerAddress,
+			prepare: func(*testing.T, *pairingNodes) domain.PairInput {
+				return domain.PairInput{Address: "a.local", Code: "ABCDEFGH"}
 			}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			n := newPairingNodes(t, "1.2.0", "1.2.0")
-			err := n.pairFromB(tc.prepare(t, n))
-			if !errors.Is(err, tc.want) {
+			input := tc.prepare(t, n)
+			if _, err := n.b.Pair(context.Background(), input); !errors.Is(err, tc.want) {
 				t.Fatalf("Pair err = %v, want %v", err, tc.want)
 			}
 			n.assertNothingStored(t)
@@ -305,105 +338,122 @@ func TestPairingRefusalsStoreNothing(t *testing.T) {
 	}
 }
 
-func TestAcceptRefusesAPairedNode(t *testing.T) {
+// A mutual pairing is two pairings, and each direction is removed on its own.
+func TestMutualPairingIsTwoIndependentPairings(t *testing.T) {
 	ctx := context.Background()
 	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	code := n.issueCodeOnA(t)
-	existing := domain.PeerRecord{NodeID: "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b", Name: "c", Address: "http://c.local"}
-	if err := n.storeA.AddPeer(ctx, existing, "vvp_c"); err != nil {
+	if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
+		t.Fatalf("B → A: %v", err)
+	}
+	if _, err := n.a.Pair(ctx, domain.PairInput{Address: addressB, Code: n.issueCode(t, n.b)}); err != nil {
+		t.Fatalf("A → B: %v", err)
+	}
+	for label, store := range map[string]*fakePeerStore{"A": n.storeA, "B": n.storeB} {
+		if store.storedLink() == nil || store.storedGrant() == nil {
+			t.Errorf("%s の link %+v, grant %+v, want 両方", label, store.storedLink(), store.storedGrant())
+		}
+	}
+	assertState(t, "A", n.a, domain.PeerConnected, "1.2.0")
+	assertState(t, "B", n.b, domain.PeerConnected, "1.2.0")
+
+	// A withdraws B's access: B's secret stops working on A, while A still reads B.
+	if err := n.a.RevokeGrant(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if valid, _ := n.a.Authenticate(ctx, n.storeB.storedLink().Secret); valid {
+		t.Error("取り消した後も B の secret が A で通る")
+	}
+	if n.storeA.storedGrant() != nil || n.storeA.storedLink() == nil || n.storeB.storedGrant() == nil {
+		t.Errorf("取り消しの後: A の grant %+v, A の link %+v, B の grant %+v, want A の grant だけ消える",
+			n.storeA.storedGrant(), n.storeA.storedLink(), n.storeB.storedGrant())
+	}
+	assertState(t, "取り消し後の A", n.a, domain.PeerConnected, "1.2.0")
+}
 
+func TestAcceptRefusesInvalidSendersAndKeepsTheCode(t *testing.T) {
+	ctx := context.Background()
+	n := newPairingNodes(t, "1.2.0", "1.2.0")
+	code := n.issueCode(t, n.a)
+	nodeA, _ := n.a.Node(ctx)
+	nodeB, _ := n.b.Node(ctx)
+	for _, tc := range []struct {
+		label string
+		node  domain.PeerNode
+		want  error
+	}{
+		{"自分自身", nodeA, domain.ErrInvalidPairingInput},
+		{"不正な node id", domain.PeerNode{ID: "not-a-uuid", Name: "b"}, domain.ErrInvalidPairingInput},
+		{"空の名前", domain.PeerNode{ID: nodeB.ID}, domain.ErrInvalidPairingInput},
+	} {
+		if _, err := n.a.Accept(ctx, domain.PairingRequest{Code: code, Node: tc.node}); !errors.Is(err, tc.want) {
+			t.Errorf("%s の Accept err = %v, want %v", tc.label, err, tc.want)
+		}
+	}
+	n.assertNothingStored(t)
+
+	// A node that is already read refuses after the code check, and the code stays usable once access is withdrawn.
+	if err := n.storeA.AddGrant(ctx, domain.PeerGrant{NodeID: "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b", Name: "c"}, "vvp_c"); err != nil {
+		t.Fatal(err)
+	}
 	if err := n.pairFromB(code); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Fatalf("Pair err = %v, want ErrAlreadyPaired", err)
+		t.Fatalf("読まれている A への Pair err = %v, want ErrAlreadyPaired", err)
 	}
-	if got := n.storeA.stored(); got.NodeID != existing.NodeID {
-		t.Errorf("A の記録が置き換わった: %+v", got)
+	if got := n.storeA.storedGrant(); got.Name != "c" {
+		t.Errorf("A の grant が置き換わった: %+v", got)
 	}
-	if n.storeB.stored() != nil {
-		t.Errorf("B に記録が保存された: %+v", n.storeB.stored())
+	if err := n.a.RevokeGrant(ctx); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := n.a.IssueCode(ctx); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Errorf("ペアリング済みの IssueCode err = %v, want ErrAlreadyPaired", err)
+	if err := n.pairFromB(code); err != nil {
+		t.Errorf("取り消し後の同じコードでの Pair err = %v", err)
 	}
 }
 
 // The version is a build label, so builds of the same source can differ in it; it is shown, never compared.
 func TestPairingIgnoresTheVersionLabels(t *testing.T) {
-	ctx := context.Background()
 	const sha = "f1672930f88eac63ac8f92b96985c8ef76e32036"
 	n := newPairingNodes(t, sha, domain.DefaultVersion)
-	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
+	if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
 		t.Fatalf("Pair: %v", err)
 	}
-	for _, check := range []struct {
-		label string
-		node  *Pairing
-		peer  string
-	}{{"A", n.a, domain.DefaultVersion}, {"B", n.b, sha}} {
-		if state, err := check.node.State(ctx); err != nil || state.State != domain.PeerConnected || state.PeerVersion != check.peer {
-			t.Errorf("%s の State = %+v, %v, want connected with PeerVersion %s", check.label, state, err, check.peer)
-		}
-	}
+	assertState(t, "B", n.b, domain.PeerConnected, sha)
 }
 
-func TestHandshakeAcceptsOnlyKnownSecrets(t *testing.T) {
+func TestHandshakeAcceptsOnlyTheGrantSecret(t *testing.T) {
 	ctx := context.Background()
 	n := newPairingNodes(t, "1.2.0", "1.2.0")
 	if _, err := n.a.Handshake(ctx, "vvp_unknown"); !errors.Is(err, domain.ErrPeerUnknown) {
 		t.Errorf("記録の無い Handshake err = %v, want ErrPeerUnknown", err)
 	}
-	// A's connection loop may hand the sent secret back before B stored its record.
-	var beforeStored error
-	n.storeB.beforeAdd = func(incoming string) { _, beforeStored = n.b.Handshake(ctx, incoming) }
-	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
+	if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
 		t.Fatal(err)
 	}
-	if beforeStored != nil {
-		t.Errorf("B の保存前の Handshake err = %v, want nil", beforeStored)
-	}
-	// The secret B sent was accepted only while its pairing ran; afterwards only the stored credential is.
-	onB := n.storeB.stored()
-	if node, err := n.a.Handshake(ctx, onB.OutgoingSecret); err != nil || node.Name != "a" {
+	if node, err := n.a.Handshake(ctx, n.storeB.storedLink().Secret); err != nil || node.Name != "a" {
 		t.Errorf("Handshake = %+v, %v", node, err)
+	}
+	if _, err := n.b.Handshake(ctx, n.storeB.storedLink().Secret); !errors.Is(err, domain.ErrPeerUnknown) {
+		t.Errorf("読む側での自分の secret の Handshake err = %v, want ErrPeerUnknown", err)
 	}
 }
 
-func TestUnpairClearsTheRecordAndState(t *testing.T) {
+// Unpairing on the reader removes its link and asks the read node to drop the grant.
+func TestUnpairClearsTheLinkAndTheGrant(t *testing.T) {
 	ctx := context.Background()
 	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	if err := n.pairFromB(n.issueCodeOnA(t)); err != nil {
+	if err := n.pairFromB(n.issueCode(t, n.a)); err != nil {
 		t.Fatal(err)
 	}
 	if err := n.b.Unpair(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := n.b.State(ctx); err != nil || state.State != domain.PeerUnpaired || state.Peer != nil {
-		t.Errorf("解除後の State = %+v, %v", state, err)
+	if state, err := n.b.State(ctx); err != nil || state.State != domain.PeerUnpaired || state.Link != nil {
+		t.Errorf("解除後の B の State = %+v, %v", state, err)
+	}
+	if n.storeA.storedGrant() != nil {
+		t.Errorf("解除後も A に grant が残る: %+v", n.storeA.storedGrant())
 	}
 	if _, err := n.b.ChangeAddress(ctx, addressA); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("解除後の ChangeAddress err = %v, want ErrNotFound", err)
-	}
-}
-
-// A callback that fails must leave A's code usable for the retry; only the pairing that succeeds uses it up.
-func TestFailedCallbackKeepsTheCode(t *testing.T) {
-	ctx := context.Background()
-	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	code := n.issueCodeOnA(t)
-	n.link.failHandshake = true
-	if err := n.pairFromB(code); !errors.Is(err, domain.ErrPeerUnreachable) {
-		t.Fatalf("失敗するコールバックの Pair err = %v, want ErrPeerUnreachable", err)
-	}
-
-	n.link.failHandshake = false
-	if err := n.pairFromB(code); err != nil {
-		t.Fatalf("同じコードでの再試行の Pair err = %v", err)
-	}
-	node, _ := n.b.Node(ctx)
-	secret, _ := domain.NewPeerSecret(rand.Reader)
-	if _, err := n.a.Accept(ctx, domain.PairingRequest{Code: code, Node: node, Address: addressB, Secret: secret}); !errors.Is(err, domain.ErrInvalidPairingCode) {
-		t.Errorf("ペアリング後の同じコードの Accept err = %v, want ErrInvalidPairingCode", err)
 	}
 }
 
@@ -412,80 +462,27 @@ func testFingerprint(seed string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-const httpsA, httpsB = "https://a.local", "https://b.local"
-
-// newSelfSignedNodes serves both nodes at https addresses whose self-signed certificates have spkiA and spkiB.
-func newSelfSignedNodes(t *testing.T) (n *pairingNodes, spkiA, spkiB string) {
-	t.Helper()
-	n = newPairingNodes(t, "1.2.0", "1.2.0")
-	spkiA, spkiB = testFingerprint("a"), testFingerprint("b")
-	n.link.nodes = map[string]*Pairing{httpsA: n.a, httpsB: n.b}
-	n.link.certificates = map[string]string{httpsA: spkiA, httpsB: spkiB}
-	return n, spkiA, spkiB
-}
-
-// Both nodes behind self-signed HTTPS: B's owner confirms B's own certificate and A's, and A pins the one B's
-// owner confirmed for the callback and the pairing. B never calls its own address with a secret.
-func TestPairingPinsBothSelfSignedCertificates(t *testing.T) {
+// A behind self-signed HTTPS: B's owner confirms A's certificate, which B pins. B's own address and
+// certificate play no part, since A never calls B.
+func TestPairingPinsTheReadNodesCertificate(t *testing.T) {
 	ctx := context.Background()
-	n, spkiA, spkiB := newSelfSignedNodes(t)
-	code := n.issueCodeOnA(t)
+	const httpsA = "https://a.local"
+	n := newPairingNodes(t, "1.2.0", "1.2.0")
+	spkiA := testFingerprint("a")
+	n.link.nodes = map[string]*Pairing{httpsA: n.a}
+	n.link.certificates = map[string]string{httpsA: spkiA}
+	code := n.issueCode(t, n.a)
 
-	_, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, OwnFingerprint: spkiB})
+	_, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code})
 	var untrusted *domain.CertificateUntrustedError
 	if !errors.As(err, &untrusted) || untrusted.Fingerprint != spkiA {
-		t.Fatalf("A の確認前の Pair err = %v, want A の指紋 %s の CertificateUntrustedError", err, spkiA)
-	}
-	confirmed := domain.PairInput{Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA, OwnFingerprint: spkiB}
-	if _, err := n.b.Pair(ctx, confirmed); err != nil {
-		t.Fatalf("両方の証明書を確認した Pair err = %v", err)
-	}
-	if onA, onB := n.storeA.stored(), n.storeB.stored(); onA == nil || onB == nil ||
-		onA.PinnedSPKI != spkiB || onB.PinnedSPKI != spkiA {
-		t.Errorf("固定した指紋: A %+v, B %+v, want A に %s, B に %s", onA, onB, spkiB, spkiA)
-	}
-	// Only A's callback handshakes B's address; a probe carrying the pending secret would add calls.
-	if want := []string{httpsB}; !slices.Equal(n.link.handshakes, want) {
-		t.Errorf("handshake の宛先 = %q, want A のコールバックだけの %q", n.link.handshakes, want)
-	}
-}
-
-// An own certificate the owner did not confirm, or confirmed as another one, stops the pairing before A is
-// called, naming the certificate the address presents now.
-func TestPairRefusesAnUnconfirmedOwnCertificateBeforeCallingThePeer(t *testing.T) {
-	for _, confirmed := range []string{"", testFingerprint("other")} {
-		n, spkiA, spkiB := newSelfSignedNodes(t)
-		code := n.issueCodeOnA(t)
-		_, err := n.b.Pair(context.Background(), domain.PairInput{
-			Address: httpsA, Code: code, OwnAddress: httpsB, Fingerprint: spkiA, OwnFingerprint: confirmed,
-		})
-		var unverified *domain.OwnCertificateUnverifiedError
-		if !errors.As(err, &unverified) || unverified.Fingerprint != spkiB {
-			t.Errorf("自分の指紋 %q の Pair err = %v, want 指紋 %s の OwnCertificateUnverifiedError", confirmed, err, spkiB)
-		}
-		if n.link.requests != 0 || len(n.link.handshakes) != 0 {
-			t.Errorf("自分の指紋 %q: ペアリング要求 %d 回、handshake %q, want どちらも無し", confirmed, n.link.requests, n.link.handshakes)
-		}
-		n.assertNothingStored(t)
-	}
-}
-
-func TestAcceptRefusesAFingerprintWithoutHTTPSOrForm(t *testing.T) {
-	ctx := context.Background()
-	n := newPairingNodes(t, "1.2.0", "1.2.0")
-	code := n.issueCodeOnA(t)
-	node, _ := n.b.Node(ctx)
-	secret, _ := domain.NewPeerSecret(rand.Reader)
-	for _, tc := range []struct{ address, fingerprint string }{
-		{addressB, testFingerprint("b")},
-		{"https://b.local", "not-a-fingerprint"},
-	} {
-		_, err := n.a.Accept(ctx, domain.PairingRequest{
-			Code: code, Node: node, Address: tc.address, Secret: secret, Fingerprint: tc.fingerprint,
-		})
-		if !errors.Is(err, domain.ErrInvalidPairingInput) {
-			t.Errorf("%s と %q の Accept err = %v, want ErrInvalidPairingInput", tc.address, tc.fingerprint, err)
-		}
+		t.Fatalf("確認前の Pair err = %v, want 指紋 %s の CertificateUntrustedError", err, spkiA)
 	}
 	n.assertNothingStored(t)
+	if _, err := n.b.Pair(ctx, domain.PairInput{Address: httpsA, Code: code, Fingerprint: spkiA}); err != nil {
+		t.Fatalf("確認後の Pair err = %v", err)
+	}
+	if link := n.storeB.storedLink(); link == nil || link.PinnedSPKI != spkiA {
+		t.Errorf("B の link = %+v, want 指紋 %s を固定", link, spkiA)
+	}
 }
