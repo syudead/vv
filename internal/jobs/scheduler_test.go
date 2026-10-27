@@ -667,6 +667,105 @@ func (q *fakeQueue) failureCauses() []error {
 	return causes
 }
 
+// A scan read waits for a running job instead of stopping it, then takes the freed slot ahead of a queued owner job,
+// while jobs keep the disk's other slots.
+func TestSchedulerGrantsAWaitingScanReadBeforeQueuedJobs(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue()
+		for id := int64(1); id <= 5; id++ {
+			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
+		}
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+
+		var release func()
+		go func() {
+			var err error
+			if release, err = scheduler.AcquireRead(context.Background(), "/a"); err != nil {
+				t.Errorf("AcquireRead: %v", err)
+			}
+		}()
+		synctest.Wait()
+		if release != nil {
+			t.Fatal("the scan read was granted while every slot was held")
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if release == nil {
+			t.Fatal("the scan read was not granted the freed slot")
+		}
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running during the scan read = %v, want %v", got, want)
+		}
+		release()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4, 5}; !slices.Equal(got, want) {
+			t.Fatalf("running after the scan read = %v, want %v", got, want)
+		}
+	})
+}
+
+// Between two reads of one scan, a slot the scan returned stays free from jobs until the scan is done with the disk,
+// while jobs keep the disk's other slots.
+func TestSchedulerKeepsASlotForAScanBetweenItsReads(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue()
+		for id := int64(1); id <= 5; id++ {
+			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
+		}
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+
+		done := scheduler.KeepAhead("/a")
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running while the scan is ahead = %v, want %v", got, want)
+		}
+		release, err := scheduler.AcquireRead(context.Background(), "/a")
+		if err != nil {
+			t.Fatalf("AcquireRead: %v", err)
+		}
+		release()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running between the scan's reads = %v, want %v", got, want)
+		}
+		done()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4, 5}; !slices.Equal(got, want) {
+			t.Fatalf("running after the scan = %v, want %v", got, want)
+		}
+	})
+}
+
+// A folder whose disk cannot be resolved refuses the scan read instead of letting it read outside every limit.
+func TestSchedulerRefusesAScanReadOnAnUnreadableFolder(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := oneDisk(domain.DiskSolidState)
+		disks.setReadable("/b", false)
+		scheduler, stop := startScheduler(Options{Queue: newFakeQueue(), Disks: disks.resolve})
+		defer stop()
+		synctest.Wait()
+
+		release, err := scheduler.AcquireRead(context.Background(), "/b")
+		if err == nil || release != nil {
+			t.Fatalf("AcquireRead = (release %v, %v), want an error and no release", release != nil, err)
+		}
+	})
+}
+
 func TestSchedulerGrantsTwoDisksAtOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(
@@ -856,6 +955,39 @@ func TestSchedulerHoldsAForegroundDiskToOneBackgroundRead(t *testing.T) {
 		if got, want := jobs.ids(), []int64{3, 4, 5, 6}; !slices.Equal(got, want) {
 			t.Fatalf("running after the reader closed = %v, want %v", got, want)
 		}
+	})
+}
+
+// A scan read is a background read, so with a foreground reader open it waits for the one slot a job holds, and the
+// reader's end wakes it.
+func TestSchedulerHoldsAScanReadToTheForegroundLimit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})
+		jobs := newBlockingJobs()
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 8, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		synctest.Wait()
+		end := scheduler.ReadInForeground("/a/movie.mp4")
+
+		var release func()
+		go func() {
+			var err error
+			if release, err = scheduler.AcquireRead(context.Background(), "/a"); err != nil {
+				t.Errorf("AcquireRead: %v", err)
+			}
+		}()
+		synctest.Wait()
+		if release != nil {
+			t.Fatal("the scan read was granted a second read with a foreground reader open")
+		}
+		end()
+		synctest.Wait()
+		if release == nil {
+			t.Fatal("the scan read was not granted after the foreground reader closed")
+		}
+		release()
 	})
 }
 

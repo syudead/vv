@@ -3,6 +3,7 @@
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
 job, and every auto-tagging job, the resources its kind declares, from the CPU
 slots, the classifier slots and the read slots of the job's disk, and runs it.
+A scan's content-key reads take read slots from the same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -11,6 +12,7 @@ flowchart LR
   ev[Enqueue, stage done, release, run-after time, root check] -->|wake| sch[Scheduler]
   jobs[(jobs)] -->|claim by class, disk, kind, run-after| sch
   paused[Features that are off] -->|paused kinds| sch
+  scan[Scan content-key read] -->|wait for a read slot, ahead of jobs| sch
   sch -->|grant demand| run[Handler of the kind]
   run -->|lend and return slots per extraction| sch
   run -->|done, retry, repeats, snooze| jobs
@@ -130,13 +132,15 @@ the file until they end:
 - a live transcode, from its ffprobe until its ffmpeg exits;
 - a frame read for thumbnail editing.
 
-The disk is the one of the deepest media folder holding the file. When the
-last reader on the disk ends, it returns to the slots of its type and the
-scheduler wakes. A grant made before the reader opened is not revoked: a
+The disk is the one of the deepest media folder holding the opened file,
+after links are followed. When the last reader on the disk ends, it returns
+to the slots of its type and the scheduler wakes. A grant made before the reader opened is not revoked: a
 seek-sprite job drops to one extraction when it next asks for a pair, and a
 thumbnail, preview or face job finishes its current run. Background reads fall
-to 1 within the longest running job, then stay there. `httpapi` and `app`
-declare the interface they call, and `cmd/mdm` passes the scheduler.
+to 1 within the longest running job, then stay there. A scan's content-key
+read counts as a background read and takes the 1 slot like a job does.
+`httpapi` and `app` declare the interface they call, and `cmd/mdm` passes the
+scheduler.
 
 Sidecar subtitle reads hold nothing: they read kilobytes once per request.
 
@@ -167,6 +171,30 @@ child back to 10, so the child keeps the server's nice value.
 | `nice` and `ionice` wrapper commands | The Alpine image and Windows do not guarantee those binaries |
 | The idle I/O class | Its requests may wait until the disk is quiet, which could stall import while anything else reads |
 | Lowering the server's own priority | It would slow streaming too |
+
+## A scan's content-key reads go first
+
+The scan still computes each new or changed file's content key inline, but it
+holds a read slot on the disk of the file's media folder for each read
+([`Scheduler.AcquireRead`](../../internal/jobs/scheduler.go)). A waiting scan
+read takes the next free slot of its disk before any job class, and while it
+waits no job takes a read slot on that disk. It never stops a running job, so
+on a 1-slot disk the first read waits at most for the running job. While the
+scan works through consecutive files of one media folder
+([`Scheduler.KeepAhead`](../../internal/jobs/scheduler.go)), the slot a read
+returns stays free from jobs until its next read, so on a 1-slot disk jobs wait
+until the scan leaves the folder. The scanner reads one file at a time, so on a
+4-slot disk jobs keep the other three slots. Unchanged files are not read and
+take no slot. A folder whose disk cannot be resolved fails the read instead of
+reading without a slot, and a file outside every media folder is not read.
+`internal/scanner` declares the interface it calls, and `cmd/mdm` wires the
+scheduler to it.
+
+| Rejected | Why |
+| --- | --- |
+| Defer the content key to a job | A move between scans would no longer be detected by content |
+| Stop a running job for the scan | An interrupted encode restarts from the beginning |
+| Scan reads take turns with jobs | On a 1-slot disk each read would wait for a whole job, and those jobs need the scan's output |
 
 ## An unreadable media folder parks its jobs
 
@@ -275,8 +303,9 @@ settings callback, so its queued jobs are claimed at once.
 Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
 for a wakeup, for the earliest run-after time of a queued job, or for the next
 recheck of an unavailable folder, whichever comes first; it never polls an
-empty queue. A committed enqueue, a finished stage, every release and a
-returned lent slot wake it. A claim error waits 5 seconds or for a wakeup.
+empty queue. A committed enqueue, a finished stage, every release, a returned
+lent slot or scan read, and the end of a scan's turn on a disk wake it. A claim
+error waits 5 seconds or for a wakeup.
 Grants, releases and lent slots are logged at debug level with the disk key
 and the slots in use, and each resolved disk with its type and read slots.
 

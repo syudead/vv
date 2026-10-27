@@ -279,6 +279,58 @@ func (s *Scheduler) grant(ctx context.Context, job domain.Job, disk string, dema
 	})
 }
 
+// AcquireRead waits for a read slot on the disk of the media folder at root, for one content-key read of a scan. A
+// waiting scan read takes the next free slot of its disk before any job, but never stops a running job. A folder whose
+// disk cannot be resolved returns the error, so the read never bypasses the disk's limit. Release returns the slot.
+func (s *Scheduler) AcquireRead(ctx context.Context, root string) (release func(), err error) {
+	disk, err := s.scanDisk(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.capacity.acquireScanRead(ctx, disk); err != nil {
+		// A job refused while this read waited needs another turn.
+		s.Wake()
+		return nil, err
+	}
+	s.logger.Debug("granted a scan read", s.scanAttrs(disk.Key)...)
+	return sync.OnceFunc(func() {
+		s.capacity.releaseScanRead(disk.Key)
+		s.logger.Debug("released a scan read", s.scanAttrs(disk.Key)...)
+		s.Wake()
+	}), nil
+}
+
+// KeepAhead keeps one read slot of the disk of the media folder at root free from jobs between the scan's content-key
+// reads there, so a job does not take the disk each time a read returns its slot. Done ends it; a folder whose disk
+// cannot be resolved keeps nothing, and its reads fail in AcquireRead.
+func (s *Scheduler) KeepAhead(root string) (done func()) {
+	disk, err := s.scanDisk(root)
+	if err != nil {
+		return func() {}
+	}
+	end := s.capacity.keepScanAhead(disk.Key)
+	return sync.OnceFunc(func() {
+		end()
+		s.Wake()
+	})
+}
+
+// scanDisk returns the disk of the media folder at root, resolving it when the scheduler has not.
+func (s *Scheduler) scanDisk(root string) (domain.Disk, error) {
+	if disk, ok := s.roots.disk(root); ok {
+		return disk, nil
+	}
+	disk, err := s.disks(root)
+	if err != nil {
+		return domain.Disk{}, fmt.Errorf("cannot resolve the disk of the media folder (%s): %w", root, err)
+	}
+	return disk, nil
+}
+
+func (s *Scheduler) scanAttrs(disk string) []any {
+	return []any{slog.String("disk", disk), slog.Int("readInUse", s.capacity.inUse(disk).Read)}
+}
+
 func (s *Scheduler) slotAttrs(job domain.Job, disk string, demand domain.JobResources) []any {
 	used := s.capacity.inUse(disk)
 	return []any{
