@@ -122,7 +122,8 @@ func (p peerWorkInfo) UploadThumbnailImage(
 		return domain.Video{}, err
 	}
 	req.Header.Set("Content-Type", form.FormDataContentType())
-	resp, err := p.s.peerLink.Forward(req, false, false)
+	// The peer may wait to decode and fit the image, as a forwarded thumbnail upload does.
+	resp, err := p.s.peerLink.Forward(req, false, true)
 	if err != nil {
 		return domain.Video{}, err
 	}

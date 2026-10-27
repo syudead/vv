@@ -44,7 +44,11 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	}
 	runtime := coverRuntime{cover: cover.Bytes(), work: domain.FetchedWorkInfo{
 		Title: "遠くの作品", Tags: []string{"レム"}, CoverURLs: []string{"https://shop.test/cover.png"},
-		People: []domain.FetchedPerson{{Role: domain.PersonPerformer, Name: "早美れむ"}},
+		Code: "CTNOZ-148", Description: "紹介文", Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "2022-04-01"}},
+		People:        []domain.FetchedPerson{{Role: domain.PersonPerformer, Name: "早美れむ", Profile: domain.PersonProfile{HeightCm: new(150)}}},
+		Organizations: []domain.FetchedOrganization{{Role: domain.OrganizationMaker, Name: "二代目つば飲みおじさん"}},
+		URLs:          []string{"https://shop.test/w/1"},
+		ExternalIDs:   []domain.ExternalID{{Source: "fanza", Value: "ctnoz148"}},
 	}}
 	uploads := map[*store.DB][]recordedUpload{}
 	fa, fb, _, b, _ := mergedNodesWith(t, func(db *store.DB, opts *Options) {
@@ -80,7 +84,8 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	}
 
 	rec = b.owner(http.MethodPost, fmt.Sprintf("%s/%s/apply", path, fetched.FetchId),
-		`{"fields":["title","tags","cover"],"people":[0],"coverIndex":0}`)
+		`{"fields":["title","tags","cover","code","description","dates.release"],"people":[0],`+
+			`"organizations":[0],"urls":["https://shop.test/w/1"],"externalIds":[{"source":"fanza","value":"ctnoz148"}],"coverIndex":0}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -101,6 +106,11 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 		t.Errorf("a's video: title = %q, tentative レム = %v, people = %v, want 遠くの作品, true and [%d]",
 			onA.Title, tentative, performers, performer.ID)
 	}
+	assertPeerWorkDetails(t, onA.WorkInfo)
+	if saved, err := fa.env.db.Credits().Get(ctx, domain.CreditPerson, performer.ID); err != nil ||
+		saved.Profile.HeightCm == nil || *saved.Profile.HeightCm != 150 {
+		t.Errorf("a's performer profile = %+v, %v, want heightCm 150", saved.Profile, err)
+	}
 	aVideo, err := fa.env.db.Library().GetVideo(ctx, domain.AudienceOwner, fa.ids["a"])
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +122,25 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	matches, err := fb.env.db.Credits().Match(ctx, domain.CreditPerson, []domain.CreditMatchEntry{{Name: "早美れむ"}})
 	if err != nil || matches[0].State != domain.CreditMatchNew {
 		t.Errorf("b's people: match = %+v, %v, want no person 早美れむ on b", matches, err)
+	}
+}
+
+// assertPeerWorkDetails checks that every chosen detail reached the peer's video unchanged.
+func assertPeerWorkDetails(t *testing.T, info *gen.WorkInfo) {
+	t.Helper()
+	if info == nil {
+		t.Fatal("a's video has no work information")
+	}
+	var makers []string
+	for _, o := range info.Organizations {
+		makers = append(makers, string(o.Role)+":"+o.Organization.Name)
+	}
+	got := fmt.Sprintf("%v|%v|%v|%v|%v|%v", valueOrEmpty(info.Code), valueOrEmpty(info.Description), info.Dates, makers,
+		info.Urls, info.ExternalIds)
+	want := fmt.Sprintf("%v|%v|%v|%v|%v|%v", "CTNOZ-148", "紹介文", []gen.WorkDate{{Kind: gen.Release, Date: "2022-04-01"}},
+		[]string{"maker:二代目つば飲みおじさん"}, []string{"https://shop.test/w/1"}, []gen.ExternalId{{Source: "fanza", Value: "ctnoz148"}})
+	if got != want {
+		t.Errorf("a's work information = %s, want %s", got, want)
 	}
 }
 
