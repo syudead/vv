@@ -25,8 +25,9 @@ the large one (acceptance criteria 1–3).
 1. While the SSD folder imports, play a video from it.
 2. Stop playback.
 
-Expected: during playback exactly one background ffmpeg reads the SSD. After
-playback, the count returns to up to 4 (acceptance criterion 4).
+Expected: once the jobs running when playback started have finished, exactly
+one background ffmpeg reads the SSD, and never none while work is queued.
+After playback, the count returns to up to 4 (acceptance criterion 4).
 
 ## An owner request goes first
 

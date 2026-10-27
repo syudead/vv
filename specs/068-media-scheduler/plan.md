@@ -7,12 +7,12 @@
 ## Summary
 
 One scheduler grants every job that reads a source file, uses the CPU, the
-classifier or the face helper, and every scan content-key read. It grants
+classifier or the face runtime, and every scan content-key read. It grants
 them from the demand declared per kind, with these limits:
 
 - read slots per disk: 1 for a rotational or unknown disk, 4 otherwise;
 - CPU slots: `NumCPU / 4 + 1`;
-- one classifier slot and one face helper slot.
+- one classifier slot and one face lane slot.
 
 How the scheduler behaves:
 
@@ -23,9 +23,10 @@ How the scheduler behaves:
 - **Unavailable folders**: a folder that cannot be read parks its jobs.
 - **Foreground readers**: playback and thumbnail editing hold their disk to
   one background read.
-- **One job table**: all queued work, including auto-tagging, face analysis,
-  duplicate judging and the backfills, lives in `jobs`. Results stay in the
-  domain tables.
+- **One job table**: all queued work lives in `jobs`, including auto-tagging,
+  face analysis, face-image embedding, the cast rule, duplicate judging and
+  the backfills. Results stay in the domain tables, and a kind whose feature
+  is off is paused.
 
 The decisions and the survey behind them are in [research.md](research.md).
 
@@ -57,7 +58,7 @@ flowchart LR
 
 | Item | Delta |
 | --- | --- |
-| Schema | `jobs` gains priority, run-after, subject keys and eight kinds; the content queues become result tables; candidates lose their retry columns ([data-model.md](data-model.md)) |
+| Schema | `jobs` gains priority, run-after, subject keys and eleven kinds in one rebuild; the content queues become result tables; candidates lose their retry columns ([data-model.md](data-model.md)) |
 | Platform | Disk identity and type come from Linux sysfs and Windows storage IOCTLs. Anything else is an unknown disk with 1 slot ([R-5](research.md#r-5-read-slots-per-disk-follow-the-disk-type)) |
 | Child processes | Job ffmpeg, ffprobe and the face helper run at lowered CPU and I/O priority, set right after start ([R-11](research.md#r-11-background-processes-run-at-low-priority)) |
 | Hidden parallelism | The seek-sprite job's fixed 4 processes and 8 reads become slots taken and returned per extraction ([R-6](research.md#r-6-a-splittable-job-takes-and-returns-slots-per-extraction)) |
@@ -128,9 +129,10 @@ flowchart LR
   u3 --> u5[Scan reads]
   u2 --> u6[Backfills as jobs]
   u3 --> u6
-  u2 --> u7[Auto-tag and face as jobs]
+  u2 --> u7[Content queues as jobs]
   u3 --> u7
-  u2 --> u8[Judging as jobs]
+  u7 --> u8[Face duties as jobs]
+  u7 --> u9[Judging as jobs]
 ```
 
 ### Run every ingest stage on one resource scheduler
@@ -158,13 +160,14 @@ Existing ingest tests in `cmd/mdm` pass unchanged.
 
 ### Add priority classes, retry delays and failure outcomes to the job queue
 
-**Scope**: A migration adds `priority` and a non-null `run_after`, drops the
-dead `metadata` kind and rebuilds the claim index
-([data-model.md](data-model.md#jobs)). The claim order becomes class,
+**Scope**: One migration rebuilds `jobs` to its end state
+([data-model.md](data-model.md#jobs)). It adds every column, every kind, the
+subject `check` and the claim index; the later units only move their rows in. The claim order becomes class,
 run-after, then age. The four outcomes and the delay rule follow
 [R-4](research.md#r-4-priority-classes-are-strict) and
-[R-7](research.md#r-7-handlers-return-one-of-four-outcomes). ffprobe exit
-errors and `invalid_metadata` wrap `ErrFailureRepeats`. Force rescans and
+[R-7](research.md#r-7-handlers-return-one-of-four-outcomes), with the per-kind
+override of the delay and the attempt limit. FFmpeg's invalid-data error and
+`invalid_metadata` wrap `ErrFailureRepeats`. Force rescans and
 activity retries enqueue at class 0, and the scheduler waits until the next
 run-after time.
 
@@ -176,8 +179,10 @@ run-after time.
 - a job not claimed before its run-after time and claimed after it;
 - delays of 30 s, 2 min and 8 min within ±10% at round ends, and an immediate
   requeue mid-round;
-- an ffprobe exit error failing at the end of its first round, while a probe
-  timeout requeues;
+- an invalid-data error failing at the end of its first round, while a probe
+  timeout and an `EIO` exit requeue;
+- a kind's overridden delay and unlimited attempts applied in place of the
+  default;
 - startup recovery counting one attempt.
 
 A scheduler test shows the wait ending at the next run-after time. The
@@ -238,8 +243,9 @@ low, and the foreground processes stay normal
 **Dependencies**: Give each disk its own read slots and serve disks in turn
 
 **Acceptance**: A scheduler test opens a foreground reader on a 4-slot disk.
-It sees new grants and seek-sprite extractions stop at 1 total, with 1 still
-granted throughout, then resume up to 4 after the reader closes. An HTTP test
+It sees seek-sprite extractions and new grants stop until the total is 1,
+with a running preview kept and 1 still granted throughout. After the reader
+closes, grants resume up to 4. An HTTP test
 shows the stream handler reporting and releasing its disk. A Linux test reads
 the nice value and the I/O class of a started job process and of a live
 transcode process.
@@ -256,12 +262,12 @@ preempts
 **Acceptance**: A scanner test with a fake slot provider shows one acquire and
 one release per new or changed file, and none for an unchanged file. A
 scheduler test shows a waiting scan read granted before queued class-0 jobs
-when a slot frees.
+when a slot frees, and jobs holding the other three slots of a 4-slot disk
+during a scan.
 
 ### Queue backfills and virtual thumbnail republishing as scheduled jobs
 
-**Scope**: `video_id` becomes nullable for the singleton kinds. Startup
-inserts the `queue_keyframes`, `queue_media_info` and `virtual_thumbnails`
+**Scope**: Startup inserts the `queue_keyframes`, `queue_media_info` and `virtual_thumbnails`
 jobs at class 2 ([R-13](research.md#r-13-startup-work-becomes-jobs-queued-by-queue-all-jobs)).
 These kinds stay out of import activity, scan settling and
 `HasUnfinishedJobs`. The backfill loop and the startup goroutine go, and
@@ -273,8 +279,10 @@ the job queue; Give each disk its own read slots and serve disks in turn
 **Acceptance**:
 
 - **Fan-out**: a store test shows `queue_keyframes` inserting one `keyframes`
-  job per video with an old keyframe version and none for the rest. The same
-  holds for media information.
+  job per H.264 video whose stored spacing is missing, old or for a different
+  size or modification time, and none for the rest. A store test shows
+  `queue_media_info` skipping a video with a recorded failure for the same
+  file and version.
 - **Stays out of import tracking**: a store test shows a running backfill job
   opening no activity entry, leaving scan settling alone, and
   `HasUnfinishedJobs` false.
@@ -282,18 +290,27 @@ the job queue; Give each disk its own read slots and serve disks in turn
   before any backfill job runs.
 - **No polling**: no code polls for backfill work.
 
-### Move auto-tagging and face-analysis work into the job table
+### Move the auto-tagging and face-analysis queues into the job table
 
 **Scope**: `auto_tag` and `face` jobs keyed by `subject_key`, and the
-`auto_tag_queue` and `face_queue` rows carried over into `jobs` and result
+`auto_tag_queue` and `face_queue` rows carried over into `jobs` and the result
 tables ([data-model.md](data-model.md#auto_tag_results-and-face_results),
 [R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)).
 
-The activity rules of `content_queue.go` move to the enqueue, claim and
-finish paths of these kinds. The demands are the classifier for `auto_tag`,
-and read, CPU and face helper for `face`. A `face` job reads its content key's
-first available location. The auto-tagging and face loops go, and
-`auto-tagging.md` and `face-recognition.md` describe the queue as jobs.
+- **Activity**: the activity rules of `content_queue.go` move to the enqueue,
+  claim and finish paths of these kinds.
+- **State checks**: every check of a content state in `auto_tags.go`,
+  `faces.go`, `face_clear.go`, `face_settings.go` and
+  `video_face_appearances.go` reads the result row and the unfinished job
+  together.
+- **Paused kinds**: the scheduler gains them
+  ([Paused kinds](research.md#paused-kinds)), and `auto_tag` and `face` use
+  them.
+- **Demands**: `auto_tag` uses the classifier; `face` uses read, CPU and the
+  face lane, and its claim fills `location_*`.
+- **Loops**: the auto-tagging loop goes, and the face loop stops claiming
+  analyses.
+- **Documents**: `auto-tagging.md` describes the queue as jobs.
 
 **Dependencies**: Add priority classes, retry delays and failure outcomes to
 the job queue; Give each disk its own read slots and serve disks in turn
@@ -306,29 +323,71 @@ the job queue; Give each disk its own read slots and serve disks in turn
   delay. Today a failure stays failed until the owner queues it again.
 - **Owner first**: an owner's retry is claimed before queued after-import
   tagging.
+- **Paused**: with auto-tagging off, a queued `auto_tag` job is not claimed
+  and keeps its attempts. Turning auto-tagging on gets it claimed.
 - **Slots**: a scheduler test shows an `auto_tag` job granted while every read
-  slot is busy, and at most one classifier job and one face job at a time.
+  slot is busy, and at most one classifier job and one face-lane job at a
+  time.
 - **Existing behaviour**: existing auto-tagging and face tests pass, with
   their queue assertions reading `jobs`.
 
+### Run face-image embedding and the cast rule as face-lane jobs
+
+**Scope**: The face loop's remaining duties become jobs on the face lane
+([R-1](research.md#r-1-one-scheduler-grants-declared-demands)):
+
+- `face_image` jobs, enqueued on an image upload or change, and
+  `queue_face_images` after a recognizer change;
+- `face_cast` jobs, enqueued when a video's work information changes;
+- the helper closing when the face lane has no queued job.
+
+The face loop goes, and `face-recognition.md` describes the lane.
+
+**Dependencies**: Move the auto-tagging and face-analysis queues into the job
+table
+
+**Acceptance**: App tests show the following:
+
+- an uploaded image embedded through a `face_image` job;
+- a recognizer change queuing one job per stale image;
+- a cast change applied through `face_cast` and never at the same time as a
+  `face` job;
+- the helper closed after the last face-lane job and started again by the
+  next.
+
+Existing face tests pass.
+
 ### Move duplicate-judging work into the job table
 
-**Scope**: `version_judge` jobs keyed by the content-key pair. A job is
-enqueued wherever a candidate is created, reset or rejudged. The judging
-delays (10 min, 1 h, 6 h) come through the per-kind delay hook
-([R-7](research.md#r-7-handlers-return-one-of-four-outcomes)). The candidate's
-`attempts` and `retry_at` go, the judging loop and `NextJudgementRetry` go,
-and `duplicate-judging.md` describes the queue as jobs.
+**Scope**: `version_judge` jobs keyed by the content-key pair
+([R-12](research.md#r-12-all-queued-work-lives-in-jobs-results-stay-in-the-domain-tables)).
 
-**Dependencies**: Add priority classes, retry delays and failure outcomes to
-the job queue
+- **Enqueue**: a job is enqueued where a candidate is created, reset or
+  rejudged, and where a saved connection resets `no_connection` pairs.
+- **Claim**: the claim skips a pair that is not judgeable now and keeps its
+  job. The job goes with its candidate row.
+- **Delays**: today's delays (10 min, 1 h, 6 h, then daily, no limit) come
+  through the per-kind override
+  ([R-7](research.md#r-7-handlers-return-one-of-four-outcomes)).
+- **Pause**: `version_judge` is paused while judging is off.
+- **Retry time**: the Activity list, the candidate list, the activity retry
+  and the API's `retryAt` use the job's `run_after`.
+- **Removed**: the candidate's `attempts` and `retry_at`, the judging loop and
+  `NextJudgementRetry` go.
+- **Documents**: `duplicate-judging.md` describes the queue as jobs.
+
+**Dependencies**: Move the auto-tagging and face-analysis queues into the job
+table
 
 **Acceptance**:
 
 - **Migration**: a test carries waiting, running and failed-with-retry
   candidates to `jobs` and back.
 - **Delays**: an app test shows an unanswered classifier retried after 10 min,
-  then 1 h.
+  1 h, 6 h, then daily past the third failure.
+- **Held pair**: a held pair's job stays queued and is claimed once the hold
+  is lifted.
+- **API**: an HTTP test shows `retryAt` unchanged for a pair waiting to retry.
 - **Connection saved**: saving the connection settings makes waiting pairs
   claimable at once.
 - **Existing behaviour**: existing judging tests pass, with their retry
