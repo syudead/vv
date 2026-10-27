@@ -78,7 +78,7 @@ func NewScheduler(opts Options) *Scheduler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Scheduler{
+	s := &Scheduler{
 		loop:     NewLoop(),
 		queue:    opts.Queue,
 		folders:  opts.Folders,
@@ -88,9 +88,10 @@ func NewScheduler(opts Options) *Scheduler {
 		finished: opts.Finished,
 		logger:   logger,
 		capacity: newCapacity(opts.CPUSlots),
-		roots:    newRoots(opts.Disks, logger),
 		nextKind: map[string]int{},
 	}
+	s.roots = newRoots(opts.Disks, logger, s.Wake)
+	return s
 }
 
 func (s *Scheduler) Wake() {

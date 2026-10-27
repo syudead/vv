@@ -121,10 +121,15 @@ run at once. On a 1-slot disk the job runs one part at a time.
 A job whose handler fails while its media folder cannot be opened and listed
 is snoozed: it is requeued without counting an attempt, and the folder becomes
 unavailable. A folder that cannot be read when its disk is resolved becomes
-unavailable too. Claims pass over locations under an unavailable folder, so a
-video with another readable location is claimed there, and a job stored only
-under unavailable folders stays queued. A file missing under a readable folder
-was deleted, so its failure is retried as usual.
+unavailable too, and so does one whose disk does not answer within 5 seconds,
+until the answer comes; a share that stops answering would otherwise stall the
+grants on every disk. Claims pass over locations under an unavailable folder,
+so a video with another readable location is claimed there, and a job stored
+only under unavailable folders stays queued. A parked thumbnail does not hold
+back seek sprites, which wait only for claimable thumbnails. A snooze of the
+claim that started a round undoes the round, so the claim at the next location
+starts and counts it. A file missing under a readable folder was deleted, so
+its failure is retried as usual.
 
 The scheduler checks unavailable folders again when a scan starts, the folder
 watcher reports a change or an unreachable folder, and once a minute while any

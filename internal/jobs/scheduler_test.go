@@ -757,6 +757,40 @@ func TestSchedulerParksAnUnreadableFolderUntilARecheck(t *testing.T) {
 	}
 }
 
+func TestSchedulerGrantsOtherDisksWhileAFolderDoesNotAnswer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := twoDisks()
+		answer := make(chan struct{})
+		// Disk a's folder blocks like a share that stops answering until the test lets it answer.
+		resolve := func(path string) (domain.Disk, error) {
+			if path == "/a" {
+				<-answer
+			}
+			return disks.resolve(path)
+		}
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: resolve})
+		defer stop()
+		time.Sleep(DiskResolveTimeout)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("running while disk a does not answer = %v, want %v", got, want)
+		}
+		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+		close(answer)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running after disk a answers = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})

@@ -13,6 +13,10 @@ import (
 // RootRecheckInterval is how often the scheduler checks unavailable media folders again while any is unavailable.
 const RootRecheckInterval = time.Minute
 
+// DiskResolveTimeout bounds how long a turn waits for media folders' disks, so a share that stops answering parks its
+// folder instead of stalling the grants on every disk.
+const DiskResolveTimeout = 5 * time.Second
+
 // DiskResolver returns the disk of a media folder, or an error when the folder cannot be read.
 type DiskResolver func(path string) (domain.Disk, error)
 
@@ -20,6 +24,10 @@ type rootState struct {
 	path        string
 	disk        domain.Disk
 	unavailable bool
+	// resolving marks a resolution still running, which is not started again; late marks one the turn stopped
+	// waiting for, whose answer wakes the scheduler.
+	resolving bool
+	late      bool
 }
 
 // diskGroup is one turn of the rotation over disks: the available roots of one disk and the kinds that read it, or,
@@ -48,6 +56,7 @@ func splitKindsByRead() (read, noRead []domain.JobKind) {
 type roots struct {
 	resolve DiskResolver
 	logger  *slog.Logger
+	wake    func()
 
 	mu        sync.Mutex
 	known     map[int64]rootState
@@ -55,8 +64,8 @@ type roots struct {
 	checkedAt time.Time
 }
 
-func newRoots(resolve DiskResolver, logger *slog.Logger) *roots {
-	return &roots{resolve: resolve, logger: logger, known: map[int64]rootState{}}
+func newRoots(resolve DiskResolver, logger *slog.Logger, wake func()) *roots {
+	return &roots{resolve: resolve, logger: logger, wake: wake, known: map[int64]rootState{}}
 }
 
 func (r *roots) requestRecheck() {
@@ -65,18 +74,71 @@ func (r *roots) requestRecheck() {
 	r.recheck = true
 }
 
-// refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only.
+// refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only. A
+// resolution that outlasts DiskResolveTimeout parks its folder until it answers, because a read from an unresponsive
+// share can block without end.
 func (r *roots) refresh(folders []domain.MediaFolder, now time.Time) {
-	for _, folder := range r.pending(folders, now) {
-		disk, err := r.resolve(folder.Path)
-		r.set(folder.ID, rootState{path: folder.Path, disk: disk, unavailable: err != nil}, now)
-		if err != nil {
-			r.logger.Warn("parked the jobs of a media folder that cannot be read",
-				slog.String("path", folder.Path), slog.Any("error", err))
-			continue
+	pending := r.pending(folders, now)
+	if len(pending) == 0 {
+		return
+	}
+	done := make(chan struct{}, len(pending))
+	for _, folder := range pending {
+		go func() {
+			r.resolveOne(folder)
+			done <- struct{}{}
+		}()
+	}
+	timeout := time.NewTimer(DiskResolveTimeout)
+	defer timeout.Stop()
+	for range pending {
+		select {
+		case <-done:
+		case <-timeout.C:
+			r.parkUnanswered(now)
+			return
 		}
+	}
+}
+
+func (r *roots) resolveOne(folder domain.MediaFolder) {
+	disk, err := r.resolve(folder.Path)
+	r.mu.Lock()
+	state, ok := r.known[folder.ID]
+	if !ok || !state.resolving || state.path != folder.Path {
+		// The folder was removed or moved while its disk was resolved.
+		r.mu.Unlock()
+		return
+	}
+	r.setLocked(folder.ID, rootState{path: folder.Path, disk: disk, unavailable: err != nil}, time.Now())
+	r.mu.Unlock()
+	if err != nil {
+		r.logger.Warn("parked the jobs of a media folder that cannot be read",
+			slog.String("path", folder.Path), slog.Any("error", err))
+	} else {
 		r.logger.Debug("resolved the disk of a media folder", slog.String("path", folder.Path),
 			slog.String("disk", disk.Key), slog.String("type", disk.Type.String()), slog.Int("readSlots", disk.ReadSlots()))
+	}
+	if state.late {
+		r.wake()
+	}
+}
+
+// parkUnanswered marks the folders whose resolution is still running unavailable, and has their answer wake the
+// scheduler.
+func (r *roots) parkUnanswered(now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, state := range r.known {
+		if !state.resolving {
+			continue
+		}
+		state.late = true
+		if !state.unavailable {
+			r.logger.Warn("parked the jobs of a media folder whose disk does not answer", slog.String("path", state.path))
+			state.unavailable = true
+		}
+		r.setLocked(id, state, now)
 	}
 }
 
@@ -93,9 +155,16 @@ func (r *roots) pending(folders []domain.MediaFolder, now time.Time) []domain.Me
 	for _, folder := range folders {
 		current[folder.ID] = true
 		state, ok := r.known[folder.ID]
-		if !ok || state.path != folder.Path || (recheck && state.unavailable) {
-			pending = append(pending, folder)
+		rechecked := recheck && state.unavailable && !state.resolving
+		if ok && state.path == folder.Path && !rechecked {
+			continue
 		}
+		if !ok || state.path != folder.Path {
+			state = rootState{path: folder.Path}
+		}
+		state.resolving, state.late = true, false
+		r.known[folder.ID] = state
+		pending = append(pending, folder)
 	}
 	for id := range r.known {
 		if !current[id] {
@@ -105,9 +174,7 @@ func (r *roots) pending(folders []domain.MediaFolder, now time.Time) []domain.Me
 	return pending
 }
 
-func (r *roots) set(id int64, state rootState, now time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *roots) setLocked(id int64, state rootState, now time.Time) {
 	if state.unavailable && !r.anyUnavailable() {
 		// The minute until the recheck starts when the first folder becomes unavailable.
 		r.checkedAt = now
@@ -118,11 +185,10 @@ func (r *roots) set(id int64, state rootState, now time.Time) {
 // markUnavailable parks the folder's jobs until a recheck finds it readable.
 func (r *roots) markUnavailable(id int64, now time.Time) {
 	r.mu.Lock()
-	state, ok := r.known[id]
-	r.mu.Unlock()
-	if ok {
+	defer r.mu.Unlock()
+	if state, ok := r.known[id]; ok {
 		state.unavailable = true
-		r.set(id, state, now)
+		r.setLocked(id, state, now)
 	}
 }
 

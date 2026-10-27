@@ -278,7 +278,7 @@ func selectClaimableJob(ctx context.Context, conn *sql.Conn, claim domain.JobCla
 	query := `select c.id, c.kind, c.video_id, c.attempts, c.force, c.priority, c.location_path, c.next_path from (
 		select j.id, j.kind, j.video_id, j.attempts, j.force, j.priority, j.run_after, j.location_path, ` + next + ` as next_path
 		from jobs j where j.state = 'queued' and j.kind = ? and j.run_after <= ? and j.priority <= ?` +
-		claimConditionSQL(domain.ClaimConditionFor(claim.Kind), "j") + `) c
+		claimConditionSQL(domain.ClaimConditionFor(claim.Kind), "j", claim.Unavailable) + `) c
 		where c.next_path is not null` + onRoots + `
 		order by c.priority, c.run_after, c.id limit 1`
 	var row claimableJob
@@ -365,8 +365,9 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	return &c, nil
 }
 
-// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows.
-func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
+// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows. A thumbnail parked under unavailable folders
+// is not claimable, so it does not hold back seek sprites on other disks.
+func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []int64) string {
 	var cond string
 	if c.RegisteredLocation {
 		cond += ` and exists (select 1 from video_locations l where l.video_id = ` + alias + `.video_id and ` +
@@ -385,7 +386,7 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
 			`' and t.state in ('queued', 'running') and exists (
 				select 1 from video_locations tl where tl.video_id = t.video_id and ` +
-			registeredLocationCondition("tl") + `))`
+			availableLocationCondition("tl", unavailable) + `))`
 	}
 	return cond
 }
@@ -501,7 +502,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	}
 	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, job.LastLocation && current, jobJitter())
 	state := outcome.State
-	if outcome.Uncounted && job.StartsRound {
+	// An uncounted claim that started a round undoes the round, so the next claim starts and counts a new one.
+	undoRound := outcome.Uncounted && job.StartsRound
+	if undoRound {
 		attempts--
 	}
 
@@ -513,9 +516,10 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		last_error = ?,
 		run_after = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
+		location_path = case when ? then null else location_path end,
 		updated_at = ? where id = ? and state = 'running'`,
 		string(state), attempts, reason, now+int64(math.Ceil(outcome.Delay.Seconds())),
-		job.LocationID, job.LocationVersion, job.LocationPath,
+		job.LocationID, job.LocationVersion, job.LocationPath, undoRound,
 		now, job.ID)
 	if err != nil {
 		return fmt.Errorf("cannot record the job failure (id=%d): %w", job.ID, err)

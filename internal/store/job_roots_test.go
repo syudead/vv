@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -94,6 +95,48 @@ func TestClaimJobOnTakesAReadableSecondLocation(t *testing.T) {
 	if job.LocationPath != fixturePath("/other/movie.mp4") || job.RootID != other || !job.LastLocation {
 		t.Fatalf("claimed %s under root %d (last %v), want the readable location under %d as the round's last",
 			job.LocationPath, job.RootID, job.LastLocation, other)
+	}
+}
+
+func TestClaimJobOnCountsTheRoundASnoozeUndidAtTheNextLocation(t *testing.T) {
+	db, media, _ := twoRootsDB(t)
+	addVideoAt(t, db, "/media/movie.mp4", "shared")
+	videoID := addVideoAt(t, db, "/other/movie.mp4", "shared")
+	enqueueProbe(t, db, videoID)
+	failJob(t, db, claimProbe(t, db), fmt.Errorf("root unreadable: %w", domain.ErrJobSnoozed))
+
+	// The snoozed claim started the round, so the claim at the second location starts and counts it.
+	job := claimOn(t, db, domain.JobClaim{
+		Kind: domain.JobProbe, MaxPriority: domain.JobPriorityBackfill, Unavailable: []int64{media},
+	})
+	if job.LocationPath != fixturePath("/other/movie.mp4") || job.Attempts != 1 || !job.StartsRound {
+		t.Fatalf("claimed %s at attempt %d (starts round %v), want the second location starting attempt 1",
+			job.LocationPath, job.Attempts, job.StartsRound)
+	}
+}
+
+func TestClaimJobOnPassesOverAParkedThumbnailForASeekSprite(t *testing.T) {
+	db, media, other := twoRootsDB(t)
+	parked := addVideoAt(t, db, "/media/parked.mp4", "parked")
+	readable := addVideoAt(t, db, "/other/readable.mp4", "readable")
+	enqueueProbe(t, db, parked)
+	enqueueProbe(t, db, readable)
+	runImportStage(t, db, domain.JobProbe)
+	runImportStage(t, db, domain.JobProbe)
+	ctx := context.Background()
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, parked, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, readable, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+
+	job := claimOn(t, db, domain.JobClaim{
+		Kind: domain.JobSeekThumbnail, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{other},
+		Unavailable: []int64{media},
+	})
+	if job.VideoID != readable {
+		t.Fatalf("claimed video %d, want video %d while the only thumbnail is parked", job.VideoID, readable)
 	}
 }
 
