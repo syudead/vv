@@ -24,9 +24,8 @@ func JobCPUSlots(numCPU int) int {
 	return max(min(numCPU/4+1, MaxJobCPUSlots), 1)
 }
 
-// jobConcurrency is the most jobs of each kind that run at once, across every disk. Before the shared scheduler each
-// stage ran one job at a time, and the kinds that decode or encode must not exceed that; the ffprobe kinds may run
-// two because one read keeps a disk idle while ffprobe parses. Slots lent to a running job's extra parts are not jobs.
+// jobConcurrency is the most jobs of each kind that run at once across every disk; slots lent to a running job's
+// extra parts are not jobs. See docs/design-docs/job-scheduling.md for the values.
 var jobConcurrency = map[JobKind]int{
 	JobProbe:             2,
 	JobThumbnail:         1,
