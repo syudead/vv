@@ -287,11 +287,18 @@ retries.
 **Decision**:
 
 - **Marking**: a root becomes unavailable when a snooze reports it (R-7), or
-  when the scheduler cannot stat it while resolving its disk.
-- **Claiming**: the claim passes over locations under an unavailable root. A
-  job whose locations are all unavailable stays queued with its attempts
-  unchanged. The existing rule that drops a job with no *registered* location
-  stays.
+  when the scheduler cannot open and list it while resolving its disk, or
+  when it lists no entry while the library holds a location under it. The
+  last case is an unmounted mount point: on Linux, in a container's bind
+  mount and under a Windows volume mount point, it is a readable empty
+  directory. A new folder has no location under it, so it stays available.
+- **Claiming**: for a kind that reads the source file (`JobReadsSource`: the
+  kinds with a read slot in R-1), the claim passes over locations under an
+  unavailable root. A job whose locations are all unavailable stays queued
+  with its attempts unchanged. A kind that reads no source file, which is
+  `fingerprint` among the kinds with a location, is claimed under an
+  unavailable root and its failure is never a snooze. The existing rule that
+  drops a job with no *registered* location stays.
 - **Rechecking**: the scheduler keeps the unavailable roots in memory. It
   stats them again on these events: a folder is registered, a scan starts, or
   the folder watcher reports a change or `folder_unreachable`. While at least
@@ -307,12 +314,24 @@ retries.
 | Fail each job (current behaviour) | Rejected: requirement 13 of the parent Issue |
 | A `parked` job state | Rejected: duplicates what skipping at claim already expresses |
 | Recheck only on events | Rejected: the watcher is off unless automatic import is on, so a remounted disk would wait for the next scan |
+| Park every kind with a location under an unavailable root | Rejected: a fingerprint reads sprites in the data directory, so an unplugged folder would hold back work that needs nothing from it |
+| An empty folder is unreadable whatever the library holds | Rejected: a new folder is empty until its first scan |
+| Compare the folder's device with the one recorded when it last held content | Rejected: nothing is recorded across a restart, so a server started while the disk is unplugged would run and fail its jobs, and a container's bind mount hides the host's device change |
+| Read the mount table (`/proc/self/mountinfo`) | Rejected: a container's mount table still lists a bind mount whose host disk is gone, and Windows has no equivalent |
 
 **Rationale**: The recheck timer runs only while a root is unavailable, so a
 healthy library has no polling. A file that is missing while its root is
 readable was deleted; that is a retry, so it cannot snooze forever. Immich,
 Jellyfin and PhotoPrism likewise skip an inaccessible library root instead of
 deleting or failing its items.
+
+An unmounted mount point cannot be told from a mounted empty disk by reading
+it, so the library decides: a folder that lists nothing while the library
+holds a location under it is unmounted, or had every file deleted. In the
+second case the next scan removes the locations, and the minute recheck finds
+the folder available again. The check runs only when a folder is resolved:
+when first served, on a recheck, and in the snooze path, where the failed
+job's own location proves the library holds one.
 
 ## R-9: The scan keeps content keys inline and reads within the limits
 

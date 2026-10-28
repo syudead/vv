@@ -17,8 +17,10 @@ const RootRecheckInterval = time.Minute
 // folder instead of stalling the grants on every disk.
 const DiskResolveTimeout = 5 * time.Second
 
-// DiskResolver returns the disk of a media folder, or an error when the folder cannot be read.
-type DiskResolver func(path string) (domain.Disk, error)
+// DiskResolver returns the disk of a media folder, or an error when the folder cannot be read. populated reports
+// that the library holds a location under the folder, so a folder that lists nothing is an unmounted mount point
+// rather than a new, empty folder, and counts as unreadable.
+type DiskResolver func(path string, populated bool) (domain.Disk, error)
 
 type rootState struct {
 	path        string
@@ -42,7 +44,7 @@ var readKinds, noReadKinds = splitKindsByRead()
 
 func splitKindsByRead() (read, noRead []domain.JobKind) {
 	for _, kind := range domain.ScheduledJobKinds {
-		if domain.JobDemand(kind).Read > 0 {
+		if domain.JobReadsSource(kind) {
 			read = append(read, kind)
 		} else {
 			noRead = append(noRead, kind)
@@ -74,10 +76,11 @@ func (r *roots) requestRecheck() {
 	r.recheck = true
 }
 
-// refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only. A
-// resolution that outlasts DiskResolveTimeout parks its folder until it answers, because a read from an unresponsive
-// share can block without end.
-func (r *roots) refresh(folders []domain.MediaFolder, now time.Time) {
+// refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only. populated
+// reports whether the library holds a location under a folder, read only for the folders resolved now and inside
+// their resolution. A resolution that outlasts DiskResolveTimeout parks its folder until it answers, because a read
+// from an unresponsive share or a stalled library lookup can block without end.
+func (r *roots) refresh(folders []domain.MediaFolder, now time.Time, populated func(domain.MediaFolder) bool) {
 	pending := r.pending(folders, now)
 	if len(pending) == 0 {
 		return
@@ -85,7 +88,7 @@ func (r *roots) refresh(folders []domain.MediaFolder, now time.Time) {
 	done := make(chan struct{}, len(pending))
 	for _, folder := range pending {
 		go func() {
-			r.resolveOne(folder)
+			r.resolveOne(folder, populated(folder))
 			done <- struct{}{}
 		}()
 	}
@@ -101,8 +104,8 @@ func (r *roots) refresh(folders []domain.MediaFolder, now time.Time) {
 	}
 }
 
-func (r *roots) resolveOne(folder domain.MediaFolder) {
-	disk, err := r.resolve(folder.Path)
+func (r *roots) resolveOne(folder domain.MediaFolder, populated bool) {
+	disk, err := r.resolve(folder.Path, populated)
 	r.mu.Lock()
 	state, ok := r.known[folder.ID]
 	if !ok || !state.resolving || state.path != folder.Path {

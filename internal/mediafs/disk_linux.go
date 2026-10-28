@@ -17,9 +17,10 @@ const sysfsRoot = "/sys"
 
 // ResolveDisk returns the whole disk a media folder is stored on and whether it is rotational, from sysfs. A device
 // sysfs does not list as a block device, such as Btrfs, ZFS, overlayfs or a network share, has its st_dev as key and
-// an unknown type. An unreadable folder returns an error.
-func (FS) ResolveDisk(root string) (domain.Disk, error) {
-	dir, err := openReadableRoot(root)
+// an unknown type. An unreadable folder returns an error, as does an empty one while populated (see
+// openReadableRoot).
+func (FS) ResolveDisk(root string, populated bool) (domain.Disk, error) {
+	dir, err := openReadableRoot(root, populated)
 	if err != nil {
 		return domain.Disk{}, err
 	}

@@ -49,6 +49,8 @@ face job.
 
 A read slot belongs to the disk of the location the claim picks: the next
 available registered location in path order after the previous attempt's.
+A kind with a read slot is the only kind whose claim avoids an unavailable
+folder ([`domain.JobReadsSource`](../../internal/domain/job_demand.go)).
 
 ## Capacities
 
@@ -210,14 +212,29 @@ scheduler to it.
 
 ## An unreadable media folder parks its jobs
 
-A job whose handler fails while its media folder cannot be opened and listed
-is snoozed: it is requeued without counting an attempt, and the folder becomes
+A job whose handler fails while its media folder cannot be read is snoozed:
+it is requeued without counting an attempt, and the folder becomes
 unavailable. A folder that cannot be read when its disk is resolved becomes
 unavailable too, and so does one whose disk does not answer within 5 seconds,
 until the answer comes; a share that stops answering would otherwise stall the
-grants on every disk. Claims pass over locations under an unavailable folder,
-so a video with another readable location is claimed there, and a job stored
-only under unavailable folders stays queued. A parked thumbnail does not hold
+grants on every disk. A folder cannot be read when it cannot be opened and
+listed, or when it lists no entry while a registered location lies under it
+([`mediafs.ResolveDisk`](../../internal/mediafs/disk.go)): an unmounted
+mount point is a readable empty directory on Linux, in a container's bind
+mount and under a Windows volume mount point, while a new folder holds no
+location and stays available. The scheduler asks the store whether a folder
+holds a location only when it resolves the folder, inside the same 5-second
+bound, so a slow library read parks the folder rather than the turn; in the
+snooze path the failed job's own location proves it. A folder whose every file was deleted
+while mounted is parked until the next scan removes its locations and the
+minute recheck finds it available.
+
+Claims of a kind that reads the source file pass over locations under an
+unavailable folder, so a video with another readable location is claimed
+there, and a job stored only under unavailable folders stays queued. A kind
+without a read slot, `fingerprint`, reads only saved sprites: its job is
+claimed under an unavailable folder and its failure is never a snooze, which
+would run it again at once. A parked thumbnail does not hold
 back seek sprites, which wait only for claimable thumbnails. A snooze of the
 claim that started a round undoes the round, so the claim at the next location
 starts and counts it. A file missing under a readable folder was deleted, so
@@ -233,6 +250,9 @@ served. A healthy library is never polled.
 | Zero read slots for the folder's disk | Two folders can share a disk, and one unreadable folder would stop the other |
 | Snooze each job for a fixed delay | Every job of an unplugged disk would wake and fail to open its file each delay |
 | Recheck only on events | The watcher is off unless automatic import is on, so a remounted disk would wait for the next scan |
+| Park every kind with a location under an unavailable folder | A fingerprint needs nothing from the folder, so an unplugged disk would hold back work it does not read |
+| Treat every empty folder as unreadable | A new folder is empty until its first scan |
+| Compare the folder's device with the one recorded when it last held files, or read `/proc/self/mountinfo` | Nothing is recorded across a restart, so a server started while the disk is unplugged would fail its jobs; a container's bind mount hides the host's device and mount change; Windows has no equivalent |
 
 ## Owner requests are claimed first
 

@@ -65,9 +65,11 @@ kind has at most one unfinished row.
 registered locations. For the other kinds, each claim is one attempt.
 
 `location_id`, `location_version` and `location_path` are set at claim for
-every kind that reads a source: the import kinds, `keyframes`, `media_info`
-and `face`. A `face` job takes the first available location in path order of
-any video with its content key.
+every kind whose claim picks a location: the import kinds, `keyframes`,
+`media_info` and `face`. A `face` job takes the first available location in
+path order of any video with its content key. `fingerprint` picks a location
+to check the video's identity but reads only saved sprites, so its claim
+ignores the folder's availability ([Rules](#rules)).
 
 ## `auto_tag_results` and `face_results`
 
@@ -98,8 +100,9 @@ The Activity list, the candidate list and the API's `retryAt` read the job's
 
 | Rule | Enforced in |
 | --- | --- |
-| A claim takes the lowest class, then the earliest `run_after`, then the oldest row. It considers only jobs whose demand fits ([R-1](research.md#capacities)) and whose chosen location is on the disk being visited and under an available root | `internal/store` claim statement, given the class, the disk's roots and the unavailable roots |
-| A job whose video or content key has no registered location left is dropped at claim. One whose locations are all under unavailable roots stays queued | `internal/store` claim |
+| A claim takes the lowest class, then the earliest `run_after`, then the oldest row. It considers only jobs whose demand fits ([R-1](research.md#capacities)) and whose chosen location is on the disk being visited and, for a kind that reads the source file, under an available root | `internal/store` claim statement, given the class, the disk's roots and the unavailable roots, which it ignores for a kind without a read slot |
+| A job whose video or content key has no registered location left is dropped at claim. One whose locations are all under unavailable roots stays queued, unless its kind reads no source file (`fingerprint`), which is claimed there ([R-8](research.md#r-8-an-unavailable-root-parks-its-jobs)) | `internal/store` claim |
+| A media folder that cannot be opened and listed, or that lists no entry while a registered location lies under it, is unavailable | `internal/mediafs` disk resolution, told by `internal/jobs` whether the folder holds a location |
 | A `version_judge` job whose pair is not judgeable now (held, unbundled, unregistered) stays queued and is skipped; it is deleted with its candidate row | `internal/store` claim and candidate deletion |
 | A paused kind is not claimed ([Paused kinds](research.md#paused-kinds)) | `internal/store` claim, given the paused set that `internal/app` computes |
 | A kind may override the delay and the attempt limit; `version_judge` waits 10 min, 1 h, 6 h, then daily, without limit | `internal/domain` delay rule |

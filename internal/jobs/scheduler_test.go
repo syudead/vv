@@ -224,22 +224,27 @@ func (b *blockingJobs) handlers() map[domain.JobKind]Handler {
 	return handlers
 }
 
-// fakeDisks resolves each test folder path to its disk, or fails for a folder the test made unreadable.
+// fakeDisks resolves each test folder path to its disk, or fails for a folder the test made unreadable, or made
+// empty while the resolver is told the library holds videos under it.
 type fakeDisks struct {
 	mu         sync.Mutex
 	disks      map[string]domain.Disk
 	unreadable map[string]bool
+	empty      map[string]bool
 }
 
 func newFakeDisks(disks map[string]domain.Disk) *fakeDisks {
-	return &fakeDisks{disks: disks, unreadable: map[string]bool{}}
+	return &fakeDisks{disks: disks, unreadable: map[string]bool{}, empty: map[string]bool{}}
 }
 
-func (d *fakeDisks) resolve(path string) (domain.Disk, error) {
+func (d *fakeDisks) resolve(path string, populated bool) (domain.Disk, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.unreadable[path] {
 		return domain.Disk{}, errors.New("the folder cannot be read")
+	}
+	if d.empty[path] && populated {
+		return domain.Disk{}, errors.New("the folder is empty, so its disk is not mounted")
 	}
 	return d.disks[path], nil
 }
@@ -250,10 +255,32 @@ func (d *fakeDisks) setReadable(path string, readable bool) {
 	d.unreadable[path] = !readable
 }
 
+// setEmpty makes the folder list no entry, as an unmounted mount point does.
+func (d *fakeDisks) setEmpty(path string, empty bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.empty[path] = empty
+}
+
 type fakeFolders []domain.MediaFolder
 
 func (f fakeFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
 	return f, nil
+}
+
+// The test library holds no video unless a test uses populatedFolders.
+func (f fakeFolders) HasLocationsUnder(context.Context, int64) (bool, error) {
+	return false, nil
+}
+
+// populatedFolders is the test folders with videos indexed under the given ones.
+type populatedFolders struct {
+	fakeFolders
+	populated []int64
+}
+
+func (f populatedFolders) HasLocationsUnder(_ context.Context, folderID int64) (bool, error) {
+	return slices.Contains(f.populated, folderID), nil
 }
 
 // twoFolders places rootA at /a and rootB at /b.
@@ -1098,11 +1125,11 @@ func TestSchedulerGrantsOtherDisksWhileAFolderDoesNotAnswer(t *testing.T) {
 		disks := twoDisks()
 		answer := make(chan struct{})
 		// Disk a's folder blocks like a share that stops answering until the test lets it answer.
-		resolve := func(path string) (domain.Disk, error) {
+		resolve := func(path string, populated bool) (domain.Disk, error) {
 			if path == "/a" {
 				<-answer
 			}
-			return disks.resolve(path)
+			return disks.resolve(path, populated)
 		}
 		queue := newFakeQueue(
 			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
@@ -1127,6 +1154,48 @@ func TestSchedulerGrantsOtherDisksWhileAFolderDoesNotAnswer(t *testing.T) {
 	})
 }
 
+// blockingFolders is the test folders whose library lookup for one folder blocks until answer is closed.
+type blockingFolders struct {
+	fakeFolders
+	blocked int64
+	answer  chan struct{}
+}
+
+func (f blockingFolders) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	if folderID == f.blocked {
+		<-f.answer
+	}
+	return f.fakeFolders.HasLocationsUnder(ctx, folderID)
+}
+
+func TestSchedulerGrantsOtherDisksWhileAFolderLookupDoesNotAnswer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		folders := blockingFolders{fakeFolders: twoFolders, blocked: rootA, answer: make(chan struct{})}
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve, Folders: folders,
+		})
+		defer stop()
+		time.Sleep(DiskResolveTimeout)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("running while the lookup for folder a does not answer = %v, want %v", got, want)
+		}
+		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+		close(folders.answer)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running after the lookup answers = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})
@@ -1134,6 +1203,88 @@ func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
 		_, stop := startScheduler(Options{
 			Queue: queue, CPUSlots: 1,
 			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return cause }},
+		})
+		defer stop()
+		synctest.Wait()
+		causes := queue.failureCauses()
+		if len(causes) != 1 || !errors.Is(causes[0], cause) || errors.Is(causes[0], domain.ErrJobSnoozed) {
+			t.Fatalf("failures = %v, want %v without a snooze", causes, cause)
+		}
+	})
+}
+
+// An unmounted mount point lists nothing, so an empty folder that holds indexed videos is parked, while an empty
+// folder that holds none is a new folder and is served.
+func TestSchedulerParksAnEmptyFolderThatHoldsVideos(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := twoDisks()
+		disks.setEmpty("/a", true)
+		disks.setEmpty("/b", true)
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		scheduler, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1, Disks: disks.resolve,
+			Folders:  populatedFolders{fakeFolders: twoFolders, populated: []int64{rootA}},
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: func(context.Context, domain.Job) error { return nil }},
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("completed while folder a is empty = %v, want %v", got, want)
+		}
+		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+		disks.setEmpty("/a", false)
+		scheduler.RecheckRoots()
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("completed after the mount = %v, want %v", got, want)
+		}
+	})
+}
+
+// The failed job's location lies under its folder, so the snooze check treats an empty folder as unmounted without
+// asking the library.
+func TestSchedulerSnoozesAFailureUnderAFolderThatBecameEmpty(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := twoDisks()
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA})
+		probe := func(context.Context, domain.Job) error {
+			disks.setEmpty("/a", true)
+			return errors.New("cannot open the file")
+		}
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1, Disks: disks.resolve,
+			Handlers: map[domain.JobKind]Handler{domain.JobProbe: probe},
+		})
+		defer stop()
+		synctest.Wait()
+		causes := queue.failureCauses()
+		if len(causes) != 1 || !errors.Is(causes[0], domain.ErrJobSnoozed) {
+			t.Fatalf("failures = %v, want one snooze", causes)
+		}
+		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+	})
+}
+
+// A job that reads no source file is claimed under an unplugged folder, so a snooze would run it again at once.
+func TestSchedulerKeepsAFailureOfAJobThatReadsNoSource(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disks := twoDisks()
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobFingerprint, RootID: rootA})
+		cause := errors.New("the sprite is missing")
+		fingerprint := func(context.Context, domain.Job) error {
+			disks.setReadable("/a", false)
+			return cause
+		}
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1, Disks: disks.resolve,
+			Handlers: map[domain.JobKind]Handler{domain.JobFingerprint: fingerprint},
 		})
 		defer stop()
 		synctest.Wait()
