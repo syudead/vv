@@ -75,10 +75,10 @@ func requestJudgeJob(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string
 	return nil
 }
 
-// claimJudgeJob takes the next due job whose pair is judgeable now, marks the candidate running and its entry
-// processing, and counts the attempt. A held, unbundled or unregistered pair keeps its job queued. An empty queue
-// returns domain.ErrNoJob.
-func (db *DB) claimJudgeJob(ctx context.Context) (domain.Job, error) {
+// claimJudgeJob takes the next due job of the class or a more urgent one whose pair is judgeable now, marks the
+// candidate running and its entry processing, and counts the attempt. A held, unbundled or unregistered pair keeps
+// its job queued. An empty queue returns domain.ErrNoJob.
+func (db *DB) claimJudgeJob(ctx context.Context, maxPriority domain.JobPriority) (domain.Job, error) {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a version candidate: %w", err)
@@ -87,10 +87,10 @@ func (db *DB) claimJudgeJob(ctx context.Context) (domain.Job, error) {
 	job := domain.Job{Kind: domain.JobVersionJudge, StartsRound: true, LastLocation: true}
 	err = tx.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
 		where id = (select j.id from jobs j where j.kind = `+versionJudgeJob+` and j.state = 'queued'
-			and j.run_after <= ?1
+			and j.run_after <= ?1 and j.priority <= ?2
 			and exists (select 1 `+judgeablePairs+` and c.key_a = j.subject_key and c.key_b = j.subject_key_b)
 			order by j.priority, j.run_after, j.id limit 1)
-		returning id, subject_key, subject_key_b, attempts, priority`, jobNow().Unix()).
+		returning id, subject_key, subject_key_b, attempts, priority`, jobNow().Unix(), int(maxPriority)).
 		Scan(&job.ID, &job.ContentKey, &job.ContentKeyB, &job.Attempts, &job.Priority)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, domain.ErrNoJob

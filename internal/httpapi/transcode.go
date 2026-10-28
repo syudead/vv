@@ -69,6 +69,8 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	defer func() { _ = file.Close() }()
+	// Held on the opened link target from the probe until the process has exited.
+	defer s.readInForeground(file.Name())()
 
 	// Compare the stamp of the actually opened location, not another location with the same content key.
 	source := domain.FileStampOf(info)

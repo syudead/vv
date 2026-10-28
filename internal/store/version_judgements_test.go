@@ -312,6 +312,23 @@ func TestJudgementJobOfAHeldPairWaitsForTheHoldToLift(t *testing.T) {
 	claimJudgement(t, db)
 }
 
+// A claim of a more urgent class than the job's passes it over, as the scheduler's class rounds expect.
+func TestJudgementJobWaitsForItsClassRound(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	owner := domain.JobClaim{Kind: domain.JobVersionJudge, MaxPriority: domain.JobPriorityOwner}
+	if job, err := db.Ingest().ClaimJobOn(ctx, owner); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("持ち主の区分での ClaimJobOn(version_judge) = %+v, %v, want domain.ErrNoJob", job, err)
+	}
+	job, err := db.Ingest().ClaimJobOn(ctx, domain.JobClaim{Kind: domain.JobVersionJudge, MaxPriority: domain.JobPriorityImport})
+	if err != nil {
+		t.Fatalf("取り込みの区分での ClaimJobOn(version_judge): %v", err)
+	}
+	if job.Priority != domain.JobPriorityImport {
+		t.Fatalf("取り出した仕事の区分 = %v, want %v", job.Priority, domain.JobPriorityImport)
+	}
+}
+
 // The job goes with its candidate row, whichever statement removes it.
 func TestJudgementJobGoesWithItsCandidate(t *testing.T) {
 	db, ids := judgementFixture(t)

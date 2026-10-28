@@ -41,7 +41,7 @@ type EncoderCheck struct {
 
 func NewEncoderCheck() *EncoderCheck {
 	return &EncoderCheck{
-		commandContext: command,
+		commandContext: normalCommand,
 		timeout:        encoderCheckTimeout,
 		listDone:       make(chan struct{}),
 	}

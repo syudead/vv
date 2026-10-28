@@ -49,11 +49,14 @@ const handshakeTimeout = 60 * time.Second
 // stderrLimit bounds the helper's standard error kept for an error message.
 const stderrLimit = 4 << 10
 
-// ExecLauncher starts the helper with command, which applies the OS's child-process settings
-// (CREATE_NO_WINDOW on Windows). A helper outlives the request that started it; Stop or the end of ctx ends it.
-func ExecLauncher(ctx context.Context, command func(ctx context.Context, name string, args ...string) *exec.Cmd) Launcher {
+// ExecLauncher starts the helper with command, which builds the process with the OS's child-process settings and
+// returns the start that applies its priority; the helper runs at low priority, as background work does. A helper
+// outlives the request that started it; Stop or the end of ctx ends it.
+func ExecLauncher(
+	ctx context.Context, command func(ctx context.Context, name string, args ...string) (cmd *exec.Cmd, start func() error),
+) Launcher {
 	return func(hc HelperCommand) (Process, error) {
-		cmd := command(ctx, hc.Path, hc.Args...)
+		cmd, start := command(ctx, hc.Path, hc.Args...)
 		stderr := &tailBuffer{limit: stderrLimit}
 		cmd.Stderr = stderr
 		in, err := cmd.StdinPipe()
@@ -64,7 +67,7 @@ func ExecLauncher(ctx context.Context, command func(ctx context.Context, name st
 		if err != nil {
 			return Process{}, err
 		}
-		if err := cmd.Start(); err != nil {
+		if err := start(); err != nil {
 			return Process{}, err
 		}
 		stop := sync.OnceValue(func() error { return stopCommand(cmd, in, stderr) })

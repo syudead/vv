@@ -345,7 +345,7 @@ func (db *DB) claimContent(ctx context.Context, q contentQueue, read func(tx *sq
 // claimContentJob takes the next due job of the jobs path in class, run-after and age order; each claim is one
 // attempt. A job whose content key has no registered video left is dropped and its entry completed, and the next one
 // is taken. An empty queue returns domain.ErrNoJob.
-func (db *DB) claimContentJob(ctx context.Context, q contentQueue) (domain.Job, error) {
+func (db *DB) claimContentJob(ctx context.Context, q contentQueue, maxPriority domain.JobPriority) (domain.Job, error) {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
@@ -353,7 +353,7 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue) (domain.Job, 
 	defer func() { _ = tx.Rollback() }()
 	c := &changes{}
 	for {
-		job, activityID, err := takeContentJob(ctx, tx, q)
+		job, activityID, err := takeContentJob(ctx, tx, q, maxPriority)
 		if errors.Is(err, domain.ErrNoJob) {
 			if err := db.commit(ctx, tx, c); err != nil {
 				return domain.Job{}, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
@@ -390,15 +390,16 @@ func (db *DB) claimContentJob(ctx context.Context, q contentQueue) (domain.Job, 
 	}
 }
 
-// takeContentJob marks the next due job of the jobs path running and counts the attempt.
-func takeContentJob(ctx context.Context, tx *sql.Tx, q contentQueue) (domain.Job, int64, error) {
+// takeContentJob marks the next due job of the jobs path, in maxPriority or a more urgent class, running and counts
+// the attempt.
+func takeContentJob(ctx context.Context, tx *sql.Tx, q contentQueue, maxPriority domain.JobPriority) (domain.Job, int64, error) {
 	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
 	var activityID int64
 	err := tx.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
-		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1
+		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1 and priority <= ?3
 			order by priority, run_after, id limit 1)
 		returning id, subject_key, attempts, priority, coalesce(activity_id, 0)`,
-		jobNow().Unix(), string(q.job)).Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
+		jobNow().Unix(), string(q.job), int(maxPriority)).Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, 0, domain.ErrNoJob
 	}

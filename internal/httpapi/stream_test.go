@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -107,6 +108,60 @@ func TestStreamServesWholeFile(t *testing.T) {
 	}
 	if rec.Body.Len() != len(content) {
 		t.Errorf("本文 = %d バイト, want %d", rec.Body.Len(), len(content))
+	}
+}
+
+// foregroundLog records foreground reads and response writes in the order they happen.
+type foregroundLog struct {
+	events []string
+}
+
+func (l *foregroundLog) ReadInForeground(path string) func() {
+	l.events = append(l.events, "open "+path)
+	return func() { l.events = append(l.events, "end") }
+}
+
+type loggingRecorder struct {
+	*httptest.ResponseRecorder
+	log *foregroundLog
+}
+
+func (r loggingRecorder) Write(p []byte) (int, error) {
+	r.log.events = append(r.log.events, "write")
+	return r.ResponseRecorder.Write(p)
+}
+
+// The location links to a file in a nested folder, which may sit on another disk, so the held path is the link target.
+func TestStreamHoldsItsDiskWhileServing(t *testing.T) {
+	mediaDir, video, _ := streamFixture(t, "a.mp4", 1024)
+	target := filepath.Join(mediaDir, "slow", "a.mp4")
+	if err := os.Mkdir(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(video.Path, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, video.Path); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := &foregroundLog{}
+	handler := newTestServer(t, Options{
+		Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Foreground: log,
+	})
+
+	rec := loggingRecorder{ResponseRecorder: httptest.NewRecorder(), log: log}
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/stream", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if want := []string{"open " + resolved, "write", "end"}; !slices.Equal(log.events, want) {
+		t.Fatalf("events = %q, want %q", log.events, want)
 	}
 }
 

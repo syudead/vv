@@ -31,7 +31,7 @@ const FaceFrameBytes = domain.FaceFrameSide * domain.FaceFrameSide * 3
 func FaceFrames(ctx context.Context, videoPath string, each func(pix []byte) error) error {
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := command(run, thumbnailCommand, faceFrameArgs(videoPath)...)
+	cmd := command(run, PriorityLow, thumbnailCommand, faceFrameArgs(videoPath)...)
 	// A damaged video can make ffmpeg report an error for every frame.
 	stderr := &tailWriter{limit: faceFramesStderrLimit}
 	cmd.Stderr = stderr

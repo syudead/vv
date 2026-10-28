@@ -25,12 +25,10 @@ const (
 	seekThumbnailTimeout = 5 * time.Minute
 	seekSpriteFastScale  = "scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
 	// Use JPEG q=2 to limit blocking when cards enlarge sprite frames.
-	seekSpriteQuality  = "2"
-	seekSpriteParallel = 4
+	seekSpriteQuality = "2"
 	// One interval normally decodes at most a GOP. Some AV1 MP4 files make ffmpeg seeking decode from
 	// the start, so later intervals grow without bound; fail instead of waiting them out.
-	seekFrameTimeout       = 30 * time.Second
-	seekSpriteReadParallel = 8
+	seekFrameTimeout = 30 * time.Second
 	// Require enough distinct indexed keyframes; sparse GOPs need segment extraction to avoid
 	// repeating the same scene.
 	seekIndexMinDistinctNum = 3
@@ -179,21 +177,14 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 			return false, fmt.Errorf("%w: keyframes exceed %d bytes in total", errSeekIndexUnsupported, int64(maxKeyframeTotalSize))
 		}
 	}
-	semaphore := make(chan struct{}, seekSpriteReadParallel)
-	var workers sync.WaitGroup
+	// Each concurrent read holds one read slot of the file's disk.
+	reads := newExtractions(ctx, domain.JobResources{Read: 1})
 	var firstErr error
 	idr := make([]bool, len(indexes))
 	var recordError sync.Once
 	for i, index := range indexes {
 		frame := track.keyframes[index]
-		select {
-		case semaphore <- struct{}{}:
-		case <-ctx.Done():
-			workers.Wait()
-			return false, ctx.Err()
-		}
-		workers.Go(func() {
-			defer func() { <-semaphore }()
+		started := reads.Go(ctx, func() {
 			if ctx.Err() != nil {
 				return
 			}
@@ -208,8 +199,11 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 				recordError.Do(func() { firstErr = err })
 			}
 		})
+		if !started {
+			break
+		}
 	}
-	workers.Wait()
+	reads.Wait()
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -233,26 +227,13 @@ func generateSeekSpriteWithin(
 
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	semaphore := make(chan struct{}, seekSpriteParallel)
-	var workers sync.WaitGroup
+	// Each concurrent extraction holds one read and one CPU slot.
+	parts := newExtractions(ctx, domain.JobResources{Read: 1, CPU: 1})
 	var firstErr error
 	var recordError sync.Once
 	missing := make([]bool, layout.FrameCount)
-frames:
 	for frame := range layout.FrameCount {
-		select {
-		case semaphore <- struct{}{}:
-		case <-workCtx.Done():
-			break frames
-		}
-		if workCtx.Err() != nil {
-			<-semaphore
-			break frames
-		}
-		workers.Add(1)
-		go func(frame int) {
-			defer workers.Done()
-			defer func() { <-semaphore }()
+		started := workCtx.Err() == nil && parts.Go(workCtx, func() {
 			frameCtx, cancelFrame := context.WithTimeout(workCtx, frameTimeout)
 			data, err := runSeekFFmpeg(frameCtx, seekFrameArgs(videoPath, frame, layout.IntervalMs))
 			cancelFrame()
@@ -272,9 +253,12 @@ frames:
 			if err != nil {
 				recordError.Do(func() { firstErr = fmt.Errorf("frame %d: %w", frame, err); cancel() })
 			}
-		}(frame)
+		})
+		if !started {
+			break
+		}
 	}
-	workers.Wait()
+	parts.Wait()
 	if firstErr != nil {
 		return firstErr
 	}
@@ -350,7 +334,7 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 
 // Use relative inputs from dir to keep multi-input command lines short.
 func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, error) {
-	cmd := command(ctx, seekThumbnailCommand, args...)
+	cmd := command(ctx, PriorityLow, seekThumbnailCommand, args...)
 	cmd.Dir = dir
 	data, err := cmd.Output()
 	if err != nil {

@@ -61,7 +61,7 @@ The chosen keyframes go through these steps:
 
 ```mermaid
 flowchart LR
-  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC / av1C]
+  read[Read keyframes, up to 4 parallel] --> prep[Prepend avcC / hvcC / av1C]
   prep --> idr{All IDR?}
   idr -->|yes| one[One stream, one decoder]
   idr -->|no| many[One input each, concat]

@@ -156,6 +156,8 @@ func run(opts runOptions) error {
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
 
+	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
+	var scheduler *jobs.Scheduler
 	scans := app.NewScans(app.ScansOptions{
 		Store:          scanStore,
 		Jobs:           ingestStore,
@@ -163,7 +165,8 @@ func run(opts runOptions) error {
 		FolderIndex:    scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
-				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
+				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter,
+				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
 		Folders:   scanIndexStore,
@@ -171,16 +174,6 @@ func run(opts runOptions) error {
 		Publisher: bus,
 		Logger:    logger,
 	})
-
-	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, logger)
-
-	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
-		return err
-	}
-	if opts.OnBusyProbe != nil {
-		opts.OnBusyProbe(scans.Busy)
-	}
 
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// Clean temporary artifacts before workers start so active output cannot be removed.
@@ -195,7 +188,6 @@ func run(opts runOptions) error {
 	classifier := ollama.New(settingsStore)
 	// Auto-tagging runs as auto_tag jobs on the scheduler, paused while the feature is off; see
 	// docs/design-docs/auto-tagging.md. Startup recovery has already requeued interrupted jobs.
-	var scheduler *jobs.Scheduler
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
@@ -224,8 +216,10 @@ func run(opts runOptions) error {
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
+		Folders:  scanIndexStore,
+		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
-		Capacity: domain.JobCapacity(runtime.NumCPU()),
+		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
 		Paused:   app.PausedJobKinds(autoTagger, versionJudge),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
@@ -234,6 +228,16 @@ func run(opts runOptions) error {
 		},
 		Logger: logger,
 	})
+	// Start filesystem watching only after interrupted scans have been recovered and restarted.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+
+	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
+		return err
+	}
+	if opts.OnBusyProbe != nil {
+		opts.OnBusyProbe(scans.Busy)
+	}
+
 	wakers := make(map[domain.JobKind]waker, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.ScheduledJobKinds {
 		wakers[kind] = scheduler
@@ -243,8 +247,8 @@ func run(opts runOptions) error {
 	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
 	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
 	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
-		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Images: db.Overrides(),
-		Applier: ingest, Logger: logger,
+		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
+		Images: db.Overrides(), Applier: ingest, Logger: logger,
 	})
 	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
 	if err := faces.analysis.Recover(backgroundCtx); err != nil {
@@ -431,6 +435,7 @@ func run(opts runOptions) error {
 		Catalog:           catalog,
 		Opener:            fileOpener,
 		Files:             mediaFiles,
+		Foreground:        scheduler,
 		Subtitles:         media.NewSubtitleConverter(),
 		Events:            events,
 		Assets:            web.Dist(),
