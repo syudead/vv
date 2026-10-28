@@ -17,7 +17,7 @@ const (
 	VersionJudgementRunning VersionJudgement = "running"
 	// Undecided candidates remain visible but are not claimed again.
 	VersionJudgementUndecided VersionJudgement = "undecided"
-	// Failed candidates become claimable after RetryAt.
+	// Failed candidates keep this state while their version_judge job waits out its retry delay.
 	VersionJudgementFailed VersionJudgement = "failed"
 	// NoConnection candidates send no request and wait for saved Ollama settings.
 	VersionJudgementNoConnection VersionJudgement = "no_connection"
@@ -26,12 +26,12 @@ const (
 	VersionJudgementHeld VersionJudgement = "held"
 )
 
-// Keys are ordered key_a < key_b, Fingerprints aligns with them, and Attempts counts prior failures.
+// VersionJudgeJob is what a judgement reads of a claimed pair; Keys are ordered key_a < key_b, and Fingerprints and
+// Properties align with them.
 type VersionJudgeJob struct {
 	Keys         [2]string
 	Fingerprints [2]Fingerprint
 	Properties   [2]VersionProperties
-	Attempts     int
 }
 
 type VersionVerdict int
@@ -176,13 +176,13 @@ var versionJudgeRetryDelays = []time.Duration{10 * time.Minute, time.Hour, 6 * t
 
 const versionJudgeRetryDaily = 24 * time.Hour
 
-// Retry delays are ten minutes, one hour, six hours, then daily; attempts below one use the first delay.
-func VersionJudgeRetryAt(attempts int, now time.Time) time.Time {
-	delay := versionJudgeRetryDaily
-	if index := max(attempts, 1) - 1; index < len(versionJudgeRetryDelays) {
-		delay = versionJudgeRetryDelays[index]
+// VersionJudgeRetryDelay is the wait after failed attempt round: ten minutes, one hour, six hours, then daily; rounds
+// below one use the first delay.
+func VersionJudgeRetryDelay(round int) time.Duration {
+	if index := max(round, 1) - 1; index < len(versionJudgeRetryDelays) {
+		return versionJudgeRetryDelays[index]
 	}
-	return now.Add(delay)
+	return versionJudgeRetryDaily
 }
 
 // VersionSidesConflict checks known-different pairs crossing sides, ignoring within-side pairs and key order.

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -221,5 +222,35 @@ func TestVersionCandidatesForGuest(t *testing.T) {
 	}
 	if page := f.listCandidates(t); len(page.Items) != 1 {
 		t.Errorf("ゲストの操作のあとの候補 = %v, want 1 組", candidateIDs(page))
+	}
+}
+
+// A pair waiting to retry reports the run-after time of its job as retryAt, as it reported the candidate's own retry
+// time before judging work moved into jobs.
+func TestVersionCandidatesReportTheRetryTimeOfAFailedPair(t *testing.T) {
+	f := newGuestFixture(t, true)
+	f.writeFingerprints(t, candidateFixtureFingerprints())
+	ctx := context.Background()
+	job, err := f.env.db.Ingest().ClaimJob(ctx, domain.JobVersionJudge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := [2]string{job.ContentKey, job.ContentKeyB}
+	if _, err := f.env.db.Versions().ApplyJudgement(ctx, keys,
+		domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "cannot reach Ollama"}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := f.env.db.Ingest().NextJobRunAfter(ctx, time.Now())
+	if err != nil || next.IsZero() {
+		t.Fatalf("NextJobRunAfter = %v, %v, want the retry time", next, err)
+	}
+
+	page := f.listCandidates(t)
+	if len(page.Items) != 1 {
+		t.Fatalf("候補 = %v, want 1 組", candidateIDs(page))
+	}
+	judgement := page.Items[0].Judgement
+	if judgement.State != gen.VersionCandidateJudgementStateFailed || judgement.RetryAt == nil || !judgement.RetryAt.Equal(next) {
+		t.Errorf("判定 = %+v（retryAt %v）, want failed で retryAt %v", judgement, judgement.RetryAt, next)
 	}
 }

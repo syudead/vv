@@ -200,6 +200,16 @@ func run(opts runOptions) error {
 	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
 	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
 	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
+	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
+	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
+		Store:      db.Versions(),
+		Settings:   settingsStore,
+		Classifier: classifier,
+		Frames:     artifactStore,
+		Wake:       func() { scheduler.Wake() },
+		Logger:     logger,
+	})
 	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
 	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.ScheduledJobKinds))
 	for _, kind := range domain.JobKinds {
@@ -211,6 +221,7 @@ func run(opts runOptions) error {
 	} {
 		handlers[kind] = faces.analysis.HandleJob
 	}
+	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
 	addBackfillHandlers(handlers, ingestStore, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
@@ -218,7 +229,7 @@ func run(opts runOptions) error {
 		Disks:    mediafs.New().ResolveDisk,
 		Handlers: handlers,
 		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
-		Paused:   app.PausedJobKinds(autoTagger, faces.analysis),
+		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
 		Started:  scans.JobStarted,
 		Finished: func(job domain.Job) {
 			scans.JobFinished(job)
@@ -251,17 +262,6 @@ func run(opts runOptions) error {
 	// Recover activity before workers start; recovery needs only storage, not retry/cancel
 	// dispatchers.
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
-	// Compare fingerprints before asking the classifier about mismatched intervals; see
-	// docs/design-docs/duplicate-judging.md.
-	versionJudgeLoop := jobs.NewLoop()
-	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
-		Store:      db.Versions(),
-		Settings:   settingsStore,
-		Classifier: classifier,
-		Frames:     artifactStore,
-		Wake:       versionJudgeLoop.Wake,
-		Logger:     logger,
-	})
 	if err := versionJudge.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
@@ -304,7 +304,6 @@ func run(opts runOptions) error {
 		faces.analysis.Close()
 	})
 
-	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })

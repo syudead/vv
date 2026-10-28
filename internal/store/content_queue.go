@@ -359,7 +359,7 @@ func takeLocatedContentJob(
 			inMediaFolderCondition("c.next_path") + `)`
 	}
 	locations := contentLocations("j.subject_key", claim.Unavailable)
-	job :=domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
+	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
 	var activityID int64
 	var registered bool
 	var previous, next sql.NullString

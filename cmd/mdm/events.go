@@ -21,7 +21,8 @@ type eventSubscribers struct {
 	// Wakes the scheduler for auto-tagging after the seek stage, whose result transaction queued the video;
 	// see docs/design-docs/auto-tagging.md.
 	ImagesFinished func(videoID int64)
-	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
+	// Wakes the scheduler when a pair may have become judgeable: a hold lifted, a location registered or a candidate
+	// changed; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
 }
 

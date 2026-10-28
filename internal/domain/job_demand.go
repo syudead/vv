@@ -50,6 +50,9 @@ func JobDemand(kind JobKind) JobResources {
 	case JobFaceImage, JobFaceCast:
 		// A stored face image for the helper, or people merged in the database.
 		return JobResources{FaceLane: 1}
+	case JobVersionJudge:
+		// Compares stored fingerprints and sends frames cut from the seek previews.
+		return JobResources{Classifier: 1}
 	default:
 		return JobResources{}
 	}

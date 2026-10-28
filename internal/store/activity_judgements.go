@@ -587,7 +587,7 @@ func reopenRestoredPairActivities(ctx context.Context, tx *sql.Tx, c *changes, n
 	return nil
 }
 
-// RetryJudgement makes failed or interrupted candidates immediately claimable; the caller wakes the worker.
+// RetryJudgement makes a failed or waiting pair's job claimable now, in the owner class.
 func (s *VersionStore) RetryJudgement(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -621,16 +621,14 @@ func (s *VersionStore) RetryJudgement(ctx context.Context, id int64) error {
 		return fmt.Errorf("cannot read the version candidate: %w", err)
 	}
 	switch domain.VersionJudgement(judgement.String) {
-	case "":
-	case domain.VersionJudgementFailed:
-		if _, err := tx.ExecContext(ctx, `update video_version_candidates set retry_at = ? where key_a = ? and key_b = ?`,
-			time.Now().Unix(), keys[0], keys[1]); err != nil {
-			return fmt.Errorf("cannot retry the version judgement: %w", err)
-		}
+	case "", domain.VersionJudgementFailed:
 	default:
 		return domain.ErrActivityNotRetryable
 	}
 	c := &changes{}
+	if err := requestJudgeJob(ctx, tx, c, keys, false); err != nil {
+		return err
+	}
 	if err := attachPairActivity(ctx, tx, keys, id); err != nil {
 		return err
 	}

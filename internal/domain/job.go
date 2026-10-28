@@ -25,6 +25,8 @@ const (
 	JobFaceCast JobKind = "face_cast"
 	// JobQueueFaceImages queues a face_image job for every person whose face has no current vector.
 	JobQueueFaceImages JobKind = "queue_face_images"
+	// JobVersionJudge judges one possible duplicate; its subject is the pair Job.ContentKey, Job.ContentKeyB.
+	JobVersionJudge JobKind = "version_judge"
 	// JobKeyframes and JobMediaInfo re-read one video's file so stored results from an older build gain what this
 	// build reads.
 	JobKeyframes JobKind = "keyframes"
@@ -55,10 +57,12 @@ const (
 var ErrNoJob = errors.New("no job to process")
 
 type Job struct {
-	ID              int64
-	Kind            JobKind
-	VideoID         int64
-	ContentKey      string
+	ID         int64
+	Kind       JobKind
+	VideoID    int64
+	ContentKey string
+	// ContentKeyB is the second key of a version_judge pair, greater than ContentKey.
+	ContentKeyB     string
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
@@ -110,7 +114,7 @@ var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobK
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.
 var ScheduledJobKinds = slices.Concat(JobKinds,
-	[]JobKind{JobAutoTag, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages}, BackfillJobKinds)
+	[]JobKind{JobAutoTag, JobVersionJudge, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages}, BackfillJobKinds)
 
 type JobState string
 

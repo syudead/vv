@@ -200,6 +200,9 @@ func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (do
 	if subjectJobKind(claim.Kind) {
 		return s.db.claimSubjectJob(ctx, claim)
 	}
+	if claim.Kind == domain.JobVersionJudge {
+		return s.db.claimJudgeJob(ctx, claim.MaxPriority)
+	}
 	if isSubjectlessJob(claim.Kind) {
 		job, _, err := takeJob(ctx, s.db.sql, claim.Kind, claim.MaxPriority)
 		return job, err
@@ -420,11 +423,11 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []i
 	return cond
 }
 
-// CompleteClaimedJob requeues when the claimed location or content changed. A content job's handler has already
-// ended it with its result, as AutoTagStore.Finish does, so there is nothing left to record; a subject job and a
-// backfill job are deleted.
+// CompleteClaimedJob requeues when the claimed location or content changed. A content or judging job's handler has
+// already ended it with its result, as AutoTagStore.Finish and VersionStore.ApplyJudgement do, so there is nothing
+// left to record; a subject job and a backfill job are deleted.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
-	if _, ok := contentJobQueue(job.Kind); ok {
+	if _, ok := contentJobQueue(job.Kind); ok || job.Kind == domain.JobVersionJudge {
 		return nil
 	}
 	if subjectJobKind(job.Kind) {
@@ -523,6 +526,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	}
 	if subjectJobKind(job.Kind) {
 		return s.db.failSubjectJob(ctx, job, cause)
+	}
+	if job.Kind == domain.JobVersionJudge {
+		return s.db.failJudgeJob(ctx, job, cause)
 	}
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)

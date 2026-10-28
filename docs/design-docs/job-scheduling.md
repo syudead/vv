@@ -1,10 +1,10 @@
 # Job scheduling: one scheduler for every ingest stage
 
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest,
-auto-tagging, face and backfill job the resources its kind declares, from the
-CPU slots, the classifier slots, the face lane and the read slots of the job's
-disk, and runs it.
-A scan's content-key reads take read slots from the same disks.
+auto-tagging, face, duplicate-judging and backfill job the resources its kind
+declares, from the CPU slots, the classifier slots, the face lane and the read
+slots of the job's disk, and runs it. A scan's content-key reads take read
+slots from the same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -41,6 +41,7 @@ face job.
 | `face_image` | 0 | 0 | 0 | 1 | Sends one person's stored face image to the helper |
 | `face_cast` | 0 | 0 | 0 | 1 | Merges people in the database, never beside an analysis |
 | `queue_face_images` | 0 | 0 | 0 | 0 | Queues a `face_image` job per face without a current vector |
+| `version_judge` | 0 | 0 | 1 | 0 | Compares stored fingerprints and sends frames cut from the seek previews ([duplicate judging](duplicate-judging.md)) |
 | `keyframes` | 1 | 0 | 0 | 0 | ffprobe reads the packet index of the whole file |
 | `media_info` | 1 | 0 | 0 | 0 | ffprobe reads the container |
 | `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
@@ -241,7 +242,7 @@ and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
 
 | Class | Value | Work |
 | --- | --- | --- |
-| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue |
+| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue, and "Judge again" on Duplicates |
 | Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
 | Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)) |
 
@@ -291,6 +292,8 @@ stopped answering, from retrying together.
 
 A kind may override the delay and the attempt limit, as a River or Oban worker
 can; an override without a limit retries until the job succeeds or repeats.
+`version_judge` keeps its own delays, 10 minutes, 1 hour, 6 hours and then
+daily, without a limit ([duplicate judging](duplicate-judging.md#the-work-is-a-job-per-pair)).
 Startup recovery requeues a running job without refunding its claim, so an
 interrupted run counts as an attempt.
 
@@ -313,6 +316,7 @@ round and skips a paused kind like an empty one.
 | --- | --- |
 | `auto_tag` | "Use auto-tagging" is off |
 | `face`, `face_image`, `face_cast` | Face recognition is off, or the chosen recognizer's runtime is not ready |
+| `version_judge` | Duplicate judging is off |
 
 Turning a feature back on wakes the scheduler through the feature's existing
 settings callback, so its queued jobs are claimed at once; the face runtime's
