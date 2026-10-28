@@ -131,14 +131,17 @@ func TestWorkInfoFillTargetsListThePeersVideos(t *testing.T) {
 
 // workInfoNodes pairs two nodes with real work-info storage whose plugin runs runtime answers; uploads records each
 // node's thumbnail uploads by its database.
-func workInfoNodes(t *testing.T, runtime coverRuntime) (fa, fb *guestFixture, b *peerNode, uploads map[*store.DB][]recordedUpload) {
+func workInfoNodes(
+	t *testing.T, runtime app.WorkInfoPluginRuntime,
+) (fa, fb *guestFixture, b *peerNode, uploads map[*store.DB][]recordedUpload) {
 	t.Helper()
 	uploads = map[*store.DB][]recordedUpload{}
 	fa, fb, _, b, _ = mergedNodesWith(t, func(db *store.DB, opts *Options) {
 		library := db.Library()
 		opts.WorkInfoPlugins = app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 			Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: library, Applier: db.Overrides(), Matcher: db.Credits(),
-			FillTargets: db.Overrides(),
+			FillTargets: db.Overrides(), People: db.Credits(),
+			PersonImages: app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{})),
 		})
 		opts.ThumbnailUploads = thumbnailUploadFunc(func(ctx context.Context, id int64, key string, _ []byte) (domain.Video, error) {
 			uploads[db] = append(uploads[db], recordedUpload{videoID: id, key: key})
@@ -170,14 +173,17 @@ func assertPeerWorkDetails(t *testing.T, info *gen.WorkInfo) {
 // approvedFetchPlugin saves and approves a fetch plugin, whose runs the node's runtime answers.
 func approvedFetchPlugin(t *testing.T, db *store.DB) int64 {
 	t.Helper()
+	return approvedPlugin(t, db, domain.WorkInfoPluginManifest{
+		Contract: 1, Name: "example.works", Version: "1.0.0", Operations: []domain.WorkInfoOperation{domain.WorkInfoFetch},
+	})
+}
+
+func approvedPlugin(t *testing.T, db *store.DB, manifest domain.WorkInfoPluginManifest) int64 {
+	t.Helper()
 	ctx := context.Background()
 	plugins := db.WorkInfoPlugins()
 	saved, _, err := plugins.SaveWorkInfoPlugin(ctx, domain.WorkInfoPluginUpload{
-		FileName: "works.wasm", Module: []byte("module"), Digest: "digest",
-		Manifest: domain.WorkInfoPluginManifest{
-			Contract: 1, Name: "example.works", Version: "1.0.0",
-			Operations: []domain.WorkInfoOperation{domain.WorkInfoFetch},
-		},
+		FileName: "plugin.wasm", Module: []byte("module"), Digest: "digest", Manifest: manifest,
 	}, time.Unix(0, 0))
 	if err != nil {
 		t.Fatal(err)

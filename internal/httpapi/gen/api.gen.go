@@ -5083,6 +5083,19 @@ type PeerFetchedPerson struct {
 	Role WorkPersonRole `json:"role"`
 }
 
+// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.
+type PeerFetchedPluginPerson struct {
+	Aliases     []Alias      `json:"aliases"`
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// Items The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.
+	Items []PersonPluginItem `json:"items"`
+	Name  string             `json:"name"`
+
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile *PersonProfile `json:"profile,omitempty"`
+}
+
 // PeerFetchedWorkInfo The values the peer's owner chose from a fetch, narrowed to the chosen entries and values.
 type PeerFetchedWorkInfo struct {
 	Code *string `json:"code,omitempty"`
@@ -8649,6 +8662,9 @@ type PairPeerJSONRequestBody = PairPeerRequest
 // AcceptPairingJSONRequestBody defines body for AcceptPairing for application/json ContentType.
 type AcceptPairingJSONRequestBody = PairingRequest
 
+// ApplyPeerFetchedPersonJSONRequestBody defines body for ApplyPeerFetchedPerson for application/json ContentType.
+type ApplyPeerFetchedPersonJSONRequestBody = PeerFetchedPluginPerson
+
 // RankPeerRelatedJSONRequestBody defines body for RankPeerRelated for application/json ContentType.
 type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
 
@@ -9068,6 +9084,9 @@ type ServerInterface interface {
 	// ForgetPeer Delete the grant of a reading node that unpaired
 	// (DELETE /api/peer/pairings/{nodeId})
 	ForgetPeer(w http.ResponseWriter, r *http.Request, nodeId string)
+	// ApplyPeerFetchedPerson Apply a person the peer fetched for a person of this node
+	// (POST /api/peer/people/{id}/fetched-person)
+	ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request, id PersonId)
 	// RankPeerRelated Score this node's videos against a video of the other node
 	// (POST /api/peer/related)
 	RankPeerRelated(w http.ResponseWriter, r *http.Request)
@@ -11742,6 +11761,32 @@ func (siw *ServerInterfaceWrapper) ForgetPeer(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ForgetPeer(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPeerFetchedPerson operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPeerFetchedPerson(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16738,6 +16783,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/credit-matches", wrapper.MatchPeerCredits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/videos/{id}/fetched-work-info", wrapper.ApplyPeerFetchedWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/people/{id}/fetched-person", wrapper.ApplyPeerFetchedPerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/rule-counts", wrapper.CountPeerRuleMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)

@@ -16,7 +16,7 @@ const (
 	linkedPerson = int64(5)
 )
 
-// fakePluginPeople rechecks the plugin like the store's transaction and adds the applied external IDs; a person absent
+// fakePluginPeople rechecks the plugin like the store's transaction, unless the peer fetched, and adds the applied external IDs; a person absent
 // from people does not exist.
 type fakePluginPeople struct {
 	plugins *runPluginStore
@@ -36,10 +36,12 @@ func (f *fakePluginPeople) ApplyPersonPluginFetch(
 	ctx context.Context, apply domain.PersonPluginApply,
 ) (domain.PersonPluginApplied, error) {
 	f.applies = append(f.applies, apply)
-	plugin, err := f.plugins.WorkInfoPlugin(ctx, apply.PluginID)
-	if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest ||
-		plugin.Generation != apply.Generation {
-		return domain.PersonPluginApplied{}, domain.ErrWorkInfoFetchStale
+	if !apply.FetchedByPeer {
+		plugin, err := f.plugins.WorkInfoPlugin(ctx, apply.PluginID)
+		if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest ||
+			plugin.Generation != apply.Generation {
+			return domain.PersonPluginApplied{}, domain.ErrWorkInfoFetchStale
+		}
 	}
 	person, ok := f.people[apply.PersonID]
 	if !ok {

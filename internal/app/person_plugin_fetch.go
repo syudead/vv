@@ -191,6 +191,77 @@ func (p *WorkInfoPlugins) ApplyPersonPluginFetch(
 	return applied, nil
 }
 
+// FetchPeerPersonWithPlugin fetches like FetchPersonWithPlugin for a person of the paired node, whose remote id is
+// personID: this node's plugin runs, and the peer gives the person's IDs and links.
+func (p *WorkInfoPlugins) FetchPeerPersonWithPlugin(
+	ctx context.Context, peer domain.PersonPluginPeer, personID, pluginID int64, key domain.PersonFetchKey,
+) (domain.PersonPluginFetchResult, error) {
+	return p.onPersonPeer(peer).FetchPersonWithPlugin(ctx, personID, pluginID, key)
+}
+
+// ApplyPeerPersonPluginFetch applies like ApplyPersonPluginFetch a result FetchPeerPersonWithPlugin kept: this node
+// rechecks its plugin, then the peer writes the values and takes the image as the person's face.
+func (p *WorkInfoPlugins) ApplyPeerPersonPluginFetch(
+	ctx context.Context, peer domain.PersonPluginPeer, personID int64, fetchID string,
+	selection domain.PersonPluginSelection, imageIndex int,
+) (domain.PersonPluginApplied, error) {
+	return p.onPersonPeer(peer).ApplyPersonPluginFetch(ctx, personID, fetchID, selection, imageIndex)
+}
+
+// onPersonPeer is p with the peer in place of this node's people and faces; it shares p's plugins and kept results.
+func (p *WorkInfoPlugins) onPersonPeer(peer domain.PersonPluginPeer) *WorkInfoPlugins {
+	q := *p
+	node := peerPersonNode{PersonPluginPeer: peer, plugins: p}
+	q.people, q.personImages = node, node
+	return &q
+}
+
+type peerPersonNode struct {
+	domain.PersonPluginPeer
+	plugins *WorkInfoPlugins
+}
+
+// ApplyPersonPluginFetch rechecks the plugin here, since the peer has no copy of it, and sends the values without
+// the image, which follows the commit as an upload.
+func (n peerPersonNode) ApplyPersonPluginFetch(
+	ctx context.Context, apply domain.PersonPluginApply,
+) (domain.PersonPluginApplied, error) {
+	if err := n.plugins.checkKeptPlugin(ctx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
+		return domain.PersonPluginApplied{}, err
+	}
+	apply.Items = slices.DeleteFunc(slices.Clone(apply.Items), func(item domain.PersonPluginItem) bool {
+		return item == domain.PersonItemImage
+	})
+	return n.PersonPluginPeer.ApplyPersonPluginFetch(ctx, apply)
+}
+
+// FillPersonImage is never called: the person page's apply replaces the face.
+func (peerPersonNode) FillPersonImage(context.Context, int64, []byte) (int64, error) { return 0, nil }
+
+// ApplyPeerFetchedPerson writes what the paired node fetched for this node's person personID, as an apply of this
+// node's own fetch writes it; the peer checked its plugin and sends the image apart. An item that is the image, is
+// not valid or has no value in fetched returns ErrWorkInfoApplyInvalid, and a missing person ErrPersonNotFound, both
+// without writes.
+func (p *WorkInfoPlugins) ApplyPeerFetchedPerson(
+	ctx context.Context, personID int64, fetched domain.FetchedPluginPerson, items []domain.PersonPluginItem,
+) (domain.PersonPluginApplied, error) {
+	if p.people == nil {
+		return domain.PersonPluginApplied{}, errors.New("person plugin fetches are not configured")
+	}
+	if slices.ContainsFunc(items, func(item domain.PersonPluginItem) bool {
+		return item == domain.PersonItemImage || !item.Valid() || !fetched.HasItem(item)
+	}) {
+		return domain.PersonPluginApplied{}, domain.ErrWorkInfoApplyInvalid
+	}
+	applied, err := p.people.ApplyPersonPluginFetch(ctx, domain.PersonPluginApply{
+		PersonID: personID, FetchedByPeer: true, Fetched: fetched, Items: items,
+	})
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.PersonPluginApplied{}, domain.ErrPersonNotFound
+	}
+	return applied, err
+}
+
 func (f *workInfoFetches) addPerson(fetch *personPluginFetch, now time.Time) string {
 	id := rand.Text()
 	f.mu.Lock()
