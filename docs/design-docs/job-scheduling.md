@@ -3,8 +3,8 @@
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest,
 auto-tagging, face, duplicate-judging and backfill job the resources its kind
 declares, from the CPU slots, the classifier slots, the face lane and the read
-slots of the job's disk, and runs it. A scan's content-key reads take read
-slots from the same disks.
+slots of the job's disk, within the kind's cap on jobs running at once, and
+runs it. A scan's content-key reads take read slots from the same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -72,9 +72,33 @@ within the capacity.
 | Resource | Capacity | Why |
 | --- | --- | --- |
 | Read slots of one disk | 1 for a rotational or unknown disk, 4 for a solid-state one ([`domain.Disk`](../../internal/domain/job_demand.go)) | Parallel sequential reads make a rotational disk seek; 4 matches the seek-sprite job's former parallelism, so a solid-state disk keeps its throughput |
-| CPU slots | `NumCPU / 4 + 1` | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest |
+| CPU slots | `min(NumCPU / 4 + 1, 4)`, at least 1 ([`domain.JobCPUSlots`](../../internal/domain/job_demand.go)) | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest; the ceiling is 4 because the kinds that decode run one job each, so beyond 4 the slots would only feed more parallel parts of one job |
 | Classifier slots | 1 | A CPU-only provider cannot serve parallel requests |
 | Face lane slots | 1 | The face helper answers one request at a time, and the cast rule must not interleave with an analysis |
+
+### Each kind runs at most its cap
+
+Besides the slots, each kind has a cap on its jobs running at once, across
+every disk ([`domain.JobConcurrency`](../../internal/domain/job_demand.go)).
+Before the shared scheduler each stage ran one job at a time, and the kinds
+that decode or encode must not exceed that: with 24 threads and two
+solid-state disks the slots alone allow 7 seek-sprite jobs at once, each with
+its own ffmpeg processes. Slots lent to a running job's extra parts are not
+jobs, so a seek-sprite job still runs up to 4 parts within the CPU and read
+slots.
+
+| Kind | Cap | Why |
+| --- | --- | --- |
+| `thumbnail`, `seek_thumbnail`, `preview`, `fingerprint` | 1 | One decode or encode per stage, as before the scheduler |
+| `probe`, `keyframes`, `media_info` | 2 | ffprobe reads little and parses between reads, so two keep a disk busy without competing |
+| `auto_tag`, `version_judge` | 1 | The classifier slot already allows one |
+| `face`, `face_image`, `face_cast` | 1 | The face lane already allows one |
+| `queue_face_images`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` | 1 | Each writes rows or files in bulk; a second instance would only contend |
+
+| Rejected | Why |
+| --- | --- |
+| No per-kind cap, only the slots | One heavy kind fills every slot, and the number of its jobs grows with the CPU count and the disks |
+| Keep `NumCPU / 4 + 1` CPU slots without a ceiling | On a machine with many cores the slots exceed what the capped kinds can use, so they would go to a single job's parts only |
 
 The scheduler resolves a media folder's disk the first time it serves the
 folder, and again when it rechecks an unavailable folder; the result lives in
@@ -102,14 +126,15 @@ penalty for some virtual disks, which then count as solid-state.
 The scheduler serves the classes strictly in order. Within a class it visits
 the disks in turn, then one more group for the kinds that read no source file,
 and claims one job per visit. Within a disk it visits the kinds in turn,
-skipping a kind whose demand does not fit instead of waiting for it. A full
-turn over the disks that grants nothing ends the class. The next visit resumes
-after the last granted disk and, within a disk, after the last granted kind.
+skipping a kind whose demand does not fit, or whose running jobs reach its
+cap, instead of waiting for it. A full turn over the disks that grants nothing
+ends the class. The next visit resumes after the last granted disk and, within
+a disk, after the last granted kind.
 
 ```mermaid
 flowchart LR
   disk[Next disk] --> kind[Next kind]
-  kind --> fits{Demand fits?}
+  kind --> fits{Demand fits, kind under its cap?}
   fits -->|no| kind
   fits -->|yes| claim{Job claimed?}
   claim -->|no| kind
@@ -140,7 +165,8 @@ For each further extraction it asks the scheduler, without waiting, for one
 more pair on the same disk, runs the extraction in parallel when it gets one,
 and returns the pair when the extraction ends. Reading keyframes from the
 index borrows one read slot per concurrent read the same way. At most 4 parts
-run at once. On a 1-slot disk the job runs one part at a time.
+run at once, and the lent slots count against no kind's cap. On a 1-slot disk
+the job runs one part at a time.
 
 | Rejected | Why |
 | --- | --- |

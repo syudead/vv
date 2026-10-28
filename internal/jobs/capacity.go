@@ -7,8 +7,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// capacity counts the slots in use against the CPU, classifier and face lane slots and each disk's read slots; it is safe
-// for concurrent use, because running jobs borrow and return slots while the scheduler grants.
+// capacity counts the slots in use against the CPU, classifier and face lane slots and each disk's read slots, and
+// the running jobs of each kind against its cap; it is safe for concurrent use, because running jobs borrow and
+// return slots while the scheduler grants.
 type capacity struct {
 	mu             sync.Mutex
 	cpu            int
@@ -17,6 +18,8 @@ type capacity struct {
 	faceLaneUsed   int
 	readSlots      map[string]int
 	readUsed       map[string]int
+	// running counts the jobs of each kind across every disk; slots lent to a job are not counted here.
+	running map[domain.JobKind]int
 	// foreground counts the open foreground readers per disk, which hold its background reads to one slot.
 	foreground map[string]int
 	// scanWaiting counts the scan reads waiting for each disk; while one waits, no job takes a read slot there.
@@ -31,7 +34,8 @@ type capacity struct {
 
 func newCapacity(cpu int) *capacity {
 	return &capacity{
-		cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}, foreground: map[string]int{},
+		cpu: cpu, readSlots: map[string]int{}, readUsed: map[string]int{}, running: map[domain.JobKind]int{},
+		foreground:  map[string]int{},
 		scanWaiting: map[string]int{}, scanAhead: map[string]int{}, scanHeld: map[string]int{},
 		changed: make(chan struct{}),
 	}
@@ -128,11 +132,35 @@ func (c *capacity) keepScanAhead(disk string) (done func()) {
 	}
 }
 
-// reserve takes demand on disk when it fits; a demand without reads ignores the disk. A waiting scan read keeps the
-// disk's read slots from jobs, and a scan between its reads keeps one of them.
+// reserveJob takes demand on disk for one job of kind when the demand fits and the kind is under its cap.
+func (c *capacity) reserveJob(disk string, kind domain.JobKind, demand domain.JobResources) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.running[kind] >= domain.JobConcurrency(kind) || !c.reserveLocked(disk, demand) {
+		return false
+	}
+	c.running[kind]++
+	return true
+}
+
+func (c *capacity) releaseJob(disk string, kind domain.JobKind, demand domain.JobResources) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.running[kind]--
+	c.releaseLocked(disk, demand)
+}
+
+// reserve takes demand on disk when it fits, as slots lent to a running job; a demand without reads ignores the
+// disk.
 func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.reserveLocked(disk, demand)
+}
+
+// reserveLocked grants demand within every slot capacity. A waiting scan read keeps the disk's read slots from jobs,
+// and a scan between its reads keeps one of them.
+func (c *capacity) reserveLocked(disk string, demand domain.JobResources) bool {
 	if c.cpuUsed+demand.CPU > c.cpu || c.classifierUsed+demand.Classifier > domain.JobClassifierSlots ||
 		c.faceLaneUsed+demand.FaceLane > domain.JobFaceLaneSlots {
 		return false
@@ -152,6 +180,10 @@ func (c *capacity) reserve(disk string, demand domain.JobResources) bool {
 func (c *capacity) release(disk string, demand domain.JobResources) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.releaseLocked(disk, demand)
+}
+
+func (c *capacity) releaseLocked(disk string, demand domain.JobResources) {
 	c.cpuUsed -= demand.CPU
 	c.classifierUsed -= demand.Classifier
 	c.faceLaneUsed -= demand.FaceLane
@@ -159,11 +191,11 @@ func (c *capacity) release(disk string, demand domain.JobResources) {
 	c.broadcastLocked()
 }
 
-// inUse reports the slots in use, with the disk's read slots, for the debug log.
-func (c *capacity) inUse(disk string) domain.JobResources {
+// inUse reports the slots in use, with the disk's read slots, and the running jobs of kind, for the debug log.
+func (c *capacity) inUse(disk string, kind domain.JobKind) (used domain.JobResources, running int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return domain.JobResources{
 		Read: c.readUsed[disk], CPU: c.cpuUsed, Classifier: c.classifierUsed, FaceLane: c.faceLaneUsed,
-	}
+	}, c.running[kind]
 }
