@@ -305,11 +305,7 @@ func selectClaimableJob(ctx context.Context, conn *sql.Conn, claim domain.JobCla
 		(select l.path from video_locations l where l.video_id = j.video_id and ` + available + `
 			and l.path > j.location_path order by l.path limit 1),
 		(select l.path from video_locations l where l.video_id = j.video_id and ` + available + ` order by l.path limit 1))`
-	var onRoots string
-	if claim.Roots != nil {
-		onRoots = ` and exists (select 1 from media_folders mf where mf.id in (` + idList(claim.Roots) + `) and ` +
-			inMediaFolderCondition("c.next_path") + `)`
-	}
+	onRoots := onRootsCondition("c.next_path", claim.Roots)
 	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
 	query := `select c.id, c.kind, c.video_id, c.attempts, c.force, c.priority, c.location_path, c.next_path from (
 		select j.id, j.kind, j.video_id, j.attempts, j.force, j.priority, j.run_after, j.location_path, ` + next + ` as next_path
@@ -330,8 +326,7 @@ func selectClaimableJob(ctx context.Context, conn *sql.Conn, claim domain.JobCla
 // whether an available location remains after it in this round.
 func locateClaimedJob(ctx context.Context, conn *sql.Conn, job *domain.Job, row claimableJob, unavailable []int64) error {
 	if err := conn.QueryRowContext(ctx, `select l.id, l.version, l.path, v.content_key, v.location_generation,
-		coalesce((select mf.id from media_folders mf where `+inMediaFolderCondition("l.path")+`
-			order by length(mf.path) desc limit 1), 0)
+		coalesce(`+owningFolderSQL("l.path")+`, 0)
 		from video_locations l join videos v on v.id = l.video_id where l.video_id = ? and l.path = ?`,
 		job.VideoID, row.next).Scan(&job.LocationID, &job.LocationVersion, &job.LocationPath, &job.ContentKey,
 		&job.LocationGeneration, &job.RootID); err != nil {
@@ -358,6 +353,22 @@ func availableLocationCondition(alias string, unavailable []int64) string {
 		excluded = ` and mf.id not in (` + idList(unavailable) + `)`
 	}
 	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + excluded + `)`
+}
+
+// owningFolderSQL selects the id of the media folder that holds the path pathExpr names, or null outside every folder.
+func owningFolderSQL(pathExpr string) string {
+	return `(select mf.id from media_folders mf where ` + inMediaFolderCondition(pathExpr) +
+		` order by length(mf.path) desc limit 1)`
+}
+
+// onRootsCondition limits a claim to paths under roots, the folders of the disk whose slots the scheduler reserved;
+// nil roots limit nothing.
+func onRootsCondition(pathExpr string, roots []int64) string {
+	if roots == nil {
+		return ""
+	}
+	return ` and exists (select 1 from media_folders mf where mf.id in (` + idList(roots) + `) and ` +
+		inMediaFolderCondition(pathExpr) + `)`
 }
 
 // idList writes ids for an SQL in list; they are integers, so no quoting is needed.

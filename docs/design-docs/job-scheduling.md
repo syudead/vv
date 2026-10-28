@@ -225,7 +225,12 @@ mount and under a Windows volume mount point, while a new folder holds no
 location and stays available. The scheduler asks the store whether a folder
 holds a location only when it resolves the folder, inside the same 5-second
 bound, so a slow library read parks the folder rather than the turn; in the
-snooze path the failed job's own location proves it. A folder whose every file was deleted
+snooze path the failed job's own location proves it. The snooze path's check
+has the same 5-second bound, and a folder that does not answer by then is
+parked, so a share that stops answering mid-job neither holds the job's slots
+nor stops the server from shutting down. A snooze the handler returns itself,
+such as a face job cancelled by a settings change, says nothing about the
+folder and parks nothing. A folder whose every file was deleted
 while mounted is parked until the next scan removes its locations and the
 minute recheck finds it available.
 
