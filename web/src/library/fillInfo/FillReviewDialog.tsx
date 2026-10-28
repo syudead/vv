@@ -1,9 +1,15 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Crop } from "lucide-react";
 import type { FormEvent } from "react";
 
 import { t } from "../../i18n";
+import { workInfoFetchCoverUrl } from "../../api/workInfoPlugins";
+import UploadPreview from "../../player/thumbnailUpload/UploadPreview";
+import FramedCoverCanvas from "../../player/workInfoFetch/FramedCoverCanvas";
+import ThumbnailBackdrop from "../../ui/ThumbnailBackdrop";
 import { useToast } from "../../ui/Toast";
+import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { Alert, AlertTitle } from "../../ui/shadcn/alert";
+import { Button } from "../../ui/shadcn/button";
 import {
   Select,
   SelectContent,
@@ -93,6 +99,51 @@ function RowPlan({ row }: { row: FillRow }) {
   );
 }
 
+/** The cover the row fills, drawn with its framing once the owner adjusted it, and the way to adjust it. */
+function RowCover({
+  row,
+  disabled,
+  opening,
+  onAdjust,
+}: {
+  row: FillRow;
+  disabled: boolean;
+  opening: boolean;
+  onAdjust: () => void;
+}) {
+  const work = chosenWork(row);
+  const cover = row.plan?.cover;
+  if (row.status !== "searched" || work === undefined || row.plan?.workId !== work.id)
+    return null;
+  if (cover === null || cover === undefined) return null;
+  const src = workInfoFetchCoverUrl(row.target.videoId, row.plan.fetchId, cover.index);
+  return (
+    <div className="flex items-center gap-3">
+      <VideoThumbnail className="w-list-thumb shrink-0 rounded-sm">
+        {row.framing === null ? (
+          <>
+            <ThumbnailBackdrop src={src} />
+            <VideoThumbnailImage src={src} alt={cover.label} title={cover.label} />
+          </>
+        ) : (
+          <FramedCoverCanvas cover={row.framing} label={cover.label} />
+        )}
+      </VideoThumbnail>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        aria-busy={opening || undefined}
+        onClick={onAdjust}
+      >
+        {opening ? <Spinner aria-hidden="true" /> : <Crop aria-hidden="true" />}
+        {t.player.workInfoFetch.adjustCover}
+      </Button>
+    </div>
+  );
+}
+
 /**
  * Show what filling each target from its chosen work writes, let the owner change or drop each choice, and apply
  * the fetched results the review showed, one video at a time.
@@ -110,6 +161,10 @@ export default function FillReviewDialog({
   const toast = useToast();
   const review = useFillReview(pluginId, targets);
   const count = (review.rows ?? []).filter(applicable).length;
+  const locked = review.applying || review.adjusting !== null;
+  const adjustIndex = review.adjusting?.ready === true ? review.adjusting.index : null;
+  const adjusted = adjustIndex === null ? undefined : review.rows?.[adjustIndex];
+  const framing = adjusted?.framing ?? null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -158,14 +213,34 @@ export default function FillReviewDialog({
                 </div>
                 <RowChoice
                   row={row}
-                  disabled={review.applying}
+                  disabled={locked}
                   onChoose={(choice) => review.choose(index, choice)}
                 />
               </div>
               <RowPlan row={row} />
+              <RowCover
+                row={row}
+                disabled={locked}
+                opening={review.adjusting?.index === index && !review.adjusting.ready}
+                onAdjust={() => review.adjust(index)}
+              />
             </li>
           ))}
         </ul>
+      )}
+      {adjustIndex !== null && adjusted !== undefined && framing !== null && (
+        <UploadPreview
+          videoId={adjusted.target.videoId}
+          image={framing.image}
+          name={adjusted.target.title}
+          aspect={framing.aspect}
+          narrow={adjusted.plan?.cover?.narrow ?? false}
+          applying={false}
+          initialFit={framing.fit}
+          applyLabel={t.player.workInfoFetch.keepFraming}
+          onApply={(fit, replaced) => review.keepFraming(adjustIndex, fit, replaced)}
+          onCancel={review.closeFraming}
+        />
       )}
     </CreateDialogFrame>
   );

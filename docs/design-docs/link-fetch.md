@@ -211,7 +211,15 @@ and date; each role, link and ID list the video has no entry in; and the first
 cover when no image is applied. The row shows only the fetched code and
 release date, which are enough to tell whether the right work was found, and
 `Fill N videos` sends each plan as the selection of the single apply, one
-video at a time, so the owner gets the result that was reviewed. A plan that
+video at a time, so the owner gets the result that was reviewed.
+
+A row that fills a cover shows it at the list thumbnail's size with
+`Adjust framing`, which opens the same framing preview as the single fetch
+([thumbnail-editing.md](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
+The apply decodes the cover in the page and uploads it after the other fields
+commit, as the single fetch does, framed as the owner kept it or, untouched,
+as the preview's default: the whole image over its blurred copy. Only a cover
+the page cannot decode is left to the server's centre-crop fit. A plan that
 writes nothing is shown as such and not applied; a failed apply
 stays on its row with the reason, and the dialog stays open.
 
@@ -224,3 +232,4 @@ stays on its row with the reason, and the dialog stays open.
 | Fetching by the code as the work's ID | Most sites' IDs are not the work's code, so most fills failed |
 | Searching on the server for the whole selection | The request would wait for every search; the dialog shows each result as it arrives and stops when closed |
 | Overwriting the selection's values | The owner's tags and details would be lost to a site's |
+| The server's fit for every unreviewed cover | Its centre crop cuts a portrait jacket to a strip, where the default framing keeps the whole image |

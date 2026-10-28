@@ -1,5 +1,4 @@
 import { ArrowLeft, ArrowRight, CircleAlert, Crop } from "lucide-react";
-import { useLayoutEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
 import { type ExternalId, personFaceSrc } from "../../api/credits";
@@ -27,7 +26,6 @@ import {
 import { Spinner } from "../../ui/shadcn/spinner";
 import { PersonFace } from "../../ui/PersonFace";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
-import { drawComposition } from "../thumbnailUpload/composeImage";
 import UploadPreview from "../thumbnailUpload/UploadPreview";
 import { Description, withoutScheme } from "../WorkInfo";
 import {
@@ -41,6 +39,7 @@ import {
   ValueToggle,
 } from "./compareParts";
 import type { CoverFraming } from "./coverFraming";
+import FramedCoverCanvas from "./FramedCoverCanvas";
 import {
   chipHint,
   creditKind,
@@ -252,21 +251,10 @@ function FramedCover({
   label: string;
   locked: boolean;
 }) {
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const { image, aspect, fit } = cover;
-  useLayoutEffect(() => {
-    if (canvas !== null) drawComposition(canvas, image, aspect, fit);
-  }, [canvas, image, aspect, fit]);
   return (
     <div className="flex w-full max-w-xs flex-col items-start gap-2">
       <VideoThumbnail>
-        <canvas
-          ref={setCanvas}
-          role="img"
-          aria-label={label}
-          title={label}
-          className="relative size-full object-contain"
-        />
+        <FramedCoverCanvas cover={cover} label={label} />
       </VideoThumbnail>
       <Button variant="outline" size="sm" disabled={locked} onClick={cover.adjust}>
         <Crop aria-hidden="true" />
