@@ -1,25 +1,27 @@
 package domain
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
 
-func TestVersionJudgeRetryAt(t *testing.T) {
-	now := time.Unix(1_700_000_000, 0)
+// Duplicate judging keeps its own delays through the job retry policy and never fails for good.
+func TestVersionJudgeRetryPolicy(t *testing.T) {
+	policy := JobRetryPolicyFor(JobVersionJudge)
 	for _, c := range []struct {
 		attempts int
 		want     time.Duration
 	}{
-		{0, 10 * time.Minute},
 		{1, 10 * time.Minute},
 		{2, time.Hour},
 		{3, 6 * time.Hour},
 		{4, 24 * time.Hour},
 		{40, 24 * time.Hour},
 	} {
-		if got := VersionJudgeRetryAt(c.attempts, now).Sub(now); got != c.want {
-			t.Errorf("%d 回目の失敗の待ち = %v, want %v", c.attempts, got, c.want)
+		got := policy.AfterFailure(c.attempts, errors.New("no answer"), true, 0.5)
+		if got.State != JobQueued || got.Delay != c.want {
+			t.Errorf("%d 回目の失敗 = %+v, want %v 待って queued", c.attempts, got, c.want)
 		}
 	}
 }

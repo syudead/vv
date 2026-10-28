@@ -41,8 +41,12 @@ type JobRetryPolicy struct {
 	Delay func(round int) time.Duration
 }
 
-// JobRetryPolicyFor returns the kind's policy; every current kind uses the default.
-func JobRetryPolicyFor(JobKind) JobRetryPolicy {
+// JobRetryPolicyFor returns the kind's policy. Duplicate judging keeps its own delays and never gives up, since a
+// classifier that is down for a day must not leave pairs failed for good.
+func JobRetryPolicyFor(kind JobKind) JobRetryPolicy {
+	if kind == JobVersionJudge {
+		return JobRetryPolicy{Delay: VersionJudgeRetryDelay}
+	}
 	return JobRetryPolicy{MaxAttempts: MaxJobAttempts}
 }
 

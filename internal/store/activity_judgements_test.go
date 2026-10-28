@@ -131,6 +131,10 @@ func TestJudgementEntryRetryReturnsSameEntryToRunning(t *testing.T) {
 	if err := db.Versions().RetryJudgement(context.Background(), failed.ID); err != nil {
 		t.Fatalf("RetryJudgement: %v", err)
 	}
+	if n := countRows(t, db, `select count(*) from jobs where kind = 'version_judge' and state = 'queued'
+		and priority = 0`); n != 1 {
+		t.Errorf("やり直しの仕事 = %d 件, want 持ち主の区分で 1 件", n)
+	}
 	retried := onlyPairEntry(t, db)
 	expectEntryState(t, retried, activityWaiting, domain.ActivityByRule)
 	done := judgePair(t, db, domain.VersionJudgeResult{
@@ -358,6 +362,10 @@ func TestInterruptedPairEntryReturnsToRunningOnClaim(t *testing.T) {
 	claimJudgement(t, db)
 	interrupted := onlyPairEntry(t, db)
 	if _, err := db.Activity().RecoverInterruptedActivity(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Startup recovery requeues the running job before the pair returns to waiting.
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Versions().RecoverRunningJudgements(ctx); err != nil {

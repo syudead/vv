@@ -1,9 +1,10 @@
 # Job scheduling: one scheduler for every ingest stage
 
 One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest,
-auto-tagging and backfill job the resources its kind declares, from the CPU
-slots, the classifier slots and the read slots of the job's disk, and runs it.
-A scan's content-key reads take read slots from the same disks.
+auto-tagging, duplicate-judging and backfill job the resources its kind
+declares, from the CPU slots, the classifier slots and the read slots of the
+job's disk, and runs it. A scan's content-key reads take read slots from the
+same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -35,6 +36,7 @@ send one request to the classifier.
 | `preview` | 1 | 1 | 0 | ffmpeg decodes and encodes the source |
 | `fingerprint` | 0 | 1 | 0 | Reads sprite frames from the data directory, not the source |
 | `auto_tag` | 0 | 0 | 1 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
+| `version_judge` | 0 | 0 | 1 | Compares stored fingerprints and sends frames cut from the seek previews ([duplicate judging](duplicate-judging.md)) |
 | `keyframes` | 1 | 0 | 0 | ffprobe reads the packet index of the whole file |
 | `media_info` | 1 | 0 | 0 | ffprobe reads the container |
 | `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
@@ -234,7 +236,7 @@ and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
 
 | Class | Value | Work |
 | --- | --- | --- |
-| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue |
+| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue, and "Judge again" on Duplicates |
 | Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
 | Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)) |
 
@@ -284,6 +286,8 @@ stopped answering, from retrying together.
 
 A kind may override the delay and the attempt limit, as a River or Oban worker
 can; an override without a limit retries until the job succeeds or repeats.
+`version_judge` keeps its own delays, 10 minutes, 1 hour, 6 hours and then
+daily, without a limit ([duplicate judging](duplicate-judging.md#the-work-is-a-job-per-pair)).
 Startup recovery requeues a running job without refunding its claim, so an
 interrupted run counts as an attempt.
 
@@ -305,6 +309,7 @@ round and skips a paused kind like an empty one.
 | Kind | Paused while |
 | --- | --- |
 | `auto_tag` | "Use auto-tagging" is off |
+| `version_judge` | Duplicate judging is off |
 
 Turning a feature back on wakes the scheduler through the feature's existing
 settings callback, so its queued jobs are claimed at once.

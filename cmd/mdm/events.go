@@ -23,7 +23,8 @@ type eventSubscribers struct {
 	ImagesFinished func(videoID int64)
 	// Has the face worker apply the cast rule; see docs/design-docs/face-recognition.md.
 	WorkInfoChanged func(videoIDs []int64)
-	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
+	// Wakes the scheduler when a pair may have become judgeable: a hold lifted, a location registered or a candidate
+	// changed; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
 	// Has the face worker embed a changed face; see docs/design-docs/face-recognition.md.
 	PersonImageChanged func(domain.PersonImageChanged)
