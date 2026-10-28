@@ -128,10 +128,33 @@ func (s *IngestStore) commitBackfillFailure(ctx context.Context, tx *sql.Tx, job
 	return nil
 }
 
-// completeBackfillJob deletes a backfill job that succeeded; its handler has already saved the result.
+// completeBackfillJob deletes a backfill job that succeeded; its handler has already saved the result. A video's job
+// whose claimed location or content changed during the read saved nothing, so it is queued again, as an import stage is.
 func (s *IngestStore) completeBackfillJob(ctx context.Context, job domain.Job) error {
-	if _, err := s.db.sql.ExecContext(ctx, `delete from jobs where id = ? and state = 'running'`, job.ID); err != nil {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start recording job completion (id=%d): %w", job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	current := isSubjectlessJob(job.Kind)
+	if !current {
+		if current, err = jobIdentityCurrent(ctx, tx, job); err != nil {
+			return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
+		}
+	}
+	c := &changes{}
+	if current {
+		_, err = tx.ExecContext(ctx, `delete from jobs where id = ? and state = 'running'`, job.ID)
+	} else {
+		_, err = tx.ExecContext(ctx, `update jobs set state = 'queued', updated_at = ? where id = ? and state = 'running'`,
+			jobNow().Unix(), job.ID)
+		c.backfillQueued(job.Kind)
+	}
+	if err != nil {
 		return fmt.Errorf("cannot record job completion (id=%d): %w", job.ID, err)
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
+		return fmt.Errorf("cannot commit job completion (id=%d): %w", job.ID, err)
 	}
 	return nil
 }

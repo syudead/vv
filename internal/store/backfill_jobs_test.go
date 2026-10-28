@@ -92,6 +92,41 @@ func TestBackfillJobStaysOutOfImportTracking(t *testing.T) {
 	}
 }
 
+func TestBackfillJobRequeuesWhenItsVideoChangedDuringTheRead(t *testing.T) {
+	db, id, p := keyframeFixture(t)
+	ctx := context.Background()
+	job, err := nextBackfill(ctx, db, domain.JobKeyframes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A scan registers another copy of the same video while the read runs.
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/c.mp4"), "c", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().SaveKeyframeProbe(ctx, job, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	again, err := db.Ingest().ClaimJob(ctx, domain.JobKeyframes)
+	if err != nil || again.ID != job.ID || again.VideoID != id {
+		t.Fatalf("claim after the stale read = %+v, %v, want job %d queued again", again, err, job.ID)
+	}
+	if err := db.Ingest().SaveKeyframeProbe(ctx, again, p); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Library().KeyframeSpacing(ctx, id); err != nil || got != p {
+		t.Fatalf("saved = %+v, %v, want %+v", got, err, p)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, db, `select count(*) from jobs`); got != 0 {
+		t.Errorf("jobs after the current read = %d, want the backfill job deleted", got)
+	}
+}
+
 func TestStartupJobsQueueOnceAndEndWhenFinished(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

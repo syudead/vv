@@ -242,7 +242,10 @@ Backfill kinds stay out of import tracking. They open no activity entry, do not
 keep the current import from settling, and do not make the desktop app busy
 (`HasUnfinishedJobs`), so a version bump never looks like an import. Their
 row is deleted when the job ends, done or failed, because the result lives in
-the domain tables and the next startup queues the work again. A
+the domain tables and the next startup queues the work again. A `keyframes`
+or `media_info` job whose video gained or lost a location, or whose file
+changed, during the read saved nothing, so it is queued again, as an import
+stage is. A
 `queue_keyframes`, `queue_media_info` or `virtual_thumbnails` job names no
 video, so each claim is one attempt.
 
