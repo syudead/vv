@@ -5,7 +5,10 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -20,6 +23,8 @@ type fakeVersionJudgeStore struct {
 
 	inputErr error
 	applyErr error
+	// resetErr fails the next reset, once.
+	resetErr error
 }
 
 func newFakeVersionJudgeStore(jobs ...domain.VersionJudgeJob) *fakeVersionJudgeStore {
@@ -59,6 +64,10 @@ func (s *fakeVersionJudgeStore) RecoverRunningJudgements(context.Context) (int, 
 func (s *fakeVersionJudgeStore) ResetNoConnectionJudgements(context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.resetErr; err != nil {
+		s.resetErr = nil
+		return 0, err
+	}
 	s.reset++
 	return 1, nil
 }
@@ -267,6 +276,38 @@ func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	}
 }
 
+// A reset that fails after the connection is saved stays owed: the scheduler is woken after domain.WorkerRetry and its
+// next round retries the reset once.
+func TestVersionJudgeRetriesAFailedResetAfterTheConnectionIsSaved(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := newFakeVersionJudgeStore()
+		store.resetErr = errors.New("database is locked")
+		judge, _, _ := newTestVersionJudge(store, &fakeClassifier{})
+		var woken atomic.Int32
+		judge.Waker = func() { woken.Add(1) }
+		paused := PausedJobKinds(judge)
+		ctx := context.Background()
+
+		judge.ConnectionSaved(ctx)
+		if store.reset != 0 || woken.Load() != 1 {
+			t.Fatalf("失敗した保存: 待ちに戻した回数 %d、起こした回数 %d, want 0, 1", store.reset, woken.Load())
+		}
+		time.Sleep(time.Duration(domain.WorkerRetry))
+		synctest.Wait()
+		if woken.Load() != 2 {
+			t.Fatalf("待ちの後に起こした回数 = %d, want 2", woken.Load())
+		}
+		for range 2 {
+			if _, err := paused(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if store.reset != 1 {
+			t.Errorf("スケジューラーの巡回で待ちに戻した回数 = %d, want 1", store.reset)
+		}
+	})
+}
+
 // A no_connection result decided before the connection was saved snoozes instead of being recorded, so the pair is
 // judged again with the saved connection.
 func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
@@ -350,6 +391,19 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	}
 	if n := store.resultCount(); n != 0 {
 		t.Fatalf("切ったあとに結果を反映した: %+v", store.lastResult(t))
+	}
+}
+
+// An input that cannot be read after judging was turned off snoozes like any other result, so the pair does not spend
+// an attempt and wait out a retry delay.
+func TestVersionJudgeSnoozesAnInputErrorWhileOff(t *testing.T) {
+	store := newFakeVersionJudgeStore(versionJudgeJob())
+	store.inputErr = errors.New("database is locked")
+	judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
+	settings.enabled = false
+
+	if err := handleVersionJudge(t, judge, versionJudgeJob().Keys); !errors.Is(err, domain.ErrJobSnoozed) {
+		t.Fatalf("HandleJob = %v, want domain.ErrJobSnoozed", err)
 	}
 }
 

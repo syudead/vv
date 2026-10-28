@@ -187,14 +187,16 @@ attempt.
 | --- | --- |
 | `same`, `different`, `undecided`, `no_connection` | Ends |
 | `failed` | Waits 10 minutes, 1 hour, 6 hours, then a day after each later failure, without a limit, through the kind's override of the [retry delay](job-scheduling.md#a-failed-job-retries-after-a-growing-delay) |
-| Judging turned off during the judgement | Snoozes: queued again at once without counting the attempt, and the pair waits |
+| Judging turned off during the judgement, including before an input that cannot be read | Snoozes: queued again at once without counting the attempt, and the pair waits |
 | `no_connection` decided while the connection was being saved | Snoozes, so the pair is judged again with the saved connection |
 
 `version_judge` is paused while `version_judging.enabled` is false, so its jobs
 keep their attempts until judging is turned on, and turning it on wakes the
 scheduler. Saving the Ollama connection returns `no_connection` pairs to
-waiting with new jobs; the handler records a `no_connection` result only after
-checking, under the same lock, that the connection is still unsaved. The
+waiting with new jobs. A reset that fails, or whose request ends first, stays
+owed: every scheduler round retries it, and a failure wakes the scheduler again
+after the worker retry wait. The handler records a `no_connection` result only
+after checking, under the same lock, that the connection is still unsaved. The
 Duplicates list, the activity log and the API's `retryAt` read a failed pair's
 retry time from the `run_after` of its queued job.
 
