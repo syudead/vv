@@ -93,6 +93,12 @@ Two background tasks stay outside the scheduler, because neither reads a
 media file: the hardware encoder checks, whose answer live transcoding needs,
 and the face runtime's start, which downloads missing model files.
 
+| Rejected | Why |
+| --- | --- |
+| Insert every per-video job during startup | Synchronous startup would grow beyond recovery and key rebuilds by one insert per video |
+| Keep the backfill goroutines | Their reads would bypass the per-disk read slots |
+| Republish a virtual thumbnail when a request misses its file | A job leaves the HTTP path unchanged |
+
 ## Recovery after an interrupted run
 
 A run that stopped mid-work leaves running rows behind, and startup returns

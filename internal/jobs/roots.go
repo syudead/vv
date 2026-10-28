@@ -202,8 +202,8 @@ func (r *roots) path(id int64) (string, bool) {
 	return state.path, ok
 }
 
-// diskOf returns the disk of the media folder that holds path, taking the deepest folder when folders nest; it is
-// false when no resolved folder holds path.
+// diskOf returns the disk of the media folder that holds path; media folders never overlap, so at most one does. It
+// is false when no resolved folder holds path.
 func (r *roots) diskOf(path string) (string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

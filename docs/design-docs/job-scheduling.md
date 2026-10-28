@@ -47,6 +47,18 @@ face job.
 | `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
 | `virtual_thumbnails` | 0 | 0 | 0 | 0 | Copies stored image bytes into thumbnail files |
 
+Every queued unit of work is a `jobs` row, enqueued in the transaction that
+changes its domain rows, so the claim order, the priority, the attempts, the
+run-after time and startup recovery exist once. A kind whose subject is not a
+video names it in `subject_key` and `subject_key_b`: a content key, a pair of
+content keys or a person id. The domain tables keep only results, such as
+`auto_tag_results` and `face_results`, because a result must outlive its job.
+
+| Rejected | Why |
+| --- | --- |
+| Keep the auto-tag, face and duplicate-judging queue tables as scheduler sources | Claim order, retry delays, run-after waiting and recovery would exist once per table, and each round would rank across four tables |
+| Keep results in `jobs` | "Tag videos not yet tagged" and the Settings counts read a `done` result after the job, and even the video, are gone |
+
 A read slot belongs to the disk of the location the claim picks: the next
 available registered location in path order after the previous attempt's.
 A kind with a read slot is the only kind whose claim avoids an unavailable
@@ -146,8 +158,8 @@ the file until they end:
 - a live transcode, from its ffprobe until its ffmpeg exits;
 - a frame read for thumbnail editing.
 
-The disk is the one of the deepest media folder holding the opened file,
-after links are followed. When the last reader on the disk ends, it returns
+The disk is the one of the media folder holding the opened file, after links
+are followed; media folders never overlap, so at most one folder holds it. When the last reader on the disk ends, it returns
 to the slots of its type and the scheduler wakes. A grant made before the reader opened is not revoked: a
 seek-sprite job drops to one extraction when it next asks for a pair, and a
 thumbnail, preview or face job finishes its current run. Background reads fall
