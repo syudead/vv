@@ -38,11 +38,14 @@ criterion 5).
 
 ## An unplugged folder parks its jobs
 
-1. Unmount the HDD folder mid-import, wait two minutes, mount it again.
+1. Unmount the HDD folder mid-import, so that its mount point is an empty
+   directory, wait two minutes, mount it again.
 
-Expected: no job of that folder fails or loses an attempt, the other folder
-keeps importing, and import of the HDD folder resumes within a minute of the
-mount (acceptance criterion 8).
+Expected: no job of that folder that reads its files fails or loses an
+attempt, fingerprints of its videos whose sprites are saved still complete,
+the other folder keeps importing, and import of the HDD folder resumes within
+a minute of the mount (acceptance criterion 8). Starting the server while the
+folder is unmounted parks its jobs the same way.
 
 ## HDD import time
 

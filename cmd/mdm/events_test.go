@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -141,16 +142,27 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 	return ctx, db, mediaDir
 }
 
-// Verify a queued probe wakes the sleeping scheduler and its completion starts thumbnail work, without queue polling.
-func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
-	ctx, db, mediaDir := openTestDB(t)
+// indexMovie writes and indexes movie.mp4 under mediaDir; a folder that lists nothing while it holds an indexed video
+// counts as unmounted and parks its jobs.
+func indexMovie(t *testing.T, ctx context.Context, db *store.DB, mediaDir string) domain.UpsertResult {
+	t.Helper()
+	path := filepath.Join(mediaDir, "movie.mp4")
+	if err := os.WriteFile(path, []byte("movie"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
-		MTime: time.Unix(1, 0), Container: "mp4",
+		Path: path, Title: "movie", ContentKey: "key-movie", SizeBytes: 1, MTime: time.Unix(1, 0), Container: "mp4",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return video
+}
+
+// Verify a queued probe wakes the sleeping scheduler and its completion starts thumbnail work, without queue polling.
+func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
+	ctx, db, mediaDir := openTestDB(t)
+	video := indexMovie(t, ctx, db, mediaDir)
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -242,13 +254,7 @@ func (finishedScanner) Rescan(context.Context, int64, domain.RescanScope, domain
 
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
-	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
-		MTime: time.Unix(1, 0), Container: "mp4",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	video := indexMovie(t, ctx, db, mediaDir)
 
 	bus := newTestBus()
 	db.PublishTo(bus)

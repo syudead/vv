@@ -194,6 +194,10 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 // stays queued. A content job other than face analysis, a subject job and a job without a subject have no location,
 // so only their class applies. BEGIN IMMEDIATE prevents duplicate claims; an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
+	if !domain.JobReadsSource(claim.Kind) {
+		// A job that reads no source file runs while its folder is unplugged; it still needs a registered location.
+		claim.Unavailable = nil
+	}
 	if q, ok := contentJobQueue(claim.Kind); ok {
 		return s.db.claimContentJob(ctx, q, claim)
 	}

@@ -40,9 +40,9 @@ type deviceSeekPenaltyDescriptor struct {
 // ResolveDisk returns the physical disk of a media folder's volume and whether it incurs a seek penalty. A volume the
 // storage IOCTLs do not answer, such as a network share or a volume spanning disks, has the volume as key and an
 // unknown type. Some virtual disks report no seek penalty and count as solid-state. An unreadable folder returns an
-// error.
-func (FS) ResolveDisk(root string) (domain.Disk, error) {
-	dir, err := openReadableRoot(root)
+// error, as does an empty one while populated (see openReadableRoot).
+func (FS) ResolveDisk(root string, populated bool) (domain.Disk, error) {
+	dir, err := openReadableRoot(root, populated)
 	if err != nil {
 		return domain.Disk{}, err
 	}

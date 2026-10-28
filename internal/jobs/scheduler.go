@@ -30,6 +30,8 @@ type Queue interface {
 // Folders lists the registered media folders, whose disks the scheduler serves in turn.
 type Folders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
+	// HasLocationsUnder reports whether a video's registered location lies under the media folder.
+	HasLocationsUnder(ctx context.Context, folderID int64) (bool, error)
 }
 
 // Handler implementations are injected by cmd/mdm; jobs owns claiming and completion, without
@@ -170,7 +172,7 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 	if err != nil {
 		return turn{}, fmt.Errorf("cannot list the media folders: %w", err)
 	}
-	s.roots.refresh(folders, now)
+	s.roots.refresh(folders, now, func(folder domain.MediaFolder) bool { return s.populated(ctx, folder) })
 	var t turn
 	var readSlots map[string]int
 	t.groups, readSlots, t.unavailable = s.roots.snapshot()
@@ -184,6 +186,17 @@ func (s *Scheduler) prepare(ctx context.Context, now time.Time) (turn, error) {
 		}
 	}
 	return t, nil
+}
+
+// populated reports whether the library holds a location under the folder; a lookup that fails counts the folder as
+// new, so an empty folder is then readable rather than parked.
+func (s *Scheduler) populated(ctx context.Context, folder domain.MediaFolder) bool {
+	populated, err := s.folders.HasLocationsUnder(ctx, folder.ID)
+	if err != nil && ctx.Err() == nil {
+		s.logger.Warn("could not check whether the media folder holds videos", slog.String("path", folder.Path),
+			slog.Any("error", err))
+	}
+	return populated
 }
 
 // grantClass visits the disks round robin from where the last turn stopped, so a disk with a long queue takes turns
@@ -320,7 +333,8 @@ func (s *Scheduler) scanDisk(root string) (domain.Disk, error) {
 	if disk, ok := s.roots.disk(root); ok {
 		return disk, nil
 	}
-	disk, err := s.disks(root)
+	// The scan found a file under root, so the folder is not an unmounted mount point.
+	disk, err := s.disks(root, false)
 	if err != nil {
 		return domain.Disk{}, fmt.Errorf("cannot resolve the disk of the media folder (%s): %w", root, err)
 	}
@@ -393,9 +407,10 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 }
 
 // snoozeIfRootUnreadable turns a failure into a snooze when the job's media folder cannot be read, and parks the
-// folder's jobs; a file missing under a readable folder was deleted, so it stays a failure.
+// folder's jobs; a file missing under a readable folder was deleted, so it stays a failure. A job that reads no
+// source file fails as usual, because a snooze would run it again at once.
 func (s *Scheduler) snoozeIfRootUnreadable(job domain.Job, cause error) error {
-	if job.RootID == 0 {
+	if job.RootID == 0 || !domain.JobReadsSource(job.Kind) {
 		return cause
 	}
 	path, ok := s.roots.path(job.RootID)
@@ -403,7 +418,8 @@ func (s *Scheduler) snoozeIfRootUnreadable(job domain.Job, cause error) error {
 		return cause
 	}
 	if !errors.Is(cause, domain.ErrJobSnoozed) {
-		if _, err := s.disks(path); err == nil {
+		// The job's location lies under the folder, so a folder that lists nothing is unmounted.
+		if _, err := s.disks(path, true); err == nil {
 			return cause
 		}
 		cause = fmt.Errorf("%w: the media folder cannot be read: %w", domain.ErrJobSnoozed, cause)

@@ -165,3 +165,27 @@ func TestDueJobKindsReportsTheMostUrgentDueClass(t *testing.T) {
 		t.Fatalf("due = %v, want %v", due, want)
 	}
 }
+
+func TestClaimJobOnTakesAJobThatReadsNoSourceUnderAnUnavailableRoot(t *testing.T) {
+	db, media, _ := twoRootsDB(t)
+	videoID := addVideoAt(t, db, "/media/movie.mp4", "movie")
+	enqueueProbe(t, db, videoID)
+	runImportStage(t, db, domain.JobProbe)
+	ctx := context.Background()
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, videoID, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	runImportStage(t, db, domain.JobSeekThumbnail)
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+
+	// The fingerprint reads saved sprites, so the unplugged folder does not park it.
+	job := claimOn(t, db, domain.JobClaim{
+		Kind: domain.JobFingerprint, MaxPriority: domain.JobPriorityBackfill, Unavailable: []int64{media},
+	})
+	if job.VideoID != videoID || job.RootID != media || job.Attempts != 1 {
+		t.Fatalf("claimed video %d under root %d at attempt %d, want video %d under %d at its first",
+			job.VideoID, job.RootID, job.Attempts, videoID, media)
+	}
+}

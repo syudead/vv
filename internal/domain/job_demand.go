@@ -58,6 +58,12 @@ func JobDemand(kind JobKind) JobResources {
 	}
 }
 
+// JobReadsSource reports whether the kind opens the video's source file. Only such a job needs its media folder
+// available: a fingerprint reads saved sprites, so it runs while its folder is unplugged.
+func JobReadsSource(kind JobKind) bool {
+	return JobDemand(kind).Read > 0
+}
+
 // DiskType is what is known about a disk's seek cost.
 type DiskType int
 

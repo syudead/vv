@@ -5,9 +5,9 @@ package mediafs
 import "github.com/syudead/vv/internal/domain"
 
 // ResolveDisk gives each media folder its own disk of unknown type, with 1 read slot, where no disk lookup exists.
-// An unreadable folder returns an error.
-func (FS) ResolveDisk(root string) (domain.Disk, error) {
-	dir, err := openReadableRoot(root)
+// An unreadable folder returns an error, as does an empty one while populated (see openReadableRoot).
+func (FS) ResolveDisk(root string, populated bool) (domain.Disk, error) {
+	dir, err := openReadableRoot(root, populated)
 	if err != nil {
 		return domain.Disk{}, err
 	}
