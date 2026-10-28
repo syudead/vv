@@ -39,9 +39,30 @@ func (db *DB) claimSubjectJob(ctx context.Context, claim domain.JobClaim) (domai
 	return job, nil
 }
 
-// completeSubjectJob deletes the finished job.
+// completeSubjectJob deletes the finished job, or queues it again at once when its subject was queued again while it
+// ran, since the run may have read the subject before that change.
 func (db *DB) completeSubjectJob(ctx context.Context, job domain.Job) error {
-	if _, err := db.sql.ExecContext(ctx, `delete from jobs where id = ? and state = 'running'`, job.ID); err != nil {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot finish the %s job (id=%d): %w", job.Kind, job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	c := &changes{}
+	at := jobNow().Unix()
+	res, err := tx.ExecContext(ctx, `update jobs set state = 'queued', attempts = 0, last_error = null,
+		force_requested = 0, run_after = ?1, updated_at = ?1 where id = ?2 and state = 'running' and force_requested = 1`,
+		at, job.ID)
+	if err != nil {
+		return fmt.Errorf("cannot queue the %s job again (id=%d): %w", job.Kind, job.ID, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("cannot queue the %s job again (id=%d): %w", job.Kind, job.ID, err)
+	} else if n > 0 {
+		c.jobsQueued(job.Kind)
+	} else if _, err := tx.ExecContext(ctx, `delete from jobs where id = ? and state = 'running'`, job.ID); err != nil {
+		return fmt.Errorf("cannot finish the %s job (id=%d): %w", job.Kind, job.ID, err)
+	}
+	if err := db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot finish the %s job (id=%d): %w", job.Kind, job.ID, err)
 	}
 	return nil
@@ -56,7 +77,9 @@ func (db *DB) failSubjectJob(ctx context.Context, job domain.Job, cause error) e
 	}
 	defer func() { _ = tx.Rollback() }()
 	var attempts int
-	err = tx.QueryRowContext(ctx, `select attempts from jobs where id = ? and state = 'running'`, job.ID).Scan(&attempts)
+	var requested bool
+	err = tx.QueryRowContext(ctx, `select attempts, force_requested from jobs where id = ? and state = 'running'`,
+		job.ID).Scan(&attempts, &requested)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -65,10 +88,14 @@ func (db *DB) failSubjectJob(ctx context.Context, job domain.Job, cause error) e
 	}
 	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, true, jobJitter())
 	c := &changes{}
-	if outcome.State == domain.JobFailed {
+	switch {
+	case outcome.State == domain.JobFailed && requested:
+		// The subject changed while the job ran, so the request queued then starts afresh rather than failing.
+		err = requeueClaimedJob(ctx, tx, c, job, 0, domain.JobFailure{State: domain.JobQueued}, cause.Error())
+	case outcome.State == domain.JobFailed:
 		_, err = tx.ExecContext(ctx, `update jobs set state = 'failed', last_error = ?, updated_at = ? where id = ?`,
 			cause.Error(), jobNow().Unix(), job.ID)
-	} else {
+	default:
 		err = requeueClaimedJob(ctx, tx, c, job, attempts, outcome, cause.Error())
 	}
 	if err != nil {
@@ -90,8 +117,9 @@ type subjectJob struct {
 }
 
 // queueSubjectJob inserts the job unless its subject has unfinished work; an owner request moves a queued one to the
-// owner class and ends its retry wait. It reports whether a job was inserted or moved, for the caller to publish
-// JobsQueued after commit.
+// owner class and ends its retry wait. Over a running job it sets force_requested, so the job runs again after it
+// ends, in the more urgent of the two classes. It reports whether a job was inserted or moved, for the caller to
+// publish JobsQueued after commit.
 func queueSubjectJob(ctx context.Context, tx *sql.Tx, job subjectJob) (bool, error) {
 	at := time.Now().Unix()
 	same := `kind = ?1 and coalesce(video_id, 0) = ?2 and coalesce(subject_key, '') = ?3`
@@ -107,7 +135,14 @@ func queueSubjectJob(ctx context.Context, tx *sql.Tx, job subjectJob) (bool, err
 	if err != nil {
 		return false, fmt.Errorf("cannot queue a %s job: %w", job.kind, err)
 	}
-	if n == 0 && job.priority == domain.JobPriorityOwner {
+	if n > 0 {
+		return true, nil
+	}
+	if _, err := tx.ExecContext(ctx, `update jobs set force_requested = 1, priority = min(priority, ?4), updated_at = ?5
+		where `+same+` and state = 'running'`, string(job.kind), job.videoID, job.subject, int(job.priority), at); err != nil {
+		return false, fmt.Errorf("cannot queue the running %s job again: %w", job.kind, err)
+	}
+	if job.priority == domain.JobPriorityOwner {
 		res, err = tx.ExecContext(ctx, `update jobs set priority = ?4, run_after = min(run_after, ?5), updated_at = ?5
 			where `+same+` and state = 'queued' and (priority <> ?4 or run_after > ?5)`,
 			string(job.kind), job.videoID, job.subject, int(job.priority), at)

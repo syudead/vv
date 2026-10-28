@@ -123,6 +123,39 @@ func TestFaceClaimTakesTheContentsFirstAvailableLocation(t *testing.T) {
 	}
 }
 
+// A failed face job tries its content's next location at once within the same attempt, and only a failure at the
+// last location waits for the retry delay.
+func TestFaceJobTriesTheContentsNextLocationAfterAFailure(t *testing.T) {
+	db, _, other := twoRootsDB(t)
+	ctx := context.Background()
+	addVideoAt(t, db, "/media/shared.mp4", "shared")
+	addVideoAt(t, db, "/other/shared.mp4", "shared")
+	if _, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	claim := domain.JobClaim{Kind: domain.JobFace, MaxPriority: domain.JobPriorityBackfill}
+
+	first := claimOn(t, db, claim)
+	if first.LocationPath != fixturePath("/media/shared.mp4") || first.Attempts != 1 || first.LastLocation {
+		t.Fatalf("first claim = %+v, want the first location on attempt 1 with another after it", first)
+	}
+	if err := db.Ingest().FailClaimedJob(ctx, first, errors.New("cannot open the video's file")); err != nil {
+		t.Fatal(err)
+	}
+	second := claimOn(t, db, domain.JobClaim{
+		Kind: domain.JobFace, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{other},
+	})
+	if second.LocationPath != fixturePath("/other/shared.mp4") || second.Attempts != 1 || !second.LastLocation {
+		t.Fatalf("second claim = %+v, want the next location within attempt 1, as the last one", second)
+	}
+	if err := db.Ingest().FailClaimedJob(ctx, second, errors.New("cannot open the video's file")); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := db.Ingest().ClaimJobOn(ctx, claim); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("claim after the last location failed = %+v, %v; want the job waiting for its retry delay", job, err)
+	}
+}
+
 // A work-information change queues the cast rule for each changed video while face recognition is on, once while
 // the job waits; a change while it is off is not checked later.
 func TestWorkInfoChangeQueuesTheCastRuleWhileFaceRecognitionIsOn(t *testing.T) {

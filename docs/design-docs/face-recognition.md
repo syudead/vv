@@ -414,7 +414,10 @@ provisional person with a face
 switch queues one `queue_face_images` job, which queues a `face_image` job for
 every face whose `person_face_vectors` row is missing or of another revision or
 recognizer, and the upgrade to face jobs queued it once for the faces stale
-then.
+then. A subject holds one unfinished job, so a request that finds its
+`face_image`, `face_cast` or `queue_face_images` job running sets the job's
+`force_requested` instead, and the job is queued again when it ends, even
+after its last failure; the run may have read the subject before the change.
 
 | Step  | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -606,9 +609,11 @@ rule never interleave and the helper answers one request at a time
 is paused while the feature is off or the chosen recognizer's runtime is not
 `ready`; its jobs stay queued with their attempts, and saving the settings or
 a download or helper check that makes the runtime ready wakes the scheduler.
-A `face` job also takes a read and a CPU slot. Its claim takes the first
-available location, in path order, of any video with its content key, as an
-import job's claim does; the job resolves that location through
+A `face` job also takes a read and a CPU slot. Its claim takes the available
+locations of every video with its content key in path order, starting after
+the previous attempt's, as an import job's claim does: a failure moves to the
+next copy at once, and only the claim that wraps to the first copy counts an
+attempt. The job resolves that location through
 `internal/mediafs`, as live transcoding does, and reads its frames with
 `ffmpeg` ([`face_frames.go`](../../internal/media/face_frames.go)).
 
@@ -620,11 +625,12 @@ import job's claim does; the job resolves that location through
 | Crops  | A crop of each track's best good face is kept while the track can still count: the face box doubled around its centre, moved inside the picture where it reaches past its edge and cut only where it is larger than the picture, never enlarged, fitted as a person's face |
 | Result | `FindMainPeople` over the tracks, each main person with its best face's crop, stored by `FaceStore.Store`                                                                                                                                                                  |
 
-`FaceRecognizer` keeps one helper per recognizer across jobs. After each job
-it stops the helper unless another `face` or `face_image` job is due and the
-lane is not paused, so the models leave memory while nothing is analysed; the
-next job starts it again. Turning the feature off stops an idle helper at
-once.
+`FaceRecognizer` keeps one helper per recognizer across jobs. After each
+face-lane job it stops the helper unless another `face` or `face_image` job is
+due and the lane is not paused, so the models leave memory while nothing is
+analysed; the next job starts it again. A `queue_face_images` job holds no
+lane slot and may run beside an analysis, so it never stops the helper.
+Turning the feature off stops an idle helper at once.
 
 | Event                                                                                 | Effect                                                                                                                       |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -632,7 +638,7 @@ once.
 | A switch that reaches `Store` before the cancellation                                 | `ErrFaceGenerationChanged`; the job is snoozed                                                                               |
 | The helper does not start or greet                                                    | The runtime is marked `failed`, which pauses the lane, and the job is snoozed until the owner downloads again                |
 | The helper exits mid-video, answers with an error or takes over 2 minutes for a frame | The attempt fails with the message and the job is retried after its delay, up to the attempt limit                           |
-| `ffmpeg` fails, or the location cannot be opened                                      | As above; `ffmpeg`'s invalid-data error fails the job at once, and an unreadable folder parks it                             |
+| `ffmpeg` fails, or the location cannot be opened                                      | The next copy is tried at once; after the last, as above. `ffmpeg`'s invalid-data error fails the job at once, and an unreadable folder parks it |
 | The video left the library                                                            | The claim drops the job; one claimed already stores no result                                                                |
 | A database error                                                                      | The attempt fails and the job is retried after its delay                                                                     |
 | The server stops                                                                      | The job stays `running`; startup recovery puts it back to `queued`                                                           |

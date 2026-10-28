@@ -263,3 +263,46 @@ func TestFaceChangesQueueAFaceImageJob(t *testing.T) {
 		t.Fatalf("jobs of a merge that brought a face = %v, want %v", got, want)
 	}
 }
+
+// A face replaced while its face_image job runs may come after the run read the old face, so the job runs again
+// after it ends, whether it succeeded or failed for good; without a request it ends.
+func TestAFaceReplacedWhileItsJobRunsQueuesTheJobAgain(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	person := createPerson(t, db, "Named").ID
+	setFace(t, db, person)
+	want := [][]any{{"queued", strconv.FormatInt(person, 10), int64(0), int64(domain.JobPriorityOwner)}}
+	for _, end := range []struct {
+		name string
+		run  func(job domain.Job) error
+	}{
+		{"completed", func(job domain.Job) error { return db.Ingest().CompleteClaimedJob(ctx, job) }},
+		{"failed for good", func(job domain.Job) error {
+			return db.Ingest().FailClaimedJob(ctx, job, domain.FailureRepeats(errors.New("unreadable face")))
+		}},
+	} {
+		job, err := db.Ingest().ClaimJob(ctx, domain.JobFaceImage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		setFace(t, db, person)
+		if err := end.run(job); err != nil {
+			t.Fatal(err)
+		}
+		got := queryRows(t, db.sql, `select state, subject_key, attempts, priority from jobs where kind = 'face_image'`, 4)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("jobs after the run %s = %v, want %v", end.name, got, want)
+		}
+	}
+
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobFaceImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := queryRows(t, db.sql, `select state from jobs where kind = 'face_image'`, 1); len(got) != 0 {
+		t.Fatalf("jobs after a run without a request = %v, want none", got)
+	}
+}

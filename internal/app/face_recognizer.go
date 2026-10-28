@@ -232,9 +232,14 @@ func (f *FaceRecognizer) RetryActivity(ctx context.Context, entry domain.Activit
 
 // HandleJob runs one job of the face lane. Work that a settings change, a recognizer switch, a replaced face or a
 // helper that did not start interrupted returns a snooze, so it runs again without counting an attempt; any other
-// failure is retried after its delay. After the job the helper, which holds the models in memory, stops unless
-// another analysis or embedding is due; the next one starts it again.
+// failure is retried after its delay. After a face-lane job the helper, which holds the models in memory, stops
+// unless another analysis or embedding is due; the next one starts it again.
 func (f *FaceRecognizer) HandleJob(ctx context.Context, job domain.Job) error {
+	if job.Kind == domain.JobQueueFaceImages {
+		// It holds no face lane slot and may run beside an analysis, so it leaves the helper to the lane's jobs.
+		_, err := f.images.QueueStaleFaceImages(ctx)
+		return err
+	}
 	var err error
 	switch job.Kind {
 	case domain.JobFace:
@@ -243,8 +248,6 @@ func (f *FaceRecognizer) HandleJob(ctx context.Context, job domain.Job) error {
 		err = f.embedJob(ctx, job)
 	case domain.JobFaceCast:
 		err = f.castJob(ctx, job)
-	case domain.JobQueueFaceImages:
-		_, err = f.images.QueueStaleFaceImages(ctx)
 	default:
 		err = fmt.Errorf("unknown face job kind %q", job.Kind)
 	}

@@ -77,7 +77,8 @@ func TestFaceFramesStopsWhenTheCallbackFails(t *testing.T) {
 	}
 }
 
-// The failed video's activity entry shows ffmpeg's reason, read from its bounded stderr.
+// The failed video's activity entry shows ffmpeg's reason, read from its bounded stderr, and ffmpeg's invalid-data
+// error fails the job at once instead of being retried.
 func TestFaceFramesReportsWhyFFmpegFailed(t *testing.T) {
 	t.Parallel()
 	requireFFmpeg(t)
@@ -87,7 +88,7 @@ func TestFaceFramesReportsWhyFFmpegFailed(t *testing.T) {
 	}
 
 	err := FaceFrames(context.Background(), path, func([]byte) error { return nil })
-	if err == nil || !strings.Contains(err.Error(), "moov atom not found") {
-		t.Fatalf("FaceFrames = %v, want ffmpeg's reason", err)
+	if err == nil || !strings.Contains(err.Error(), "moov atom not found") || !errors.Is(err, domain.ErrFailureRepeats) {
+		t.Fatalf("FaceFrames = %v, want ffmpeg's reason marked as a repeating failure", err)
 	}
 }

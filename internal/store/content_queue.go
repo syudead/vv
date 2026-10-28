@@ -377,7 +377,8 @@ func takeJob(
 
 // takeLocatedContentJob takes the next due job whose content has an available location under the claim's roots, or
 // whose content has no registered video left, and fills the location; a job stored only under unavailable or other
-// roots stays queued.
+// roots stays queued. Like an import job, it takes the content's locations in path order after the previous
+// attempt's, and only the claim that wraps to the first one counts an attempt.
 func takeLocatedContentJob(
 	ctx context.Context, tx *sql.Tx, q contentQueue, claim domain.JobClaim,
 ) (domain.Job, int64, bool, error) {
@@ -386,23 +387,24 @@ func takeLocatedContentJob(
 		onRoots = ` and exists (select 1 from media_folders mf where mf.id in (` + idList(claim.Roots) + `) and ` +
 			inMediaFolderCondition("c.next_path") + `)`
 	}
-	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
+	locations := contentLocations("j.subject_key", claim.Unavailable)
+	job :=domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
 	var activityID int64
 	var registered bool
-	var next sql.NullString
+	var previous, next sql.NullString
 	now := jobNow().Unix()
-	err := tx.QueryRowContext(ctx, `select c.id, c.subject_key, c.attempts, c.priority, c.activity_id, c.next_path,
-			c.registered from (
+	err := tx.QueryRowContext(ctx, `select c.id, c.subject_key, c.attempts, c.priority, c.activity_id, c.location_path,
+			c.next_path, c.registered from (
 		select j.id, j.subject_key, j.attempts, j.priority, j.run_after, coalesce(j.activity_id, 0) as activity_id,
-			(select l.path from videos v join video_locations l on l.video_id = v.id
-				where v.content_key = j.subject_key and `+availableLocationCondition("l", claim.Unavailable)+`
-				order by l.path limit 1) as next_path,
+			j.location_path,
+			coalesce((`+locations+` and l.path > j.location_path order by l.path limit 1),
+				(`+locations+` order by l.path limit 1)) as next_path,
 			exists (select 1 from videos v where v.content_key = j.subject_key and `+registeredVideoCondition("v")+`)
 				as registered
 		from jobs j where j.kind = ? and j.state = 'queued' and j.run_after <= ? and j.priority <= ?) c
 		where not c.registered or (c.next_path is not null`+onRoots+`)
 		order by c.priority, c.run_after, c.id limit 1`, string(q.job), now, int(claim.MaxPriority)).
-		Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID, &next, &registered)
+		Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID, &previous, &next, &registered)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, 0, false, domain.ErrNoJob
 	}
@@ -412,7 +414,14 @@ func takeLocatedContentJob(
 	if !registered {
 		return job, activityID, true, nil
 	}
-	job.Attempts++
+	job.StartsRound = !previous.Valid || next.String <= previous.String
+	job.Attempts = domain.ClaimAttempts(job.Attempts, job.StartsRound)
+	var later bool
+	if err := tx.QueryRowContext(ctx, `select exists (`+contentLocations("?", claim.Unavailable)+` and l.path > ?)`,
+		job.ContentKey, next.String).Scan(&later); err != nil {
+		return domain.Job{}, 0, false, fmt.Errorf("cannot check the %s job's later locations: %w", q.what, err)
+	}
+	job.LastLocation = !later
 	if err := tx.QueryRowContext(ctx, `select l.id, l.version, l.path,
 		coalesce((select mf.id from media_folders mf where `+inMediaFolderCondition("l.path")+`
 			order by length(mf.path) desc limit 1), 0)
@@ -426,6 +435,12 @@ func takeLocatedContentJob(
 		return domain.Job{}, 0, false, fmt.Errorf("cannot claim a %s job: %w", q.what, err)
 	}
 	return job, activityID, false, nil
+}
+
+// contentLocations selects the path of every available location of the content key the SQL expression key names.
+func contentLocations(key string, unavailable []int64) string {
+	return `select l.path from videos v join video_locations l on l.video_id = v.id
+		where v.content_key = ` + key + ` and ` + availableLocationCondition("l", unavailable)
 }
 
 // dropContentJob deletes the job of content that is gone, recording no result, and completes its entry.
@@ -546,7 +561,8 @@ func (db *DB) failContentJob(ctx context.Context, q contentQueue, job domain.Job
 		return fmt.Errorf("cannot read the %s job (id=%d): %w", q.what, job.ID, err)
 	}
 	reason := cause.Error()
-	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, true, jobJitter())
+	// A face job whose content has a later location tries it at once; the other kinds read no location.
+	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, !q.located || job.LastLocation, jobJitter())
 	now := time.Now()
 	c := &changes{}
 	// The entry needs attention after the last attempt and otherwise waits for the retry; the detail says why.
@@ -569,16 +585,20 @@ func (db *DB) failContentJob(ctx context.Context, q contentQueue, job domain.Job
 	return nil
 }
 
-// requeueClaimedJob queues the claimed job again after the outcome's delay; a snooze refunds the claim's attempt.
+// requeueClaimedJob queues the claimed job again after the outcome's delay. A snooze of a claim that started a round
+// undoes the round, refunding its attempt, so the next claim starts a new one from the first location.
 func requeueClaimedJob(
 	ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, attempts int, outcome domain.JobFailure, reason string,
 ) error {
-	if outcome.Uncounted {
+	undoRound := outcome.Uncounted && job.StartsRound
+	if undoRound {
 		attempts--
 	}
 	at := jobNow().Unix()
+	// A requeued job reads its subject again, which serves a request to run it again that came while it ran.
 	if _, err := tx.ExecContext(ctx, `update jobs set state = 'queued', attempts = ?, last_error = ?, run_after = ?,
-		updated_at = ? where id = ?`, attempts, reason, at+int64(math.Ceil(outcome.Delay.Seconds())), at, job.ID); err != nil {
+		location_path = case when ? then null else location_path end, force_requested = 0, updated_at = ?
+		where id = ?`, attempts, reason, at+int64(math.Ceil(outcome.Delay.Seconds())), undoRound, at, job.ID); err != nil {
 		return fmt.Errorf("cannot requeue the %s job (id=%d): %w", job.Kind, job.ID, err)
 	}
 	c.jobsQueued(job.Kind)

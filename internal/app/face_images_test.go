@@ -288,12 +288,31 @@ func TestFaceRecognizerClassifiesFaceImageOutcomes(t *testing.T) {
 	}
 }
 
-func TestFaceRecognizerQueuesTheStaleFaces(t *testing.T) {
-	f := newFaceWorkerFixture()
-	if err := f.rec.HandleJob(context.Background(), domain.Job{Kind: domain.JobQueueFaceImages}); err != nil {
-		t.Fatal(err)
-	}
-	if f.images.staleQueued != 1 {
-		t.Fatalf("QueueStaleFaceImages calls = %d, want 1", f.images.staleQueued)
-	}
+// queue_face_images holds no face lane slot, so it runs beside an analysis and must not stop that analysis's helper
+// even when no other face job is due.
+func TestFaceRecognizerQueuesTheStaleFacesWithoutStoppingARunningAnalysis(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFaceWorkerFixture()
+		f.helpers.holdAt = 2
+		done := f.start(faceJob("key-a"))
+		synctest.Wait()
+
+		if err := f.rec.HandleJob(context.Background(), domain.Job{Kind: domain.JobQueueFaceImages}); err != nil {
+			t.Fatal(err)
+		}
+		if f.images.staleQueued != 1 {
+			t.Fatalf("QueueStaleFaceImages calls = %d, want 1", f.images.staleQueued)
+		}
+		if _, closed := f.helpers.made(); closed != 0 {
+			t.Fatalf("helper closed %d times while the analysis used it, want 0", closed)
+		}
+
+		close(f.helpers.release)
+		if err := <-done; err != nil || len(f.queue.results()) != 1 {
+			t.Fatalf("analysis = %v, stored %d; want the video stored", err, len(f.queue.results()))
+		}
+		if created, closed := f.helpers.made(); len(created) != 1 || closed != 1 {
+			t.Fatalf("helpers created %v, closed %d; want the analysis's one helper, closed after it", created, closed)
+		}
+	})
 }
