@@ -49,14 +49,16 @@ central play button stay as they are (parent Issue, requirement 5 and `対象外
 **Acceptance**:
 
 - A browser test in [`playback.e2e.ts`](../../web/e2e/playback.e2e.ts) opens a
-  direct-route video without autoplay and, before pressing play, sees the
-  control bar and a non-empty duration display (criterion 1); clicks the mute
-  button, then plays, and the `video` element is muted (criterion 2); clicks
-  the theater button and the page enters theater mode (criterion 3, at the
-  default `lg` viewport); clicks the seek bar at half its width, then plays,
-  and playback starts within one second of that position (criterion 4); and
-  waits for the `vjs-user-inactive` class without moving the mouse and still
-  sees the bar (criterion 5). Browser level, because jsdom computes no
+  direct-route video without autoplay and does every pre-play check on that
+  player before its first play, since after it the bar fades while playing as
+  before. It sees the control bar and a non-empty duration display
+  (criterion 1); clicks the theater button and the page enters theater mode
+  (criterion 3, at the default `lg` viewport); waits for the
+  `vjs-user-inactive` class without moving the mouse and still sees the bar
+  (criterion 5); clicks the mute button and the seek bar at half its width;
+  and only then plays, and the `video` element is muted (criterion 2) and
+  playback starts within one second of the chosen position (criterion 4).
+  Browser level, because jsdom computes no
   stylesheet and the component tests fake video.js; the test stays with the
   Issue's criteria, which only Chromium and the real player show. Run as
   `task test-e2e -- e2e/playback.e2e.ts` locally or through the CI workflow's
