@@ -60,7 +60,7 @@ const fetches: Record<string, unknown> = {
 
 const covers = [{ width: 800, height: 450 }];
 
-function install(plugins: WorkInfoPlugin[], withCovers = false) {
+function install(plugins: WorkInfoPlugin[], withCovers = false, uploadStatus = 200) {
   const writes: { url: string; body: unknown }[] = [];
   const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const url = String(input);
@@ -89,7 +89,7 @@ function install(plugins: WorkInfoPlugin[], withCovers = false) {
     if (url.includes("/covers/")) return Promise.resolve(new Response("jpg"));
     if (url.endsWith("/thumbnail-image")) {
       writes.push({ url, body: null });
-      return Promise.resolve(json(video));
+      return Promise.resolve(json(video, uploadStatus));
     }
     const videoOf = /^\/api\/videos\/(\d+)$/.exec(url);
     if (videoOf !== null) return Promise.resolve(json(videos[videoOf[1] ?? ""]));
@@ -224,6 +224,26 @@ describe("FillInfoAction", () => {
       [image, aspect, WHOLE_IMAGE],
       [image, aspect, { ...WHOLE_IMAGE, backdrop: "black" }],
     ]);
+  });
+
+  it("表紙を保存できなかった行はそう示し、ダイアログを閉じない", async () => {
+    const user = userEvent.setup();
+    install([works], true, 500);
+    const image = { bitmap: { close: vi.fn() }, width: 800, height: 450 };
+    compose.loadUploadImage.mockResolvedValue({ image });
+    compose.encodeComposition.mockResolvedValue(new Blob(["png"], { type: "image/png" }));
+    renderAction();
+    await user.click(screen.getByRole("button", { name: "Fill info…" }));
+    await user.click(await screen.findByRole("button", { name: "Search" }));
+
+    const list = await screen.findByRole("list", { name: "Videos to fill" });
+    const [episode] = within(list).getAllByRole("listitem");
+    if (episode === undefined) throw new Error("a row expected");
+    await within(episode).findByText("ABC-1 · 2024-05-01");
+    await user.click(screen.getByRole("button", { name: "Fill 1 video" }));
+    await screen.findByText("Filled 1 video");
+    await within(episode).findByText("Filled, but the cover couldn't be saved");
+    expect(screen.getByRole("list", { name: "Videos to fill" })).toBeTruthy();
   });
 
   it("検索と取得ができるプラグインがなければ理由を示し、始められない", async () => {

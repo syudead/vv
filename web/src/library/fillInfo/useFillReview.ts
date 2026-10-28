@@ -188,7 +188,8 @@ async function runStep(
 
 /**
  * Apply one plan; a cover the page decodes is consumed by the apply and uploaded with the owner's framing or the
- * default one, and a cover it cannot decode is fitted by the server.
+ * default one, and a cover it cannot decode is fitted by the server. Resolves whether the cover, when planned, was
+ * saved.
  */
 async function applyRow(
   videoId: number,
@@ -202,7 +203,7 @@ async function applyRow(
       : (framing?.image ??
         (await loadFetchedCover(videoId, plan.fetchId, cover.index).catch(() => null)));
   try {
-    const applied = await applyWorkInfoFetch(
+    let applied = await applyWorkInfoFetch(
       videoId,
       plan.fetchId,
       workChoice(plan.plan.selection),
@@ -210,30 +211,36 @@ async function applyRow(
       image !== null,
     );
     if (image !== null && cover !== null)
-      await uploadFramedCover(
+      applied = await uploadFramedCover(
         applied,
         { image, aspect: cover.aspect, fit: framing?.fit ?? WHOLE_IMAGE },
         cover.size,
       );
+    return !applied.skipped.some((value) => value.field === "cover");
   } finally {
     if (image !== null && image !== framing?.image) image.bitmap.close();
   }
 }
 
+/** applied counts the videos written; complete is false when a row failed or its cover was not saved. */
 async function applyAll(
   rows: FillRow[],
   dispatch: (action: Action) => void,
-): Promise<number> {
+): Promise<{ applied: number; complete: boolean }> {
   let applied = 0;
+  let complete = true;
   dispatch({ type: "applying", applying: true });
   for (const [index, row] of rows.entries()) {
     if (!applicable(row) || row.plan === null) continue;
     dispatch({ type: "row", index, row: { status: "applying" } });
     try {
-      await applyRow(row.target.videoId, row.plan, row.framing);
-      dispatch({ type: "row", index, row: { status: "applied" } });
+      const coverSaved = await applyRow(row.target.videoId, row.plan, row.framing);
+      const failure = coverSaved ? null : t.library.selection.fillReview.coverNotSaved;
+      dispatch({ type: "row", index, row: { status: "applied", failure } });
       applied++;
+      complete &&= coverSaved;
     } catch (error) {
+      complete = false;
       dispatch({
         type: "row",
         index,
@@ -242,7 +249,7 @@ async function applyAll(
     }
   }
   dispatch({ type: "applying", applying: false });
-  return applied;
+  return { applied, complete };
 }
 
 /**

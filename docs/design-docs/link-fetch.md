@@ -219,7 +219,10 @@ A row that fills a cover shows it at the list thumbnail's size with
 The apply decodes the cover in the page and uploads it after the other fields
 commit, as the single fetch does, framed as the owner kept it or, untouched,
 as the preview's default: the whole image over its blurred copy. Only a cover
-the page cannot decode is left to the server's centre-crop fit. A plan that
+the page cannot decode is left to the server's centre-crop fit. A row whose
+cover was not saved counts as filled but says so, and the dialog stays open
+as after a failed apply. `Fill N videos` waits while a cover is being read for
+the preview, so the apply uses the framing the owner keeps. A plan that
 writes nothing is shown as such and not applied; a failed apply
 stays on its row with the reason, and the dialog stays open.
 

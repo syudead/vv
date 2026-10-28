@@ -83,7 +83,13 @@ function RowPlan({ row }: { row: FillRow }) {
   const words = t.library.selection.fillReview;
   if (row.status === "fetching") return <Pending text={words.reading} />;
   if (row.status === "applying") return <Pending text={words.applying} />;
-  if (row.status === "applied") return <p className="text-sm">{words.applied}</p>;
+  if (row.status === "applied") {
+    return (
+      <p className={row.failure === null ? "text-sm" : "text-sm text-destructive"}>
+        {row.failure ?? words.applied}
+      </p>
+    );
+  }
   if (row.status === "failed" && row.candidates.length > 0) {
     return <p className="text-sm text-destructive">{row.failure}</p>;
   }
@@ -168,10 +174,10 @@ export default function FillReviewDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (review.applying || count === 0) return;
-    void review.apply().then((applied) => {
+    if (locked || count === 0) return;
+    void review.apply().then(({ applied, complete }) => {
       toast(t.library.selection.filled(applied));
-      if (applied === count) onClose();
+      if (complete) onClose();
     });
   }
 
@@ -181,7 +187,7 @@ export default function FillReviewDialog({
       description={words.description}
       pending={review.applying}
       failure={null}
-      submitDisabled={count === 0}
+      submitDisabled={count === 0 || review.adjusting !== null}
       size="wide"
       onSubmit={submit}
       onClose={onClose}
