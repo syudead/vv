@@ -282,11 +282,15 @@ sequenceDiagram
 | The reading node rechecks its plugin before sending, and the peer skips its plugin check | The peer has no copy of the plugin |
 | The peer refuses the apply with `404` when the video's `contentVersion` has changed since the fetch | A reused id must not receive another video's values, as a local apply checks the content key |
 | The cover goes to the peer as a thumbnail upload, which is forwarded like the other single edits | The page frames a cover and uploads it the same way for both nodes |
-| No person face is filled, and the apply reports no linked people | This node cannot write the peer's people, and a face fetch for a linked person would run against them |
+| No person face is sent, and the apply reports no linked people | The people are registered on the peer, whose own face recognition finds their faces; no interface to write a face across nodes is needed |
 | The reading node keeps no activity entry for the fetch | Its activity log holds its own videos |
 
-`Fill info…` leaves out a selection with remote items: its fill runs many
-fetches and applies without a page, which this design does not cover.
+`Fill info…` over a selection with remote items lists its targets on both
+nodes: `POST /api/work-info-fill-targets` resolves this node's part and asks
+the peer for its part, which it answers in remote ids after this node's.
+The dialog then fetches for and applies to each remote target like a remote
+video's page, so a fill writes the peer's empty fields with the peer's own
+apply.
 
 ## The screens
 
@@ -300,7 +304,7 @@ form until a link exists, then the link's state, address, certificate and
 removal; "VVMDMs that read this one" shows the pairing code until a grant
 exists, then the reader's name, pairing time and "Remove access". Favorite, playlist,
 open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them; the selection bar also hides `Fill info…` for
-a selection with remote items, as
+the server does not offer them. The selection bar offers `Fill info…` for any
+selection, as
 [Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
 explains.

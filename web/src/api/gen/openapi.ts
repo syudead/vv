@@ -1965,7 +1965,7 @@ export interface paths {
         put?: never;
         /**
          * List the videos a selection fill searches for
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable.
          */
         post: operations["listWorkInfoFillTargets"];
         delete?: never;

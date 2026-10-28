@@ -124,24 +124,42 @@ func (s *server) fetchWorkInfo(
 	}
 }
 
-// ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key.
+// ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key: this node's first,
+// then the peer's in their remote ids, which the dialog fetches for and applies to like any remote video.
 func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
 	var body gen.WorkInfoFillTargetsRequest
 	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
+	sel, ok := s.resolveSelection(w, r, body.VideoIds, body.SmartFolderIds, maxVideoTagsIDs)
 	if !ok {
 		return
 	}
-	queries, err := s.workInfoPlugins.WorkInfoFillQueries(r.Context(), videoIDs)
-	if err != nil {
-		s.internalError(w, "Could not list the videos to fill.", err)
-		return
+	targets := []gen.WorkInfoFillTarget{}
+	if len(sel.local) > 0 {
+		queries, err := s.workInfoPlugins.WorkInfoFillQueries(r.Context(), sel.local)
+		if err != nil {
+			s.internalError(w, "Could not list the videos to fill.", err)
+			return
+		}
+		for _, q := range queries {
+			targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
+		}
 	}
-	targets := make([]gen.WorkInfoFillTarget, 0, len(queries))
-	for _, q := range queries {
-		targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
+	if sel.hasPeer() {
+		ids, folders := sel.peerTargets()
+		var answer gen.WorkInfoFillTargetList
+		err := s.peerCall(r, http.MethodPost, "/api/work-info-fill-targets", nil,
+			gen.WorkInfoFillTargetsRequest{VideoIds: ids, SmartFolderIds: folders}, &answer)
+		if err != nil {
+			s.logger.Info("could not list the other VVMDM's videos to fill", slog.Any("error", err))
+			s.peerUnreachable(w)
+			return
+		}
+		for _, target := range answer.Targets {
+			target.VideoId = domain.ToRemoteID(target.VideoId)
+			targets = append(targets, target)
+		}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoFillTargetList{Targets: targets}, s.logger)

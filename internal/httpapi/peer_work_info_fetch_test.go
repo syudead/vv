@@ -50,17 +50,7 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 		URLs:          []string{"https://shop.test/w/1"},
 		ExternalIDs:   []domain.ExternalID{{Source: "fanza", Value: "ctnoz148"}},
 	}}
-	uploads := map[*store.DB][]recordedUpload{}
-	fa, fb, _, b, _ := mergedNodesWith(t, func(db *store.DB, opts *Options) {
-		library := db.Library()
-		opts.WorkInfoPlugins = app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
-			Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: library, Applier: db.Overrides(), Matcher: db.Credits(),
-		})
-		opts.ThumbnailUploads = thumbnailUploadFunc(func(ctx context.Context, id int64, key string, _ []byte) (domain.Video, error) {
-			uploads[db] = append(uploads[db], recordedUpload{videoID: id, key: key})
-			return library.GetVideo(ctx, domain.AudienceOwner, id)
-		})
-	})
+	fa, fb, b, uploads := workInfoNodes(t, runtime)
 	ctx := context.Background()
 	performer, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "早美れむ"})
 	if err != nil {
@@ -123,6 +113,39 @@ func TestRemoteVideoWorkInfoFetchAppliesOnThePeer(t *testing.T) {
 	if err != nil || matches[0].State != domain.CreditMatchNew {
 		t.Errorf("b's people: match = %+v, %v, want no person 早美れむ on b", matches, err)
 	}
+}
+
+// A fill over a selection with the peer's videos lists this node's targets, then the peer's in their remote ids.
+func TestWorkInfoFillTargetsListThePeersVideos(t *testing.T) {
+	fa, fb, b, _ := workInfoNodes(t, coverRuntime{})
+	remote := domain.ToRemoteID(fa.ids["a"])
+	rec := b.owner(http.MethodPost, "/api/work-info-fill-targets", fmt.Sprintf(`{"videoIds":[%d,%d]}`, remote, fb.ids["b"]))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("fill targets: status = %d: %s", rec.Code, rec.Body)
+	}
+	want := []gen.WorkInfoFillTarget{{VideoId: fb.ids["b"], Title: "b", Query: "b"}, {VideoId: remote, Title: "a", Query: "a"}}
+	if got := decode[gen.WorkInfoFillTargetList](t, rec).Targets; !slices.Equal(got, want) {
+		t.Errorf("targets = %+v, want %+v", got, want)
+	}
+}
+
+// workInfoNodes pairs two nodes with real work-info storage whose plugin runs runtime answers; uploads records each
+// node's thumbnail uploads by its database.
+func workInfoNodes(t *testing.T, runtime coverRuntime) (fa, fb *guestFixture, b *peerNode, uploads map[*store.DB][]recordedUpload) {
+	t.Helper()
+	uploads = map[*store.DB][]recordedUpload{}
+	fa, fb, _, b, _ = mergedNodesWith(t, func(db *store.DB, opts *Options) {
+		library := db.Library()
+		opts.WorkInfoPlugins = app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
+			Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: library, Applier: db.Overrides(), Matcher: db.Credits(),
+			FillTargets: db.Overrides(),
+		})
+		opts.ThumbnailUploads = thumbnailUploadFunc(func(ctx context.Context, id int64, key string, _ []byte) (domain.Video, error) {
+			uploads[db] = append(uploads[db], recordedUpload{videoID: id, key: key})
+			return library.GetVideo(ctx, domain.AudienceOwner, id)
+		})
+	})
+	return fa, fb, b, uploads
 }
 
 // assertPeerWorkDetails checks that every chosen detail reached the peer's video unchanged.

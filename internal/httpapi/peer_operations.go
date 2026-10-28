@@ -91,6 +91,7 @@ var peerOperations = []string{
 	"POST /api/video-edits/summary",
 	"POST /api/video-code-edits",
 	"POST /api/video-code-edits/summary",
+	"POST /api/work-info-fill-targets",
 	"POST /api/collections/delete",
 
 	"POST /api/peer/pairings",

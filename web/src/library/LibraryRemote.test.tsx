@@ -194,7 +194,7 @@ describe("The library of two paired VVMDMs", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("offers no favorite, playlist, fill or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
+  it("offers fill but no favorite, playlist or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
     install();
     const user = userEvent.setup();
     renderLibrary();
@@ -202,7 +202,7 @@ describe("The library of two paired VVMDMs", () => {
     const bar = screen.getByRole("region", { name: "Selection actions" });
     expect(within(bar).queryByRole("button", { name: /Favorite/ })).toBeNull();
     expect(within(bar).queryByRole("button", { name: "Add to playlist" })).toBeNull();
-    expect(within(bar).queryByRole("button", { name: "Fill info…" })).toBeNull();
+    expect(within(bar).getByRole("button", { name: "Fill info…" })).toBeDefined();
     const add = within(bar).getByRole("button", { name: "Add to group" });
     expect(add.hasAttribute("disabled")).toBe(true);
     expect(add.getAttribute("title")).toBe("Select videos from one VVMDM to do this");
