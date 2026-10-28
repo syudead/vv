@@ -191,10 +191,10 @@ filesystem.
 
 ## Queue workers
 
-Ingest, auto-tagging and face jobs run under one scheduler that grants each
-job its kind's CPU, classifier and face lane slots and read slots of its disk,
-taking disks in turn, so several jobs and disks run at once, and skips the
-kinds of a feature that is off ([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
+Ingest, auto-tagging, face and backfill jobs run under one scheduler that
+grants each job its kind's CPU, classifier and face lane slots and read slots
+of its disk, taking disks in turn, so several jobs and disks run at once, and
+skips the kinds of a feature that is off ([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
 background queue has one worker that takes one item at a time. The waiting is
 shared: `jobs.Loop` runs a worker's or the scheduler's step, then sleeps as the
 step asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in

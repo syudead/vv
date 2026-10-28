@@ -29,7 +29,7 @@ func (db *DB) claimSubjectJob(ctx context.Context, claim domain.JobClaim) (domai
 		return domain.Job{}, fmt.Errorf("cannot claim a %s job: %w", claim.Kind, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	job, _, err := takeJob(ctx, tx, claim.Kind, claim.MaxPriority, string(claim.Kind))
+	job, _, err := takeJob(ctx, tx, claim.Kind, claim.MaxPriority)
 	if err != nil {
 		return domain.Job{}, err
 	}

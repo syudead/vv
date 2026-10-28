@@ -25,6 +25,16 @@ const (
 	JobFaceCast JobKind = "face_cast"
 	// JobQueueFaceImages queues a face_image job for every person whose face has no current vector.
 	JobQueueFaceImages JobKind = "queue_face_images"
+	// JobKeyframes and JobMediaInfo re-read one video's file so stored results from an older build gain what this
+	// build reads.
+	JobKeyframes JobKind = "keyframes"
+	JobMediaInfo JobKind = "media_info"
+	// JobQueueKeyframes and JobQueueMediaInfo queue one JobKeyframes or JobMediaInfo job per video whose stored result
+	// is out of date, and then finish.
+	JobQueueKeyframes JobKind = "queue_keyframes"
+	JobQueueMediaInfo JobKind = "queue_media_info"
+	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
+	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
 
 // FaceLaneJobKinds are the kinds that share the one face lane slot, so the helper and the cast rule never interleave.
@@ -90,10 +100,17 @@ func AnyJobClaim(kind JobKind) JobClaim {
 // JobKinds are the import stages in stage order; only they join import activity and scan settling.
 var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, JobFingerprint}
 
+// StartupJobKinds are the jobs every start queues once, in the backfill class, with no subject. See
+// docs/design-docs/process-lifecycle.md.
+var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails}
+
+// BackfillJobKinds only refresh stored results: StartupJobKinds and the jobs they queue.
+var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobKinds...)
+
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.
-var ScheduledJobKinds = append(slices.Clone(JobKinds),
-	JobAutoTag, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages)
+var ScheduledJobKinds = slices.Concat(JobKinds,
+	[]JobKind{JobAutoTag, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages}, BackfillJobKinds)
 
 type JobState string
 

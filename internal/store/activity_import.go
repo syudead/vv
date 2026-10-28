@@ -15,7 +15,7 @@ import (
 // Each import activity spans all five stages; jobs reference it and update its state in their own transaction.
 
 func pendingJobCondition(alias string) string {
-	return alias + `.state in ('queued', 'running')`
+	return alias + `.state in ('queued', 'running') and ` + alias + `.kind in (` + importJobKinds + `)`
 }
 
 // Prefer the overridden title, then a virtual video's title, then the first location by path.

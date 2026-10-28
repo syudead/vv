@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -336,7 +335,7 @@ func takeContentJob(
 	if q.located {
 		return takeLocatedContentJob(ctx, tx, q, claim)
 	}
-	job, activityID, err = takeJob(ctx, tx, q.job, claim.MaxPriority, q.what)
+	job, activityID, err = takeJob(ctx, tx, q.job, claim.MaxPriority)
 	if err != nil {
 		return domain.Job{}, 0, false, err
 	}
@@ -345,34 +344,6 @@ func takeContentJob(
 		return job, activityID, true, nil
 	}
 	return job, activityID, false, err
-}
-
-// takeJob marks the next due job of kind, in maxPriority or a more urgent class, running and counts the attempt. Its
-// subject_key is the job's content key, or the person of a face_image job.
-func takeJob(
-	ctx context.Context, tx *sql.Tx, kind domain.JobKind, maxPriority domain.JobPriority, what string,
-) (domain.Job, int64, error) {
-	job := domain.Job{Kind: kind, StartsRound: true, LastLocation: true}
-	var activityID int64
-	err := tx.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
-		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1 and priority <= ?3
-			order by priority, run_after, id limit 1)
-		returning id, coalesce(video_id, 0), coalesce(subject_key, ''), attempts, priority, coalesce(activity_id, 0)`,
-		jobNow().Unix(), string(kind), int(maxPriority)).
-		Scan(&job.ID, &job.VideoID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Job{}, 0, domain.ErrNoJob
-	}
-	if err != nil {
-		return domain.Job{}, 0, fmt.Errorf("cannot claim a %s job: %w", what, err)
-	}
-	if kind == domain.JobFaceImage {
-		if job.PersonID, err = strconv.ParseInt(job.ContentKey, 10, 64); err != nil {
-			return domain.Job{}, 0, fmt.Errorf("cannot read the person of face image job %d: %w", job.ID, err)
-		}
-		job.ContentKey = ""
-	}
-	return job, activityID, nil
 }
 
 // takeLocatedContentJob takes the next due job whose content has an available location under the claim's roots, or
