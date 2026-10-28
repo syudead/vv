@@ -23,7 +23,7 @@ func newPairing(
 	}
 	client := peer.New(peer.Options{})
 	pairing := app.NewPairing(app.PairingOptions{
-		Store: peers, Link: client, Version: build.Version, NodeName: name,
+		Store: peers, Client: client, Version: build.Version, NodeName: name,
 		Publisher: publisher, Logger: logger,
 	})
 	return pairing, peer.NewForwarder(client, pairing)

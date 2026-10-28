@@ -2249,7 +2249,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Return the pairing state"
-      description: "Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the peer is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the peer's node id and version (reason version when either differs); a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the peer revokes its credential here and gives revoked."
+      description: "Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked."
       responses:
         "200":
           description: "Pairing state"
@@ -2257,13 +2257,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PeerState"
+
+  /api/peer/link:
     delete:
       operationId: unpairPeer
-      summary: "Unpair from the peer"
-      description: "Tells the peer through its forgetPeer, best effort, then deletes the peer record and nothing else, which also clears a revoked state. A peer that could not be told learns it from the 401 peer_unknown its next request receives. Without a peer it also returns 204."
+      summary: "Stop reading the other VVMDM"
+      description: "Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204."
       responses:
         "204":
           description: "Unpaired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/peer/grant:
+    delete:
+      operationId: revokePeerGrant
+      summary: "Withdraw the reading VVMDM's access"
+      description: "Deletes the grant and cancels the reading node's requests in flight; its next request receives 401 peer_unknown, after which it shows this node as revoked. The link, if any, stays. Without a grant it also returns 204."
+      responses:
+        "204":
+          description: "Revoked"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -2271,7 +2284,7 @@ paths:
     post:
       operationId: issuePairingCode
       summary: "Issue this node's pairing code"
-      description: "Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired."
+      description: "Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A node another VVMDM already reads returns 409 conflict with already_paired; the owner withdraws that access first."
       responses:
         "201":
           description: "Pairing code"
@@ -2287,8 +2300,8 @@ paths:
   /api/peer/pair:
     post:
       operationId: pairPeer
-      summary: "Pair with the node whose code the owner typed"
-      description: "An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
+      summary: "Read the node whose code the owner typed"
+      description: "Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
       requestBody:
         required: true
         content:
@@ -2312,8 +2325,8 @@ paths:
   /api/peer/address:
     put:
       operationId: updatePeerAddress
-      summary: "Change the peer's address"
-      description: "Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found."
+      summary: "Change the read node's address"
+      description: "Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found."
       requestBody:
         required: true
         content:
@@ -2337,8 +2350,8 @@ paths:
   /api/peer/certificate:
     post:
       operationId: confirmPeerCertificate
-      summary: "Trust the peer's changed certificate"
-      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation."
+      summary: "Trust the read node's changed certificate"
+      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found."
       requestBody:
         required: true
         content:
@@ -2365,8 +2378,8 @@ paths:
     post:
       operationId: acceptPairing
       security: []
-      summary: "Accept a pairing from another node"
-      description: "Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint."
+      summary: "Grant the sender read access to this node"
+      description: "Called by the node that will read this one, never by the screens; the code authenticates it. Stores the grant with the sender's identity and answers the secret the sender presents from then on; this node never connects to the sender. Only a pairing that succeeded clears the code. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or the node's own id, 400 invalid_request; a node another VVMDM already reads 409 already_paired."
       requestBody:
         required: true
         content:
@@ -2389,8 +2402,8 @@ paths:
     get:
       operationId: peerHandshake
       security: []
-      summary: "Return this node's identity to the peer"
-      description: "Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown."
+      summary: "Return this node's identity to the reading node"
+      description: "Requires `Authorization: VV-Peer <secret>` with the grant's credential. Anything else returns 401 unauthenticated with peer_unknown."
       responses:
         "200":
           description: "This node"
@@ -2408,8 +2421,8 @@ paths:
   /api/peer/pairings/{nodeId}:
     delete:
       operationId: forgetPeer
-      summary: "Delete the record of a peer that unpaired"
-      description: "Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204."
+      summary: "Delete the grant of a reading node that unpaired"
+      description: "Called by the reading node with its credential after it removed its link. Deletes the grant when nodeId matches; a missing or different grant also returns 204."
       parameters:
         - name: nodeId
           in: path
@@ -12637,24 +12650,37 @@ components:
           description: "Host name"
         version:
           type: string
-          description: "Release version, as getHealth reports it"
-    PeerInfo:
+          description: "Release version, as getHealth reports it; shown for reference, never compared"
+    PeerLink:
       type: object
       required: [name, address, pinned]
       additionalProperties: false
+      description: "The VVMDM this node reads"
       properties:
         name:
           type: string
-          description: "The peer's host name at pairing"
+          description: "Its host name at pairing"
         address:
           type: string
-          description: "The peer's base URL"
+          description: "Its base URL"
         pinned:
           type: boolean
-          description: "Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted"
+          description: "Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted"
         version:
           type: string
-          description: "The peer version last seen; with reason version, the one that differs"
+          description: "Its version last seen, shown for reference"
+    PeerGrant:
+      type: object
+      required: [name, pairedAt]
+      additionalProperties: false
+      description: "The VVMDM that reads this one"
+      properties:
+        name:
+          type: string
+          description: "Its host name at pairing"
+        pairedAt:
+          type: string
+          format: date-time
     PeerState:
       type: object
       required: [state]
@@ -12663,18 +12689,21 @@ components:
         state:
           type: string
           enum: [unpaired, connected, unreachable, revoked]
+          description: "The connection to the VVMDM this node reads; unpaired without link"
         reason:
           type: string
-          enum: [network, version, certificate]
+          enum: [network, certificate]
           description: "Present with unreachable"
-        peer:
-          $ref: "#/components/schemas/PeerInfo"
+        link:
+          $ref: "#/components/schemas/PeerLink"
         fingerprint:
           type: string
           description: "With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only."
+        grant:
+          $ref: "#/components/schemas/PeerGrant"
         node:
           $ref: "#/components/schemas/PeerNode"
-      description: "Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity."
+      description: "Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity."
     PairingCode:
       type: object
       required: [code, expiresAt]
@@ -12687,7 +12716,7 @@ components:
           format: date-time
     PairPeerRequest:
       type: object
-      required: [address, code, ownAddress]
+      required: [address, code]
       additionalProperties: false
       properties:
         address:
@@ -12696,15 +12725,9 @@ components:
         code:
           type: string
           description: "The code the other node's Pairing page shows"
-        ownAddress:
-          type: string
-          description: "This node's base URL as the other node can reach it"
         fingerprint:
           type: string
           description: "The SPKI fingerprint the owner confirmed after certificate_untrusted"
-        ownFingerprint:
-          type: string
-          description: "The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified"
     UpdatePeerAddressRequest:
       type: object
       required: [address]
@@ -12720,36 +12743,16 @@ components:
         fingerprint:
           type: string
           description: "The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI"
-    PairingRequestNode:
-      type: object
-      required: [id, name, address, version]
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-          description: "1 to 100 code points"
-        address:
-          type: string
-          description: "The sender's base URL as the receiver can reach it"
-        fingerprint:
-          type: string
-          description: "Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate."
-        version:
-          type: string
     PairingRequest:
       type: object
-      required: [code, node, secret]
+      required: [code, node]
       additionalProperties: false
       properties:
         code:
           type: string
         node:
-          $ref: "#/components/schemas/PairingRequestNode"
-        secret:
-          type: string
-          description: "What the receiver will present to the sender: vvp_ and 43 base64url characters"
+          $ref: "#/components/schemas/PeerNode"
+      description: "The sender's identity; no address, because the receiver never connects to the sender."
     PairingAnswer:
       type: object
       required: [node, secret]
@@ -12759,7 +12762,7 @@ components:
           $ref: "#/components/schemas/PeerNode"
         secret:
           type: string
-          description: "What the sender presents to the receiver"
+          description: "What the sender presents to the receiver from then on: vvp_ and 43 base64url characters"
     PeerHandshake:
       type: object
       required: [node]
@@ -13070,13 +13073,7 @@ components:
             type: string
         fingerprint:
           type: string
-          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate."
-        localVersion:
-          type: string
-          description: "This node's release version; only for unsupported_version."
-        peerVersion:
-          type: string
-          description: "The other node's release version; only for unsupported_version."
+          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed."
         links:
           type: array
           description: "The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous."
@@ -13191,7 +13188,6 @@ components:
         - invalid_address
         - invalid_code
         - already_paired
-        - unsupported_version
         - peer_unreachable
         - mixed_nodes
         - provisional_person_remote
@@ -13200,4 +13196,3 @@ components:
         - organization_name_taken
         - certificate_untrusted
         - fingerprint_changed
-        - own_certificate_unverified

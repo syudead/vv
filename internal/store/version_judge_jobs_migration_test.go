@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const versionJudgeJobsVersion = 85
+const versionJudgeJobsVersion = 86
 
 // Waiting, interrupted and failed pairs become version_judge jobs, a failed pair keeping its attempts and retry time;
 // going back restores the candidates' retry columns, with an interrupted pair waiting again.

@@ -10,7 +10,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const jobSchedulingVersion = 83
+const jobSchedulingVersion = 84
 
 // Existing rows keep their state, attempts, error, activity and force flags across the jobs rebuild and back.
 func TestJobSchedulingMigrationRoundTripsExistingRows(t *testing.T) {

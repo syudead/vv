@@ -3,57 +3,53 @@ package app
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// PeerStore holds the peer record and this node's id; it hashes incoming secrets itself.
+// PeerStore holds the outgoing link, the incoming grant and this node's id; it hashes the grant's secret itself.
 type PeerStore interface {
 	// EnsureNodeID saves candidate when no node id exists and returns the stored one.
 	EnsureNodeID(ctx context.Context, candidate string) (string, error)
-	Peer(ctx context.Context) (domain.PeerRecord, bool, error)
-	// AddPeer answers domain.ErrAlreadyPaired when a record exists.
-	AddPeer(ctx context.Context, record domain.PeerRecord, incomingSecret string) error
-	// PeerBySecret never matches a record whose incoming secret was revoked.
-	PeerBySecret(ctx context.Context, secret string) (domain.PeerRecord, bool, error)
-	// UpdatePeerAddress answers domain.ErrNotFound without a record.
-	UpdatePeerAddress(ctx context.Context, address string) (domain.PeerRecord, error)
-	DeletePeer(ctx context.Context, nodeID string) (bool, error)
-	// RevokeIncomingSecret clears the incoming secret hash, so the peer credential is refused.
-	RevokeIncomingSecret(ctx context.Context, nodeID string) error
-	// PinPeerCertificate stores the SPKI fingerprint the owner confirmed.
-	PinPeerCertificate(ctx context.Context, nodeID, spki string) error
+	Link(ctx context.Context) (domain.PeerLink, bool, error)
+	// AddLink answers domain.ErrAlreadyPaired when a link exists.
+	AddLink(ctx context.Context, link domain.PeerLink) error
+	// UpdateLinkAddress answers domain.ErrNotFound without a link.
+	UpdateLinkAddress(ctx context.Context, address string) (domain.PeerLink, error)
+	// PinLinkCertificate stores the SPKI fingerprint the owner confirmed.
+	PinLinkCertificate(ctx context.Context, nodeID, spki string) error
+	// MarkLinkRevoked records that the peer refused the link's secret.
+	MarkLinkRevoked(ctx context.Context, nodeID string) error
+	DeleteLink(ctx context.Context, nodeID string) (bool, error)
+	Grant(ctx context.Context) (domain.PeerGrant, bool, error)
+	// AddGrant answers domain.ErrAlreadyPaired when a grant exists.
+	AddGrant(ctx context.Context, grant domain.PeerGrant, secret string) error
+	GrantBySecret(ctx context.Context, secret string) (domain.PeerGrant, bool, error)
+	DeleteGrant(ctx context.Context, nodeID string) (bool, error)
 }
 
-// PeerLink calls the other node. A failed call answers *domain.PeerUnreachableError or
+// PeerClient calls the node this one reads. A failed call answers *domain.PeerUnreachableError or
 // *domain.CertificateUntrustedError; a refusal answers the domain error the other node named.
-type PeerLink interface {
-	// Version reads the release version the node at target reports in its health.
-	Version(ctx context.Context, target domain.PeerTarget) (string, error)
+type PeerClient interface {
 	RequestPairing(ctx context.Context, target domain.PeerTarget, req domain.PairingRequest) (domain.PairingAnswer, error)
-	// Certificate completes only a TLS handshake with the https address, sending nothing over the connection,
-	// and returns the certificate the address presents.
-	Certificate(ctx context.Context, address string) (domain.PresentedCertificate, error)
 	// Handshake presents secret and returns the identity the node at target answers with.
 	Handshake(ctx context.Context, target domain.PeerTarget, secret string) (domain.PeerNode, error)
 	// Watch holds the peer's event stream open with secret: it calls opened once the stream is open and
 	// changed for each forwarded notification, and returns a non-nil error when the stream ends.
 	Watch(ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged)) error
-	// Forget tells the peer that the node nodeID unpaired.
+	// Forget tells the peer that the node nodeID stopped reading it.
 	Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error
 }
 
 type PairingOptions struct {
-	Store PeerStore
-	Link  PeerLink
-	// Version is this node's release version, compared with the peer's.
+	Store  PeerStore
+	Client PeerClient
+	// Version is this node's release version, which the peer shows for reference.
 	Version string
 	// NodeName is this node's host name, shown on the peer's screens.
 	NodeName string
@@ -67,10 +63,12 @@ type PairingOptions struct {
 	Logger *slog.Logger
 }
 
-// Pairing owns the pairing code, the pairing in both directions, unpairing and the connection state.
+// Pairing owns the pairing code, the outgoing link this node reads with its connection state, and the
+// incoming grant of the node that reads this one. The two directions are independent: pairing creates one
+// link here and one grant on the other node, and nothing else.
 type Pairing struct {
 	store     PeerStore
-	link      PeerLink
+	client    PeerClient
 	version   string
 	nodeName  string
 	now       func() time.Time
@@ -78,18 +76,19 @@ type Pairing struct {
 	publisher Publisher
 	logger    *slog.Logger
 
-	// pairMu serializes pairing and acceptance, which each call the other node before storing.
-	pairMu sync.Mutex
-	// revokeMu makes revoking the incoming secret and interrupting the loop exclusive, so an interrupted
-	// attempt cannot revoke the record its interrupter acts on.
+	// pairMu serializes pairings this node starts, which call the other node before storing the link;
+	// acceptMu serializes the grants it gives. They are separate so a node cannot block itself.
+	pairMu   sync.Mutex
+	acceptMu sync.Mutex
+	// revokeMu makes marking the link revoked and interrupting the loop exclusive, so an interrupted
+	// attempt cannot revoke the link its interrupter acts on.
 	revokeMu sync.Mutex
 
-	mu      sync.Mutex
-	nodeID  string
-	code    domain.PairingCodeSlot
-	pending map[string]struct{}
-	loaded  bool
-	status  peerStatus
+	mu     sync.Mutex
+	nodeID string
+	code   domain.PairingCodeSlot
+	loaded bool
+	status peerStatus
 	// generation counts interruptions of the connection loop, so an attempt that was interrupted
 	// cannot overwrite the state its interrupter set.
 	generation uint64
@@ -101,9 +100,9 @@ type Pairing struct {
 
 func NewPairing(opts PairingOptions) *Pairing {
 	p := &Pairing{
-		store: opts.Store, link: opts.Link, version: opts.Version, nodeName: opts.NodeName,
+		store: opts.Store, client: opts.Client, version: opts.Version, nodeName: opts.NodeName,
 		now: opts.Now, random: opts.Random, publisher: opts.Publisher, logger: opts.Logger,
-		pending: map[string]struct{}{}, wake: make(chan struct{}, 1),
+		wake: make(chan struct{}, 1),
 	}
 	if p.logger == nil {
 		p.logger = slog.Default()
@@ -137,30 +136,42 @@ func (p *Pairing) Node(ctx context.Context) (domain.PeerNode, error) {
 	return domain.PeerNode{ID: id, Name: p.nodeName, Version: p.version}, nil
 }
 
-// State returns the connection state with the record and this node's identity.
+// State returns the link with its connection state, the grant and this node's identity.
 func (p *Pairing) State(ctx context.Context) (domain.PeerState, error) {
 	node, err := p.Node(ctx)
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	record, found, err := p.store.Peer(ctx)
+	link, err := p.link(ctx)
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	var peer *domain.PeerRecord
-	if found {
-		peer = &record
+	grant, found, err := p.store.Grant(ctx)
+	if err != nil {
+		return domain.PeerState{}, err
 	}
-	status := p.loadStatus(peer)
-	return domain.PeerState{
-		State: status.state, Reason: status.reason, Peer: peer, PeerVersion: status.peerVersion,
-		Fingerprint: status.fingerprint, Node: node,
-	}, nil
+	state := domain.PeerState{Link: link, Node: node}
+	if found {
+		state.Grant = &grant
+	}
+	status := p.loadStatus(link)
+	state.State, state.Reason, state.PeerVersion, state.Fingerprint =
+		status.state, status.reason, status.peerVersion, status.fingerprint
+	return state, nil
 }
 
-// IssueCode replaces an unused code; a paired node answers domain.ErrAlreadyPaired.
+// link reads the stored link as a pointer, nil without one.
+func (p *Pairing) link(ctx context.Context) (*domain.PeerLink, error) {
+	link, found, err := p.store.Link(ctx)
+	if err != nil || !found {
+		return nil, err
+	}
+	return &link, nil
+}
+
+// IssueCode replaces an unused code; a node another VVMDM already reads answers domain.ErrAlreadyPaired.
 func (p *Pairing) IssueCode(ctx context.Context) (domain.PairingCode, error) {
-	if _, found, err := p.store.Peer(ctx); err != nil {
+	if _, found, err := p.store.Grant(ctx); err != nil {
 		return domain.PairingCode{}, err
 	} else if found {
 		return domain.PairingCode{}, domain.ErrAlreadyPaired
@@ -170,121 +181,70 @@ func (p *Pairing) IssueCode(ctx context.Context) (domain.PairingCode, error) {
 	return p.code.Issue(p.random, p.now())
 }
 
-// Pair pairs this node with the node at input.Address by sending that node's code; both nodes store
-// their record only after the other node called this one back.
+// Pair makes this node read the node at input.Address by sending that node's code; the link is stored once
+// that node answered with the secret to present. The other node never connects back.
 func (p *Pairing) Pair(ctx context.Context, input domain.PairInput) (domain.PeerState, error) {
 	address, err := domain.NormalizePeerAddress(input.Address)
 	if err != nil {
 		return domain.PeerState{}, &domain.InvalidPeerAddressError{Field: "address"}
 	}
-	ownAddress, err := domain.NormalizePeerAddress(input.OwnAddress)
-	if err != nil {
-		return domain.PeerState{}, &domain.InvalidPeerAddressError{Field: "ownAddress"}
-	}
 	p.pairMu.Lock()
 	defer p.pairMu.Unlock()
-	if err := p.refuseWhenPaired(ctx); err != nil {
+	if _, found, err := p.store.Link(ctx); err != nil {
 		return domain.PeerState{}, err
+	} else if found {
+		return domain.PeerState{}, domain.ErrAlreadyPaired
 	}
 	node, err := p.Node(ctx)
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	ownFingerprint, err := p.ownFingerprint(ctx, ownAddress, input.OwnFingerprint)
-	if err != nil {
-		return domain.PeerState{}, err
-	}
 	target := domain.PeerTarget{Address: address, PinnedSPKI: input.Fingerprint}
-	peerVersion, err := p.link.Version(ctx, target)
+	answer, err := p.client.RequestPairing(ctx, target, domain.PairingRequest{Code: input.Code, Node: node})
 	if err != nil {
 		return domain.PeerState{}, err
 	}
-	if err := domain.CheckPeerVersions(p.version, peerVersion); err != nil {
+	if err := checkPairingAnswer(answer, node.ID); err != nil {
 		return domain.PeerState{}, err
 	}
-	incoming, err := domain.NewPeerSecret(p.random)
-	if err != nil {
+	link := domain.PeerLink{
+		NodeID: answer.Node.ID, Name: answer.Node.Name, Address: address, Secret: answer.Secret,
+		PinnedSPKI: input.Fingerprint, PairedAt: p.now(),
+	}
+	if err := p.store.AddLink(ctx, link); err != nil {
 		return domain.PeerState{}, err
 	}
-	// The other node calls this one back with incoming before it answers, and its connection loop may
-	// handshake again before this node stores the record, so incoming stays pending until then.
-	release := p.expectHandshake(incoming)
-	defer release()
-	answer, err := p.link.RequestPairing(ctx, target, domain.PairingRequest{
-		Code: input.Code, Node: node, Address: ownAddress, Secret: incoming,
-		Fingerprint: ownFingerprint,
-	})
-	if err != nil {
-		return domain.PeerState{}, err
-	}
-	if err := checkPairingAnswer(answer, node.ID, p.version); err != nil {
-		return domain.PeerState{}, err
-	}
-	record := domain.PeerRecord{
-		NodeID: answer.Node.ID, Name: answer.Node.Name, Address: address,
-		OutgoingSecret: answer.Secret, PinnedSPKI: input.Fingerprint, PairedAt: p.now(),
-	}
-	if err := p.store.AddPeer(ctx, record, incoming); err != nil {
-		return domain.PeerState{}, err
-	}
-	p.paired(answer.Node.Version)
+	generation := p.interrupt(true)
+	p.setStatus(generation, peerStatus{state: domain.PeerConnected, peerVersion: answer.Node.Version})
 	return p.State(ctx)
 }
 
-// ownFingerprint is the certificate of this node's own address that the other node pins for its callback:
-// empty for an http address or one the system roots verify, and otherwise the SPKI the owner confirmed, which
-// must be the one the address presents now. Only the owner's comparison authenticates it: an on-path proxy
-// would relay any check made over this node's connection to itself, so the probe sends nothing over it.
-func (p *Pairing) ownFingerprint(ctx context.Context, ownAddress, confirmed string) (string, error) {
-	if !strings.HasPrefix(ownAddress, "https://") {
-		return "", nil
-	}
-	presented, err := p.link.Certificate(ctx, ownAddress)
-	if err != nil {
-		// Without a route to itself, such as behind NAT without hairpinning, the other node verifies with the
-		// roots or the pin the owner confirmed earlier.
-		p.logger.Info("could not read the certificate of this VVMDM's own address",
-			slog.String("address", ownAddress), slog.Any("error", err))
-		return confirmed, nil
-	}
-	if presented.Verified {
-		return "", nil
-	}
-	if confirmed != presented.Fingerprint {
-		return "", &domain.OwnCertificateUnverifiedError{Fingerprint: presented.Fingerprint}
-	}
-	return confirmed, nil
-}
-
-func checkPairingAnswer(answer domain.PairingAnswer, ownID, version string) error {
+func checkPairingAnswer(answer domain.PairingAnswer, ownID string) error {
 	if !domain.ValidNodeID(answer.Node.ID) || answer.Node.ID == ownID || !domain.ValidPeerName(answer.Node.Name) ||
 		!domain.ValidPeerSecret(answer.Secret) {
 		return &domain.PeerUnreachableError{Message: "The other VVMDM answered the pairing with values this one cannot use."}
 	}
-	return domain.CheckPeerVersions(version, answer.Node.Version)
+	return nil
 }
 
-// Accept answers another node's PairingRequest: it checks the code, calls the sender back at its
-// address with the secret it sent, and stores the record only after that succeeds. Only a pairing that
-// succeeded clears the code, so a failed callback can be repeated with it.
+// Accept answers another node's PairingRequest: it checks the code, stores the grant that lets that node
+// read this one, and answers with the secret it will present. Only a pairing that succeeded clears the code.
 func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain.PairingAnswer, error) {
-	address, err := domain.NormalizePeerAddress(req.Address)
-	if err != nil {
-		return domain.PairingAnswer{}, &domain.InvalidPeerAddressError{Field: "node.address"}
-	}
-	if !validPairingRequest(req, address) {
+	if !domain.ValidNodeID(req.Node.ID) || !domain.ValidPeerName(req.Node.Name) {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingInput
 	}
-	p.pairMu.Lock()
-	defer p.pairMu.Unlock()
+	p.acceptMu.Lock()
+	defer p.acceptMu.Unlock()
 	p.mu.Lock()
 	accepted := p.code.Matches(req.Code, p.now())
 	p.mu.Unlock()
 	if !accepted {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingCode
 	}
-	if err := p.refuseWhenPaired(ctx); err != nil {
+	if _, found, err := p.store.Grant(ctx); err != nil {
 		return domain.PairingAnswer{}, err
+	} else if found {
+		return domain.PairingAnswer{}, domain.ErrAlreadyPaired
 	}
 	node, err := p.Node(ctx)
 	if err != nil {
@@ -293,165 +253,108 @@ func (p *Pairing) Accept(ctx context.Context, req domain.PairingRequest) (domain
 	if req.Node.ID == node.ID {
 		return domain.PairingAnswer{}, domain.ErrInvalidPairingInput
 	}
-	if err := domain.CheckPeerVersions(p.version, req.Node.Version); err != nil {
-		return domain.PairingAnswer{}, err
-	}
-	if err := p.callBack(ctx, address, req); err != nil {
-		p.logger.Warn("could not call the pairing VVMDM back", slog.String("address", address), slog.Any("error", err))
-		return domain.PairingAnswer{}, err
-	}
-	incoming, err := domain.NewPeerSecret(p.random)
+	secret, err := domain.NewPeerSecret(p.random)
 	if err != nil {
 		return domain.PairingAnswer{}, err
 	}
-	record := domain.PeerRecord{
-		NodeID: req.Node.ID, Name: req.Node.Name, Address: address, OutgoingSecret: req.Secret,
-		PinnedSPKI: req.Fingerprint, PairedAt: p.now(),
-	}
-	if err := p.store.AddPeer(ctx, record, incoming); err != nil {
+	grant := domain.PeerGrant{NodeID: req.Node.ID, Name: req.Node.Name, PairedAt: p.now()}
+	if err := p.store.AddGrant(ctx, grant, secret); err != nil {
 		return domain.PairingAnswer{}, err
 	}
-	p.paired(req.Node.Version)
-	return domain.PairingAnswer{Node: node, Secret: incoming}, nil
-}
-
-// validPairingRequest checks the sender's values; a fingerprint comes only with an https address.
-func validPairingRequest(req domain.PairingRequest, address string) bool {
-	if req.Fingerprint != "" && (!strings.HasPrefix(address, "https://") || !domain.ValidFingerprint(req.Fingerprint)) {
-		return false
-	}
-	return domain.ValidNodeID(req.Node.ID) && domain.ValidPeerName(req.Node.Name) && domain.ValidPeerSecret(req.Secret)
-}
-
-// callBack proves the sender's address reaches the node that sent the request, pinned to the certificate
-// the sender named.
-func (p *Pairing) callBack(ctx context.Context, address string, req domain.PairingRequest) error {
-	target := domain.PeerTarget{Address: address, PinnedSPKI: req.Fingerprint}
-	answered, err := p.link.Handshake(ctx, target, req.Secret)
-	if err != nil {
-		var untrusted *domain.CertificateUntrustedError
-		if errors.As(err, &untrusted) || errors.Is(err, domain.ErrPeerUnreachable) {
-			return err
-		}
-		return &domain.PeerUnreachableError{
-			Message: "This VVMDM could not call the other one back at " + address + ".", Cause: err,
-		}
-	}
-	if answered.ID != req.Node.ID {
-		return &domain.PeerUnreachableError{
-			Message: "The address " + address + " answers as another VVMDM than the one pairing.",
-		}
-	}
-	return domain.CheckPeerVersions(p.version, answered.Version)
-}
-
-func (p *Pairing) refuseWhenPaired(ctx context.Context) error {
-	_, found, err := p.store.Peer(ctx)
-	if err != nil {
-		return err
-	}
-	if found {
-		return domain.ErrAlreadyPaired
-	}
-	return nil
-}
-
-func (p *Pairing) expectHandshake(secret string) func() {
-	p.mu.Lock()
-	p.pending[secret] = struct{}{}
-	p.mu.Unlock()
-	return func() {
-		p.mu.Lock()
-		delete(p.pending, secret)
-		p.mu.Unlock()
-	}
-}
-
-func (p *Pairing) paired(peerVersion string) {
 	p.mu.Lock()
 	p.code.Clear()
 	p.mu.Unlock()
-	generation := p.interrupt(true)
-	p.setStatus(generation, peerStatus{state: domain.PeerConnected, peerVersion: peerVersion})
+	p.publish(domain.PeerStateChanged{})
+	return domain.PairingAnswer{Node: node, Secret: secret}, nil
 }
 
-// Handshake answers this node's identity to a caller presenting the peer credential, or the secret
-// a pairing in progress sent; anything else answers domain.ErrPeerUnknown. The peer presenting its
-// credential is reachable and holds the pairing, so a loop waiting to retry connects at once: the node
-// that accepted a pairing otherwise waits out a retry delay for the requester to store its record.
+// Handshake answers this node's identity to a caller presenting the grant's secret; anything else answers
+// domain.ErrPeerUnknown.
 func (p *Pairing) Handshake(ctx context.Context, secret string) (domain.PeerNode, error) {
-	p.mu.Lock()
-	_, pending := p.pending[secret]
-	p.mu.Unlock()
-	if !pending {
-		valid, err := p.Authenticate(ctx, secret)
-		if err != nil {
-			return domain.PeerNode{}, err
-		}
-		if !valid {
-			return domain.PeerNode{}, domain.ErrPeerUnknown
-		}
-		p.wakeLoop()
+	valid, err := p.Authenticate(ctx, secret)
+	if err != nil {
+		return domain.PeerNode{}, err
+	}
+	if !valid {
+		return domain.PeerNode{}, domain.ErrPeerUnknown
 	}
 	return p.Node(ctx)
 }
 
-// Authenticate reports whether secret is the peer credential; malformed values skip the store.
+// Authenticate reports whether secret is the credential of the node that reads this one; malformed values
+// skip the store.
 func (p *Pairing) Authenticate(ctx context.Context, secret string) (bool, error) {
 	if !domain.ValidPeerSecret(secret) {
 		return false, nil
 	}
-	_, found, err := p.store.PeerBySecret(ctx, secret)
+	_, found, err := p.store.GrantBySecret(ctx, secret)
 	return found, err
 }
 
-// ChangeAddress replaces the peer's address; without a record it answers domain.ErrNotFound.
+// ChangeAddress replaces the link's address; without a link it answers domain.ErrNotFound.
 func (p *Pairing) ChangeAddress(ctx context.Context, raw string) (domain.PeerState, error) {
 	address, err := domain.NormalizePeerAddress(raw)
 	if err != nil {
 		return domain.PeerState{}, &domain.InvalidPeerAddressError{Field: "address"}
 	}
-	if _, err := p.store.UpdatePeerAddress(ctx, address); err != nil {
+	if _, err := p.store.UpdateLinkAddress(ctx, address); err != nil {
 		return domain.PeerState{}, err
 	}
 	p.interrupt(true)
 	return p.State(ctx)
 }
 
-// Unpair tells the peer, best effort, and deletes the peer record, which also clears a revoked state;
-// without a record it does nothing. A peer that was not told learns it from its next request's 401.
+// Unpair tells the read node, best effort, and deletes the link, which also clears a revoked state; without
+// a link it does nothing. A node that was not told learns it from the 401 its reader's next request gets.
 func (p *Pairing) Unpair(ctx context.Context) error {
-	record, found, err := p.store.Peer(ctx)
+	link, found, err := p.store.Link(ctx)
 	if err != nil || !found {
 		return err
 	}
 	// Stop the stream first, so the peer dropping it while it forgets this node is not a lost connection.
 	p.interrupt(false)
-	if !record.IncomingRevoked {
-		p.tellPeerUnpaired(ctx, record)
+	if !link.Revoked {
+		p.tellPeerUnpaired(ctx, link)
 	}
-	return p.Forget(ctx, record.NodeID)
-}
-
-func (p *Pairing) tellPeerUnpaired(ctx context.Context, record domain.PeerRecord) {
-	node, err := p.Node(ctx)
-	if err == nil {
-		err = p.link.Forget(ctx, peerTarget(record), record.OutgoingSecret, node.ID)
-	}
-	if err != nil {
-		p.logger.Info("could not tell the paired VVMDM that this one unpaired", slog.Any("error", err))
-	}
-}
-
-// Forget deletes the record of nodeID, as the peer asks after it unpaired.
-func (p *Pairing) Forget(ctx context.Context, nodeID string) error {
-	deleted, err := p.store.DeletePeer(ctx, nodeID)
+	deleted, err := p.store.DeleteLink(ctx, link.NodeID)
 	if err != nil {
 		return fmt.Errorf("cannot unpair: %w", err)
 	}
 	if deleted {
 		generation := p.interrupt(true)
 		p.setStatus(generation, peerStatus{state: domain.PeerUnpaired})
+	}
+	return nil
+}
+
+func (p *Pairing) tellPeerUnpaired(ctx context.Context, link domain.PeerLink) {
+	node, err := p.Node(ctx)
+	if err == nil {
+		err = p.client.Forget(ctx, peerTarget(link), link.Secret, node.ID)
+	}
+	if err != nil {
+		p.logger.Info("could not tell the read VVMDM that this one unpaired", slog.Any("error", err))
+	}
+}
+
+// RevokeGrant withdraws the reading node's access; without a grant it does nothing. That node learns it from
+// the 401 its next request gets and shows the link as revoked.
+func (p *Pairing) RevokeGrant(ctx context.Context) error {
+	grant, found, err := p.store.Grant(ctx)
+	if err != nil || !found {
+		return err
+	}
+	return p.Forget(ctx, grant.NodeID)
+}
+
+// Forget deletes the grant of nodeID, as the reading node asks after it unpaired.
+func (p *Pairing) Forget(ctx context.Context, nodeID string) error {
+	deleted, err := p.store.DeleteGrant(ctx, nodeID)
+	if err != nil {
+		return fmt.Errorf("cannot revoke the peer grant: %w", err)
+	}
+	if deleted {
+		p.publish(domain.PeerStateChanged{})
 	}
 	return nil
 }

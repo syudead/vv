@@ -230,10 +230,12 @@ func TestRemoteVideoRefusesOperationsKeptOnEachNode(t *testing.T) {
 		t.Errorf("持ち主の再生位置が変わった: %+v", local.Progress)
 	}
 
-	// A remote id in the peer's own request names this node's video; it is not sent back.
+	// With A reading B as well (a second pairing), a remote id in A's own request names A's video on B; it is
+	// not sent back.
+	pairNodes(t, b, a)
 	bounced := b.env.serve(authRequest{
 		method: http.MethodGet, target: f.remotePath("a", ""),
-		header: map[string]string{"Authorization": "VV-Peer " + a.outgoingSecret(t)},
+		header: map[string]string{"Authorization": "VV-Peer " + a.linkSecret(t)},
 	})
 	assertStatus(t, "相手の要求のリモート ID", bounced, http.StatusNotFound)
 }

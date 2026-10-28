@@ -29,50 +29,53 @@ func (s *PeerStore) EnsureNodeID(ctx context.Context, candidate string) (string,
 	return id, nil
 }
 
-const peerColumns = `node_id, name, address, outgoing_secret, incoming_secret_hash is null, coalesce(pinned_spki, ''), paired_at`
+const linkColumns = `node_id, name, address, secret, revoked, coalesce(pinned_spki, ''), paired_at`
 
-func scanPeer(row interface{ Scan(...any) error }) (domain.PeerRecord, error) {
+func scanLink(row interface{ Scan(...any) error }) (domain.PeerLink, error) {
 	var (
-		record   domain.PeerRecord
+		link     domain.PeerLink
 		pairedAt int64
 	)
-	err := row.Scan(&record.NodeID, &record.Name, &record.Address, &record.OutgoingSecret,
-		&record.IncomingRevoked, &record.PinnedSPKI, &pairedAt)
-	record.PairedAt = time.Unix(pairedAt, 0)
-	return record, err
+	err := row.Scan(&link.NodeID, &link.Name, &link.Address, &link.Secret, &link.Revoked, &link.PinnedSPKI, &pairedAt)
+	link.PairedAt = time.Unix(pairedAt, 0)
+	return link, err
 }
 
-// Peer returns the peer record, or false when this node is not paired.
-func (s *PeerStore) Peer(ctx context.Context) (domain.PeerRecord, bool, error) {
-	record, err := scanPeer(s.db.sql.QueryRowContext(ctx, `select `+peerColumns+` from peer`))
+// Link returns the VVMDM this node reads, or false when there is none.
+func (s *PeerStore) Link(ctx context.Context) (domain.PeerLink, bool, error) {
+	link, err := scanLink(s.db.sql.QueryRowContext(ctx, `select `+linkColumns+` from peer_link`))
 	if errors.Is(err, sql.ErrNoRows) {
-		return domain.PeerRecord{}, false, nil
+		return domain.PeerLink{}, false, nil
 	}
 	if err != nil {
-		return domain.PeerRecord{}, false, fmt.Errorf("cannot read the peer: %w", err)
+		return domain.PeerLink{}, false, fmt.Errorf("cannot read the peer link: %w", err)
 	}
-	return record, true, nil
+	return link, true, nil
 }
 
-// AddPeer stores the only peer record, hashing incomingSecret; an existing record answers
-// domain.ErrAlreadyPaired. One statement checks and inserts, so two pairings cannot both succeed.
-func (s *PeerStore) AddPeer(ctx context.Context, record domain.PeerRecord, incomingSecret string) error {
+// AddLink stores the only link; an existing one answers domain.ErrAlreadyPaired. One statement checks and
+// inserts, so two pairings cannot both succeed.
+func (s *PeerStore) AddLink(ctx context.Context, link domain.PeerLink) error {
 	var pinned any
-	if record.PinnedSPKI != "" {
-		pinned = record.PinnedSPKI
+	if link.PinnedSPKI != "" {
+		pinned = link.PinnedSPKI
 	}
 	res, err := s.db.sql.ExecContext(ctx, `
-		insert into peer (node_id, name, address, outgoing_secret, incoming_secret_hash, pinned_spki, paired_at)
-		select ?, ?, ?, ?, ?, ?, ?
-		 where not exists (select 1 from peer)`,
-		record.NodeID, record.Name, record.Address, record.OutgoingSecret, sessionTokenHash(incomingSecret),
-		pinned, record.PairedAt.Unix())
+		insert into peer_link (node_id, name, address, secret, pinned_spki, paired_at)
+		select ?, ?, ?, ?, ?, ?
+		 where not exists (select 1 from peer_link)`,
+		link.NodeID, link.Name, link.Address, link.Secret, pinned, link.PairedAt.Unix())
 	if err != nil {
-		return fmt.Errorf("cannot save the peer: %w", err)
+		return fmt.Errorf("cannot save the peer link: %w", err)
 	}
+	return insertedOne(res, "cannot save the peer link")
+}
+
+// insertedOne answers domain.ErrAlreadyPaired when the guarded insert of res stored nothing.
+func insertedOne(res sql.Result, failure string) error {
 	inserted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("cannot save the peer: %w", err)
+		return fmt.Errorf("%s: %w", failure, err)
 	}
 	if inserted == 0 {
 		return domain.ErrAlreadyPaired
@@ -80,32 +83,18 @@ func (s *PeerStore) AddPeer(ctx context.Context, record domain.PeerRecord, incom
 	return nil
 }
 
-// PeerBySecret hashes the presented secret; a record whose incoming secret was revoked never matches.
-func (s *PeerStore) PeerBySecret(ctx context.Context, secret string) (domain.PeerRecord, bool, error) {
-	record, err := scanPeer(s.db.sql.QueryRowContext(ctx,
-		`select `+peerColumns+` from peer where incoming_secret_hash = ?`, sessionTokenHash(secret)))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.PeerRecord{}, false, nil
-	}
-	if err != nil {
-		return domain.PeerRecord{}, false, fmt.Errorf("cannot check the peer credential: %w", err)
-	}
-	return record, true, nil
-}
-
-// RevokeIncomingSecret clears the incoming secret hash, so the peer credential is refused from then on.
-func (s *PeerStore) RevokeIncomingSecret(ctx context.Context, nodeID string) error {
-	if _, err := s.db.sql.ExecContext(ctx,
-		`update peer set incoming_secret_hash = null where node_id = ?`, nodeID); err != nil {
-		return fmt.Errorf("cannot revoke the peer credential: %w", err)
+// MarkLinkRevoked records that the peer refused the link's secret, so a start shows revoked.
+func (s *PeerStore) MarkLinkRevoked(ctx context.Context, nodeID string) error {
+	if _, err := s.db.sql.ExecContext(ctx, `update peer_link set revoked = 1 where node_id = ?`, nodeID); err != nil {
+		return fmt.Errorf("cannot mark the peer link revoked: %w", err)
 	}
 	return nil
 }
 
-// PinPeerCertificate stores the SPKI fingerprint the owner confirmed; without the record of nodeID it
-// answers domain.ErrNotFound.
-func (s *PeerStore) PinPeerCertificate(ctx context.Context, nodeID, spki string) error {
-	res, err := s.db.sql.ExecContext(ctx, `update peer set pinned_spki = ? where node_id = ?`, spki, nodeID)
+// PinLinkCertificate stores the SPKI fingerprint the owner confirmed; without the link of nodeID it answers
+// domain.ErrNotFound.
+func (s *PeerStore) PinLinkCertificate(ctx context.Context, nodeID, spki string) error {
+	res, err := s.db.sql.ExecContext(ctx, `update peer_link set pinned_spki = ? where node_id = ?`, spki, nodeID)
 	if err != nil {
 		return fmt.Errorf("cannot pin the peer certificate: %w", err)
 	}
@@ -119,28 +108,88 @@ func (s *PeerStore) PinPeerCertificate(ctx context.Context, nodeID, spki string)
 	return nil
 }
 
-// UpdatePeerAddress answers domain.ErrNotFound when this node is not paired.
-func (s *PeerStore) UpdatePeerAddress(ctx context.Context, address string) (domain.PeerRecord, error) {
-	record, err := scanPeer(s.db.sql.QueryRowContext(ctx,
-		`update peer set address = ? returning `+peerColumns, address))
+// UpdateLinkAddress answers domain.ErrNotFound without a link.
+func (s *PeerStore) UpdateLinkAddress(ctx context.Context, address string) (domain.PeerLink, error) {
+	link, err := scanLink(s.db.sql.QueryRowContext(ctx,
+		`update peer_link set address = ? returning `+linkColumns, address))
 	if errors.Is(err, sql.ErrNoRows) {
-		return domain.PeerRecord{}, domain.ErrNotFound
+		return domain.PeerLink{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.PeerRecord{}, fmt.Errorf("cannot change the peer address: %w", err)
+		return domain.PeerLink{}, fmt.Errorf("cannot change the peer address: %w", err)
 	}
-	return record, nil
+	return link, nil
 }
 
-// DeletePeer deletes the record of nodeID and nothing else, reporting whether one was deleted.
-func (s *PeerStore) DeletePeer(ctx context.Context, nodeID string) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `delete from peer where node_id = ?`, nodeID)
+// DeleteLink deletes the link of nodeID and nothing else, reporting whether one was deleted.
+func (s *PeerStore) DeleteLink(ctx context.Context, nodeID string) (bool, error) {
+	return s.deletePeerRow(ctx, `delete from peer_link where node_id = ?`, nodeID, "cannot delete the peer link")
+}
+
+const grantColumns = `node_id, name, paired_at`
+
+func scanGrant(row interface{ Scan(...any) error }) (domain.PeerGrant, error) {
+	var (
+		grant    domain.PeerGrant
+		pairedAt int64
+	)
+	err := row.Scan(&grant.NodeID, &grant.Name, &pairedAt)
+	grant.PairedAt = time.Unix(pairedAt, 0)
+	return grant, err
+}
+
+// Grant returns the VVMDM that reads this node, or false when there is none.
+func (s *PeerStore) Grant(ctx context.Context) (domain.PeerGrant, bool, error) {
+	grant, err := scanGrant(s.db.sql.QueryRowContext(ctx, `select `+grantColumns+` from peer_grant`))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.PeerGrant{}, false, nil
+	}
 	if err != nil {
-		return false, fmt.Errorf("cannot delete the peer: %w", err)
+		return domain.PeerGrant{}, false, fmt.Errorf("cannot read the peer grant: %w", err)
+	}
+	return grant, true, nil
+}
+
+// AddGrant stores the only grant, hashing the secret the reader will present; an existing one answers
+// domain.ErrAlreadyPaired.
+func (s *PeerStore) AddGrant(ctx context.Context, grant domain.PeerGrant, secret string) error {
+	res, err := s.db.sql.ExecContext(ctx, `
+		insert into peer_grant (node_id, name, secret_hash, paired_at)
+		select ?, ?, ?, ?
+		 where not exists (select 1 from peer_grant)`,
+		grant.NodeID, grant.Name, sessionTokenHash(secret), grant.PairedAt.Unix())
+	if err != nil {
+		return fmt.Errorf("cannot save the peer grant: %w", err)
+	}
+	return insertedOne(res, "cannot save the peer grant")
+}
+
+// GrantBySecret hashes the presented secret and returns the grant it belongs to.
+func (s *PeerStore) GrantBySecret(ctx context.Context, secret string) (domain.PeerGrant, bool, error) {
+	grant, err := scanGrant(s.db.sql.QueryRowContext(ctx,
+		`select `+grantColumns+` from peer_grant where secret_hash = ?`, sessionTokenHash(secret)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.PeerGrant{}, false, nil
+	}
+	if err != nil {
+		return domain.PeerGrant{}, false, fmt.Errorf("cannot check the peer credential: %w", err)
+	}
+	return grant, true, nil
+}
+
+// DeleteGrant deletes the grant of nodeID and nothing else, reporting whether one was deleted.
+func (s *PeerStore) DeleteGrant(ctx context.Context, nodeID string) (bool, error) {
+	return s.deletePeerRow(ctx, `delete from peer_grant where node_id = ?`, nodeID, "cannot delete the peer grant")
+}
+
+func (s *PeerStore) deletePeerRow(ctx context.Context, query, nodeID, failure string) (bool, error) {
+	res, err := s.db.sql.ExecContext(ctx, query, nodeID)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", failure, err)
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("cannot delete the peer: %w", err)
+		return false, fmt.Errorf("%s: %w", failure, err)
 	}
 	return deleted > 0, nil
 }

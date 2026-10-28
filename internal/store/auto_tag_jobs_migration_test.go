@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const autoTagJobsVersion = 84
+const autoTagJobsVersion = 85
 
 // Unfinished auto-tagging work becomes auto_tag jobs and outcomes become results; going back restores the queue,
 // with an interrupted row queued again as startup recovery would do.

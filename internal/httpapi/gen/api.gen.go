@@ -698,7 +698,6 @@ const (
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
-	ErrorReasonOwnCertificateUnverified      ErrorReason = "own_certificate_unverified"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
 	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
@@ -743,7 +742,6 @@ const (
 	ErrorReasonUndoConflict                  ErrorReason = "undo_conflict"
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
-	ErrorReasonUnsupportedVersion            ErrorReason = "unsupported_version"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
 	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
@@ -872,8 +870,6 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonOutputTooLarge:
 		return true
-	case ErrorReasonOwnCertificateUnverified:
-		return true
 	case ErrorReasonPasswordLength:
 		return true
 	case ErrorReasonPeerNotAllowed:
@@ -961,8 +957,6 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUndoExpired:
 		return true
 	case ErrorReasonUnreachable:
-		return true
-	case ErrorReasonUnsupportedVersion:
 		return true
 	case ErrorReasonUsernameLength:
 		return true
@@ -1381,7 +1375,6 @@ func (e OrganizeRefKind) Valid() bool {
 const (
 	PeerStateReasonCertificate PeerStateReason = "certificate"
 	PeerStateReasonNetwork     PeerStateReason = "network"
-	PeerStateReasonVersion     PeerStateReason = "version"
 )
 
 // Valid indicates whether the value is a known member of the PeerStateReason enum.
@@ -1390,8 +1383,6 @@ func (e PeerStateReason) Valid() bool {
 	case PeerStateReasonCertificate:
 		return true
 	case PeerStateReasonNetwork:
-		return true
-	case PeerStateReasonVersion:
 		return true
 	default:
 		return false
@@ -3759,7 +3750,7 @@ type Error struct {
 	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
-	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate.
+	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed.
 	Fingerprint *string `json:"fingerprint,omitempty"`
 
 	// Host Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons.
@@ -3771,14 +3762,8 @@ type Error struct {
 	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
 	Links *[]string `json:"links,omitempty"`
 
-	// LocalVersion This node's release version; only for unsupported_version.
-	LocalVersion *string `json:"localVersion,omitempty"`
-
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
-
-	// PeerVersion The other node's release version; only for unsupported_version.
-	PeerVersion *string `json:"peerVersion,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -5010,19 +4995,13 @@ type PairPeerRequest struct {
 
 	// Fingerprint The SPKI fingerprint the owner confirmed after certificate_untrusted
 	Fingerprint *string `json:"fingerprint,omitempty"`
-
-	// OwnAddress This node's base URL as the other node can reach it
-	OwnAddress string `json:"ownAddress"`
-
-	// OwnFingerprint The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified
-	OwnFingerprint *string `json:"ownFingerprint,omitempty"`
 }
 
 // PairingAnswer defines model for PairingAnswer.
 type PairingAnswer struct {
 	Node PeerNode `json:"node"`
 
-	// Secret What the sender presents to the receiver
+	// Secret What the sender presents to the receiver from then on: vvp_ and 43 base64url characters
 	Secret string `json:"secret"`
 }
 
@@ -5032,27 +5011,10 @@ type PairingCode struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// PairingRequest defines model for PairingRequest.
+// PairingRequest The sender's identity; no address, because the receiver never connects to the sender.
 type PairingRequest struct {
-	Code string             `json:"code"`
-	Node PairingRequestNode `json:"node"`
-
-	// Secret What the receiver will present to the sender: vvp_ and 43 base64url characters
-	Secret string `json:"secret"`
-}
-
-// PairingRequestNode defines model for PairingRequestNode.
-type PairingRequestNode struct {
-	// Address The sender's base URL as the receiver can reach it
-	Address string `json:"address"`
-
-	// Fingerprint Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate.
-	Fingerprint *string `json:"fingerprint,omitempty"`
-	Id          string  `json:"id"`
-
-	// Name 1 to 100 code points
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Code string   `json:"code"`
+	Node PeerNode `json:"node"`
 }
 
 // PeerCertificateRequest defines model for PeerCertificateRequest.
@@ -5061,23 +5023,30 @@ type PeerCertificateRequest struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
+// PeerGrant The VVMDM that reads this one
+type PeerGrant struct {
+	// Name Its host name at pairing
+	Name     string    `json:"name"`
+	PairedAt time.Time `json:"pairedAt"`
+}
+
 // PeerHandshake defines model for PeerHandshake.
 type PeerHandshake struct {
 	Node PeerNode `json:"node"`
 }
 
-// PeerInfo defines model for PeerInfo.
-type PeerInfo struct {
-	// Address The peer's base URL
+// PeerLink The VVMDM this node reads
+type PeerLink struct {
+	// Address Its base URL
 	Address string `json:"address"`
 
-	// Name The peer's host name at pairing
+	// Name Its host name at pairing
 	Name string `json:"name"`
 
-	// Pinned Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted
+	// Pinned Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted
 	Pinned bool `json:"pinned"`
 
-	// Version The peer version last seen; with reason version, the one that differs
+	// Version Its version last seen, shown for reference
 	Version *string `json:"version,omitempty"`
 }
 
@@ -5098,7 +5067,7 @@ type PeerNode struct {
 	// Name Host name
 	Name string `json:"name"`
 
-	// Version Release version, as getHealth reports it
+	// Version Release version, as getHealth reports it; shown for reference, never compared
 	Version string `json:"version"`
 }
 
@@ -5169,22 +5138,29 @@ type PeerSmartRule struct {
 	Sort *VideoSort `json:"sort,omitempty"`
 }
 
-// PeerState Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity.
+// PeerState Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity.
 type PeerState struct {
 	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
-	Fingerprint *string   `json:"fingerprint,omitempty"`
-	Node        *PeerNode `json:"node,omitempty"`
-	Peer        *PeerInfo `json:"peer,omitempty"`
+	Fingerprint *string `json:"fingerprint,omitempty"`
+
+	// Grant The VVMDM that reads this one
+	Grant *PeerGrant `json:"grant,omitempty"`
+
+	// Link The VVMDM this node reads
+	Link *PeerLink `json:"link,omitempty"`
+	Node *PeerNode `json:"node,omitempty"`
 
 	// Reason Present with unreachable
 	Reason *PeerStateReason `json:"reason,omitempty"`
-	State  PeerStateState   `json:"state"`
+
+	// State The connection to the VVMDM this node reads; unpaired without link
+	State PeerStateState `json:"state"`
 }
 
 // PeerStateReason Present with unreachable
 type PeerStateReason string
 
-// PeerStateState defines model for PeerState.State.
+// PeerStateState The connection to the VVMDM this node reads; unpaired without link
 type PeerStateState string
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
@@ -8960,31 +8936,34 @@ type ServerInterface interface {
 	// OrganizeUndo Undo a drag operation
 	// (POST /api/organize/undo)
 	OrganizeUndo(w http.ResponseWriter, r *http.Request)
-	// UnpairPeer Unpair from the peer
-	// (DELETE /api/peer)
-	UnpairPeer(w http.ResponseWriter, r *http.Request)
 	// GetPeer Return the pairing state
 	// (GET /api/peer)
 	GetPeer(w http.ResponseWriter, r *http.Request)
-	// UpdatePeerAddress Change the peer's address
+	// UpdatePeerAddress Change the read node's address
 	// (PUT /api/peer/address)
 	UpdatePeerAddress(w http.ResponseWriter, r *http.Request)
-	// ConfirmPeerCertificate Trust the peer's changed certificate
+	// ConfirmPeerCertificate Trust the read node's changed certificate
 	// (POST /api/peer/certificate)
 	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request)
 	// IssuePairingCode Issue this node's pairing code
 	// (POST /api/peer/code)
 	IssuePairingCode(w http.ResponseWriter, r *http.Request)
-	// PeerHandshake Return this node's identity to the peer
+	// RevokePeerGrant Withdraw the reading VVMDM's access
+	// (DELETE /api/peer/grant)
+	RevokePeerGrant(w http.ResponseWriter, r *http.Request)
+	// PeerHandshake Return this node's identity to the reading node
 	// (GET /api/peer/handshake)
 	PeerHandshake(w http.ResponseWriter, r *http.Request)
-	// PairPeer Pair with the node whose code the owner typed
+	// UnpairPeer Stop reading the other VVMDM
+	// (DELETE /api/peer/link)
+	UnpairPeer(w http.ResponseWriter, r *http.Request)
+	// PairPeer Read the node whose code the owner typed
 	// (POST /api/peer/pair)
 	PairPeer(w http.ResponseWriter, r *http.Request)
-	// AcceptPairing Accept a pairing from another node
+	// AcceptPairing Grant the sender read access to this node
 	// (POST /api/peer/pairings)
 	AcceptPairing(w http.ResponseWriter, r *http.Request)
-	// ForgetPeer Delete the record of a peer that unpaired
+	// ForgetPeer Delete the grant of a reading node that unpaired
 	// (DELETE /api/peer/pairings/{nodeId})
 	ForgetPeer(w http.ResponseWriter, r *http.Request, nodeId string)
 	// RankPeerRelated Score this node's videos against a video of the other node
@@ -11501,20 +11480,6 @@ func (siw *ServerInterfaceWrapper) OrganizeUndo(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// UnpairPeer operation middleware
-func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UnpairPeer(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetPeer operation middleware
 func (siw *ServerInterfaceWrapper) GetPeer(w http.ResponseWriter, r *http.Request) {
 
@@ -11571,11 +11536,39 @@ func (siw *ServerInterfaceWrapper) IssuePairingCode(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// RevokePeerGrant operation middleware
+func (siw *ServerInterfaceWrapper) RevokePeerGrant(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokePeerGrant(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PeerHandshake operation middleware
 func (siw *ServerInterfaceWrapper) PeerHandshake(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PeerHandshake(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnpairPeer operation middleware
+func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnpairPeer(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16585,8 +16578,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer", wrapper.UnpairPeer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer", wrapper.GetPeer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/link", wrapper.UnpairPeer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/grant", wrapper.RevokePeerGrant)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/code", wrapper.IssuePairingCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/address", wrapper.UpdatePeerAddress)

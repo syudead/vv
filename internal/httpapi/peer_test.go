@@ -96,7 +96,7 @@ func newPeerNodeServed(t *testing.T, name string, serve func(http.Handler) *http
 func withTestPairing(db *store.DB, name string, publisher app.Publisher, opts *Options) *app.Pairing {
 	client := peer.New(peer.Options{})
 	pairing := app.NewPairing(app.PairingOptions{
-		Store: db.Peers(), Link: client, Version: testPeerVersion, NodeName: name, Publisher: publisher,
+		Store: db.Peers(), Client: client, Version: testPeerVersion, NodeName: name, Publisher: publisher,
 	})
 	opts.Build = domain.BuildInfo{Version: testPeerVersion}
 	opts.Pairing = pairing
@@ -134,16 +134,26 @@ func (n *peerNode) owner(method, target, body string) *httptest.ResponseRecorder
 	return n.env.serve(authRequest{method: method, target: target, body: body, cookies: []*http.Cookie{n.cookie}})
 }
 
-// outgoingSecret is the credential this node presents to its peer.
-func (n *peerNode) outgoingSecret(t *testing.T) string {
+// linkSecret is the credential this node presents to the node it reads.
+func (n *peerNode) linkSecret(t *testing.T) string {
 	t.Helper()
-	record, found, err := n.env.db.Peers().Peer(context.Background())
+	link, found, err := n.env.db.Peers().Link(context.Background())
 	if err != nil || !found {
-		t.Fatalf("記録が無い: %v, %v", found, err)
+		t.Fatalf("link が無い: %v, %v", found, err)
 	}
-	return record.OutgoingSecret
+	return link.Secret
 }
 
+func (n *peerNode) grant(t *testing.T) (domain.PeerGrant, bool) {
+	t.Helper()
+	grant, found, err := n.env.db.Peers().Grant(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return grant, found
+}
+
+// pairTestNodes makes b read a.
 func pairTestNodes(t *testing.T) (a, b *peerNode) {
 	t.Helper()
 	a, b = newPeerNode(t, "node-a"), newPeerNode(t, "node-b")
@@ -151,8 +161,7 @@ func pairTestNodes(t *testing.T) (a, b *peerNode) {
 	return a, b
 }
 
-// pairNodes pairs b with a from b's Pairing page, with a's code.
-func pairNodes(t *testing.T, a, b *peerNode) {
+func issueCode(t *testing.T, a *peerNode) string {
 	t.Helper()
 	rec := a.owner(http.MethodPost, "/api/peer/code", "")
 	if rec.Code != http.StatusCreated {
@@ -162,7 +171,13 @@ func pairNodes(t *testing.T, a, b *peerNode) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &code); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: code.Code, OwnAddress: b.url})
+	return code.Code
+}
+
+// pairNodes makes b read a from b's Pairing page, with a's code.
+func pairNodes(t *testing.T, a, b *peerNode) {
+	t.Helper()
+	body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: issueCode(t, a)})
 	if rec := b.owner(http.MethodPost, "/api/peer/pair", string(body)); rec.Code != http.StatusCreated {
 		t.Fatalf("ペアリング: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -184,86 +199,65 @@ func decodePeerState(t *testing.T, rec *httptest.ResponseRecorder) (gen.PeerStat
 	return state, fields
 }
 
-func TestPairingConnectsBothNodes(t *testing.T) {
+// Pairing from B grants B alone: B shows A as its connected link, A shows B as its grant and reads nothing.
+func TestPairingGrantsTheReaderOnly(t *testing.T) {
 	a, b := pairTestNodes(t)
 
-	for _, check := range []struct {
-		node     *peerNode
-		peerName string
-		address  string
-	}{{a, "node-b", b.url}, {b, "node-a", a.url}} {
-		state, _ := decodePeerState(t, check.node.owner(http.MethodGet, "/api/peer", ""))
-		if state.State != gen.PeerStateStateConnected || state.Peer == nil ||
-			state.Peer.Name != check.peerName || state.Peer.Address != check.address {
-			t.Errorf("所有者の状態 = %+v, want %s と connected", state, check.peerName)
-		}
+	onB, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
+	if onB.State != gen.PeerStateStateConnected || onB.Link == nil || onB.Link.Name != "node-a" ||
+		onB.Link.Address != a.url || onB.Grant != nil {
+		t.Errorf("B の状態 = %+v, want node-a への connected な link だけ", onB)
+	}
+	onA, _ := decodePeerState(t, a.owner(http.MethodGet, "/api/peer", ""))
+	if onA.State != gen.PeerStateStateUnpaired || onA.Link != nil || onA.Grant == nil || onA.Grant.Name != "node-b" {
+		t.Errorf("A の状態 = %+v, want unpaired と node-b の grant", onA)
 	}
 
-	guest := a.env.get("/api/peer")
+	guest := b.env.get("/api/peer")
 	assertAudience(t, "ゲストの GET /api/peer", guest, "guest")
 	state, fields := decodePeerState(t, guest)
 	if state.State != gen.PeerStateStateConnected || len(fields) != 1 {
 		t.Errorf("ゲストの状態 = %s, want state だけ", guest.Body)
 	}
 
-	// The record also lives on A, so A's code is refused as already paired.
+	// A is read by B, so its code is refused; B reads A, so it refuses a second link.
 	if rec := a.owner(http.MethodPost, "/api/peer/code", ""); rec.Code != http.StatusConflict {
-		t.Errorf("ペアリング済みのコード発行: status = %d: %s", rec.Code, rec.Body)
+		t.Errorf("読まれている A のコード発行: status = %d: %s", rec.Code, rec.Body)
 	}
+	body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: "ABCDEFGH"})
+	rec := b.owner(http.MethodPost, "/api/peer/pair", string(body))
+	assertErrorBody(t, "読む相手がある B のペアリング", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonAlreadyPaired})
 }
 
-// Two nodes behind self-signed HTTPS pair after B's owner confirms B's own certificate and then A's, and A pins
-// the confirmed one for the callback. The TLS servers are the boundary under test.
-func TestPairingOverSelfSignedHTTPSPinsBothSides(t *testing.T) {
-	a, b := newPeerNodeServed(t, "node-a", httptest.NewTLSServer), newPeerNodeServed(t, "node-b", httptest.NewTLSServer)
-	rec := a.owner(http.MethodPost, "/api/peer/code", "")
-	var code gen.PairingCode
-	if err := json.Unmarshal(rec.Body.Bytes(), &code); err != nil {
-		t.Fatalf("コードの発行: %d %s", rec.Code, rec.Body)
-	}
-	pair := func(fingerprint, own *string) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(gen.PairPeerRequest{
-			Address: a.url, Code: code.Code, OwnAddress: b.url, Fingerprint: fingerprint, OwnFingerprint: own,
-		})
+// A behind self-signed HTTPS pairs after B's owner confirms A's certificate; B serves plain http and
+// needs no certificate of its own. The TLS server is the boundary under test.
+func TestPairingOverSelfSignedHTTPSPinsTheReadNode(t *testing.T) {
+	a, b := newPeerNodeServed(t, "node-a", httptest.NewTLSServer), newPeerNode(t, "node-b")
+	code := issueCode(t, a)
+	pair := func(fingerprint *string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: code, Fingerprint: fingerprint})
 		return b.owner(http.MethodPost, "/api/peer/pair", string(body))
 	}
-	refused := func(rec *httptest.ResponseRecorder, reason gen.ErrorReason) *string {
-		t.Helper()
-		refusal := decode[gen.Error](t, rec)
-		if rec.Code != http.StatusConflict || refusal.Reason == nil || *refusal.Reason != reason || refusal.Fingerprint == nil {
-			t.Fatalf("status = %d: %s, want 409 %s と指紋", rec.Code, rec.Body, reason)
-		}
-		return refusal.Fingerprint
-	}
 
-	own := refused(pair(nil, nil), gen.ErrorReasonOwnCertificateUnverified)
-	peerCertificate := refused(pair(nil, own), gen.ErrorReasonCertificateUntrusted)
-	if rec := pair(peerCertificate, own); rec.Code != http.StatusCreated {
+	rec := pair(nil)
+	refusal := decode[gen.Error](t, rec)
+	if rec.Code != http.StatusConflict || refusal.Reason == nil || *refusal.Reason != gen.ErrorReasonCertificateUntrusted ||
+		refusal.Fingerprint == nil {
+		t.Fatalf("status = %d: %s, want 409 certificate_untrusted と指紋", rec.Code, rec.Body)
+	}
+	if rec := pair(refusal.Fingerprint); rec.Code != http.StatusCreated {
 		t.Fatalf("確認後のペアリング: status = %d: %s", rec.Code, rec.Body)
 	}
-	for _, node := range []*peerNode{a, b} {
-		state, _ := decodePeerState(t, node.owner(http.MethodGet, "/api/peer", ""))
-		if state.State != gen.PeerStateStateConnected || state.Peer == nil || !state.Peer.Pinned {
-			t.Errorf("状態 = %+v, want connected で証明書を固定", state)
-		}
-	}
-}
-
-// The other node refusing this node's certificate answers peer_unreachable with that certificate's fingerprint,
-// so the screen does not offer to trust it as the other node's.
-func TestPairingErrorNamesTheRefusedOwnCertificate(t *testing.T) {
-	rec := httptest.NewRecorder()
-	(&server{logger: discardLogger()}).writePairingError(rec, &domain.OwnCertificateUntrustedError{Fingerprint: "seen"}, "x")
-	body := decode[gen.Error](t, rec)
-	if rec.Code != http.StatusConflict || body.Reason == nil || *body.Reason != gen.ErrorReasonPeerUnreachable ||
-		body.Fingerprint == nil || *body.Fingerprint != "seen" {
-		t.Errorf("status = %d: %s, want 409 peer_unreachable と指紋 seen", rec.Code, rec.Body)
+	state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
+	if state.State != gen.PeerStateStateConnected || state.Link == nil || !state.Link.Pinned {
+		t.Errorf("B の状態 = %+v, want connected で証明書を固定", state)
 	}
 }
 
 func TestPeerCredentialClassification(t *testing.T) {
 	a, b := pairTestNodes(t)
-	secret := b.outgoingSecret(t)
+	secret := b.linkSecret(t)
 	peerRequest := func(method, target string, header map[string]string) *httptest.ResponseRecorder {
 		t.Helper()
 		all := map[string]string{"Authorization": "VV-Peer " + secret}
@@ -287,7 +281,13 @@ func TestPeerCredentialClassification(t *testing.T) {
 	assertErrorBody(t, "見出しの別の値", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 
-	for _, credential := range []string{"VV-Peer " + a.outgoingSecret(t), "VV-Peer vvp_unknown", "VV-Peer"} {
+	// The credential is valid on A alone: B, which holds no grant, refuses it like any unknown secret.
+	unknown := b.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
+		header: map[string]string{"Authorization": "VV-Peer " + secret}})
+	assertErrorBody(t, "読む側への資格情報", unknown.Code, unknown.Body.Bytes(), wantError{
+		status: http.StatusUnauthorized, code: gen.ErrorCodeUnauthenticated, reason: gen.ErrorReasonPeerUnknown,
+	})
+	for _, credential := range []string{"VV-Peer vvp_unknown", "VV-Peer"} {
 		rec := a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
 			header: map[string]string{"Authorization": credential}})
 		assertErrorBody(t, credential, rec.Code, rec.Body.Bytes(), wantError{
@@ -298,6 +298,7 @@ func TestPeerCredentialClassification(t *testing.T) {
 	for _, op := range []operation{
 		{http.MethodGet, "/api/media-folders"}, {http.MethodPut, "/api/settings/transcoding"},
 		{http.MethodGet, "/api/api-tokens"}, {http.MethodGet, "/api/peer"}, {http.MethodPost, "/api/peer/code"},
+		{http.MethodDelete, "/api/peer/grant"}, {http.MethodDelete, "/api/peer/link"},
 	} {
 		rec := peerRequest(op.method, op.path, nil)
 		assertErrorBody(t, op.method+" "+op.path, rec.Code, rec.Body.Bytes(), wantError{
@@ -311,8 +312,8 @@ func TestPeerCredentialClassification(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("別の node id の削除: status = %d: %s", rec.Code, rec.Body)
 	}
-	if _, found, _ := a.env.db.Peers().Peer(context.Background()); !found {
-		t.Error("別の node id の削除で記録が消えた")
+	if _, found := a.grant(t); !found {
+		t.Error("別の node id の削除で grant が消えた")
 	}
 
 	if rec := peerRequest(http.MethodGet, "/api/v1/videos", nil); rec.Code != http.StatusUnauthorized {
@@ -322,7 +323,7 @@ func TestPeerCredentialClassification(t *testing.T) {
 
 func TestPeerHandshakeAndForget(t *testing.T) {
 	a, b := pairTestNodes(t)
-	secret := b.outgoingSecret(t)
+	secret := b.linkSecret(t)
 
 	rec := a.env.serve(authRequest{method: http.MethodGet, target: "/api/peer/handshake",
 		header: map[string]string{"Authorization": "VV-Peer " + secret}})
@@ -336,9 +337,9 @@ func TestPeerHandshakeAndForget(t *testing.T) {
 		status: http.StatusUnauthorized, code: gen.ErrorCodeUnauthenticated, reason: gen.ErrorReasonPeerUnknown,
 	})
 
-	// Over a real connection: deleting the record revokes the peer's requests but must still answer this one.
-	record, _, _ := a.env.db.Peers().Peer(context.Background())
-	req, err := http.NewRequest(http.MethodDelete, a.url+"/api/peer/pairings/"+record.NodeID, nil)
+	// Over a real connection: deleting the grant revokes the reader's requests but must still answer this one.
+	grant, _ := a.grant(t)
+	req, err := http.NewRequest(http.MethodDelete, a.url+"/api/peer/pairings/"+grant.NodeID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,9 +352,8 @@ func TestPeerHandshakeAndForget(t *testing.T) {
 	if res.StatusCode != http.StatusNoContent {
 		t.Fatalf("削除: status = %d", res.StatusCode)
 	}
-	state, _ := decodePeerState(t, a.owner(http.MethodGet, "/api/peer", ""))
-	if state.State != gen.PeerStateStateUnpaired {
-		t.Errorf("削除後の A の状態 = %s", state.State)
+	if state, _ := decodePeerState(t, a.owner(http.MethodGet, "/api/peer", "")); state.Grant != nil {
+		t.Errorf("削除後の A の状態 = %+v, want grant なし", state)
 	}
 	rec = a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
 		header: map[string]string{"Authorization": "VV-Peer " + secret}})
@@ -362,33 +362,33 @@ func TestPeerHandshakeAndForget(t *testing.T) {
 	}
 }
 
-func TestUnpairCancelsInFlightPeerRequests(t *testing.T) {
+func TestRevokingTheGrantCancelsInFlightPeerRequests(t *testing.T) {
 	a, b := pairTestNodes(t)
 	held := a.library.hold()
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		done <- a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
-			header: map[string]string{"Authorization": "VV-Peer " + b.outgoingSecret(t)}})
+			header: map[string]string{"Authorization": "VV-Peer " + b.linkSecret(t)}})
 	}()
 	<-held.entered
 
-	if rec := a.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
-		t.Fatalf("解除: status = %d: %s", rec.Code, rec.Body)
+	if rec := a.owner(http.MethodDelete, "/api/peer/grant", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("取り消し: status = %d: %s", rec.Code, rec.Body)
 	}
 	select {
 	case err := <-held.ended:
 		if err == nil {
-			t.Fatal("解除で進行中の要求が打ち切られなかった")
+			t.Fatal("取り消しで進行中の要求が打ち切られなかった")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("解除で進行中の要求が打ち切られなかった")
+		t.Fatal("取り消しで進行中の要求が打ち切られなかった")
 	}
 	<-done
 }
 
 func TestPairRejectsInvalidAddress(t *testing.T) {
 	b := newPeerNode(t, "node-b")
-	body, _ := json.Marshal(gen.PairPeerRequest{Address: "http://a.local/vv", Code: "ABCDEFGH", OwnAddress: b.url})
+	body, _ := json.Marshal(gen.PairPeerRequest{Address: "http://a.local/vv", Code: "ABCDEFGH"})
 	rec := b.owner(http.MethodPost, "/api/peer/pair", string(body))
 	assertErrorBody(t, "パス付きのアドレス", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonInvalidAddress,
@@ -408,49 +408,49 @@ func TestPeerOperationsAreOpenAPIOperations(t *testing.T) {
 	}
 }
 
-func TestPeerEventsReachGuestsAndUnpairTellsThePeer(t *testing.T) {
+// Unpairing on the reader tells the read node, which drops the grant; the reader's guests see the link go.
+func TestUnpairTellsTheReadNodeAndReachesGuests(t *testing.T) {
 	a, b := pairTestNodes(t)
-	guest, _ := openEvents(t, a.env.handler)
+	guest, _ := openEvents(t, b.env.handler)
 	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
 		t.Fatalf("接続時のゲストへの peer = %s, want connected だけ", got)
 	}
 
-	if rec := b.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
+	if rec := b.owner(http.MethodDelete, "/api/peer/link", ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("B の解除: status = %d: %s", rec.Code, rec.Body)
 	}
 	if got := nextPeerEvent(t, guest); got != `{"state":"unpaired"}` {
 		t.Errorf("B の解除の後のゲストへの peer = %s, want unpaired", got)
 	}
-	if _, found, _ := a.env.db.Peers().Peer(context.Background()); found {
-		t.Error("B の解除で A の記録が消えない")
+	if _, found := a.grant(t); found {
+		t.Error("B の解除で A の grant が消えない")
 	}
 }
 
-func TestUntoldPeerRevokesOnItsNextRequest(t *testing.T) {
+// The read node withdrawing access while the reader is away: the reader's next request is refused, and the
+// reader shows the link as revoked.
+func TestRevokedReaderLearnsItOnItsNextRequest(t *testing.T) {
 	a, b := pairTestNodes(t)
-	credentialOfB := b.outgoingSecret(t)
-	stopped := httptest.NewServer(http.NotFoundHandler())
-	stopped.Close()
-	body, _ := json.Marshal(gen.UpdatePeerAddressRequest{Address: stopped.URL})
-	if rec := b.owner(http.MethodPut, "/api/peer/address", string(body)); rec.Code != http.StatusOK {
-		t.Fatalf("B のアドレスの変更: status = %d: %s", rec.Code, rec.Body)
+	if rec := a.owner(http.MethodDelete, "/api/peer/grant", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("A の取り消し: status = %d: %s", rec.Code, rec.Body)
 	}
-	// B cannot reach A, so A keeps its record until its own next request to B.
-	if rec := b.owner(http.MethodDelete, "/api/peer", ""); rec.Code != http.StatusNoContent {
-		t.Fatalf("B の解除: status = %d: %s", rec.Code, rec.Body)
-	}
-	guest, _ := openEvents(t, a.env.handler)
+	guest, _ := openEvents(t, b.env.handler)
 	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
-		t.Fatalf("A の状態 = %s, want connected のまま", got)
+		t.Fatalf("B の状態 = %s, want connected のまま", got)
 	}
 
-	a.runConnection(t)
+	b.runConnection(t)
 	if got := nextPeerEvent(t, guest); got != `{"state":"revoked"}` {
-		t.Fatalf("A の次の要求の後の peer = %s, want revoked", got)
+		t.Fatalf("B の次の要求の後の peer = %s, want revoked", got)
 	}
-	rec := a.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",
-		header: map[string]string{"Authorization": "VV-Peer " + credentialOfB}})
-	assertErrorBody(t, "revoked の後の B の資格情報", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusUnauthorized, code: gen.ErrorCodeUnauthenticated, reason: gen.ErrorReasonPeerUnknown,
-	})
+	link, _, _ := b.env.db.Peers().Link(context.Background())
+	if !link.Revoked {
+		t.Error("revoked が link に記録されていない")
+	}
+	if rec := b.owner(http.MethodDelete, "/api/peer/link", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoked の link の削除: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := nextPeerEvent(t, guest); got != `{"state":"unpaired"}` {
+		t.Errorf("削除後の peer = %s, want unpaired", got)
+	}
 }

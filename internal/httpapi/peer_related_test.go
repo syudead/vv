@@ -31,7 +31,9 @@ func relatedNodes(t *testing.T) (a, b *guestFixture, onA, onB *peerNode) {
 		t.Cleanup(server.Close)
 		nodes[i] = &peerNode{env: fixtures[i].env, url: server.URL, cookie: fixtures[i].owner, pairing: pairing}
 	}
+	// Each node reads the other, as two pairings, so a video opened on either ranks both nodes.
 	pairNodes(t, nodes[0], nodes[1])
+	pairNodes(t, nodes[1], nodes[0])
 	a, b = fixtures[0], fixtures[1]
 	if _, _, err := b.env.db.Tags().DetachTag(context.Background(), []int64{b.ids["b"]}, b.tagID); err != nil {
 		t.Fatal(err)

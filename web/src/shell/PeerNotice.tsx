@@ -27,12 +27,6 @@ function noticeText(state: PeerState, name: string, owner: boolean): NoticeText 
       title: words.certificateTitle(name),
       body: words.certificateBody,
     };
-  if (state.reason === "version")
-    return {
-      icon: Unplug,
-      title: words.versionTitle(name),
-      body: words.versionBody(state.peer?.version ?? "", state.node?.version ?? ""),
-    };
   return { icon: Unplug, title: words.networkTitle(name), body: words.networkBody };
 }
 

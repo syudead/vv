@@ -187,36 +187,42 @@ Docker Compose sets these for the container. Media folders are managed in
 Settings, not in a configuration file. All invalid values are reported
 together at startup.
 
-## Pair two VVMDMs
+## Read another VVMDM
 
-Two VVMDMs of the same release on one LAN can be paired so that each shows
-both libraries ([peer-library.md](../design-docs/peer-library.md)). Pairing
-has no environment variable; the owner does it under Settings, Pairing.
+A VVMDM can read one other VVMDM on the LAN, so that its screens show both
+libraries ([peer-library.md](../design-docs/peer-library.md)). Pairing is
+one-directional: entering A's code on B lets B read A, and A shows nothing of
+B. Pairing has no environment variable; the owner does it under Settings,
+Pairing.
 
-1. On VVMDM A, press **Show pairing code**.
-2. On VVMDM B, enter A's address, A's code and B's own address as A can reach
-   it, and press **Pair**.
-3. When B's own address is HTTPS with a certificate the system roots cannot
-   verify, such as a self-signed one, B shows that certificate's fingerprint.
-   Compare it with the certificate B serves, such as in the browser's
-   certificate viewer for B's page, and press **Trust and pair**.
-4. When B shows the fingerprint of A's certificate, compare it with the
+1. On VVMDM A, under **VVMDMs that read this one**, press **Show pairing
+   code**.
+2. On VVMDM B, under **Read another VVMDM**, enter A's address and A's code,
+   and press **Pair**.
+3. When B shows the fingerprint of A's certificate, compare it with the
    certificate in front of A and press **Trust and pair**.
 
-A pins the certificate of B's address that B's owner confirmed in step 3, so
-neither owner confirms a certificate on A.
+To read in both directions, pair again the other way: show B's code and enter
+it on A. The two pairings are independent, and each is removed on its own.
 
 | Requirement | Why |
 | --- | --- |
-| Each VVMDM reaches the other at the address entered, over `http://` or `https://` | Every merged list and every forwarded request calls the other VVMDM |
-| Both run the same release | A different version shows the pairing as not connected until both are updated |
+| The reading VVMDM reaches the read one at the address entered, over `http://` or `https://` | Every merged list and every forwarded request calls the read VVMDM |
+| Both run the same release | Pairing does not compare versions; an operation one release lacks fails on the other and leaves out that VVMDM's part, so update both together |
 | The address has no path | VVMDM is served at the root of its address |
 
-A paired VVMDM that stops answering hides its videos, groups and smart folders
+The reading VVMDM needs no inbound reachability: the read VVMDM never connects
+to it, so a VVMDM listening only on `127.0.0.1`, such as `task dev` on a
+laptop, can read a VVMDM on the LAN. The reverse pairing then needs the laptop
+to listen on an address the other VVMDM reaches.
+
+A read VVMDM that stops answering hides its videos, groups and smart folders
 and shows a notice until it is back. Changing the address under Pairing keeps
-the pairing; unpairing on either side ends it on both, and a side that was
-stopped at the time shows **Unpaired by the other side** until its owner
-removes the pairing.
+the pairing. Removing the pairing on the reading side also removes the access
+on the read side; removing the access on the read side (**Remove access**)
+shows **Access removed by the other side** on the reading side until its owner
+removes the pairing. A reading VVMDM that was stopped at the time learns it
+from its next request.
 
 ## Account setup
 
@@ -404,7 +410,7 @@ that scanning cannot restore, next to an index that a scan rebuilds:
 | --- | --- | --- |
 | Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_keyframe_spacing`, `video_media_info`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
 | User data | `virtual_videos`, `playback_progress`, `watch_history`, `tags`, `tag_names`, `video_tags`, `auto_tag_rejections`, `rejected_tag_names`, `public_videos`, `video_overrides`, `thumbnail_images`, `video_edits`, `video_favorites`, `group_favorites`, `playlists`, `playlist_items`, `groups`, `group_items`, `group_exclusions`, `smart_folders`, `smart_folder_favorites`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `video_version_unbundles`, `video_version_judging_holds`, the activity log (`activity_entries`, `activity_entry_tags`, `activity_entry_keys`), `folder_group_overrides`, the work information (`video_work_info`, `video_work_dates`, `video_work_urls`, `video_work_external_ids`, `video_work_people`, `video_work_organizations`), people and organizations (`people`, `people_names`, `people_external_ids`, `people_links`, `person_images`, `person_favorites`, `organizations`, `organization_names`, `organization_external_ids`), and the work-info plugins with their setting values and last runs (`work_info_plugins`, `work_info_plugin_settings`, `work_info_plugin_runs`) | A backup only |
-| Configuration | `account`, `media_folders`, `settings` (including this VVMDM's node id), `api_tokens`, `peer` (the paired VVMDM) | A backup, or setting it up again; a lost `peer` row is restored by pairing again |
+| Configuration | `account`, `media_folders`, `settings` (including this VVMDM's node id), `api_tokens`, `peer_link` (the VVMDM this one reads), `peer_grant` (the VVMDM that reads this one) | A backup, or setting it up again; a lost `peer_link` or `peer_grant` row is restored by pairing again in that direction |
 | Auto-tagging record | `auto_tag_results` | Tagging the videos again under Settings, Auto-tagging; tags the owner removed can come back ([auto-tagging](../design-docs/auto-tagging.md)) |
 | Session | `sessions` | Logging in again |
 

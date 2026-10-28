@@ -7,8 +7,9 @@ import { ErrorState } from "../ui/patterns/error-state";
 import { PageSection } from "../ui/patterns/page-section";
 import { Skeleton } from "../ui/shadcn/skeleton";
 
-import { PairedSection } from "./PairingSectionPaired";
-import { UnpairedSection } from "./PairingSectionUnpaired";
+import { PairForm } from "./PairingSectionForm";
+import { LinkDetails } from "./PairingSectionLink";
+import { ReadersSection } from "./PairingSectionReaders";
 
 type PeerView =
   | { kind: "loading" }
@@ -28,11 +29,11 @@ function usePeerState() {
     setView({ kind: "loaded", state });
   }, []);
 
-  // The state line moves only on a peer event, so an answer updates the peer's details alone.
-  const updatePeer = useCallback((answer: PeerState) => {
+  // The state line moves only on a peer event, so an answer updates the link's details alone.
+  const updateLink = useCallback((answer: PeerState) => {
     setView((current) =>
-      current.kind === "loaded" && answer.peer !== undefined
-        ? { kind: "loaded", state: { ...current.state, peer: answer.peer } }
+      current.kind === "loaded" && answer.link !== undefined
+        ? { kind: "loaded", state: { ...current.state, link: answer.link } }
         : current,
     );
   }, []);
@@ -59,23 +60,58 @@ function usePeerState() {
     };
   }, [apply, load]);
 
-  return { view, apply, updatePeer, retry: () => void load() };
+  return { view, apply, updateLink, retry: () => void load() };
 }
 
-/** One section whose face follows GET /api/peer and the peer event. */
+/** The VVMDM this one reads: the pairing form until a link exists, then the link's face. */
+function ReadSection({
+  state,
+  onPaired,
+  onLinkAnswer,
+  onUnpaired,
+}: {
+  state: PeerState;
+  onPaired: (state: PeerState) => void;
+  onLinkAnswer: (state: PeerState) => void;
+  onUnpaired: () => void;
+}) {
+  const text = t.settings.pairing.read;
+  return (
+    <PageSection title={text.heading} description={text.description}>
+      {state.state === "unpaired" ? (
+        <PairForm onPaired={onPaired} />
+      ) : (
+        <LinkDetails state={state} onLinkAnswer={onLinkAnswer} onUnpaired={onUnpaired} />
+      )}
+    </PageSection>
+  );
+}
+
+/**
+ * Two independent sections: the VVMDM this one reads, and the VVMDM that reads this one. Both follow
+ * GET /api/peer and the peer event.
+ */
 export default function PairingSection() {
   const text = t.settings.pairing;
-  const { view, apply, updatePeer, retry } = usePeerState();
+  const { view, apply, updateLink, retry } = usePeerState();
 
   if (view.kind === "loaded") {
     const { state } = view;
-    if (state.state === "unpaired") return <UnpairedSection onPaired={apply} />;
     return (
-      <PairedSection
-        state={state}
-        onPeerAnswer={updatePeer}
-        onUnpaired={() => apply({ state: "unpaired", node: state.node })}
-      />
+      <>
+        <ReadSection
+          state={state}
+          onPaired={apply}
+          onLinkAnswer={updateLink}
+          onUnpaired={() =>
+            apply({ state: "unpaired", grant: state.grant, node: state.node })
+          }
+        />
+        <ReadersSection
+          grant={state.grant}
+          onRevoked={() => apply({ ...state, grant: undefined })}
+        />
+      </>
     );
   }
   return (
