@@ -223,8 +223,9 @@ listed, or when it lists no entry while a registered location lies under it
 mount point is a readable empty directory on Linux, in a container's bind
 mount and under a Windows volume mount point, while a new folder holds no
 location and stays available. The scheduler asks the store whether a folder
-holds a location only when it resolves the folder; in the snooze path the
-failed job's own location proves it. A folder whose every file was deleted
+holds a location only when it resolves the folder, inside the same 5-second
+bound, so a slow library read parks the folder rather than the turn; in the
+snooze path the failed job's own location proves it. A folder whose every file was deleted
 while mounted is parked until the next scan removes its locations and the
 minute recheck finds it available.
 

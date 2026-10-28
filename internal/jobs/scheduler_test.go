@@ -1154,6 +1154,48 @@ func TestSchedulerGrantsOtherDisksWhileAFolderDoesNotAnswer(t *testing.T) {
 	})
 }
 
+// blockingFolders is the test folders whose library lookup for one folder blocks until answer is closed.
+type blockingFolders struct {
+	fakeFolders
+	blocked int64
+	answer  chan struct{}
+}
+
+func (f blockingFolders) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	if folderID == f.blocked {
+		<-f.answer
+	}
+	return f.fakeFolders.HasLocationsUnder(ctx, folderID)
+}
+
+func TestSchedulerGrantsOtherDisksWhileAFolderLookupDoesNotAnswer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		folders := blockingFolders{fakeFolders: twoFolders, blocked: rootA, answer: make(chan struct{})}
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobProbe, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: twoDisks().resolve, Folders: folders,
+		})
+		defer stop()
+		time.Sleep(DiskResolveTimeout)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2}; !slices.Equal(got, want) {
+			t.Fatalf("running while the lookup for folder a does not answer = %v, want %v", got, want)
+		}
+		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
+			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+		close(folders.answer)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("running after the lookup answers = %v, want %v", got, want)
+		}
+	})
+}
+
 func TestSchedulerKeepsAFailureUnderAReadableFolder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe})

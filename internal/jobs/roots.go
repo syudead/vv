@@ -77,9 +77,9 @@ func (r *roots) requestRecheck() {
 }
 
 // refresh resolves the folders that need it and forgets removed ones; it runs on the scheduler's loop only. populated
-// reports whether the library holds a location under a folder, read only for the folders resolved now. A resolution
-// that outlasts DiskResolveTimeout parks its folder until it answers, because a read from an unresponsive share can
-// block without end.
+// reports whether the library holds a location under a folder, read only for the folders resolved now and inside
+// their resolution. A resolution that outlasts DiskResolveTimeout parks its folder until it answers, because a read
+// from an unresponsive share or a stalled library lookup can block without end.
 func (r *roots) refresh(folders []domain.MediaFolder, now time.Time, populated func(domain.MediaFolder) bool) {
 	pending := r.pending(folders, now)
 	if len(pending) == 0 {
@@ -87,9 +87,8 @@ func (r *roots) refresh(folders []domain.MediaFolder, now time.Time, populated f
 	}
 	done := make(chan struct{}, len(pending))
 	for _, folder := range pending {
-		holdsLocations := populated(folder)
 		go func() {
-			r.resolveOne(folder, holdsLocations)
+			r.resolveOne(folder, populated(folder))
 			done <- struct{}{}
 		}()
 	}
