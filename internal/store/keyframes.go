@@ -30,34 +30,13 @@ func upsertKeyframeSpacing(ctx context.Context, db queryExecer, videoID int64, p
 	return err
 }
 
-// NextKeyframeProbe pages through registered locations without walking the disk.
-// Rows (including unknown results) survive restarts. A changed file or sample
-// version becomes eligible again. Normal import work has priority for each video.
-func (s *IngestStore) NextKeyframeProbe(ctx context.Context, afterID int64) (domain.Job, error) {
-	return nextBackfillJob(ctx, s.db.sql, afterID, `v.video_codec = 'h264'
+// QueueKeyframeJobs queues, in class priority, a keyframes job for each H.264 video whose stored spacing is missing,
+// of another sample version, or for another size or modification time. Rows, unknown results included, survive
+// restarts, so only a changed file or sample version is read again.
+func (s *IngestStore) QueueKeyframeJobs(ctx context.Context, priority domain.JobPriority) (int, error) {
+	return s.queueBackfillJobs(ctx, domain.JobKeyframes, priority, `v.video_codec = 'h264'
 		and not exists (select 1 from video_keyframe_spacing k where k.video_id = v.id and k.version = ?
 			and k.size_bytes = l.size_bytes and k.mtime_ns = l.mtime_ns)`, domain.KeyframeProbeVersion)
-}
-
-// nextBackfillJob picks the next probed video after afterID whose first registered location meets condition,
-// leaving a video with probe work pending to the import.
-func nextBackfillJob(ctx context.Context, q rowQueryer, afterID int64, condition string, args ...any) (domain.Job, error) {
-	var job domain.Job
-	err := q.QueryRowContext(ctx, `select v.id, v.content_key, v.location_generation, l.id, l.version, l.path
-		from videos v join video_locations l on l.video_id = v.id
-		where v.id > ? and v.probe_state = 'done'
-		and `+registeredLocationCondition("l")+`
-		and l.path = (select min(first.path) from video_locations first where first.video_id = v.id
-			and `+registeredLocationCondition("first")+`)
-		and not exists (select 1 from jobs j where j.video_id = v.id and j.kind = 'probe'
-			and j.state in ('queued', 'running'))
-		and `+condition+`
-		order by v.id, l.path limit 1`, append([]any{afterID}, args...)...).
-		Scan(&job.VideoID, &job.ContentKey, &job.LocationGeneration, &job.LocationID, &job.LocationVersion, &job.LocationPath)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Job{}, domain.ErrNoJob
-	}
-	return job, err
 }
 
 // SaveKeyframeProbe rejects a source replaced while the background sample ran.

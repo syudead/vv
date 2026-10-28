@@ -214,6 +214,7 @@ func run(opts runOptions) error {
 	}
 	handlers[domain.JobAutoTag] = autoTagger.HandleJob
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
+	addBackfillHandlers(handlers, ingestStore, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Folders:  scanIndexStore,
@@ -296,13 +297,6 @@ func run(opts runOptions) error {
 
 	var workersDone sync.WaitGroup
 	workersDone.Go(func() { scheduler.Run(backgroundCtx) })
-	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
-	workersDone.Go(func() {
-		if err := ingest.RepublishVirtualThumbnails(backgroundCtx); err != nil {
-			logger.Warn("could not republish the thumbnails of virtual videos", slog.Any("error", err))
-		}
-	})
-	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
 
 	workersDone.Go(func() { faces.run(backgroundCtx) })
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
@@ -456,7 +450,30 @@ func run(opts runOptions) error {
 		events.Close()
 		stopPairing()
 	}
-	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
+	// Backfills are queued once the listener is open, so startup never waits for them; see
+	// docs/design-docs/process-lifecycle.md.
+	onListening := func() {
+		if opts.OnListening != nil {
+			opts.OnListening()
+		}
+		if err := ingestStore.EnqueueStartupJobs(backgroundCtx); err != nil {
+			logger.Warn("could not queue the startup jobs", slog.Any("error", err))
+		}
+	}
+	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
+}
+
+// addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
+func addBackfillHandlers(handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, ingest *app.Ingest) {
+	keyframes := app.KeyframeBackfill(ingestStore, media.ProbeKeyframes)
+	mediaInfo := app.MediaInfoBackfill(ingestStore, media.ProbeMediaInfo)
+	handlers[domain.JobQueueKeyframes] = keyframes.QueueAll
+	handlers[domain.JobKeyframes] = keyframes.Read
+	handlers[domain.JobQueueMediaInfo] = mediaInfo.QueueAll
+	handlers[domain.JobMediaInfo] = mediaInfo.Read
+	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
+		return ingest.RepublishVirtualThumbnails(ctx)
+	}
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records

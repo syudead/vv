@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Count only queued/running jobs with registered locations, matching ClaimJob eligibility.
+// Count only queued/running import stages with registered locations, matching ClaimJob eligibility.
 func remainingJobCondition(alias string) string {
-	return alias + `.state in ('queued', 'running') and exists (
+	return alias + `.state in ('queued', 'running') and ` + alias + `.kind in (` + importJobKinds + `) and exists (
 		select 1 from video_locations l where l.video_id = ` + alias + `.video_id and ` +
 		registeredLocationCondition("l") + `)`
 }

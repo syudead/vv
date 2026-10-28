@@ -1,10 +1,10 @@
 # Job scheduling: one scheduler for every ingest stage
 
-One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest
-job, every auto-tagging job and every duplicate-judging job the resources its
-kind declares, from the CPU slots, the classifier slots and the read slots of
-the job's disk, and runs it. A scan's content-key reads take read slots from
-the same disks.
+One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest,
+auto-tagging, duplicate-judging and backfill job the resources its kind
+declares, from the CPU slots, the classifier slots and the read slots of the
+job's disk, and runs it. A scan's content-key reads take read slots from the
+same disks.
 
 The diagram shows what wakes the scheduler and what a grant runs.
 
@@ -37,6 +37,10 @@ send one request to the classifier.
 | `fingerprint` | 0 | 1 | 0 | Reads sprite frames from the data directory, not the source |
 | `auto_tag` | 0 | 0 | 1 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
 | `version_judge` | 0 | 0 | 1 | Compares stored fingerprints and sends frames cut from the seek previews ([duplicate judging](duplicate-judging.md)) |
+| `keyframes` | 1 | 0 | 0 | ffprobe reads the packet index of the whole file |
+| `media_info` | 1 | 0 | 0 | ffprobe reads the container |
+| `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
+| `virtual_thumbnails` | 0 | 0 | 0 | Copies stored image bytes into thumbnail files |
 
 A read slot belongs to the disk of the location the claim picks: the next
 available registered location in path order after the previous attempt's.
@@ -234,7 +238,18 @@ and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
 | --- | --- | --- |
 | Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue, and "Judge again" on Duplicates |
 | Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
-| Backfill | 2 | Work that only refreshes stored results; no kind queues it yet |
+| Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)) |
+
+Backfill kinds stay out of import tracking. They open no activity entry, do not
+keep the current import from settling, and do not make the desktop app busy
+(`HasUnfinishedJobs`), so a version bump never looks like an import. Their
+row is deleted when the job ends, done or failed, because the result lives in
+the domain tables and the next startup queues the work again. A `keyframes`
+or `media_info` job whose video gained or lost a location, or whose file
+changed, during the read saved nothing, so it is queued again, as an import
+stage is. A
+`queue_keyframes`, `queue_media_info` or `virtual_thumbnails` job names no
+video, so each claim is one attempt.
 
 An owner request over a job that is already queued raises it to class 0 and
 ends its retry wait, so the owner never waits behind a delay or a bulk import.

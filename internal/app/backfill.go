@@ -2,42 +2,37 @@ package app
 
 import (
 	"context"
-	"errors"
-	"log/slog"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// backfill re-reads one file at a time, pausing between files and for a minute between passes, so a background
-// re-read never competes with import work. failure names the warning a store error logs.
-func backfill[T any](ctx context.Context, next func(context.Context, int64) (domain.Job, error),
+// Backfill re-reads files so stored results from an older build gain what this build reads. Both handlers run as
+// backfill-class scheduler jobs; neither changes import progress or queues import work. See
+// docs/design-docs/job-scheduling.md.
+type Backfill struct {
+	// QueueAll handles the queue-all job: it queues one Read job per video whose stored result is out of date, in the
+	// queue-all job's class.
+	QueueAll func(ctx context.Context, job domain.Job) error
+	// Read reads the job's file and saves the result if the file is still the one indexed.
+	Read func(ctx context.Context, job domain.Job) error
+}
+
+func newBackfill[T any](
+	queue func(context.Context, domain.JobPriority) (int, error),
 	read func(context.Context, string) T, save func(context.Context, domain.Job, T) error,
-	logger *slog.Logger, failure string,
-) {
-	var afterID int64
-	for ctx.Err() == nil {
-		job, err := next(ctx, afterID)
-		delay := 250 * time.Millisecond
-		if err == nil {
-			afterID = job.VideoID
+) Backfill {
+	return Backfill{
+		QueueAll: func(ctx context.Context, job domain.Job) error {
+			_, err := queue(ctx, job.Priority)
+			return err
+		},
+		Read: func(ctx context.Context, job domain.Job) error {
 			result := read(ctx, job.LocationPath)
-			if ctx.Err() != nil {
-				return
+			// A read cut short by shutdown is not a result.
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-			err = save(ctx, job, result)
-		} else {
-			afterID, delay = 0, time.Minute
-		}
-		if err != nil && !errors.Is(err, domain.ErrNoJob) && ctx.Err() == nil {
-			logger.Warn(failure, slog.Any("error", err))
-		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
+			return save(ctx, job, result)
+		},
 	}
 }
