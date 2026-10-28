@@ -249,7 +249,7 @@ The frame side made no difference to speed, because the helper runs YuNet at
 | Cutoff                  | Good seconds (one per good face) at least the bar, the larger of 3 s and 25% of the analysed length. A cluster of 2 or more tracks needs only min(8 s, bar); a cluster of one track needs the bar itself                                                                                                                                  |
 | Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Join` are one person and are joined, repeatedly, most similar first                                                                                                                                                                                                            |
 
-The analysed length is the number of frames the worker sampled divided by the
+The analysed length is the number of frames the job sampled divided by the
 sampling rate, not the file's duration, so a video cut short is judged by what
 was seen. The 3 s floor keeps a cameo from counting in a short clip; 25% means
 a person on screen for a quarter of the video is a main person, which is what
@@ -347,8 +347,8 @@ owner joins them by confirming the pair.
 
 A person made by an analysis gets the crop of their best face as their face
 image and the vector of that face, taken from its frame, as its vector, in the
-transaction that creates them; the face worker finds the vector current and
-does not embed the crop again. The face changes only when the owner replaces
+transaction that creates them; a later `face_image` job finds the vector current
+and does not embed the crop again. The face changes only when the owner replaces
 it, or a merge gives a target without a face the source's, and the vector
 follows the face.
 
@@ -356,7 +356,7 @@ follows the face.
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Every appearance's centroid as a vector of its person | A person seen in many videos had as many chances to reach a stranger, and the owner would be offered the same wrong pair from each video |
 | One averaged vector per person                        | Each confirmed pair would move it towards whatever the owner merged                                                                      |
-| Embedding the crop of a new person in the face worker | The JPEG crop gives a vector other than its frame's, and the next video could not offer the person until the worker ran                  |
+| Embedding the crop of a new person in a `face_image` job | The JPEG crop gives a vector other than its frame's, and the next video could not offer the person until the job ran                  |
 | A nearest-neighbour index                             | 10,000 vectors of 512 values are 20 MB, and a full scan in memory takes milliseconds                                                     |
 
 ## A re-analysis carries appearances over by track time and position
@@ -404,28 +404,34 @@ person's own face merges nobody, so provisional people never merge into each
 other on their own. A provisional person whose pair with the named person the
 owner dismissed is neither merged nor counted.
 
-The face worker embeds faces between videos
+A `face_image` job, keyed by person, embeds a face on the face lane
 ([`face_images.go`](../../internal/app/face_images.go)). A face's vector is the
 vector of its only good face, by the quality gate of video faces; a face with
-none or several gets a null vector. `PersonImageChanged`, published after the
-commit that sets, replaces or brings a face by a merge, or names a provisional
-person with a face, wakes the worker for that person; the worker also takes any
-face whose `person_face_vectors` row is missing or of another revision or
-recognizer, so a lost event or a recognizer switch still leads to a vector.
+none or several gets a null vector. The job is queued in the owner class by
+the transaction that sets, replaces or brings a face by a merge, or names a
+provisional person with a face
+([`person_images.go`](../../internal/store/person_images.go)). A recognizer
+switch queues one `queue_face_images` job, which queues a `face_image` job for
+every face whose `person_face_vectors` row is missing or of another revision or
+recognizer, and the upgrade to face jobs queued it once for the faces stale
+then. A subject holds one unfinished job, so a request that finds its
+`face_image`, `face_cast` or `queue_face_images` job running sets the job's
+`force_requested` instead, and the job is queued again when it ends, even
+after its last failure; the run may have read the subject before the change.
 
-| Step  | Rule                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read  | The face, its stored vector, the recognizer and `face.generation`, in one read                                                                                                                                                                                                                                                                                                                                                   |
-| Embed | Skipped when the stored vector is current, as after a naming; one helper request, at most 2 minutes, on the video's helper                                                                                                                                                                                                                                                                                                       |
-| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged`, writes nothing for a face changed since, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)); a merge refused for good is rolled back alone ([below](#an-automatic-merge-refused-for-good-is-left-out)) |
+| Step  | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read  | The face, its stored vector, the recognizer and `face.generation`, in one read; a person without a face ends the job                                                                                                                                                                                                                                                                                                                                   |
+| Embed | Skipped when the stored vector is current, as after a naming; one helper request, at most 2 minutes                                                                                                                                                                                                                                                                                                                                                    |
+| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged` and a face replaced since with `ErrFaceImageChanged`, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)); a merge refused for good is rolled back alone ([below](#an-automatic-merge-refused-for-good-is-left-out)) |
 
-| Event                                                                                  | Effect                                                                                             |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| The settings change during the embedding, or the vector reaches `Store` after a switch | The face is read again under the new settings                                                      |
-| The helper does not start                                                              | The face waits until the runtime is ready again                                                    |
-| The helper exits, answers with an error or takes over 2 minutes                        | A null vector, as for a face without a good face; the face is not embedded again until it changes  |
-| A database error                                                                       | The worker tries again after 5 seconds                                                             |
-| The merge is refused for good                                                          | The vector and candidates are stored without the merge, and the worker logs the person and goes on |
+| Event                                                                                                         | Effect                                                                                             |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| The settings change during the embedding, the vector reaches `Store` after a switch, or the face was replaced | The job is snoozed and reads the face again                                                        |
+| The helper does not start                                                                                     | The job is snoozed and waits, paused, until the runtime is ready again                             |
+| The helper exits, answers with an error or takes over 2 minutes                                               | A null vector, as for a face without a good face; the face is not embedded again until it changes  |
+| A database error                                                                                              | The job is retried after its delay ([job-scheduling.md](job-scheduling.md))                        |
+| The merge is refused for good                                                                                 | The vector and candidates are stored without the merge, and the job logs the person and ends       |
 
 `PUT /api/people/{id}/image` stores the owner's face whatever face
 recognition finds in it, as it stores plugin faces: a face without one good
@@ -434,8 +440,8 @@ before saving it ([people.md](people.md#a-face-is-framed-before-it-is-saved)).
 
 | Rejected                                         | Why                                                                                                                                              |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Embedding inside the upload request              | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video                                             |
-| Embedding only the faces named by events         | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
+| Embedding inside the upload request              | Plugin and merge faces are stored after their own commits, and the helper may be in a video                                                      |
+| An event after commit instead of a job            | An event is lost when the server stops before it is handled; a job queued in the write's transaction is not                                      |
 | Refusing an upload without exactly one good face | Detection misses drawn, side-on and small faces the owner still wants to show, and a null vector already keeps such a face out of merges         |
 
 ## The cast rule merges only one-to-one pairs
@@ -461,12 +467,12 @@ a `face_merge` entry.
 | Trigger                                           | Where the rule runs                                                                                                                             |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | A video's analysis ends                           | In `FaceStore.Store`'s transaction, after the result is written                                                                                 |
-| A work-information write (`VideoWorkInfoChanged`) | In the face worker, before its next claim, while the feature is on; a database error keeps the unchecked videos for the attempt after 5 seconds |
+| A work-information write                          | In a `face_cast` job for each changed video, queued in the write's transaction while the feature is on; a database error retries the job after its delay |
 
 A merge refused for good is left out as the
 [next section](#an-automatic-merge-refused-for-good-is-left-out) describes:
-`Store` keeps the result without the merge, and the worker logs the video and
-drops its check.
+`Store` keeps the result without the merge, and the `face_cast` job logs the
+video and ends.
 
 | Rejected                                                                            | Why                                                                                                                                             |
 | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -483,19 +489,19 @@ no longer provisional, or the two being one credit) is rolled back to that
 savepoint and wraps `ErrFaceMergeRefused`, so the rest of the transaction is
 kept.
 
-| Rule                                      | What is kept                         | Worker                                  |
-| ----------------------------------------- | ------------------------------------ | --------------------------------------- |
-| Cast rule at the end of an analysis       | The analysis result                  | —                                       |
-| Cast rule after a work-information change | Nothing to keep                      | Logs the video and drops its check      |
-| Face-image rule                           | The face's vector and its candidates | Logs the person and takes the next face |
+| Rule                                      | What is kept                         | Job                           |
+| ----------------------------------------- | ------------------------------------ | ----------------------------- |
+| Cast rule at the end of an analysis       | The analysis result                  | —                             |
+| Cast rule after a work-information change | Nothing to keep                      | Logs the video and ends       |
+| Face-image rule                           | The face's vector and its candidates | Logs the person and ends      |
 
 The face's vector is stored even without the merge, because a face without a
-current vector is read again as stale and would be embedded and refused again
-every 5 seconds.
+current vector is stale and the next `queue_face_images` job would embed it
+and be refused again.
 
-| Rejected                                     | Why                                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Trying a refused merge again after 5 seconds | It cannot succeed until the owner changes the people, and every attempt holds up the queue |
+| Rejected                                     | Why                                                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Retrying a refused merge after a delay       | It cannot succeed until the owner changes the people, and every attempt holds up the lane   |
 | Offering a refused pair as a candidate       | Confirming it is the ordinary merge, which the same limits refuse                          |
 
 ## One video's result is stored in one transaction
@@ -520,7 +526,7 @@ has any more keeps its rows, and a returning file keeps its links.
 
 | Rejected                                   | Why                                                                                                                 |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Matching in the worker, then writing       | A person deleted or merged between the read and the write would be linked                                           |
+| Matching in the job, then writing          | A person deleted or merged between the read and the write would be linked                                           |
 | Keeping crops only on appearances          | The people grid, the cast chips and the candidates show `person_images`, so a provisional person would show no face |
 | A 112 × 112 aligned crop as the face       | It is the model's input, cut tight to the eyes and mouth: too small and too tight for a portrait                    |
 | A face-link table beside credits           | The person page, the filters and smart folders read credits only; every reader would have to change                 |
@@ -529,45 +535,49 @@ has any more keeps its rows, and a returning file keeps its links.
 
 ## The face queue mirrors the auto-tagging queue
 
-`face_queue` holds one row per content key in the states `queued`, `running`,
-`done` and `failed`, and shares the activity rules of its queueing, claiming
-and failure with auto-tagging, whose items are `auto_tag` jobs
+Face analysis is a `face` job per content key, and `face_results` holds the
+`done` or `failed` outcome per content key with the recognizer and the
+failure's reason. A content key's state is its unfinished job's, then its
+result's. The queueing, claiming and failure share the activity rules of
+auto-tagging, whose items are `auto_tag` jobs
 ([`content_queue.go`](../../internal/store/content_queue.go)). While
 `face.enabled` is `true`, the transaction that records the seek stage's final
-result queues a video with no row, and its `face_analysis` entry joins the
-import pipeline as `auto_tag` does
+result queues a video with no job or result, and its `face_analysis` entry
+joins the import pipeline as `auto_tag` does
 ([activity.md](activity.md#a-pipeline-groups-one-import-run)). A forced seek
-job, queued by a force rescan, queues its video whether it has no row or is
-`done` or `failed`, and leaves a `queued` or `running` row, with an owner's entry that joins the same pipeline
+job, queued by a force rescan, queues its video whether it has no result or is
+`done` or `failed`, and leaves an unfinished job, with an owner's entry that
+joins the same pipeline
 ([force rescan](force-rescan.md#tagging-and-face-analysis-run-again)).
 
 The queue is filled in two more ways, each refused with
 `409 face_recognition_off` while the feature is off.
 
-| Trigger                                          | Queues                                                                       |
-| ------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `POST /api/face-recognition/runs` with `missing` | Videos without a row or whose analysis failed                                |
-| Retry of a `face_analysis` entry in `attention`  | Its video, unless it is running; the new entry joins the old one's pipelines |
+| Trigger                                          | Queues                                                                                               |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `POST /api/face-recognition/runs` with `missing` | Videos without a job or a result, or whose analysis failed, in the import class                     |
+| Retry of a `face_analysis` entry in `attention`  | Its video, unless it is running, in the owner class; the new entry joins the old one's pipelines     |
 
 A recognizer switch, in the settings' transaction, increases the
 `face.generation` setting, deletes the old recognizer's face-image vectors and
-appearance centroids, and queues again every video whose row is `done` or
-`failed`. Appearances keep their tracks, people and crops, so the next analysis
-carries them over; a video never analysed stays for "Analyse missing". Claiming
-reads the recognizer and the generation in the claim's transaction, so a job
-never pairs one recognizer with another's generation. `Store` compares the
-job's generation with the current one in its transaction and refuses an older
-one with `ErrFaceGenerationChanged`, writing nothing, so a vector of the old
-recognizer is never stored beside the new ones. A result for a row that is no
-longer `running` writes nothing either.
+appearance centroids, queues again every video whose result is `done` or
+`failed`, and queues `queue_face_images`. Appearances keep their tracks,
+people and crops, so the next analysis carries them over; a video never
+analysed stays for "Analyse missing". A job reads the recognizer and the
+generation together when it starts, so it never pairs one recognizer with
+another's generation. `Store` compares the job's generation with the current
+one in its transaction and refuses an older one with
+`ErrFaceGenerationChanged`, writing nothing, so a vector of the old recognizer
+is never stored beside the new ones. A result for a job that is no longer
+`running` writes nothing either.
 
 | Rejected                                                                            | Why                                                                                                                             |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | A run that queues every analysed video again (`all`)                                | A re-analysis carries each appearance over to the same person, so it spent hours to find the same people                        |
-| A job kind in `jobs`                                                                | Import progress counts jobs, and an optional analysis at about 0.27 times the video length would hold the import open           |
+| Counting face jobs in import progress                                               | An optional analysis at about 0.27 times the video length would hold the import open; only the five import kinds count          |
 | Queueing every video in the library on a switch                                     | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again            | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses                                  |
-| Cancelling the worker and waiting for it before a switch, instead of the generation | An embedding an event queues after the wait would still write the old recognizer's vector                                       |
+| Cancelling the running job and waiting for it before a switch, instead of the generation | An embedding queued after the wait would still write the old recognizer's vector                                           |
 | A lock held for a whole analysis                                                    | An analysis takes minutes, and the settings request would wait for it                                                           |
 
 ## The settings page
@@ -589,15 +599,23 @@ started it, with `Download again` on a failure.
 | The recognizer is a radio group, not a select                                                    | Two options read once, and a select would hide the license until opened                         |
 | Progress is polled from the settings resource, not sent as an SSE event                          | One screen watches a download that happens once, and Auto-tagging polls its counts the same way |
 
-## The face worker analyses one video at a time
+## The face lane runs one face job at a time
 
 `FaceRecognizer` ([`face_recognizer.go`](../../internal/app/face_recognizer.go))
-claims a video only while the feature is on and the chosen recognizer's
-runtime is `ready`; videos queued before that wait, and the runtime wakes the
-worker when a download or a helper check makes it ready. The worker resolves
-the video's registered location through `internal/mediafs`, as live
-transcoding does, and reads its frames with `ffmpeg`
-([`face_frames.go`](../../internal/media/face_frames.go)).
+handles the `face`, `face_image` and `face_cast` jobs the scheduler grants.
+They share the one face lane slot, so an analysis, an embedding and the cast
+rule never interleave and the helper answers one request at a time
+([job-scheduling.md](job-scheduling.md#each-kind-declares-a-demand)). The lane
+is paused while the feature is off or the chosen recognizer's runtime is not
+`ready`; its jobs stay queued with their attempts, and saving the settings or
+a download or helper check that makes the runtime ready wakes the scheduler.
+A `face` job also takes a read and a CPU slot. Its claim takes the available
+locations of every video with its content key in path order, starting after
+the previous attempt's, as an import job's claim does: a failure moves to the
+next copy at once, and only the claim that wraps to the first copy counts an
+attempt. The job resolves that location through
+`internal/mediafs`, as live transcoding does, and reads its frames with
+`ffmpeg` ([`face_frames.go`](../../internal/media/face_frames.go)).
 
 | Step   | Rule                                                                                                                                                                                                                                                                       |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -607,26 +625,30 @@ transcoding does, and reads its frames with `ffmpeg`
 | Crops  | A crop of each track's best good face is kept while the track can still count: the face box doubled around its centre, moved inside the picture where it reaches past its edge and cut only where it is larger than the picture, never enlarged, fitted as a person's face |
 | Result | `FindMainPeople` over the tracks, each main person with its best face's crop, stored by `FaceStore.Store`                                                                                                                                                                  |
 
-The worker keeps one helper per recognizer across videos and stops it when
-the queue is empty, the feature is off or the recognizer changes, so the
-models leave memory while nothing is analysed.
+`FaceRecognizer` keeps one helper per recognizer across jobs. After each
+face-lane job it stops the helper unless another `face` or `face_image` job is
+due and the lane is not paused, so the models leave memory while nothing is
+analysed; the next job starts it again. A `queue_face_images` job holds no
+lane slot and may run beside an analysis, so it never stops the helper.
+Turning the feature off stops an idle helper at once.
 
-| Event                                                                                                                | Effect                                                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Turning the feature off or switching the recognizer                                                                  | The running video is cancelled and goes back to `queued`; the next analysis starts from its first frame                                     |
-| A switch that reaches `Store` before the cancellation                                                                | `ErrFaceGenerationChanged`; the video goes back to `queued`                                                                                 |
-| The helper does not start or greet                                                                                   | The runtime is marked `failed` and the video goes back to `queued`, waiting for the owner to download again                                 |
-| The helper exits mid-video, answers with an error or takes over 2 minutes for a frame                                | The video is `failed` with the message                                                                                                      |
-| `ffmpeg` fails, or no location can be opened                                                                         | The video is `failed` with the message                                                                                                      |
-| The video left the library                                                                                           | The empty result removes its row                                                                                                            |
-| A database error while reading the video's locations or the media folders, storing the result or recording a failure | The video goes back to `queued` and the worker tries again after 5 seconds; if that also fails, the worker returns it before its next claim |
-| The server stops                                                                                                     | The row stays `running`; startup puts it back to `queued`                                                                                   |
+| Event                                                                                 | Effect                                                                                                                       |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Turning the feature off or switching the recognizer                                   | The running job is cancelled and snoozed, back to `queued` without an attempt; the next analysis starts from its first frame |
+| A switch that reaches `Store` before the cancellation                                 | `ErrFaceGenerationChanged`; the job is snoozed                                                                               |
+| The helper does not start or greet                                                    | The runtime is marked `failed`, which pauses the lane, and the job is snoozed until the owner downloads again                |
+| The helper exits mid-video, answers with an error or takes over 2 minutes for a frame | The attempt fails with the message and the job is retried after its delay, up to the attempt limit                           |
+| `ffmpeg` fails, or the location cannot be opened                                      | The next copy is tried at once; after the last, as above. `ffmpeg`'s invalid-data error fails the job at once, and an unreadable folder parks it |
+| The video left the library                                                            | The claim drops the job; one claimed already stores no result                                                                |
+| A database error                                                                      | The attempt fails and the job is retried after its delay                                                                     |
+| The server stops                                                                      | The job stays `running`; startup recovery puts it back to `queued`                                                           |
 
-| Rejected                                                        | Why                                                                                        |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Letting the running video finish when the feature is turned off | The parent Issue asks for that video to be analysed again when the feature returns         |
-| Decoding the chosen frames again at the end for the crops       | A second pass over the video costs as much as the first                                    |
-| Keeping every frame's crops until the end                       | A long video has thousands of faces; only each track's best one can become a person's face |
+| Rejected                                                        | Why                                                                                                                     |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Letting the running video finish when the feature is turned off | The parent Issue asks for that video to be analysed again when the feature returns                                      |
+| Decoding the chosen frames again at the end for the crops       | A second pass over the video costs as much as the first                                                                 |
+| Keeping every frame's crops until the end                       | A long video has thousands of faces; only each track's best one can become a person's face                              |
+| A face loop beside the scheduler                                | Its `ffmpeg` read would not count against the disk's read slots, and its cast checks lived in memory, lost on a restart |
 
 ## Face data follows its person
 
@@ -663,7 +685,7 @@ them sits beside an everyday setting.
 | `face.generation` | Increases, so an analysis or face embedding that started before writes nothing and its video is analysed again                                               |
 | Face appearances  | Deleted, not marked dropped as a single person's delete marks them; a dropped row would be carried over by the next analysis and its face never linked again |
 | People            | Deleted with their names, external IDs, credits on videos, profiles, favorites, faces, face vectors and candidate pairs                                      |
-| `face_queue`      | `done` and `failed` rows go, so every video counts as not analysed; while the feature is on every video is queued, with an owner's `face_analysis` entry     |
+| `face_results`    | Every row goes, so every video counts as not analysed; while the feature is on every video is queued, with an owner's `face_analysis` entry                  |
 
 Smart folders whose rule names a person then match nothing, as after any
 person's delete. Activity entries stay: a link or merge whose person is gone
@@ -829,8 +851,8 @@ joined.
 for the lower section of the video page's People tab. It reads by the video's
 content key, which indexes `face_appearances`, so the video detail response
 does not join the appearances and decode their tracks for every read.
-`analysed` is true only when the content key's `face_queue` row is `done`;
-while the analysis is queued or running, after a failure, and for content
+`analysed` is true only when the content key has no unfinished `face` job and
+its `face_results` row is `done`; while the analysis is queued or running, after a failure, and for content
 never analysed, the list is empty, so the page can tell "nobody found" from
 "not analysed yet". The items are the appearances that are not dropped and
 whose person still exists, each with its person as a `CreditRef`, the
@@ -869,7 +891,7 @@ answers `201` with the new person:
 
 A re-analysis carries the appearance over by its tracks and keeps its
 `person_id`, so it stays with the new person. A later video offers the new
-person by their face, the crop, once the face worker embeds it. A person without that appearance, an appearance that is dropped and
+person by their face, the crop, once its `face_image` job embeds it. A person without that appearance, an appearance that is dropped and
 one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
 owner's own decision, like confirming a candidate.
@@ -904,12 +926,13 @@ one's crop; any appearance the person lacks splits none.
 | One new person per face for a selection                        | Faces wrongly linked together are usually one other person, who would then be several             |
 | Copying the centroid into the new person's face-image vector   | A centroid is not the vector of the crop; the face-image job computes the right one               |
 
-## Tests that cross the worker and the store live in `cmd/mdm`
+## Tests that cross the face jobs and the store live in `cmd/mdm`
 
 The analysis of two videos of one person into two provisional people offered
 with each other, a short face that makes nobody, and a face image that merges
-the provisional person the owner joined from both videos cross the face worker and the store. `depguard` keeps
-`internal/app` tests from importing `internal/store`, so these run in
+the provisional person the owner joined from both videos cross the face jobs
+and the store. `depguard` keeps `internal/app` tests from importing
+`internal/store`, so these run in
 [`cmd/mdm/face_analysis_test.go`](../../cmd/mdm/face_analysis_test.go) with the
-real store, the event bus wiring and the worker, and with frames and the helper
-faked per video. The rules each step applies are tested in their own package.
+real store, the scheduler, the event bus wiring and `FaceRecognizer`, and with
+frames and the helper faked per video. The rules each step applies are tested in their own package.

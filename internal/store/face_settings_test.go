@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -58,12 +60,49 @@ func TestRecognizerSwitchClearsOldVectorsAndQueuesAnalysedVideosAgain(t *testing
 		appearances[0].personID == 0 {
 		t.Fatalf("appearances = %+v, want the centroid removed and the person and crop kept", appearances)
 	}
-	job, err := f.db.Faces().Claim(ctx)
+	job, err := claimFace(f.db)
 	if err != nil || job != (domain.FaceJob{ContentKey: f.key, Recognizer: domain.FaceRecognizerArcFaceR50, Generation: 1}) {
-		t.Fatalf("Claim = %+v, %v; want the analysed video under ArcFace and generation 1", job, err)
+		t.Fatalf("claimFace = %+v, %v; want the analysed video under ArcFace and generation 1", job, err)
 	}
-	if _, err := f.db.Faces().Claim(ctx); !errors.Is(err, domain.ErrNoJob) {
-		t.Fatalf("second Claim = %v, want ErrNoJob: a video never analysed is not queued by a switch", err)
+	if _, err := claimFace(f.db); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("second claimFace = %v, want ErrNoJob: a video never analysed is not queued by a switch", err)
+	}
+}
+
+// A recognizer switch queues every face for embedding again through one queue_face_images job, which queues a job per
+// stale face.
+func TestRecognizerSwitchQueuesOneJobPerStaleFace(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	stale := createPerson(t, db, "Stale").ID
+	setFace(t, db, stale)
+	current := createPerson(t, db, "Current").ID
+	setFace(t, db, current)
+	createPerson(t, db, "Faceless")
+	execAll(t, db, `delete from jobs`)
+
+	if err := db.Settings().SaveFaceSettings(ctx, domain.FaceSettings{
+		Enabled: true, Recognizer: domain.FaceRecognizerArcFaceR50,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	queuer, err := db.Ingest().ClaimJob(ctx, domain.JobQueueFaceImages)
+	if err != nil {
+		t.Fatalf("claim the queue_face_images job the switch queued: %v", err)
+	}
+	if _, err := db.sql.Exec(`insert into person_face_vectors (person_id, image_revision, recognizer, vector)
+		select id, image_revision, 'arcface_r50', null from people where id = ?`, current); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := db.Faces().QueueStaleFaceImages(ctx); err != nil || n != 1 {
+		t.Fatalf("QueueStaleFaceImages = %d, %v; want the one face without a current vector", n, err)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, queuer); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]any{{"face_image", strconv.FormatInt(stale, 10), int64(domain.JobPriorityImport)}}
+	if got := queryRows(t, db.sql, `select kind, subject_key, priority from jobs order by id`, 3); !reflect.DeepEqual(got, want) {
+		t.Fatalf("jobs = %v, want %v", got, want)
 	}
 }
 
@@ -71,17 +110,22 @@ func TestRecognizerSwitchClearsOldVectorsAndQueuesAnalysedVideosAgain(t *testing
 func TestRetryFaceAnalysisQueuesTheFailedVideo(t *testing.T) {
 	f := newFaceFixture(t)
 	ctx := context.Background()
-	f.claim(t)
+	queueAllFaces(t, f.db)
+	job, err := f.db.Ingest().ClaimJob(ctx, domain.JobFace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if n, err := f.db.Faces().RetryVideo(ctx, f.key, 1); err != nil || n != 0 {
 		t.Fatalf("RetryVideo while running = %d, %v; want 0", n, err)
 	}
-	if err := f.db.Faces().Fail(ctx, f.key, "the face helper exited"); err != nil {
+	if err := f.db.Ingest().FailClaimedJob(ctx, job,
+		domain.FailureRepeats(errors.New("the face helper exited"))); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := f.db.Faces().RetryVideo(ctx, f.key, 1); err != nil || n != 1 {
 		t.Fatalf("RetryVideo after a failure = %d, %v; want 1", n, err)
 	}
-	if job, err := f.db.Faces().Claim(ctx); err != nil || job.ContentKey != f.key {
-		t.Fatalf("Claim = %+v, %v; want the retried video", job, err)
+	if job, err := claimFace(f.db); err != nil || job.ContentKey != f.key {
+		t.Fatalf("claimFace = %+v, %v; want the retried video", job, err)
 	}
 }

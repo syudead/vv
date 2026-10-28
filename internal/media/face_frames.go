@@ -55,7 +55,8 @@ func FaceFrames(ctx context.Context, videoPath string, each func(pix []byte) err
 		return err
 	}
 	if waitErr != nil {
-		return fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine([]byte(stderr.String())))
+		output := []byte(stderr.String())
+		return exitFailure(fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(output)), output)
 	}
 	return readErr
 }

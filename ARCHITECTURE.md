@@ -191,16 +191,16 @@ filesystem.
 
 ## Queue workers
 
-Ingest, auto-tagging, duplicate-judging and backfill jobs run under one
-scheduler that grants each job its kind's CPU and classifier slots and read
-slots of its disk, taking disks in turn, so several jobs and disks run at once,
-and skips the kinds of a feature that is off
+Ingest, auto-tagging, face, duplicate-judging and backfill jobs run under one
+scheduler that grants each job its kind's CPU, classifier and face lane slots
+and read slots of its disk, taking disks in turn, so several jobs and disks run
+at once, and skips the kinds of a feature that is off
 ([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
 background queue has one worker that takes one item at a time. The waiting is
 shared: `jobs.Loop` runs a worker's or the scheduler's step, then sleeps as the
-step asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
-`internal/app` (`FaceRecognizer.Step`) or a job handler
-(`AutoTagger.HandleJob`, `VersionJudge.HandleJob`) does the work and wakes its loop through the `Wake`
+step asks (`domain.WorkerWait`) until a wakeup ends the wait. A job handler
+(`AutoTagger.HandleJob`, `FaceRecognizer.HandleJob`, `VersionJudge.HandleJob`)
+does the work and wakes its loop through the `Wake`
 function `cmd/mdm` passes in, so the application layer never imports the loop.
 
 

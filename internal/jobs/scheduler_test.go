@@ -423,6 +423,35 @@ func TestSchedulerGrantsAutoTagOnTheClassifierSlotOnly(t *testing.T) {
 	})
 }
 
+// The face kinds share one lane, so an analysis, an embedding and the cast rule run one at a time while other slots
+// are free.
+func TestSchedulerGrantsTheFaceKindsOneAtATime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobFace},
+			domain.Job{ID: 2, Kind: domain.JobFaceImage},
+			domain.Job{ID: 3, Kind: domain.JobFaceCast},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{
+			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 4, Disks: oneDisk(domain.DiskSolidState).resolve,
+		})
+		defer stop()
+		for range 3 {
+			synctest.Wait()
+			running := jobs.ids()
+			if len(running) != 1 {
+				t.Fatalf("running = %v, want one face-lane job", running)
+			}
+			jobs.release(running[0])
+		}
+		synctest.Wait()
+		if got := queue.completedIDs(); len(got) != 3 {
+			t.Fatalf("completed = %v, want every face-lane job in turn", got)
+		}
+	})
+}
+
 // A paused kind is not claimed, so its job keeps its attempts; resuming it and waking the scheduler claims the job.
 func TestSchedulerLeavesPausedKindsQueuedUntilWoken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

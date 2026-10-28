@@ -11,6 +11,8 @@ type JobResources struct {
 	CPU int
 	// Classifier slots allow one request to the classifier each.
 	Classifier int
+	// FaceLane slots allow one face-analysis, face-image or cast-rule job each.
+	FaceLane int
 }
 
 // JobCPUSlots leaves CPU for streaming, since ffmpeg already spreads one decode or encode over several threads.
@@ -20,6 +22,10 @@ func JobCPUSlots(numCPU int) int {
 
 // JobClassifierSlots is 1 because a CPU-only classifier provider cannot serve parallel requests.
 const JobClassifierSlots = 1
+
+// JobFaceLaneSlots is 1 because the face helper answers one request at a time, and the cast rule must not interleave
+// with an analysis.
+const JobFaceLaneSlots = 1
 
 // JobDemand is the fixed demand a kind declares; a kind with no demand always fits.
 func JobDemand(kind JobKind) JobResources {
@@ -38,6 +44,12 @@ func JobDemand(kind JobKind) JobResources {
 	case JobAutoTag:
 		// Sends generated thumbnails and seek frames, never the source file.
 		return JobResources{Classifier: 1}
+	case JobFace:
+		// ffmpeg decodes source frames for the face helper.
+		return JobResources{Read: 1, CPU: 1, FaceLane: 1}
+	case JobFaceImage, JobFaceCast:
+		// A stored face image for the helper, or people merged in the database.
+		return JobResources{FaceLane: 1}
 	case JobVersionJudge:
 		// Compares stored fingerprints and sends frames cut from the seek previews.
 		return JobResources{Classifier: 1}

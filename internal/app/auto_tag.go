@@ -254,17 +254,17 @@ func (a *AutoTagger) VideoImagesFinished(context.Context, int64) {
 func (a *AutoTagger) HandleJob(ctx context.Context, job domain.Job) error {
 	selection, decider, err := a.decide(ctx, job)
 	if err != nil {
-		return classifierFailure{err}
+		return shortFailure{err}
 	}
 	return a.queue.Finish(ctx, job.ContentKey, selection, decider)
 }
 
-// classifierFailure keeps the cause for errors.Is while its message stays short enough to show.
-type classifierFailure struct{ error }
+// shortFailure keeps the cause for errors.Is while its message stays short enough to show.
+type shortFailure struct{ error }
 
-func (e classifierFailure) Error() string { return failureReason(e.error) }
+func (e shortFailure) Error() string { return failureReason(e.error) }
 
-func (e classifierFailure) Unwrap() error { return e.error }
+func (e shortFailure) Unwrap() error { return e.error }
 
 // Missing videos yield no decision for Finish to remove; no candidate questions preserves the
 // initiating decider, while classifier-backed decisions use ai.

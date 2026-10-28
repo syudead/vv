@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -93,7 +94,8 @@ func (s *IngestStore) queueBackfillJobs(
 }
 
 // takeJob marks the next due job of kind, in maxPriority or a more urgent class, running and counts the attempt. It
-// suits kinds whose claim is one attempt with no location, and returns the job's subject key and activity entry.
+// suits kinds whose claim is one attempt with no location, and returns the job's subject and activity entry: its
+// video, its content key, or the person of a face_image job.
 func takeJob(
 	ctx context.Context, q rowQueryer, kind domain.JobKind, maxPriority domain.JobPriority,
 ) (domain.Job, int64, error) {
@@ -102,14 +104,20 @@ func takeJob(
 	err := q.QueryRowContext(ctx, `update jobs set state = 'running', attempts = attempts + 1, updated_at = ?1
 		where id = (select id from jobs where kind = ?2 and state = 'queued' and run_after <= ?1 and priority <= ?3
 			order by priority, run_after, id limit 1)
-		returning id, coalesce(subject_key, ''), attempts, priority, coalesce(activity_id, 0)`,
+		returning id, coalesce(video_id, 0), coalesce(subject_key, ''), attempts, priority, coalesce(activity_id, 0)`,
 		jobNow().Unix(), string(kind), int(maxPriority)).
-		Scan(&job.ID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
+		Scan(&job.ID, &job.VideoID, &job.ContentKey, &job.Attempts, &job.Priority, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, 0, domain.ErrNoJob
 	}
 	if err != nil {
 		return domain.Job{}, 0, fmt.Errorf("cannot claim a %s job: %w", kind, err)
+	}
+	if kind == domain.JobFaceImage {
+		if job.PersonID, err = strconv.ParseInt(job.ContentKey, 10, 64); err != nil {
+			return domain.Job{}, 0, fmt.Errorf("cannot read the person of face image job %d: %w", job.ID, err)
+		}
+		job.ContentKey = ""
 	}
 	return job, activityID, nil
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"image"
 	"image/png"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// The face worker turns frames and faces into vectors and the store matches them to people, so the parent Issue's
+// The face jobs turn frames and faces into vectors and the store matches them to people, so the parent Issue's
 // acceptance 2, 3 and 4 cross both; frames and the helper are fakes scripted per video.
 
 // faceScripts lists, per video file, the sampled frames that show the one face. A and B show it in two tracks of
@@ -80,32 +81,15 @@ func (readyFaceRuntime) Status(domain.FaceRecognizer) domain.FaceRuntimeStatus {
 	return domain.FaceRuntimeStatus{State: domain.FaceRuntimeReady}
 }
 
-// idleFaceQueue reports when the worker finds the queue empty, which is when every queued video is done.
-type idleFaceQueue struct {
-	*store.FaceStore
-	idle chan struct{}
-}
-
-func (q idleFaceQueue) Claim(ctx context.Context) (domain.FaceJob, error) {
-	job, err := q.FaceStore.Claim(ctx)
-	if errors.Is(err, domain.ErrNoJob) {
-		select {
-		case q.idle <- struct{}{}:
-		default:
-		}
-	}
-	return job, err
-}
-
-// faceAnalysisFixture is the store with the scripted videos queued, and a worker that has analysed them.
+// faceAnalysisFixture is the store with the scripted videos queued, and a scheduler running the face jobs that has
+// analysed them.
 type faceAnalysisFixture struct {
 	db         *store.DB
 	recognizer *app.FaceRecognizer
-	queue      idleFaceQueue
 	images     *storedFaceImages
 }
 
-// storedFaceImages reports each face image vector the worker stored.
+// storedFaceImages reports each face image vector the face_image job stored.
 type storedFaceImages struct {
 	*store.FaceStore
 	stored chan int64
@@ -121,7 +105,8 @@ func (s *storedFaceImages) StoreFaceImageVector(ctx context.Context, job domain.
 	return decision, err
 }
 
-// newFaceAnalysisFixture analyses the scripted videos; the worker keeps running until the test ends.
+// newFaceAnalysisFixture analyses the scripted videos through the scheduler, which keeps running until the test ends
+// and wakes on the store's events.
 func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -150,16 +135,33 @@ func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	f := faceAnalysisFixture{
-		db: db, queue: idleFaceQueue{FaceStore: db.Faces(), idle: make(chan struct{}, 1)},
-		images: &storedFaceImages{FaceStore: db.Faces(), stored: make(chan int64, 16)},
-	}
-	loop := jobs.NewLoop()
+	f := faceAnalysisFixture{db: db, images: &storedFaceImages{FaceStore: db.Faces(), stored: make(chan int64, 16)}}
+	var scheduler *jobs.Scheduler
 	f.recognizer = app.NewFaceRecognizer(app.FaceRecognizerOptions{
-		Queue: f.queue, Images: f.images, Settings: db.Settings(), Runtime: readyFaceRuntime{},
+		Queue: db.Faces(), Images: f.images, Settings: db.Settings(), Runtime: readyFaceRuntime{},
 		Helper: func(domain.FaceRecognizer) app.FaceHelper { return scriptedFaceHelper{} },
-		Frames: scriptedFaceFrames, MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Wake: loop.Wake,
+		Frames: scriptedFaceFrames, MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Cast: db.Faces(),
+		Wake: func() { scheduler.Wake() },
 	})
+	finished := make(chan domain.Job, 64)
+	handlers := map[domain.JobKind]jobs.Handler{}
+	for _, kind := range []domain.JobKind{
+		domain.JobFace, domain.JobFaceImage, domain.JobFaceCast, domain.JobQueueFaceImages,
+	} {
+		handlers[kind] = f.recognizer.HandleJob
+	}
+	scheduler = jobs.NewScheduler(jobs.Options{
+		Queue: db.Ingest(), Folders: db.ScanIndex(), Disks: mediafs.New().ResolveDisk, Handlers: handlers,
+		CPUSlots: domain.JobCPUSlots(1), Paused: app.PausedJobKinds(f.recognizer),
+		Finished: func(job domain.Job) { finished <- job }, Logger: slog.New(slog.DiscardHandler),
+	})
+	bus := newTestBus()
+	workers := map[domain.JobKind]waker{}
+	for _, kind := range domain.ScheduledJobKinds {
+		workers[kind] = scheduler
+	}
+	subscriptions := subscribeEvents(bus, eventSubscribers{Workers: workers})
+	db.PublishTo(bus)
 	if n, err := f.recognizer.QueueLibrary(ctx, domain.FaceQueueMissing); err != nil || n != 3 {
 		t.Fatalf("QueueLibrary = %d, %v; want 3", n, err)
 	}
@@ -167,15 +169,36 @@ func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		loop.Run(runCtx, f.recognizer.Step)
+		scheduler.Run(runCtx)
 		f.recognizer.Close()
 	}()
 	t.Cleanup(func() {
+		subscriptions.StopWorkers()
 		stop()
 		<-done
+		bus.Close()
 	})
-	<-f.queue.idle
+	waitForFaceAnalyses(t, db, finished, 3)
 	return f
+}
+
+// waitForFaceAnalyses returns once n videos are analysed, checking after each job the scheduler finishes.
+func waitForFaceAnalyses(t *testing.T, db *store.DB, finished <-chan domain.Job, n int) {
+	t.Helper()
+	for {
+		counts, err := db.Faces().Counts(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if counts.Done+counts.Failed >= n {
+			return
+		}
+		select {
+		case <-finished:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("face analysis counts = %+v, want %d videos analysed", counts, n)
+		}
+	}
 }
 
 func performersOf(t *testing.T, db *store.DB, keys ...string) map[string][]int64 {
@@ -233,7 +256,7 @@ func TestFaceAnalysisOffersTheProvisionalPeopleOfOneFaceAndIgnoresAShortFace(t *
 }
 
 // Acceptance 4: once the owner has joined the provisional people of A and B, the owner's photo of a named person
-// merges that person into them, through the face event and the worker.
+// merges that person into them, through the face_image job the upload queues and the scheduler.
 func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
 	ctx := context.Background()
 	f := newFaceAnalysisFixture(t)
@@ -242,10 +265,6 @@ func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
 	} else if _, err := f.db.Credits().Merge(ctx, domain.CreditPerson, people[0], people[1:]); err != nil {
 		t.Fatal(err)
 	}
-	bus := newTestBus()
-	subscriptions := subscribeEvents(bus, eventSubscribers{PersonImageChanged: f.recognizer.PersonImageChanged})
-	t.Cleanup(subscriptions.StopWorkers)
-	f.db.PublishTo(bus)
 	named, err := f.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "Named"})
 	if err != nil {
 		t.Fatal(err)

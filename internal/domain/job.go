@@ -17,6 +17,14 @@ const (
 	JobFingerprint JobKind = "fingerprint"
 	// JobAutoTag classifies one content key; its subject is Job.ContentKey, not a video.
 	JobAutoTag JobKind = "auto_tag"
+	// JobFace analyses the faces of one content key, Job.ContentKey, read from the location the claim picks.
+	JobFace JobKind = "face"
+	// JobFaceImage embeds one person's face image, Job.PersonID, and applies the face-image rule.
+	JobFaceImage JobKind = "face_image"
+	// JobFaceCast applies the cast rule to one video, Job.VideoID, after its work information changed.
+	JobFaceCast JobKind = "face_cast"
+	// JobQueueFaceImages queues a face_image job for every person whose face has no current vector.
+	JobQueueFaceImages JobKind = "queue_face_images"
 	// JobVersionJudge judges one possible duplicate; its subject is the pair Job.ContentKey, Job.ContentKeyB.
 	JobVersionJudge JobKind = "version_judge"
 	// JobKeyframes and JobMediaInfo re-read one video's file so stored results from an older build gain what this
@@ -30,6 +38,9 @@ const (
 	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
 	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
+
+// FaceLaneJobKinds are the kinds that share the one face lane slot, so the helper and the cast rule never interleave.
+var FaceLaneJobKinds = []JobKind{JobFace, JobFaceImage, JobFaceCast}
 
 // JobPriority is a job's class; claims serve a lower class strictly first. See docs/design-docs/job-scheduling.md.
 type JobPriority int
@@ -69,6 +80,8 @@ type Job struct {
 	Priority JobPriority
 	// RootID is the media folder holding the claimed location.
 	RootID int64
+	// PersonID is the subject of a face_image job.
+	PersonID int64
 }
 
 // JobClaim selects the job one claim may take: a kind, its class, and where its next location may be.
@@ -100,7 +113,8 @@ var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobK
 
 // ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
 // processed.
-var ScheduledJobKinds = slices.Concat(JobKinds, []JobKind{JobAutoTag, JobVersionJudge}, BackfillJobKinds)
+var ScheduledJobKinds = slices.Concat(JobKinds,
+	[]JobKind{JobAutoTag, JobVersionJudge, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages}, BackfillJobKinds)
 
 type JobState string
 

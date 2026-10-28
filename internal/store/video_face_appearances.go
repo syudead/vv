@@ -20,9 +20,8 @@ func (s *CreditStore) VideoFaceAppearances(ctx context.Context, videoID int64) (
 	defer func() { _ = tx.Rollback() }()
 	var key string
 	out := domain.VideoFaceAppearances{Items: []domain.VideoFaceAppearance{}}
-	err = tx.QueryRowContext(ctx, `select v.content_key, exists (select 1 from face_queue q
-			where q.content_key = v.content_key and v.content_key <> '' and q.state = 'done')
-		  from videos v where v.id = ? and `+visibleVideoCondition("v", domain.AudienceOwner), videoID).
+	err = tx.QueryRowContext(ctx, `select v.content_key, v.content_key <> '' and `+faceQueue.stateOf("v.content_key")+
+		` = 'done' from videos v where v.id = ? and `+visibleVideoCondition("v", domain.AudienceOwner), videoID).
 		Scan(&key, &out.Analysed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.VideoFaceAppearances{}, domain.ErrNotFound

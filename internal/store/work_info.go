@@ -422,7 +422,30 @@ func workInfoChangedEvents(ctx context.Context, tx *sql.Tx, edited []string) ([]
 	if err != nil {
 		return nil, err
 	}
-	return []domain.Event{domain.VideoWorkInfoChanged{VideoIDs: ids}}, nil
+	queued, err := queueFaceCastJobs(ctx, tx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return append([]domain.Event{domain.VideoWorkInfoChanged{VideoIDs: ids}}, queued...), nil
+}
+
+// queueFaceCastJobs queues the cast rule for each video while face recognition is on; changes made while it is off
+// are not checked later. It returns the events to publish after commit.
+func queueFaceCastJobs(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]domain.Event, error) {
+	if on, err := readBoolSetting(ctx, tx, faceEnabledKey); err != nil || !on {
+		return nil, err
+	}
+	queued := false
+	for _, id := range videoIDs {
+		inserted, err := queueSubjectJob(ctx, tx, subjectJob{
+			kind: domain.JobFaceCast, videoID: id, priority: domain.JobPriorityImport,
+		})
+		if err != nil {
+			return nil, err
+		}
+		queued = queued || inserted
+	}
+	return jobsQueuedEvents(queued, domain.JobFaceCast), nil
 }
 
 func videoIDsForUserKeys(ctx context.Context, tx *sql.Tx, userKeys []string) ([]int64, error) {
