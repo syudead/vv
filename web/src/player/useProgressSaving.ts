@@ -22,7 +22,13 @@ export function useProgressSaving(
   { positioned, ended }: PlaybackProgressStatus,
 ) {
   const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
-  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
+  // Positions reported before the first play, such as a seek on the pre-play control bar, are not progress.
+  const latestPosition = useRef<{
+    videoId: number;
+    positionMs: number;
+    saved: boolean;
+  } | null>(null);
+  const playedVideo = useRef<number | null>(null);
   const playback = useRef<Playback | null>(null);
   const positionedRef = useRef(positioned);
   positionedRef.current = positioned;
@@ -67,7 +73,7 @@ export function useProgressSaving(
 
   const rememberProgress = useCallback(
     (positionMs: number) => {
-      latestPosition.current = { videoId: id, positionMs };
+      latestPosition.current = { videoId: id, positionMs, saved: false };
       if (positionedRef.current) startPlayback();
     },
     [id, startPlayback],
@@ -75,7 +81,7 @@ export function useProgressSaving(
 
   const savePlayerProgress = useCallback(
     (positionMs: number, immediate: boolean) => {
-      latestPosition.current = { videoId: id, positionMs };
+      latestPosition.current = { videoId: id, positionMs, saved: true };
       if (positionedRef.current && startPlayback()) return;
       send(positionMs, false, immediate);
     },
@@ -83,6 +89,7 @@ export function useProgressSaving(
   );
 
   const markPlayed = useCallback(() => {
+    playedVideo.current = id;
     if (!owner) return;
     if (playback.current?.videoId !== id) {
       playback.current = { videoId: id, playbackId: newPlaybackId(), started: false };
@@ -114,7 +121,8 @@ export function useProgressSaving(
   useEffect(() => {
     const sendLatest = () => {
       const latest = latestPosition.current;
-      if (latest?.videoId === id) send(latest.positionMs, true);
+      if (latest?.videoId !== id) return;
+      if (latest.saved || playedVideo.current === id) send(latest.positionMs, true);
     };
     const onHidden = () => {
       if (document.visibilityState === "hidden") sendLatest();
