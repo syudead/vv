@@ -410,10 +410,9 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 	}
 }
 
-// snoozeIfRootUnreadable turns a failure into a snooze when the job's media folder cannot be read, and parks the
-// folder's jobs; a file missing under a readable folder was deleted, so it stays a failure. A job that reads no
-// source file fails as usual, because a snooze would run it again at once. A handler's own snooze, such as a settings
-// change, says nothing about the folder, so it parks nothing.
+// snoozeIfRootUnreadable turns the failure of a job that reads its source file into a snooze, and parks the job's
+// media folder, when that folder cannot be read; a missing file under a readable folder stays a failure. A handler's
+// own snooze and a job that reads no source file park nothing (docs/design-docs/job-scheduling.md).
 func (s *Scheduler) snoozeIfRootUnreadable(ctx context.Context, job domain.Job, cause error) error {
 	if job.RootID == 0 || !domain.JobReadsSource(job.Kind) || errors.Is(cause, domain.ErrJobSnoozed) {
 		return cause

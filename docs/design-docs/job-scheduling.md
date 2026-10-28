@@ -234,11 +234,6 @@ folder and parks nothing. A folder whose every file was deleted
 while mounted is parked until the next scan removes its locations and the
 minute recheck finds it available.
 
-When media folders nest, a location belongs to the deepest folder that holds
-it, which may sit on another disk than the outer folder: a claim on a disk
-takes only locations its own folders own, and parking the inner folder parks
-its locations even while the outer folder is available.
-
 Claims of a kind that reads the source file pass over locations under an
 unavailable folder, so a video with another readable location is claimed
 there, and a job stored only under unavailable folders stays queued. A kind

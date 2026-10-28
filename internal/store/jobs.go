@@ -346,29 +346,29 @@ func locateClaimedJob(ctx context.Context, conn *sql.Conn, job *domain.Job, row 
 	return nil
 }
 
-// availableLocationCondition matches a registered location whose owning media folder is not unavailable, so a
-// location in a parked folder nested under an available one stays parked.
+// availableLocationCondition matches a registered location that is not under an unavailable media folder.
 func availableLocationCondition(alias string, unavailable []int64) string {
-	if len(unavailable) == 0 {
-		return registeredLocationCondition(alias)
+	var excluded string
+	if len(unavailable) > 0 {
+		excluded = ` and mf.id not in (` + idList(unavailable) + `)`
 	}
-	return `coalesce(` + owningFolderSQL(alias+`.path`) + `, 0) not in (0, ` + idList(unavailable) + `)`
+	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + excluded + `)`
 }
 
-// owningFolderSQL selects the id of the media folder that owns the path pathExpr names: the deepest folder holding
-// it when folders nest, as the scheduler places a job on a disk. It is null outside every folder.
+// owningFolderSQL selects the id of the media folder that holds the path pathExpr names, or null outside every folder.
 func owningFolderSQL(pathExpr string) string {
 	return `(select mf.id from media_folders mf where ` + inMediaFolderCondition(pathExpr) +
 		` order by length(mf.path) desc limit 1)`
 }
 
-// onRootsCondition limits a claim to paths whose owning media folder is one of roots, the folders of the disk whose
-// slots the scheduler reserved; nil roots limit nothing.
+// onRootsCondition limits a claim to paths under roots, the folders of the disk whose slots the scheduler reserved;
+// nil roots limit nothing.
 func onRootsCondition(pathExpr string, roots []int64) string {
 	if roots == nil {
 		return ""
 	}
-	return ` and ` + owningFolderSQL(pathExpr) + ` in (` + idList(roots) + `)`
+	return ` and exists (select 1 from media_folders mf where mf.id in (` + idList(roots) + `) and ` +
+		inMediaFolderCondition(pathExpr) + `)`
 }
 
 // idList writes ids for an SQL in list; they are integers, so no quoting is needed.

@@ -53,35 +53,6 @@ func TestClaimJobOnTakesOnlyJobsUnderTheVisitedRoots(t *testing.T) {
 	}
 }
 
-// A file in a folder nested under another belongs to the inner folder, which may sit on another disk, so only a claim
-// on the inner folder takes it, and parking the inner folder parks it even though the outer one is available.
-func TestClaimJobOnPlacesANestedFoldersJobInTheInnerFolder(t *testing.T) {
-	db := migratedDB(t)
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`,
-		fixturePath("/media/inner")); err != nil {
-		t.Fatal(err)
-	}
-	outer := countRows(t, db, `select id from media_folders where path = '`+fixturePath("/media")+`'`)
-	inner := countRows(t, db, `select id from media_folders where path = '`+fixturePath("/media/inner")+`'`)
-	videoID := addVideoAt(t, db, "/media/inner/movie.mp4", "movie")
-	enqueueProbe(t, db, videoID)
-	ctx := context.Background()
-
-	for _, claim := range []domain.JobClaim{
-		{Kind: domain.JobProbe, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{outer}},
-		{Kind: domain.JobProbe, MaxPriority: domain.JobPriorityBackfill, Unavailable: []int64{inner}},
-	} {
-		if job, err := db.Ingest().ClaimJobOn(ctx, claim); !errors.Is(err, domain.ErrNoJob) {
-			t.Fatalf("ClaimJobOn(%+v) = %+v, %v; want domain.ErrNoJob", claim, job, err)
-		}
-	}
-	job := claimOn(t, db, domain.JobClaim{Kind: domain.JobProbe, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{inner}})
-	if job.VideoID != videoID || job.RootID != inner {
-		t.Fatalf("claimed video %d under root %d, want video %d under the inner folder %d", job.VideoID, job.RootID,
-			videoID, inner)
-	}
-}
-
 func TestClaimJobOnParksAnUnavailableRootsJobUntilItIsAvailable(t *testing.T) {
 	db, media, other := twoRootsDB(t)
 	parked := addVideoAt(t, db, "/media/parked.mp4", "parked")
