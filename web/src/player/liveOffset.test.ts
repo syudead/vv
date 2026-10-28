@@ -41,6 +41,7 @@ function fixture() {
       if (event === "dispose") dispose = callback;
     }),
     paused: vi.fn(() => true),
+    hasStarted: vi.fn(() => true),
   };
   const tech = {
     buffered: vi.fn(() => ranges([[0, 10]])),
@@ -60,6 +61,7 @@ function fixture() {
   middleware.setTech(tech);
   return {
     middleware,
+    player,
     tech,
     dispose: () => dispose?.(),
     canPlay: (index = canPlay.length - 1) => canPlay[index]?.(),
@@ -169,6 +171,22 @@ describe("live offset middleware", () => {
     canPlay();
 
     expect(tech.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("最初の再生前の一時停止中のreloadは再生を始めない", () => {
+    vi.useFakeTimers();
+    const { middleware, player, tech } = fixture();
+    player.hasStarted.mockReturnValue(false);
+    middleware.setSource(liveSource(7, 120_000, 0), () => undefined);
+    tech.buffered.mockReturnValue(ranges([]));
+
+    middleware.setCurrentTime(70);
+    vi.advanceTimersByTime(200);
+
+    expect(tech.setSource).toHaveBeenCalledWith(
+      expect.objectContaining({ vvOffsetSeconds: 70 }),
+    );
+    expect(tech.play).not.toHaveBeenCalled();
   });
 
   it("一時停止中のreloadが完了する前に再seekしても停止意図を維持する", () => {

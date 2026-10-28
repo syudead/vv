@@ -111,11 +111,12 @@ export function useProgressSaving(
     if (ended) markEnded();
   }, [ended, markEnded]);
 
-  // Navigation cleanup already sent the old watch's beacon; returning creates a new watch.
+  // Navigation cleanup already sent the old watch's beacon; returning creates a new watch and needs a new play.
   useEffect(() => {
     if (playback.current !== null && playback.current.videoId !== id) {
       playback.current = null;
     }
+    if (playedVideo.current !== id) playedVideo.current = null;
   }, [id]);
 
   useEffect(() => {

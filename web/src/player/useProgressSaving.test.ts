@@ -74,6 +74,21 @@ describe("useProgressSaving の視聴の識別子", () => {
     expect(beacon).toHaveBeenCalledWith(7, 90_000, playbackId);
   });
 
+  it("再生した動画へ別の動画から戻ったら、再生するまで報告された位置を離脱時に送らない", () => {
+    const { result, rerender } = renderSaving({ status: positioned });
+    result.current.markPlayed();
+    rerender({ id: 8, owner: true, status: positioned });
+    rerender({ id: 7, owner: true, status: positioned });
+    save.mockClear();
+    beacon.mockClear();
+
+    result.current.rememberProgress(90_000);
+    leave();
+
+    expect(beacon).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("positioned の前の最初の再生では、報告まで送らず、報告後に落ち着いた位置で 1 回すぐ送る", () => {
     const { result, rerender } = renderSaving();
 
