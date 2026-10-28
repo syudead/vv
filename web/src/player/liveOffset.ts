@@ -48,6 +48,10 @@ interface OffsetTech {
 
 type Player = ReturnType<typeof videojs>;
 
+// The video.js types declare only the setter; with no argument it reports vjs-has-started.
+const hasStarted = (player: Player) =>
+  (player as unknown as { hasStarted(): boolean | undefined }).hasStarted() === true;
+
 /** Use random bytes for attempt IDs because randomUUID is unavailable over LAN HTTP. */
 function newAttempt(): string {
   const bytes = new Uint8Array(16);
@@ -195,7 +199,9 @@ export function createLiveOffsetMiddleware(player: Player) {
       // A paused HTML media element with preload=metadata may not consume enough
       // of an open-ended fragmented MP4 to reach canplay. Start the request now;
       // the canplay handler restores a paused seek immediately when required.
-      requestPlayback();
+      // Before the first play the poster hides the frame, and this play would
+      // report a playback, and a watch, the viewer never started.
+      if (playIntended || hasStarted(player)) requestPlayback();
     }, reloadDelayMs);
   };
 
