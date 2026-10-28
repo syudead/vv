@@ -225,9 +225,19 @@ mount and under a Windows volume mount point, while a new folder holds no
 location and stays available. The scheduler asks the store whether a folder
 holds a location only when it resolves the folder, inside the same 5-second
 bound, so a slow library read parks the folder rather than the turn; in the
-snooze path the failed job's own location proves it. A folder whose every file was deleted
+snooze path the failed job's own location proves it. The snooze path's check
+has the same 5-second bound, and a folder that does not answer by then is
+parked, so a share that stops answering mid-job neither holds the job's slots
+nor stops the server from shutting down. A snooze the handler returns itself,
+such as a face job cancelled by a settings change, says nothing about the
+folder and parks nothing. A folder whose every file was deleted
 while mounted is parked until the next scan removes its locations and the
 minute recheck finds it available.
+
+When media folders nest, a location belongs to the deepest folder that holds
+it, which may sit on another disk than the outer folder: a claim on a disk
+takes only locations its own folders own, and parking the inner folder parks
+its locations even while the outer folder is available.
 
 Claims of a kind that reads the source file pass over locations under an
 unavailable folder, so a video with another readable location is claimed

@@ -3,9 +3,11 @@ package jobs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -1268,6 +1270,89 @@ func TestSchedulerSnoozesAFailureUnderAFolderThatBecameEmpty(t *testing.T) {
 		}
 		if got, want := queue.lastUnavailable(), []int64{rootA}; !slices.Equal(got, want) {
 			t.Fatalf("unavailable folders passed to the claim = %v, want %v", got, want)
+		}
+	})
+}
+
+// A share that stops answering when a job fails parks its folder after DiskResolveTimeout instead of holding the job,
+// and a stop while the check waits returns without recording an outcome.
+func TestSchedulerBoundsTheFolderCheckAfterAFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stop   bool
+		snooze bool
+	}{
+		{name: "after the timeout", snooze: true},
+		{name: "on stop", stop: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				disks := twoDisks()
+				answer := make(chan struct{})
+				defer close(answer)
+				var stuck atomic.Bool
+				resolve := func(path string, populated bool) (domain.Disk, error) {
+					if path == "/a" && stuck.Load() {
+						<-answer
+					}
+					return disks.resolve(path, populated)
+				}
+				queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobProbe, RootID: rootA})
+				probe := func(context.Context, domain.Job) error {
+					stuck.Store(true)
+					return errors.New("cannot open the file")
+				}
+				_, stop := startScheduler(Options{
+					Queue: queue, CPUSlots: 1, Disks: resolve,
+					Handlers: map[domain.JobKind]Handler{domain.JobProbe: probe},
+				})
+				defer stop()
+				synctest.Wait()
+				if tc.stop {
+					stop()
+				} else {
+					time.Sleep(DiskResolveTimeout)
+					synctest.Wait()
+				}
+				causes := queue.failureCauses()
+				if !tc.snooze && len(causes) != 0 {
+					t.Fatalf("failures after the stop = %v, want none", causes)
+				}
+				if tc.snooze && (len(causes) != 1 || !errors.Is(causes[0], domain.ErrJobSnoozed)) {
+					t.Fatalf("failures = %v, want one snooze", causes)
+				}
+				if tc.snooze && !slices.Equal(queue.lastUnavailable(), []int64{rootA}) {
+					t.Fatalf("unavailable folders passed to the claim = %v, want %v", queue.lastUnavailable(),
+						[]int64{rootA})
+				}
+			})
+		})
+	}
+}
+
+// A snooze the handler returns itself, such as a face job cancelled by a settings change, parks no folder, so the
+// requeued job runs again at once.
+func TestSchedulerParksNoFolderForAHandlersSnooze(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		queue := newFakeQueue(domain.Job{ID: 1, Kind: domain.JobFace, RootID: rootA})
+		var calls atomic.Int32
+		face := func(context.Context, domain.Job) error {
+			if calls.Add(1) == 1 {
+				return fmt.Errorf("%w: the settings changed", domain.ErrJobSnoozed)
+			}
+			return nil
+		}
+		_, stop := startScheduler(Options{
+			Queue: queue, CPUSlots: 1, Disks: twoDisks().resolve,
+			Handlers: map[domain.JobKind]Handler{domain.JobFace: face},
+		})
+		defer stop()
+		synctest.Wait()
+		if got, want := queue.completedIDs(), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("completed = %v, want %v run again at once", got, want)
+		}
+		if got := queue.lastUnavailable(); len(got) != 0 {
+			t.Fatalf("unavailable folders passed to the claim = %v, want none", got)
 		}
 	})
 }

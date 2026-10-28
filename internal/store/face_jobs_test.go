@@ -123,6 +123,29 @@ func TestFaceClaimTakesTheContentsFirstAvailableLocation(t *testing.T) {
 	}
 }
 
+// A face job reading from a folder nested under another is placed in the inner folder, whose disk may differ.
+func TestFaceClaimPlacesANestedFoldersLocationInTheInnerFolder(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	execAll(t, db, `insert into media_folders(path, version, created_at, updated_at) values ('`+
+		fixturePath("/media/inner")+`', 1, 1, 1)`)
+	outer := countRows(t, db, `select id from media_folders where path = '`+fixturePath("/media")+`'`)
+	inner := countRows(t, db, `select id from media_folders where path = '`+fixturePath("/media/inner")+`'`)
+	addVideoAt(t, db, "/media/inner/movie.mp4", "movie")
+	if _, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+
+	onOuter := domain.JobClaim{Kind: domain.JobFace, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{outer}}
+	if job, err := db.Ingest().ClaimJobOn(ctx, onOuter); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("claim on the outer folder = %+v, %v; want domain.ErrNoJob", job, err)
+	}
+	job := claimOn(t, db, domain.JobClaim{Kind: domain.JobFace, MaxPriority: domain.JobPriorityBackfill, Roots: []int64{inner}})
+	if job.ContentKey != "movie" || job.RootID != inner {
+		t.Fatalf("claimed %+v, want movie under the inner folder %d", job, inner)
+	}
+}
+
 // A failed face job tries its content's next location at once within the same attempt, and only a failure at the
 // last location waits for the retry delay.
 func TestFaceJobTriesTheContentsNextLocationAfterAFailure(t *testing.T) {

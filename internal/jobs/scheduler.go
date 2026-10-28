@@ -396,7 +396,11 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 	}
 
 	if err != nil {
-		s.fail(ctx, job, s.snoozeIfRootUnreadable(job, err))
+		err = s.snoozeIfRootUnreadable(ctx, job, err)
+		if ctx.Err() != nil {
+			return
+		}
+		s.fail(ctx, job, err)
 	} else if completeErr := s.queue.CompleteClaimedJob(ctx, job); completeErr != nil {
 		s.logger.Warn("could not record job completion",
 			slog.Int64("job", job.ID), slog.Any("error", completeErr))
@@ -408,25 +412,41 @@ func (s *Scheduler) process(ctx context.Context, job domain.Job) {
 
 // snoozeIfRootUnreadable turns a failure into a snooze when the job's media folder cannot be read, and parks the
 // folder's jobs; a file missing under a readable folder was deleted, so it stays a failure. A job that reads no
-// source file fails as usual, because a snooze would run it again at once.
-func (s *Scheduler) snoozeIfRootUnreadable(job domain.Job, cause error) error {
-	if job.RootID == 0 || !domain.JobReadsSource(job.Kind) {
+// source file fails as usual, because a snooze would run it again at once. A handler's own snooze, such as a settings
+// change, says nothing about the folder, so it parks nothing.
+func (s *Scheduler) snoozeIfRootUnreadable(ctx context.Context, job domain.Job, cause error) error {
+	if job.RootID == 0 || !domain.JobReadsSource(job.Kind) || errors.Is(cause, domain.ErrJobSnoozed) {
 		return cause
 	}
 	path, ok := s.roots.path(job.RootID)
-	if !ok {
+	if !ok || s.rootReadable(ctx, path) || ctx.Err() != nil {
 		return cause
-	}
-	if !errors.Is(cause, domain.ErrJobSnoozed) {
-		// The job's location lies under the folder, so a folder that lists nothing is unmounted.
-		if _, err := s.disks(path, true); err == nil {
-			return cause
-		}
-		cause = fmt.Errorf("%w: the media folder cannot be read: %w", domain.ErrJobSnoozed, cause)
 	}
 	s.roots.markUnavailable(job.RootID, time.Now())
 	s.logger.Warn("parked the jobs of a media folder that cannot be read", slog.String("path", path))
-	return cause
+	return fmt.Errorf("%w: the media folder cannot be read: %w", domain.ErrJobSnoozed, cause)
+}
+
+// rootReadable reports whether the media folder at path can be read. A folder that has not answered within
+// DiskResolveTimeout counts as unreadable, because a read from an unresponsive share can block without end and would
+// hold the job's slots and the scheduler's stop; an ended ctx returns at once.
+func (s *Scheduler) rootReadable(ctx context.Context, path string) bool {
+	answer := make(chan error, 1)
+	go func() {
+		// The job's location lies under the folder, so a folder that lists nothing is unmounted.
+		_, err := s.disks(path, true)
+		answer <- err
+	}()
+	timeout := time.NewTimer(DiskResolveTimeout)
+	defer timeout.Stop()
+	select {
+	case err := <-answer:
+		return err == nil
+	case <-timeout.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // The queue owns the retry-limit decision.

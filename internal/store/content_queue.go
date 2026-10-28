@@ -353,11 +353,7 @@ func takeContentJob(
 func takeLocatedContentJob(
 	ctx context.Context, tx *sql.Tx, q contentQueue, claim domain.JobClaim,
 ) (domain.Job, int64, bool, error) {
-	var onRoots string
-	if claim.Roots != nil {
-		onRoots = ` and exists (select 1 from media_folders mf where mf.id in (` + idList(claim.Roots) + `) and ` +
-			inMediaFolderCondition("c.next_path") + `)`
-	}
+	onRoots := onRootsCondition("c.next_path", claim.Roots)
 	locations := contentLocations("j.subject_key", claim.Unavailable)
 	job := domain.Job{Kind: q.job, StartsRound: true, LastLocation: true}
 	var activityID int64
@@ -394,8 +390,7 @@ func takeLocatedContentJob(
 	}
 	job.LastLocation = !later
 	if err := tx.QueryRowContext(ctx, `select l.id, l.version, l.path,
-		coalesce((select mf.id from media_folders mf where `+inMediaFolderCondition("l.path")+`
-			order by length(mf.path) desc limit 1), 0)
+		coalesce(`+owningFolderSQL("l.path")+`, 0)
 		from video_locations l where l.path = ?`, next.String).
 		Scan(&job.LocationID, &job.LocationVersion, &job.LocationPath, &job.RootID); err != nil {
 		return domain.Job{}, 0, false, fmt.Errorf("cannot choose a location for the %s job: %w", q.what, err)
