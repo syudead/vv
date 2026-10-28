@@ -19,6 +19,7 @@ flowchart LR
     s5 --> s6[Resume interrupted scan]
     s6 --> s7[Start auto-import]
     s7 --> s8[Listen for HTTP]
+    s8 --> s9[Queue backfill jobs]
   end
   subgraph stop[Shutdown]
     direction TB
@@ -34,7 +35,7 @@ flowchart LR
 ## Startup order
 
 Every step that writes derived data finishes before anything reads it, and the
-listener opens last.
+listener opens after every synchronous step. Only the backfill jobs come later.
 
 ```mermaid
 flowchart LR
@@ -50,6 +51,7 @@ flowchart LR
   resume --> auto[Start auto-import]
   auto --> enc[Start encoder checks]
   enc --> http[Listen for HTTP]
+  http --> fill[Queue backfill jobs]
 ```
 
 | Step | On failure |
@@ -62,10 +64,34 @@ flowchart LR
 | Resuming the interrupted scan | Logged; the user can start a scan |
 | Starting auto-import | Logged; the watches are added in the background and never delay the listener, and no scan starts ([folder-watching.md](folder-watching.md)) |
 | Encoder checks | Run in the background and never delay the listener ([hardware-encoding.md](hardware-encoding.md)) |
+| Queueing the backfill jobs | Logged; the next startup queues them again |
 
 The folder index is refreshed after the search keys because it reads the title
 keys they produce. Unfinished artifacts are removed before the workers start,
 so nothing still being generated is deleted.
+
+## Backfills run as jobs after the listener opens
+
+Startup waits only for the synchronous steps above: the database, the derived
+keys, recovery and the wiring. Work that only refreshes stored results runs
+as scheduler jobs in the backfill class, which every other class goes before
+([job-scheduling.md](job-scheduling.md#owner-requests-are-claimed-first)). Once the listener is
+open, startup queues one job of each kind below, unless one is still
+unfinished from an earlier run:
+
+| Job | What it does |
+| --- | --- |
+| `queue_keyframes` | Queues a `keyframes` job per H.264 video whose keyframe sample is missing, of an older version, or for another file size or modification time ([live-transcode-seek.md](live-transcode-seek.md#bounded-keyframe-sampling)) |
+| `queue_media_info` | Queues a `media_info` job per video without media information of this version, unless reading the same file failed at this version ([media-information.md](media-information.md#videos-imported-earlier-are-read-again-in-the-background)) |
+| `virtual_thumbnails` | Publishes each virtual video's missing thumbnail file from its stored image |
+
+A video with a probe pending is left to the import. Nothing polls for this
+work: a file that changes later is read again by the import's probe, and a
+version bump is picked up at the next startup.
+
+Two background tasks stay outside the scheduler, because neither reads a
+media file: the hardware encoder checks, whose answer live transcoding needs,
+and the face runtime's start, which downloads missing model files.
 
 ## Recovery after an interrupted run
 
