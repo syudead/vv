@@ -313,7 +313,7 @@ test.describe("live MP4 playback", () => {
     }
   });
 
-  test("再生前からバーが出て、ミュート、シアターモード、シーク位置を選んでから再生できる", async ({
+  test("再生前からバーが出て、音量、ミュート、シアターモード、シーク位置を選んでから再生できる", async ({
     page,
   }) => {
     test.setTimeout(30_000);
@@ -339,6 +339,20 @@ test.describe("live MP4 playback", () => {
     await expect(bar).toBeVisible();
     expect(await bar.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
 
+    // The slider unmutes, so set the level before muting.
+    await page.locator(".vjs-volume-panel").hover();
+    const volumeBar = page.locator(".vjs-volume-bar");
+    await expect(volumeBar).toBeVisible();
+    const volumeBox = await volumeBar.boundingBox();
+    if (volumeBox === null) throw new Error("volume bar is not visible");
+    await page.mouse.click(
+      volumeBox.x + volumeBox.width * 0.3,
+      volumeBox.y + volumeBox.height / 2,
+    );
+    const volume = await page
+      .locator("video.vjs-tech")
+      .evaluate((element) => (element as HTMLVideoElement).volume);
+    expect(Math.abs(volume - 0.3)).toBeLessThan(0.1);
     await page.locator(".vjs-mute-control").click();
     const seekBar = page.locator(".vjs-progress-control");
     const box = await seekBar.boundingBox();
@@ -359,9 +373,10 @@ test.describe("live MP4 playback", () => {
     });
     const started = await page.locator("video.vjs-tech").evaluate((element) => {
       const media = element as HTMLVideoElement;
-      return { muted: media.muted, time: media.currentTime };
+      return { muted: media.muted, volume: media.volume, time: media.currentTime };
     });
     expect(started.muted).toBe(true);
+    expect(started.volume).toBe(volume);
     expect(Math.abs(started.time - chosen)).toBeLessThan(1);
   });
 

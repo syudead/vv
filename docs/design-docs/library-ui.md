@@ -994,6 +994,16 @@ could not share state with the rest of the screen.
 | Narrow frame        | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px                                    |
 | Seek preview title  | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone                                                                   |
 
+Before playback, a stylesheet rule shows the bar on a player without
+`vjs-has-started`; the player does not mark itself started early, because that
+class also hides the poster and the central play button, and video.js clears it
+on every `loadstart` while paused (a quality change or a transcode-route seek).
+The rule yields to video.js's `vjs-controls-disabled` and `vjs-error` hides and
+to `data-loading`. A position reported before the first play, such as a seek on
+this bar, is not sent as watch progress until the viewer plays, and a seek past
+the buffered range of a transcode reloads the source without starting playback
+until then.
+
 Quality: [Playback quality, Switching](playback-quality.md#switching) and
 [playback-quality.md](playback-quality.md).
 Subtitles use video.js's `vjs-text-track-display`
