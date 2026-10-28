@@ -54,8 +54,9 @@ The `ui` label is the only label with workflow meaning: a parent carrying it
 goes through `design` between `plan` and `plan-to-issues`. The `spec` (parent)
 and `task` (child) labels only tell the two kinds of Issue apart at a glance;
 `issue-spec` and `plan-to-issues` add them when they create an Issue, and
-stage selection never reads them. The `sdd` label is retired. Apart from those
-two, never add or remove labels on your own.
+stage selection never reads them. `issue-spec` also decides `ui` itself when it
+writes a parent. The `sdd` label is retired. Apart from those, never add or
+remove labels on your own.
 
 ## Selecting the stage
 
