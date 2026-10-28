@@ -197,7 +197,7 @@ export default function SelectionBar({
     ...favoriteGroupIds,
     ...smartFolderIds,
   ]);
-  // Favorites, playlists and plugin fills stay on each node, so a selection with remote items offers none of them.
+  // Favorites and playlists stay on each node, so a selection with remote items offers neither.
   const perNode = nodes === "remote" || nodes === "mixed";
   const reasons = selectionReasons({
     count,
@@ -291,13 +291,11 @@ export default function SelectionBar({
             onPartial={showPartial}
           />
 
-          {!perNode && (
-            <FillInfoAction
-              videoIds={selectedIds}
-              smartFolderIds={smartFolderIds}
-              disabledReason={reasons.tag}
-            />
-          )}
+          <FillInfoAction
+            videoIds={selectedIds}
+            smartFolderIds={smartFolderIds}
+            disabledReason={reasons.tag}
+          />
 
           {!perNode && (
             <FavoriteMenu

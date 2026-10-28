@@ -50,6 +50,17 @@ type WorkInfoPlugins interface {
 	// ApplyWorkInfoFetch applies a selection and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
 	// ErrWorkInfoFetchStale.
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
+	// FetchPeerWorkInfo and FetchPeerWorkInfoByLink fetch for the peer's video, whose remote id is videoID, with
+	// this node's plugin; ApplyPeerWorkInfoFetch applies such a result on the peer. Their errors are those of the
+	// local operations, and ErrPeerUnreachable.
+	FetchPeerWorkInfo(ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
+	FetchPeerWorkInfoByLink(ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, link string) (domain.WorkInfoFetchResult, error)
+	ApplyPeerWorkInfoFetch(ctx context.Context, peer domain.WorkInfoPeer, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
+	// MatchWorkInfoCredits and ApplyPeerFetchedWorkInfo answer the peer's fetch for a video of this node; the
+	// apply returns ErrNotFound for a missing video or changed content, and ErrWorkInfoApplyInvalid for a
+	// same-person pair outside the fetched performers.
+	MatchWorkInfoCredits(ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry) ([]domain.CreditMatch, error)
+	ApplyPeerFetchedWorkInfo(ctx context.Context, videoID int64, contentVersion string, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
 	// WorkInfoFetchCover returns ErrNotFound when the result has no cover at index.
 	WorkInfoFetchCover(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at

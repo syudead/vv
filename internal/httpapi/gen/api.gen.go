@@ -1371,6 +1371,24 @@ func (e OrganizeRefKind) Valid() bool {
 	}
 }
 
+// Defines values for PeerCreditMatchRequestKind.
+const (
+	PeerCreditMatchRequestKindOrganization PeerCreditMatchRequestKind = "organization"
+	PeerCreditMatchRequestKindPerson       PeerCreditMatchRequestKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the PeerCreditMatchRequestKind enum.
+func (e PeerCreditMatchRequestKind) Valid() bool {
+	switch e {
+	case PeerCreditMatchRequestKindOrganization:
+		return true
+	case PeerCreditMatchRequestKindPerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PeerStateReason.
 const (
 	PeerStateReasonCertificate PeerStateReason = "certificate"
@@ -5023,6 +5041,81 @@ type PeerCertificateRequest struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
+// PeerCreditMatchEntry defines model for PeerCreditMatchEntry.
+type PeerCreditMatchEntry struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+}
+
+// PeerCreditMatchRequest defines model for PeerCreditMatchRequest.
+type PeerCreditMatchRequest struct {
+	Entries []PeerCreditMatchEntry     `json:"entries"`
+	Kind    PeerCreditMatchRequestKind `json:"kind"`
+}
+
+// PeerCreditMatchRequestKind defines model for PeerCreditMatchRequest.Kind.
+type PeerCreditMatchRequestKind string
+
+// PeerCreditMatches defines model for PeerCreditMatches.
+type PeerCreditMatches struct {
+	// Matches One match per entry, in entry order, with this node's ids.
+	Matches []WorkInfoMatch `json:"matches"`
+}
+
+// PeerFetchedOrganization defines model for PeerFetchedOrganization.
+type PeerFetchedOrganization struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+
+	// Role Organization role in a video.
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// PeerFetchedPerson defines model for PeerFetchedPerson.
+type PeerFetchedPerson struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile *PersonProfile `json:"profile,omitempty"`
+
+	// Role Person role in a video.
+	Role WorkPersonRole `json:"role"`
+}
+
+// PeerFetchedWorkInfo The values the peer's owner chose from a fetch, narrowed to the chosen entries and values.
+type PeerFetchedWorkInfo struct {
+	Code *string `json:"code,omitempty"`
+
+	// ContentVersion The video's contentVersion when the peer fetched for it.
+	ContentVersion string                `json:"contentVersion"`
+	Dates          []WorkInfoFetchedDate `json:"dates"`
+	Description    *string               `json:"description,omitempty"`
+
+	// DetailFields The detail fields to write; [] keeps the work information.
+	DetailFields  []WorkInfoField           `json:"detailFields"`
+	ExternalIds   []ExternalId              `json:"externalIds"`
+	Organizations []PeerFetchedOrganization `json:"organizations"`
+	People        []PeerFetchedPerson       `json:"people"`
+
+	// SamePeople Pairs of a position in people and a provisional performer of the video, with this node's person id.
+	SamePeople []WorkInfoSamePerson `json:"samePeople"`
+
+	// Tags Normalized tag names to attach as tentative; [] keeps the tags.
+	Tags []string `json:"tags"`
+
+	// Title Present only when the title was chosen.
+	Title *string  `json:"title,omitempty"`
+	Urls  []string `json:"urls"`
+}
+
+// PeerFetchedWorkInfoApplied defines model for PeerFetchedWorkInfoApplied.
+type PeerFetchedWorkInfoApplied struct {
+	// RejectedTags Normalized tag names the video's rejections kept off, deduplicated in tags order.
+	RejectedTags []string               `json:"rejectedTags"`
+	Skipped      []SkippedWorkInfoValue `json:"skipped"`
+}
+
 // PeerGrant The VVMDM that reads this one
 type PeerGrant struct {
 	// Name Its host name at pairing
@@ -8547,6 +8640,9 @@ type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
 // ConfirmPeerCertificateJSONRequestBody defines body for ConfirmPeerCertificate for application/json ContentType.
 type ConfirmPeerCertificateJSONRequestBody = PeerCertificateRequest
 
+// MatchPeerCreditsJSONRequestBody defines body for MatchPeerCredits for application/json ContentType.
+type MatchPeerCreditsJSONRequestBody = PeerCreditMatchRequest
+
 // PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
 type PairPeerJSONRequestBody = PairPeerRequest
 
@@ -8558,6 +8654,9 @@ type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
 
 // CountPeerRuleMatchesJSONRequestBody defines body for CountPeerRuleMatches for application/json ContentType.
 type CountPeerRuleMatchesJSONRequestBody = PeerRuleCountsRequest
+
+// ApplyPeerFetchedWorkInfoJSONRequestBody defines body for ApplyPeerFetchedWorkInfo for application/json ContentType.
+type ApplyPeerFetchedWorkInfoJSONRequestBody = PeerFetchedWorkInfo
 
 // ApplyPeerVocabularyJSONRequestBody defines body for ApplyPeerVocabulary for application/json ContentType.
 type ApplyPeerVocabularyJSONRequestBody = PeerVocabularyRequest
@@ -8948,6 +9047,9 @@ type ServerInterface interface {
 	// IssuePairingCode Issue this node's pairing code
 	// (POST /api/peer/code)
 	IssuePairingCode(w http.ResponseWriter, r *http.Request)
+	// MatchPeerCredits Match fetched people or organizations against this node's
+	// (POST /api/peer/credit-matches)
+	MatchPeerCredits(w http.ResponseWriter, r *http.Request)
 	// RevokePeerGrant Withdraw the reading VVMDM's access
 	// (DELETE /api/peer/grant)
 	RevokePeerGrant(w http.ResponseWriter, r *http.Request)
@@ -8975,6 +9077,9 @@ type ServerInterface interface {
 	// GetPeerRelatedClues Return the related-video clues of one video
 	// (GET /api/peer/videos/{id}/clues)
 	GetPeerRelatedClues(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
+	// (POST /api/peer/videos/{id}/fetched-work-info)
+	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
@@ -11536,6 +11641,20 @@ func (siw *ServerInterfaceWrapper) IssuePairingCode(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// MatchPeerCredits operation middleware
+func (siw *ServerInterfaceWrapper) MatchPeerCredits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MatchPeerCredits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokePeerGrant operation middleware
 func (siw *ServerInterfaceWrapper) RevokePeerGrant(w http.ResponseWriter, r *http.Request) {
 
@@ -11677,6 +11796,32 @@ func (siw *ServerInterfaceWrapper) GetPeerRelatedClues(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPeerRelatedClues(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPeerFetchedWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPeerFetchedWorkInfo(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -16591,6 +16736,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/related", wrapper.RankPeerRelated)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/vocabulary", wrapper.ApplyPeerVocabulary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/credit-matches", wrapper.MatchPeerCredits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/videos/{id}/fetched-work-info", wrapper.ApplyPeerFetchedWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/rule-counts", wrapper.CountPeerRuleMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)

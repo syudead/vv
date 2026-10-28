@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name and thumbnail-position edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -2505,6 +2505,54 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/peer/credit-matches:
+    post:
+      operationId: matchPeerCredits
+      summary: "Match fetched people or organizations against this node's"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerCreditMatchRequest"
+      responses:
+        "200":
+          description: "One match per entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerCreditMatches"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/videos/{id}/fetched-work-info:
+    post:
+      operationId: applyPeerFetchedWorkInfo
+      summary: "Apply work information the peer fetched for a video of this node"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved plugin and checked it; this node applies the chosen values as it applies its own fetch: the title, tags as tentative assignments, and the detail fields merged into the stored work information with credits matched in the same transaction, then merges each same-person pair. A missing video, or one whose contentVersion has changed, returns 404 without writes. See docs/design-docs/peer-library.md."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerFetchedWorkInfo"
+      responses:
+        "200":
+          description: "Applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerFetchedWorkInfoApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/peer/rule-counts:
     post:
       operationId: countPeerRuleMatches
@@ -2754,7 +2802,7 @@ paths:
     post:
       operationId: listWorkInfoFillTargets
       summary: "List the videos a selection fill searches for"
-      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one."
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable."
       requestBody:
         required: true
         content:
@@ -12834,6 +12882,136 @@ components:
           minimum: 1
           maximum: 100
           default: 30
+    PeerCreditMatchRequest:
+      type: object
+      required: [kind, entries]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [person, organization]
+        entries:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/PeerCreditMatchEntry"
+    PeerCreditMatchEntry:
+      type: object
+      required: [name, externalIds]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+    PeerCreditMatches:
+      type: object
+      required: [matches]
+      additionalProperties: false
+      properties:
+        matches:
+          type: array
+          description: "One match per entry, in entry order, with this node's ids."
+          items:
+            $ref: "#/components/schemas/WorkInfoMatch"
+
+    PeerFetchedWorkInfo:
+      type: object
+      required:
+        [contentVersion, tags, dates, people, organizations, urls, externalIds, detailFields, samePeople]
+      additionalProperties: false
+      description: "The values the peer's owner chose from a fetch, narrowed to the chosen entries and values."
+      properties:
+        contentVersion:
+          type: string
+          description: "The video's contentVersion when the peer fetched for it."
+        title:
+          type: string
+          description: "Present only when the title was chosen."
+        tags:
+          type: array
+          description: "Normalized tag names to attach as tentative; [] keeps the tags."
+          items:
+            type: string
+        code:
+          type: string
+        description:
+          type: string
+        dates:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedDate"
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerFetchedPerson"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerFetchedOrganization"
+        urls:
+          type: array
+          items:
+            type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        detailFields:
+          type: array
+          description: "The detail fields to write; [] keeps the work information."
+          items:
+            $ref: "#/components/schemas/WorkInfoField"
+        samePeople:
+          type: array
+          description: "Pairs of a position in people and a provisional performer of the video, with this node's person id."
+          items:
+            $ref: "#/components/schemas/WorkInfoSamePerson"
+    PeerFetchedPerson:
+      type: object
+      required: [role, name, externalIds]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+    PeerFetchedOrganization:
+      type: object
+      required: [role, name, externalIds]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+    PeerFetchedWorkInfoApplied:
+      type: object
+      required: [rejectedTags, skipped]
+      additionalProperties: false
+      properties:
+        rejectedTags:
+          type: array
+          description: "Normalized tag names the video's rejections kept off, deduplicated in tags order."
+          items:
+            type: string
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkippedWorkInfoValue"
+
     PeerVocabularyRequest:
       type: object
       required: [kind, action]
