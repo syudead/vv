@@ -1293,6 +1293,7 @@ export const en = {
         applied: "Filled",
         noResults: "Nothing found",
         nothingToFill: "Nothing to fill: the video already has these values.",
+        coverNotSaved: "Filled, but the cover couldn't be saved",
         skip: "Don't fill",
         choiceFor: (title: string) => `Work for ${title}`,
         submit: (count: number) => `Fill ${videos(count)}`,

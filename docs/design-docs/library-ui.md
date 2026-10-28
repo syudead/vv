@@ -560,7 +560,8 @@ of the next line.
 
 `Fill info…` shares `Edit`'s limit and opens a dialog that picks a work-info
 plugin, lists for each video the works its search finds with the chosen one's
-code and release date, and fills the empty fields from the works the owner keeps
+code and release date, and fills the empty fields from the works the owner keeps;
+a row that fills a cover shows it with `Adjust framing`
 ([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-after-a-review)).
 A toast counts the videos filled; the selection stays.
 

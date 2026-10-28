@@ -2,12 +2,7 @@ import { CircleCheck, UserRoundSearch } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import {
-  isAborted,
-  RequestFailed,
-  uploadThumbnailImage,
-  type Video,
-} from "../../api/client";
+import { isAborted, RequestFailed, type Video } from "../../api/client";
 import { type DetailMark, detailMark } from "../../api/useVideoDetail";
 import {
   applyWorkInfoFetch,
@@ -25,9 +20,8 @@ import { Alert, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { useToast } from "../../ui/Toast";
-import { encodeComposition } from "../thumbnailUpload/composeImage";
 import CompareStep, { type Fetched } from "./CompareStep";
-import { type CoverFraming, useCoverFraming } from "./coverFraming";
+import { uploadFramedCover, useCoverFraming } from "./coverFraming";
 import {
   canFetch,
   fetchLink,
@@ -137,31 +131,6 @@ export function busyLabel(label: string): ReactNode {
       {label}
     </>
   );
-}
-
-/** Upload a cover the page framed after the other fields commit; a failure leaves the thumbnail and reports the cover as skipped, as the server does for a cover it fits. */
-async function uploadFramedCover(
-  applied: WorkInfoFetchApplied,
-  cover: CoverFraming & { image: NonNullable<CoverFraming["image"]> },
-  size: string,
-  signal: AbortSignal,
-): Promise<WorkInfoFetchApplied> {
-  try {
-    const composed = await encodeComposition(cover.image, cover.aspect, cover.fit);
-    const video = await uploadThumbnailImage(
-      applied.video.id,
-      new File([composed], "thumbnail.png", { type: "image/png" }),
-      applied.video.contentVersion ?? "",
-      signal,
-    );
-    return { ...applied, video };
-  } catch (error) {
-    if (isAborted(error) || signal.aborted) throw error;
-    return {
-      ...applied,
-      skipped: [...applied.skipped, { field: "cover", value: size, reason: "invalid" }],
-    };
-  }
 }
 
 /** Serialize search/fetch and discard responses after closing. Applying is the only mutation and prevents closing until complete. */

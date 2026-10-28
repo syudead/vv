@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { Video } from "../../api/client";
-import { getWorkInfoFetchCover, type WorkInfoFetch } from "../../api/workInfoPlugins";
-import { loadUploadImage, type UploadImage } from "../thumbnailUpload/composeImage";
+import { isAborted, uploadThumbnailImage, type Video } from "../../api/client";
+import {
+  getWorkInfoFetchCover,
+  type WorkInfoFetch,
+  type WorkInfoFetchApplied,
+} from "../../api/workInfoPlugins";
+import {
+  encodeComposition,
+  loadUploadImage,
+  type UploadImage,
+} from "../thumbnailUpload/composeImage";
 import { type Fit, frameAspect, WHOLE_IMAGE } from "../thumbnailUpload/framing";
 
 /** A fetched cover decoded in the page so the owner frames it as an uploaded image. image is null while it loads or when the page cannot decode it; the server then fits the cover itself. */
@@ -15,6 +23,51 @@ export interface CoverFraming {
   /** replaced, a touch-up result, becomes the cover image from then on. */
   keep: (fit: Fit, replaced: UploadImage | null) => void;
   close: () => void;
+}
+
+/** A fetched cover with the framing it is uploaded with. */
+export interface FramedCover {
+  image: UploadImage;
+  aspect: number | null;
+  fit: Fit;
+}
+
+/** Decode a fetched cover in the page; null when the image cannot be decoded, so the server fits it instead. */
+export async function loadFetchedCover(
+  videoId: number,
+  fetchId: string,
+  index: number,
+  signal?: AbortSignal,
+): Promise<UploadImage | null> {
+  const decoded = await loadUploadImage(
+    await getWorkInfoFetchCover(videoId, fetchId, index, signal),
+  );
+  return "image" in decoded ? decoded.image : null;
+}
+
+/** Upload a cover the page framed after the other fields commit; a failure leaves the thumbnail and reports the cover as skipped, as the server does for a cover it fits. */
+export async function uploadFramedCover(
+  applied: WorkInfoFetchApplied,
+  cover: FramedCover,
+  size: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoFetchApplied> {
+  try {
+    const composed = await encodeComposition(cover.image, cover.aspect, cover.fit);
+    const video = await uploadThumbnailImage(
+      applied.video.id,
+      new File([composed], "thumbnail.png", { type: "image/png" }),
+      applied.video.contentVersion ?? "",
+      signal,
+    );
+    return { ...applied, video };
+  } catch (error) {
+    if (isAborted(error) || signal?.aborted === true) throw error;
+    return {
+      ...applied,
+      skipped: [...applied.skipped, { field: "cover", value: size, reason: "invalid" }],
+    };
+  }
 }
 
 interface Framing {
@@ -49,16 +102,15 @@ export function useCoverFraming(
     if (fetchId === null || index === null) return;
     const loadedKey = `${String(videoId)}\u0000${fetchId}\u0000${String(index)}`;
     const controller = new AbortController();
-    getWorkInfoFetchCover(videoId, fetchId, index, controller.signal)
-      .then(loadUploadImage)
-      .then((decoded) => {
-        if (!("image" in decoded)) return;
+    loadFetchedCover(videoId, fetchId, index, controller.signal)
+      .then((image) => {
+        if (image === null) return;
         if (controller.signal.aborted) {
-          decoded.image.bitmap.close();
+          image.bitmap.close();
           return;
         }
-        held.current = decoded.image;
-        setLoaded({ key: loadedKey, image: decoded.image });
+        held.current = image;
+        setLoaded({ key: loadedKey, image });
       })
       .catch(() => undefined);
     return () => {
