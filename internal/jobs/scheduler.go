@@ -57,8 +57,8 @@ type Options struct {
 	Logger *slog.Logger
 }
 
-// Scheduler grants each claimed job its kind's demand from free capacity and runs it, so every ingest stage shares
-// one CPU limit and each disk's read limit, and the face kinds share one face lane. It sleeps on a Loop until a commit notification or a release calls Wake.
+// Scheduler grants each claimed job its kind's demand from free capacity, within the kind's concurrency cap, and runs
+// it, so every ingest stage shares one CPU limit and each disk's read limit, and the face kinds share one face lane. It sleeps on a Loop until a commit notification or a release calls Wake.
 // See docs/design-docs/job-scheduling.md.
 type Scheduler struct {
 	loop     *Loop
@@ -220,8 +220,8 @@ func (s *Scheduler) grantClass(ctx context.Context, t turn) error {
 }
 
 // grantIn claims one job of the disk's kinds in turn, resuming after the last granted kind so a freed slot goes to the
-// next stage instead of always to the first. A kind whose demand does not fit is skipped, not waited for, and a
-// paused kind is skipped like an empty one.
+// next stage instead of always to the first. A kind whose demand does not fit, or whose running jobs reach its cap,
+// is skipped, not waited for, and a paused kind is skipped like an empty one.
 func (s *Scheduler) grantIn(ctx context.Context, g diskGroup, t turn, empty map[string]bool) (bool, error) {
 	start := s.nextKind[g.disk]
 	for i := range g.kinds {
@@ -232,14 +232,14 @@ func (s *Scheduler) grantIn(ctx context.Context, g diskGroup, t turn, empty map[
 			continue
 		}
 		demand := domain.JobDemand(kind)
-		if !s.capacity.reserve(g.disk, demand) {
+		if !s.capacity.reserveJob(g.disk, kind, demand) {
 			continue
 		}
 		job, err := s.queue.ClaimJobOn(ctx, domain.JobClaim{
 			Kind: kind, MaxPriority: t.class, Roots: g.roots, Unavailable: t.unavailable,
 		})
 		if err != nil {
-			s.capacity.release(g.disk, demand)
+			s.capacity.releaseJob(g.disk, kind, demand)
 			if errors.Is(err, domain.ErrNoJob) {
 				empty[key] = true
 				continue
@@ -286,7 +286,7 @@ func (s *Scheduler) grant(ctx context.Context, job domain.Job, disk string, dema
 	jobCtx := domain.WithJobSlots(ctx, lentSlots{scheduler: s, job: job, disk: disk})
 	s.running.Go(func() {
 		s.process(jobCtx, job)
-		s.capacity.release(disk, demand)
+		s.capacity.releaseJob(disk, job.Kind, demand)
 		s.logger.Debug("released a job", s.slotAttrs(job, disk, demand)...)
 		s.Wake()
 	})
@@ -342,17 +342,18 @@ func (s *Scheduler) scanDisk(root string) (domain.Disk, error) {
 }
 
 func (s *Scheduler) scanAttrs(disk string) []any {
-	return []any{slog.String("disk", disk), slog.Int("readInUse", s.capacity.inUse(disk).Read)}
+	used, _ := s.capacity.inUse(disk, "")
+	return []any{slog.String("disk", disk), slog.Int("readInUse", used.Read)}
 }
 
 func (s *Scheduler) slotAttrs(job domain.Job, disk string, demand domain.JobResources) []any {
-	used := s.capacity.inUse(disk)
+	used, running := s.capacity.inUse(disk, job.Kind)
 	return []any{
 		slog.Int64("job", job.ID), slog.String("stage", string(job.Kind)), slog.String("disk", disk),
 		slog.Int("read", demand.Read), slog.Int("cpu", demand.CPU),
 		slog.Int("classifier", demand.Classifier), slog.Int("faceLane", demand.FaceLane),
 		slog.Int("readInUse", used.Read), slog.Int("cpuInUse", used.CPU), slog.Int("classifierInUse", used.Classifier),
-		slog.Int("faceLaneInUse", used.FaceLane),
+		slog.Int("faceLaneInUse", used.FaceLane), slog.Int("kindRunning", running),
 	}
 }
 

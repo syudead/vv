@@ -15,9 +15,43 @@ type JobResources struct {
 	FaceLane int
 }
 
+// MaxJobCPUSlots caps the CPU slots on a machine with many cores, because the heavy kinds are capped at one job each
+// and more slots would only go to further parallel decodes of one job.
+const MaxJobCPUSlots = 4
+
 // JobCPUSlots leaves CPU for streaming, since ffmpeg already spreads one decode or encode over several threads.
 func JobCPUSlots(numCPU int) int {
-	return numCPU/4 + 1
+	return max(min(numCPU/4+1, MaxJobCPUSlots), 1)
+}
+
+// jobConcurrency is the most jobs of each kind that run at once, across every disk. Before the shared scheduler each
+// stage ran one job at a time, and the kinds that decode or encode must not exceed that; the ffprobe kinds may run
+// two because one read keeps a disk idle while ffprobe parses. Slots lent to a running job's extra parts are not jobs.
+var jobConcurrency = map[JobKind]int{
+	JobProbe:             2,
+	JobThumbnail:         1,
+	JobSeekThumbnail:     1,
+	JobPreview:           1,
+	JobFingerprint:       1,
+	JobAutoTag:           1,
+	JobVersionJudge:      1,
+	JobFace:              1,
+	JobFaceImage:         1,
+	JobFaceCast:          1,
+	JobQueueFaceImages:   1,
+	JobKeyframes:         2,
+	JobMediaInfo:         2,
+	JobQueueKeyframes:    1,
+	JobQueueMediaInfo:    1,
+	JobVirtualThumbnails: 1,
+}
+
+// JobConcurrency is the most jobs of the kind that run at once; a kind outside the table runs one at a time.
+func JobConcurrency(kind JobKind) int {
+	if n, ok := jobConcurrency[kind]; ok {
+		return n
+	}
+	return 1
 }
 
 // JobClassifierSlots is 1 because a CPU-only classifier provider cannot serve parallel requests.

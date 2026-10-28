@@ -393,16 +393,21 @@ func TestSchedulerGivesFreedSlotToNextKind(t *testing.T) {
 	})
 }
 
+// fourReadJobs fills a solid-state disk's 4 read slots with two probes and two keyframe reads, each kind within its
+// cap, and queues a fifth read job that waits for a slot.
+func fourReadJobs(priority domain.JobPriority) []domain.Job {
+	return []domain.Job{
+		{ID: 1, Kind: domain.JobProbe, Priority: priority},
+		{ID: 2, Kind: domain.JobProbe, Priority: priority},
+		{ID: 3, Kind: domain.JobKeyframes, Priority: priority},
+		{ID: 4, Kind: domain.JobKeyframes, Priority: priority},
+		{ID: 5, Kind: domain.JobProbe, Priority: priority},
+	}
+}
+
 func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// A solid-state disk has 4 read slots.
-		queue := newFakeQueue(
-			domain.Job{ID: 1, Kind: domain.JobProbe},
-			domain.Job{ID: 2, Kind: domain.JobProbe},
-			domain.Job{ID: 3, Kind: domain.JobProbe},
-			domain.Job{ID: 4, Kind: domain.JobProbe},
-			domain.Job{ID: 5, Kind: domain.JobProbe},
-		)
+		queue := newFakeQueue(fourReadJobs(domain.JobPriorityImport)...)
 		jobs := newBlockingJobs()
 		_, stop := startScheduler(Options{
 			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 2, Disks: oneDisk(domain.DiskSolidState).resolve,
@@ -412,8 +417,8 @@ func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 		if got, want := jobs.ids(), []int64{1, 2, 3, 4}; !slices.Equal(got, want) {
 			t.Fatalf("running = %v, want %v", got, want)
 		}
-		if n := queue.claimed(domain.JobProbe); n != 4 {
-			t.Fatalf("probe claims at capacity = %d, want 4", n)
+		if n := queue.claimCount(); n != 4 {
+			t.Fatalf("claims at capacity = %d, want 4", n)
 		}
 		jobs.release(1)
 		synctest.Wait()
@@ -422,6 +427,38 @@ func TestSchedulerGrantsNoMoreThanCapacity(t *testing.T) {
 		}
 		if got, want := queue.completedIDs(), []int64{1}; !slices.Equal(got, want) {
 			t.Fatalf("completed = %v, want %v", got, want)
+		}
+	})
+}
+
+// A kind at its cap is skipped like one that does not fit, across every disk, while the other kinds take the free
+// slots; a released job frees the kind's place.
+func TestSchedulerCapsTheRunningJobsOfAKind(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Two solid-state disks and 4 CPU slots fit every queued job; only the seek-sprite cap holds one back.
+		disks := newFakeDisks(map[string]domain.Disk{
+			"/a": {Key: "a", Type: domain.DiskSolidState}, "/b": {Key: "b", Type: domain.DiskSolidState},
+		})
+		queue := newFakeQueue(
+			domain.Job{ID: 1, Kind: domain.JobSeekThumbnail, RootID: rootA},
+			domain.Job{ID: 2, Kind: domain.JobSeekThumbnail, RootID: rootB},
+			domain.Job{ID: 3, Kind: domain.JobProbe, RootID: rootA},
+			domain.Job{ID: 4, Kind: domain.JobThumbnail, RootID: rootB},
+		)
+		jobs := newBlockingJobs()
+		_, stop := startScheduler(Options{Queue: queue, Handlers: jobs.handlers(), CPUSlots: 4, Disks: disks.resolve})
+		defer stop()
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{1, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running = %v, want %v", got, want)
+		}
+		if n := queue.claimed(domain.JobSeekThumbnail); n != 1 {
+			t.Fatalf("seek sprite claims at the cap = %d, want 1", n)
+		}
+		jobs.release(1)
+		synctest.Wait()
+		if got, want := jobs.ids(), []int64{2, 3, 4}; !slices.Equal(got, want) {
+			t.Fatalf("running after the first seek sprite = %v, want %v", got, want)
 		}
 	})
 }
@@ -729,10 +766,7 @@ func (q *fakeQueue) failureCauses() []error {
 // while jobs keep the disk's other slots.
 func TestSchedulerGrantsAWaitingScanReadBeforeQueuedJobs(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		queue := newFakeQueue()
-		for id := int64(1); id <= 5; id++ {
-			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
-		}
+		queue := newFakeQueue(fourReadJobs(domain.JobPriorityOwner)...)
 		jobs := newBlockingJobs()
 		scheduler, stop := startScheduler(Options{
 			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
@@ -774,10 +808,7 @@ func TestSchedulerGrantsAWaitingScanReadBeforeQueuedJobs(t *testing.T) {
 // while jobs keep the disk's other slots.
 func TestSchedulerKeepsASlotForAScanBetweenItsReads(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		queue := newFakeQueue()
-		for id := int64(1); id <= 5; id++ {
-			queue.add(domain.Job{ID: id, Kind: domain.JobProbe, Priority: domain.JobPriorityOwner})
-		}
+		queue := newFakeQueue(fourReadJobs(domain.JobPriorityOwner)...)
 		jobs := newBlockingJobs()
 		scheduler, stop := startScheduler(Options{
 			Queue: queue, Handlers: jobs.handlers(), CPUSlots: 1, Disks: oneDisk(domain.DiskSolidState).resolve,
@@ -982,11 +1013,11 @@ func TestSchedulerHoldsAForegroundDiskToOneBackgroundRead(t *testing.T) {
 		}
 
 		end := scheduler.ReadInForeground("/a/movie.mp4")
-		var queued []domain.Job
-		for id := int64(3); id <= 7; id++ {
-			queued = append(queued, domain.Job{ID: id, Kind: domain.JobThumbnail})
-		}
-		queue.add(queued...)
+		queue.add(
+			domain.Job{ID: 3, Kind: domain.JobProbe}, domain.Job{ID: 4, Kind: domain.JobProbe},
+			domain.Job{ID: 5, Kind: domain.JobKeyframes}, domain.Job{ID: 6, Kind: domain.JobKeyframes},
+			domain.Job{ID: 7, Kind: domain.JobMediaInfo},
+		)
 		scheduler.Wake()
 		synctest.Wait()
 		if got, want := jobs.ids(), []int64{1}; !slices.Equal(got, want) {
@@ -1004,13 +1035,14 @@ func TestSchedulerHoldsAForegroundDiskToOneBackgroundRead(t *testing.T) {
 		}
 		jobs.release(1)
 		synctest.Wait()
-		if got, want := jobs.ids(), []int64{3}; !slices.Equal(got, want) {
-			t.Fatalf("running after the preview = %v, want one thumbnail", got)
+		// The kinds resume after the preview, so the keyframe read takes the one slot.
+		if got, want := jobs.ids(), []int64{5}; !slices.Equal(got, want) {
+			t.Fatalf("running after the preview = %v, want one keyframe read", got)
 		}
 
 		end()
 		synctest.Wait()
-		if got, want := jobs.ids(), []int64{3, 4, 5, 6}; !slices.Equal(got, want) {
+		if got, want := jobs.ids(), []int64{3, 5, 6, 7}; !slices.Equal(got, want) {
 			t.Fatalf("running after the reader closed = %v, want %v", got, want)
 		}
 	})
