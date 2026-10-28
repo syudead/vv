@@ -2050,6 +2050,7 @@ describe("VideoPage", () => {
     it("アンマウントでも最後の再生位置を送る", async () => {
       const page = renderPage();
       await ready();
+      act(() => player().onPlay?.());
       player().onPosition(12_345);
       page.unmount();
       const finalCall = fetchMock.mock.calls
@@ -2071,6 +2072,7 @@ describe("VideoPage", () => {
       server.videos.set(8, () => new Promise(() => undefined) as never);
       const page = renderPage();
       await ready();
+      act(() => player().onPlay?.());
       player().onPosition(12_345);
       fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
       await waitFor(() => expect(screen.queryByTestId("video-player")).toBeNull());
