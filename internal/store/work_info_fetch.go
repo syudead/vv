@@ -109,8 +109,10 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 func fetchedApplyTarget(
 	ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply,
 ) (string, []string, domain.FetchedWorkInfoApply, error) {
-	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
-		return "", nil, apply, err
+	if !apply.FetchedByPeer {
+		if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
+			return "", nil, apply, err
+		}
 	}
 	contentKey, err := writableContentKeyOf(ctx, tx, apply.VideoID)
 	if err != nil {

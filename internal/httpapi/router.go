@@ -664,12 +664,16 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
 		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
-		"/api/peer/rule-counts":
+		"/api/peer/rule-counts", "/api/peer/credit-matches":
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "thumbnail-edits"
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/peer/videos/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "fetched-work-info"
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/virtual-videos/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")

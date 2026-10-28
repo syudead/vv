@@ -251,6 +251,47 @@ the tag id turned into the peer's by name; a tag the peer lacks answers
 `404`. A favorites-only read of a remote media folder lists nothing, as a
 merged list does.
 
+### Work information fetched for a remote video
+
+A work-info fetch for a remote video runs on the reading node, because the
+plugins and their kept results are that node's. Only the parts that belong to
+the video are sent to the peer.
+
+```mermaid
+sequenceDiagram
+  participant S as Screens
+  participant R as Reading node
+  participant P as Peer
+  S->>R: POST /api/videos/{remoteId}/work-info-fetches
+  R->>P: GET /api/videos/{peerId} (contentVersion)
+  R->>R: run the plugin
+  R->>P: POST /api/peer/credit-matches
+  R-->>S: the result, matches in the screens' ids
+  S->>R: POST .../work-info-fetches/{fetchId}/apply
+  R->>R: recheck the plugin
+  R->>P: POST /api/peer/videos/{peerId}/fetched-work-info
+  R->>P: POST /api/videos/{peerId}/thumbnail-image (cover)
+  R-->>S: the peer's video
+```
+
+| Decision | Reason |
+| --- | --- |
+| The fetch, the apply and the reads of kept covers and person images for a remote id are answered by the reading node, not forwarded | The plugin and the kept result exist only there |
+| The peer matches the fetched credits and returns its own ids, which the reading node joins by name as it joins the video's credits | A match shown as `onVideo` must name the same id as the video's credits |
+| The peer applies the chosen values with its own apply, in one transaction: the title, tags as tentative assignments, the detail fields merged into its stored work information with credits rematched, and the same-person merges | The result is the same as an apply of the peer's own fetch, including the fields the owner left unchosen |
+| The reading node rechecks its plugin before sending, and the peer skips its plugin check | The peer has no copy of the plugin |
+| The peer refuses the apply with `404` when the video's `contentVersion` has changed since the fetch | A reused id must not receive another video's values, as a local apply checks the content key |
+| The cover goes to the peer as a thumbnail upload, which is forwarded like the other single edits | The page frames a cover and uploads it the same way for both nodes |
+| No person face is sent, and the apply reports no linked people | The people are registered on the peer, whose own face recognition finds their faces; no interface to write a face across nodes is needed |
+| The reading node keeps no activity entry for the fetch | Its activity log holds its own videos |
+
+`Fill info…` over a selection with remote items lists its targets on both
+nodes: `POST /api/work-info-fill-targets` resolves this node's part and asks
+the peer for its part, which it answers in remote ids after this node's.
+The dialog then fetches for and applies to each remote target like a remote
+video's page, so a fill writes the peer's empty fields with the peer's own
+apply.
+
 ## The screens
 
 `web/src/lib/remoteId.ts` decides from the id whether an item is remote, and
@@ -263,5 +304,7 @@ form until a link exists, then the link's state, address, certificate and
 removal; "VVMDMs that read this one" shows the pairing code until a grant
 exists, then the reader's name, pairing time and "Remove access". Favorite, playlist,
 open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them; the selection bar also hides `Fill info…` for
-a selection with remote items, because plugin fetches run on the local node.
+the server does not offer them. The selection bar offers `Fill info…` for any
+selection, as
+[Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
+explains.

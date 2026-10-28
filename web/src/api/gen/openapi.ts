@@ -1746,6 +1746,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/peer/credit-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match fetched people or organizations against this node's
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md.
+         */
+        post: operations["matchPeerCredits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/videos/{id}/fetched-work-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply work information the peer fetched for a video of this node
+         * @description Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved plugin and checked it; this node applies the chosen values as it applies its own fetch: the title, tags as tentative assignments, and the detail fields merged into the stored work information with credits matched in the same transaction, then merges each same-person pair. A missing video, or one whose contentVersion has changed, returns 404 without writes. See docs/design-docs/peer-library.md.
+         */
+        post: operations["applyPeerFetchedWorkInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/peer/rule-counts": {
         parameters: {
             query?: never;
@@ -1925,7 +1965,7 @@ export interface paths {
         put?: never;
         /**
          * List the videos a selection fill searches for
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable.
          */
         post: operations["listWorkInfoFillTargets"];
         delete?: never;
@@ -7481,6 +7521,55 @@ export interface components {
             /** @default 30 */
             limit: number;
         };
+        PeerCreditMatchRequest: {
+            /** @enum {string} */
+            kind: "person" | "organization";
+            entries: components["schemas"]["PeerCreditMatchEntry"][];
+        };
+        PeerCreditMatchEntry: {
+            name: string;
+            externalIds: components["schemas"]["ExternalId"][];
+        };
+        PeerCreditMatches: {
+            /** @description One match per entry, in entry order, with this node's ids. */
+            matches: components["schemas"]["WorkInfoMatch"][];
+        };
+        /** @description The values the peer's owner chose from a fetch, narrowed to the chosen entries and values. */
+        PeerFetchedWorkInfo: {
+            /** @description The video's contentVersion when the peer fetched for it. */
+            contentVersion: string;
+            /** @description Present only when the title was chosen. */
+            title?: string;
+            /** @description Normalized tag names to attach as tentative; [] keeps the tags. */
+            tags: string[];
+            code?: string;
+            description?: string;
+            dates: components["schemas"]["WorkInfoFetchedDate"][];
+            people: components["schemas"]["PeerFetchedPerson"][];
+            organizations: components["schemas"]["PeerFetchedOrganization"][];
+            urls: string[];
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description The detail fields to write; [] keeps the work information. */
+            detailFields: components["schemas"]["WorkInfoField"][];
+            /** @description Pairs of a position in people and a provisional performer of the video, with this node's person id. */
+            samePeople: components["schemas"]["WorkInfoSamePerson"][];
+        };
+        PeerFetchedPerson: {
+            role: components["schemas"]["WorkPersonRole"];
+            name: string;
+            externalIds: components["schemas"]["ExternalId"][];
+            profile?: components["schemas"]["PersonProfile"];
+        };
+        PeerFetchedOrganization: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            name: string;
+            externalIds: components["schemas"]["ExternalId"][];
+        };
+        PeerFetchedWorkInfoApplied: {
+            /** @description Normalized tag names the video's rejections kept off, deduplicated in tags order. */
+            rejectedTags: string[];
+            skipped: components["schemas"]["SkippedWorkInfoValue"][];
+        };
         PeerVocabularyRequest: {
             /** @enum {string} */
             kind: "tag" | "person" | "organization";
@@ -10664,6 +10753,61 @@ export interface operations {
                     "application/json": components["schemas"]["RelatedClues"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    matchPeerCredits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerCreditMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description One match per entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerCreditMatches"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyPeerFetchedWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeerFetchedWorkInfo"];
+            };
+        };
+        responses: {
+            /** @description Applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerFetchedWorkInfoApplied"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
         };
     };
