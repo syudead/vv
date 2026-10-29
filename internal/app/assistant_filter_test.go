@@ -81,6 +81,38 @@ func TestTurnFilterDropsADayThatIsNotADateOnlyWhenReading(t *testing.T) {
 	}
 }
 
+// A change's target keeps an explicit 0 bound, so a reversed range asks instead of widening the target.
+func TestTurnWriteTargetKeepsAZeroDurationBound(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add","target":{"kind":"filter",`+
+		`"filter":{"minDurationMs":1800000,"maxDurationMs":0}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	result, err := f.a.Turn(context.Background(), selection())
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnClarify || len(f.videos.queries) != 0 {
+		t.Fatalf("result = %+v, queries = %+v", result, f.videos.queries)
+	}
+}
+
+// The selection limit applies to the narrowed selection, not to the library-wide match of the narrowing filter.
+func TestTurnFilterOnTheSelectionIgnoresTheLibraryWideTotal(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+
+		`"target":{"kind":"selection","filter":{"maxDurationMs":600000}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	f.videos.items, f.videos.total = []domain.Video{f.videos.videos[8]}, domain.AssistantSelectionMax+1
+	result, err := f.a.Turn(context.Background(), selection(7, 8))
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if keys := f.store.created.Targets.VideoKeys; !slices.Equal(keys, []string{"key-8"}) {
+		t.Fatalf("targets = %v", keys)
+	}
+}
+
 // A follow-up such as "leave out the long ones" keeps the selection and narrows it by a filter.
 func TestTurnFilterOnTheSelectionNarrowsIt(t *testing.T) {
 	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+

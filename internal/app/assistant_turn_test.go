@@ -230,6 +230,32 @@ func TestTurnOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
 	}
 }
 
+// Choosing a similar candidate re-sends the request with the candidate pinned; the pin settles it even though
+// the candidate's name is not the request's name.
+func TestTurnPinnedSimilarCandidateSettlesTheTarget(t *testing.T) {
+	similar := []domain.AssistantCandidate{
+		{Kind: domain.AssistantLabelTag, ID: 4, Name: "コスプレ衣装", Count: 1},
+		{Kind: domain.AssistantLabelTag, ID: 5, Name: "コスプレ衣裳", Count: 1},
+	}
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"deleteTag","target":{"kind":"named","names":["コスプレ"]}}}`, nil)
+	f.a.vocabulary = fakeVocabulary{similar: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
+		domain.AssistantLabelTag: {"コスプレ": similar},
+	}}
+	in := domain.AssistantTurnInput{Text: "コスプレのタグを消して", Context: domain.AssistantTurnContext{
+		Pinned: []domain.AssistantPin{{Kind: domain.AssistantLabelTag, Name: "コスプレ衣裳", ID: 5}},
+	}}
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if labels := f.store.created.Targets.Labels; len(labels) != 1 || labels[0].ID != 5 {
+		t.Fatalf("targets = %+v", labels)
+	}
+}
+
 // A model copies the word "tag" into the name, as in "ライブタグ"; the tag is still found without it.
 func TestTurnFindsATagNamedWithTheWordTag(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.remove", "Catタグ"), map[string][]domain.AssistantCandidate{"Cat": {catTag}})

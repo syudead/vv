@@ -139,12 +139,28 @@ func (t *assistantTurn) one(
 	if err != nil {
 		return domain.AssistantLabel{}, false, err
 	}
+	if chosen, ok := t.pinnedAmong(similar); ok {
+		return chosen, true, nil
+	}
 	if len(similar) > 0 {
 		t.clarify(use.about, similar)
 	} else {
 		t.clarify(use.about, nil, name)
 	}
 	return domain.AssistantLabel{}, false, nil
+}
+
+// pinnedAmong returns the candidate the owner chose in a clarification, since the choice re-sends the same
+// request with the candidate pinned and the candidate's name is not the request's name.
+func (t *assistantTurn) pinnedAmong(found []domain.AssistantCandidate) (domain.AssistantLabel, bool) {
+	for _, pin := range t.input.Context.Pinned {
+		for _, c := range found {
+			if c.Kind == pin.Kind && c.ID == pin.ID {
+				return domain.AssistantLabel{Kind: c.Kind, ID: c.ID, Name: c.Name}, true
+			}
+		}
+	}
+	return domain.AssistantLabel{}, false
 }
 
 // exact finds the entities a name folds to, over every kind when kind is empty.

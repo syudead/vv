@@ -127,7 +127,7 @@ sees names and counts, never ids.
 
 | Word in the request | Target |
 | --- | --- |
-| `これ`, `選んだもの` (`selection`) | The selected videos and smart folders, or the open video; a filter on it narrows them, which is how `長いのは除いて` keeps the previous target |
+| `これ`, `選んだもの` (`selection`) | The selected videos and smart folders, or the open video; a filter on it narrows them, which is how `長いのは除いて` keeps the previous target, and the 20,000-video limit applies to the narrowed videos, not to the filter's library-wide match |
 | `ここ` (`current`) | The open video, smart folder, person, organization or tag, or the library filter; a filter on it narrows them |
 | A name (`named`) | The entities the row's target kind resolves |
 | A filter (`filter`) | Every video matching it, counted by the server |

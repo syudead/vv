@@ -141,7 +141,7 @@ func (t *assistantTurn) criteria(
 		return c, true, nil
 	}
 	c.Rule = domain.SmartRule{Q: f.Q, Favorite: f.Favorite, VideoConditions: domain.VideoConditions{
-		MinDurationMs: positiveDuration(f.MinDurationMs), MaxDurationMs: positiveDuration(f.MaxDurationMs),
+		MinDurationMs: duration(f.MinDurationMs, strict), MaxDurationMs: duration(f.MaxDurationMs, strict),
 		AddedFrom: calendarDay(f.AddedFrom, strict), AddedTo: calendarDay(f.AddedTo, strict),
 		WatchState: domain.WatchState(f.WatchState),
 	}}
@@ -201,12 +201,13 @@ func calendarDay(day string, strict bool) domain.CalendarDay {
 	return ""
 }
 
-// positiveDuration drops a bound of 0, which a model writes for a bound the request does not set.
-func positiveDuration(ms *int64) *int64 {
-	if ms == nil || *ms <= 0 {
-		return nil
+// duration drops, from a filter that only reads, a bound of 0, which a model writes for a bound the request does
+// not set; a change's target keeps it, since an explicit 0 is a bound the validation checks against the other.
+func duration(ms *int64, strict bool) *int64 {
+	if strict || ms == nil || *ms > 0 {
+		return ms
 	}
-	return ms
+	return nil
 }
 
 // filterFieldWords are words, folded, that a model copies from the schema instead of a name.
