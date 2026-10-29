@@ -85,8 +85,10 @@ with the candidates, and none answers `clarify` with the entities whose names
 contain the name (`コスプレ` offers `コスプレ衣装` and `コスプレ衣裳`), with two
 exceptions. A tag to attach is marked created on the card. A tag, person or
 organization in the filter of a `filter` outcome or a `count` or `list`
-question joins the filter's free text `q` as a search term, or is dropped when
-it is a field word such as `tags`, so one loose name does not fail a read. A
+question joins the filter's free text `q` as a literal search term, quoted when
+the search grammar would otherwise read it as an operator or several words, so
+one loose name does not fail a read. The name is dropped when it is a field
+word such as `tags`, or when `q` already requires it as a positive term. A
 name is trimmed, and a tag name is tried again without a trailing tag word
 (`ライブタグ`), since models copy both from the request. A name carries the
 kind the model inferred, and `any` tries person, organization and tag, so a name

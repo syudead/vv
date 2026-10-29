@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"unicode"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -224,21 +223,46 @@ func foldedSet(words ...string) map[string]bool {
 	return set
 }
 
-// searchUnresolved reports whether the label names an entity. A label without an id instead joins q as a search
-// term, quoted when it holds spaces, unless it is a field word or q already holds it.
+// searchUnresolved reports whether the label names an entity. A label without an id instead joins q as a literal
+// search term, unless it is a field word or q already requires it.
 func searchUnresolved(q string, label domain.AssistantLabel) (string, bool) {
 	if label.ID != 0 {
 		return q, true
 	}
-	term := strings.TrimSpace(strings.ReplaceAll(label.Name, `"`, ""))
+	term := strings.TrimSpace(strings.Map(dropSearchQuote, label.Name))
 	key := domain.FoldForMatch(term)
-	if key == "" || filterFieldWords[key] || strings.Contains(domain.FoldForMatch(q), key) {
+	if key == "" || filterFieldWords[key] || requiresSearchTerm(domain.ParseSearchQuery(q), key) {
 		return q, false
 	}
-	if strings.ContainsFunc(term, unicode.IsSpace) {
-		term = `"` + term + `"`
+	return strings.TrimSpace(q + " " + literalSearchTerm(term, key)), false
+}
+
+// dropSearchQuote removes the quotes, ASCII and fullwidth, that would end a quoted phrase after NFKC.
+func dropSearchQuote(r rune) rune {
+	if r == '"' || r == '\uFF02' {
+		return -1
 	}
-	return strings.TrimSpace(q + " " + term), false
+	return r
+}
+
+// requiresSearchTerm reports whether every match of the query must contain the positive term key.
+func requiresSearchTerm(expr domain.SearchExpr, key string) bool {
+	for _, clause := range expr.Clauses {
+		if len(clause.Terms) == 1 && clause.Terms[0] == (domain.SearchTerm{Text: key}) {
+			return true
+		}
+	}
+	return false
+}
+
+// literalSearchTerm quotes the term unless it already reads as one plain word; OR stays quoted because a term
+// appended after it would turn it into an operator.
+func literalSearchTerm(term, key string) string {
+	expr := domain.ParseSearchQuery(term)
+	if term != "OR" && len(expr.Clauses) == 1 && requiresSearchTerm(expr, key) {
+		return term
+	}
+	return `"` + term + `"`
 }
 
 // count runs the filter as the library does and answers its total.

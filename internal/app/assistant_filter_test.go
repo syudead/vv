@@ -123,6 +123,21 @@ func TestTurnFollowUpFilterKeepsTheSelection(t *testing.T) {
 	}
 }
 
+func TestSearchUnresolvedAppendsTheNameAsALiteralRequiredTerm(t *testing.T) {
+	for _, tc := range []struct{ q, name, want string }{
+		{"cat", "-live", `cat "-live"`},
+		{"cat", "OR", `cat "OR"`},
+		{"cat OR dog", "cat", "cat OR dog cat"},
+		{"-cat", "cat", "-cat cat"},
+		{"live cat", "Cat", "live cat"},
+	} {
+		got, ok := searchUnresolved(tc.q, domain.AssistantLabel{Name: tc.name})
+		if got != tc.want || ok {
+			t.Errorf("searchUnresolved(%q, %q) = %q, %v; want %q, false", tc.q, tc.name, got, ok, tc.want)
+		}
+	}
+}
+
 func TestTurnAsksWhenAWriteTargetFilterNamesAMissingTag(t *testing.T) {
 	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+
 		`"target":{"kind":"filter","filter":{"tags":["カラオケ"]}},"arguments":{"tagNames":["cat"]}}}`,
