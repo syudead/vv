@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -109,30 +110,50 @@ func (p peerWorkInfo) ApplyFetchedWorkInfo(
 func (p peerWorkInfo) UploadThumbnailImage(
 	ctx context.Context, id int64, contentVersion string, image []byte,
 ) (domain.Video, error) {
-	if p.s.peerLink == nil {
-		return domain.Video{}, domain.ErrPeerUnreachable
+	path := peerVideoPath(domain.FromRemoteID(id), "/thumbnail-image", nil)
+	err := p.s.peerUpload(ctx, http.MethodPost, path, func(form *multipart.Writer) error {
+		return writeThumbnailForm(form, contentVersion, image)
+	}, nil)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	return domain.Video{ID: id}, nil
+}
+
+// peerUpload sends the multipart form write fills to path on the peer as the owner and decodes a 200 answer into
+// out, when set; any other answer is a *peerRefusal.
+func (s *server) peerUpload(
+	ctx context.Context, method, path string, write func(*multipart.Writer) error, out any,
+) error {
+	if s.peerLink == nil {
+		return domain.ErrPeerUnreachable
 	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	if err := writeThumbnailForm(form, contentVersion, image); err != nil {
-		return domain.Video{}, err
+	if err := write(form); err != nil {
+		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peerVideoPath(domain.FromRemoteID(id), "/thumbnail-image", nil), &body)
+	req, err := http.NewRequestWithContext(ctx, method, path, &body)
 	if err != nil {
-		return domain.Video{}, err
+		return err
 	}
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	// The peer may wait to decode and fit the image, as a forwarded thumbnail upload does.
-	resp, err := p.s.peerLink.Forward(req, false, true)
+	resp, err := s.peerLink.Forward(req, false, true)
 	if err != nil {
-		return domain.Video{}, err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxForwardedJSON))
-	if resp.StatusCode != http.StatusOK {
-		return domain.Video{}, &peerRefusal{status: resp.StatusCode}
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON))
+	switch {
+	case resp.StatusCode != http.StatusOK:
+		return &peerRefusal{status: resp.StatusCode}
+	case out == nil:
+		return nil
+	case err != nil:
+		return err
 	}
-	return domain.Video{ID: id}, nil
+	return json.Unmarshal(answer, out)
 }
 
 func writeThumbnailForm(form *multipart.Writer, contentVersion string, image []byte) error {

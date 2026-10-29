@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -301,12 +302,26 @@ type PersonPluginApply struct {
 	PluginID   int64
 	Digest     string
 	Generation int64
-	Fetched    FetchedPluginPerson
-	Items      []PersonPluginItem
+	// FetchedByPeer marks a fetch the paired node ran with its own plugin and checked before sending; this node
+	// has no such plugin to recheck.
+	FetchedByPeer bool
+	Fetched       FetchedPluginPerson
+	Items         []PersonPluginItem
 }
 
 // PersonPluginApplied is the person after the apply's transaction and the values it left out.
 type PersonPluginApplied struct {
 	Person  Credit
 	Skipped []SkippedPersonValue
+}
+
+// PersonPluginPeer is the paired node as a person page fetch for one of its people reaches it: this node runs the
+// plugin, and the peer holds the person, the writes and the face. Its people are addressed by their remote ids.
+type PersonPluginPeer interface {
+	// Get returns ErrNotFound for a missing person.
+	Get(ctx context.Context, kind CreditKind, id int64) (Credit, error)
+	// ApplyPersonPluginFetch writes on the peer without the image item, returning ErrNotFound for a missing person.
+	ApplyPersonPluginFetch(ctx context.Context, apply PersonPluginApply) (PersonPluginApplied, error)
+	// ReplacePersonImage makes data the person's face.
+	ReplacePersonImage(ctx context.Context, id int64, data []byte) (int64, error)
 }

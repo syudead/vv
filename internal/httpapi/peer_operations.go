@@ -79,6 +79,7 @@ var peerOperations = []string{
 	"PATCH /api/people/{id}",
 	"DELETE /api/people/{id}",
 	"POST /api/people/{id}/merge",
+	"PUT /api/people/{id}/image",
 	"POST /api/organizations",
 	"PATCH /api/organizations/{id}",
 	"DELETE /api/organizations/{id}",
@@ -103,6 +104,7 @@ var peerOperations = []string{
 	"POST /api/peer/rule-counts",
 	"POST /api/peer/credit-matches",
 	"POST /api/peer/videos/{id}/fetched-work-info",
+	"POST /api/peer/people/{id}/fetched-person",
 }
 
 // Match with ServeMux, as accessMux does, so wildcards and GET/HEAD agree with routing.

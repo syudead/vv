@@ -650,6 +650,14 @@ func requiresOtherJSONBody(r *http.Request) bool {
 	return false
 }
 
+// idActionBodyPaths are the POST {prefix}{id}/{action} paths that take a JSON body.
+var idActionBodyPaths = []struct{ prefix, action string }{
+	{"/api/videos/", "thumbnail-edits"},
+	{"/api/peer/videos/", "fetched-work-info"},
+	{"/api/peer/people/", "fetched-person"},
+	{"/api/virtual-videos/", "merge"},
+}
+
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
@@ -667,17 +675,11 @@ func requiresPostJSONBody(path string) bool {
 		"/api/peer/rule-counts", "/api/peer/credit-matches":
 		return true
 	}
-	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
-		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "thumbnail-edits"
-	}
-	if suffix, ok := strings.CutPrefix(path, "/api/peer/videos/"); ok {
-		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "fetched-work-info"
-	}
-	if suffix, ok := strings.CutPrefix(path, "/api/virtual-videos/"); ok {
-		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "merge"
+	for _, action := range idActionBodyPaths {
+		if suffix, ok := strings.CutPrefix(path, action.prefix); ok {
+			id, rest, found := strings.Cut(suffix, "/")
+			return found && id != "" && rest == action.action
+		}
 	}
 
 	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {

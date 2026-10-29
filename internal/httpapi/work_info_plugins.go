@@ -75,6 +75,13 @@ type WorkInfoPlugins interface {
 	// ApplyPersonPluginFetch may return ErrWorkInfoApplyInvalid, ErrPersonNotFound, or ErrWorkInfoFetchStale; a negative
 	// imageIndex names no image.
 	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int) (domain.PersonPluginApplied, error)
+	// FetchPeerPersonWithPlugin and ApplyPeerPersonPluginFetch are the person page's fetch and apply for the peer's
+	// person, whose remote id is personID; their errors are those of the local operations, and ErrPeerUnreachable.
+	FetchPeerPersonWithPlugin(ctx context.Context, peer domain.PersonPluginPeer, personID, pluginID int64, key domain.PersonFetchKey) (domain.PersonPluginFetchResult, error)
+	ApplyPeerPersonPluginFetch(ctx context.Context, peer domain.PersonPluginPeer, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int) (domain.PersonPluginApplied, error)
+	// ApplyPeerFetchedPerson answers the peer's apply for a person of this node; it returns ErrWorkInfoApplyInvalid
+	// for an item the request cannot give and ErrPersonNotFound for a missing person.
+	ApplyPeerFetchedPerson(ctx context.Context, personID int64, fetched domain.FetchedPluginPerson, items []domain.PersonPluginItem) (domain.PersonPluginApplied, error)
 }
 
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {

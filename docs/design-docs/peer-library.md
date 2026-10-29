@@ -285,6 +285,35 @@ sequenceDiagram
 | No person face is sent, and the apply reports no linked people | The people are registered on the peer, whose own face recognition finds their faces; no interface to write a face across nodes is needed |
 | The reading node keeps no activity entry for the fetch | Its activity log holds its own videos |
 
+### A person fetched for a remote person
+
+A person page fetch for a remote person, such as one the peer created when it
+applied a remote video's fetch, runs on the reading node in the same way. The
+peer gives the person and writes the chosen values and the face.
+
+```mermaid
+sequenceDiagram
+  participant S as Screens
+  participant R as Reading node
+  participant P as Peer
+  S->>R: POST /api/people/{remoteId}/plugin-fetches
+  R->>P: GET /api/people/{peerId} (external IDs, links)
+  R->>R: run the person plugin
+  R-->>S: the result
+  S->>R: POST .../plugin-fetches/{fetchId}/apply
+  R->>R: recheck the plugin
+  R->>P: POST /api/peer/people/{peerId}/fetched-person
+  R->>P: PUT /api/people/{peerId}/image (chosen image)
+  R-->>S: the peer's person
+```
+
+| Decision | Reason |
+| --- | --- |
+| The fetch, the apply and the reads of kept images for a remote id are answered by the reading node, not forwarded | The plugin and the kept result exist only there |
+| The fetch picks its key from the peer's stored external IDs and links | The person page fetches the same person whichever node holds it |
+| The peer applies the chosen items with its own person page apply, in one transaction, and skips the plugin check | The result is the same as an apply of the peer's own fetch, and the peer has no copy of the plugin |
+| The chosen image goes to the peer as a face upload | The owner picked this face on the person page, unlike the work-info apply's faces, which the peer's face recognition finds |
+
 `Fill info…` over a selection with remote items lists its targets on both
 nodes: `POST /api/work-info-fill-targets` resolves this node's part and asks
 the peer for its part, which it answers in remote ids after this node's.

@@ -356,15 +356,8 @@ type chosenWork struct {
 func (p *WorkInfoPlugins) applyFetch(
 	ctx context.Context, fetch *workInfoFetch, chosen chosenWork, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
-	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
-	case err != nil:
+	if err := p.checkKeptPlugin(ctx, fetch.pluginID, fetch.digest, fetch.generation); err != nil {
 		return domain.WorkInfoApplied{}, err
-	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != fetch.digest ||
-		plugin.Generation != fetch.generation:
-		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
 	fields := chosen.selection.Fields
 	apply := domain.FetchedWorkInfoApply{
@@ -407,6 +400,21 @@ func (p *WorkInfoPlugins) applyFetch(
 		Video: video, SkippedTags: skippedTags(names, invalid, applied.RejectedTags), Skipped: skipped,
 		LinkedPeople: linked,
 	}, nil
+}
+
+// checkKeptPlugin returns ErrWorkInfoFetchStale when the plugin a result was fetched with is gone, no longer approved
+// or replaced since.
+func (p *WorkInfoPlugins) checkKeptPlugin(ctx context.Context, pluginID int64, digest string, generation int64) error {
+	plugin, err := p.store.WorkInfoPlugin(ctx, pluginID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return domain.ErrWorkInfoFetchStale
+	case err != nil:
+		return err
+	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != digest || plugin.Generation != generation:
+		return domain.ErrWorkInfoFetchStale
+	}
+	return nil
 }
 
 // Preserve fetched order; nil selected returns all fetched names.

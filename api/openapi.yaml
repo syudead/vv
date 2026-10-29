@@ -2553,6 +2553,31 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/peer/people/{id}/fetched-person:
+    post:
+      operationId: applyPeerFetchedPerson
+      summary: "Apply a person the peer fetched for a person of this node"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerFetchedPluginPerson"
+      responses:
+        "200":
+          description: "This node's person, in this node's ids, and the skipped values"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonPluginFetchApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/peer/rule-counts:
     post:
       operationId: countPeerRuleMatches
@@ -3894,7 +3919,7 @@ paths:
     post:
       operationId: fetchPersonWithPlugin
       summary: "Fetch a person's information with a person plugin"
-      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
+      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. For a person of the paired node, this node's plugin runs and the peer gives the person's IDs and links; the result's images and apply are answered here too. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -3965,7 +3990,7 @@ paths:
     post:
       operationId: applyPersonPluginFetch
       summary: "Apply selected items of a person fetch"
-      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -12997,6 +13022,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ExternalId"
+    PeerFetchedPluginPerson:
+      type: object
+      required: [name, aliases, externalIds, items]
+      additionalProperties: false
+      description: "The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links."
+      properties:
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+        items:
+          type: array
+          description: "The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent."
+          items:
+            $ref: "#/components/schemas/PersonPluginItem"
+
     PeerFetchedWorkInfoApplied:
       type: object
       required: [rejectedTags, skipped]
