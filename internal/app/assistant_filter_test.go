@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -35,6 +36,122 @@ func TestTurnFilterSearchesUnresolvedNamesAsText(t *testing.T) {
 	rule := result.Criteria.Rule
 	if rule.Q != `live カラオケ "Jane Doe"` || !slices.Equal(rule.Tags, []int64{3}) || rule.Person != 0 {
 		t.Fatalf("rule = %+v", rule)
+	}
+}
+
+// A model that fills every member writes 0 for the bound the request does not set, which must not fail the
+// request as a bound out of order.
+func TestTurnFilterDropsAZeroDurationBound(t *testing.T) {
+	f := newTurnFixture(`{"kind":"filter","filter":{"q":"","tags":[],"minDurationMs":1800000,"maxDurationMs":0,`+
+		`"addedFrom":"","addedTo":""}}`, nil)
+	result, err := f.a.Turn(context.Background(), domain.AssistantTurnInput{Text: "30分以上のライブ"})
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnFilter {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	rule := result.Criteria.Rule
+	if rule.MinDurationMs == nil || *rule.MinDurationMs != 1800000 || rule.MaxDurationMs != nil {
+		t.Fatalf("rule = %+v", rule)
+	}
+}
+
+// A model that fills every member writes "0000-00-00" for a day the request does not set; a read drops it, a
+// change's target keeps it for the validation to ask.
+func TestTurnFilterDropsADayThatIsNotADateOnlyWhenReading(t *testing.T) {
+	filter := `{"tags":["cat"],"addedFrom":"0000-00-00","addedTo":"0000-00-00","watchState":"unwatched"}`
+	tags := map[string][]domain.AssistantCandidate{"cat": {catTag}}
+	f := newTurnFixture(`{"kind":"filter","filter":`+filter+`}`, tags)
+	result, err := f.a.Turn(context.Background(), domain.AssistantTurnInput{Text: "request"})
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnFilter || result.Criteria.Rule.AddedFrom != "" || result.Criteria.Rule.AddedTo != "" {
+		t.Fatalf("result = %+v, clarify = %+v", result, result.Clarify)
+	}
+	f = newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add","target":{"kind":"filter","filter":`+
+		filter+`},"arguments":{"tagNames":["cat"]}}}`, tags)
+	result, err = f.a.Turn(context.Background(), selection())
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnClarify || len(f.videos.queries) != 0 {
+		t.Fatalf("result = %+v, queries = %+v", result, f.videos.queries)
+	}
+}
+
+// A change's target keeps an explicit 0 bound, so a reversed range asks instead of widening the target.
+func TestTurnWriteTargetKeepsAZeroDurationBound(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add","target":{"kind":"filter",`+
+		`"filter":{"minDurationMs":1800000,"maxDurationMs":0}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	result, err := f.a.Turn(context.Background(), selection())
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnClarify || len(f.videos.queries) != 0 {
+		t.Fatalf("result = %+v, queries = %+v", result, f.videos.queries)
+	}
+}
+
+// The selection limit applies to the narrowed selection, not to the library-wide match of the narrowing filter.
+func TestTurnFilterOnTheSelectionIgnoresTheLibraryWideTotal(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+
+		`"target":{"kind":"selection","filter":{"maxDurationMs":600000}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	f.videos.items, f.videos.total = []domain.Video{f.videos.videos[8]}, domain.AssistantSelectionMax+1
+	result, err := f.a.Turn(context.Background(), selection(7, 8))
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if keys := f.store.created.Targets.VideoKeys; !slices.Equal(keys, []string{"key-8"}) {
+		t.Fatalf("targets = %v", keys)
+	}
+}
+
+// A follow-up such as "leave out the long ones" keeps the selection and narrows it by a filter.
+func TestTurnFilterOnTheSelectionNarrowsIt(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+
+		`"target":{"kind":"selection","filter":{"maxDurationMs":600000}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	f.videos.items = []domain.Video{f.videos.videos[8], {ID: 9, UserKey: "key-9"}}
+	result, err := f.a.Turn(context.Background(), selection(7, 8))
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if keys := f.store.created.Targets.VideoKeys; !slices.Equal(keys, []string{"key-8"}) {
+		t.Fatalf("targets = %v, want the selected video the filter matches", keys)
+	}
+	if q := f.videos.queries; len(q) != 1 || q[0].MaxDurationMs == nil || *q[0].MaxDurationMs != 600000 {
+		t.Fatalf("queries = %+v", q)
+	}
+}
+
+// Llama 3.3 70B answers "長いのは除いて" after a proposal on the selection with a filter target alone; the follow-up
+// keeps the selection instead of widening the change to the whole library.
+func TestTurnFollowUpFilterKeepsTheSelection(t *testing.T) {
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"updateVideoTags.add",`+
+		`"target":{"kind":"filter","filter":{"maxDurationMs":600000}},"arguments":{"tagNames":["cat"]}}}`,
+		map[string][]domain.AssistantCandidate{"cat": {catTag}})
+	f.videos.items = []domain.Video{f.videos.videos[8], {ID: 9, UserKey: "key-9"}}
+	in := selection(7, 8)
+	in.Previous, in.PreviousProposalID = json.RawMessage(`{"kind":"proposal"}`), 5
+	result, err := f.a.Turn(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if keys := f.store.created.Targets.VideoKeys; !slices.Equal(keys, []string{"key-8"}) {
+		t.Fatalf("targets = %v, want the selected video the filter matches", keys)
 	}
 }
 

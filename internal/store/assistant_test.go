@@ -353,6 +353,37 @@ func TestAssistantFindNamesFoldsAndReadsSynonymsAndAliases(t *testing.T) {
 	}
 }
 
+func TestAssistantFindSimilarNamesMatchesPartOfAName(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	var ids []int64
+	for _, name := range []string{"コスプレ衣装", "コスプレ衣裳", "ネコ"} {
+		tag, err := db.Tags().CreateTag(ctx, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, tag.ID)
+	}
+	if got, err := db.Assistant().FindNames(ctx, domain.AssistantLabelTag, "こすぷれ"); err != nil || len(got) != 0 {
+		t.Fatalf("FindNames = %+v, %v; want no exact match", got, err)
+	}
+	got, err := db.Assistant().FindSimilarNames(ctx, domain.AssistantLabelTag, "こすぷれ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != ids[0] || got[1].ID != ids[1] {
+		t.Fatalf("FindSimilarNames = %+v, want the two cosplay tags", got)
+	}
+	kind, err := db.Tags().CreateTagKind(ctx, "ジャンル")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Assistant().FindSimilarNames(ctx, domain.AssistantLabelTagKind, "ジャン"); err != nil ||
+		len(got) != 1 || got[0].ID != kind.ID {
+		t.Fatalf("FindSimilarNames(tagKind) = %+v, %v", got, err)
+	}
+}
+
 func TestAssistantDiscardProposalOnlyWhileProposed(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

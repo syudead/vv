@@ -1,8 +1,10 @@
-// clefrelay adapts Ollama judging requests to Workers AI for development without a local Ollama server.
+// clefrelay adapts Ollama judging and chat requests to Workers AI for development without a local Ollama server.
 // Run CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay, then select http://127.0.0.1:11434 and clef or clef-flash.
+// The assistant's generation model is one of the chat models in chat.go, such as llama3.2:3b or llama3.3:70b.
 //
 // Set CLOUDFLARE_API_TOKEN unless the proxy supplies authentication. Connection checks stay local; use "Test judging" to verify Workers AI.
-// The adapter tiles more than four images, drops keep_alive, and converts Workers AI responses and errors to Ollama format.
+// The adapter tiles more than four images, drops keep_alive, sends a chat format as a JSON schema, logs every chat
+// answer, and converts Workers AI responses and errors to Ollama format.
 package main
 
 import (
@@ -110,9 +112,7 @@ type workersResponse struct {
 			InputTokens int `json:"input_tokens"`
 		} `json:"usage"`
 	} `json:"result"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
+	Errors []workersError `json:"errors"`
 }
 
 // The product recognizes any nonempty /api/version response as Ollama.
@@ -126,14 +126,20 @@ func newRelay(cfg config, client *http.Client) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"version": relayVersion})
 	})
 	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {
-		list := make([]map[string]string, len(models))
-		for i, m := range models {
-			list[i] = map[string]string{"name": m + ":latest", "model": m + ":latest"}
+		var list []map[string]string
+		for _, m := range models {
+			list = append(list, map[string]string{"name": m + ":latest", "model": m + ":latest"})
+		}
+		for _, m := range chatModelNames() {
+			list = append(list, map[string]string{"name": m, "model": m})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"models": list})
 	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		relay(w, r, cfg, client)
+	})
+	mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
+		relayChat(w, r, cfg, client)
 	})
 	return mux
 }
@@ -162,10 +168,31 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 	}
 
 	url := fmt.Sprintf("%s/accounts/%s/ai/run/@cf/cloudflare/%s", strings.TrimRight(cfg.baseURL, "/"), cfg.account, model)
+	status, raw, err := postWorkers(r, cfg, client, url, body)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	var out workersResponse
+	decodeErr := json.Unmarshal(raw, &out)
+
+	if status == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
+		log.Printf("clefrelay: %s %d questions, %d→%d images, %d tokens, %s",
+			model, countKeys(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
+			time.Since(started).Round(time.Millisecond))
+		writeJSON(w, http.StatusOK, map[string]any{"model": model, "answers": out.Result.Answers})
+		return
+	}
+	message := errorMessage(status, out.Errors)
+	log.Printf("clefrelay: %s failed (%d): %s", model, status, message)
+	writeError(w, errorStatus(status), message)
+}
+
+// postWorkers sends one Workers AI request with the relay's credentials and reads its whole answer.
+func postWorkers(r *http.Request, cfg config, client *http.Client, url string, body []byte) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.token != "" {
@@ -173,39 +200,37 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot reach Workers AI: "+err.Error())
-		return
+		return 0, nil, fmt.Errorf("cannot reach Workers AI: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot read the Workers AI response: "+err.Error())
-		return
+		return 0, nil, fmt.Errorf("cannot read the Workers AI response: %w", err)
 	}
-	var out workersResponse
-	decodeErr := json.Unmarshal(raw, &out)
+	return resp.StatusCode, raw, nil
+}
 
-	if resp.StatusCode == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
-		log.Printf("clefrelay: %s %d questions, %d→%d images, %d tokens, %s",
-			model, countKeys(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
-			time.Since(started).Round(time.Millisecond))
-		writeJSON(w, http.StatusOK, map[string]any{"model": model, "answers": out.Result.Answers})
-		return
-	}
-	messages := make([]string, 0, len(out.Errors))
-	for _, e := range out.Errors {
+type workersError struct {
+	Message string `json:"message"`
+}
+
+func errorMessage(status int, errs []workersError) string {
+	messages := make([]string, 0, len(errs))
+	for _, e := range errs {
 		messages = append(messages, e.Message)
 	}
-	message := strings.Join(messages, "; ")
-	if message == "" {
-		message = fmt.Sprintf("Workers AI answered %d", resp.StatusCode)
+	if message := strings.Join(messages, "; "); message != "" {
+		return message
 	}
-	status := resp.StatusCode
+	return fmt.Sprintf("Workers AI answered %d", status)
+}
+
+// errorStatus keeps a Workers AI error status and turns an unreadable success into a gateway error.
+func errorStatus(status int) int {
 	if status < 400 {
-		status = http.StatusBadGateway
+		return http.StatusBadGateway
 	}
-	log.Printf("clefrelay: %s failed (%d): %s", model, resp.StatusCode, message)
-	writeError(w, status, message)
+	return status
 }
 
 // Tile more than four images instead of discarding later scenes.

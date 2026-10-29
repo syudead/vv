@@ -39,17 +39,27 @@ has no way to reach the owner.
 
 The schema is built once from the outcome types with `jsonschema-go`, every
 object has `additionalProperties: false`, and the operation ids are an enum of
-the catalog. An answer the schema rejects, or that carries a member of another
-kind, is the outcome `unreadable` and changes nothing; the call is not retried,
-since a second call doubles a wait of minutes on a CPU host.
+the catalog. An answer the schema rejects, or that lacks the member its kind
+reads, is the outcome `unreadable` and changes nothing; the call is not
+retried, since a second call doubles a wait of minutes on a CPU host. A member
+of another kind beside the right one is dropped, and a `filter` beside an
+`answer` without one is the answer's filter: models of every size write both,
+and a dropped member changes nothing, since every change is a confirmed
+proposal.
 
-The prompt carries today's date, one line per operation the turn can build,
-the screen context by names, the previous outcome on a follow-up, and the
-request (at most 500 characters). The request, the context and the previous
-outcome sit inside `<request>`, `<context>` and `<previous>` marks that the
-instructions call data. The library's vocabulary stays out of the prompt: a
-library holds thousands of tags and people, and each thousand names adds
-minutes to a turn on a CPU.
+The prompt carries the outcome's members by kind, today's date, one line per
+operation the turn can build, the screen context by names, the previous
+outcome on a follow-up with the request its proposal came from, and the
+request (at most 500 characters). The members are described because Ollama
+enforces the schema as a grammar without showing it to the model: without
+them, models of every size wrote an `action` member under `answer` and
+`navigate` outcomes. The request, the context and the previous outcome sit
+inside `<request>`, `<context>`, `<previous-request>` and `<previous>` marks
+that the instructions call data. The library's vocabulary stays out of the
+prompt: a library holds thousands of tags and people, and each thousand names
+adds minutes to a turn on a CPU. A prompt change is checked by hand against
+real models, through `scripts/clefrelay` when no local Ollama is at hand
+([running-vv.md](../how-to/running-vv.md#assistant)).
 
 | Failure | Answer | Stored |
 | --- | --- | --- |
@@ -70,16 +80,22 @@ minutes to a turn on a CPU.
 
 Every name in an outcome is resolved by the server with the stored search keys
 (width, case and kana folded), tag synonyms and person and organization
-aliases (`AssistantVocabulary`); one match is used, several or none answer
-`clarify` with the candidates, with two exceptions for no match. A tag to
-attach is marked created on the card. A tag, person or organization in the
-filter of a `filter` outcome or a `count` or `list` question joins the filter's
-free text `q` as a literal search term, quoted when the search grammar would
-otherwise read it as an operator or several words, so one loose name does not
-fail a read. The name is dropped when it is a field word such as `tags`, or
-when `q` already requires it as a positive term. A name carries the
+aliases (`AssistantVocabulary`); one match is used, several answer `clarify`
+with the candidates, and none answers `clarify` with the entities whose names
+contain the name (`コスプレ` offers `コスプレ衣装` and `コスプレ衣裳`), with two
+exceptions. A tag to attach is marked created on the card. A tag, person or
+organization in the filter of a `filter` outcome or a `count` or `list`
+question joins the filter's free text `q` as a literal search term, quoted when
+the search grammar would otherwise read it as an operator or several words, so
+one loose name does not fail a read. The name is dropped when it is a field
+word such as `tags`, or when `q` already requires it as a positive term. A
+name is trimmed, and a tag name is tried again without a trailing tag word
+(`ライブタグ`), since models copy both from the request. A name carries the
 kind the model inferred, and `any` tries person, organization and tag, so a name
-found under two kinds is a clarification.
+found under two kinds is a clarification. A read-only filter also drops a
+duration bound of `0` and a day that is not a date, which a model writes for a
+member the request does not set; a change's target keeps them, so the
+validation asks instead of widening the target.
 
 The diagram shows the rule for one name.
 
@@ -111,8 +127,8 @@ sees names and counts, never ids.
 
 | Word in the request | Target |
 | --- | --- |
-| `これ`, `選んだもの` (`selection`) | The selected videos and smart folders, or the open video |
-| `ここ` (`current`) | The open video, smart folder, person, organization or tag, or the library filter |
+| `これ`, `選んだもの` (`selection`) | The selected videos and smart folders, or the open video; a filter on it narrows them, which is how `長いのは除いて` keeps the previous target, and the 20,000-video limit applies to the narrowed videos, not to the filter's library-wide match |
+| `ここ` (`current`) | The open video, smart folder, person, organization or tag, or the library filter; a filter on it narrows them |
 | A name (`named`) | The entities the row's target kind resolves |
 | A filter (`filter`) | Every video matching it, counted by the server |
 

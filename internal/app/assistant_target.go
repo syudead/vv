@@ -221,19 +221,31 @@ func (d *planDraft) setVideos(videos []domain.Video) {
 }
 
 // videoIDs reads the video ids a target names: the selection or open video, the current screen, a filter, or titles.
+// A filter on the selection or the current screen narrows their videos, which is how a follow-up such as "leave
+// out the long ones" keeps the previous target.
 func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTargetRequest) ([]int64, bool, error) {
-	switch target.Kind {
-	case "selection":
-		return d.selectionIDs(ctx)
-	case "current":
-		return d.currentIDs(ctx)
-	case "filter":
-		criteria, ok, err := d.t.criteria(ctx, target.Filter, true)
+	kind := target.Kind
+	if kind == "filter" && d.t.input.PreviousProposalID > 0 && len(d.t.input.Context.SelectedVideoIDs) > 0 {
+		// A follow-up to a proposal on the selection keeps the selection; models write the narrowing filter alone.
+		kind = "selection"
+	}
+	switch kind {
+	case "selection", "current":
+		read := d.selectionIDs
+		if target.Kind == "current" {
+			read = d.currentIDs
+		}
+		ids, ok, err := read(ctx)
+		if !ok || err != nil || target.Filter == nil {
+			return ids, ok, err
+		}
+		matching, ok, err := d.filterIDs(ctx, target.Filter, false)
 		if !ok || err != nil {
 			return nil, false, err
 		}
-		ids, err := d.t.queryIDs(ctx, criteria.Rule.Query())
-		return ids, err == nil, err
+		return slices.DeleteFunc(ids, func(id int64) bool { return !slices.Contains(matching, id) }), true, nil
+	case "filter":
+		return d.filterIDs(ctx, target.Filter, true)
 	default:
 		var ids []int64
 		for _, name := range target.Names {
@@ -245,6 +257,17 @@ func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTarget
 		}
 		return ids, true, nil
 	}
+}
+
+// filterIDs are the videos a strict filter matches, in library order. A filter that narrows a selection is read
+// uncapped, since the cap applies to the videos the change acts on, not to the library-wide match.
+func (d *planDraft) filterIDs(ctx context.Context, filter *domain.AssistantFilter, capped bool) ([]int64, bool, error) {
+	criteria, ok, err := d.t.criteria(ctx, filter, true)
+	if !ok || err != nil {
+		return nil, false, err
+	}
+	ids, err := d.t.queryIDs(ctx, criteria.Rule.Query(), capped)
+	return ids, err == nil, err
 }
 
 // selectionIDs are the list's selected videos and smart folders, or the open video; an operation that takes
@@ -323,14 +346,14 @@ func (d *planDraft) currentIDs(ctx context.Context) ([]int64, bool, error) {
 			return nil, true, nil
 		}
 	case domain.AssistantRoutePerson, domain.AssistantRouteOrganization, domain.AssistantRouteTag:
-		ids, err := d.t.queryIDs(ctx, routeQuery(c))
+		ids, err := d.t.queryIDs(ctx, routeQuery(c), true)
 		return ids, err == nil, err
 	case domain.AssistantRouteLibrary:
 		q := domain.VideoQuery{}
 		if c.Filter != nil {
 			q = c.Filter.Query()
 		}
-		ids, err := d.t.queryIDs(ctx, q)
+		ids, err := d.t.queryIDs(ctx, q, true)
 		return ids, err == nil, err
 	}
 	d.t.clarify("target", nil)
@@ -348,8 +371,9 @@ func routeQuery(c domain.AssistantTurnContext) domain.VideoQuery {
 	}
 }
 
-// queryIDs pages through the library listing; it stops one past the selection limit, which the caller refuses.
-func (t *assistantTurn) queryIDs(ctx context.Context, q domain.VideoQuery) ([]int64, error) {
+// queryIDs pages through the library listing; capped, it stops at a total past the selection limit, which the
+// caller refuses, while a listing that only narrows a selection is read whole.
+func (t *assistantTurn) queryIDs(ctx context.Context, q domain.VideoQuery, capped bool) ([]int64, error) {
 	q.Limit, q.Cursor = domain.MaxLimit, ""
 	var ids []int64
 	for {
@@ -357,7 +381,7 @@ func (t *assistantTurn) queryIDs(ctx context.Context, q domain.VideoQuery) ([]in
 		if err != nil {
 			return nil, fmt.Errorf("cannot read the target videos: %w", err)
 		}
-		if page.Total > domain.AssistantSelectionMax {
+		if capped && page.Total > domain.AssistantSelectionMax {
 			return nil, domain.ErrAssistantTooManyVideos
 		}
 		for _, v := range page.Items {

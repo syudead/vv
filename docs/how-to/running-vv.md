@@ -398,6 +398,14 @@ Until a generation model is saved, the panel shows
 request field. Clearing the field (`None`) turns the assistant off again and
 keeps the connection.
 
+Without a local Ollama, `scripts/clefrelay` stands in for it during
+development: run `CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay`
+(with `CLOUDFLARE_API_TOKEN` unless a proxy adds the credentials), save
+`http://127.0.0.1:11434` as the Ollama URL, and choose one of the chat models
+it lists, such as `llama3.2:3b` or `llama3.3:70b`, as the generation model.
+The relay sends the outcome schema to Workers AI as a JSON schema and logs
+every answer, so the raw output behind an outcome is in its log.
+
 The browser e2e test answers fixed outcomes from a stub, so how a real model
 reads Japanese requests is checked by hand after a change to the prompt, the
 outcome schema or the catalog. On a library with at least 30 videos, the tags

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -49,6 +50,18 @@ var assistantNameMatches = map[domain.AssistantLabelKind]string{
 	domain.AssistantLabelSmartFolder: `select id from smart_folders where title_key = ? order by id limit ?`,
 }
 
+// assistantSimilarNameMatches find ids whose stored key contains the folded name; instr needs no escaping.
+var assistantSimilarNameMatches = map[domain.AssistantLabelKind]string{
+	domain.AssistantLabelTag: `select distinct tag_id from tag_names where instr(search_key, ?) > 0
+		order by tag_id limit ?`,
+	domain.AssistantLabelPerson: `select distinct person_id from people_names where instr(search_key, ?) > 0
+		order by person_id limit ?`,
+	domain.AssistantLabelOrganization: `select distinct organization_id from organization_names
+		where instr(search_key, ?) > 0 order by organization_id limit ?`,
+	domain.AssistantLabelGroup:       `select id from groups where instr(title_key, ?) > 0 order by id limit ?`,
+	domain.AssistantLabelSmartFolder: `select id from smart_folders where instr(title_key, ?) > 0 order by id limit ?`,
+}
+
 // assistantFoldedLists are the small name lists folded in Go because they store no search key.
 var assistantFoldedLists = map[domain.AssistantLabelKind]string{
 	domain.AssistantLabelTagKind:  `select id, name from tag_kinds order by id`,
@@ -60,12 +73,26 @@ var assistantFoldedLists = map[domain.AssistantLabelKind]string{
 func (s *AssistantStore) FindNames(
 	ctx context.Context, kind domain.AssistantLabelKind, name string,
 ) ([]domain.AssistantCandidate, error) {
+	return s.findNames(ctx, kind, name, false)
+}
+
+// FindSimilarNames returns the entities of kind whose folded name, synonym or alias contains the folded name, so
+// a request that names part of a tag or person is answered with the candidates to choose from.
+func (s *AssistantStore) FindSimilarNames(
+	ctx context.Context, kind domain.AssistantLabelKind, name string,
+) ([]domain.AssistantCandidate, error) {
+	return s.findNames(ctx, kind, name, true)
+}
+
+func (s *AssistantStore) findNames(
+	ctx context.Context, kind domain.AssistantLabelKind, name string, similar bool,
+) ([]domain.AssistantCandidate, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("cannot look up the %s name: %w", kind, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	ids, err := assistantMatchingIDs(ctx, tx, kind, name)
+	ids, err := assistantMatchingIDs(ctx, tx, kind, name, similar)
 	if err != nil {
 		return nil, err
 	}
@@ -88,11 +115,17 @@ func (s *AssistantStore) FindNames(
 	return candidates, tx.Commit()
 }
 
-func assistantMatchingIDs(ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, name string) ([]int64, error) {
+func assistantMatchingIDs(
+	ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, name string, similar bool,
+) ([]int64, error) {
 	if statement, ok := assistantFoldedLists[kind]; ok {
-		return assistantFoldedIDs(ctx, tx, statement, domain.FoldForMatch(name))
+		return assistantFoldedIDs(ctx, tx, statement, domain.FoldForMatch(name), similar)
 	}
-	statement, ok := assistantNameMatches[kind]
+	statements := assistantNameMatches
+	if similar {
+		statements = assistantSimilarNameMatches
+	}
+	statement, ok := statements[kind]
 	if !ok {
 		return nil, fmt.Errorf("the assistant cannot look up %q names", kind)
 	}
@@ -122,7 +155,7 @@ func assistantMatchingIDs(ctx context.Context, tx *sql.Tx, kind domain.Assistant
 	return ids, nil
 }
 
-func assistantFoldedIDs(ctx context.Context, tx *sql.Tx, statement, key string) ([]int64, error) {
+func assistantFoldedIDs(ctx context.Context, tx *sql.Tx, statement, key string, similar bool) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, statement)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the names: %w", err)
@@ -135,7 +168,9 @@ func assistantFoldedIDs(ctx context.Context, tx *sql.Tx, statement, key string) 
 		if err := rows.Scan(&id, &name); err != nil {
 			return nil, fmt.Errorf("cannot read the names: %w", err)
 		}
-		if key != "" && domain.FoldForMatch(name) == key && len(ids) < assistantNameLimit {
+		folded := domain.FoldForMatch(name)
+		matches := folded == key || (similar && strings.Contains(folded, key))
+		if key != "" && matches && len(ids) < assistantNameLimit {
 			ids = append(ids, id)
 		}
 	}
