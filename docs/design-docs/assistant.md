@@ -74,8 +74,10 @@ aliases (`AssistantVocabulary`); one match is used, several or none answer
 `clarify` with the candidates, with two exceptions for no match. A tag to
 attach is marked created on the card. A tag, person or organization in the
 filter of a `filter` outcome or a `count` or `list` question joins the filter's
-free text `q` as a search term, or is dropped when it is a field word such as
-`tags`, so one loose name does not fail a read. A name carries the
+free text `q` as a literal search term, quoted when the search grammar would
+otherwise read it as an operator or several words, so one loose name does not
+fail a read. The name is dropped when it is a field word such as `tags`, or
+when `q` already requires it as a positive term. A name carries the
 kind the model inferred, and `any` tries person, organization and tag, so a name
 found under two kinds is a clarification.
 
