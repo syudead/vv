@@ -53,3 +53,25 @@ func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
 		t.Error("リモートの動画が開ける")
 	}
 }
+
+// A same-named person takes the local id; the crop, which is not offered for the peer's appearances, is dropped.
+func TestRewriteRemoteFaceAppearancesJoinsPeopleAndDropsCrops(t *testing.T) {
+	list := gen.VideoFaceAppearanceList{Analysed: true, Items: []gen.VideoFaceAppearance{
+		{AppearanceId: 7, Person: gen.CreditRef{Id: 20, Name: "山田"}, HasCrop: true,
+			Spans: []gen.FaceAppearanceSpan{{Start: 5, End: 8}}},
+		{AppearanceId: 8, Person: gen.CreditRef{Id: 21, Provisional: true}, HasCrop: true},
+	}}
+
+	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{People: map[string]int64{"山田": 4}})
+
+	r := domain.ToRemoteID
+	for i, want := range []struct{ appearance, person int64 }{{r(7), 4}, {r(8), r(21)}} {
+		item := list.Items[i]
+		if item.AppearanceId != want.appearance || item.Person.Id != want.person || item.HasCrop {
+			t.Errorf("items[%d] = %+v, want appearance %d, person %d, no crop", i, item, want.appearance, want.person)
+		}
+	}
+	if spans := list.Items[0].Spans; len(spans) != 1 || spans[0] != (gen.FaceAppearanceSpan{Start: 5, End: 8}) {
+		t.Errorf("spans = %+v, want the peer's", spans)
+	}
+}

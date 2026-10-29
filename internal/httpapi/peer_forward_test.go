@@ -157,6 +157,19 @@ func TestRemoteVideoIsForwardedWithRemoteIDsAndURLs(t *testing.T) {
 	}
 }
 
+// The people tab reads a remote video's face appearances from the peer, not from this node's store.
+func TestRemoteVideoFaceAppearancesAreReadOnThePeer(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+
+	rec := b.owner(http.MethodGet, f.remotePath("a", "/face-appearances"), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.VideoFaceAppearanceList](t, rec); got.Analysed || len(got.Items) != 0 {
+		t.Errorf("body = %+v, want the peer's unanalysed video", got)
+	}
+}
+
 func TestRemoteVideoMediaPassesThrough(t *testing.T) {
 	f, _, b, _ := remoteVideoNodes(t)
 

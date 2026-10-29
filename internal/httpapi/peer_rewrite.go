@@ -46,6 +46,7 @@ var remoteVideoOperations = map[string]remoteOperation{
 	"GET /api/videos/{id}/thumbnail":              {media: true},
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}": {media: true},
 	"GET /api/videos/{id}/frame":                  {media: true},
+	"GET /api/videos/{id}/face-appearances":       {rewrite: rewriteAs(rewriteRemoteFaceAppearances)},
 	"POST /api/videos/{id}/tags/{tagId}/confirm":  {path: (*server).peerVideoTagPath},
 	"POST /api/videos/{id}/tags/{tagId}/reject":   {path: (*server).peerVideoTagPath},
 	"PUT /api/videos/{id}/work-info": {
@@ -183,6 +184,17 @@ func rewriteRemoteGroupMembers(page *gen.GroupMemberPage, join domain.Vocabulary
 func rewriteRemoteVersions(versions *gen.VideoVersions, join domain.VocabularyJoin) {
 	rewriteRemoteVideos(versions.Items, join)
 	versions.RepresentativeId = domain.ToRemoteID(versions.RepresentativeId)
+}
+
+// rewriteRemoteFaceAppearances joins the people by name and drops the crops, whose operation is not offered for the
+// peer's appearances.
+func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
+	for i := range list.Items {
+		item := &list.Items[i]
+		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
+		item.Person.Id = join.Person(item.Person.Id, item.Person.Name)
+		item.HasCrop = false
+	}
 }
 
 func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoin) {
