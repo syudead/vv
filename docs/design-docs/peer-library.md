@@ -1,11 +1,11 @@
-# Paired library: two VVMDMs as one library
+# Paired library: reading another VVMDM
 
-A VVMDM paired with one other VVMDM on the LAN (the **peer**) answers its own
-screens with the videos, groups and smart folders of both, without copying
-anything: it calls the peer's screen API, merges the answer with its own and
-returns it in the shapes the screens already read. The pairing use case lives
-in `internal/app` (`Pairing`), the HTTP client to the peer in
-[`internal/peer`](../../internal/peer), the merge and forwarding in
+A VVMDM paired with one other VVMDM on the LAN (the **peer**, the node it
+reads) answers its own screens with the videos, groups and smart folders of
+both, without copying anything: it calls the peer's screen API, merges the
+answer with its own and returns it in the shapes the screens already read. The
+pairing use case lives in `internal/app` (`Pairing`), the HTTP client to the
+peer in [`internal/peer`](../../internal/peer), the merge and forwarding in
 `internal/httpapi/peer*.go`, and their pure rules in `internal/domain`.
 
 The diagram shows one screen request answered by both nodes.
@@ -22,88 +22,58 @@ flowchart LR
 
 ## Pairing and the peer credential
 
-One pairing action pairs both nodes: node B sends A's pairing code to A, A
-calls B back at the address B gave, and each node then holds a secret the
-other presents as `Authorization: VV-Peer <secret>` on every request.
+Pairing is one-directional: node B sends A's pairing code to A, A stores a
+grant that lets B read A and answers with the secret B presents from then on
+as `Authorization: VV-Peer <secret>`, and B stores the link. A never connects
+to B, so B needs no address of its own and no inbound reachability. Each node
+holds at most one **link** (the node it reads) and at most one **grant** (the
+node that reads it); the two are independent rows, created and removed on
+their own, and may name the same node.
 
 ```mermaid
 sequenceDiagram
   participant O as Owner of B
-  participant B as Node B
-  participant A as Node A
-  opt B's own address is https and the roots do not verify it
-    B->>B: TLS handshake only, at its own address
-    Note over B: reads the SPKI, sends no request
-    B-->>O: 409 own_certificate_unverified with that SPKI
-    O->>B: pair again with ownFingerprint after comparing it
-  end
-  B->>A: POST /api/peer/pairings with code and the confirmed SPKI
-  A->>B: GET /api/peer/handshake, pinned to that SPKI
-  B-->>A: node id, version
-  A-->>B: 201, secret for B
+  participant B as Node B (reader)
+  participant A as Node A (read)
+  O->>A: Show pairing code
+  O->>B: A's address and code
+  B->>A: POST /api/peer/pairings with code and B's identity
+  Note over A: checks the code, stores the grant for B
+  A-->>B: 201, node id and the secret for B
+  Note over B: stores the link to A with that secret
+  B->>A: GET /api/events with the secret
 ```
 
-### Both nodes behind self-signed HTTPS
-
-The requesting node's owner confirms the certificate of the requester's own
-address, and the accepting node pins it, so nothing is confirmed on A. B sits
-behind a TLS terminator and cannot read its certificate locally, so it
-completes a TLS handshake with the address it announces and closes the
-connection without a request. When the system roots do not verify that
-certificate, pairing answers `409 own_certificate_unverified` with its SPKI
-before A is called, and the page asks the owner to compare it with the
-certificate B serves, such as in the browser's certificate viewer for B's
-page. Pairing again with `ownFingerprint` equal to the SPKI the address
-presents sends it to A as `node.fingerprint`; A pins it for the callback and
-stores it as the peer's pin. An `http` address, or a certificate the roots
-verify, sends no fingerprint, and A verifies with the roots. B's owner then
-confirms A's certificate after `certificate_untrusted`, so both
-confirmations happen in turn on B's page.
-
-The owner's comparison is what authenticates B's certificate. B cannot
-authenticate it by talking to its own address: an on-path host that
-terminates TLS with its own certificate and relays to B answers any request
-as B would, node id included, and reads whatever the request carries. A
-handshake that sent the pending secret through it would hand that host a
-reusable peer credential and make A pin the host's certificate. The probe
-therefore sends nothing over the connection, and its SPKI only proposes what
-the owner confirms.
-
-| Property | How it holds |
+| Decision | Reason |
 | --- | --- |
-| No credential reaches B's own address from B | The probe completes only the TLS handshake; the pending secret travels only to A and back in A's pinned callback |
-| A pins only a certificate B's owner confirmed | B sends `node.fingerprint` only when it equals both `ownFingerprint` and the SPKI the address presents now, in the request the code authenticates |
-| A failed callback can be repeated | The code stays usable until a pairing succeeds; it still expires after 10 minutes, and success clears it |
-| The owner of B can tell which certificate A refused | A's `certificate_untrusted` reaches B's page as `409 peer_unreachable` with the `fingerprint` A saw, which B never offers to trust as A's |
-| The accepting node's log names a failed callback | A logs it at warning level with the address and the error |
-
-When B cannot reach its own address, such as behind NAT without
-hairpinning, it sends the fingerprint its owner confirmed earlier, or none,
-and A verifies with the roots.
+| One pairing grants one direction; a mutual library is two pairings, one from each side | The owner of a node that only reads, such as a laptop running `task dev` on `127.0.0.1`, cannot be reached by the other node; a pairing that needed both directions failed for them with "could not reach this one" |
+| A never calls B back, and the request carries no address or secret of B's | The callback existed only to give A credentials for reading B and to prove B's address; with one direction neither is needed, and the reader's own certificate needs no confirmation |
+| The link and the grant are separate rows (`peer_link`, `peer_grant`) with their own removal | Removing one direction leaves the other intact, so a node that is both read and reading keeps what the owner did not remove |
+| Migration `00083` turns a mutual `peer` row into a link and a grant to the same node | Nobody is silently unpaired by the upgrade; a row the peer had revoked keeps only a revoked link, since its reader no longer holds a valid secret |
+| B's owner confirms A's certificate after `certificate_untrusted`, and B pins it | This is the only certificate anyone needs to trust: the reader's own is never presented to anyone |
 
 | Rejected | Why |
 | --- | --- |
-| B proving its own address with a pinned handshake | A relaying TLS terminator passes the node-id check and reads the secret the handshake sends |
-| A second fingerprint confirmation on A's page | A's owner is not at the screen during a pairing B starts |
-| A reading its certificate from local files | A TLS terminator holds the certificate, so the node has no file to read |
-| Trusting the callback's certificate on first use | Any host answering at B's address could then pin itself |
+| Keeping the mutual pairing and letting the owner skip the callback | Both nodes would still hold a link and reconnect to each other, so the unreachable side stayed `unreachable` forever |
+| One row with both directions as nullable columns | Removing a direction would leave half rows whose meaning the code had to infer |
+| Letting the read node show the reader's library through the grant | The grant is the reader's credential on the read node; the read node holds nothing it could present to the reader |
 
-The peer reads this node's own `/api/*` operations, so no third contract
+The reader reads the read node's own `/api/*` operations, so no third contract
 drifts from the shapes the screens use. A table in
 `internal/httpapi/peer_operations.go` limits the credential to the reads,
 media, forwarded edits, operations over a selection, `/api/events` and
 `/api/peer/*`; anything else answers `403` with reason `peer_not_allowed`, so
-a compromised peer cannot reach media folders, scans, settings, the account
+a compromised reader cannot reach media folders, scans, settings, the account
 or API tokens. The request's audience is the owner unless
-`X-VV-Peer-Audience: guest` lowers it, so the peer filters with the viewer's
-audience before paging ([authentication.md](authentication.md)).
+`X-VV-Peer-Audience: guest` lowers it, so the read node filters with the
+viewer's audience before paging ([authentication.md](authentication.md)).
 
 | Rule | Reason |
 | --- | --- |
-| Both nodes run the same release `version`; pairing and every reconnection compare it | The peer reads the screen API, which changes between releases without notice |
-| The secret is per direction (`vvp_` plus 32 random bytes), hashed on the receiving node and kept in the `peer` table, not tied to `account_version` | A password change keeps the pairing, while it signs out sessions |
+| Versions are not compared; pairing, the handshake and every reconnection carry the release `version` only so the Pairing page shows the peer's | `version` is a build label (the commit SHA in the CI image, `dev` in a local or untagged build), so two builds of the same source differ in it, and a gate on it refused them |
+| The secret is per grant (`vvp_` plus 32 random bytes), hashed on the read node and kept in `peer_grant`, in plain text in the reader's `peer_link`, not tied to `account_version` | A password change keeps the pairing, while it signs out sessions |
 | The pairing code is 8 characters, one per node, valid 10 minutes, cleared by the pairing it completes and kept in memory | A restart ending the code is the wanted behaviour |
-| A node has at most one peer; a second pairing answers `409 already_paired` | The owner unpairs first |
+| A node reads at most one node and is read by at most one; a second link or grant answers `409 already_paired`, and so does the code of a node that is already read | The owner removes the pairing or the access first |
 | HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it, and the Settings page calls an unpinned certificate untrusted rather than changed | A public certificate rotates every 90 days; a self-signed one is pinned once |
 | A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
@@ -111,12 +81,28 @@ audience before paging ([authentication.md](authentication.md)).
 | --- | --- |
 | A separate peer contract with its own generated client | It would restate about 30 screen operations and drift from them |
 | Reusing API tokens | A credential change revokes them |
+| Refusing a peer whose `version`, or a hash of the API definition, differs | A label refuses identical code, and a hash refuses the whole library over one changed operation; the owner compares the versions the Pairing page shows instead |
+
+### Mixed versions
+
+Each node serves the screen API of its own release, so a request the other
+release does not know fails like any other failed peer request: the list or
+operation skips or reports the peer's part, and the connection stays up. For
+example, peer request bodies reject unknown fields, so a peer older than
+`openVideoId` answers `400 invalid_request` to `POST /api/peer/related`, and
+the related list leaves out that peer's videos
+([related-videos.md](related-videos.md)). A read node that still pairs
+mutually answers the one-way pairing request with `400 invalid_request`, which
+the reader reports as an older build to update. Owners keep both nodes on the
+same release; the Pairing page shows the peer's version next to its name.
 
 ## Connection state
 
-`app.Pairing` holds the state the Settings page and the notice show, and
-publishes a `peer` event on each change; one open `/api/events` stream to the
-peer is the liveness signal.
+`app.Pairing` holds the link's state the Settings page and the notice show,
+and publishes a `peer` event on each change of the link's state or of the
+grant; one open `/api/events` stream to the peer is the liveness signal. The
+read node has no connection of its own: it serves the reader's requests and
+shows the grant.
 
 ```mermaid
 stateDiagram-v2
@@ -126,26 +112,31 @@ stateDiagram-v2
   unreachable --> connected: stream opens again
   connected --> revoked: 401 peer_unknown
   unreachable --> revoked: 401 peer_unknown
-  revoked --> unpaired: owner clears
+  revoked --> unpaired: owner removes the link
   connected --> unpaired: owner unpairs
   unreachable --> unpaired: owner unpairs
 ```
 
 The stream also carries the peer's `video`, `group` and `smartFolder` events,
 which arrive here with remote ids so open screens refresh remote items. A
-failed stream retries after 5 s, doubling to 60 s, or at once when the peer
-presents its credential at the handshake: the node that accepted a pairing
-connects before the requesting node has stored it, and that node's first
-handshake after storing it wakes the retry. `unreachable` names a
-reason (`network`, `version` or `certificate`). Moving from `connected` to
+failed stream retries after 5 s, doubling to 60 s, or at once after pairing,
+an address change or a certificate confirmation. `unreachable` names a
+reason (`network` or `certificate`); an address that answers the handshake
+with another node id gives `network`. Moving from `connected` to
 `unreachable`, and into `connected`, logs one info line with the reason and
 error; each failed retry logs at debug level. While the peer is not
 `connected`, reads skip it without a request and answer with the local part,
 so a list never waits 10 s per page for a stopped peer. A `401 peer_unknown`
-from the peer, which an unpaired or wiped peer answers alike, first clears the
-stored hash of the peer's secret and then moves to `revoked`. The state is in
-memory: a start begins `unreachable` until the stream opens, or `revoked` when
-the hash is cleared.
+from the peer, which a node that withdrew the access or was wiped answers
+alike, marks the link revoked in the store and moves to `revoked`. The state
+is in memory: a start begins `unreachable` until the stream opens, or
+`revoked` when the link is marked so.
+
+Unpairing on the reader stops the stream, tells the peer best effort
+(`DELETE /api/peer/pairings/{nodeId}` with the credential, which drops the
+grant) and deletes the link. Withdrawing the access on the read node deletes
+the grant and cancels the reader's requests in flight; the reader learns it
+from its next request's `401`.
 
 ## Remote ids
 
@@ -204,12 +195,14 @@ Tags, tag kinds, people and organizations with the same name are one entity
 on the screens; their lists merge both nodes' entries in memory with summed
 counts, and a remote-only entry carries the offset.
 
-A rename, merge or deletion of a tag, person or organization checks the
-conflict on both nodes, then writes the peer by name
+A rename, merge or deletion of a tag, person or organization on the reader
+checks the conflict on both nodes, then writes the peer by name
 (`POST /api/peer/vocabulary`), then the local node; while the peer is not
 `connected` it answers `409` with reason `peer_unreachable`. Writing the peer
-first leaves nothing changed in the common failure. Synonyms, kinds of a tag,
-tentative state, rejected names, images and links stay per node.
+first leaves nothing changed in the common failure. The read node never
+writes the reader: the same change made there changes that node alone.
+Synonyms, kinds of a tag, tentative state, rejected names, images and links
+stay per node.
 
 | Rejected | Why |
 | --- | --- |
@@ -258,13 +251,89 @@ the tag id turned into the peer's by name; a tag the peer lacks answers
 `404`. A favorites-only read of a remote media folder lists nothing, as a
 merged list does.
 
+### Work information fetched for a remote video
+
+A work-info fetch for a remote video runs on the reading node, because the
+plugins and their kept results are that node's. Only the parts that belong to
+the video are sent to the peer.
+
+```mermaid
+sequenceDiagram
+  participant S as Screens
+  participant R as Reading node
+  participant P as Peer
+  S->>R: POST /api/videos/{remoteId}/work-info-fetches
+  R->>P: GET /api/videos/{peerId} (contentVersion)
+  R->>R: run the plugin
+  R->>P: POST /api/peer/credit-matches
+  R-->>S: the result, matches in the screens' ids
+  S->>R: POST .../work-info-fetches/{fetchId}/apply
+  R->>R: recheck the plugin
+  R->>P: POST /api/peer/videos/{peerId}/fetched-work-info
+  R->>P: POST /api/videos/{peerId}/thumbnail-image (cover)
+  R-->>S: the peer's video
+```
+
+| Decision | Reason |
+| --- | --- |
+| The fetch, the apply and the reads of kept covers and person images for a remote id are answered by the reading node, not forwarded | The plugin and the kept result exist only there |
+| The peer matches the fetched credits and returns its own ids, which the reading node joins by name as it joins the video's credits | A match shown as `onVideo` must name the same id as the video's credits |
+| The peer applies the chosen values with its own apply, in one transaction: the title, tags as tentative assignments, the detail fields merged into its stored work information with credits rematched, and the same-person merges | The result is the same as an apply of the peer's own fetch, including the fields the owner left unchosen |
+| The reading node rechecks its plugin before sending, and the peer skips its plugin check | The peer has no copy of the plugin |
+| The peer refuses the apply with `404` when the video's `contentVersion` has changed since the fetch | A reused id must not receive another video's values, as a local apply checks the content key |
+| The cover goes to the peer as a thumbnail upload, which is forwarded like the other single edits | The page frames a cover and uploads it the same way for both nodes |
+| No person face is sent, and the apply reports no linked people | The people are registered on the peer, whose own face recognition finds their faces; no interface to write a face across nodes is needed |
+| The reading node keeps no activity entry for the fetch | Its activity log holds its own videos |
+
+### A person fetched for a remote person
+
+A person page fetch for a remote person, such as one the peer created when it
+applied a remote video's fetch, runs on the reading node in the same way. The
+peer gives the person and writes the chosen values and the face.
+
+```mermaid
+sequenceDiagram
+  participant S as Screens
+  participant R as Reading node
+  participant P as Peer
+  S->>R: POST /api/people/{remoteId}/plugin-fetches
+  R->>P: GET /api/people/{peerId} (external IDs, links)
+  R->>R: run the person plugin
+  R-->>S: the result
+  S->>R: POST .../plugin-fetches/{fetchId}/apply
+  R->>R: recheck the plugin
+  R->>P: POST /api/peer/people/{peerId}/fetched-person
+  R->>P: PUT /api/people/{peerId}/image (chosen image)
+  R-->>S: the peer's person
+```
+
+| Decision | Reason |
+| --- | --- |
+| The fetch, the apply and the reads of kept images for a remote id are answered by the reading node, not forwarded | The plugin and the kept result exist only there |
+| The fetch picks its key from the peer's stored external IDs and links | The person page fetches the same person whichever node holds it |
+| The peer applies the chosen items with its own person page apply, in one transaction, and skips the plugin check | The result is the same as an apply of the peer's own fetch, and the peer has no copy of the plugin |
+| The chosen image goes to the peer as a face upload | The owner picked this face on the person page, unlike the work-info apply's faces, which the peer's face recognition finds |
+
+`Fill info…` over a selection with remote items lists its targets on both
+nodes: `POST /api/work-info-fill-targets` resolves this node's part and asks
+the peer for its part, which it answers in remote ids after this node's.
+The dialog then fetches for and applies to each remote target like a remote
+video's page, so a fill writes the peer's empty fields with the peer's own
+apply.
+
 ## The screens
 
 `web/src/lib/remoteId.ts` decides from the id whether an item is remote, and
 cards, rows, collection pages and the video page show the peer's name as the
 mark, so no schema gains a `remote` field. The shell shows a notice from
-`GET /api/peer` and the `peer` event while the peer is paired but not
-connected; guests see the state without the name. Favorite, playlist,
+`GET /api/peer` and the `peer` event while a link exists but is not
+connected; guests see the state without the name. The Pairing page has two
+sections that follow the same state: "Read another VVMDM" holds the pairing
+form until a link exists, then the link's state, address, certificate and
+removal; "VVMDMs that read this one" shows the pairing code until a grant
+exists, then the reader's name, pairing time and "Remove access". Favorite, playlist,
 open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them; the selection bar also hides `Fill info…` for
-a selection with remote items, because plugin fetches run on the local node.
+the server does not offer them. The selection bar offers `Fill info…` for any
+selection, as
+[Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
+explains.

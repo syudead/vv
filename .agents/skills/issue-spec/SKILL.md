@@ -42,9 +42,7 @@ its link and the `概要` line.
    - a question remains that meets Q-6 (it changes what the user gets, the
      sources above do not settle it, and getting it wrong is costly);
    - the request conflicts with existing behaviour and does not say which
-     wins;
-   - the feature changes the UI and the requester has not said whether the
-     Issue gets the `ui` label.
+     wins.
 
    Otherwise go straight to step 4. Tell the requester in one line which way
    you went and why.
@@ -168,13 +166,15 @@ what this stage adds.
 - **Accessibility is not a requirement here.** Do not write screen-reader,
   ARIA, reading-name, contrast-ratio or other accessibility requirements,
   acceptance criteria or edge cases unless the requester asks for them.
-- **Labels are the requester's call, except `spec`.** Create the Issue with
-  the `spec` label, which marks it as a parent (specification) Issue, and add
-  only the other labels the requester names. Do not copy labels from other
-  Issues. `ui` is the only label with workflow meaning — it decides whether the
-  `design` stage runs — so when the Issue changes the UI and the requester has
-  not said, ask before filing (step 2 makes this a discussion condition). The
-  `sdd` label is retired; do not add it.
+- **Labels: `spec` always, `ui` by your judgement, others on request.**
+  Create the Issue with the `spec` label, which marks it as a parent
+  (specification) Issue. `ui` decides whether the `design` stage runs; decide
+  it yourself without asking: add it when the feature adds a screen, a layout
+  or a visual element whose look is not yet settled, and leave it off when the
+  feature only changes when or how existing UI parts behave. Unless the
+  requester named it, report the choice in the reply with the other decisions
+  you made. Add other labels only when the requester names them, and do not
+  copy labels from other Issues. The `sdd` label is retired; do not add it.
 
 ## Preflight
 

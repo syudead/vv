@@ -4,6 +4,8 @@ import type { components } from "./gen/openapi";
 // The only caller of the screen's /api/peer operations; the Pairing page never calls fetch.
 
 export type PeerState = components["schemas"]["PeerState"];
+export type PeerLink = components["schemas"]["PeerLink"];
+export type PeerGrant = components["schemas"]["PeerGrant"];
 export type PairingCode = components["schemas"]["PairingCode"];
 export type PairPeerRequest = components["schemas"]["PairPeerRequest"];
 
@@ -13,7 +15,7 @@ export function getPeer(signal?: AbortSignal): Promise<PeerState> {
   return request<PeerState>("/api/peer", { signal });
 }
 
-/** Replaces an unused code; a paired node answers 409 already_paired. */
+/** Replaces an unused code; a node another VVMDM already reads answers 409 already_paired. */
 export function issuePairingCode(signal?: AbortSignal): Promise<PairingCode> {
   return request<PairingCode>("/api/peer/code", { method: "POST", signal });
 }
@@ -56,8 +58,17 @@ export function confirmPeerCertificate(
   });
 }
 
-/** Unpairs, and also clears a revoked state; a missing peer answers 204 too. */
-export async function unpairPeer(signal?: AbortSignal): Promise<void> {
-  const response = await apiFetch("/api/peer", { method: "DELETE", signal });
+async function deletePeerPart(path: string, signal?: AbortSignal): Promise<void> {
+  const response = await apiFetch(path, { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+}
+
+/** Stops reading the other VVMDM, and also clears a revoked state; a missing link answers 204 too. */
+export function unpairPeer(signal?: AbortSignal): Promise<void> {
+  return deletePeerPart("/api/peer/link", signal);
+}
+
+/** Withdraws the reading VVMDM's access; a missing grant answers 204 too. */
+export function revokePeerGrant(signal?: AbortSignal): Promise<void> {
+  return deletePeerPart("/api/peer/grant", signal);
 }

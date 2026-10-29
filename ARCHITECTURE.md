@@ -191,12 +191,18 @@ filesystem.
 
 ## Queue workers
 
-Each background queue has one worker that takes one item at a time. The
-waiting is shared: `jobs.Loop` runs a worker's step, then sleeps as the step
-asks (`domain.WorkerWait`) until a wakeup ends the wait. A step in
-`internal/app` (`AutoTagger.Step`, `VersionJudge.Step`, `FaceRecognizer.Step`)
-does the work and wakes its loop through the `Wake` function `cmd/mdm` passes
-in, so the application layer never imports the loop.
+Ingest, auto-tagging, face, duplicate-judging and backfill jobs run under one
+scheduler that grants each job its kind's CPU, classifier and face lane slots
+and read slots of its disk, taking disks in turn, so several jobs and disks run
+at once, and skips the kinds of a feature that is off
+([job-scheduling.md](docs/design-docs/job-scheduling.md)). Every other
+background queue has one worker that takes one item at a time. The waiting is
+shared: `jobs.Loop` runs a worker's or the scheduler's step, then sleeps as the
+step asks (`domain.WorkerWait`) until a wakeup ends the wait. A job handler
+(`AutoTagger.HandleJob`, `FaceRecognizer.HandleJob`, `VersionJudge.HandleJob`)
+does the work and wakes its loop through the `Wake`
+function `cmd/mdm` passes in, so the application layer never imports the loop.
+
 
 | Step result | The loop |
 | --- | --- |
@@ -214,7 +220,7 @@ and stops when its context ends.
 | --- | --- | --- |
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
-| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [Queue workers](#queue-workers) |
+| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One scheduler that grants every ingest stage from shared CPU slots and per-disk read slots over the persistent job queue, and the wait loop every queue worker runs on; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md), [job-scheduling.md](docs/design-docs/job-scheduling.md), [Queue workers](#queue-workers) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
@@ -227,11 +233,11 @@ and stops when its context ends.
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title, tags and work details in one transaction that re-checks the plugin's approval, matches the fetched people and organizations again and creates only the entities the merge keeps | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
-| `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
+| `internal/app` (`VersionJudge`), `internal/store` (`version_judge` jobs, `VersionStore.ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
 | `internal/app` (`FaceRecognitionSettings`), `internal/faceruntime` | Downloading the pinned face runtime and models only while face recognition is on, reading their state from the files at startup, and starting the face helper and talking to it | [face-recognition.md](docs/design-docs/face-recognition.md#the-runtime-is-downloaded-only-when-the-feature-is-on) |
 | `cmd/mdm-face`, `internal/faceinfer`, `internal/faceproto` | The face helper: a second binary, shipped in the face runtime archive, that runs face detection and recognition through onnxruntime, and the protocol `mdm` speaks to it | [face-recognition.md](docs/design-docs/face-recognition.md) |
-| `internal/app` (`Pairing`), `internal/store` (`PeerStore`), `internal/peer`, `internal/httpapi` (`peer*.go`) | Pairing with one other VVMDM: the pairing code, the peer record and credential, the connection state and the peer's events, and the merged lists and forwarded requests that show both libraries as one | [peer-library.md](docs/design-docs/peer-library.md) |
+| `internal/app` (`Pairing`), `internal/store` (`PeerStore`), `internal/peer`, `internal/httpapi` (`peer*.go`) | One-directional pairing: the pairing code, the outgoing link this VVMDM reads with its connection state and the read VVMDM's events, the incoming grant and credential of the VVMDM that reads this one, and the merged lists and forwarded requests that show the read library with this one | [peer-library.md](docs/design-docs/peer-library.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [Screen API](api/openapi.yaml) |
 | `internal/password` | Argon2id hashing in PHC strings | [authentication.md](docs/design-docs/authentication.md) |
 | `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [authentication.md](docs/design-docs/authentication.md), [external-api.md](docs/how-to/external-api.md) |

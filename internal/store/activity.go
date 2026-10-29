@@ -264,7 +264,7 @@ var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, c
 	coalesce(e.evidence, ''),
 	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
-	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
+	coalesce(c.judgement, ''), ` + judgeRetryAtColumn + `, u.kind, u.outcome,
 	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1),
 	` + replacedDecisionColumn
 

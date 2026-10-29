@@ -94,13 +94,18 @@ func (c *changes) remainingChanged() {
 }
 
 func (c *changes) jobsQueued(kinds ...domain.JobKind) {
+	c.backfillQueued(kinds...)
+	c.processing = true
+	c.settle = true
+}
+
+// backfillQueued wakes the scheduler for kinds without touching import progress, which backfill jobs stay out of.
+func (c *changes) backfillQueued(kinds ...domain.JobKind) {
 	for _, kind := range kinds {
 		if !slices.Contains(c.queued, kind) {
 			c.queued = append(c.queued, kind)
 		}
 	}
-	c.processing = true
-	c.settle = true
 }
 
 // Remaining-work eligibility can change without enqueueing jobs, such as after unregistering a folder.

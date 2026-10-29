@@ -111,7 +111,7 @@ func TestAutoTagActivityRecordsFailuresAndInterruptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
-	if err := store.Fail(ctx, soloKey, "cannot reach Ollama"); err != nil {
+	if err := failAutoTag(ctx, store, soloKey, "cannot reach Ollama"); err != nil {
 		t.Fatal(err)
 	}
 	failed := latestAutoTagEntry(t, db)
@@ -132,7 +132,7 @@ func TestAutoTagActivityRecordsFailuresAndInterruptions(t *testing.T) {
 	if _, err := db.Activity().RecoverInterruptedActivity(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.RequeueRunning(ctx); err != nil {
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got := latestAutoTagEntry(t, db); got.Reason != domain.ActivityInterrupted {
@@ -223,7 +223,7 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 		t.Fatalf("取り消したタグを候補にした: %+v", candidates)
 	}
 	for {
-		job, err := store.Claim(ctx)
+		job, err := db.Ingest().ClaimJob(ctx, domain.JobAutoTag)
 		if errors.Is(err, domain.ErrNoJob) {
 			break
 		}

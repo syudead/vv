@@ -258,10 +258,11 @@ var assistantExclusions = slices.Concat(
 		"summarizeVideoTags", "summarizeVideoEdits", "summarizeVideoCodeEdits", "tagImpact", "checkOllama",
 		"checkComfyUI", "checkAutoTaggingClassifier", "listWorkInfoFillTargets"),
 	// Pairing is a trust decision made with the other node's code and certificate fingerprint on its own page,
-	// and applyPeerVocabulary is the paired node's call with its credential, never the screens'.
+	// and the fetch, match and vocabulary calls are the paired node's, with its credential, never the screens'.
 	excluded("Pairing with another node and the peer's own calls", false,
 		"issuePairingCode", "pairPeer", "updatePeerAddress", "confirmPeerCertificate", "unpairPeer", "forgetPeer",
-		"applyPeerVocabulary"),
+		"revokePeerGrant", "applyPeerVocabulary", "matchPeerCredits", "applyPeerFetchedWorkInfo",
+		"applyPeerFetchedPerson"),
 )
 
 // AssistantExcludedPathPrefix holds the assistant's own operations, which it never calls.

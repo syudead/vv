@@ -5,9 +5,30 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
+)
+
+// importJobKinds lists domain.JobKinds as SQL values.
+var importJobKinds = func() string {
+	values := make([]string, len(domain.JobKinds))
+	for i, kind := range domain.JobKinds {
+		values[i] = `'` + string(kind) + `'`
+	}
+	return strings.Join(values, ", ")
+}()
+
+// Tests replace these to place claims and failures in time, fix the spread of a retry delay, and override a kind's
+// retry policy.
+var (
+	jobNow         = time.Now
+	jobJitter      = rand.Float64
+	jobRetryPolicy = domain.JobRetryPolicyFor
 )
 
 // EnqueueJob replaces terminal failures but preserves unfinished work through a partial unique index, joining one import activity.
@@ -148,10 +169,10 @@ func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `
-		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		select ?, ?, 'queued', 0, ?, ?
+		insert into jobs (kind, video_id, state, attempts, run_after, created_at, updated_at)
+		select ?, ?, 'queued', 0, ?, ?, ?
 		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
-		string(kind), videoID, now, now, string(kind), videoID, videoID)
+		string(kind), videoID, now, now, now, string(kind), videoID, videoID)
 	if err != nil {
 		return false, fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
@@ -162,8 +183,34 @@ func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int
 	return inserted > 0, nil
 }
 
-// ClaimJob uses BEGIN IMMEDIATE to prevent duplicate claims across workers; an empty queue returns ErrNoJob.
+// ClaimJob claims the kind's next job wherever its location is, for callers outside the scheduler.
 func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
+	return s.ClaimJobOn(ctx, domain.AnyJobClaim(kind))
+}
+
+// ClaimJobOn takes the claim's queued job of the lowest class, then the earliest run-after time, then the oldest,
+// among those whose run-after time has come and whose next location is under the claim's roots. The next location is
+// the first available one in path order after the previous attempt's, so a job stored only under unavailable roots
+// stays queued. A content job other than face analysis, a subject job and a job without a subject have no location,
+// so only their class applies. BEGIN IMMEDIATE prevents duplicate claims; an empty queue returns ErrNoJob.
+func (s *IngestStore) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
+	if !domain.JobReadsSource(claim.Kind) {
+		// A job that reads no source file runs while its folder is unplugged; it still needs a registered location.
+		claim.Unavailable = nil
+	}
+	if q, ok := contentJobQueue(claim.Kind); ok {
+		return s.db.claimContentJob(ctx, q, claim)
+	}
+	if subjectJobKind(claim.Kind) {
+		return s.db.claimSubjectJob(ctx, claim)
+	}
+	if claim.Kind == domain.JobVersionJudge {
+		return s.db.claimJudgeJob(ctx, claim.MaxPriority)
+	}
+	if isSubjectlessJob(claim.Kind) {
+		job, _, err := takeJob(ctx, s.db.sql, claim.Kind, claim.MaxPriority)
+		return job, err
+	}
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
@@ -187,38 +234,15 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		}
 	}()
 
-	var job domain.Job
-	var kindName string
-	var previousPath sql.NullString
-	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
-	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.force, j.location_path from jobs j
-		where j.state = 'queued' and j.kind = ?` + claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
-		order by j.id limit 1`
-	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &previousPath)
+	row, err := selectClaimableJob(ctx, conn, claim)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, domain.ErrNoJob
 	}
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
 	}
-	job.Kind = domain.JobKind(kindName)
-	var locationID, locationVersion int64
-	var locationPath, contentKey string
-	// Resume after the previous location in path order; wrapping starts a new attempt cycle.
-	selectLocation := `select l.id, l.version, l.path, v.content_key
-		from video_locations l join videos v on v.id = l.video_id
-		where l.video_id = ? and ` + registeredLocationCondition("l")
-	startsRound := !previousPath.Valid
-	if previousPath.Valid {
-		err = conn.QueryRowContext(ctx, selectLocation+` and l.path > ? order by l.path limit 1`, job.VideoID, previousPath.String).
-			Scan(&locationID, &locationVersion, &locationPath, &contentKey)
-		startsRound = errors.Is(err, sql.ErrNoRows)
-	}
-	if startsRound {
-		err = conn.QueryRowContext(ctx, selectLocation+` order by l.path limit 1`, job.VideoID).
-			Scan(&locationID, &locationVersion, &locationPath, &contentKey)
-	}
-	job.Attempts = domain.ClaimAttempts(job.Attempts, startsRound)
+	job := row.job
+	err = locateClaimedJob(ctx, conn, &job, row, claim.Unavailable)
 	if errors.Is(err, sql.ErrNoRows) {
 		dropped, dropErr := s.dropUnplacedJob(ctx, conn, job.ID)
 		if dropErr != nil {
@@ -231,35 +255,16 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("cannot choose a location for the job: %w", err)
 	}
-	job.ContentKey = contentKey
-	job.LocationID = locationID
-	job.LocationVersion = locationVersion
-	job.LocationPath = locationPath
-	var hasLaterLocation int
-	if err := conn.QueryRowContext(ctx, `select exists (
-		select 1 from video_locations l where l.video_id = ? and l.path > ? and `+registeredLocationCondition("l")+`)`,
-		job.VideoID, job.LocationPath).Scan(&hasLaterLocation); err != nil {
-		return domain.Job{}, fmt.Errorf("cannot check the job location's final state: %w", err)
-	}
-	job.LastLocation = hasLaterLocation == 0
-	if err := conn.QueryRowContext(ctx, `select location_generation from videos where id = ?`, job.VideoID).
-		Scan(&job.LocationGeneration); err != nil {
-		return domain.Job{}, fmt.Errorf("cannot check the job's location generation: %w", err)
-	}
 
 	if _, err := conn.ExecContext(ctx, `
 		update jobs set state = 'running', attempts = ?, location_id = ?, location_version = ?,
 		location_path = ?, updated_at = ? where id = ?`,
-		job.Attempts, locationID, locationVersion, locationPath, time.Now().Unix(), job.ID,
+		job.Attempts, job.LocationID, job.LocationVersion, job.LocationPath, time.Now().Unix(), job.ID,
 	); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
-	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
-		return domain.Job{}, err
-	}
-	// Interrupted or legacy jobs start a new rule-owned processing activity.
 	var c changes
-	if err := joinImportActivity(ctx, conn, &c, job.VideoID, ruleRun(), time.Now()); err != nil {
+	if err := trackImportClaim(ctx, conn, &c, job); err != nil {
 		return domain.Job{}, err
 	}
 
@@ -270,6 +275,109 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	published = &c
 
 	return job, nil
+}
+
+// trackImportClaim refreshes the current scan's settling and joins the claimed stage to its import activity. A
+// backfill job stays out of both.
+func trackImportClaim(ctx context.Context, conn *sql.Conn, c *changes, job domain.Job) error {
+	if isBackfillJob(job.Kind) {
+		return nil
+	}
+	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
+		return err
+	}
+	// Interrupted or legacy jobs start a new rule-owned processing activity.
+	return joinImportActivity(ctx, conn, c, job.VideoID, ruleRun(), time.Now())
+}
+
+// claimableJob is the job a claim selected, before its location is taken.
+type claimableJob struct {
+	job domain.Job
+	// previous is the location of the previous attempt, if any.
+	previous sql.NullString
+	// next is the location this claim takes.
+	next string
+}
+
+func selectClaimableJob(ctx context.Context, conn *sql.Conn, claim domain.JobClaim) (claimableJob, error) {
+	available := availableLocationCondition("l", claim.Unavailable)
+	next := `coalesce(
+		(select l.path from video_locations l where l.video_id = j.video_id and ` + available + `
+			and l.path > j.location_path order by l.path limit 1),
+		(select l.path from video_locations l where l.video_id = j.video_id and ` + available + ` order by l.path limit 1))`
+	onRoots := onRootsCondition("c.next_path", claim.Roots)
+	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
+	query := `select c.id, c.kind, c.video_id, c.attempts, c.force, c.priority, c.location_path, c.next_path from (
+		select j.id, j.kind, j.video_id, j.attempts, j.force, j.priority, j.run_after, j.location_path, ` + next + ` as next_path
+		from jobs j where j.state = 'queued' and j.kind = ? and j.run_after <= ? and j.priority <= ?` +
+		claimConditionSQL(domain.ClaimConditionFor(claim.Kind), "j", claim.Unavailable) + `) c
+		where c.next_path is not null` + onRoots + `
+		order by c.priority, c.run_after, c.id limit 1`
+	var row claimableJob
+	var kind string
+	err := conn.QueryRowContext(ctx, query, string(claim.Kind), jobNow().Unix(), int(claim.MaxPriority)).Scan(
+		&row.job.ID, &kind, &row.job.VideoID, &row.job.Attempts, &row.job.Force, &row.job.Priority,
+		&row.previous, &row.next)
+	row.job.Kind = domain.JobKind(kind)
+	return row, err
+}
+
+// locateClaimedJob fills job's location from the selected row, counts the round the claim starts, and records
+// whether an available location remains after it in this round.
+func locateClaimedJob(ctx context.Context, conn *sql.Conn, job *domain.Job, row claimableJob, unavailable []int64) error {
+	if err := conn.QueryRowContext(ctx, `select l.id, l.version, l.path, v.content_key, v.location_generation,
+		coalesce(`+owningFolderSQL("l.path")+`, 0)
+		from video_locations l join videos v on v.id = l.video_id where l.video_id = ? and l.path = ?`,
+		job.VideoID, row.next).Scan(&job.LocationID, &job.LocationVersion, &job.LocationPath, &job.ContentKey,
+		&job.LocationGeneration, &job.RootID); err != nil {
+		return err
+	}
+	// Wrapping to a path at or before the previous attempt's starts a new round.
+	job.StartsRound = !row.previous.Valid || row.next <= row.previous.String
+	job.Attempts = domain.ClaimAttempts(job.Attempts, job.StartsRound)
+	var hasLaterLocation int
+	if err := conn.QueryRowContext(ctx, `select exists (
+		select 1 from video_locations l where l.video_id = ? and l.path > ? and `+
+		availableLocationCondition("l", unavailable)+`)`,
+		job.VideoID, job.LocationPath).Scan(&hasLaterLocation); err != nil {
+		return fmt.Errorf("cannot check the job location's final state: %w", err)
+	}
+	job.LastLocation = hasLaterLocation == 0
+	return nil
+}
+
+// availableLocationCondition matches a registered location that is not under an unavailable media folder.
+func availableLocationCondition(alias string, unavailable []int64) string {
+	var excluded string
+	if len(unavailable) > 0 {
+		excluded = ` and mf.id not in (` + idList(unavailable) + `)`
+	}
+	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + excluded + `)`
+}
+
+// owningFolderSQL selects the id of the media folder that holds the path pathExpr names, or null outside every folder.
+func owningFolderSQL(pathExpr string) string {
+	return `(select mf.id from media_folders mf where ` + inMediaFolderCondition(pathExpr) +
+		` order by length(mf.path) desc limit 1)`
+}
+
+// onRootsCondition limits a claim to paths under roots, the folders of the disk whose slots the scheduler reserved;
+// nil roots limit nothing.
+func onRootsCondition(pathExpr string, roots []int64) string {
+	if roots == nil {
+		return ""
+	}
+	return ` and exists (select 1 from media_folders mf where mf.id in (` + idList(roots) + `) and ` +
+		inMediaFolderCondition(pathExpr) + `)`
+}
+
+// idList writes ids for an SQL in list; they are integers, so no quoting is needed.
+func idList(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Drop an unplaced job and settle its activity inside the claim's BEGIN IMMEDIATE transaction; the caller publishes the
@@ -304,8 +412,9 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	return &c, nil
 }
 
-// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows.
-func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
+// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows. A thumbnail parked under unavailable folders
+// is not claimable, so it does not hold back seek sprites on other disks.
+func claimConditionSQL(c domain.JobClaimCondition, alias string, unavailable []int64) string {
 	var cond string
 	if c.RegisteredLocation {
 		cond += ` and exists (select 1 from video_locations l where l.video_id = ` + alias + `.video_id and ` +
@@ -324,13 +433,24 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
 			`' and t.state in ('queued', 'running') and exists (
 				select 1 from video_locations tl where tl.video_id = t.video_id and ` +
-			registeredLocationCondition("tl") + `))`
+			availableLocationCondition("tl", unavailable) + `))`
 	}
 	return cond
 }
 
-// CompleteClaimedJob requeues when the claimed location or content changed.
+// CompleteClaimedJob requeues when the claimed location or content changed. A content or judging job's handler has
+// already ended it with its result, as AutoTagStore.Finish and VersionStore.ApplyJudgement do, so there is nothing
+// left to record; a subject job and a backfill job are deleted.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
+	if _, ok := contentJobQueue(job.Kind); ok || job.Kind == domain.JobVersionJudge {
+		return nil
+	}
+	if subjectJobKind(job.Kind) {
+		return s.db.completeSubjectJob(ctx, job)
+	}
+	if isBackfillJob(job.Kind) {
+		return s.completeBackfillJob(ctx, job)
+	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot start recording job completion (id=%d): %w", job.ID, err)
@@ -396,14 +516,16 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 	}
 	defer func() { _ = tx.Rollback() }()
 	var attempts int
-	err = tx.QueryRowContext(ctx, `select attempts from jobs where id = ?`, id).Scan(&attempts)
+	var kind string
+	err = tx.QueryRowContext(ctx, `select attempts, kind from jobs where id = ?`, id).Scan(&attempts, &kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	state := domain.JobStateAfterFailure(attempts, true, true)
+	// Setup wants the state only, so the requeued row keeps its run-after time.
+	state := jobRetryPolicy(domain.JobKind(kind)).AfterFailure(attempts, errors.New(reason), true, 0).State
 	if _, err := tx.ExecContext(ctx, `update jobs set state = ?, last_error = ?, updated_at = ? where id = ?`,
 		string(state), reason, time.Now().Unix(), id); err != nil {
 		return err
@@ -411,8 +533,18 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 	return s.commitJobChange(ctx, tx, id)
 }
 
-// FailClaimedJob applies the domain retry decision and records terminal video failure in the same transaction.
+// FailClaimedJob applies the kind's retry policy: it requeues at once inside a round, waits out the delay after a round,
+// and records a terminal video failure in the same transaction. A snooze requeues without counting the claim.
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
+	if q, ok := contentJobQueue(job.Kind); ok {
+		return s.db.failContentJob(ctx, q, job, cause)
+	}
+	if subjectJobKind(job.Kind) {
+		return s.db.failSubjectJob(ctx, job, cause)
+	}
+	if job.Kind == domain.JobVersionJudge {
+		return s.db.failJudgeJob(ctx, job, cause)
+	}
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -431,21 +563,33 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	if err != nil {
 		return fmt.Errorf("cannot check the job attempt count (id=%d): %w", job.ID, err)
 	}
-	current, err := jobIdentityCurrent(ctx, tx, job)
-	if err != nil {
-		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
+	// A job without a subject has no location to change, so each claim ends its round.
+	current := isSubjectlessJob(job.Kind)
+	if !current {
+		if current, err = jobIdentityCurrent(ctx, tx, job); err != nil {
+			return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
+		}
 	}
-	state := domain.JobStateAfterFailure(domain.AttemptsAfterFailure(attempts, cause), job.LastLocation, current)
+	outcome := jobRetryPolicy(job.Kind).AfterFailure(attempts, cause, job.LastLocation && current, jobJitter())
+	state := outcome.State
+	// An uncounted claim that started a round undoes the round, so the next claim starts and counts a new one.
+	undoRound := outcome.Uncounted && job.StartsRound
+	if undoRound {
+		attempts--
+	}
 
-	now := time.Now().Unix()
+	now := jobNow().Unix()
 	res, err := tx.ExecContext(ctx, `
 		update jobs
 		set state = ?,
+		attempts = ?,
 		last_error = ?,
+		run_after = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
+		location_path = case when ? then null else location_path end,
 		updated_at = ? where id = ? and state = 'running'`,
-		string(state), reason,
-		job.LocationID, job.LocationVersion, job.LocationPath,
+		string(state), attempts, reason, now+int64(math.Ceil(outcome.Delay.Seconds())),
+		job.LocationID, job.LocationVersion, job.LocationPath, undoRound,
 		now, job.ID)
 	if err != nil {
 		return fmt.Errorf("cannot record the job failure (id=%d): %w", job.ID, err)
@@ -458,6 +602,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
 	}
 
+	if isBackfillJob(job.Kind) {
+		return s.commitBackfillFailure(ctx, tx, job, state)
+	}
 	var c changes
 	if state == domain.JobFailed {
 		if err := recordTerminalFailure(ctx, tx, job, cause, now, forced); err != nil {
@@ -585,10 +732,49 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 	return current == 1, err
 }
 
+// NextJobRunAfter returns the earliest run-after time of a queued job after since, or the zero time when none is.
+// A time already past means the job came due after claims that began at since.
+func (s *IngestStore) NextJobRunAfter(ctx context.Context, since time.Time) (time.Time, error) {
+	var next sql.NullInt64
+	if err := s.db.sql.QueryRowContext(ctx, `select min(run_after) from jobs where state = 'queued' and run_after > ?`,
+		since.Unix()).Scan(&next); err != nil {
+		return time.Time{}, fmt.Errorf("cannot look up the next job retry time: %w", err)
+	}
+	if !next.Valid {
+		return time.Time{}, nil
+	}
+	return time.Unix(next.Int64, 0), nil
+}
+
+// DueJobKinds returns, for each kind with a queued job whose run-after time has come, the most urgent class among
+// them, so the scheduler claims only kinds and classes that have work.
+func (s *IngestStore) DueJobKinds(ctx context.Context) (map[domain.JobKind]domain.JobPriority, error) {
+	rows, err := s.db.sql.QueryContext(ctx, `select kind, min(priority) from jobs
+		where state = 'queued' and run_after <= ? group by kind`, jobNow().Unix())
+	if err != nil {
+		return nil, fmt.Errorf("cannot look up due jobs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	due := map[domain.JobKind]domain.JobPriority{}
+	for rows.Next() {
+		var kind string
+		var priority domain.JobPriority
+		if err := rows.Scan(&kind, &priority); err != nil {
+			return nil, fmt.Errorf("cannot read due jobs: %w", err)
+		}
+		due[domain.JobKind(kind)] = priority
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read due jobs: %w", err)
+	}
+	return due, nil
+}
+
+// HasUnfinishedJobs reports unfinished import stages only; other kinds do not hold back an import.
 func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	var found bool
 	err := s.db.sql.QueryRowContext(ctx,
-		`select exists (select 1 from jobs where state in ('queued', 'running'))`).Scan(&found)
+		`select exists (select 1 from jobs where state in ('queued', 'running') and kind in (`+importJobKinds+`))`).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("cannot look up unfinished jobs: %w", err)
 	}
@@ -596,7 +782,7 @@ func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 }
 
 // RequeueRunningJobs recovers interrupted work at startup and recomputes completion using runtime OS-specific
-// eligibility; a row with a force request comes back forced.
+// eligibility; a row with a force request comes back forced and in the owner class, as queueForceRequest would.
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -604,9 +790,10 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`update jobs set state = 'queued', force = max(force, force_requested), force_requested = 0, updated_at = ?
+		`update jobs set state = 'queued', force = max(force, force_requested),
+		priority = case when force_requested = 1 then ? else priority end, force_requested = 0, updated_at = ?
 		where state = 'running'`,
-		time.Now().Unix())
+		int(domain.JobPriorityOwner), time.Now().Unix())
 	if err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
@@ -618,8 +805,9 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	var c changes
 	c.remainingChanged()
 	if affected > 0 {
-		c.jobsQueued(domain.JobKinds...)
+		c.jobsQueued(domain.ScheduledJobKinds...)
 	}
+
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}

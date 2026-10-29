@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 // Only expensive processing is queued; scans themselves are not jobs.
 type JobKind string
@@ -12,30 +15,54 @@ const (
 	JobPreview       JobKind = "preview"
 	// JobFingerprint reads sprite frames without ffmpeg or the source file.
 	JobFingerprint JobKind = "fingerprint"
+	// JobAutoTag classifies one content key; its subject is Job.ContentKey, not a video.
+	JobAutoTag JobKind = "auto_tag"
+	// JobFace analyses the faces of one content key, Job.ContentKey, read from the location the claim picks.
+	JobFace JobKind = "face"
+	// JobFaceImage embeds one person's face image, Job.PersonID, and applies the face-image rule.
+	JobFaceImage JobKind = "face_image"
+	// JobFaceCast applies the cast rule to one video, Job.VideoID, after its work information changed.
+	JobFaceCast JobKind = "face_cast"
+	// JobQueueFaceImages queues a face_image job for every person whose face has no current vector.
+	JobQueueFaceImages JobKind = "queue_face_images"
+	// JobVersionJudge judges one possible duplicate; its subject is the pair Job.ContentKey, Job.ContentKeyB.
+	JobVersionJudge JobKind = "version_judge"
+	// JobKeyframes and JobMediaInfo re-read one video's file so stored results from an older build gain what this
+	// build reads.
+	JobKeyframes JobKind = "keyframes"
+	JobMediaInfo JobKind = "media_info"
+	// JobQueueKeyframes and JobQueueMediaInfo queue one JobKeyframes or JobMediaInfo job per video whose stored result
+	// is out of date, and then finish.
+	JobQueueKeyframes JobKind = "queue_keyframes"
+	JobQueueMediaInfo JobKind = "queue_media_info"
+	// JobVirtualThumbnails publishes each virtual video's missing thumbnail file from its stored image.
+	JobVirtualThumbnails JobKind = "virtual_thumbnails"
 )
 
-// Bound retries so one corrupt file cannot monopolize a single worker forever.
-const MaxJobAttempts = 3
+// FaceLaneJobKinds are the kinds that share the one face lane slot, so the helper and the cast rule never interleave.
+var FaceLaneJobKinds = []JobKind{JobFace, JobFaceImage, JobFaceCast}
+
+// JobPriority is a job's class; claims serve a lower class strictly first. See docs/design-docs/job-scheduling.md.
+type JobPriority int
+
+const (
+	// JobPriorityOwner is work the owner asked for on one video: a force rescan or a retry.
+	JobPriorityOwner JobPriority = 0
+	// JobPriorityImport is everything an import, a scan or an after-import rule queues.
+	JobPriorityImport JobPriority = 1
+	// JobPriorityBackfill is work that only refreshes stored results.
+	JobPriorityBackfill JobPriority = 2
+)
 
 var ErrNoJob = errors.New("no job to process")
 
-// ErrFailureRepeats marks a failure every retry would reproduce, such as an input too slow to process; the job fails
-// once every current location has failed, without spending its remaining attempts.
-var ErrFailureRepeats = errors.New("retrying would repeat the failure")
-
-// AttemptsAfterFailure counts a repeating failure as the last allowed attempt.
-func AttemptsAfterFailure(attempts int, cause error) int {
-	if errors.Is(cause, ErrFailureRepeats) {
-		return max(attempts, MaxJobAttempts)
-	}
-	return attempts
-}
-
 type Job struct {
-	ID              int64
-	Kind            JobKind
-	VideoID         int64
-	ContentKey      string
+	ID         int64
+	Kind       JobKind
+	VideoID    int64
+	ContentKey string
+	// ContentKeyB is the second key of a version_judge pair, greater than ContentKey.
+	ContentKeyB     string
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
@@ -45,12 +72,49 @@ type Job struct {
 	LastLocation bool
 	// Attempts includes this claim.
 	Attempts int
+	// StartsRound reports that this claim began a round and so added one to Attempts.
+	StartsRound bool
 	// Force regenerates the artifact whatever the stage state is, and its seek stage queues no follow-up process.
 	Force bool
+	// Priority is the job's class; the stages a successful owner-class job queues take the owner class too.
+	Priority JobPriority
+	// RootID is the media folder holding the claimed location.
+	RootID int64
+	// PersonID is the subject of a face_image job.
+	PersonID int64
 }
 
-// JobKinds defines stage order and worker creation; omitted kinds are never processed.
+// JobClaim selects the job one claim may take: a kind, its class, and where its next location may be.
+type JobClaim struct {
+	Kind JobKind
+	// MaxPriority admits this class and every more urgent one.
+	MaxPriority JobPriority
+	// Roots admits only jobs whose next location is under one of these media folders, the folders of one disk; nil
+	// admits any folder.
+	Roots []int64
+	// Unavailable media folders' locations are passed over, so a job stored only under them stays queued.
+	Unavailable []int64
+}
+
+// AnyJobClaim admits every queued job of kind, as a claim outside the scheduler does.
+func AnyJobClaim(kind JobKind) JobClaim {
+	return JobClaim{Kind: kind, MaxPriority: JobPriorityBackfill}
+}
+
+// JobKinds are the import stages in stage order; only they join import activity and scan settling.
 var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, JobFingerprint}
+
+// StartupJobKinds are the jobs every start queues once, in the backfill class, with no subject. See
+// docs/design-docs/process-lifecycle.md.
+var StartupJobKinds = []JobKind{JobQueueKeyframes, JobQueueMediaInfo, JobVirtualThumbnails}
+
+// BackfillJobKinds only refresh stored results: StartupJobKinds and the jobs they queue.
+var BackfillJobKinds = append([]JobKind{JobKeyframes, JobMediaInfo}, StartupJobKinds...)
+
+// ScheduledJobKinds are every kind the scheduler claims, in the order it visits them; omitted kinds are never
+// processed.
+var ScheduledJobKinds = slices.Concat(JobKinds,
+	[]JobKind{JobAutoTag, JobVersionJudge, JobFace, JobFaceImage, JobFaceCast, JobQueueFaceImages}, BackfillJobKinds)
 
 type JobState string
 
@@ -67,14 +131,6 @@ func ClaimAttempts(attempts int, startsRound bool) int {
 		return attempts + 1
 	}
 	return attempts
-}
-
-// JobStateAfterFailure requeues stale claims without counting them and fails only after MaxJobAttempts on the last location, ensuring every current location is tried.
-func JobStateAfterFailure(attempts int, lastLocation, claimCurrent bool) JobState {
-	if claimCurrent && lastLocation && attempts >= MaxJobAttempts {
-		return JobFailed
-	}
-	return JobQueued
 }
 
 type JobClaimCondition struct {

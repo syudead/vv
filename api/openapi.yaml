@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name and thumbnail-position edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -1504,6 +1504,25 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/media-folders/{id}/usage:
+    get:
+      operationId: getMediaFolderUsage
+      summary: "Return a media folder's video size and disk space"
+      description: "Owner-only. Reads the volume when called, so the values reflect the moment of the request. `videoBytes` sums every indexed file below the folder, each location once. `disk` is the space of the volume holding the folder as the OS reports it to the server process; it is omitted when the volume cannot be read or does not answer within a few seconds. Folders on the same volume report the same `disk`. Uses `Cache-Control: no-store`."
+      parameters:
+        - $ref: "#/components/parameters/MediaFolderId"
+      responses:
+        "200":
+          description: "Usage of the media folder"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaFolderUsage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/settings/transcoding:
     get:
       operationId: getTranscodingSettings
@@ -2471,7 +2490,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Return the pairing state"
-      description: "Owners receive the peer's name, address and version and this node's identity; guests receive state and reason only. The state is held in memory: after a start it is unpaired without a peer record, revoked when the record lost its incoming secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the peer is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the peer's node id and version (reason version when either differs); a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the peer revokes its credential here and gives revoked."
+      description: "Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked."
       responses:
         "200":
           description: "Pairing state"
@@ -2479,13 +2498,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PeerState"
+
+  /api/peer/link:
     delete:
       operationId: unpairPeer
-      summary: "Unpair from the peer"
-      description: "Tells the peer through its forgetPeer, best effort, then deletes the peer record and nothing else, which also clears a revoked state. A peer that could not be told learns it from the 401 peer_unknown its next request receives. Without a peer it also returns 204."
+      summary: "Stop reading the other VVMDM"
+      description: "Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204."
       responses:
         "204":
           description: "Unpaired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/peer/grant:
+    delete:
+      operationId: revokePeerGrant
+      summary: "Withdraw the reading VVMDM's access"
+      description: "Deletes the grant and cancels the reading node's requests in flight; its next request receives 401 peer_unknown, after which it shows this node as revoked. The link, if any, stays. Without a grant it also returns 204."
+      responses:
+        "204":
+          description: "Revoked"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -2493,7 +2525,7 @@ paths:
     post:
       operationId: issuePairingCode
       summary: "Issue this node's pairing code"
-      description: "Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A paired node returns 409 conflict with already_paired."
+      description: "Returns 8 characters valid for 10 minutes and replaces an unused code. The code is kept in memory, so a restart ends it, and the pairing that uses it consumes it. A node another VVMDM already reads returns 409 conflict with already_paired; the owner withdraws that access first."
       responses:
         "201":
           description: "Pairing code"
@@ -2509,8 +2541,8 @@ paths:
   /api/peer/pair:
     post:
       operationId: pairPeer
-      summary: "Pair with the node whose code the owner typed"
-      description: "An https ownAddress is read first with a TLS handshake that sends nothing: a certificate the system roots do not verify returns 409 own_certificate_unverified with the fingerprint it presents, before the other node is called, until ownFingerprint repeats that fingerprint as the owner confirmed it; only that fingerprint is sent to the other node, which pins it. Then checks the other node's version through its health, then sends its pairing code to its acceptPairing, which calls this node back at ownAddress before answering; both nodes store the pairing only after both directions worked. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a paired node on either side 409 already_paired; another version 409 unsupported_version with localVersion and peerVersion; a failed call in either direction 409 peer_unreachable, whose message says which, with fingerprint when the other node did not trust the certificate of this node's ownAddress; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
+      summary: "Read the node whose code the owner typed"
+      description: "Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
       requestBody:
         required: true
         content:
@@ -2534,8 +2566,8 @@ paths:
   /api/peer/address:
     put:
       operationId: updatePeerAddress
-      summary: "Change the peer's address"
-      description: "Keeps the pairing. An invalid address returns 400 invalid_request with invalid_address; without a peer, 404 not_found."
+      summary: "Change the read node's address"
+      description: "Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found."
       requestBody:
         required: true
         content:
@@ -2559,8 +2591,8 @@ paths:
   /api/peer/certificate:
     post:
       operationId: confirmPeerCertificate
-      summary: "Trust the peer's changed certificate"
-      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation."
+      summary: "Trust the read node's changed certificate"
+      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found."
       requestBody:
         required: true
         content:
@@ -2587,8 +2619,8 @@ paths:
     post:
       operationId: acceptPairing
       security: []
-      summary: "Accept a pairing from another node"
-      description: "Called by the pairing node, never by the screens; the code authenticates it. Calls the sender back at node.address with secret through peerHandshake, pinned to node.fingerprint when present, and stores the pairing, with that pin, only after that succeeds. The code stays usable until a pairing succeeds, so a failed callback can be repeated. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or node.fingerprint with an http address, 400 invalid_request; a paired node 409 already_paired; another version 409 unsupported_version; a failed callback 409 peer_unreachable; a callback certificate the system roots do not verify, or that does not match node.fingerprint, 409 certificate_untrusted with fingerprint."
+      summary: "Grant the sender read access to this node"
+      description: "Called by the node that will read this one, never by the screens; the code authenticates it. Stores the grant with the sender's identity and answers the secret the sender presents from then on; this node never connects to the sender. Only a pairing that succeeded clears the code. An unknown or expired code returns 400 invalid_request with invalid_code; malformed values, or the node's own id, 400 invalid_request; a node another VVMDM already reads 409 already_paired."
       requestBody:
         required: true
         content:
@@ -2611,8 +2643,8 @@ paths:
     get:
       operationId: peerHandshake
       security: []
-      summary: "Return this node's identity to the peer"
-      description: "Requires `Authorization: VV-Peer <secret>` with the peer credential or, during a pairing this node started, the secret it sent. Anything else returns 401 unauthenticated with peer_unknown."
+      summary: "Return this node's identity to the reading node"
+      description: "Requires `Authorization: VV-Peer <secret>` with the grant's credential. Anything else returns 401 unauthenticated with peer_unknown."
       responses:
         "200":
           description: "This node"
@@ -2630,8 +2662,8 @@ paths:
   /api/peer/pairings/{nodeId}:
     delete:
       operationId: forgetPeer
-      summary: "Delete the record of a peer that unpaired"
-      description: "Called by the peer with its credential after it unpaired. Deletes the peer record when nodeId matches; a missing or different record also returns 204."
+      summary: "Delete the grant of a reading node that unpaired"
+      description: "Called by the reading node with its credential after it removed its link. Deletes the grant when nodeId matches; a missing or different grant also returns 204."
       parameters:
         - name: nodeId
           in: path
@@ -2711,6 +2743,79 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedClues"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/credit-matches:
+    post:
+      operationId: matchPeerCredits
+      summary: "Match fetched people or organizations against this node's"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. Matches each entry as a work-info fetch of this node would, by external ID first, then by folded name and aliases, and returns the matches in entry order with this node's ids. The peer shows them while its owner chooses what to apply to a video of this node. See docs/design-docs/peer-library.md."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerCreditMatchRequest"
+      responses:
+        "200":
+          description: "One match per entry"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerCreditMatches"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/videos/{id}/fetched-work-info:
+    post:
+      operationId: applyPeerFetchedWorkInfo
+      summary: "Apply work information the peer fetched for a video of this node"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved plugin and checked it; this node applies the chosen values as it applies its own fetch: the title, tags as tentative assignments, and the detail fields merged into the stored work information with credits matched in the same transaction, then merges each same-person pair. A missing video, or one whose contentVersion has changed, returns 404 without writes. See docs/design-docs/peer-library.md."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerFetchedWorkInfo"
+      responses:
+        "200":
+          description: "Applied"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerFetchedWorkInfoApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/peer/people/{id}/fetched-person:
+    post:
+      operationId: applyPeerFetchedPerson
+      summary: "Apply a person the peer fetched for a person of this node"
+      description: "Called by the peer with its credential, never by the screens; any other caller gets 404. The peer ran its own approved person plugin and checked it; this node applies the chosen items as it applies its own person page fetch, in one transaction: profile fields replace the stored values, and the aliases, external IDs and links append. The image is not an item here; the peer uploads it as the person's face. An item that is image or has no value in the request returns 400, and a missing person 404, both without writes. See docs/design-docs/peer-library.md."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerFetchedPluginPerson"
+      responses:
+        "200":
+          description: "This node's person, in this node's ids, and the skipped values"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonPluginFetchApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -2963,7 +3068,7 @@ paths:
     post:
       operationId: listWorkInfoFillTargets
       summary: "List the videos a selection fill searches for"
-      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one."
+      description: "Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable."
       requestBody:
         required: true
         content:
@@ -4055,7 +4160,7 @@ paths:
     post:
       operationId: fetchPersonWithPlugin
       summary: "Fetch a person's information with a person plugin"
-      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
+      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate; link fetches by that link and returns 400 person_link_unsupported before running when its host matches none of the plugin's domains. With neither, VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares; without one, the person's only link the plugin handles, after keeping once links that differ only in scheme, host case or a trailing slash; it returns 409 person_link_ambiguous with the choices in links when several remain, and 409 person_external_id_missing when there is no such ID or link, both before running. For a person of the paired node, this node's plugin runs and the peer gives the person's IDs and links; the result's images and apply are answered here too. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source, an id outside 1–200 characters after trimming, a link that is not an http or https URL, link with source or id, or a link the plugin no longer handles when it runs 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -4126,7 +4231,7 @@ paths:
     post:
       operationId: applyPersonPluginFetch
       summary: "Apply selected items of a person fetch"
-      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 100; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. For a person of the paired node, this node rechecks its plugin, the peer writes the values, and the image is uploaded to the peer as the face; an unreachable peer returns 503 service_unavailable and keeps the result. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -6555,6 +6660,30 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    MediaFolderUsage:
+      type: object
+      required: [videoBytes]
+      additionalProperties: false
+      properties:
+        videoBytes:
+          type: integer
+          format: int64
+        disk:
+          $ref: "#/components/schemas/DiskUsage"
+
+    DiskUsage:
+      type: object
+      required: [freeBytes, totalBytes]
+      additionalProperties: false
+      properties:
+        freeBytes:
+          type: integer
+          format: int64
+          description: "Space the server process can still write."
+        totalBytes:
+          type: integer
+          format: int64
 
     CreateMediaFolderRequest:
       type: object
@@ -13472,24 +13601,37 @@ components:
           description: "Host name"
         version:
           type: string
-          description: "Release version, as getHealth reports it"
-    PeerInfo:
+          description: "Release version, as getHealth reports it; shown for reference, never compared"
+    PeerLink:
       type: object
       required: [name, address, pinned]
       additionalProperties: false
+      description: "The VVMDM this node reads"
       properties:
         name:
           type: string
-          description: "The peer's host name at pairing"
+          description: "Its host name at pairing"
         address:
           type: string
-          description: "The peer's base URL"
+          description: "Its base URL"
         pinned:
           type: boolean
-          description: "Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted"
+          description: "Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted"
         version:
           type: string
-          description: "The peer version last seen; with reason version, the one that differs"
+          description: "Its version last seen, shown for reference"
+    PeerGrant:
+      type: object
+      required: [name, pairedAt]
+      additionalProperties: false
+      description: "The VVMDM that reads this one"
+      properties:
+        name:
+          type: string
+          description: "Its host name at pairing"
+        pairedAt:
+          type: string
+          format: date-time
     PeerState:
       type: object
       required: [state]
@@ -13498,18 +13640,21 @@ components:
         state:
           type: string
           enum: [unpaired, connected, unreachable, revoked]
+          description: "The connection to the VVMDM this node reads; unpaired without link"
         reason:
           type: string
-          enum: [network, version, certificate]
+          enum: [network, certificate]
           description: "Present with unreachable"
-        peer:
-          $ref: "#/components/schemas/PeerInfo"
+        link:
+          $ref: "#/components/schemas/PeerLink"
         fingerprint:
           type: string
           description: "With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only."
+        grant:
+          $ref: "#/components/schemas/PeerGrant"
         node:
           $ref: "#/components/schemas/PeerNode"
-      description: "Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity."
+      description: "Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity."
     PairingCode:
       type: object
       required: [code, expiresAt]
@@ -13522,7 +13667,7 @@ components:
           format: date-time
     PairPeerRequest:
       type: object
-      required: [address, code, ownAddress]
+      required: [address, code]
       additionalProperties: false
       properties:
         address:
@@ -13531,15 +13676,9 @@ components:
         code:
           type: string
           description: "The code the other node's Pairing page shows"
-        ownAddress:
-          type: string
-          description: "This node's base URL as the other node can reach it"
         fingerprint:
           type: string
           description: "The SPKI fingerprint the owner confirmed after certificate_untrusted"
-        ownFingerprint:
-          type: string
-          description: "The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified"
     UpdatePeerAddressRequest:
       type: object
       required: [address]
@@ -13555,36 +13694,16 @@ components:
         fingerprint:
           type: string
           description: "The fingerprint getPeer shows, base64 SHA-256 of the certificate's SPKI"
-    PairingRequestNode:
-      type: object
-      required: [id, name, address, version]
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-          description: "1 to 100 code points"
-        address:
-          type: string
-          description: "The sender's base URL as the receiver can reach it"
-        fingerprint:
-          type: string
-          description: "Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate."
-        version:
-          type: string
     PairingRequest:
       type: object
-      required: [code, node, secret]
+      required: [code, node]
       additionalProperties: false
       properties:
         code:
           type: string
         node:
-          $ref: "#/components/schemas/PairingRequestNode"
-        secret:
-          type: string
-          description: "What the receiver will present to the sender: vvp_ and 43 base64url characters"
+          $ref: "#/components/schemas/PeerNode"
+      description: "The sender's identity; no address, because the receiver never connects to the sender."
     PairingAnswer:
       type: object
       required: [node, secret]
@@ -13594,7 +13713,7 @@ components:
           $ref: "#/components/schemas/PeerNode"
         secret:
           type: string
-          description: "What the sender presents to the receiver"
+          description: "What the sender presents to the receiver from then on: vvp_ and 43 base64url characters"
     PeerHandshake:
       type: object
       required: [node]
@@ -13666,6 +13785,160 @@ components:
           minimum: 1
           maximum: 100
           default: 30
+    PeerCreditMatchRequest:
+      type: object
+      required: [kind, entries]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [person, organization]
+        entries:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/PeerCreditMatchEntry"
+    PeerCreditMatchEntry:
+      type: object
+      required: [name, externalIds]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+    PeerCreditMatches:
+      type: object
+      required: [matches]
+      additionalProperties: false
+      properties:
+        matches:
+          type: array
+          description: "One match per entry, in entry order, with this node's ids."
+          items:
+            $ref: "#/components/schemas/WorkInfoMatch"
+
+    PeerFetchedWorkInfo:
+      type: object
+      required:
+        [contentVersion, tags, dates, people, organizations, urls, externalIds, detailFields, samePeople]
+      additionalProperties: false
+      description: "The values the peer's owner chose from a fetch, narrowed to the chosen entries and values."
+      properties:
+        contentVersion:
+          type: string
+          description: "The video's contentVersion when the peer fetched for it."
+        title:
+          type: string
+          description: "Present only when the title was chosen."
+        tags:
+          type: array
+          description: "Normalized tag names to attach as tentative; [] keeps the tags."
+          items:
+            type: string
+        code:
+          type: string
+        description:
+          type: string
+        dates:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedDate"
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerFetchedPerson"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerFetchedOrganization"
+        urls:
+          type: array
+          items:
+            type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        detailFields:
+          type: array
+          description: "The detail fields to write; [] keeps the work information."
+          items:
+            $ref: "#/components/schemas/WorkInfoField"
+        samePeople:
+          type: array
+          description: "Pairs of a position in people and a provisional performer of the video, with this node's person id."
+          items:
+            $ref: "#/components/schemas/WorkInfoSamePerson"
+    PeerFetchedPerson:
+      type: object
+      required: [role, name, externalIds]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+    PeerFetchedOrganization:
+      type: object
+      required: [role, name, externalIds]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        name:
+          type: string
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+    PeerFetchedPluginPerson:
+      type: object
+      required: [name, aliases, externalIds, items]
+      additionalProperties: false
+      description: "The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links."
+      properties:
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+        items:
+          type: array
+          description: "The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent."
+          items:
+            $ref: "#/components/schemas/PersonPluginItem"
+
+    PeerFetchedWorkInfoApplied:
+      type: object
+      required: [rejectedTags, skipped]
+      additionalProperties: false
+      properties:
+        rejectedTags:
+          type: array
+          description: "Normalized tag names the video's rejections kept off, deduplicated in tags order."
+          items:
+            type: string
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkippedWorkInfoValue"
+
     PeerVocabularyRequest:
       type: object
       required: [kind, action]
@@ -13909,13 +14182,7 @@ components:
             type: string
         fingerprint:
           type: string
-          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate."
-        localVersion:
-          type: string
-          description: "This node's release version; only for unsupported_version."
-        peerVersion:
-          type: string
-          description: "The other node's release version; only for unsupported_version."
+          description: "Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed."
         links:
           type: array
           description: "The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous."
@@ -14038,7 +14305,6 @@ components:
         - invalid_address
         - invalid_code
         - already_paired
-        - unsupported_version
         - peer_unreachable
         - mixed_nodes
         - provisional_person_remote
@@ -14047,4 +14313,3 @@ components:
         - organization_name_taken
         - certificate_untrusted
         - fingerprint_changed
-        - own_certificate_unverified

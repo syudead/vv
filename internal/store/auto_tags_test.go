@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"reflect"
@@ -13,14 +14,24 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// autoTagState reads the unfinished job's state from jobs, then the result's; empty means neither.
 func autoTagState(t *testing.T, db *DB, contentKey string) string {
 	t.Helper()
-	var state string
-	err := db.sql.QueryRow(`select state from auto_tag_queue where content_key = ?`, contentKey).Scan(&state)
-	if err != nil {
-		return ""
-	}
+	state, _ := contentItem(t, db, autoTagQueue, contentKey)
 	return state
+}
+
+// contentItem reads the state of key in q and the entry of its unfinished work, if any.
+func contentItem(t *testing.T, db *DB, q contentQueue, key string) (string, sql.NullInt64) {
+	t.Helper()
+	activity := `(select activity_id from jobs where kind = '` + string(q.job) + `' and subject_key = ?1
+		and state in ('queued', 'running'))`
+	var state string
+	var activityID sql.NullInt64
+	if err := db.sql.QueryRow(`select `+q.stateOf("?1")+`, `+activity, key).Scan(&state, &activityID); err != nil {
+		t.Fatal(err)
+	}
+	return state, activityID
 }
 
 func manualTagIDs(t *testing.T, db *DB, contentKey string) []int64 {
@@ -53,13 +64,26 @@ func createTestTag(t *testing.T, db *DB, name string) domain.Tag {
 	return tag
 }
 
-func claimAutoTag(t *testing.T, store *AutoTagStore) domain.AutoTagJob {
+// claimAutoTag claims the next auto_tag job as the scheduler does.
+func claimAutoTag(t *testing.T, store *AutoTagStore) domain.Job {
 	t.Helper()
-	job, err := store.Claim(context.Background())
+	job, err := store.db.Ingest().ClaimJob(context.Background(), domain.JobAutoTag)
 	if err != nil {
 		t.Fatalf("判定を取り出せない: %v", err)
 	}
 	return job
+}
+
+// failAutoTag records a failure of key's job that is not retried, as after its last attempt; a job no longer
+// running is left alone.
+func failAutoTag(ctx context.Context, store *AutoTagStore, key, reason string) error {
+	var id int64
+	if err := store.db.sql.QueryRowContext(ctx, `select coalesce(max(id), 0) from jobs
+		where kind = 'auto_tag' and subject_key = ?`, key).Scan(&id); err != nil {
+		return err
+	}
+	return store.db.Ingest().FailClaimedJob(ctx, domain.Job{ID: id, Kind: domain.JobAutoTag, ContentKey: key},
+		domain.FailureRepeats(errors.New(reason)))
 }
 
 func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
@@ -129,7 +153,7 @@ func TestAutoTagQueueModes(t *testing.T) {
 			t.Fatalf("判定中の行を mode %d が積み直した", mode)
 		}
 	}
-	if err := store.Fail(ctx, soloKey, "boom"); err != nil {
+	if err := failAutoTag(ctx, store, soloKey, "boom"); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); n != 0 {
@@ -161,10 +185,6 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	if _, err := store.QueueVideos(ctx, []int64{first}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
-	// Separate queue times so same-millisecond insertion cannot obscure FIFO ordering.
-	if _, err := db.sql.Exec(`update auto_tag_queue set queued_at = queued_at - 1000`); err != nil {
-		t.Fatal(err)
-	}
 	n, err := store.QueueLibrary(ctx, domain.AutoTagQueueUnlessDone, domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
@@ -185,11 +205,11 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	for range len(ids) - 1 {
 		claimAutoTag(t, store)
 	}
-	if _, err := store.Claim(ctx); !errors.Is(err, domain.ErrNoJob) {
+	if _, err := db.Ingest().ClaimJob(ctx, domain.JobAutoTag); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("空の待ち行列の Claim = %v", err)
 	}
-	if requeued, err := store.RequeueRunning(ctx); err != nil || requeued != len(ids) {
-		t.Fatalf("RequeueRunning = %d, %v", requeued, err)
+	if requeued, err := db.Ingest().RequeueRunningJobs(ctx); err != nil || requeued != int64(len(ids)) {
+		t.Fatalf("RequeueRunningJobs = %d, %v", requeued, err)
 	}
 }
 
@@ -237,7 +257,7 @@ func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
-	if _, err := store.RequeueRunning(ctx); err != nil {
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}, domain.ActivityByAI); err != nil {
@@ -246,7 +266,7 @@ func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 	if got := manualTagIDs(t, db, soloKey); len(got) != 0 {
 		t.Fatalf("積み直した行の古い結果でタグが付いた: %v", got)
 	}
-	if err := store.Fail(ctx, soloKey, "late"); err != nil {
+	if err := failAutoTag(ctx, store, soloKey, "late"); err != nil {
 		t.Fatal(err)
 	}
 	if state := autoTagState(t, db, soloKey); state != "queued" {
@@ -370,7 +390,8 @@ func TestAutoTagCountsLastError(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := claimAutoTag(t, store)
-	if err := store.Fail(ctx, job.ContentKey, "cannot reach Ollama"); err != nil {
+	if err := failAutoTag(ctx, store, job.ContentKey, "cannot reach Ollama"); err != nil {
+
 		t.Fatal(err)
 	}
 	counts, err := store.Counts(ctx)

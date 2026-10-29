@@ -1147,7 +1147,6 @@ const (
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
-	ErrorReasonOwnCertificateUnverified      ErrorReason = "own_certificate_unverified"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPeerNotAllowed                ErrorReason = "peer_not_allowed"
 	ErrorReasonPeerUnknown                   ErrorReason = "peer_unknown"
@@ -1193,7 +1192,6 @@ const (
 	ErrorReasonUndoConflict                  ErrorReason = "undo_conflict"
 	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
-	ErrorReasonUnsupportedVersion            ErrorReason = "unsupported_version"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVersionJudgingOff             ErrorReason = "version_judging_off"
 	ErrorReasonVersionNotRejudgeable         ErrorReason = "version_not_rejudgeable"
@@ -1332,8 +1330,6 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonOutputTooLarge:
 		return true
-	case ErrorReasonOwnCertificateUnverified:
-		return true
 	case ErrorReasonPasswordLength:
 		return true
 	case ErrorReasonPeerNotAllowed:
@@ -1423,8 +1419,6 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUndoExpired:
 		return true
 	case ErrorReasonUnreachable:
-		return true
-	case ErrorReasonUnsupportedVersion:
 		return true
 	case ErrorReasonUsernameLength:
 		return true
@@ -1839,11 +1833,28 @@ func (e OrganizeRefKind) Valid() bool {
 	}
 }
 
+// Defines values for PeerCreditMatchRequestKind.
+const (
+	PeerCreditMatchRequestKindOrganization PeerCreditMatchRequestKind = "organization"
+	PeerCreditMatchRequestKindPerson       PeerCreditMatchRequestKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the PeerCreditMatchRequestKind enum.
+func (e PeerCreditMatchRequestKind) Valid() bool {
+	switch e {
+	case PeerCreditMatchRequestKindOrganization:
+		return true
+	case PeerCreditMatchRequestKindPerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PeerStateReason.
 const (
 	PeerStateReasonCertificate PeerStateReason = "certificate"
 	PeerStateReasonNetwork     PeerStateReason = "network"
-	PeerStateReasonVersion     PeerStateReason = "version"
 )
 
 // Valid indicates whether the value is a known member of the PeerStateReason enum.
@@ -1852,8 +1863,6 @@ func (e PeerStateReason) Valid() bool {
 	case PeerStateReasonCertificate:
 		return true
 	case PeerStateReasonNetwork:
-		return true
-	case PeerStateReasonVersion:
 		return true
 	default:
 		return false
@@ -4548,6 +4557,13 @@ type DirectoryListing struct {
 	ParentPath  *string          `json:"parentPath"`
 }
 
+// DiskUsage defines model for DiskUsage.
+type DiskUsage struct {
+	// FreeBytes Space the server process can still write.
+	FreeBytes  int64 `json:"freeBytes"`
+	TotalBytes int64 `json:"totalBytes"`
+}
+
 // DisplayNameUpdate defines model for DisplayNameUpdate.
 type DisplayNameUpdate struct {
 	// ContentVersion The contentVersion the screen read; required for a virtual video. For a video with a file, a virtual video's version returns 409 content_changed and any other is ignored.
@@ -4584,7 +4600,7 @@ type Error struct {
 	// Field JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
-	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted, for own_certificate_unverified, and for peer_unreachable when the other node did not trust this node's certificate.
+	// Fingerprint Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed.
 	Fingerprint *string `json:"fingerprint,omitempty"`
 
 	// Host Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons.
@@ -4596,14 +4612,8 @@ type Error struct {
 	// Links The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous.
 	Links *[]string `json:"links,omitempty"`
 
-	// LocalVersion This node's release version; only for unsupported_version.
-	LocalVersion *string `json:"localVersion,omitempty"`
-
 	// Message English explanation for API clients and unknown-code fallback; the UI derives text from code and reason.
 	Message string `json:"message"`
-
-	// PeerVersion The other node's release version; only for unsupported_version.
-	PeerVersion *string `json:"peerVersion,omitempty"`
 
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
@@ -5263,6 +5273,12 @@ type MediaFolder struct {
 	Version   int64     `json:"version"`
 }
 
+// MediaFolderUsage defines model for MediaFolderUsage.
+type MediaFolderUsage struct {
+	Disk       *DiskUsage `json:"disk,omitempty"`
+	VideoBytes int64      `json:"videoBytes"`
+}
+
 // MediaInfo Additional video metadata; omit unavailable fields and objects with no fields.
 type MediaInfo struct {
 	// AudioTracks All audio streams in stream order.
@@ -5849,19 +5865,13 @@ type PairPeerRequest struct {
 
 	// Fingerprint The SPKI fingerprint the owner confirmed after certificate_untrusted
 	Fingerprint *string `json:"fingerprint,omitempty"`
-
-	// OwnAddress This node's base URL as the other node can reach it
-	OwnAddress string `json:"ownAddress"`
-
-	// OwnFingerprint The SPKI fingerprint of ownAddress's certificate the owner confirmed after own_certificate_unverified
-	OwnFingerprint *string `json:"ownFingerprint,omitempty"`
 }
 
 // PairingAnswer defines model for PairingAnswer.
 type PairingAnswer struct {
 	Node PeerNode `json:"node"`
 
-	// Secret What the sender presents to the receiver
+	// Secret What the sender presents to the receiver from then on: vvp_ and 43 base64url characters
 	Secret string `json:"secret"`
 }
 
@@ -5871,27 +5881,10 @@ type PairingCode struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// PairingRequest defines model for PairingRequest.
+// PairingRequest The sender's identity; no address, because the receiver never connects to the sender.
 type PairingRequest struct {
-	Code string             `json:"code"`
-	Node PairingRequestNode `json:"node"`
-
-	// Secret What the receiver will present to the sender: vvp_ and 43 base64url characters
-	Secret string `json:"secret"`
-}
-
-// PairingRequestNode defines model for PairingRequestNode.
-type PairingRequestNode struct {
-	// Address The sender's base URL as the receiver can reach it
-	Address string `json:"address"`
-
-	// Fingerprint Base64 SHA-256 of the SPKI of the certificate an https address presents when the system roots do not verify it, as the sender's owner confirmed it; the receiver pins it for the callback and later calls. Absent for an http address or a verified certificate.
-	Fingerprint *string `json:"fingerprint,omitempty"`
-	Id          string  `json:"id"`
-
-	// Name 1 to 100 code points
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Code string   `json:"code"`
+	Node PeerNode `json:"node"`
 }
 
 // PeerCertificateRequest defines model for PeerCertificateRequest.
@@ -5900,23 +5893,118 @@ type PeerCertificateRequest struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
+// PeerCreditMatchEntry defines model for PeerCreditMatchEntry.
+type PeerCreditMatchEntry struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+}
+
+// PeerCreditMatchRequest defines model for PeerCreditMatchRequest.
+type PeerCreditMatchRequest struct {
+	Entries []PeerCreditMatchEntry     `json:"entries"`
+	Kind    PeerCreditMatchRequestKind `json:"kind"`
+}
+
+// PeerCreditMatchRequestKind defines model for PeerCreditMatchRequest.Kind.
+type PeerCreditMatchRequestKind string
+
+// PeerCreditMatches defines model for PeerCreditMatches.
+type PeerCreditMatches struct {
+	// Matches One match per entry, in entry order, with this node's ids.
+	Matches []WorkInfoMatch `json:"matches"`
+}
+
+// PeerFetchedOrganization defines model for PeerFetchedOrganization.
+type PeerFetchedOrganization struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+
+	// Role Organization role in a video.
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// PeerFetchedPerson defines model for PeerFetchedPerson.
+type PeerFetchedPerson struct {
+	ExternalIds []ExternalId `json:"externalIds"`
+	Name        string       `json:"name"`
+
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile *PersonProfile `json:"profile,omitempty"`
+
+	// Role Person role in a video.
+	Role WorkPersonRole `json:"role"`
+}
+
+// PeerFetchedPluginPerson The person the peer's owner chose from a fetch, narrowed to the chosen aliases, external IDs and links.
+type PeerFetchedPluginPerson struct {
+	Aliases     []Alias      `json:"aliases"`
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// Items The items to write, each with a value above; aliases, externalIds and profile.links write all the values sent.
+	Items []PersonPluginItem `json:"items"`
+	Name  string             `json:"name"`
+
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile *PersonProfile `json:"profile,omitempty"`
+}
+
+// PeerFetchedWorkInfo The values the peer's owner chose from a fetch, narrowed to the chosen entries and values.
+type PeerFetchedWorkInfo struct {
+	Code *string `json:"code,omitempty"`
+
+	// ContentVersion The video's contentVersion when the peer fetched for it.
+	ContentVersion string                `json:"contentVersion"`
+	Dates          []WorkInfoFetchedDate `json:"dates"`
+	Description    *string               `json:"description,omitempty"`
+
+	// DetailFields The detail fields to write; [] keeps the work information.
+	DetailFields  []WorkInfoField           `json:"detailFields"`
+	ExternalIds   []ExternalId              `json:"externalIds"`
+	Organizations []PeerFetchedOrganization `json:"organizations"`
+	People        []PeerFetchedPerson       `json:"people"`
+
+	// SamePeople Pairs of a position in people and a provisional performer of the video, with this node's person id.
+	SamePeople []WorkInfoSamePerson `json:"samePeople"`
+
+	// Tags Normalized tag names to attach as tentative; [] keeps the tags.
+	Tags []string `json:"tags"`
+
+	// Title Present only when the title was chosen.
+	Title *string  `json:"title,omitempty"`
+	Urls  []string `json:"urls"`
+}
+
+// PeerFetchedWorkInfoApplied defines model for PeerFetchedWorkInfoApplied.
+type PeerFetchedWorkInfoApplied struct {
+	// RejectedTags Normalized tag names the video's rejections kept off, deduplicated in tags order.
+	RejectedTags []string               `json:"rejectedTags"`
+	Skipped      []SkippedWorkInfoValue `json:"skipped"`
+}
+
+// PeerGrant The VVMDM that reads this one
+type PeerGrant struct {
+	// Name Its host name at pairing
+	Name     string    `json:"name"`
+	PairedAt time.Time `json:"pairedAt"`
+}
+
 // PeerHandshake defines model for PeerHandshake.
 type PeerHandshake struct {
 	Node PeerNode `json:"node"`
 }
 
-// PeerInfo defines model for PeerInfo.
-type PeerInfo struct {
-	// Address The peer's base URL
+// PeerLink The VVMDM this node reads
+type PeerLink struct {
+	// Address Its base URL
 	Address string `json:"address"`
 
-	// Name The peer's host name at pairing
+	// Name Its host name at pairing
 	Name string `json:"name"`
 
-	// Pinned Whether a certificate fingerprint is pinned for the peer, so reason certificate means the certificate changed rather than one never trusted
+	// Pinned Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted
 	Pinned bool `json:"pinned"`
 
-	// Version The peer version last seen; with reason version, the one that differs
+	// Version Its version last seen, shown for reference
 	Version *string `json:"version,omitempty"`
 }
 
@@ -5937,7 +6025,7 @@ type PeerNode struct {
 	// Name Host name
 	Name string `json:"name"`
 
-	// Version Release version, as getHealth reports it
+	// Version Release version, as getHealth reports it; shown for reference, never compared
 	Version string `json:"version"`
 }
 
@@ -6008,22 +6096,29 @@ type PeerSmartRule struct {
 	Sort *VideoSort `json:"sort,omitempty"`
 }
 
-// PeerState Guests receive state and reason only; owners also receive peer (when paired) and node, this node's identity.
+// PeerState Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity.
 type PeerState struct {
 	// Fingerprint With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only.
-	Fingerprint *string   `json:"fingerprint,omitempty"`
-	Node        *PeerNode `json:"node,omitempty"`
-	Peer        *PeerInfo `json:"peer,omitempty"`
+	Fingerprint *string `json:"fingerprint,omitempty"`
+
+	// Grant The VVMDM that reads this one
+	Grant *PeerGrant `json:"grant,omitempty"`
+
+	// Link The VVMDM this node reads
+	Link *PeerLink `json:"link,omitempty"`
+	Node *PeerNode `json:"node,omitempty"`
 
 	// Reason Present with unreachable
 	Reason *PeerStateReason `json:"reason,omitempty"`
-	State  PeerStateState   `json:"state"`
+
+	// State The connection to the VVMDM this node reads; unpaired without link
+	State PeerStateState `json:"state"`
 }
 
 // PeerStateReason Present with unreachable
 type PeerStateReason string
 
-// PeerStateState defines model for PeerState.State.
+// PeerStateState The connection to the VVMDM this node reads; unpaired without link
 type PeerStateState string
 
 // PeerVocabularyRequest defines model for PeerVocabularyRequest.
@@ -9519,17 +9614,26 @@ type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
 // ConfirmPeerCertificateJSONRequestBody defines body for ConfirmPeerCertificate for application/json ContentType.
 type ConfirmPeerCertificateJSONRequestBody = PeerCertificateRequest
 
+// MatchPeerCreditsJSONRequestBody defines body for MatchPeerCredits for application/json ContentType.
+type MatchPeerCreditsJSONRequestBody = PeerCreditMatchRequest
+
 // PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
 type PairPeerJSONRequestBody = PairPeerRequest
 
 // AcceptPairingJSONRequestBody defines body for AcceptPairing for application/json ContentType.
 type AcceptPairingJSONRequestBody = PairingRequest
 
+// ApplyPeerFetchedPersonJSONRequestBody defines body for ApplyPeerFetchedPerson for application/json ContentType.
+type ApplyPeerFetchedPersonJSONRequestBody = PeerFetchedPluginPerson
+
 // RankPeerRelatedJSONRequestBody defines body for RankPeerRelated for application/json ContentType.
 type RankPeerRelatedJSONRequestBody = PeerRelatedRequest
 
 // CountPeerRuleMatchesJSONRequestBody defines body for CountPeerRuleMatches for application/json ContentType.
 type CountPeerRuleMatchesJSONRequestBody = PeerRuleCountsRequest
+
+// ApplyPeerFetchedWorkInfoJSONRequestBody defines body for ApplyPeerFetchedWorkInfo for application/json ContentType.
+type ApplyPeerFetchedWorkInfoJSONRequestBody = PeerFetchedWorkInfo
 
 // ApplyPeerVocabularyJSONRequestBody defines body for ApplyPeerVocabulary for application/json ContentType.
 type ApplyPeerVocabularyJSONRequestBody = PeerVocabularyRequest
@@ -9881,6 +9985,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder Change a media folder path
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetMediaFolderUsage Return a media folder's video size and disk space
+	// (GET /api/media-folders/{id}/usage)
+	GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// GetOnboarding オンボードの段階を返す
 	// (GET /api/onboarding)
 	GetOnboarding(w http.ResponseWriter, r *http.Request)
@@ -9929,33 +10036,42 @@ type ServerInterface interface {
 	// OrganizeUndo Undo a drag operation
 	// (POST /api/organize/undo)
 	OrganizeUndo(w http.ResponseWriter, r *http.Request)
-	// UnpairPeer Unpair from the peer
-	// (DELETE /api/peer)
-	UnpairPeer(w http.ResponseWriter, r *http.Request)
 	// GetPeer Return the pairing state
 	// (GET /api/peer)
 	GetPeer(w http.ResponseWriter, r *http.Request)
-	// UpdatePeerAddress Change the peer's address
+	// UpdatePeerAddress Change the read node's address
 	// (PUT /api/peer/address)
 	UpdatePeerAddress(w http.ResponseWriter, r *http.Request)
-	// ConfirmPeerCertificate Trust the peer's changed certificate
+	// ConfirmPeerCertificate Trust the read node's changed certificate
 	// (POST /api/peer/certificate)
 	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request)
 	// IssuePairingCode Issue this node's pairing code
 	// (POST /api/peer/code)
 	IssuePairingCode(w http.ResponseWriter, r *http.Request)
-	// PeerHandshake Return this node's identity to the peer
+	// MatchPeerCredits Match fetched people or organizations against this node's
+	// (POST /api/peer/credit-matches)
+	MatchPeerCredits(w http.ResponseWriter, r *http.Request)
+	// RevokePeerGrant Withdraw the reading VVMDM's access
+	// (DELETE /api/peer/grant)
+	RevokePeerGrant(w http.ResponseWriter, r *http.Request)
+	// PeerHandshake Return this node's identity to the reading node
 	// (GET /api/peer/handshake)
 	PeerHandshake(w http.ResponseWriter, r *http.Request)
-	// PairPeer Pair with the node whose code the owner typed
+	// UnpairPeer Stop reading the other VVMDM
+	// (DELETE /api/peer/link)
+	UnpairPeer(w http.ResponseWriter, r *http.Request)
+	// PairPeer Read the node whose code the owner typed
 	// (POST /api/peer/pair)
 	PairPeer(w http.ResponseWriter, r *http.Request)
-	// AcceptPairing Accept a pairing from another node
+	// AcceptPairing Grant the sender read access to this node
 	// (POST /api/peer/pairings)
 	AcceptPairing(w http.ResponseWriter, r *http.Request)
-	// ForgetPeer Delete the record of a peer that unpaired
+	// ForgetPeer Delete the grant of a reading node that unpaired
 	// (DELETE /api/peer/pairings/{nodeId})
 	ForgetPeer(w http.ResponseWriter, r *http.Request, nodeId string)
+	// ApplyPeerFetchedPerson Apply a person the peer fetched for a person of this node
+	// (POST /api/peer/people/{id}/fetched-person)
+	ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request, id PersonId)
 	// RankPeerRelated Score this node's videos against a video of the other node
 	// (POST /api/peer/related)
 	RankPeerRelated(w http.ResponseWriter, r *http.Request)
@@ -9965,6 +10081,9 @@ type ServerInterface interface {
 	// GetPeerRelatedClues Return the related-video clues of one video
 	// (GET /api/peer/videos/{id}/clues)
 	GetPeerRelatedClues(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ApplyPeerFetchedWorkInfo Apply work information the peer fetched for a video of this node
+	// (POST /api/peer/videos/{id}/fetched-work-info)
+	ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ApplyPeerVocabulary Rename, merge or delete a tag, person or organization by name
 	// (POST /api/peer/vocabulary)
 	ApplyPeerVocabulary(w http.ResponseWriter, r *http.Request)
@@ -12376,6 +12495,32 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetMediaFolderUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMediaFolderUsage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOnboarding operation middleware
 func (siw *ServerInterfaceWrapper) GetOnboarding(w http.ResponseWriter, r *http.Request) {
 
@@ -12732,20 +12877,6 @@ func (siw *ServerInterfaceWrapper) OrganizeUndo(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// UnpairPeer operation middleware
-func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UnpairPeer(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetPeer operation middleware
 func (siw *ServerInterfaceWrapper) GetPeer(w http.ResponseWriter, r *http.Request) {
 
@@ -12802,11 +12933,53 @@ func (siw *ServerInterfaceWrapper) IssuePairingCode(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// MatchPeerCredits operation middleware
+func (siw *ServerInterfaceWrapper) MatchPeerCredits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MatchPeerCredits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokePeerGrant operation middleware
+func (siw *ServerInterfaceWrapper) RevokePeerGrant(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokePeerGrant(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PeerHandshake operation middleware
 func (siw *ServerInterfaceWrapper) PeerHandshake(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PeerHandshake(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnpairPeer operation middleware
+func (siw *ServerInterfaceWrapper) UnpairPeer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnpairPeer(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12870,6 +13043,32 @@ func (siw *ServerInterfaceWrapper) ForgetPeer(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ApplyPeerFetchedPerson operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPeerFetchedPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPeerFetchedPerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RankPeerRelated operation middleware
 func (siw *ServerInterfaceWrapper) RankPeerRelated(w http.ResponseWriter, r *http.Request) {
 
@@ -12915,6 +13114,32 @@ func (siw *ServerInterfaceWrapper) GetPeerRelatedClues(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPeerRelatedClues(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPeerFetchedWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPeerFetchedWorkInfo(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17855,6 +18080,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders/{id}/usage", wrapper.GetMediaFolderUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
@@ -17903,8 +18129,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer", wrapper.UnpairPeer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer", wrapper.GetPeer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/link", wrapper.UnpairPeer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/grant", wrapper.RevokePeerGrant)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/code", wrapper.IssuePairingCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/address", wrapper.UpdatePeerAddress)
@@ -17915,6 +18142,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/related", wrapper.RankPeerRelated)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/vocabulary", wrapper.ApplyPeerVocabulary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/videos/{id}/clues", wrapper.GetPeerRelatedClues)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/credit-matches", wrapper.MatchPeerCredits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/videos/{id}/fetched-work-info", wrapper.ApplyPeerFetchedWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/people/{id}/fetched-person", wrapper.ApplyPeerFetchedPerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/rule-counts", wrapper.CountPeerRuleMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)

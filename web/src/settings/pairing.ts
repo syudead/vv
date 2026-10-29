@@ -18,16 +18,12 @@ export function formatCountdown(remainingMs: number): string {
   return `${String(Math.floor(total / 60))}:${String(seconds).padStart(2, "0")}`;
 }
 
-export type PairField = "address" | "code" | "ownAddress";
+export type PairField = "address" | "code";
 
 export type PairFailure =
   | { kind: "field"; field: PairField; text: UiText }
   | { kind: "alert"; text: UiText }
-  | { kind: "untrusted" | "ownUntrusted"; fingerprint: string };
-
-function addressField(field: string | undefined): PairField {
-  return field === "ownAddress" ? "ownAddress" : "address";
-}
+  | { kind: "untrusted"; fingerprint: string };
 
 /** Where a refused pairing shows its reason: under a field, in an alert, or as a fingerprint to trust. */
 export function pairFailure(failure: unknown): PairFailure {
@@ -37,34 +33,19 @@ export function pairFailure(failure: unknown): PairFailure {
   }
   switch (failure.reason) {
     case "invalid_address":
-      return {
-        kind: "field",
-        field: addressField(failure.field),
-        text: text.invalidAddress,
-      };
+      return { kind: "field", field: "address", text: text.invalidAddress };
     case "invalid_code":
       return { kind: "field", field: "code", text: text.form.invalidCode };
     case "already_paired":
       return { kind: "alert", text: text.form.alreadyPaired };
-    case "unsupported_version":
-      if (failure.peerVersion !== undefined && failure.localVersion !== undefined)
-        return {
-          kind: "alert",
-          text: text.form.versions(failure.peerVersion, failure.localVersion),
-        };
-      break;
     case "peer_unreachable":
-      // The server's message says which direction failed; the Words table shows it as given.
+      // The server's message says what failed; the Words table shows it as given.
       if (failure.message !== "")
         return { kind: "alert", text: text.form.unreachable(failure.message) };
       break;
     case "certificate_untrusted":
       if (failure.fingerprint !== undefined)
         return { kind: "untrusted", fingerprint: failure.fingerprint };
-      break;
-    case "own_certificate_unverified":
-      if (failure.fingerprint !== undefined)
-        return { kind: "ownUntrusted", fingerprint: failure.fingerprint };
       break;
   }
   return { kind: "alert", text: text.form.failed(errorText(failure)) };

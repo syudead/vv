@@ -572,7 +572,8 @@ of the next line.
 
 `Fill info…` shares `Edit`'s limit and opens a dialog that picks a work-info
 plugin, lists for each video the works its search finds with the chosen one's
-code and release date, and fills the empty fields from the works the owner keeps
+code and release date, and fills the empty fields from the works the owner keeps;
+a row that fills a cover shows it with `Adjust framing`
 ([link-fetch.md](link-fetch.md#a-selection-fills-its-empty-fields-after-a-review)).
 A toast counts the videos filled; the selection stays.
 
@@ -987,22 +988,33 @@ theater mode, subtitles, playback speed, current time/duration and the
 transcode indicator. The status display is React, because a video.js component
 could not share state with the rest of the screen.
 
-| Control             | Rule                                                                                                                                                                                        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Right-hand group    | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, theater mode (from `lg`), full screen, in that order                                                                |
-| Quality             | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts))                                                             |
-| Quality label       | The current quality; for the original, the video's short side                                                                                                                               |
-| Choosing a quality  | Replaces the source at the same position without recreating the player                                                                                                                      |
-| Esc in an open menu | Closes only the menu                                                                                                                                                                        |
-| Subtitle button     | Next to playback speed; absent for videos without subtitles                                                                                                                                 |
-| Subtitle menu       | Subtitle names and `Off`; no appearance settings                                                                                                                                            |
-| Subtitle choice     | Remembered per browser; the next video with the same label starts with it                                                                                                                   |
-| Subtitle position   | Raised above the control bar and progress bar while they show                                                                                                                               |
-| Chapters button     | A video.js `ChaptersButton` reading a `chapters` text track built from `mediaInfo.chapters`; absent for videos without chapters ([`chapters.ts`](../../web/src/player/chapters.ts))         |
-| Chapters menu       | `20em` wide; one `{start} {title}` item per chapter in start order, `Chapter {n}` when untitled; the playing chapter is marked; choosing one seeks to its start and keeps playing or paused |
-| Chapter marks       | A `chapter-mark` (2px) break on the progress bar at each chapter start; no pointer, no label, hidden from screen readers                                                                    |
-| Narrow frame        | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px                              |
-| Seek preview title  | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone                                                             |
+| Control             | Rule                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before playback     | Shows over the poster and the central play button once metadata has loaded; does not fade while paused; volume, mute, seek position, quality, subtitle and speed chosen on it carry into playback |
+| Right-hand group    | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, theater mode (from `lg`), full screen, in that order                                                                      |
+| Quality             | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts))                                                                   |
+| Quality label       | The current quality; for the original, the video's short side                                                                                                                                     |
+| Choosing a quality  | Replaces the source at the same position without recreating the player                                                                                                                            |
+| Esc in an open menu | Closes only the menu                                                                                                                                                                              |
+| Subtitle button     | Next to playback speed; absent for videos without subtitles                                                                                                                                       |
+| Subtitle menu       | Subtitle names and `Off`; no appearance settings                                                                                                                                                  |
+| Subtitle choice     | Remembered per browser; the next video with the same label starts with it                                                                                                                         |
+| Subtitle position   | Raised above the control bar and progress bar while they show                                                                                                                                     |
+| Chapters button     | A video.js `ChaptersButton` reading a `chapters` text track built from `mediaInfo.chapters`; absent for videos without chapters ([`chapters.ts`](../../web/src/player/chapters.ts))               |
+| Chapters menu       | `20em` wide; one `{start} {title}` item per chapter in start order, `Chapter {n}` when untitled; the playing chapter is marked; choosing one seeks to its start and keeps playing or paused       |
+| Chapter marks       | A `chapter-mark` (2px) break on the progress bar at each chapter start; no pointer, no label, hidden from screen readers                                                                          |
+| Narrow frame        | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px                                    |
+| Seek preview title  | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone                                                                   |
+
+Before playback, a stylesheet rule shows the bar on a player without
+`vjs-has-started`; the player does not mark itself started early, because that
+class also hides the poster and the central play button, and video.js clears it
+on every `loadstart` while paused (a quality change or a transcode-route seek).
+The rule yields to video.js's `vjs-controls-disabled` and `vjs-error` hides and
+to `data-loading`. A position reported before the first play, such as a seek on
+this bar, is not sent as watch progress until the viewer plays, and a seek past
+the buffered range of a transcode reloads the source without starting playback
+until then.
 
 Quality: [Playback quality, Switching](playback-quality.md#switching) and
 [playback-quality.md](playback-quality.md).

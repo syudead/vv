@@ -43,17 +43,15 @@ func (s *fakeFaceSettingsState) set(v domain.FaceSettings) {
 	s.value = v
 }
 
-// fakeFaceAnalysisQueue mirrors FaceStore: Claim reads the current recognizer and generation, and Store refuses a
+// fakeFaceAnalysisQueue mirrors FaceStore: FaceJob reads the current recognizer and generation, and Store refuses a
 // result of an older generation.
 type fakeFaceAnalysisQueue struct {
 	settings *fakeFaceSettingsState
 	mu       sync.Mutex
 	queued   []string
-	running  string
-	claims   int
-	requeues int
 	stored   []domain.FaceAnalysis
-	failed   []string
+	// helperWork is what HasHelperWork reports.
+	helperWork bool
 	// faults fails the named method with its error until the test clears it.
 	faults map[string]error
 }
@@ -67,22 +65,16 @@ func (q *fakeFaceAnalysisQueue) setFault(method string, err error) {
 	q.faults[method] = err
 }
 
-// fakeFaceQueueState is what a test reads of the queue, copied under its lock.
-type fakeFaceQueueState struct {
-	queued           []string
-	running          string
-	claims, requeues int
-	stored           []domain.FaceAnalysis
-	failed           []string
-}
-
-func (q *fakeFaceAnalysisQueue) state() fakeFaceQueueState {
+func (q *fakeFaceAnalysisQueue) results() []domain.FaceAnalysis {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return fakeFaceQueueState{
-		queued: slices.Clone(q.queued), running: q.running, claims: q.claims, requeues: q.requeues,
-		stored: slices.Clone(q.stored), failed: slices.Clone(q.failed),
-	}
+	return slices.Clone(q.stored)
+}
+
+func (q *fakeFaceAnalysisQueue) queuedKeys() []string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return slices.Clone(q.queued)
 }
 
 func (q *fakeFaceAnalysisQueue) QueueLibrary(context.Context, domain.FaceQueueScope, domain.ActivityDecider) (int, error) {
@@ -103,26 +95,16 @@ func (q *fakeFaceAnalysisQueue) ClearPeople(context.Context) (domain.PeopleClear
 	return domain.PeopleCleared{}, nil
 }
 
-func (q *fakeFaceAnalysisQueue) Claim(context.Context) (domain.FaceJob, error) {
+func (q *fakeFaceAnalysisQueue) FaceJob(_ context.Context, key string) (domain.FaceJob, error) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	if len(q.queued) == 0 {
-		return domain.FaceJob{}, domain.ErrNoJob
+	err := q.faults["FaceJob"]
+	q.mu.Unlock()
+	if err != nil {
+		return domain.FaceJob{}, err
 	}
-	q.claims++
-	q.running, q.queued = q.queued[0], q.queued[1:]
 	q.settings.mu.Lock()
 	defer q.settings.mu.Unlock()
-	return domain.FaceJob{ContentKey: q.running, Recognizer: q.settings.value.Recognizer, Generation: q.settings.generation}, nil
-}
-
-func (q *fakeFaceAnalysisQueue) VideoPaths(_ context.Context, key string) ([]string, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if err := q.faults["VideoPaths"]; err != nil {
-		return nil, err
-	}
-	return []string{"/media/" + key + ".mp4"}, nil
+	return domain.FaceJob{ContentKey: key, Recognizer: q.settings.value.Recognizer, Generation: q.settings.generation}, nil
 }
 
 func (q *fakeFaceAnalysisQueue) Store(_ context.Context, result domain.FaceAnalysis) error {
@@ -138,33 +120,13 @@ func (q *fakeFaceAnalysisQueue) Store(_ context.Context, result domain.FaceAnaly
 		return domain.ErrFaceGenerationChanged
 	}
 	q.stored = append(q.stored, result)
-	q.running = ""
 	return nil
 }
 
-func (q *fakeFaceAnalysisQueue) Fail(_ context.Context, _ string, reason string) error {
+func (q *fakeFaceAnalysisQueue) HasHelperWork(context.Context) (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if err := q.faults["Fail"]; err != nil {
-		return err
-	}
-	q.failed = append(q.failed, reason)
-	q.running = ""
-	return nil
-}
-
-func (q *fakeFaceAnalysisQueue) RequeueRunning(context.Context) (int, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if err := q.faults["RequeueRunning"]; err != nil {
-		return 0, err
-	}
-	if q.running == "" {
-		return 0, nil
-	}
-	q.requeues++
-	q.queued, q.running = append([]string{q.running}, q.queued...), ""
-	return 1, nil
+	return q.helperWork, nil
 }
 
 type fakeFaceRuntimeState struct {
@@ -268,6 +230,12 @@ func (h *fakeFaceHelpers) seen() []int {
 	return slices.Clone(h.frames)
 }
 
+func (h *fakeFaceHelpers) set(change func(h *fakeFaceHelpers)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	change(h)
+}
+
 // fakeFaceVideoFrames writes the frame's index into its first byte and records the paths it reads.
 type fakeFaceVideoFrames struct {
 	mu    sync.Mutex
@@ -337,34 +305,40 @@ type faceWorkerFixture struct {
 	helpers  *fakeFaceHelpers
 	frames   *fakeFaceVideoFrames
 	folders  *fakeMediaFolders
+	wakes    *int
 }
 
-func newFaceWorkerFixture(keys ...string) *faceWorkerFixture {
+func newFaceWorkerFixture() *faceWorkerFixture {
 	settings := &fakeFaceSettingsState{value: domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8}}
+	wakes := 0
 	f := &faceWorkerFixture{
 		settings: settings,
-		queue:    &fakeFaceAnalysisQueue{settings: settings, queued: keys},
+		queue:    &fakeFaceAnalysisQueue{settings: settings},
 		images:   newFakeFaceImageStore(settings),
 		runtime:  &fakeFaceRuntimeState{state: domain.FaceRuntimeReady},
 		helpers:  &fakeFaceHelpers{holdAt: -1, release: make(chan struct{})},
 		frames:   &fakeFaceVideoFrames{},
 		folders:  &fakeMediaFolders{},
+		wakes:    &wakes,
 	}
 	f.rec = NewFaceRecognizer(FaceRecognizerOptions{
 		Queue: f.queue, Images: f.images, Settings: settings, Runtime: f.runtime, Helper: f.helpers.helper,
 		Frames: f.frames.source(), MediaFolders: f.folders, MediaFiles: fakeMediaFiles{},
+		Wake: func() { wakes++ },
 	})
 	return f
 }
 
-// run starts the worker inside the synctest bubble and stops it when the test ends.
-func (f *faceWorkerFixture) run(t *testing.T) {
-	t.Helper()
-	// Cleanups run last first, so the helper stops after the loop.
-	t.Cleanup(f.rec.Close)
-	loop := newTestLoop()
-	f.rec.Waker = loop.Wake
-	loop.run(t, f.rec.Step)
+// faceJob is the claimed face job of key, at its location under the fake media folder.
+func faceJob(key string) domain.Job {
+	return domain.Job{Kind: domain.JobFace, ContentKey: key, LocationPath: "/media/" + key + ".mp4"}
+}
+
+// start runs the job in the background, as the scheduler does, and returns its result once it ends.
+func (f *faceWorkerFixture) start(job domain.Job) <-chan error {
+	done := make(chan error, 1)
+	go func() { done <- f.rec.HandleJob(context.Background(), job) }()
+	return done
 }
 
 func (f *faceWorkerFixture) change(s domain.FaceSettings) {
@@ -380,73 +354,112 @@ func framesUpTo(n int) []int {
 	return out
 }
 
-func TestFaceRecognizerStoresTheMainPeopleOfTheResolvedVideo(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture("key-a")
-		f.run(t)
-		synctest.Wait()
+func TestFaceRecognizerStoresTheMainPeopleOfTheClaimedLocation(t *testing.T) {
+	f := newFaceWorkerFixture()
+	if err := f.rec.HandleJob(context.Background(), faceJob("key-a")); err != nil {
+		t.Fatal(err)
+	}
 
-		if len(f.queue.state().stored) != 1 {
-			t.Fatalf("stored = %+v, failed = %v; want one result", f.queue.state().stored, f.queue.state().failed)
-		}
-		got := f.queue.state().stored[0]
-		if got.ContentKey != "key-a" || got.Recognizer != domain.FaceRecognizerSFaceInt8 || got.Generation != 0 {
-			t.Fatalf("result = %s %s %d", got.ContentKey, got.Recognizer, got.Generation)
-		}
-		if len(got.People) != 1 || len(got.People[0].Spans) != 2 || got.People[0].GoodSeconds != 20 ||
-			len(got.People[0].Crop.JPEG) == 0 || got.People[0].Crop.Width != 200 || got.People[0].Crop.Height != 200 {
-			t.Fatalf("people = %+v, want one person in two tracks with a 200 px crop", got.People)
-		}
-		if paths := f.frames.read(); !slices.Equal(paths, []string{"resolved:/media/key-a.mp4"}) {
-			t.Fatalf("frames read from %v, want the location resolved through the media folders", paths)
-		}
-		if _, closed := f.helpers.made(); closed != 1 {
-			t.Fatalf("helper closed %d times, want once when the queue ran empty", closed)
-		}
-	})
+	stored := f.queue.results()
+	if len(stored) != 1 {
+		t.Fatalf("stored = %+v; want one result", stored)
+	}
+	got := stored[0]
+	if got.ContentKey != "key-a" || got.Recognizer != domain.FaceRecognizerSFaceInt8 || got.Generation != 0 {
+		t.Fatalf("result = %s %s %d", got.ContentKey, got.Recognizer, got.Generation)
+	}
+	if len(got.People) != 1 || len(got.People[0].Spans) != 2 || got.People[0].GoodSeconds != 20 ||
+		len(got.People[0].Crop.JPEG) == 0 || got.People[0].Crop.Width != 200 || got.People[0].Crop.Height != 200 {
+		t.Fatalf("people = %+v, want one person in two tracks with a 200 px crop", got.People)
+	}
+	if paths := f.frames.read(); !slices.Equal(paths, []string{"resolved:/media/key-a.mp4"}) {
+		t.Fatalf("frames read from %v, want the claimed location resolved through the media folders", paths)
+	}
 }
 
-func TestFaceRecognizerWaitsForTheRuntime(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture("key-a")
-		f.runtime.set(domain.FaceRuntimeDownloading)
-		f.run(t)
-		synctest.Wait()
-		if f.queue.state().claims != 0 {
-			t.Fatalf("claims = %d while the runtime downloads, want 0", f.queue.state().claims)
-		}
+// The helper holds the models in memory, so it stays only while another analysis or embedding is due, and the next
+// one starts it again.
+func TestFaceRecognizerStopsTheHelperAfterTheLastFaceJob(t *testing.T) {
+	f := newFaceWorkerFixture()
+	f.queue.helperWork = true
+	if err := f.rec.HandleJob(context.Background(), faceJob("key-a")); err != nil {
+		t.Fatal(err)
+	}
+	if created, closed := f.helpers.made(); len(created) != 1 || closed != 0 {
+		t.Fatalf("helpers created %v, closed %d; want one kept for the due job", created, closed)
+	}
 
-		f.runtime.set(domain.FaceRuntimeReady)
-		f.rec.Wake()
-		synctest.Wait()
-		if len(f.queue.state().stored) != 1 {
-			t.Fatalf("stored = %d after the runtime became ready, want 1", len(f.queue.state().stored))
-		}
-	})
+	f.queue.helperWork = false
+	if err := f.rec.HandleJob(context.Background(), faceJob("key-b")); err != nil {
+		t.Fatal(err)
+	}
+	if created, closed := f.helpers.made(); len(created) != 1 || closed != 1 {
+		t.Fatalf("helpers created %v, closed %d; want the same helper closed after the last job", created, closed)
+	}
+
+	if err := f.rec.HandleJob(context.Background(), faceJob("key-c")); err != nil {
+		t.Fatal(err)
+	}
+	if created, closed := f.helpers.made(); len(created) != 2 || closed != 2 {
+		t.Fatalf("helpers created %v, closed %d; want a new helper for the next job, closed again", created, closed)
+	}
 }
 
-func TestFaceRecognizerTurnedOffMidVideoRequeuesAndStartsAgainFromTheFirstFrame(t *testing.T) {
+// The face lane waits, its jobs keeping their attempts, while the feature is off or the runtime is not ready; a saved
+// setting wakes the scheduler, and so does the runtime's Ready, which cmd/mdm wires to the same wakeup.
+func TestFaceRecognizerPausesTheFaceLaneUntilTheFeatureAndRuntimeAreReady(t *testing.T) {
+	f := newFaceWorkerFixture()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		runtime domain.FaceRuntimeState
+		paused  bool
+	}{
+		{"off", false, domain.FaceRuntimeReady, true},
+		{"downloading", true, domain.FaceRuntimeDownloading, true},
+		{"failed", true, domain.FaceRuntimeFailed, true},
+		{"ready", true, domain.FaceRuntimeReady, false},
+	} {
+		f.settings.set(domain.FaceSettings{Enabled: tc.enabled, Recognizer: domain.FaceRecognizerSFaceInt8})
+		f.runtime.set(tc.runtime)
+		paused, err := f.rec.PausedJobKinds(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []domain.JobKind(nil)
+		if tc.paused {
+			want = domain.FaceLaneJobKinds
+		}
+		if !slices.Equal(paused, want) {
+			t.Errorf("%s: paused = %v, want %v", tc.name, paused, want)
+		}
+	}
+	f.change(domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8})
+	if *f.wakes != 1 {
+		t.Fatalf("wakes after saving the settings = %d, want 1", *f.wakes)
+	}
+}
+
+func TestFaceRecognizerTurnedOffMidVideoSnoozesAndStartsAgainFromTheFirstFrame(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture("key-a")
+		f := newFaceWorkerFixture()
 		f.helpers.holdAt = 2
-		f.run(t)
+		done := f.start(faceJob("key-a"))
 		synctest.Wait()
 
 		f.change(domain.FaceSettings{Enabled: false, Recognizer: domain.FaceRecognizerSFaceInt8})
-		synctest.Wait()
-		if f.queue.state().requeues != 1 || len(f.queue.state().stored) != 0 || len(f.queue.state().failed) != 0 ||
-			!slices.Equal(f.queue.state().queued, []string{"key-a"}) {
-			t.Fatalf("after turning off: requeues %d, stored %d, failed %v, queued %v; want the video queued again",
-				f.queue.state().requeues, len(f.queue.state().stored), f.queue.state().failed, f.queue.state().queued)
+		if err := <-done; !errors.Is(err, domain.ErrJobSnoozed) || len(f.queue.results()) != 0 {
+			t.Fatalf("after turning off: %v, stored %d; want a snooze and nothing stored", err, len(f.queue.results()))
+		}
+		if _, closed := f.helpers.made(); closed != 1 {
+			t.Fatalf("helper closed %d times after turning off, want once", closed)
 		}
 
-		f.helpers.mu.Lock()
-		f.helpers.holdAt = -1
-		f.helpers.mu.Unlock()
+		f.helpers.set(func(h *fakeFaceHelpers) { h.holdAt = -1 })
 		f.change(domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8})
-		synctest.Wait()
-		if len(f.queue.state().stored) != 1 {
-			t.Fatalf("stored = %d after turning on again, want 1", len(f.queue.state().stored))
+		if err := <-f.start(faceJob("key-a")); err != nil || len(f.queue.results()) != 1 {
+			t.Fatalf("after turning on again: %v, stored %d; want the video stored", err, len(f.queue.results()))
 		}
 		if want := append([]int{0, 1, 2}, framesUpTo(faceFrames)...); !slices.Equal(f.helpers.seen(), want) {
 			t.Fatalf("frames = %v, want the first run's 0–2 and then every frame from 0", f.helpers.seen())
@@ -469,24 +482,23 @@ func TestFaceRecognizerSwitchedMidVideoStoresOnlyTheNewRecognizersResult(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				f := newFaceWorkerFixture("key-a")
+				f := newFaceWorkerFixture()
 				f.helpers.holdAt = 2
-				f.run(t)
+				done := f.start(faceJob("key-a"))
 				synctest.Wait()
 
 				tc.switchTo(f)
-				f.helpers.mu.Lock()
-				f.helpers.holdAt = -1
-				f.helpers.mu.Unlock()
-				f.rec.Wake()
-				synctest.Wait()
-				if len(f.queue.state().stored) != 1 || len(f.queue.state().failed) != 0 {
-					t.Fatalf("stored %+v, failed %v; want only one result", f.queue.state().stored, f.queue.state().failed)
+				if err := <-done; !errors.Is(err, domain.ErrJobSnoozed) {
+					t.Fatalf("old recognizer's run = %v, want a snooze", err)
 				}
-				if got := f.queue.state().stored[0]; got.Recognizer != domain.FaceRecognizerArcFaceR50 || got.Generation != 1 ||
-					len(got.People) != 1 || len(got.People[0].Centroid) != 512 {
-					t.Fatalf("stored %s generation %d with %d people, want ArcFace's result of generation 1",
-						got.Recognizer, got.Generation, len(got.People))
+				f.helpers.set(func(h *fakeFaceHelpers) { h.holdAt = -1 })
+				if err := <-f.start(faceJob("key-a")); err != nil {
+					t.Fatal(err)
+				}
+				stored := f.queue.results()
+				if len(stored) != 1 || stored[0].Recognizer != domain.FaceRecognizerArcFaceR50 || stored[0].Generation != 1 ||
+					len(stored[0].People) != 1 || len(stored[0].People[0].Centroid) != 512 {
+					t.Fatalf("stored %+v, want only ArcFace's result of generation 1", stored)
 				}
 				want := []domain.FaceRecognizer{domain.FaceRecognizerSFaceInt8, domain.FaceRecognizerArcFaceR50}
 				if created, _ := f.helpers.made(); !slices.Equal(created, want) {
@@ -497,60 +509,61 @@ func TestFaceRecognizerSwitchedMidVideoStoresOnlyTheNewRecognizersResult(t *test
 	}
 }
 
-func TestFaceRecognizerClassifiesHelperErrors(t *testing.T) {
+// A helper that did not start and a database error leave the video to run again, the first without an attempt, since
+// the runtime is at fault and the lane pauses; a helper that fails mid-video fails the attempt with its message.
+func TestFaceRecognizerClassifiesFailures(t *testing.T) {
+	dbErr := errors.New("database is locked")
 	for _, tc := range []struct {
-		name string
-		err  error
-		// startFails marks the runtime failed when the helper is made, as the runtime does on a failed start.
-		startFails bool
+		name    string
+		fault   func(f *faceWorkerFixture)
+		snoozed bool
+		message string
 	}{
-		{"start", fmt.Errorf("%w: no Hello", domain.ErrFaceHelperStart), true},
-		{"crash mid-video", errors.New("the face helper exited: unexpected EOF"), false},
+		{name: "helper start", snoozed: true, message: "no Hello", fault: func(f *faceWorkerFixture) {
+			f.helpers.err = fmt.Errorf("%w: no Hello", domain.ErrFaceHelperStart)
+		}},
+		{name: "helper crash", message: "exited", fault: func(f *faceWorkerFixture) {
+			f.helpers.err = errors.New("the face helper exited: unexpected EOF")
+		}},
+		{name: "storing the result", message: "locked", fault: func(f *faceWorkerFixture) {
+			f.queue.setFault("Store", dbErr)
+		}},
+		{name: "reading the settings of the job", message: "locked", fault: func(f *faceWorkerFixture) {
+			f.queue.setFault("FaceJob", dbErr)
+		}},
+		{name: "reading the media folders", message: "locked", fault: func(f *faceWorkerFixture) {
+			f.folders.setErr(dbErr)
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				f := newFaceWorkerFixture("key-a")
-				f.helpers.err = tc.err
-				if tc.startFails {
-					f.rec.newHelper = func(r domain.FaceRecognizer) FaceHelper {
-						f.runtime.set(domain.FaceRuntimeFailed)
-						return f.helpers.helper(r)
-					}
-				}
-				f.run(t)
-				synctest.Wait()
-				if !tc.startFails {
-					if len(f.queue.state().failed) != 1 || !strings.Contains(f.queue.state().failed[0], "exited") || f.queue.state().requeues != 0 {
-						t.Fatalf("failed %v, requeues %d; want the video failed with the helper's message",
-							f.queue.state().failed, f.queue.state().requeues)
-					}
-					return
-				}
-				// The video waits in the queue for the runtime instead of failing.
-				if len(f.queue.state().failed) != 0 || f.queue.state().requeues != 1 || f.queue.state().claims != 1 ||
-					!slices.Equal(f.queue.state().queued, []string{"key-a"}) {
-					t.Fatalf("failed %v, requeues %d, claims %d, queued %v; want the video queued again",
-						f.queue.state().failed, f.queue.state().requeues, f.queue.state().claims, f.queue.state().queued)
-				}
-			})
+			f := newFaceWorkerFixture()
+			tc.fault(f)
+			err := f.rec.HandleJob(context.Background(), faceJob("key-a"))
+			if err == nil || errors.Is(err, domain.ErrJobSnoozed) != tc.snoozed || !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("HandleJob = %v; want snoozed %v with %q", err, tc.snoozed, tc.message)
+			}
+			if len(f.queue.results()) != 0 {
+				t.Fatalf("stored %+v after a failure, want nothing", f.queue.results())
+			}
 		})
 	}
 }
 
 func TestFaceRecognizerFailsAVideoWhoseHelperStopsAnswering(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture("key-a")
+		f := newFaceWorkerFixture()
 		f.helpers.holdAt = 0
-		f.run(t)
+		done := f.start(faceJob("key-a"))
 		synctest.Wait()
-		if len(f.queue.state().failed) != 0 {
-			t.Fatalf("failed before the timeout: %v", f.queue.state().failed)
+		select {
+		case err := <-done:
+			t.Fatalf("ended before the timeout: %v", err)
+		default:
 		}
 
 		time.Sleep(faceDetectTimeout)
-		synctest.Wait()
-		if len(f.queue.state().failed) != 1 || !strings.Contains(f.queue.state().failed[0], "did not answer") {
-			t.Fatalf("failed = %v, want the video failed after %s", f.queue.state().failed, faceDetectTimeout)
+		if err := <-done; err == nil || errors.Is(err, domain.ErrJobSnoozed) || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("HandleJob = %v, want the video failed after %s", err, faceDetectTimeout)
 		}
 	})
 }
@@ -568,190 +581,47 @@ func TestFaceRecognizerRefusesRunsAndRetriesWhileOff(t *testing.T) {
 	if err := f.rec.RetryActivity(ctx, entry); !errors.Is(err, domain.ErrFaceRecognitionOff) {
 		t.Fatalf("RetryActivity while off = %v, want ErrFaceRecognitionOff", err)
 	}
-	if len(f.queue.state().queued) != 0 {
-		t.Fatalf("queued %v while off, want nothing", f.queue.state().queued)
+	if queued := f.queue.queuedKeys(); len(queued) != 0 {
+		t.Fatalf("queued %v while off, want nothing", queued)
 	}
 }
 
-func TestFaceRecognizerRetriesAVideoAfterADatabaseError(t *testing.T) {
-	dbErr := errors.New("database is locked")
-	for _, tc := range []struct {
-		name string
-		// fault makes the first attempt hit dbErr; clear removes it before the back-off ends.
-		fault, clear func(f *faceWorkerFixture)
-		// failed is true when the retried video ends failed rather than stored.
-		failed bool
-	}{
-		{name: "storing the result",
-			fault: func(f *faceWorkerFixture) { f.queue.setFault("Store", dbErr) },
-			clear: func(f *faceWorkerFixture) { f.queue.setFault("Store", nil) }},
-		{name: "reading the video's locations",
-			fault: func(f *faceWorkerFixture) { f.queue.setFault("VideoPaths", dbErr) },
-			clear: func(f *faceWorkerFixture) { f.queue.setFault("VideoPaths", nil) }},
-		{name: "reading the media folders",
-			fault: func(f *faceWorkerFixture) { f.folders.setErr(dbErr) },
-			clear: func(f *faceWorkerFixture) { f.folders.setErr(nil) }},
-		{name: "recording the video's failure", failed: true,
-			fault: func(f *faceWorkerFixture) {
-				f.helpers.err = errors.New("the face helper exited")
-				f.queue.setFault("Fail", dbErr)
-			},
-			clear: func(f *faceWorkerFixture) { f.queue.setFault("Fail", nil) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				f := newFaceWorkerFixture("key-a")
-				tc.fault(f)
-				f.run(t)
-				synctest.Wait()
-				if got := f.queue.state(); got.claims != 1 || got.requeues != 1 || got.running != "" ||
-					!slices.Equal(got.queued, []string{"key-a"}) || len(got.stored)+len(got.failed) != 0 {
-					t.Fatalf("after the error: %+v; want the video queued again and not retried before the back-off", got)
-				}
-
-				tc.clear(f)
-				time.Sleep(time.Duration(domain.WorkerRetry))
-				synctest.Wait()
-				wantStored, wantFailed := 1, 0
-				if tc.failed {
-					wantStored, wantFailed = 0, 1
-				}
-				if got := f.queue.state(); got.claims != 2 || len(got.stored) != wantStored || len(got.failed) != wantFailed {
-					t.Fatalf("after the back-off: %+v; want the video claimed again and %d stored, %d failed",
-						got, wantStored, wantFailed)
-				}
-			})
-		})
-	}
-}
-
-func TestFaceRecognizerReturnsAStrandedVideoBeforeTheNextClaim(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFaceWorkerFixture("key-a")
-		f.queue.setFault("Store", errors.New("database is locked"))
-		f.queue.setFault("RequeueRunning", errors.New("database is locked"))
-		f.run(t)
-		synctest.Wait()
-		if got := f.queue.state(); got.running != "key-a" || got.claims != 1 {
-			t.Fatalf("after the errors: %+v; want the video still running", got)
-		}
-
-		f.queue.setFault("Store", nil)
-		f.queue.setFault("RequeueRunning", nil)
-		time.Sleep(time.Duration(domain.WorkerRetry))
-		synctest.Wait()
-		if got := f.queue.state(); got.requeues != 1 || got.claims != 2 || len(got.stored) != 1 {
-			t.Fatalf("after the back-off: %+v; want the video returned to the queue, claimed again and stored", got)
-		}
-	})
-}
-
-// fakeFaceCast records the videos the cast rule was applied to; while failing is set every call fails with it.
+// fakeFaceCast records the videos the cast rule was applied to; err, when set, fails every call.
 type fakeFaceCast struct {
-	mu      sync.Mutex
 	checked []int64
-	calls   int
-	failing error
+	err     error
 }
 
 func (c *fakeFaceCast) MergeByCast(_ context.Context, videoID int64) (bool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.calls++
-	if c.failing != nil {
-		return false, c.failing
+	if c.err != nil {
+		return false, c.err
 	}
 	c.checked = append(c.checked, videoID)
 	return true, nil
 }
 
-func (c *fakeFaceCast) fail(err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.failing = err
-}
-
-func (c *fakeFaceCast) seen() []int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return slices.Clone(c.checked)
-}
-
-func (c *fakeFaceCast) attempts() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.calls
-}
-
-func newFaceCastFixture(keys ...string) (*faceWorkerFixture, *fakeFaceCast) {
-	f := newFaceWorkerFixture(keys...)
-	cast := &fakeFaceCast{}
-	f.rec.cast = cast
-	return f, cast
-}
-
-func TestFaceRecognizerAppliesTheCastRuleToEachChangedVideoAndRetriesAfterADatabaseError(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f, cast := newFaceCastFixture()
-		// The rule needs no helper, so it runs while the runtime downloads.
-		f.runtime.set(domain.FaceRuntimeDownloading)
-		f.run(t)
-		synctest.Wait()
-
-		f.rec.WorkInfoChanged([]int64{2, 1})
-		f.rec.WorkInfoChanged([]int64{1})
-		synctest.Wait()
-		if got := cast.seen(); !slices.Equal(got, []int64{1, 2}) {
-			t.Fatalf("checked %v, want each changed video once", got)
-		}
-
-		cast.fail(errors.New("database is locked"))
-		f.rec.WorkInfoChanged([]int64{3})
-		synctest.Wait()
-		cast.fail(nil)
-		if got := cast.seen(); len(got) != 2 {
-			t.Fatalf("checked %v before the back-off, want no retry yet", got)
-		}
-		time.Sleep(time.Duration(domain.WorkerRetry))
-		synctest.Wait()
-		if got := cast.seen(); !slices.Equal(got, []int64{1, 2, 3}) {
-			t.Fatalf("checked %v after the back-off, want video 3 checked again", got)
-		}
-	})
-}
-
-func TestFaceRecognizerDropsARefusedCastMergeAndAnalysesTheQueue(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f, cast := newFaceCastFixture("key-a")
-		cast.fail(fmt.Errorf("%w: too many external ids", domain.ErrFaceMergeRefused))
-		f.rec.WorkInfoChanged([]int64{1})
-		f.run(t)
-		synctest.Wait()
-		if got := f.queue.state(); len(got.stored) != 1 || cast.attempts() != 1 {
-			t.Fatalf("stored %d after %d cast attempts, want the video analysed after one attempt", len(got.stored),
-				cast.attempts())
-		}
-
-		time.Sleep(time.Duration(domain.WorkerRetry))
-		synctest.Wait()
-		if n := cast.attempts(); n != 1 {
-			t.Fatalf("cast attempts after the back-off = %d, want the refused video dropped", n)
-		}
-	})
-}
-
-func TestFaceRecognizerSkipsTheCastRuleWhileOff(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f, cast := newFaceCastFixture()
-		f.change(domain.FaceSettings{Recognizer: domain.FaceRecognizerSFaceInt8})
-		f.run(t)
-		f.rec.WorkInfoChanged([]int64{1})
-		synctest.Wait()
-
-		f.change(domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8})
-		synctest.Wait()
-		if got := cast.seen(); len(got) != 0 {
-			t.Fatalf("checked %v, want no video changed while off", got)
-		}
-	})
+// The cast rule's job applies the rule to its video; a video gone and a merge refused for good end the job, since a
+// retry cannot change them, and a database error is retried.
+func TestFaceRecognizerAppliesTheCastRuleToTheJobsVideo(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		checked []int64
+		failed  bool
+	}{
+		{name: "merged", checked: []int64{4}},
+		{name: "video gone", err: domain.ErrNotFound},
+		{name: "refused", err: fmt.Errorf("%w: too many external ids", domain.ErrFaceMergeRefused)},
+		{name: "database error", err: errors.New("database is locked"), failed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFaceWorkerFixture()
+			cast := &fakeFaceCast{err: tc.err}
+			f.rec.cast = cast
+			err := f.rec.HandleJob(context.Background(), domain.Job{Kind: domain.JobFaceCast, VideoID: 4})
+			if (err != nil) != tc.failed || !slices.Equal(cast.checked, tc.checked) {
+				t.Fatalf("HandleJob = %v, checked %v; want failed %v and %v", err, cast.checked, tc.failed, tc.checked)
+			}
+		})
+	}
 }

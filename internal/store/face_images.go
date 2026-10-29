@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// A person's face image is embedded by the face worker and applied by the face-image rule; see
+// A person's face image is embedded by its face_image job and applied by the face-image rule; see
 // docs/design-docs/face-recognition.md.
 
 // FaceImage returns the person's face image with its stored vector, or domain.ErrNotFound when the person is gone or
@@ -23,15 +23,44 @@ func (s *FaceStore) FaceImage(ctx context.Context, personID int64) (domain.FaceI
 	return job, err
 }
 
-// StaleFaceImage returns a face image without a vector of its revision and the current recognizer, or
-// domain.ErrNoJob when every face has one.
-func (s *FaceStore) StaleFaceImage(ctx context.Context) (domain.FaceImageJob, error) {
-	job, err := s.readFaceImageJob(ctx,
-		`v.person_id is null or v.image_revision <> p.image_revision or v.recognizer <> ?1`)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.FaceImageJob{}, domain.ErrNoJob
+// QueueStaleFaceImages queues a face_image job for every person whose face has no vector of its revision and the
+// current recognizer, unless the person's job is unfinished, and returns how many it queued.
+func (s *FaceStore) QueueStaleFaceImages(ctx context.Context) (int, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
 	}
-	return job, err
+	defer func() { _ = tx.Rollback() }()
+	recognizer, err := faceRecognizer(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	at := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `insert into jobs (kind, subject_key, state, attempts, priority, run_after,
+			created_at, updated_at)
+		select ?1, cast(p.id as text), 'queued', 0, ?2, ?3, ?3, ?3
+		 from people p join person_images i on i.person_id = p.id
+		 left join person_face_vectors v on v.person_id = p.id
+		 where (v.person_id is null or v.image_revision <> p.image_revision or v.recognizer <> ?4)
+		 and not exists (select 1 from jobs j where j.kind = ?1 and j.subject_key = cast(p.id as text)
+			and j.state in ('queued', 'running'))
+		 order by p.id`,
+		string(domain.JobFaceImage), int(domain.JobPriorityImport), at, string(recognizer))
+	if err != nil {
+		return 0, fmt.Errorf("cannot queue the stale face images: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("cannot queue the stale face images: %w", err)
+	}
+	c := &changes{}
+	if n > 0 {
+		c.jobsQueued(domain.JobFaceImage)
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
+		return 0, fmt.Errorf("cannot queue the stale face images: %w", err)
+	}
+	return int(n), nil
 }
 
 // readFaceImageJob reads the recognizer and generation with the first face matching condition, in which ?1 is the
@@ -72,7 +101,8 @@ func (s *FaceStore) readFaceImageJob(ctx context.Context, condition string, args
 // face-image rule in the same transaction: the only provisional person at Merge is merged into a named person as a
 // face_merge, and the others from Candidate up are offered. A merge refused for good is left out: the rest is stored
 // and the error wraps domain.ErrFaceMergeRefused. A job of an older face.generation returns
-// domain.ErrFaceGenerationChanged; one whose face changed or went since writes nothing.
+// domain.ErrFaceGenerationChanged, and one whose face was replaced since returns domain.ErrFaceImageChanged, so its
+// job reads the face again; one whose face went since writes nothing.
 func (s *FaceStore) StoreFaceImageVector(ctx context.Context, job domain.FaceImageJob, vector []float32) (
 	domain.FaceImageDecision, error,
 ) {
@@ -95,9 +125,11 @@ func (s *FaceStore) StoreFaceImageVector(ctx context.Context, job domain.FaceIma
 	var revision int64
 	err = tx.QueryRowContext(ctx, `select p.image_revision from people p join person_images i on i.person_id = p.id
 		where p.id = ?`, job.PersonID).Scan(&revision)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && revision != job.Revision {
-		// The next job reads the face as it is now.
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.FaceImageDecision{}, nil
+	}
+	if err == nil && revision != job.Revision {
+		return domain.FaceImageDecision{}, domain.ErrFaceImageChanged
 	}
 	if err != nil {
 		return domain.FaceImageDecision{}, fmt.Errorf("cannot read the face of person %d: %w", job.PersonID, err)

@@ -72,6 +72,10 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
+type MediaFolderUsage interface {
+	MediaFolderUsage(ctx context.Context, id int64) (domain.MediaFolderUsage, error)
+}
+
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
 	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
@@ -226,6 +230,12 @@ type MediaFiles interface {
 	OpenSidecarFile(roots []string, path, name string) (*os.File, os.FileInfo, error)
 }
 
+// ForegroundReads holds the disk of a media file the owner is waiting on to one background read until end is called;
+// implemented by jobs.Scheduler.
+type ForegroundReads interface {
+	ReadInForeground(path string) (end func())
+}
+
 // SubtitleConverter outputs UTF-8 WebVTT with offsetMs subtracted from cue times; unreadable input
 // wraps ErrSubtitleUnreadable.
 type SubtitleConverter interface {
@@ -253,6 +263,8 @@ type Options struct {
 	Scans Scans
 
 	MediaFolders MediaFolders
+	// Nil FolderUsage makes usage reads fail.
+	FolderUsage MediaFolderUsage
 
 	Tags Tags
 
@@ -343,6 +355,8 @@ type Options struct {
 	Opener FileOpener
 	// Nil Files yields 500, not 404, so missing wiring cannot masquerade as missing media.
 	Files MediaFiles
+	// Nil Foreground leaves background reads alone while a stream or live transcode reads a disk.
+	Foreground ForegroundReads
 
 	Subtitles SubtitleConverter
 
@@ -380,6 +394,7 @@ type server struct {
 	playback     Playback
 	scans        Scans
 	mediaFolders MediaFolders
+	folderUsage  MediaFolderUsage
 	tags         Tags
 	credits      Credits
 	workInfo     WorkInfo
@@ -433,6 +448,7 @@ type server struct {
 	catalog         VideoCatalog
 	opener          FileOpener
 	files           MediaFiles
+	foreground      ForegroundReads
 	subtitles       SubtitleConverter
 	events          *Events
 	logger          *slog.Logger
@@ -476,6 +492,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		playback:               opts.Playback,
 		scans:                  opts.Scans,
 		mediaFolders:           opts.MediaFolders,
+		folderUsage:            opts.FolderUsage,
 		tags:                   opts.Tags,
 		credits:                opts.Credits,
 		workInfo:               opts.WorkInfo,
@@ -524,6 +541,7 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 		catalog:                opts.Catalog,
 		opener:                 opts.Opener,
 		files:                  opts.Files,
+		foreground:             opts.Foreground,
 		subtitles:              opts.Subtitles,
 		events:                 opts.Events,
 		logger:                 logger,
@@ -657,6 +675,14 @@ func requiresOtherJSONBody(r *http.Request) bool {
 	return false
 }
 
+// idActionBodyPaths are the POST {prefix}{id}/{action} paths that take a JSON body.
+var idActionBodyPaths = []struct{ prefix, action string }{
+	{"/api/videos/", "thumbnail-edits"},
+	{"/api/peer/videos/", "fetched-work-info"},
+	{"/api/peer/people/", "fetched-person"},
+	{"/api/virtual-videos/", "merge"},
+}
+
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
@@ -672,16 +698,14 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
 		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
-		"/api/peer/rule-counts":
+		"/api/peer/rule-counts", "/api/peer/credit-matches":
 		return true
 	}
-	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
-		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "thumbnail-edits"
-	}
-	if suffix, ok := strings.CutPrefix(path, "/api/virtual-videos/"); ok {
-		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "merge"
+	for _, action := range idActionBodyPaths {
+		if suffix, ok := strings.CutPrefix(path, action.prefix); ok {
+			id, rest, found := strings.Cut(suffix, "/")
+			return found && id != "" && rest == action.action
+		}
 	}
 
 	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {

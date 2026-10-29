@@ -63,6 +63,7 @@ export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
 export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
+export type MediaFolderUsage = components["schemas"]["MediaFolderUsage"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
 export type FolderSummary = components["schemas"]["FolderSummary"];
@@ -153,9 +154,6 @@ export interface RequestFailedDetails {
   links?: readonly string[];
   /** Base64 SHA-256 of a certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
   fingerprint?: string;
-  /** Both nodes' versions; only for unsupported_version. */
-  localVersion?: string;
-  peerVersion?: string;
 }
 
 /** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
@@ -171,8 +169,6 @@ export class RequestFailed extends Error {
   readonly settingKeys: readonly string[] | undefined;
   readonly links: readonly string[] | undefined;
   readonly fingerprint: string | undefined;
-  readonly localVersion: string | undefined;
-  readonly peerVersion: string | undefined;
 
   constructor(
     status: number,
@@ -193,8 +189,6 @@ export class RequestFailed extends Error {
     this.settingKeys = details.settingKeys;
     this.links = details.links;
     this.fingerprint = details.fingerprint;
-    this.localVersion = details.localVersion;
-    this.peerVersion = details.peerVersion;
   }
 }
 
@@ -298,8 +292,6 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       settingKeys: stringArray(body.settingKeys),
       links: stringArray(body.links),
       fingerprint: optionalString(body.fingerprint),
-      localVersion: optionalString(body.localVersion),
-      peerVersion: optionalString(body.peerVersion),
     },
   );
 }
@@ -1285,6 +1277,13 @@ export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<
 
 export function listMediaFolders(signal?: AbortSignal): Promise<MediaFolder[]> {
   return request<MediaFolder[]>("/api/media-folders", { signal });
+}
+
+export function getMediaFolderUsage(
+  id: number,
+  signal?: AbortSignal,
+): Promise<MediaFolderUsage> {
+  return request<MediaFolderUsage>(`/api/media-folders/${String(id)}/usage`, { signal });
 }
 
 /** Invalidate snapshots after root changes so returning lists cannot show removed folders or stale items. */

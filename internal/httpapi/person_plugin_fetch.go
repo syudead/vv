@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
@@ -28,10 +29,18 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	fetch, err := s.workInfoPlugins.FetchPersonWithPlugin(r.Context(), id, *body.PluginID,
-		domain.PersonFetchKey{Source: body.Source, ID: body.ID, Link: body.Link})
+	key := domain.PersonFetchKey{Source: body.Source, ID: body.ID, Link: body.Link}
+	var fetch domain.PersonPluginFetchResult
+	var err error
+	if domain.IsRemoteID(id) {
+		fetch, err = s.workInfoPlugins.FetchPeerPersonWithPlugin(r.Context(), &peerPersonFetch{s: s, r: r}, id, *body.PluginID, key)
+	} else {
+		fetch, err = s.workInfoPlugins.FetchPersonWithPlugin(r.Context(), id, *body.PluginID, key)
+	}
 	var ambiguous *domain.PersonLinkAmbiguousError
 	switch {
+	case errors.Is(err, domain.ErrPeerUnreachable):
+		s.peerUnreachable(w)
 	case errors.Is(err, domain.ErrPersonNotFound):
 		s.notFoundReason(w, gen.ErrorReasonPersonNotFound, "The person was not found.")
 	case errors.Is(err, domain.ErrPersonExternalIDMissing):
@@ -112,8 +121,19 @@ func (s *server) ApplyPersonPluginFetch(
 	if body.ImageIndex != nil {
 		imageIndex = *body.ImageIndex
 	}
-	applied, err := s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, selection, imageIndex)
+	var peer *peerPersonFetch
+	var applied domain.PersonPluginApplied
+	var err error
+	if domain.IsRemoteID(id) {
+		peer = &peerPersonFetch{s: s, r: r}
+		applied, err = s.workInfoPlugins.ApplyPeerPersonPluginFetch(r.Context(), peer, id, fetchID, selection, imageIndex)
+	} else {
+		applied, err = s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, selection, imageIndex)
+	}
 	switch {
+	case errors.Is(err, domain.ErrPeerUnreachable):
+		s.peerUnreachable(w)
+		return
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
 		s.invalidRequest(w, "Select at least one value the result carries; aliases, external IDs and links go in "+
 			"their own lists, and image needs the imageIndex of a kept image.")
@@ -128,15 +148,29 @@ func (s *server) ApplyPersonPluginFetch(
 		s.internalError(w, "Could not apply the fetched person.", err)
 		return
 	}
-	skipped := make([]gen.SkippedPersonValue, 0, len(applied.Skipped))
-	for _, value := range applied.Skipped {
-		skipped = append(skipped, gen.SkippedPersonValue{
+	person := toAPIPerson(applied.Person)
+	if peer != nil {
+		// The apply is consumed, so a failed read still answers success, as a remote video's apply does.
+		if person, err = peer.appliedPerson(r.Context(), id); err != nil {
+			s.logger.Warn("cannot read the peer's person after applying the fetched person",
+				slog.Int64("person", id), slog.Any("error", err))
+		}
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.PersonPluginFetchApplied{
+		Person: person, Skipped: toAPISkippedPersonValues(applied.Skipped),
+	}, s.logger)
+}
+
+func toAPISkippedPersonValues(values []domain.SkippedPersonValue) []gen.SkippedPersonValue {
+	out := make([]gen.SkippedPersonValue, 0, len(values))
+	for _, value := range values {
+		out = append(out, gen.SkippedPersonValue{
 			Item: gen.PersonPluginItem(value.Item), Value: value.Value, Reason: gen.SkippedPersonReason(value.Reason),
 			HolderName: optionalString(value.HolderName),
 		})
 	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.PersonPluginFetchApplied{Person: toAPIPerson(applied.Person), Skipped: skipped}, s.logger)
+	return out
 }
 
 // toPersonPluginSelection reports false for an unknown item; whether the values are in the result is the apply's.

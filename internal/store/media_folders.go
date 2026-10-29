@@ -23,6 +23,17 @@ func (s *LibraryStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFold
 	return listMediaFolders(ctx, s.db.sql)
 }
 
+// HasLocationsUnder reports whether a video's location lies under the media folder; an unknown folder has none.
+func (s *ScanIndexStore) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	var populated bool
+	if err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from media_folders mf
+		join video_locations l on `+inMediaFolderCondition("l.path")+` where mf.id = ?)`, folderID).
+		Scan(&populated); err != nil {
+		return false, fmt.Errorf("cannot check whether the media folder holds videos: %w", err)
+	}
+	return populated, nil
+}
+
 func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
 	rows, err := q.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
 	if err != nil {
@@ -321,4 +332,15 @@ func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 		}
 	}
 	return nil
+}
+
+// MediaFolderVideoBytes sums every indexed file below dir, each location once, whether or not it represents its video.
+func (s *SettingsStore) MediaFolderVideoBytes(ctx context.Context, dir string) (int64, error) {
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
+	var total int64
+	if err := s.db.sql.QueryRowContext(ctx, `select coalesce(sum(l.size_bytes), 0) from video_locations l where `+inFolder,
+		args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("cannot sum the media folder's video sizes: %w", err)
+	}
+	return total, nil
 }

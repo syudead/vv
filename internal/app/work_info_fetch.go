@@ -105,6 +105,100 @@ func (p *WorkInfoPlugins) FetchWorkInfoByLink(
 	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: normalized})
 }
 
+// FetchPeerWorkInfo fetches like FetchWorkInfo for a video of the paired node, whose remote id is videoID: this
+// node's plugin runs, and the peer gives the video and matches the credits.
+func (p *WorkInfoPlugins) FetchPeerWorkInfo(
+	ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, id string,
+) (domain.WorkInfoFetchResult, error) {
+	return p.onPeer(peer).FetchWorkInfo(ctx, videoID, pluginID, id)
+}
+
+// FetchPeerWorkInfoByLink is FetchPeerWorkInfo by a link, as FetchWorkInfoByLink is FetchWorkInfo.
+func (p *WorkInfoPlugins) FetchPeerWorkInfoByLink(
+	ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, link string,
+) (domain.WorkInfoFetchResult, error) {
+	return p.onPeer(peer).FetchWorkInfoByLink(ctx, videoID, pluginID, link)
+}
+
+// ApplyPeerWorkInfoFetch applies like ApplyWorkInfoFetch a result FetchPeerWorkInfo kept: this node rechecks its
+// plugin, and the peer writes. No face is filled and no person is reported linked, since those are the peer's.
+func (p *WorkInfoPlugins) ApplyPeerWorkInfoFetch(
+	ctx context.Context, peer domain.WorkInfoPeer, videoID int64, fetchID string, selection domain.WorkInfoSelection,
+	coverByPage bool,
+) (domain.WorkInfoApplied, error) {
+	return p.onPeer(peer).ApplyWorkInfoFetch(ctx, videoID, fetchID, selection, coverByPage)
+}
+
+// onPeer is p with the peer in place of this node's videos, matches, writes and covers; it shares p's plugins
+// and kept results.
+func (p *WorkInfoPlugins) onPeer(peer domain.WorkInfoPeer) *WorkInfoPlugins {
+	q := *p
+	node := peerWorkInfoNode{peer}
+	q.videos, q.applier, q.matcher, q.covers, q.personImages = node, node, node, node, nil
+	return &q
+}
+
+// peerWorkInfoNode records no fetch, since the activity log holds this node's videos, and fills no thumbnail,
+// which only a link fetch of this node's virtual video does.
+type peerWorkInfoNode struct{ domain.WorkInfoPeer }
+
+func (peerWorkInfoNode) RecordWorkInfoFetch(context.Context, int64, string) error { return nil }
+
+func (peerWorkInfoNode) FillThumbnailImage(context.Context, int64, string, []byte) (domain.Video, error) {
+	return domain.Video{}, domain.ErrNotFound
+}
+
+// MatchWorkInfoCredits matches entries as a fetch does, for the paired node's fetch for a video of this node.
+func (p *WorkInfoPlugins) MatchWorkInfoCredits(
+	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry,
+) ([]domain.CreditMatch, error) {
+	if p.matcher == nil {
+		return nil, errors.New("work-info fetches are not configured")
+	}
+	matches, err := p.matchCredits(ctx, kind, entries)
+	if matches == nil {
+		matches = []domain.CreditMatch{}
+	}
+	return matches, err
+}
+
+// ApplyPeerFetchedWorkInfo writes what the paired node fetched for this node's video videoID, as an apply of this
+// node's own fetch writes it. A missing video, or one whose content is no longer contentVersion, returns
+// ErrNotFound, and a same-person pair outside the fetched performers ErrWorkInfoApplyInvalid, both without writes.
+func (p *WorkInfoPlugins) ApplyPeerFetchedWorkInfo(
+	ctx context.Context, videoID int64, contentVersion string, apply domain.FetchedWorkInfoApply,
+) (domain.FetchedWorkInfoApplied, error) {
+	if p.videos == nil || p.applier == nil {
+		return domain.FetchedWorkInfoApplied{}, errors.New("work-info fetches are not configured")
+	}
+	if !validSamePeople(apply.SamePeople, apply.Details.People) {
+		return domain.FetchedWorkInfoApplied{}, domain.ErrWorkInfoApplyInvalid
+	}
+	video, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID)
+	if err != nil {
+		return domain.FetchedWorkInfoApplied{}, err
+	}
+	if video.ContentKey == "" || domain.ContentVersion(video.ContentKey) != contentVersion {
+		return domain.FetchedWorkInfoApplied{}, domain.ErrNotFound
+	}
+	apply.VideoID, apply.ContentKey, apply.FetchedByPeer = videoID, video.ContentKey, true
+	apply.Tags, _ = splitTagNames(apply.Tags)
+	return p.applier.ApplyFetchedWorkInfo(ctx, apply)
+}
+
+// validSamePeople reports whether each pair names a distinct fetched performer and a distinct person.
+func validSamePeople(same []domain.SamePerson, people []domain.FetchedPerson) bool {
+	seenAt, seenPerson := map[int]bool{}, map[int64]bool{}
+	for _, pair := range same {
+		if pair.At < 0 || pair.At >= len(people) || people[pair.At].Role != domain.PersonPerformer ||
+			seenAt[pair.At] || seenPerson[pair.PersonID] {
+			return false
+		}
+		seenAt[pair.At], seenPerson[pair.PersonID] = true, true
+	}
+	return true
+}
+
 // Check video existence before execution, then match and retain the result bound to that video.
 func (p *WorkInfoPlugins) keepFetched(
 	ctx context.Context, videoID, pluginID int64, req domain.WorkInfoRunRequest,
@@ -262,15 +356,8 @@ type chosenWork struct {
 func (p *WorkInfoPlugins) applyFetch(
 	ctx context.Context, fetch *workInfoFetch, chosen chosenWork, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
-	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
-	case err != nil:
+	if err := p.checkKeptPlugin(ctx, fetch.pluginID, fetch.digest, fetch.generation); err != nil {
 		return domain.WorkInfoApplied{}, err
-	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != fetch.digest ||
-		plugin.Generation != fetch.generation:
-		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
 	fields := chosen.selection.Fields
 	apply := domain.FetchedWorkInfoApply{
@@ -313,6 +400,21 @@ func (p *WorkInfoPlugins) applyFetch(
 		Video: video, SkippedTags: skippedTags(names, invalid, applied.RejectedTags), Skipped: skipped,
 		LinkedPeople: linked,
 	}, nil
+}
+
+// checkKeptPlugin returns ErrWorkInfoFetchStale when the plugin a result was fetched with is gone, no longer approved
+// or replaced since.
+func (p *WorkInfoPlugins) checkKeptPlugin(ctx context.Context, pluginID int64, digest string, generation int64) error {
+	plugin, err := p.store.WorkInfoPlugin(ctx, pluginID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return domain.ErrWorkInfoFetchStale
+	case err != nil:
+		return err
+	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != digest || plugin.Generation != generation:
+		return domain.ErrWorkInfoFetchStale
+	}
+	return nil
 }
 
 // Preserve fetched order; nil selected returns all fetched names.

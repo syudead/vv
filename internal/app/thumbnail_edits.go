@@ -53,13 +53,21 @@ type ThumbnailImageApplier interface {
 	) (domain.Video, error)
 }
 
+// ForegroundReads holds the disk of a media file the owner is waiting on to one background read until end is called;
+// implemented by jobs.Scheduler.
+type ForegroundReads interface {
+	ReadInForeground(path string) (end func())
+}
+
 type ThumbnailEditsOptions struct {
 	Settings ComfyUISettingsReader
 	Editor   ImageEditor
 	Frames   ThumbnailFrameSource
-	Images   ThumbnailImageReader
-	Applier  ThumbnailImageApplier
-	Logger   *slog.Logger
+	// Nil Foreground leaves background reads alone while a frame is read.
+	Foreground ForegroundReads
+	Images     ThumbnailImageReader
+	Applier    ThumbnailImageApplier
+	Logger     *slog.Logger
 	// Now defaults to time.Now and is replaceable by a test clock.
 	Now func() time.Time
 }
@@ -69,10 +77,12 @@ type ThumbnailEdits struct {
 	settings ComfyUISettingsReader
 	editor   ImageEditor
 	frames   ThumbnailFrameSource
-	images   ThumbnailImageReader
-	applier  ThumbnailImageApplier
-	logger   *slog.Logger
-	now      func() time.Time
+	// foreground is nil when nothing holds a disk for frame reads.
+	foreground ForegroundReads
+	images     ThumbnailImageReader
+	applier    ThumbnailImageApplier
+	logger     *slog.Logger
+	now        func() time.Time
 
 	// Protects byID and byVideo; may be acquired while holding a session lock, never in reverse order.
 	mu      sync.Mutex
@@ -136,16 +146,17 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 		now = time.Now
 	}
 	return &ThumbnailEdits{
-		settings: opts.Settings,
-		editor:   opts.Editor,
-		frames:   opts.Frames,
-		images:   opts.Images,
-		applier:  opts.Applier,
-		logger:   logger,
-		now:      now,
-		byID:     map[string]*thumbnailEditSession{},
-		byVideo:  map[int64]string{},
-		pending:  map[string]*thumbnailEditPendingCancel{},
+		settings:   opts.Settings,
+		editor:     opts.Editor,
+		frames:     opts.Frames,
+		foreground: opts.Foreground,
+		images:     opts.Images,
+		applier:    opts.Applier,
+		logger:     logger,
+		now:        now,
+		byID:       map[string]*thumbnailEditSession{},
+		byVideo:    map[int64]string{},
+		pending:    map[string]*thumbnailEditPendingCancel{},
 	}
 }
 
@@ -241,6 +252,9 @@ func (e *ThumbnailEdits) currentThumbnail(
 }
 
 func (e *ThumbnailEdits) frameAt(ctx context.Context, path string, positionMs int64) (thumbnailEditImage, error) {
+	if e.foreground != nil {
+		defer e.foreground.ReadInForeground(path)()
+	}
 	frame, err := e.frames.FrameAt(ctx, path, positionMs)
 	if err != nil {
 		return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)

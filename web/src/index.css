@@ -287,6 +287,19 @@
   display: none;
 }
 
+/*
+ * Show the bar over the poster before the first play, as video.js does after it; video.js still
+ * fades it only while playing, and its controls-disabled and error hides use !important.
+ */
+.vv-video-player:not([data-loading]) .video-js:not(.vjs-has-started) .vjs-control-bar {
+  display: flex;
+  visibility: visible;
+  opacity: 1;
+  transition:
+    visibility 0.1s,
+    opacity 0.1s;
+}
+
 /* Hide controls until initial autoplay loading completes. */
 .vv-video-player[data-loading] .video-js .vjs-control-bar {
   visibility: hidden;

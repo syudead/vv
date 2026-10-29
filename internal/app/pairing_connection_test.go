@@ -16,8 +16,6 @@ import (
 const (
 	connectionPeerID = "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b"
 	connectionPeer   = "http://peer.local:8080"
-	// connectionIncoming is the peer's credential here, well-formed so Authenticate reaches the store.
-	connectionIncoming = "vvp_aW5jb21pbmctc2VjcmV0LWZvci10aGUtcGVlci0wMDA"
 )
 
 // watchStep scripts one connection attempt: open holds the stream until the test ends it through
@@ -52,16 +50,8 @@ func newStreamLink(steps ...watchStep) *streamLink {
 	}
 }
 
-func (l *streamLink) Version(context.Context, domain.PeerTarget) (string, error) {
-	return "", errors.New("not used")
-}
-
 func (l *streamLink) RequestPairing(context.Context, domain.PeerTarget, domain.PairingRequest) (domain.PairingAnswer, error) {
 	return domain.PairingAnswer{}, errors.New("not used")
-}
-
-func (l *streamLink) Certificate(context.Context, string) (domain.PresentedCertificate, error) {
-	return domain.PresentedCertificate{}, errors.New("not used")
 }
 
 func (l *streamLink) Handshake(ctx context.Context, target domain.PeerTarget, _ string) (domain.PeerNode, error) {
@@ -74,12 +64,6 @@ func (l *streamLink) Handshake(ctx context.Context, target domain.PeerTarget, _ 
 		}
 	}
 	return node, nil
-}
-
-func (l *streamLink) refuseHandshake(err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.handshake = func(context.Context, domain.PeerTarget) error { return err }
 }
 
 func (l *streamLink) attemptTargets() []string {
@@ -139,7 +123,7 @@ func (l *streamLink) attemptTimes() []time.Time {
 	return times
 }
 
-// peerEventLog records each peer event with the state and the incoming secret at that moment.
+// peerEventLog records each peer event with the state and whether the link was marked revoked at that moment.
 type peerEventLog struct {
 	mu      sync.Mutex
 	pairing *Pairing
@@ -154,10 +138,10 @@ func (l *peerEventLog) Publish(events ...domain.Event) {
 		switch event := event.(type) {
 		case domain.PeerStateChanged:
 			state, _ := l.pairing.State(context.Background())
-			record := l.store.stored()
+			link := l.store.storedLink()
 			l.mu.Lock()
 			l.states = append(l.states, state)
-			l.revoked = append(l.revoked, record != nil && record.IncomingRevoked)
+			l.revoked = append(l.revoked, link != nil && link.Revoked)
 			l.mu.Unlock()
 		case domain.PeerChanged:
 			l.mu.Lock()
@@ -205,15 +189,13 @@ func startConnection(t *testing.T, link *streamLink) *connectionNode {
 func startLoggedConnection(t *testing.T, link *streamLink, logger *slog.Logger) *connectionNode {
 	t.Helper()
 	store := &fakePeerStore{}
-	record := domain.PeerRecord{
-		NodeID: connectionPeerID, Name: "peer", Address: connectionPeer, OutgoingSecret: "vvp_outgoing",
-	}
-	if err := store.AddPeer(context.Background(), record, connectionIncoming); err != nil {
+	record := domain.PeerLink{NodeID: connectionPeerID, Name: "peer", Address: connectionPeer, Secret: "vvp_outgoing"}
+	if err := store.AddLink(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
 	events := &peerEventLog{store: store}
 	pairing := NewPairing(PairingOptions{
-		Store: store, Link: link, Version: "1.2.0", NodeName: "self", Publisher: events, Logger: logger,
+		Store: store, Client: link, Version: "1.2.0", NodeName: "self", Publisher: events, Logger: logger,
 	})
 	events.pairing = pairing
 	ctx, cancel := context.WithCancel(context.Background())
@@ -306,16 +288,12 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 			t.Errorf("再接続までの待ち = %v, want 5s", times[1].Sub(lost))
 		}
 
-		// The peer forgot this node, so its handshake refuses the credential too.
-		node.link.refuseHandshake(domain.ErrPeerUnknown)
+		// The read node withdrew the grant, so the stream refuses the credential.
 		node.link.end <- domain.ErrPeerUnknown
 		synctest.Wait()
 		assertStates(t, "401 peer_unknown", node.events, "connected", "unreachable/network", "connected", "revoked")
 		if _, revoked, _ := node.events.snapshot(); !revoked[3] {
-			t.Error("revoked のイベントの時点で受け取る secret が取り消されていない")
-		}
-		if valid, _ := node.pairing.Authenticate(context.Background(), connectionIncoming); valid {
-			t.Error("revoked の後も相手の資格情報が通る")
+			t.Error("revoked のイベントの時点で link に revoked が記録されていない")
 		}
 
 		if err := node.pairing.Unpair(context.Background()); err != nil {
@@ -333,19 +311,32 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 	})
 }
 
-func TestConnectionRefusesAnotherVersion(t *testing.T) {
+// This node runs 1.2.0; a peer built with another label still connects and shows its own.
+func TestConnectionIgnoresTheVersionLabel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		link := newStreamLink()
-		link.node.Version = "1.3.0"
+		link := newStreamLink(watchStep{open: true})
+		link.node.Version = domain.DefaultVersion
+		node := startConnection(t, link)
+
+		assertStates(t, "版の違う相手", node.events, "connected")
+		if state, _ := node.pairing.State(context.Background()); state.PeerVersion != domain.DefaultVersion {
+			t.Errorf("PeerVersion = %q, want %s", state.PeerVersion, domain.DefaultVersion)
+		}
+	})
+}
+
+func TestConnectionRefusesAnotherNode(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		link := newStreamLink(watchStep{open: true})
+		link.node.ID = "0b9d3f1e-2c4a-4e6b-9d8c-7a6b5c4d3e2f"
 		node := startConnection(t, link)
 
 		state, _ := node.pairing.State(context.Background())
-		if state.State != domain.PeerUnreachable || state.Reason != domain.PeerReasonVersion || state.PeerVersion != "1.3.0" {
-			t.Errorf("State = %+v, want unreachable/version と 1.3.0", state)
+		if state.State != domain.PeerUnreachable || state.Reason != domain.PeerReasonNetwork {
+			t.Errorf("State = %s/%s, want unreachable/network", state.State, state.Reason)
 		}
-		assertStates(t, "版の不一致", node.events, "unreachable/version")
 		if attempts := len(link.attemptTimes()); attempts != 0 {
-			t.Errorf("版の違う相手のストリームを %d 回開いた", attempts)
+			t.Errorf("別の VVMDM のストリームを %d 回開いた", attempts)
 		}
 	})
 }
@@ -410,27 +401,7 @@ func TestConnectionOffersThePeerOnlyWhileConnected(t *testing.T) {
 	})
 }
 
-// A peer that requested the pairing accepts the secret at its handshake before it stores the record, so its
-// event stream refusing the secret then is not a revocation. Its handshake after storing reconnects at once.
-func TestConnectionWaitsForThePeerStoringThePairing(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		node := startConnection(t, newStreamLink(watchStep{err: domain.ErrPeerUnknown}, watchStep{open: true}))
-		if record := node.store.stored(); record == nil || record.IncomingRevoked {
-			t.Fatalf("記録 = %+v, want 受け取る secret が残る", record)
-		}
-		refused := time.Now()
-		if _, err := node.pairing.Handshake(context.Background(), connectionIncoming); err != nil {
-			t.Fatalf("相手の資格情報の Handshake: %v", err)
-		}
-		synctest.Wait()
-		assertStates(t, "相手の保存後の再接続", node.events, "connected")
-		if times := node.link.attemptTimes(); len(times) != 2 || !times[1].Equal(refused) {
-			t.Errorf("試行の時刻 = %v, want 相手の Handshake の直後 %v", times, refused)
-		}
-	})
-}
-
-// An attempt that an address change interrupted cannot revoke the record with the corrected address.
+// An attempt that an address change interrupted cannot revoke the link with the corrected address.
 func TestInterruptedAttemptRevokesNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const corrected = "http://peer-new.local:8080"
@@ -452,8 +423,8 @@ func TestInterruptedAttemptRevokesNothing(t *testing.T) {
 		close(answered)
 		synctest.Wait()
 
-		if record := node.store.stored(); record == nil || record.IncomingRevoked {
-			t.Fatalf("記録 = %+v, want 受け取る secret が残る", record)
+		if link := node.store.storedLink(); link == nil || link.Revoked {
+			t.Fatalf("link = %+v, want revoked でない", link)
 		}
 		assertStates(t, "直したアドレスで接続", node.events, "connected")
 		if targets := link.attemptTargets(); len(targets) != 1 || targets[0] != corrected {
@@ -475,7 +446,7 @@ func TestUnpairTellsThePeerAndDeletesOnFailure(t *testing.T) {
 		if want := "vvp_outgoing " + self.ID; len(node.link.forgotten) != 1 || node.link.forgotten[0] != want {
 			t.Errorf("相手への解除 = %v, want [%s]", node.link.forgotten, want)
 		}
-		if node.store.stored() != nil {
+		if node.store.storedLink() != nil {
 			t.Error("相手に伝えられなくても記録は消える")
 		}
 		// The stream the unpairing stopped is not reported as a lost connection.
@@ -524,7 +495,7 @@ func TestConnectionLogsEachTransitionOnce(t *testing.T) {
 
 		assertStates(t, "切断と 2 回の失敗の後の再接続", node.events, "connected", "unreachable/network", "connected")
 		want := []string{
-			"the paired VVMDM is connected", "the paired VVMDM became unreachable", "the paired VVMDM is connected",
+			"the read VVMDM is connected", "the read VVMDM became unreachable", "the read VVMDM is connected",
 		}
 		if got := logs.all(); !slices.Equal(got, want) {
 			t.Errorf("info のログ = %q, want %q", got, want)

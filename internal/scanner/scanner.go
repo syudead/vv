@@ -67,6 +67,15 @@ type Queue interface {
 	) error
 }
 
+// ReadSlots keeps the scan's content-key reads within each disk's read limit, shared with the ingest jobs.
+type ReadSlots interface {
+	// AcquireRead waits for a read slot on the disk of the media folder at root; release returns it.
+	AcquireRead(ctx context.Context, root string) (release func(), err error)
+	// KeepAhead keeps the scan ahead of jobs on the disk of the media folder at root between its reads there, until
+	// done is called.
+	KeepAhead(root string) (done func())
+}
+
 // Reporter is optional and hides progress/error persistence from the scanner.
 type Reporter interface {
 	// Called after target enumeration and after each processed file.
@@ -94,6 +103,8 @@ type Options struct {
 	Index    Index
 	Queue    Queue
 	Reporter Reporter
+	// Nil reads content keys without a slot.
+	ReadSlots ReadSlots
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -102,6 +113,7 @@ type Scanner struct {
 	index      Index
 	queue      Queue
 	reporter   Reporter
+	readSlots  ReadSlots
 	logger     *slog.Logger
 	contentKey func(string) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
@@ -125,6 +137,7 @@ func New(opts Options) *Scanner {
 		index:      opts.Index,
 		queue:      opts.Queue,
 		reporter:   opts.Reporter,
+		readSlots:  opts.ReadSlots,
 		logger:     logger,
 		contentKey: ContentKey,
 		walkDir:    filepath.WalkDir,
@@ -134,6 +147,8 @@ func New(opts Options) *Scanner {
 }
 
 type scanPass struct {
+	// folders are the registered media folders, whose disks the content-key reads hold a slot on.
+	folders []domain.MediaFolder
 	indexed map[string]domain.IndexedVideo
 	result  domain.ScanResult
 	// Unseen indexed paths become deletion candidates.
@@ -194,7 +209,8 @@ func (s *Scanner) startPass(
 		return nil, nil, err
 	}
 	pass := &scanPass{
-		indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped, decider: decider,
+		folders: folders, indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped,
+		decider: decider,
 	}
 	return folders, pass, nil
 }
@@ -307,10 +323,13 @@ func (s *Scanner) finishPass(
 }
 
 func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *domain.ScanResult) error {
+	ahead := readsAhead{slots: s.readSlots}
+	defer ahead.end()
 	for _, target := range pass.targets {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		ahead.moveTo(pass.rootOf(target.path))
 		videoID := pass.indexed[target.path].ID
 		s.reportFile(target.path, videoID)
 		if err := s.ingest(ctx, pass, target, result); err != nil {
@@ -588,7 +607,7 @@ func ensureReadableDirectory(path string) error {
 }
 
 func (s *Scanner) ingest(ctx context.Context, pass *scanPass, target scanTarget, result *domain.ScanResult) error {
-	file, info, err := s.readTarget(target.path, pass.decider)
+	file, info, err := s.readTarget(ctx, pass, target.path)
 	if err != nil {
 		return err
 	}
@@ -620,13 +639,18 @@ func (s *Scanner) ingest(ctx context.Context, pass *scanPass, target scanTarget,
 
 // readTarget computes the content key between two stable metadata reads, so a file changed while it is read is
 // rejected.
-func (s *Scanner) readTarget(path string, decider domain.ActivityDecider) (domain.VideoFile, fs.FileInfo, error) {
+func (s *Scanner) readTarget(
+	ctx context.Context, pass *scanPass, path string,
+) (domain.VideoFile, fs.FileInfo, error) {
 	info, err := s.stableTargetInfo(path)
 	if err != nil {
 		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
 	}
 
-	key, err := s.contentKey(path)
+	key, err := s.readContentKey(ctx, pass, path)
+	if ctx.Err() != nil {
+		return domain.VideoFile{}, nil, ctx.Err()
+	}
 	if err != nil {
 		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
 	}
@@ -646,13 +670,65 @@ func (s *Scanner) readTarget(path string, decider domain.ActivityDecider) (domai
 		SizeBytes:  info.Size(),
 		MTime:      info.ModTime(),
 		Container:  domain.ContainerFromPath(path),
-		Decider:    decider,
+		Decider:    pass.decider,
 	}
 	// Missing creation time is optional and remains zero.
 	if createdAt, ok := s.createdAt(path, info); ok {
 		file.FileCreatedAt = createdAt
 	}
 	return file, info, nil
+}
+
+// readContentKey holds a read slot of the file's media folder disk while it reads the content key. A file outside
+// every media folder has no disk to read within, so it is not read.
+func (s *Scanner) readContentKey(ctx context.Context, pass *scanPass, path string) (string, error) {
+	if s.readSlots == nil {
+		return s.contentKey(path)
+	}
+	root := pass.rootOf(path)
+	if root == "" {
+		return "", fmt.Errorf("the file is outside every media folder (%s)", path)
+	}
+	release, err := s.readSlots.AcquireRead(ctx, root)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	return s.contentKey(path)
+}
+
+// rootOf returns the innermost media folder that holds path, or "" for none.
+func (p *scanPass) rootOf(path string) string {
+	root := ""
+	for _, folder := range p.folders {
+		if domain.PathWithinRoot(folder.Path, path) && len(folder.Path) > len(root) {
+			root = folder.Path
+		}
+	}
+	return root
+}
+
+// readsAhead keeps the scan ahead of jobs on the disk of the media folder its consecutive targets are under, so a
+// job does not take a 1-slot disk between two of the scan's reads.
+type readsAhead struct {
+	slots ReadSlots
+	root  string
+	done  func()
+}
+
+func (a *readsAhead) moveTo(root string) {
+	if a.slots == nil || root == "" || (a.done != nil && root == a.root) {
+		return
+	}
+	a.end()
+	a.root, a.done = root, a.slots.KeepAhead(root)
+}
+
+func (a *readsAhead) end() {
+	if a.done != nil {
+		a.done()
+		a.done = nil
+	}
 }
 
 func sameFile(existing domain.IndexedVideo, info fs.FileInfo) bool {

@@ -113,7 +113,9 @@ func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change fu
 	}
 	var events []domain.Event
 	if changed {
-		events = personFaceEvents(domain.Credit{}, credit)
+		if events, err = queuePersonFace(ctx, tx, domain.Credit{}, credit); err != nil {
+			return domain.Credit{}, err
+		}
 	}
 	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot change the image of person %d: %w", id, err)
@@ -121,16 +123,17 @@ func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change fu
 	return credit, nil
 }
 
-// personFaceEvents reports a person whose face the write set, replaced or brought, or a provisional person with a
-// face that it named, so the face worker embeds the face and applies the face-image rule.
-func personFaceEvents(before, after domain.Credit) []domain.Event {
+// queuePersonFace queues a face_image job, in the write's transaction, for a person whose face the write set, replaced
+// or brought, or a provisional person with a face that it named, so the face is embedded and the face-image rule
+// applied. It returns the events to publish after commit.
+func queuePersonFace(ctx context.Context, tx *sql.Tx, before, after domain.Credit) ([]domain.Event, error) {
 	if after.ImageRevision == 0 {
-		return nil
+		return nil, nil
 	}
 	if after.ImageRevision != before.ImageRevision || before.Provisional && !after.Provisional {
-		return []domain.Event{domain.PersonImageChanged{PersonID: after.ID}}
+		return queueFaceImageJob(ctx, tx, after.ID)
 	}
-	return nil
+	return nil, nil
 }
 
 func bumpPersonImageRevision(ctx context.Context, tx *sql.Tx, id int64) error {

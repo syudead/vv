@@ -101,7 +101,7 @@ type VirtualVideoStore struct{ db *DB }
 // the assistant_run entry written in the same transaction and AssistantChanged published after commit.
 type AssistantStore struct{ db *DB }
 
-// PeerStore owns the peer record and this node's id; no other role reads them.
+// PeerStore owns the peer link, the peer grant and this node's id; no other role reads them.
 type PeerStore struct{ db *DB }
 
 // ActivityStore owns reads and startup recovery; other roles write activity through private helpers in their own transactions.

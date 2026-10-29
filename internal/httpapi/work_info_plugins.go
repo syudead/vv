@@ -50,6 +50,17 @@ type WorkInfoPlugins interface {
 	// ApplyWorkInfoFetch applies a selection and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
 	// ErrWorkInfoFetchStale.
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
+	// FetchPeerWorkInfo and FetchPeerWorkInfoByLink fetch for the peer's video, whose remote id is videoID, with
+	// this node's plugin; ApplyPeerWorkInfoFetch applies such a result on the peer. Their errors are those of the
+	// local operations, and ErrPeerUnreachable.
+	FetchPeerWorkInfo(ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
+	FetchPeerWorkInfoByLink(ctx context.Context, peer domain.WorkInfoPeer, videoID, pluginID int64, link string) (domain.WorkInfoFetchResult, error)
+	ApplyPeerWorkInfoFetch(ctx context.Context, peer domain.WorkInfoPeer, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
+	// MatchWorkInfoCredits and ApplyPeerFetchedWorkInfo answer the peer's fetch for a video of this node; the
+	// apply returns ErrNotFound for a missing video or changed content, and ErrWorkInfoApplyInvalid for a
+	// same-person pair outside the fetched performers.
+	MatchWorkInfoCredits(ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry) ([]domain.CreditMatch, error)
+	ApplyPeerFetchedWorkInfo(ctx context.Context, videoID int64, contentVersion string, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
 	// WorkInfoFetchCover returns ErrNotFound when the result has no cover at index.
 	WorkInfoFetchCover(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at
@@ -64,6 +75,13 @@ type WorkInfoPlugins interface {
 	// ApplyPersonPluginFetch may return ErrWorkInfoApplyInvalid, ErrPersonNotFound, or ErrWorkInfoFetchStale; a negative
 	// imageIndex names no image.
 	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int) (domain.PersonPluginApplied, error)
+	// FetchPeerPersonWithPlugin and ApplyPeerPersonPluginFetch are the person page's fetch and apply for the peer's
+	// person, whose remote id is personID; their errors are those of the local operations, and ErrPeerUnreachable.
+	FetchPeerPersonWithPlugin(ctx context.Context, peer domain.PersonPluginPeer, personID, pluginID int64, key domain.PersonFetchKey) (domain.PersonPluginFetchResult, error)
+	ApplyPeerPersonPluginFetch(ctx context.Context, peer domain.PersonPluginPeer, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int) (domain.PersonPluginApplied, error)
+	// ApplyPeerFetchedPerson answers the peer's apply for a person of this node; it returns ErrWorkInfoApplyInvalid
+	// for an item the request cannot give and ErrPersonNotFound for a missing person.
+	ApplyPeerFetchedPerson(ctx context.Context, personID int64, fetched domain.FetchedPluginPerson, items []domain.PersonPluginItem) (domain.PersonPluginApplied, error)
 }
 
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {

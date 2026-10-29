@@ -227,9 +227,9 @@ func TestConfirmedRejudgeKeepsTheBundlesOtherRejudgeOpen(t *testing.T) {
 	enableJudging(t, db, true)
 	judgedPrior(t, db, domain.ActivitySame)
 	applyFingerprint(t, db, ids["c"], fingerprintA)
-	job, err := db.Versions().ClaimJudgement(ctx)
+	job, err := claimVersionJudgement(ctx, db)
 	if err != nil {
-		t.Fatalf("ClaimJudgement: %v", err)
+		t.Fatalf("ClaimJob(version_judge): %v", err)
 	}
 	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByAI})
 	// The pair judged second shares one key with a/b; forcing that key lists both automatic bundles again.
@@ -239,9 +239,9 @@ func TestConfirmedRejudgeKeepsTheBundlesOtherRejudgeOpen(t *testing.T) {
 		t.Fatalf("candidate rows = %d, want both bundle pairs listed again", rows)
 	}
 
-	first, err := db.Versions().ClaimJudgement(ctx)
+	first, err := claimVersionJudgement(ctx, db)
 	if err != nil {
-		t.Fatalf("ClaimJudgement: %v", err)
+		t.Fatalf("ClaimJob(version_judge): %v", err)
 	}
 	applyJudgement(t, db, first.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByAI})
 
@@ -264,9 +264,9 @@ func TestSplitRejudgeKeepsTheLeavingKeysOtherListing(t *testing.T) {
 	judgedPrior(t, db, domain.ActivitySame)
 	applyFingerprint(t, db, ids["c"], fingerprintA)
 	for range 2 {
-		job, err := db.Versions().ClaimJudgement(ctx)
+		job, err := claimVersionJudgement(ctx, db)
 		if err != nil {
-			t.Fatalf("ClaimJudgement: %v", err)
+			t.Fatalf("ClaimJob(version_judge): %v", err)
 		}
 		applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionDifferent, Decider: domain.ActivityByAI})
 	}
@@ -287,9 +287,9 @@ func TestSplitRejudgeKeepsTheLeavingKeysOtherListing(t *testing.T) {
 	if rejudgeOf == 0 {
 		t.Fatal("a/c is no longer listed for judging again after the a/b split")
 	}
-	next, err := db.Versions().ClaimJudgement(ctx)
+	next, err := claimVersionJudgement(ctx, db)
 	if err != nil || next.Keys != [2]string{"key-a", "key-c"} {
-		t.Errorf("ClaimJudgement = %v, %v, want the listed a/c pair", next.Keys, err)
+		t.Errorf("ClaimJob(version_judge) = %v, %v, want the listed a/c pair", next.Keys, err)
 	}
 }
 

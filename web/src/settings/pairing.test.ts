@@ -29,16 +29,12 @@ describe("pairFailure", () => {
   const conflict = (reason: string, details: object = {}, message = "") =>
     new RequestFailed(409, "conflict", message, { reason, ...details });
 
-  it("puts an invalid address under the field the server names", () => {
+  it("puts an invalid address under the address field", () => {
     const failure = new RequestFailed(400, "invalid_request", "", {
       reason: "invalid_address",
-      field: "ownAddress",
+      field: "address",
     });
-    expect(pairFailure(failure)).toMatchObject({ kind: "field", field: "ownAddress" });
-    const unnamed = new RequestFailed(400, "invalid_request", "", {
-      reason: "invalid_address",
-    });
-    expect(pairFailure(unnamed)).toMatchObject({ kind: "field", field: "address" });
+    expect(pairFailure(failure)).toMatchObject({ kind: "field", field: "address" });
   });
 
   it("puts a refused code under the code field", () => {
@@ -48,23 +44,9 @@ describe("pairFailure", () => {
     expect(pairFailure(failure)).toMatchObject({ kind: "field", field: "code" });
   });
 
-  it("names both versions, the other node's first", () => {
-    const failure = conflict("unsupported_version", {
-      localVersion: "1.4.0",
-      peerVersion: "1.3.2",
-    });
-    expect(pairFailure(failure)).toEqual({
-      kind: "alert",
-      text: "The other VVMDM runs VVMDM 1.3.2 and this one 1.4.0. Update both to the same version.",
-    });
-  });
-
   it("asks to trust the fingerprint of an untrusted certificate", () => {
     const failure = conflict("certificate_untrusted", { fingerprint: "c2hh" });
     expect(pairFailure(failure)).toEqual({ kind: "untrusted", fingerprint: "c2hh" });
-    expect(
-      pairFailure(conflict("own_certificate_unverified", { fingerprint: "b3du" })),
-    ).toEqual({ kind: "ownUntrusted", fingerprint: "b3du" });
   });
 
   it("falls back to the reason's text when the details are missing", () => {

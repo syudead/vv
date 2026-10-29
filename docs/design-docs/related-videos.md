@@ -120,7 +120,10 @@ the caller's audience and gives its own videos in that directory the folder
 points, so the peer's videos rank as when the video is opened on the peer
 itself. An id the audience cannot see, or no id, gives no folder points and no
 error. A local open video sends no id, so the peer's videos get no folder
-points.
+points. Pairing does not compare versions, so a peer running a release older
+than `openVideoId` answers `400 invalid_request` to the unknown field, and the
+list skips the peer's part as when the peer fails
+([peer-library.md](peer-library.md#mixed-versions)).
 
 ```mermaid
 sequenceDiagram

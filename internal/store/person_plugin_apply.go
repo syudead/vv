@@ -9,9 +9,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ApplyPersonPluginFetch rechecks the plugin's approval, digest and generation, then writes the person's selected profile
-// fields and appends missing aliases and external IDs in one transaction. A plugin changed since the fetch returns
-// ErrWorkInfoFetchStale and a missing person ErrNotFound, both without writes. The face is the caller's, after commit.
+// ApplyPersonPluginFetch rechecks the plugin's approval, digest and generation, unless the peer fetched, then writes
+// the person's selected profile fields and appends missing aliases and external IDs in one transaction. A plugin
+// changed since the fetch returns ErrWorkInfoFetchStale and a missing person ErrNotFound, both without writes. The
+// face is the caller's, after commit.
 func (s *CreditStore) ApplyPersonPluginFetch(
 	ctx context.Context, apply domain.PersonPluginApply,
 ) (domain.PersonPluginApplied, error) {
@@ -22,8 +23,10 @@ func (s *CreditStore) ApplyPersonPluginFetch(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
-		return domain.PersonPluginApplied{}, err
+	if !apply.FetchedByPeer {
+		if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
+			return domain.PersonPluginApplied{}, err
+		}
 	}
 	skipped, matched, err := fillPersonFromPlugin(ctx, tx, apply.PersonID, apply.Fetched, apply.Items, true, time.Now())
 	if err != nil {

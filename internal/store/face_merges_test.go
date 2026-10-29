@@ -38,7 +38,7 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 	}
 	// Each video creates a provisional person of the same face; the owner merges the second into the first.
 	for range 2 {
-		job, err := db.Faces().Claim(ctx)
+		job, err := claimFace(db)
 		if err != nil {
 			t.Fatal(err)
 		}

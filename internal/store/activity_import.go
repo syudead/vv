@@ -15,7 +15,7 @@ import (
 // Each import activity spans all five stages; jobs reference it and update its state in their own transaction.
 
 func pendingJobCondition(alias string) string {
-	return alias + `.state in ('queued', 'running')`
+	return alias + `.state in ('queued', 'running') and ` + alias + `.kind in (` + importJobKinds + `)`
 }
 
 // Prefer the overridden title, then a virtual video's title, then the first location by path.
@@ -40,9 +40,18 @@ type importRun struct {
 	scanID int64
 	// retried is the activity-log entry this run retries.
 	retried int64
+	// request marks the owner's request on one video, whose jobs take the owner class.
+	request bool
 }
 
 func ruleRun() importRun { return importRun{decider: domain.ActivityByRule} }
+
+// followingRun queues the stages after a successful job; an owner request's stages keep its class.
+func followingRun(job domain.Job) importRun {
+	run := ruleRun()
+	run.request = job.Priority == domain.JobPriorityOwner
+	return run
+}
 
 // scanRun is the run of a scan's queueing (EnqueueJobs, EnsureJobs); the scan in progress, if any, opened it.
 func scanRun(ctx context.Context, q rowQueryer, decider domain.ActivityDecider) (importRun, error) {

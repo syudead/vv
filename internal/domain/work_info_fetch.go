@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -333,6 +334,9 @@ type FetchedWorkInfoApply struct {
 	Digest     string
 	// Generation detects replacement/revocation, including reapproval of an identical digest.
 	Generation int64
+	// FetchedByPeer marks a fetch the paired node ran with its own plugin and checked before sending; this node
+	// has no such plugin to recheck.
+	FetchedByPeer bool
 	// Nil Title preserves the display name.
 	Title *string
 	// Empty Tags preserves current tags; supplied names are normalized tentative assignments.
@@ -362,4 +366,15 @@ type WorkInfoApplied struct {
 	Skipped     []SkippedWorkInfoValue
 	// LinkedPeople are the distinct people the chosen entries were linked to, in fetched order.
 	LinkedPeople []int64
+}
+
+// WorkInfoPeer is the paired node as a fetch for one of its videos reaches it: this node runs the plugin, and the
+// peer holds the video, the people and organizations its fetched credits match, and the writes. Its videos are
+// addressed by their remote ids, and a video's ContentKey is the peer's contentVersion of it.
+type WorkInfoPeer interface {
+	GetVideo(ctx context.Context, audience Audience, id int64) (Video, error)
+	Match(ctx context.Context, kind CreditKind, entries []CreditMatchEntry) ([]CreditMatch, error)
+	// ApplyFetchedWorkInfo writes on the peer; the result's PersonIDs are empty, since they are the peer's ids.
+	ApplyFetchedWorkInfo(ctx context.Context, apply FetchedWorkInfoApply) (FetchedWorkInfoApplied, error)
+	UploadThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (Video, error)
 }

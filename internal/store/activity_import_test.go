@@ -98,6 +98,7 @@ func giveUpStage(t *testing.T, db *DB, kind domain.JobKind, cause error) {
 		if err := db.Ingest().FailClaimedJob(ctx, job, cause); err != nil {
 			t.Fatal(err)
 		}
+		makeJobsDue(t, db)
 	}
 }
 

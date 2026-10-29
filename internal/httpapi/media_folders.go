@@ -93,6 +93,32 @@ func (s *server) DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *server) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
+	if id < 1 {
+		s.invalidRequest(w, "Specify a valid id.")
+		return
+	}
+	if s.folderUsage == nil {
+		s.internalError(w, "Media folder usage is not configured.", nil)
+		return
+	}
+	usage, err := s.folderUsage.MediaFolderUsage(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.writeError(w, http.StatusNotFound, codeMediaFolderNotFound, "Media folder not found.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not read the media folder usage.", err)
+		return
+	}
+	out := gen.MediaFolderUsage{VideoBytes: usage.VideoBytes}
+	if usage.Disk != nil {
+		out.Disk = &gen.DiskUsage{FreeBytes: usage.Disk.FreeBytes, TotalBytes: usage.Disk.TotalBytes}
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
 func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 	return gen.MediaFolder{
 		Id: folder.ID, Path: folder.Path, Version: folder.Version,

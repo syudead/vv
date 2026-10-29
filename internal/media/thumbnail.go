@@ -86,13 +86,13 @@ func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, outp
 			_ = os.Remove(path)
 		}
 	}
-	if _, err := command(ctx, thumbnailCommand, args...).Output(); err != nil {
+	if _, err := command(ctx, PriorityLow, thumbnailCommand, args...).Output(); err != nil {
 		removeOutputs()
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return fmt.Errorf(
-				"%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr))
+			return exitFailure(fmt.Errorf(
+				"%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr)), exitErr.Stderr)
 		}
 		return fmt.Errorf("cannot run %s (%s): %w", thumbnailCommand, videoPath, err)
 	}

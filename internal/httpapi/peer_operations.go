@@ -52,6 +52,7 @@ var peerOperations = []string{
 	"PUT /api/videos/{id}/work-info",
 	"PUT /api/videos/{id}/details",
 	"PUT /api/videos/{id}/thumbnail-position",
+	"POST /api/videos/{id}/thumbnail-image",
 	"POST /api/videos/{id}/tags/{tagId}/confirm",
 	"POST /api/videos/{id}/tags/{tagId}/reject",
 	"POST /api/groups",
@@ -78,6 +79,7 @@ var peerOperations = []string{
 	"PATCH /api/people/{id}",
 	"DELETE /api/people/{id}",
 	"POST /api/people/{id}/merge",
+	"PUT /api/people/{id}/image",
 	"POST /api/organizations",
 	"PATCH /api/organizations/{id}",
 	"DELETE /api/organizations/{id}",
@@ -90,6 +92,7 @@ var peerOperations = []string{
 	"POST /api/video-edits/summary",
 	"POST /api/video-code-edits",
 	"POST /api/video-code-edits/summary",
+	"POST /api/work-info-fill-targets",
 	"POST /api/collections/delete",
 
 	"POST /api/peer/pairings",
@@ -99,6 +102,9 @@ var peerOperations = []string{
 	"POST /api/peer/vocabulary",
 	"GET /api/peer/videos/{id}/clues",
 	"POST /api/peer/rule-counts",
+	"POST /api/peer/credit-matches",
+	"POST /api/peer/videos/{id}/fetched-work-info",
+	"POST /api/peer/people/{id}/fetched-person",
 }
 
 // Match with ServeMux, as accessMux does, so wildcards and GET/HEAD agree with routing.

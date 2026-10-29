@@ -313,6 +313,73 @@ test.describe("live MP4 playback", () => {
     }
   });
 
+  test("再生前からバーが出て、音量、ミュート、シアターモード、シーク位置を選んでから再生できる", async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    // Every check precedes the first play: afterwards the bar fades while playing, as before.
+    await page.goto(`/videos/${String(video("direct").id)}`);
+    const player = page.locator(".video-js");
+    const bar = page.locator(".vjs-control-bar");
+    await expect(page.locator(".vjs-big-play-button")).toBeVisible();
+    await expect(bar).toBeVisible();
+    await expect(page.locator(".vjs-duration-display")).toHaveText(/[1-9]/);
+    await expect(player).not.toHaveClass(/vjs-has-started/);
+
+    await page.locator(".vv-player-theater button").click();
+    await expect(page.locator("[data-theater]")).toHaveCount(1);
+
+    // video.js tracks inactivity only from the first play, so report it directly: the bar must not fade.
+    await player.evaluate((element) => {
+      (
+        element as HTMLElement & { player: { userActive(value: boolean): void } }
+      ).player.userActive(false);
+    });
+    await expect(player).toHaveClass(/vjs-user-inactive/);
+    await expect(bar).toBeVisible();
+    expect(await bar.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+
+    // The slider unmutes, so set the level before muting.
+    await page.locator(".vjs-volume-panel").hover();
+    const volumeBar = page.locator(".vjs-volume-bar");
+    await expect(volumeBar).toBeVisible();
+    const volumeBox = await volumeBar.boundingBox();
+    if (volumeBox === null) throw new Error("volume bar is not visible");
+    await page.mouse.click(
+      volumeBox.x + volumeBox.width * 0.3,
+      volumeBox.y + volumeBox.height / 2,
+    );
+    const volume = await page
+      .locator("video.vjs-tech")
+      .evaluate((element) => (element as HTMLVideoElement).volume);
+    expect(Math.abs(volume - 0.3)).toBeLessThan(0.1);
+    await page.locator(".vjs-mute-control").click();
+    const seekBar = page.locator(".vjs-progress-control");
+    const box = await seekBar.boundingBox();
+    if (box === null) throw new Error("seek bar is not visible");
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const chosen = await page
+      .locator("video.vjs-tech")
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
+    const duration = await page
+      .locator("video.vjs-tech")
+      .evaluate((element) => (element as HTMLVideoElement).duration);
+    expect(Math.abs(chosen - duration / 2)).toBeLessThan(1);
+
+    await page.locator(".vjs-big-play-button").click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      return element !== null && !element.paused && element.readyState >= 2;
+    });
+    const started = await page.locator("video.vjs-tech").evaluate((element) => {
+      const media = element as HTMLVideoElement;
+      return { muted: media.muted, volume: media.volume, time: media.currentTime };
+    });
+    expect(started.muted).toBe(true);
+    expect(started.volume).toBe(volume);
+    expect(Math.abs(started.time - chosen)).toBeLessThan(1);
+  });
+
   test("形式matrixをdirectまたはtranscodeの正しい経路で3秒以内に再生する", async ({
     browser,
   }) => {

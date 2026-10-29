@@ -11,7 +11,7 @@ without notice.
 
 `/api/v1` and `/mcp` read and write the videos, tags, people and
 organizations of the VVMDM they are called on. When it is
-[paired with another VVMDM](running-vv.md#pair-two-vvmdms), that VVMDM's
+[reading another VVMDM](running-vv.md#read-another-vvmdm), that VVMDM's
 videos are not listed, and a tag renamed, merged or deleted through the API
 changes this VVMDM only; call the other VVMDM's API for its library.
 

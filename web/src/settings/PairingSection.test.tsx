@@ -10,15 +10,16 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import PairingSection from "./PairingSection";
 
 const NODE = { id: "a1", name: "den-pc", version: "1.4.0" };
-const PEER = {
+const LINK = {
   name: "studio-pc",
   address: "http://192.168.1.20:8080",
   version: "1.4.0",
   pinned: false,
 };
+const GRANT = { name: "laptop", pairedAt: "2026-10-20T09:30:00Z" };
 
 const unpaired: PeerState = { state: "unpaired", node: NODE };
-const connected: PeerState = { state: "connected", peer: PEER, node: NODE };
+const connected: PeerState = { state: "connected", link: LINK, node: NODE };
 
 function json(body: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
@@ -70,57 +71,47 @@ function renderSection() {
 async function fillForm(user: ReturnType<typeof userEvent.setup>, code = "abcd efgh") {
   await user.type(
     await screen.findByRole("textbox", { name: "Address of the other VVMDM" }),
-    PEER.address,
+    LINK.address,
   );
   await user.type(screen.getByRole("textbox", { name: "Its pairing code" }), code);
 }
 
 const pairButton = () => screen.getByRole("button", { name: "Pair" });
+const readSection = () => screen.getByRole("region", { name: "Read another VVMDM" });
+const readersSection = () =>
+  screen.getByRole("region", { name: "VVMDMs that read this one" });
 
 beforeEach(() => installFakeEventSource());
 afterEach(() => vi.unstubAllGlobals());
 
-describe("PairingSection, unpaired", () => {
-  it("shows a pairing code in two groups with its countdown", async () => {
-    const sent = serve(unpaired, {
-      "POST /api/peer/code": () =>
-        json(
-          { code: "ABCDEFGH", expiresAt: new Date(Date.now() + 600_000).toISOString() },
-          201,
-        ),
-    });
-    const user = userEvent.setup();
+describe("PairingSection, reading another VVMDM", () => {
+  it("shows both sections, with the form and the code, while nothing is paired", async () => {
+    serve(unpaired);
     renderSection();
 
-    await user.click(await screen.findByRole("button", { name: "Show pairing code" }));
-
-    expect(await screen.findByText("ABCD EFGH")).toBeDefined();
-    expect(screen.getByRole("status").textContent).toBe("Expires in 10:00");
-    expect(screen.getByRole("button", { name: "New code" })).toBeDefined();
-    expect(sent).toEqual([{ method: "POST", url: "/api/peer/code", body: undefined }]);
+    await screen.findByRole("heading", { name: "Read another VVMDM" });
+    expect(within(readSection()).getByRole("button", { name: "Pair" })).toBeDefined();
+    expect(
+      within(readersSection()).getByRole("button", { name: "Show pairing code" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Address of this VVMDM" })).toBeNull();
   });
 
-  it("pairs with both addresses and the typed code, then shows Connected", async () => {
+  it("pairs with the address and the typed code, then shows Connected", async () => {
     const sent = serve(unpaired, { "POST /api/peer/pair": () => json(connected, 201) });
     const user = userEvent.setup();
     renderSection();
 
-    const own = await screen.findByRole("textbox", { name: "Address of this VVMDM" });
-    expect((own as HTMLInputElement).value).toBe(window.location.origin);
     await fillForm(user);
     await user.click(pairButton());
 
     expect(await screen.findByText("Connected")).toBeDefined();
-    expect(screen.getByRole("heading", { name: "Paired VVMDM" })).toBeDefined();
+    expect(within(readSection()).getByText(LINK.name)).toBeDefined();
     expect(sent).toEqual([
       {
         method: "POST",
         url: "/api/peer/pair",
-        body: {
-          address: PEER.address,
-          code: "ABCDEFGH",
-          ownAddress: window.location.origin,
-        },
+        body: { address: LINK.address, code: "ABCDEFGH" },
       },
     ]);
   });
@@ -129,12 +120,7 @@ describe("PairingSection, unpaired", () => {
     [
       "already_paired",
       conflict("already_paired"),
-      "One of the two VVMDMs is already paired. Unpair it on its Pairing page first.",
-    ],
-    [
-      "unsupported_version",
-      conflict("unsupported_version", { localVersion: "1.4.0", peerVersion: "1.3.2" }),
-      "The other VVMDM runs VVMDM 1.3.2 and this one 1.4.0. Update both to the same version.",
+      "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing on its Pairing page first.",
     ],
     [
       "peer_unreachable",
@@ -142,11 +128,11 @@ describe("PairingSection, unpaired", () => {
         {
           code: "conflict",
           reason: "peer_unreachable",
-          message: "the other node could not call this node back",
+          message: "Could not reach the other VVMDM at http://192.168.1.20:8080.",
         },
         409,
       ),
-      "Couldn't complete the pairing: the other node could not call this node back",
+      "Couldn't complete the pairing: Could not reach the other VVMDM at http://192.168.1.20:8080.",
     ],
   ])("names %s and keeps the form filled", async (_reason, response, shown) => {
     serve(unpaired, { "POST /api/peer/pair": () => response });
@@ -163,7 +149,7 @@ describe("PairingSection, unpaired", () => {
           name: "Address of the other VVMDM",
         }) as HTMLInputElement
       ).value,
-    ).toBe(PEER.address);
+    ).toBe(LINK.address);
     expect(
       (screen.getByRole("textbox", { name: "Its pairing code" }) as HTMLInputElement)
         .value,
@@ -206,63 +192,16 @@ describe("PairingSection, unpaired", () => {
 
     expect(await screen.findByText("Connected")).toBeDefined();
     expect(sent[1]?.body).toEqual({
-      address: PEER.address,
+      address: LINK.address,
       code: "ABCDEFGH",
-      ownAddress: window.location.origin,
       fingerprint: "c2hhMjU2LXBpbg==",
     });
   });
 
-  it("confirms this VVMDM's own certificate, then the other's, and sends both", async () => {
-    const sent = serve(unpaired, {
-      "POST /api/peer/pair": [
-        () => conflict("own_certificate_unverified", { fingerprint: "b3du" }),
-        () => conflict("certificate_untrusted", { fingerprint: "cGVlcg==" }),
-        () => json(connected, 201),
-      ],
-    });
-    const user = userEvent.setup();
-    renderSection();
-
-    await fillForm(user);
-    await user.click(pairButton());
-    expect(
-      await screen.findByText("This VVMDM's certificate can't be verified"),
-    ).toBeDefined();
-    expect(
-      screen.getByText(
-        /compare this fingerprint with the certificate this VVMDM serves/i,
-      ),
-    ).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
-    expect(await screen.findByText("Certificate not trusted")).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Trust and pair" }));
-
-    expect(await screen.findByText("Connected")).toBeDefined();
-    expect(sent.map((request) => request.body)).toEqual([
-      { address: PEER.address, code: "ABCDEFGH", ownAddress: window.location.origin },
-      {
-        address: PEER.address,
-        code: "ABCDEFGH",
-        ownAddress: window.location.origin,
-        ownFingerprint: "b3du",
-      },
-      {
-        address: PEER.address,
-        code: "ABCDEFGH",
-        ownAddress: window.location.origin,
-        ownFingerprint: "b3du",
-        fingerprint: "cGVlcg==",
-      },
-    ]);
-  });
-});
-
-describe("PairingSection, paired", () => {
   it("follows the peer event between the faces and the states", async () => {
     serve(unpaired);
     renderSection();
-    await screen.findByRole("heading", { name: "Pair with another VVMDM" });
+    await screen.findByRole("heading", { name: "Read another VVMDM" });
 
     await emitServerEvent("peer", connected);
     expect(await screen.findByText("Connected")).toBeDefined();
@@ -282,7 +221,7 @@ describe("PairingSection, paired", () => {
       { ...connected, state: "unreachable", reason: "network" },
       {
         "PUT /api/peer/address": () =>
-          json({ ...connected, peer: { ...PEER, address: changed } }),
+          json({ ...connected, link: { ...LINK, address: changed } }),
       },
     );
     const user = userEvent.setup();
@@ -319,7 +258,7 @@ describe("PairingSection, paired", () => {
     const sent = serve(
       {
         ...connected,
-        peer: { ...PEER, pinned: true },
+        link: { ...LINK, pinned: true },
         state: "unreachable",
         reason: "certificate",
         fingerprint: "b2xk",
@@ -352,45 +291,99 @@ describe("PairingSection, paired", () => {
     ]);
   });
 
-  it("unpairs after the confirmation and returns to the unpaired face", async () => {
-    const sent = serve(connected, { "DELETE /api/peer": () => json(null, 204) });
+  it("unpairs the link after the confirmation and keeps the grant", async () => {
+    const sent = serve(
+      { ...connected, grant: GRANT },
+      { "DELETE /api/peer/link": () => json(null, 204) },
+    );
     const user = userEvent.setup();
     renderSection();
 
     await user.click(await screen.findByRole("button", { name: "Unpair" }));
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Unpair from studio-pc?",
+      name: "Stop reading studio-pc?",
     });
     await user.click(within(dialog).getByRole("button", { name: "Unpair" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Pair with another VVMDM" }),
+      await within(readSection()).findByRole("button", { name: "Pair" }),
     ).toBeDefined();
-    expect(sent).toEqual([{ method: "DELETE", url: "/api/peer", body: undefined }]);
+    expect(
+      within(readersSection()).getByText("laptop can read and organize this VVMDM"),
+    ).toBeDefined();
+    expect(sent).toEqual([{ method: "DELETE", url: "/api/peer/link", body: undefined }]);
   });
 
-  it("removes a pairing the other side ended, without an address row", async () => {
+  it("removes a link the other side revoked, without an address row", async () => {
     const sent = serve(
-      { state: "revoked", peer: PEER, node: NODE },
-      { "DELETE /api/peer": () => json(null, 204) },
+      { state: "revoked", link: LINK, node: NODE },
+      { "DELETE /api/peer/link": () => json(null, 204) },
     );
     const user = userEvent.setup();
     renderSection();
 
-    expect(await screen.findByText("Unpaired by the other side")).toBeDefined();
+    expect(await screen.findByText("Access removed by the other side")).toBeDefined();
     expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Remove pairing" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Pair with another VVMDM" }),
+      await within(readSection()).findByRole("button", { name: "Pair" }),
     ).toBeDefined();
-    expect(sent).toEqual([{ method: "DELETE", url: "/api/peer", body: undefined }]);
+    expect(sent).toEqual([{ method: "DELETE", url: "/api/peer/link", body: undefined }]);
+  });
+});
+
+describe("PairingSection, VVMDMs that read this one", () => {
+  it("shows a pairing code in two groups with its countdown", async () => {
+    const sent = serve(unpaired, {
+      "POST /api/peer/code": () =>
+        json(
+          { code: "ABCDEFGH", expiresAt: new Date(Date.now() + 600_000).toISOString() },
+          201,
+        ),
+    });
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(await screen.findByRole("button", { name: "Show pairing code" }));
+
+    expect(await screen.findByText("ABCD EFGH")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe("Expires in 10:00");
+    expect(screen.getByRole("button", { name: "New code" })).toBeDefined();
+    expect(sent).toEqual([{ method: "POST", url: "/api/peer/code", body: undefined }]);
   });
 
-  it("renders only catalog text besides the peer's data", async () => {
+  it("shows the reader in place of the code and removes its access after the confirmation", async () => {
+    const sent = serve(
+      { ...unpaired, grant: GRANT },
+      { "DELETE /api/peer/grant": () => json(null, 204) },
+    );
+    const user = userEvent.setup();
+    renderSection();
+
+    const readers = within(
+      await screen.findByRole("region", { name: "VVMDMs that read this one" }),
+    );
+    expect(readers.getByText("laptop can read and organize this VVMDM")).toBeDefined();
+    expect(readers.getByText(/^Paired /)).toBeDefined();
+    expect(readers.queryByRole("button", { name: "Show pairing code" })).toBeNull();
+    await user.click(readers.getByRole("button", { name: "Remove access" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Remove laptop's access?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Remove access" }));
+
+    expect(
+      await within(readersSection()).findByRole("button", { name: "Show pairing code" }),
+    ).toBeDefined();
+    expect(sent).toEqual([{ method: "DELETE", url: "/api/peer/grant", body: undefined }]);
+  });
+
+  it("renders only catalog text besides the peers' data", async () => {
     enablePseudoLocale();
     serve({
       ...connected,
+      grant: GRANT,
       state: "unreachable",
       reason: "certificate",
       fingerprint: "b2xk",
@@ -398,6 +391,12 @@ describe("PairingSection, paired", () => {
     const { container } = renderSection();
     await screen.findByText("b2xk");
 
-    expectCatalogTextOnly(container, [PEER.name, PEER.address, PEER.version, "b2xk"]);
+    expectCatalogTextOnly(container, [
+      LINK.name,
+      LINK.address,
+      LINK.version,
+      "b2xk",
+      GRANT.name,
+    ]);
   });
 });

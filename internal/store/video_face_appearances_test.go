@@ -9,9 +9,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// setFaceQueueState records a done or failed result of key, or queues its face job.
 func setFaceQueueState(t *testing.T, db *DB, key, state string) {
 	t.Helper()
-	if _, err := db.sql.Exec(`insert into face_queue (content_key, state, updated_at) values (?, ?, 0)`, key, state); err != nil {
+	statement := `insert into face_results (content_key, state, updated_at) values (?, ?, 0)`
+	if state == string(domain.JobQueued) {
+		statement = `insert into jobs (kind, subject_key, state, created_at, updated_at) values ('face', ?, ?, 0, 0)`
+	}
+	if _, err := db.sql.Exec(statement, key, state); err != nil {
 		t.Fatal(err)
 	}
 }

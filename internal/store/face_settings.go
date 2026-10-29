@@ -39,7 +39,8 @@ func faceRecognizer(ctx context.Context, q rowQueryer) (domain.FaceRecognizer, e
 
 // SaveFaceSettings expects settings validated by domain.ValidateFaceSettings. A changed recognizer, in the same
 // transaction, increases face.generation so a result computed for the old recognizer is refused, clears the old
-// recognizer's vectors and queues again every video that has a face analysis row.
+// recognizer's vectors, queues again every video that has a face analysis result and queues the embedding of every
+// face.
 func (s *SettingsStore) SaveFaceSettings(ctx context.Context, settings domain.FaceSettings) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -69,7 +70,7 @@ func (s *SettingsStore) SaveFaceSettings(ctx context.Context, settings domain.Fa
 }
 
 // switchFaceRecognizer fences results of the old recognizer, removes its vectors, which the new one's cannot be
-// compared with, and queues the analysed videos again. Appearances keep their tracks, so the next analysis carries
+// compared with, and queues the analysed videos and a queue_face_images job, which queues every face again. Appearances keep their tracks, so the next analysis carries
 // them over with their people.
 func switchFaceRecognizer(ctx context.Context, tx *sql.Tx, c *changes, recognizer domain.FaceRecognizer) error {
 	generation, err := faceGeneration(ctx, tx)
@@ -87,8 +88,15 @@ func switchFaceRecognizer(ctx context.Context, tx *sql.Tx, c *changes, recognize
 		return fmt.Errorf("cannot remove the face vectors of the old recognizer: %w", err)
 	}
 	_, err = queueContentTx(ctx, tx, c, faceQueue, `select v.content_key from videos v
-		join face_queue q on q.content_key = v.content_key
+		join face_results r on r.content_key = v.content_key
 		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, `'done', 'failed'`,
 		domain.ActivityByOwner, nil)
+	if err != nil {
+		return err
+	}
+	queued, err := queueSubjectJob(ctx, tx, subjectJob{kind: domain.JobQueueFaceImages, priority: domain.JobPriorityImport})
+	if queued {
+		c.jobsQueued(domain.JobQueueFaceImages)
+	}
 	return err
 }

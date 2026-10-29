@@ -11,7 +11,7 @@ import {
   test,
 } from "@playwright/test";
 
-import { mainNode, nodeEnv, nodeURL, secondNode, serverBinary } from "./nodes";
+import { nodeEnv, nodeURL, secondNode, serverBinary } from "./nodes";
 import { ownerAccount } from "./owner-account";
 
 // Pairs the main node with a second real server from the Settings page, then reads, plays and loses the
@@ -175,7 +175,7 @@ test.describe.serial("paired library", () => {
     test.setTimeout(180_000);
     // A retry finds the main node still paired with the previous run's second node.
     expect(
-      (await request.delete("/api/peer", { headers: mutationHeaders })).status(),
+      (await request.delete("/api/peer/link", { headers: mutationHeaders })).status(),
     ).toBe(204);
     secondRequest = await startSecondNode();
     remoteVideo = { ...(await setUpSecondNode(secondRequest)) };
@@ -189,7 +189,7 @@ test.describe.serial("paired library", () => {
   test.afterAll(async ({ request }) => {
     await stopSecondNode();
     await secondRequest?.dispose();
-    const unpaired = await request.delete("/api/peer", { headers: mutationHeaders });
+    const unpaired = await request.delete("/api/peer/link", { headers: mutationHeaders });
     expect(unpaired.status()).toBe(204);
     if (localFolder !== undefined) {
       const removed = await request.delete(
@@ -201,7 +201,7 @@ test.describe.serial("paired library", () => {
     await rm(secondNode.dataDir, { recursive: true, force: true });
   });
 
-  test("設定の Pairing で相手のコードを入れると、両方の台が connected になる", async ({
+  test("設定の Pairing で相手のコードを入れると、この台が connected になり、相手にはこの台が読む台として出る", async ({
     page,
     request,
   }) => {
@@ -213,8 +213,6 @@ test.describe.serial("paired library", () => {
     await page.goto("/settings/pairing");
     await page.getByLabel("Address of the other VVMDM").fill(nodeURL(secondNode));
     await page.getByLabel("Its pairing code").fill(code);
-    // The form's default is the browser's origin, which is the Vite server; the peer calls the node itself.
-    await page.getByLabel("Address of this VVMDM").fill(nodeURL(mainNode));
     await page.getByRole("button", { name: "Pair", exact: true }).click();
     await expect(page.getByText("Connected", { exact: true })).toBeVisible({
       timeout: 15_000,
@@ -222,19 +220,24 @@ test.describe.serial("paired library", () => {
 
     const own = (await (await request.get("/api/peer")).json()) as {
       state: string;
-      peer: { name: string };
+      link: { name: string };
+      grant?: unknown;
     };
     expect(own.state).toBe("connected");
-    peerName = own.peer.name;
-    // The node that showed the code connects back on its own; when its first attempt comes before the
-    // main node stored the pairing, the main node's handshake makes it retry at once.
-    await expect
-      .poll(
-        async () =>
-          ((await (await peer.get("/api/peer")).json()) as { state: string }).state,
-        { timeout: 20_000 },
-      )
-      .toBe("connected");
+    expect(own.grant).toBeUndefined();
+    peerName = own.link.name;
+    // The node that showed the code reads nothing: it holds the grant and no link, and never connects here.
+    const other = (await (await peer.get("/api/peer")).json()) as {
+      state: string;
+      link?: unknown;
+      grant: { name: string };
+    };
+    expect(other.state).toBe("unpaired");
+    expect(other.link).toBeUndefined();
+    expect(other.grant.name).toBe(
+      ((await (await request.get("/api/peer")).json()) as { node: { name: string } }).node
+        .name,
+    );
   });
 
   test("ライブラリに両方の台の動画が出て、相手の動画にだけ目印が付く", async ({

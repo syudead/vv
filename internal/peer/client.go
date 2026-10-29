@@ -103,65 +103,11 @@ func verifyPin(pinned string) func(tls.ConnectionState) error {
 	}
 }
 
-// Certificate completes a TLS handshake with the https address and closes the connection without sending a
-// request, so nothing reaches whoever terminates it; it reports whether the roots verify the certificate.
-func (c *Client) Certificate(ctx context.Context, address string) (domain.PresentedCertificate, error) {
-	parsed, err := url.Parse(address)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
-		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{Message: "Not an https address: " + address + "."}
-	}
-	port := parsed.Port()
-	if port == "" {
-		port = "443"
-	}
-	dialer := &tls.Dialer{
-		NetDialer: &net.Dialer{Timeout: connectTimeout},
-		Config:    &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: c.roots, ServerName: parsed.Hostname()},
-	}
-	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(parsed.Hostname(), port))
-	if err == nil {
-		defer func() { _ = conn.Close() }()
-		if secure, ok := conn.(*tls.Conn); ok && len(secure.ConnectionState().PeerCertificates) > 0 {
-			leaf := secure.ConnectionState().PeerCertificates[0]
-			return domain.PresentedCertificate{Fingerprint: Fingerprint(leaf), Verified: true}, nil
-		}
-		return domain.PresentedCertificate{}, &domain.PeerUnreachableError{Message: address + " presented no certificate."}
-	}
-	// A failed verification still carries the certificate it rejected, so its fingerprint needs no skipped check.
-	var unverified *tls.CertificateVerificationError
-	if errors.As(err, &unverified) && len(unverified.UnverifiedCertificates) > 0 {
-		return domain.PresentedCertificate{Fingerprint: Fingerprint(unverified.UnverifiedCertificates[0])}, nil
-	}
-	return domain.PresentedCertificate{}, &domain.PeerUnreachableError{
-		Message: "Could not connect to " + address + ".", Cause: err,
-	}
-}
-
-// Version reads the release version the peer's health reports, also while its storage is degraded.
-func (c *Client) Version(ctx context.Context, target domain.PeerTarget) (string, error) {
-	var health gen.Health
-	if err := c.call(ctx, target, http.MethodGet, "/api/health", "", nil, &health,
-		http.StatusOK, http.StatusServiceUnavailable); err != nil {
-		return "", err
-	}
-	return health.Version, nil
-}
-
+// RequestPairing sends the code with this node's identity and returns the secret the other node grants.
 func (c *Client) RequestPairing(
 	ctx context.Context, target domain.PeerTarget, req domain.PairingRequest,
 ) (domain.PairingAnswer, error) {
-	body := gen.PairingRequest{
-		Code: req.Code,
-		Node: gen.PairingRequestNode{
-			Id: req.Node.ID, Name: req.Node.Name, Address: req.Address, Version: req.Node.Version,
-		},
-		Secret: req.Secret,
-	}
-	if req.Fingerprint != "" {
-		body.Node.Fingerprint = &req.Fingerprint
-	}
+	body := gen.PairingRequest{Code: req.Code, Node: peerNodeBody(req.Node)}
 	var answer gen.PairingAnswer
 	if err := c.call(ctx, target, http.MethodPost, "/api/peer/pairings", "", body, &answer,
 		http.StatusCreated); err != nil {
@@ -183,7 +129,11 @@ func nodeFrom(node gen.PeerNode) domain.PeerNode {
 	return domain.PeerNode{ID: node.Id, Name: node.Name, Version: node.Version}
 }
 
-// Forget tells the peer that the node nodeID unpaired.
+func peerNodeBody(node domain.PeerNode) gen.PeerNode {
+	return gen.PeerNode{Id: node.ID, Name: node.Name, Version: node.Version}
+}
+
+// Forget tells the read node that the node nodeID stopped reading it.
 func (c *Client) Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error {
 	return c.call(ctx, target, http.MethodDelete, "/api/peer/pairings/"+url.PathEscape(nodeID), secret, nil, nil,
 		http.StatusNoContent)
@@ -271,6 +221,9 @@ func (c *Client) do(req *http.Request, target domain.PeerTarget, bounds limits) 
 	return resp, nil
 }
 
+// legacyVersionRefusal is the reason a build that still compared versions gives when this node's differs.
+const legacyVersionRefusal gen.ErrorReason = "unsupported_version"
+
 // refusal maps the peer's error body to the domain error of the same meaning.
 func refusal(status int, body []byte, address string) error {
 	var answer gen.Error
@@ -286,23 +239,19 @@ func refusal(status int, body []byte, address string) error {
 		return domain.ErrAlreadyPaired
 	case gen.ErrorReasonPeerUnknown:
 		return domain.ErrPeerUnknown
-	case gen.ErrorReasonUnsupportedVersion:
-		// The peer names itself local; seen from here the two swap.
-		return &domain.UnsupportedVersionError{Local: deref(answer.PeerVersion), Peer: deref(answer.LocalVersion)}
-	case gen.ErrorReasonPeerUnreachable:
-		return &domain.PeerUnreachableError{Message: "The other VVMDM could not reach this one: " + answer.Message}
-	case gen.ErrorReasonCertificateUntrusted:
-		// The peer names the certificate it saw at this node's address, which only the owner of this node can judge.
-		return &domain.OwnCertificateUntrustedError{Fingerprint: deref(answer.Fingerprint)}
+	case legacyVersionRefusal:
+		return &domain.PeerUnreachableError{
+			Message: "The other VVMDM runs an older build that pairs only with its own version. Update it and try again.",
+		}
+	}
+	if status == http.StatusBadRequest && answer.Code == gen.ErrorCodeInvalidRequest {
+		// Another release refuses a request body it does not know, such as a build that still pairs mutually
+		// and expects the sender's address and secret.
+		return &domain.PeerUnreachableError{
+			Message: "The other VVMDM at " + address + " did not accept the request, as an older build does. Update it and try again.",
+		}
 	}
 	return &domain.PeerUnreachableError{
 		Message: "The other VVMDM at " + address + " answered with status " + strconv.Itoa(status) + ".",
 	}
-}
-
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }

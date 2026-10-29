@@ -650,7 +650,7 @@ export default function VideoPlayer(props: Props) {
       // Clear video.js error state so controls remain available beneath the page's failure overlay.
       player.error(null);
       setHoldControlBar(false);
-      // Transcode switches clear vjs-has-started; restore it so controls remain usable on failure.
+      // vjs-has-started hides the poster and big play button under the failure overlay; transcode switches clear it.
       player.hasStarted(true);
     };
 
@@ -701,6 +701,7 @@ export default function VideoPlayer(props: Props) {
       reconnectCount += 1;
       setStatus({ playing: false, loading: false, reconnecting: true });
       setHoldControlBar(false);
+      // Hide the poster and big play button under the reconnect overlay.
       player.hasStarted(true);
       reconnectTimer = window.setTimeout(reload, delay);
     };

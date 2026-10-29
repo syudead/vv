@@ -30,20 +30,16 @@ type AutoTagQueue interface {
 	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
 	// Queue the video again for the owner's retry of entryID, joining that entry's pipelines.
 	RetryVideo(ctx context.Context, videoID, entryID int64) (int, error)
-	// Claim the oldest queued classification or return ErrNoJob.
-	Claim(ctx context.Context) (domain.AutoTagJob, error)
 	// Subject returns the video and its representative location's registered folder, or ErrNotFound.
 	Subject(ctx context.Context, contentKey string) (domain.AutoTagVideo, error)
 	// Exclude tentative tags, already-confirmed tags, and tags rejected for this video.
 	Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error)
-	// Finish stores probabilities and applied tags; a nonempty decider overrides the activity's
-	// decision source.
+	// Finish stores probabilities and applied tags and ends the running job; a nonempty decider overrides the
+	// activity's decision source.
 	Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection, decider domain.ActivityDecider) error
 	// Confirm/reject only tentative tags; otherwise return ErrNotFound.
 	ConfirmTentative(ctx context.Context, videoID, tagID int64) error
 	RejectTentative(ctx context.Context, videoID, tagID int64) error
-	Fail(ctx context.Context, contentKey, reason string) error
-	RequeueRunning(ctx context.Context) (int, error)
 	Counts(ctx context.Context) (domain.AutoTagCounts, error)
 }
 
@@ -70,13 +66,15 @@ type AutoTaggerOptions struct {
 	Undo       AutoTagUndoStore
 	Classifier Classifier
 	Images     VideoImageSource
-	Wake       Waker
+	// Wake wakes the job scheduler, which runs auto_tag jobs through HandleJob.
+	Wake Waker
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// AutoTagger classifies sequentially through a provider-independent interface and applies existing
-// tags by probability thresholds; see docs/design-docs/auto-tagging.md.
+// AutoTagger classifies the auto_tag jobs the scheduler grants, one at a time on the classifier slot, through a
+// provider-independent interface and applies existing tags by probability thresholds; see
+// docs/design-docs/auto-tagging.md.
 type AutoTagger struct {
 	queue      AutoTagQueue
 	settings   AutoTagSettingsStore
@@ -89,7 +87,7 @@ type AutoTagger struct {
 	saveMu sync.Mutex
 }
 
-// NewAutoTagger does not process work until its Step runs.
+// NewAutoTagger does not process work until the scheduler runs its HandleJob.
 func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 	logger := opts.Logger
 	if logger == nil {
@@ -118,7 +116,7 @@ func (a *AutoTagger) Status(ctx context.Context) (domain.AutoTagStatus, error) {
 	return domain.AutoTagStatus{Settings: settings, Counts: counts}, nil
 }
 
-// SaveSettings validates then wakes the worker so enabling resumes retained work.
+// SaveSettings validates then wakes the scheduler, so enabling resumes the jobs it kept queued while paused.
 func (a *AutoTagger) SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error) {
 	validated, err := domain.ValidateAutoTagSettings(settings)
 	if err != nil {
@@ -156,6 +154,15 @@ func (a *AutoTagger) CheckClassifier(ctx context.Context) error {
 func (a *AutoTagger) enabled(ctx context.Context) (bool, error) {
 	settings, err := a.settings.AutoTagSettings(ctx)
 	return settings.Enabled, err
+}
+
+// PausedJobKinds pauses auto_tag jobs while auto-tagging is off, so they keep their attempts until it is turned on.
+func (a *AutoTagger) PausedJobKinds(ctx context.Context) ([]domain.JobKind, error) {
+	on, err := a.enabled(ctx)
+	if err != nil || on {
+		return nil, err
+	}
+	return []domain.JobKind{domain.JobAutoTag}, nil
 }
 
 // QueueVideo may reclassify completed videos, but skips active classifications and videos outside
@@ -235,66 +242,34 @@ func (a *AutoTagger) UndoActivity(ctx context.Context, entry domain.ActivityEntr
 	return a.undo.UndoAutoTag(ctx, entry.ID, tagID)
 }
 
-// VideoImagesFinished only wakes the worker: the transaction that finishes the seek stage has already queued the
+// VideoImagesFinished only wakes the scheduler: the transaction that finishes the seek stage has already queued the
 // video when after-import tagging is on, so the import pipeline never looks done before tagging joins it.
 func (a *AutoTagger) VideoImagesFinished(context.Context, int64) {
 	a.Wake()
 }
 
-// Recover must run before the first Step.
-func (a *AutoTagger) Recover(ctx context.Context) error {
-	requeued, err := a.queue.RequeueRunning(ctx)
-	if err != nil {
-		return err
-	}
-	if requeued > 0 {
-		a.logger.Info("requeued interrupted auto-tagging jobs", slog.Int("count", requeued))
-	}
-	return nil
-}
-
-// Step classifies one queued video; disabled tagging retains queued work without contacting the classifier until
-// SaveSettings wakes it.
-func (a *AutoTagger) Step(ctx context.Context) domain.WorkerWait {
-	on, err := a.enabled(ctx)
-	if err != nil {
-		return retryStep(ctx, a.logger, "cannot read the auto-tagging settings", err)
-	}
-	if !on {
-		return domain.WorkerIdle
-	}
-	job, err := a.queue.Claim(ctx)
-	if errors.Is(err, domain.ErrNoJob) {
-		return domain.WorkerIdle
-	}
-	if err != nil {
-		return retryStep(ctx, a.logger, "cannot claim an auto-tagging job", err)
-	}
-	a.process(ctx, job)
-	return domain.WorkerNext
-}
-
-// Interrupted work is left for startup Recover rather than recorded as failed.
-func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
+// HandleJob classifies the claimed auto_tag job's content and records the result, which ends the job. A failure
+// returns an error, so the scheduler retries the job after its delay; the error's message is cut to fit the
+// activity's detail.
+func (a *AutoTagger) HandleJob(ctx context.Context, job domain.Job) error {
 	selection, decider, err := a.decide(ctx, job)
-	if ctx.Err() != nil {
-		return
-	}
 	if err != nil {
-		a.logger.Warn("auto-tagging failed", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		if err := a.queue.Fail(ctx, job.ContentKey, failureReason(err)); err != nil {
-			a.logger.Error("cannot record the auto-tagging failure", slog.Any("error", err))
-		}
-		return
+		return shortFailure{err}
 	}
-	if err := a.queue.Finish(ctx, job.ContentKey, selection, decider); err != nil {
-		a.logger.Error("cannot record the auto-tagging result", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-	}
+	return a.queue.Finish(ctx, job.ContentKey, selection, decider)
 }
+
+// shortFailure keeps the cause for errors.Is while its message stays short enough to show.
+type shortFailure struct{ error }
+
+func (e shortFailure) Error() string { return failureReason(e.error) }
+
+func (e shortFailure) Unwrap() error { return e.error }
 
 // Missing videos yield no decision for Finish to remove; no candidate questions preserves the
 // initiating decider, while classifier-backed decisions use ai.
-func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.AutoTagSelection, domain.ActivityDecider, error) {
+func (a *AutoTagger) decide(ctx context.Context, job domain.Job) (domain.AutoTagSelection, domain.ActivityDecider, error) {
+
 	var selection domain.AutoTagSelection
 	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {

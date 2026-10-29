@@ -7,6 +7,8 @@ var (
 	ErrFaceGenerationChanged = errors.New("the face recognizer changed while the result was computed")
 	// ErrFaceHelperStart reports a face helper that did not start or greet; the runtime, not the video, is at fault.
 	ErrFaceHelperStart = errors.New("the face helper did not start")
+	// ErrFaceImageChanged refuses a vector computed for a face that was replaced since it was read; nothing is stored.
+	ErrFaceImageChanged = errors.New("the face image changed while its vector was computed")
 )
 
 // FaceQueueScope chooses the videos a run queues for face analysis.
@@ -22,8 +24,8 @@ func (s FaceQueueScope) Valid() bool {
 	return s == FaceQueueMissing
 }
 
-// FaceJob is a claimed face analysis with the recognizer and face.generation current when it was claimed, read
-// together so a result is never stored under a generation its recognizer does not belong to.
+// FaceJob is a face analysis with the recognizer and face.generation current when it started, read together so a
+// result is never stored under a generation its recognizer does not belong to.
 type FaceJob struct {
 	ContentKey string
 	Recognizer FaceRecognizer
@@ -36,7 +38,7 @@ type PeopleCleared struct {
 	Queued int
 }
 
-// FaceAnalysis is one video's finished analysis, as the face worker hands it to the store.
+// FaceAnalysis is one video's finished analysis, as the face job hands it to the store.
 type FaceAnalysis struct {
 	ContentKey string
 	Recognizer FaceRecognizer
@@ -65,14 +67,6 @@ func (p FaceAnalysedPerson) MainPerson() MainPerson {
 	return MainPerson{Tracks: tracks, GoodSeconds: p.GoodSeconds, Centroid: p.Centroid}
 }
 
-// PersonImageChanged is published after commit when a person's face is set, replaced or brought by a merge, or a
-// provisional person with a face is named, so the face worker embeds the face and applies the face-image rule.
-type PersonImageChanged struct {
-	PersonID int64
-}
-
-func (PersonImageChanged) event() {}
-
 var (
 	// ErrPersonImageNoFace reports a face image without a good face, which gets no vector.
 	ErrPersonImageNoFace = errors.New("the image shows no usable face")
@@ -80,7 +74,7 @@ var (
 	ErrPersonImageManyFaces = errors.New("the image shows more than one face")
 )
 
-// FaceImageJob is a person's face image for the face worker, read with the recognizer and face.generation current
+// FaceImageJob is a person's face image for its face_image job, read with the recognizer and face.generation current
 // at the read.
 type FaceImageJob struct {
 	PersonID   int64

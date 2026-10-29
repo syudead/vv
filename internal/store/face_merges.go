@@ -137,7 +137,11 @@ func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, tar
 		return domain.Credit{}, nil, 0, err
 	}
 	c.matchesChanged()
-	return after, personFaceEvents(before, after), entryID, nil
+	events, err := queuePersonFace(ctx, tx, before, after)
+	if err != nil {
+		return domain.Credit{}, nil, 0, err
+	}
+	return after, events, entryID, nil
 }
 
 // readFaceMergeSource reads what the merge is about to move from the source, other than credits.

@@ -55,9 +55,14 @@ type remoteCollection struct {
 var remoteCollections = []remoteCollection{
 	newRemoteCollection(remoteVideoPrefix, "video", remoteVideoOperations, map[string]bool{
 		"GET /api/videos/{id}/related": true,
+		// Plugins and their kept results are this node's; the peer is reached for the video and the writes.
+		"POST /api/videos/{id}/work-info-fetches":                               true,
+		"POST /api/videos/{id}/work-info-fetches/{fetchId}/apply":               true,
+		"GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}":       true,
+		"GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image": true,
 	}),
 	newRemoteCollection("/api/tags/", "tag", remoteVocabularyOperations, vocabularyWrites("tags")),
-	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, vocabularyWrites("people")),
+	newRemoteCollection("/api/people/", "person", remoteVocabularyOperations, peopleAnswered()),
 	newRemoteCollection("/api/organizations/", "organization", remoteVocabularyOperations, vocabularyWrites("organizations")),
 }
 
@@ -68,6 +73,16 @@ func vocabularyWrites(collection string) map[string]bool {
 		"DELETE /api/" + collection + "/{id}":     true,
 		"POST /api/" + collection + "/{id}/merge": true,
 	}
+}
+
+// peopleAnswered adds the person page's plugin fetches to the people's writes: like a remote video's work-info fetch,
+// the plugin and its kept result are this node's, and the peer is reached for the person and the writes.
+func peopleAnswered() map[string]bool {
+	answered := vocabularyWrites("people")
+	answered["POST /api/people/{id}/plugin-fetches"] = true
+	answered["GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}"] = true
+	answered["POST /api/people/{id}/plugin-fetches/{fetchId}/apply"] = true
+	return answered
 }
 
 func newRemoteCollection(prefix, noun string, operations map[string]remoteOperation, merged map[string]bool) remoteCollection {

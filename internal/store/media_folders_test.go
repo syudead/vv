@@ -332,3 +332,48 @@ func TestReplacingFolderSynchronizesLocationsEnabledByNewRoot(t *testing.T) {
 		t.Fatalf("new-root representative was not synchronized: %+v", got)
 	}
 }
+
+func TestMediaFolderVideoBytesSumsEveryLocationBelowTheFolder(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	folder := filepath.Join(root, "a")
+	sibling := filepath.Join(root, "ab")
+	for _, file := range []domain.VideoFile{
+		sampleFile(filepath.Join(folder, "one.mp4"), "one", "same", 100, 0),
+		sampleFile(filepath.Join(folder, "sub", "copy.mp4"), "copy", "same", 100, 0),
+		sampleFile(filepath.Join(folder, "sub", "two.mp4"), "two", "other", 20, 0),
+		sampleFile(filepath.Join(sibling, "three.mp4"), "three", "third", 7, 0),
+	} {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := db.Settings().MediaFolderVideoBytes(ctx, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 220 {
+		t.Fatalf("video bytes = %d, want 220", got)
+	}
+}
+
+func TestHasLocationsUnderReportsAVideoBelowTheFolder(t *testing.T) {
+	db, media, other := twoRootsDB(t)
+	addVideoAt(t, db, "/media/sub/movie.mp4", "movie")
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		folder int64
+		want   bool
+	}{{media, true}, {other, false}} {
+		got, err := db.ScanIndex().HasLocationsUnder(ctx, tc.folder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("HasLocationsUnder(%d) = %v, want %v", tc.folder, got, tc.want)
+		}
+	}
+}
