@@ -230,6 +230,12 @@ type MediaFiles interface {
 	OpenSidecarFile(roots []string, path, name string) (*os.File, os.FileInfo, error)
 }
 
+// ForegroundReads holds the disk of a media file the owner is waiting on to one background read until end is called;
+// implemented by jobs.Scheduler.
+type ForegroundReads interface {
+	ReadInForeground(path string) (end func())
+}
+
 // SubtitleConverter outputs UTF-8 WebVTT with offsetMs subtracted from cue times; unreadable input
 // wraps ErrSubtitleUnreadable.
 type SubtitleConverter interface {
@@ -347,6 +353,8 @@ type Options struct {
 	Opener FileOpener
 	// Nil Files yields 500, not 404, so missing wiring cannot masquerade as missing media.
 	Files MediaFiles
+	// Nil Foreground leaves background reads alone while a stream or live transcode reads a disk.
+	Foreground ForegroundReads
 
 	Subtitles SubtitleConverter
 
@@ -437,6 +445,7 @@ type server struct {
 	catalog         VideoCatalog
 	opener          FileOpener
 	files           MediaFiles
+	foreground      ForegroundReads
 	subtitles       SubtitleConverter
 	events          *Events
 	logger          *slog.Logger
@@ -522,6 +531,7 @@ func NewRouter(opts Options) http.Handler {
 		catalog:                opts.Catalog,
 		opener:                 opts.Opener,
 		files:                  opts.Files,
+		foreground:             opts.Foreground,
 		subtitles:              opts.Subtitles,
 		events:                 opts.Events,
 		logger:                 logger,

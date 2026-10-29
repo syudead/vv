@@ -14,40 +14,16 @@ import (
 
 // Automatic judgements share owner bundle/dismiss helpers and publish candidate changes only after commit.
 
-// ClaimJudgement atomically claims the oldest eligible pair and its activity; the caller checks whether judging is enabled.
-func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJob, error) {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
+// JudgementInput reads what a judgement of the claimed pair compares: both fingerprints and the properties each file
+// had at import.
+func (s *VersionStore) JudgementInput(ctx context.Context, keys [2]string) (domain.VersionJudgeJob, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
+		return domain.VersionJudgeJob{}, fmt.Errorf("cannot read the version candidate: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	var job domain.VersionJudgeJob
-	var activityID sql.NullInt64
-	err = tx.QueryRowContext(ctx, `update video_version_candidates
-		   set judgement = 'running', retry_at = null, judgement_error = null, probability = null
-		 where (key_a, key_b) = (select c.key_a, c.key_b `+judgeablePairs+`
-		         and (c.judgement is null or (c.judgement = 'failed' and c.retry_at <= ?))
-		       order by c.created_at, c.key_a, c.key_b limit 1)
-		returning key_a, key_b, attempts, activity_id`, time.Now().Unix()).
-		Scan(&job.Keys[0], &job.Keys[1], &job.Attempts, &activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.VersionJudgeJob{}, domain.ErrNoJob
-	}
-	if err != nil {
-		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
-	}
-	c := &changes{}
-	now := time.Now()
-	processing := domain.VersionJudgementActivityState(domain.VersionJudgementRunning)
-	id, err := pairActivityFor(ctx, tx, c, job.Keys, activityID.Int64, processing, now)
-	if err != nil {
-		return domain.VersionJudgeJob{}, err
-	}
-	if err := updateActivity(ctx, tx, c, id, activityUpdate{state: processing}, now); err != nil {
-		return domain.VersionJudgeJob{}, err
-	}
-	for i, key := range job.Keys {
+	job := domain.VersionJudgeJob{Keys: keys}
+	for i, key := range keys {
 		fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
 		if err != nil {
 			return domain.VersionJudgeJob{}, err
@@ -60,13 +36,10 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 			return domain.VersionJudgeJob{}, err
 		}
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
-		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
-	}
-	return job, nil
+	return job, tx.Commit()
 }
 
-// Share eligibility across claiming, retry scheduling and activity creation; exclude unbundled and held pairs.
+// Share eligibility across claiming, retries and activity creation; exclude unbundled and held pairs.
 // A re-judged pair is claimable although it is bundled or dismissed.
 var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
 	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
@@ -120,7 +93,8 @@ func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (doma
 	return fingerprint, true, nil
 }
 
-// RecoverRunningJudgements preserves attempts and startup-interrupted activities; the next claim returns the same activity to running.
+// RecoverRunningJudgements returns pairs interrupted by a restart to waiting with their entries; startup recovery
+// requeues their jobs with the attempt counted.
 func (s *VersionStore) RecoverRunningJudgements(ctx context.Context) (int, error) {
 	return s.requeueJudgements(ctx, domain.VersionJudgementRunning, "cannot recover interrupted version judgements")
 }
@@ -131,17 +105,9 @@ func (s *VersionStore) requeueJudgements(ctx context.Context, from domain.Versio
 		return 0, fmt.Errorf("%s: %w", failure, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `update video_version_candidates set judgement = null where judgement = ?
-		returning coalesce(activity_id, 0)`, string(from))
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", failure, err)
-	}
-	ids, count, err := scanRequeuedActivityIDs(rows)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", failure, err)
-	}
 	c := &changes{}
-	if err := returnPairActivitiesToWaiting(ctx, tx, c, ids, domain.VersionJudgementActivityState(from), time.Now()); err != nil {
+	count, err := returnToWaiting(ctx, tx, c, from, `1`)
+	if err != nil {
 		return 0, err
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
@@ -170,7 +136,8 @@ func scanRequeuedActivityIDs(rows *sql.Rows) ([]int64, int, error) {
 	return ids, count, rows.Close()
 }
 
-// ApplyJudgement discards stale claims and rechecks both sides atomically; conflicting same verdicts become undecided, and failures retain retry state.
+// ApplyJudgement discards stale claims and rechecks both sides atomically; conflicting same verdicts become undecided,
+// and a failure leaves the pair's job waiting out its retry delay.
 func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -180,14 +147,23 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 
 	claimed := claimedCandidate{keys: keys}
 	var activityID, rejudgeOf sql.NullInt64
-	err = tx.QueryRowContext(ctx, `select attempts, activity_id, rejudge_of from video_version_candidates
+	err = tx.QueryRowContext(ctx, `select activity_id, rejudge_of from video_version_candidates
 		where key_a = ? and key_b = ? and judgement = 'running'`, keys[0], keys[1]).
-		Scan(&claimed.attempts, &activityID, &rejudgeOf)
+		Scan(&activityID, &rejudgeOf)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		// A pair no longer running has nothing to apply, but a claim left running would block its next job.
+		if _, err := tx.ExecContext(ctx, `delete from jobs where kind = `+versionJudgeJob+`
+			and subject_key = ? and subject_key_b = ? and state = 'running'`, keys[0], keys[1]); err != nil {
+			return false, fmt.Errorf("cannot end the version judgement job: %w", err)
+		}
+		return false, tx.Commit()
 	}
 	if err != nil {
 		return false, fmt.Errorf("cannot read the version candidate: %w", err)
+	}
+	running, err := readRunningJudgeJob(ctx, tx, keys)
+	if err != nil {
+		return false, err
 	}
 	c := &changes{}
 	now := time.Now()
@@ -207,6 +183,9 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 		return false, err
 	}
 	if err := recordJudgementEvidence(ctx, tx, claimed.entryID, result); err != nil {
+		return false, err
+	}
+	if err := settleJudgeJob(ctx, tx, c, keys, running, result.Error); err != nil {
 		return false, err
 	}
 	if err := s.db.commitWith(ctx, tx, c, append(events, domain.VersionCandidatesChanged{})...); err != nil {
@@ -238,15 +217,14 @@ func recordJudgementEvidence(ctx context.Context, tx *sql.Tx, id int64, result d
 
 // claimedCandidate is a running candidate and the activity entry that reports its judgement.
 type claimedCandidate struct {
-	keys     [2]string
-	attempts int
-	entryID  int64
+	keys    [2]string
+	entryID int64
 }
 
 func applyFirstJudgement(
 	ctx context.Context, tx *sql.Tx, c *changes, claimed claimedCandidate, result domain.VersionJudgeResult, now time.Time,
 ) ([]domain.Event, error) {
-	applied, err := applyVerdict(ctx, tx, claimed.keys, claimed.attempts, result)
+	applied, err := applyVerdict(ctx, tx, claimed.keys, result)
 	if err != nil {
 		return nil, err
 	}
@@ -261,9 +239,7 @@ type appliedVerdict struct {
 	undoKeys domain.VersionBundleUndoKeys
 }
 
-func applyVerdict(
-	ctx context.Context, tx *sql.Tx, keys [2]string, attempts int, result domain.VersionJudgeResult,
-) (appliedVerdict, error) {
+func applyVerdict(ctx context.Context, tx *sql.Tx, keys [2]string, result domain.VersionJudgeResult) (appliedVerdict, error) {
 	switch result.Verdict {
 	case domain.VersionSame:
 		return bundleSamePair(ctx, tx, keys)
@@ -272,26 +248,12 @@ func applyVerdict(
 	case domain.VersionUndecided:
 		return appliedVerdict{}, setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, result.Probability)
 	case domain.VersionFailed:
-		return appliedVerdict{}, failJudgement(ctx, tx, keys, attempts+1, result.Error)
+		return appliedVerdict{}, failJudgement(ctx, tx, keys, result.Error)
 	case domain.VersionNoConnection:
 		return appliedVerdict{}, setJudgement(ctx, tx, keys, domain.VersionJudgementNoConnection, nil)
 	default:
 		return appliedVerdict{}, fmt.Errorf("unknown version verdict %d", result.Verdict)
 	}
-}
-
-// NextJudgementRetry considers only pairs eligible under the same rules as ClaimJudgement.
-func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool, error) {
-	var retryAt sql.NullInt64
-	err := s.db.sql.QueryRowContext(ctx, `select min(c.retry_at) `+judgeablePairs+`
-		and c.judgement = 'failed' and c.retry_at is not null`).Scan(&retryAt)
-	if err != nil {
-		return time.Time{}, false, fmt.Errorf("cannot read the next version judgement retry: %w", err)
-	}
-	if !retryAt.Valid {
-		return time.Time{}, false, nil
-	}
-	return time.Unix(retryAt.Int64, 0), true, nil
 }
 
 // ResetNoConnectionJudgements requeues candidates and their existing activities after saving a connection.
@@ -300,25 +262,25 @@ func (s *VersionStore) ResetNoConnectionJudgements(ctx context.Context) (int, er
 		"cannot return the version judgements waiting for a connection")
 }
 
-// Clear retry metadata on state change; an empty state means waiting.
+// Clear the failure detail on state change; an empty state means waiting.
 func setJudgement(ctx context.Context, tx *sql.Tx, keys [2]string, state domain.VersionJudgement, probability *float64) error {
 	var value any
 	if state != "" {
 		value = string(state)
 	}
 	if _, err := tx.ExecContext(ctx, `update video_version_candidates
-		   set judgement = ?, probability = ?, retry_at = null, judgement_error = null
+		   set judgement = ?, probability = ?, judgement_error = null
 		 where key_a = ? and key_b = ?`, value, probability, keys[0], keys[1]); err != nil {
 		return fmt.Errorf("cannot record the version judgement: %w", err)
 	}
 	return nil
 }
 
-func failJudgement(ctx context.Context, tx *sql.Tx, keys [2]string, attempts int, message string) error {
-	retryAt := domain.VersionJudgeRetryAt(attempts, time.Now()).Unix()
+// failJudgement records the failure on the candidate; the pair's job holds the attempts and the retry time.
+func failJudgement(ctx context.Context, tx *sql.Tx, keys [2]string, message string) error {
 	if _, err := tx.ExecContext(ctx, `update video_version_candidates
-		   set judgement = 'failed', attempts = ?, retry_at = ?, judgement_error = ?, probability = null
-		 where key_a = ? and key_b = ?`, attempts, retryAt, message, keys[0], keys[1]); err != nil {
+		   set judgement = 'failed', judgement_error = ?, probability = null
+		 where key_a = ? and key_b = ?`, message, keys[0], keys[1]); err != nil {
 		return fmt.Errorf("cannot record the version judgement failure: %w", err)
 	}
 	return nil
@@ -498,8 +460,8 @@ func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled b
 	return nil
 }
 
-// RejudgeCandidate returns an undecided, failed or no_connection pair to waiting with a fresh retry count, and its
-// entry with it; the caller wakes the worker.
+// RejudgeCandidate returns an undecided, failed or no_connection pair to waiting with a fresh job in the owner class,
+// and its entry with it.
 func (s *VersionStore) RejudgeCandidate(ctx context.Context, videoIDs [2]int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -525,11 +487,14 @@ func (s *VersionStore) RejudgeCandidate(ctx context.Context, videoIDs [2]int64) 
 		return domain.ErrVersionNotRejudgeable
 	}
 	if _, err := tx.ExecContext(ctx, `update video_version_candidates
-		   set judgement = null, attempts = 0, retry_at = null, judgement_error = null, probability = null
+		   set judgement = null, judgement_error = null, probability = null
 		 where key_a = ? and key_b = ?`, keys[0], keys[1]); err != nil {
 		return fmt.Errorf("cannot judge the version candidate again: %w", err)
 	}
 	c := &changes{}
+	if err := requestJudgeJob(ctx, tx, c, keys, true); err != nil {
+		return err
+	}
 	if activityID.Valid {
 		if _, err := tx.ExecContext(ctx, `update activity_entries set evidence = null where id = ?`,
 			activityID.Int64); err != nil {

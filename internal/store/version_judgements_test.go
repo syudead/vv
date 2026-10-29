@@ -35,11 +35,20 @@ func judgementFixture(t *testing.T) (*DB, map[string]int64) {
 	return db, ids
 }
 
+// claimVersionJudgement claims the next version_judge job as the scheduler does and reads its input.
+func claimVersionJudgement(ctx context.Context, db *DB) (domain.VersionJudgeJob, error) {
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobVersionJudge)
+	if err != nil {
+		return domain.VersionJudgeJob{}, err
+	}
+	return db.Versions().JudgementInput(ctx, [2]string{job.ContentKey, job.ContentKeyB})
+}
+
 func claimJudgement(t *testing.T, db *DB) domain.VersionJudgeJob {
 	t.Helper()
-	job, err := db.Versions().ClaimJudgement(context.Background())
+	job, err := claimVersionJudgement(context.Background(), db)
 	if err != nil {
-		t.Fatalf("ClaimJudgement: %v", err)
+		t.Fatalf("ClaimJob(version_judge): %v", err)
 	}
 	if job.Keys != [2]string{"key-a", "key-b"} {
 		t.Fatalf("取り出した組 = %v, want [key-a key-b]", job.Keys)
@@ -70,10 +79,15 @@ func hasEvent[E domain.Event](events []domain.Event) bool {
 	return false
 }
 
+// candidateJudgement reads the a/b pair's judgement and probability, and the attempts and retry time of its unfinished
+// job.
 func candidateJudgement(t *testing.T, db *DB) (judgement *string, attempts int, retryAt *int64, probability *float64) {
 	t.Helper()
-	if err := db.sql.QueryRow(`select judgement, attempts, retry_at, probability from video_version_candidates
-		where key_a = 'key-a' and key_b = 'key-b'`).Scan(&judgement, &attempts, &retryAt, &probability); err != nil {
+	if err := db.sql.QueryRow(`select c.judgement, coalesce((select j.attempts from jobs j
+		where j.kind = 'version_judge' and j.subject_key = c.key_a and j.subject_key_b = c.key_b
+		and j.state in ('queued', 'running')), 0), `+judgeRetryAtColumn+`, c.probability
+		from video_version_candidates c where c.key_a = 'key-a' and c.key_b = 'key-b'`).
+		Scan(&judgement, &attempts, &retryAt, &probability); err != nil {
 		t.Fatal(err)
 	}
 	return judgement, attempts, retryAt, probability
@@ -81,8 +95,8 @@ func candidateJudgement(t *testing.T, db *DB) (judgement *string, attempts int, 
 
 func expectNoClaim(t *testing.T, db *DB, why string) {
 	t.Helper()
-	if job, err := db.Versions().ClaimJudgement(context.Background()); !errors.Is(err, domain.ErrNoJob) {
-		t.Errorf("%s: ClaimJudgement = %v, %v, want domain.ErrNoJob", why, job.Keys, err)
+	if job, err := db.Ingest().ClaimJob(context.Background(), domain.JobVersionJudge); !errors.Is(err, domain.ErrNoJob) {
+		t.Errorf("%s: ClaimJob(version_judge) = %+v, %v, want domain.ErrNoJob", why, job, err)
 	}
 }
 
@@ -233,43 +247,96 @@ func TestJudgementUndecidedKeepsProbability(t *testing.T) {
 	expectNoClaim(t, db, "undecided の組")
 }
 
-func TestJudgementFailedRetriesAfterRetryAt(t *testing.T) {
+// A failed judgement keeps the candidate failed while its job waits 10 min, 1 h, 6 h, then daily without a limit;
+// the delays are today's, now applied through the kind's retry policy.
+func TestJudgementFailedRetriesAfterTheKindsDelays(t *testing.T) {
 	db, _ := judgementFixture(t)
-	ctx := context.Background()
-	job := claimJudgement(t, db)
-	before := time.Now()
-	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "connection refused"})
+	now := fixJobClock(t)
+	for i, want := range []time.Duration{10 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour, 24 * time.Hour} {
+		job := claimJudgement(t, db)
+		applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "no answer"})
 
-	judgement, attempts, retryAt, _ := candidateJudgement(t, db)
-	if judgement == nil || *judgement != "failed" || attempts != 1 || retryAt == nil {
-		t.Fatalf("判定 = %v, attempts %d, retry_at %v, want failed, 1, 10 分後", judgement, attempts, retryAt)
-	}
-	if want := before.Add(10 * time.Minute).Unix(); *retryAt < want-1 || *retryAt > want+5 {
-		t.Errorf("retry_at = %d, want 約 %d", *retryAt, want)
+		judgement, attempts, retryAt, _ := candidateJudgement(t, db)
+		if judgement == nil || *judgement != "failed" || attempts != i+1 || retryAt == nil {
+			t.Fatalf("%d 回目の失敗のあと = %v, attempts %d, retry %v, want failed, %d, 再試行の時刻", i+1, judgement,
+				attempts, retryAt, i+1)
+		}
+		if got := time.Duration(*retryAt-now.Unix()) * time.Second; got != want {
+			t.Fatalf("%d 回目の失敗の待ち = %v, want %v", i+1, got, want)
+		}
+		*now = now.Add(want - time.Second)
+		expectNoClaim(t, db, "待ちの終わる前の failed の組")
+		*now = now.Add(time.Second)
 	}
 	var message string
-	if err := db.sql.QueryRow(`select judgement_error from video_version_candidates`).Scan(&message); err != nil || message != "connection refused" {
+	if err := db.sql.QueryRow(`select judgement_error from video_version_candidates`).Scan(&message); err != nil || message != "no answer" {
 		t.Errorf("judgement_error = %q, %v", message, err)
 	}
-	expectNoClaim(t, db, "retry_at の前の failed の組")
+}
 
-	if _, err := db.sql.Exec(`update video_version_candidates set retry_at = ?`, time.Now().Add(-time.Second).Unix()); err != nil {
+// A pair interrupted by a restart returns to waiting with its attempt counted, and its next failure waits longer.
+func TestJudgementRecoveryKeepsTheAttempts(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	fixJobClock(t)
+	claimJudgement(t, db)
+	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
-	}
-	if job := claimJudgement(t, db); job.Attempts != 1 {
-		t.Errorf("取り出した attempts = %d, want 1", job.Attempts)
 	}
 	recovered, err := db.Versions().RecoverRunningJudgements(ctx)
 	if err != nil || recovered != 1 {
 		t.Fatalf("RecoverRunningJudgements = %d, %v, want 1", recovered, err)
 	}
 	if judgement, attempts, _, _ := candidateJudgement(t, db); judgement != nil || attempts != 1 {
-		t.Errorf("回復したあと = %v, attempts %d, want null, 1", judgement, attempts)
+		t.Fatalf("回復したあと = %v, attempts %d, want null, 1", judgement, attempts)
 	}
-	job = claimJudgement(t, db)
+	job := claimJudgement(t, db)
 	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "again"})
 	if _, attempts, _, _ := candidateJudgement(t, db); attempts != 2 {
-		t.Errorf("2 度目の失敗の attempts = %d, want 2", attempts)
+		t.Errorf("回復のあとの失敗の attempts = %d, want 2", attempts)
+	}
+}
+
+// A held pair's job stays queued without spending attempts, and is claimed once the hold is lifted.
+func TestJudgementJobOfAHeldPairWaitsForTheHoldToLift(t *testing.T) {
+	db, _ := judgementFixture(t)
+	execAll(t, db, `insert into video_version_judging_holds (key_a, key_b, created_at) values ('key-a', 'key-b', 1)`)
+	expectNoClaim(t, db, "保留された組")
+	if _, attempts, _, _ := candidateJudgement(t, db); attempts != 0 {
+		t.Fatalf("保留の間の attempts = %d, want 0", attempts)
+	}
+	if n := countRows(t, db, `select count(*) from jobs where kind = 'version_judge' and state = 'queued'`); n != 1 {
+		t.Fatalf("保留の間の積まれた仕事 = %d, want 1", n)
+	}
+	execAll(t, db, `delete from video_version_judging_holds`)
+	claimJudgement(t, db)
+}
+
+// A claim of a more urgent class than the job's passes it over, as the scheduler's class rounds expect.
+func TestJudgementJobWaitsForItsClassRound(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	owner := domain.JobClaim{Kind: domain.JobVersionJudge, MaxPriority: domain.JobPriorityOwner}
+	if job, err := db.Ingest().ClaimJobOn(ctx, owner); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("持ち主の区分での ClaimJobOn(version_judge) = %+v, %v, want domain.ErrNoJob", job, err)
+	}
+	job, err := db.Ingest().ClaimJobOn(ctx, domain.JobClaim{Kind: domain.JobVersionJudge, MaxPriority: domain.JobPriorityImport})
+	if err != nil {
+		t.Fatalf("取り込みの区分での ClaimJobOn(version_judge): %v", err)
+	}
+	if job.Priority != domain.JobPriorityImport {
+		t.Fatalf("取り出した仕事の区分 = %v, want %v", job.Priority, domain.JobPriorityImport)
+	}
+}
+
+// The job goes with its candidate row, whichever statement removes it.
+func TestJudgementJobGoesWithItsCandidate(t *testing.T) {
+	db, ids := judgementFixture(t)
+	if err := db.Versions().Dismiss(context.Background(), [2]int64{ids["a"], ids["b"]}); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, db, `select count(*) from jobs where kind = 'version_judge'`); n != 0 {
+		t.Fatalf("候補を消したあとの仕事 = %d, want 0", n)
 	}
 }
 
@@ -361,7 +428,7 @@ func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
 
 	if judgement, attempts, retryAt, _ := candidateJudgement(t, db); judgement == nil || *judgement != "no_connection" ||
 		attempts != 0 || retryAt != nil {
-		t.Fatalf("判定 = %v, attempts %d, retry_at %v, want no_connection, 0, null", judgement, attempts, retryAt)
+		t.Fatalf("判定 = %v, attempts %d, retry_at %v, want no_connection, 仕事なし", judgement, attempts, retryAt)
 	}
 	if pairs, _ := candidatePairs(t, db); len(pairs) != 1 {
 		t.Errorf("no_connection の組が一覧から消えた: %v", pairs)
@@ -373,35 +440,6 @@ func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
 		t.Fatalf("ResetNoConnectionJudgements = %d, %v, want 1", reset, err)
 	}
 	claimJudgement(t, db)
-}
-
-func TestNextJudgementRetry(t *testing.T) {
-	db, _ := judgementFixture(t)
-	ctx := context.Background()
-	if _, found, err := db.Versions().NextJudgementRetry(ctx); err != nil || found {
-		t.Fatalf("失敗の無いとき = %v, %v, want 見つからない", found, err)
-	}
-	job := claimJudgement(t, db)
-	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "down"})
-	_, _, retryAt, _ := candidateJudgement(t, db)
-	next, found, err := db.Versions().NextJudgementRetry(ctx)
-	if err != nil || !found || next.Unix() != *retryAt {
-		t.Errorf("NextJudgementRetry = %v, %v, %v, want %d", next, found, err, *retryAt)
-	}
-}
-
-// Exclude unclaimable retries or workers repeatedly poll an overdue pair they can never claim.
-func TestNextJudgementRetryIgnoresUnclaimablePairs(t *testing.T) {
-	db, _ := judgementFixture(t)
-	ctx := context.Background()
-	job := claimJudgement(t, db)
-	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "down"})
-	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
-		t.Fatal(err)
-	}
-	if next, found, err := db.Versions().NextJudgementRetry(ctx); err != nil || found {
-		t.Errorf("NextJudgementRetry = %v, %v, %v, want 見つからない", next, found, err)
-	}
 }
 
 func TestOllamaConnectionSaved(t *testing.T) {

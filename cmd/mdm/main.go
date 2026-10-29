@@ -156,6 +156,8 @@ func run(opts runOptions) error {
 	settingsStore := db.Settings()
 	playbackStore := db.Playback()
 
+	// Scan content-key reads take read slots from the scheduler; see docs/design-docs/job-scheduling.md.
+	var scheduler *jobs.Scheduler
 	scans := app.NewScans(app.ScansOptions{
 		Store:          scanStore,
 		Jobs:           ingestStore,
@@ -163,7 +165,8 @@ func run(opts runOptions) error {
 		FolderIndex:    scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
-				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
+				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter,
+				ReadSlots: scanReadSlots{scheduler: &scheduler}, Logger: logger,
 			})
 		},
 		Folders:   scanIndexStore,
@@ -171,16 +174,6 @@ func run(opts runOptions) error {
 		Publisher: bus,
 		Logger:    logger,
 	})
-
-	// Start filesystem watching only after interrupted scans have been recovered and restarted.
-	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, logger)
-
-	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
-		return err
-	}
-	if opts.OnBusyProbe != nil {
-		opts.OnBusyProbe(scans.Busy)
-	}
 
 	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// Clean temporary artifacts before workers start so active output cannot be removed.
@@ -190,68 +183,85 @@ func run(opts runOptions) error {
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
 	})
-	// Workers wake after committed queue changes instead of polling.
-	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
-	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
-	for _, kind := range domain.JobKinds {
-		worker := jobs.New(jobs.Options{
-			Kind:    kind,
-			Queue:   ingestStore,
-			Handler: ingest.Handler(kind),
-			Started: scans.JobStarted,
-			Finished: func(job domain.Job) {
-				scans.JobFinished(job)
-				ingest.JobFinished(job)
-			},
-			Logger: logger,
-		})
-		workers = append(workers, worker)
-		wakers[kind] = worker
-	}
 	// Provider adapters own connection settings and expose app.Classifier; see
 	// docs/design-docs/ai-layer.md.
 	classifier := ollama.New(settingsStore)
-	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
-	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
-	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
-	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
-	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
-		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Images: db.Overrides(),
-		Applier: ingest, Logger: logger,
-	})
-	// Recover interrupted classifications before starting automatic tagging; see
-	// docs/design-docs/auto-tagging.md.
-	autoTagLoop := jobs.NewLoop()
+	// Auto-tagging runs as auto_tag jobs on the scheduler, paused while the feature is off; see
+	// docs/design-docs/auto-tagging.md. Startup recovery has already requeued interrupted jobs.
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
 		Undo:       db.Activity(),
 		Classifier: classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
-		Wake:       autoTagLoop.Wake,
+		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,
 	})
-	if err := autoTagger.Recover(backgroundCtx); err != nil {
-		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
-	}
-	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
-	if err := faces.analysis.Recover(backgroundCtx); err != nil {
-		logger.Warn("could not requeue interrupted face analyses", slog.Any("error", err))
-	}
-	// Recover activity before workers start; recovery needs only storage, not retry/cancel
-	// dispatchers.
-	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
-	// Compare fingerprints before asking the classifier about mismatched intervals; see
-	// docs/design-docs/duplicate-judging.md.
-	versionJudgeLoop := jobs.NewLoop()
+	// Face analysis, face-image embedding and the cast rule run as jobs on the face lane, paused while the feature is
+	// off or its runtime is not ready; see docs/design-docs/face-recognition.md.
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, func() { scheduler.Wake() }, logger)
+	// Duplicate judging runs as version_judge jobs on the scheduler, paused while judging is off; it compares
+	// fingerprints before asking the classifier about mismatched intervals. See docs/design-docs/duplicate-judging.md.
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
 		Store:      db.Versions(),
 		Settings:   settingsStore,
 		Classifier: classifier,
 		Frames:     artifactStore,
-		Wake:       versionJudgeLoop.Wake,
+		Wake:       func() { scheduler.Wake() },
 		Logger:     logger,
 	})
+	// The scheduler wakes after committed queue changes instead of polling; see docs/design-docs/job-scheduling.md.
+	handlers := make(map[domain.JobKind]jobs.Handler, len(domain.ScheduledJobKinds))
+	for _, kind := range domain.JobKinds {
+		handlers[kind] = ingest.Handler(kind)
+	}
+	handlers[domain.JobAutoTag] = autoTagger.HandleJob
+	for _, kind := range []domain.JobKind{
+		domain.JobFace, domain.JobFaceImage, domain.JobFaceCast, domain.JobQueueFaceImages,
+	} {
+		handlers[kind] = faces.analysis.HandleJob
+	}
+	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
+	addBackfillHandlers(handlers, ingestStore, ingest)
+	scheduler = jobs.NewScheduler(jobs.Options{
+		Queue:    ingestStore,
+		Folders:  scanIndexStore,
+		Disks:    mediafs.New().ResolveDisk,
+		Handlers: handlers,
+		CPUSlots: domain.JobCPUSlots(runtime.NumCPU()),
+		Paused:   app.PausedJobKinds(autoTagger, faces.analysis, versionJudge),
+		Started:  scans.JobStarted,
+		Finished: func(job domain.Job) {
+			scans.JobFinished(job)
+			ingest.JobFinished(job)
+		},
+		Logger: logger,
+	})
+	// Start filesystem watching only after interrupted scans have been recovered and restarted.
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, scheduler.RecheckRoots, logger)
+
+	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
+		return err
+	}
+	if opts.OnBusyProbe != nil {
+		opts.OnBusyProbe(scans.Busy)
+	}
+
+	wakers := make(map[domain.JobKind]waker, len(domain.ScheduledJobKinds))
+	for _, kind := range domain.ScheduledJobKinds {
+		wakers[kind] = scheduler
+	}
+	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
+	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
+	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
+	// Thumbnail edits share ingestion's generation lock; see docs/design-docs/thumbnail-editing.md.
+	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
+		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Foreground: scheduler,
+		Images: db.Overrides(), Applier: ingest, Logger: logger,
+	})
+	// Recover activity before workers start; recovery needs only storage, not retry/cancel
+	// dispatchers.
+	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
 	if err := versionJudge.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
@@ -281,28 +291,19 @@ func run(opts runOptions) error {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 			faces.analysis.VideoImagesFinished(backgroundCtx, videoID)
 		},
-		WorkInfoChanged:    faces.analysis.WorkInfoChanged,
-		VersionJudge:       versionJudge,
-		PersonImageChanged: faces.analysis.PersonImageChanged,
+		VersionJudge: versionJudge,
 	})
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
 	defer stopChecks()
 	var transcodeSettings *app.TranscodeSettings
 
 	var workersDone sync.WaitGroup
-	for _, worker := range workers {
-		workersDone.Go(func() { worker.Run(backgroundCtx) })
-	}
-	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() {
-		if err := ingest.RepublishVirtualThumbnails(backgroundCtx); err != nil {
-			logger.Warn("could not republish the thumbnails of virtual videos", slog.Any("error", err))
-		}
+		scheduler.Run(backgroundCtx)
+		// No face job runs any more, so the helper can stop.
+		faces.analysis.Close()
 	})
-	workersDone.Go(func() { app.BackfillMediaInfo(backgroundCtx, ingestStore, media.ProbeMediaInfo, logger) })
-	workersDone.Go(func() { autoTagLoop.Run(backgroundCtx, autoTagger.Step) })
-	workersDone.Go(func() { versionJudgeLoop.Run(backgroundCtx, versionJudge.Step) })
-	workersDone.Go(func() { faces.run(backgroundCtx) })
+
 	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
@@ -433,6 +434,7 @@ func run(opts runOptions) error {
 		Catalog:           catalog,
 		Opener:            fileOpener,
 		Files:             mediaFiles,
+		Foreground:        scheduler,
 		Subtitles:         media.NewSubtitleConverter(),
 		Events:            events,
 		Assets:            web.Dist(),
@@ -453,7 +455,30 @@ func run(opts runOptions) error {
 		events.Close()
 		stopPairing()
 	}
-	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
+	// Backfills are queued once the listener is open, so startup never waits for them; see
+	// docs/design-docs/process-lifecycle.md.
+	onListening := func() {
+		if opts.OnListening != nil {
+			opts.OnListening()
+		}
+		if err := ingestStore.EnqueueStartupJobs(backgroundCtx); err != nil {
+			logger.Warn("could not queue the startup jobs", slog.Any("error", err))
+		}
+	}
+	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, onListening, beforeShutdown)
+}
+
+// addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
+func addBackfillHandlers(handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, ingest *app.Ingest) {
+	keyframes := app.KeyframeBackfill(ingestStore, media.ProbeKeyframes)
+	mediaInfo := app.MediaInfoBackfill(ingestStore, media.ProbeMediaInfo)
+	handlers[domain.JobQueueKeyframes] = keyframes.QueueAll
+	handlers[domain.JobKeyframes] = keyframes.Read
+	handlers[domain.JobQueueMediaInfo] = mediaInfo.QueueAll
+	handlers[domain.JobMediaInfo] = mediaInfo.Read
+	handlers[domain.JobVirtualThumbnails] = func(ctx context.Context, _ domain.Job) error {
+		return ingest.RepublishVirtualThumbnails(ctx)
+	}
 }
 
 // recoverActivity marks interrupted processing as attention/interrupted, leaving waiting records

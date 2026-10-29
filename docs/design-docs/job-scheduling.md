@@ -1,0 +1,405 @@
+# Job scheduling: one scheduler for every ingest stage
+
+One scheduler in [`internal/jobs`](../../internal/jobs) grants every ingest,
+auto-tagging, face, duplicate-judging and backfill job the resources its kind
+declares, from the CPU slots, the classifier slots, the face lane and the read
+slots of the job's disk, within the kind's cap on jobs running at once, and
+runs it. A scan's content-key reads take read slots from the same disks.
+
+The diagram shows what wakes the scheduler and what a grant runs.
+
+```mermaid
+flowchart LR
+  ev[Enqueue, stage done, release, run-after time, root check] -->|wake| sch[Scheduler]
+  jobs[(jobs)] -->|claim by class, disk, kind, run-after| sch
+  paused[Features that are off] -->|paused kinds| sch
+  scan[Scan content-key read] -->|wait for a read slot, ahead of jobs| sch
+  sch -->|grant demand| run[Handler of the kind]
+  run -->|lend and return slots per extraction| sch
+  run -->|done, retry, repeats, snooze| jobs
+  run -->|release| sch
+```
+
+## Each kind declares a demand
+
+A job holds a fixed number of slots of each resource while it runs; its kind
+declares them in [`domain.JobDemand`](../../internal/domain/job_demand.go). A
+read slot is the right to read one source file on one disk; a CPU slot is the
+right to run one ffmpeg decode or encode; a classifier slot is the right to
+send one request to the classifier; the face lane slot is the right to run one
+face job.
+
+| Kind | Read | CPU | Classifier | Face lane | Why |
+| --- | --- | --- | --- | --- | --- |
+| `probe` | 1 | 0 | 0 | 0 | ffprobe reads the container header |
+| `thumbnail` | 1 | 1 | 0 | 0 | ffmpeg decodes frames of the source |
+| `seek_thumbnail` | 1, plus one per further extraction | 1, plus one per further extraction | 0 | 0 | One ffmpeg per frame, or one read per keyframe |
+| `preview` | 1 | 1 | 0 | 0 | ffmpeg decodes and encodes the source |
+| `fingerprint` | 0 | 1 | 0 | 0 | Reads sprite frames from the data directory, not the source |
+| `auto_tag` | 0 | 0 | 1 | 0 | Sends generated thumbnails and seek frames, never the source ([auto-tagging](auto-tagging.md)) |
+| `face` | 1 | 1 | 0 | 1 | ffmpeg decodes source frames for the face helper ([face recognition](face-recognition.md#the-face-lane-runs-one-face-job-at-a-time)) |
+| `face_image` | 0 | 0 | 0 | 1 | Sends one person's stored face image to the helper |
+| `face_cast` | 0 | 0 | 0 | 1 | Merges people in the database, never beside an analysis |
+| `queue_face_images` | 0 | 0 | 0 | 0 | Queues a `face_image` job per face without a current vector |
+| `version_judge` | 0 | 0 | 1 | 0 | Compares stored fingerprints and sends frames cut from the seek previews ([duplicate judging](duplicate-judging.md)) |
+| `keyframes` | 1 | 0 | 0 | 0 | ffprobe reads the packet index of the whole file |
+| `media_info` | 1 | 0 | 0 | 0 | ffprobe reads the container |
+| `queue_keyframes`, `queue_media_info` | 0 | 0 | 0 | 0 | Inserts one `keyframes` or `media_info` job per video whose stored result is out of date |
+| `virtual_thumbnails` | 0 | 0 | 0 | 0 | Copies stored image bytes into thumbnail files |
+
+Every queued unit of work is a `jobs` row, enqueued in the transaction that
+changes its domain rows, so the claim order, the priority, the attempts, the
+run-after time and startup recovery exist once. A kind whose subject is not a
+video names it in `subject_key` and `subject_key_b`: a content key, a pair of
+content keys or a person id. The domain tables keep only results, such as
+`auto_tag_results` and `face_results`, because a result must outlive its job.
+
+| Rejected | Why |
+| --- | --- |
+| Keep the auto-tag, face and duplicate-judging queue tables as scheduler sources | Claim order, retry delays, run-after waiting and recovery would exist once per table, and each round would rank across four tables |
+| Keep results in `jobs` | "Tag videos not yet tagged" and the Settings counts read a `done` result after the job, and even the video, are gone |
+
+A read slot belongs to the disk of the location the claim picks: the next
+available registered location in path order after the previous attempt's.
+A kind with a read slot is the only kind whose claim avoids an unavailable
+folder ([`domain.JobReadsSource`](../../internal/domain/job_demand.go)).
+
+## Capacities
+
+The scheduler grants a job only while the slots in use plus its demand stay
+within the capacity.
+
+| Resource | Capacity | Why |
+| --- | --- | --- |
+| Read slots of one disk | 1 for a rotational or unknown disk, 4 for a solid-state one ([`domain.Disk`](../../internal/domain/job_demand.go)) | Parallel sequential reads make a rotational disk seek; 4 matches the seek-sprite job's former parallelism, so a solid-state disk keeps its throughput |
+| CPU slots | `min(NumCPU / 4 + 1, 4)`, at least 1 ([`domain.JobCPUSlots`](../../internal/domain/job_demand.go)) | ffmpeg already spreads one decode or encode over several threads, and streaming needs the rest; the ceiling is 4 because the kinds that decode run one job each, so beyond 4 the slots would only feed more parallel parts of one job |
+| Classifier slots | 1 | A CPU-only provider cannot serve parallel requests |
+| Face lane slots | 1 | The face helper answers one request at a time, and the cast rule must not interleave with an analysis |
+
+### Each kind runs at most its cap
+
+Besides the slots, each kind has a cap on its jobs running at once, across
+every disk ([`domain.JobConcurrency`](../../internal/domain/job_demand.go)).
+Before the shared scheduler each stage ran one job at a time, and the kinds
+that decode or encode must not exceed that: with 24 threads and two
+solid-state disks the slots alone allow 7 seek-sprite jobs at once, each with
+its own ffmpeg processes. Slots lent to a running job's extra parts are not
+jobs, so a seek-sprite job still runs up to 4 parts within the CPU and read
+slots.
+
+| Kind | Cap | Why |
+| --- | --- | --- |
+| `thumbnail`, `seek_thumbnail`, `preview`, `fingerprint` | 1 | One decode or encode per stage, as before the scheduler |
+| `probe`, `keyframes`, `media_info` | 2 | ffprobe reads little and parses between reads, so two keep a disk busy without competing |
+| `auto_tag`, `version_judge` | 1 | The classifier slot already allows one |
+| `face`, `face_image`, `face_cast` | 1 | The face lane already allows one |
+| `queue_face_images`, `queue_keyframes`, `queue_media_info`, `virtual_thumbnails` | 1 | Each writes rows or files in bulk; a second instance would only contend |
+
+| Rejected | Why |
+| --- | --- |
+| No per-kind cap, only the slots | One heavy kind fills every slot, and the number of its jobs grows with the CPU count and the disks |
+| Keep `NumCPU / 4 + 1` CPU slots without a ceiling | On a machine with many cores the slots exceed what the capped kinds can use, so they would go to a single job's parts only |
+
+The scheduler resolves a media folder's disk the first time it serves the
+folder, and again when it rechecks an unavailable folder; the result lives in
+memory only, because a remount or a replaced disk would make a stored value
+wrong. Folders on one disk share its read slots.
+
+| Platform | Disk key | Type |
+| --- | --- | --- |
+| Linux | The folder's `st_dev`, mapped through `/sys/dev/block/<maj>:<min>` to its whole disk | That disk's `queue/rotational` |
+| Windows | The physical device number of the folder's volume (`IOCTL_STORAGE_GET_DEVICE_NUMBER`) | The seek penalty (`IOCTL_STORAGE_QUERY_PROPERTY`) |
+| Either, when a lookup fails | `st_dev` or the volume alone | Unknown: 1 slot |
+
+Btrfs, ZFS, overlayfs, network shares and Docker Desktop's shared folders have
+no whole-disk sysfs entry, so they read with 1 slot. Windows reports no seek
+penalty for some virtual disks, which then count as solid-state.
+
+| Rejected | Why |
+| --- | --- |
+| One read limit shared by every disk | A busy disk takes the slots an idle disk could use |
+| An adaptive limit from disk latency or stall time | Oscillates, depends on a baseline, and reads different signals on Linux and Windows |
+| An owner setting for the slots | Most owners cannot judge it |
+
+## Disks take turns, and a job that does not fit is skipped
+
+The scheduler serves the classes strictly in order. Within a class it visits
+the disks in turn, then one more group for the kinds that read no source file,
+and claims one job per visit. Within a disk it visits the kinds in turn,
+skipping a kind whose demand does not fit, or whose running jobs reach its
+cap, instead of waiting for it. A full turn over the disks that grants nothing
+ends the class. The next visit resumes after the last granted disk and, within
+a disk, after the last granted kind.
+
+```mermaid
+flowchart LR
+  disk[Next disk] --> kind[Next kind]
+  kind --> fits{Demand fits, kind under its cap?}
+  fits -->|no| kind
+  fits -->|yes| claim{Job claimed?}
+  claim -->|no| kind
+  claim -->|yes| grant[Grant and run]
+  grant --> disk
+```
+
+Taking disks in turn lets a folder with a few videos finish while another disk
+works through thousands, and lets two disks read at once. Skipping lets a
+CPU-only fingerprint run while every read slot is held, and taking kinds in
+turn keeps the stages interleaved during a large import, so a probe backlog
+does not hold back thumbnails. No job waits forever, because every demand is
+at most one slot of each resource. Before a turn, one query lists the kinds
+with due jobs and their most urgent class, so an idle queue costs no claims.
+
+| Rejected | Why |
+| --- | --- |
+| One worker per stage | Five stages each read a disk with no shared limit |
+| One queue in age order across disks | A disk with 10,000 queued jobs delays every other disk |
+| Weighted fair queuing | There are no weights to express; equal turns suffice |
+| Stop at the first job that does not fit (Go `semaphore.Weighted`) | A busy resource stalls every kind behind it |
+| Start every round at the first stage | Each freed read slot goes to the next probe, so thumbnails wait for the probe backlog to empty |
+
+## A job that splits its work borrows slots per part
+
+The seek-sprite job runs its first extraction on its own read and CPU slot.
+For each further extraction it asks the scheduler, without waiting, for one
+more pair on the same disk, runs the extraction in parallel when it gets one,
+and returns the pair when the extraction ends. Reading keyframes from the
+index borrows one read slot per concurrent read the same way. At most 4 parts
+run at once, and the lent slots count against no kind's cap. On a 1-slot disk
+the job runs one part at a time.
+
+| Rejected | Why |
+| --- | --- |
+| Take the extra slots at the start and hold them to the end | Idle slots stay held while the job finishes its last parts |
+| A fixed demand of 4 or 8 slots | Never fits a 1-slot disk, so the job would be skipped forever |
+| A demand of 1 with fixed internal parallelism | Reads 4 to 8 streams while counted as 1 |
+
+## Playback holds its disk to one background read
+
+While the owner waits on a read of a media file, that file's disk has 1 read
+slot for background work, never 0. These readers hold their disk from opening
+the file until they end:
+
+- a direct stream;
+- a live transcode, from its ffprobe until its ffmpeg exits;
+- a frame read for thumbnail editing.
+
+The disk is the one of the media folder holding the opened file, after links
+are followed; media folders never overlap, so at most one folder holds it. When the last reader on the disk ends, it returns
+to the slots of its type and the scheduler wakes. A grant made before the reader opened is not revoked: a
+seek-sprite job drops to one extraction when it next asks for a pair, and a
+thumbnail, preview or face job finishes its current run. Background reads fall
+to 1 within the longest running job, then stay there. A scan's content-key
+read counts as a background read and takes the 1 slot like a job does.
+`httpapi` and `app` declare the interface they call, and `cmd/mdm` passes the
+scheduler.
+
+Sidecar subtitle reads hold nothing: they read kilobytes once per request.
+
+| Rejected | Why |
+| --- | --- |
+| Revoke running grants by killing or suspending the process | A killed encode restarts from the beginning, and Windows has no documented call to suspend another process |
+| Pause background reads | Import would stop for as long as a video plays; the disk schedulers BFQ and mq-deadline also keep a thin share for background requests |
+| OS I/O priority alone | Linux I/O priority works only under the BFQ or mq-deadline disk scheduler, and a container cannot choose the host's |
+
+## Background processes run at low priority
+
+[`media.Command`](../../internal/media/command.go) takes a priority. The
+processes of jobs and the face helper start low; live transcoding, its
+ffprobe, the thumbnail-editing frame, fitting an applied thumbnail image and
+the encoder check stay normal.
+
+| Platform | Low priority |
+| --- | --- |
+| Linux | Right after start, `setpriority` to nice 10 and `ioprio_set` to best-effort level 7 |
+| Windows | `BELOW_NORMAL_PRIORITY_CLASS` in the creation flags |
+
+Go runs no code between fork and exec on Linux, so the child spends its first
+milliseconds at normal priority. A server already above nice 10 cannot raise a
+child back to 10, so the child keeps the server's nice value.
+
+| Rejected | Why |
+| --- | --- |
+| `nice` and `ionice` wrapper commands | The Alpine image and Windows do not guarantee those binaries |
+| The idle I/O class | Its requests may wait until the disk is quiet, which could stall import while anything else reads |
+| Lowering the server's own priority | It would slow streaming too |
+
+## A scan's content-key reads go first
+
+The scan still computes each new or changed file's content key inline, but it
+holds a read slot on the disk of the file's media folder for each read
+([`Scheduler.AcquireRead`](../../internal/jobs/scheduler.go)). A waiting scan
+read takes the next free slot of its disk before any job class, and while it
+waits no job takes a read slot on that disk. It never stops a running job, so
+on a 1-slot disk the first read waits at most for the running job. While the
+scan works through consecutive files of one media folder
+([`Scheduler.KeepAhead`](../../internal/jobs/scheduler.go)), the slot a read
+returns stays free from jobs until its next read, so on a 1-slot disk jobs wait
+until the scan leaves the folder. The scanner reads one file at a time, so on a
+4-slot disk jobs keep the other three slots. Unchanged files are not read and
+take no slot. A folder whose disk cannot be resolved fails the read instead of
+reading without a slot, and a file outside every media folder is not read.
+`internal/scanner` declares the interface it calls, and `cmd/mdm` wires the
+scheduler to it.
+
+| Rejected | Why |
+| --- | --- |
+| Defer the content key to a job | A move between scans would no longer be detected by content |
+| Stop a running job for the scan | An interrupted encode restarts from the beginning |
+| Scan reads take turns with jobs | On a 1-slot disk each read would wait for a whole job, and those jobs need the scan's output |
+
+## An unreadable media folder parks its jobs
+
+A job whose handler fails while its media folder cannot be read is snoozed:
+it is requeued without counting an attempt, and the folder becomes
+unavailable. A folder that cannot be read when its disk is resolved becomes
+unavailable too, and so does one whose disk does not answer within 5 seconds,
+until the answer comes; a share that stops answering would otherwise stall the
+grants on every disk. A folder cannot be read when it cannot be opened and
+listed, or when it lists no entry while a registered location lies under it
+([`mediafs.ResolveDisk`](../../internal/mediafs/disk.go)): an unmounted
+mount point is a readable empty directory on Linux, in a container's bind
+mount and under a Windows volume mount point, while a new folder holds no
+location and stays available. The scheduler asks the store whether a folder
+holds a location only when it resolves the folder, inside the same 5-second
+bound, so a slow library read parks the folder rather than the turn; in the
+snooze path the failed job's own location proves it. The snooze path's check
+has the same 5-second bound, and a folder that does not answer by then is
+parked, so a share that stops answering mid-job neither holds the job's slots
+nor stops the server from shutting down. A snooze the handler returns itself,
+such as a face job cancelled by a settings change, says nothing about the
+folder and parks nothing. A folder whose every file was deleted
+while mounted is parked until the next scan removes its locations and the
+minute recheck finds it available.
+
+Claims of a kind that reads the source file pass over locations under an
+unavailable folder, so a video with another readable location is claimed
+there, and a job stored only under unavailable folders stays queued. A kind
+without a read slot, `fingerprint`, reads only saved sprites: its job is
+claimed under an unavailable folder and its failure is never a snooze, which
+would run it again at once. A parked thumbnail does not hold
+back seek sprites, which wait only for claimable thumbnails. A snooze of the
+claim that started a round undoes the round, so the claim at the next location
+starts and counts it. A file missing under a readable folder was deleted, so
+its failure is retried as usual.
+
+The scheduler checks unavailable folders again when a scan starts, the folder
+watcher reports a change or an unreachable folder, and once a minute while any
+folder is unavailable. A folder registered later is resolved when first
+served. A healthy library is never polled.
+
+| Rejected | Why |
+| --- | --- |
+| Zero read slots for the folder's disk | Two folders can share a disk, and one unreadable folder would stop the other |
+| Snooze each job for a fixed delay | Every job of an unplugged disk would wake and fail to open its file each delay |
+| Recheck only on events | The watcher is off unless automatic import is on, so a remounted disk would wait for the next scan |
+| Park every kind with a location under an unavailable folder | A fingerprint needs nothing from the folder, so an unplugged disk would hold back work it does not read |
+| Treat every empty folder as unreadable | A new folder is empty until its first scan |
+| Compare the folder's device with the one recorded when it last held files, or read `/proc/self/mountinfo` | Nothing is recorded across a restart, so a server started while the disk is unplugged would fail its jobs; a container's bind mount hides the host's device and mount change; Windows has no equivalent |
+
+## Owner requests are claimed first
+
+Every job has a priority class. A claim of a kind takes the lowest class
+first, then the earliest run-after time, then the oldest row, the order River
+and Oban claim in ([`domain.JobPriority`](../../internal/domain/job.go)).
+
+| Class | Value | Work |
+| --- | --- | --- |
+| Owner request | 0 | A force rescan, a retry from the activity log, a re-probe or "Suggest tags" from the video page, with the stages they queue, and "Judge again" on Duplicates |
+| Import | 1 | Everything an import, a scan or an after-import rule queues, and "Tag all videos again" |
+| Backfill | 2 | Work that only refreshes stored results: the jobs each startup queues and the jobs they queue ([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens)) |
+
+Backfill kinds stay out of import tracking. They open no activity entry, do not
+keep the current import from settling, and do not make the desktop app busy
+(`HasUnfinishedJobs`), so a version bump never looks like an import. Their
+row is deleted when the job ends, done or failed, because the result lives in
+the domain tables and the next startup queues the work again. A `keyframes`
+or `media_info` job whose video gained or lost a location, or whose file
+changed, during the read saved nothing, so it is queued again, as an import
+stage is. A
+`queue_keyframes`, `queue_media_info` or `virtual_thumbnails` job names no
+video, so each claim is one attempt.
+
+An owner request over a job that is already queued raises it to class 0 and
+ends its retry wait, so the owner never waits behind a delay or a bulk import.
+Owner requests touch one video, so they cannot starve the import class.
+
+| Rejected | Why |
+| --- | --- |
+| Weighted queues (asynq 6:3:1, Sidekiq weighted) | A force rescan would share time with the bulk import it should overtake |
+
+## A failed job retries after a growing delay
+
+A handler's error ends the claim with one of four outcomes
+([`JobRetryPolicy.AfterFailure`](../../internal/domain/job_retry.go)).
+Attempts count rounds over a video's registered locations, so a failure that
+leaves untried locations in the round requeues at once.
+
+| Outcome | Returned for | Effect |
+| --- | --- | --- |
+| Done | No error | The job is done |
+| Retry | Any other error | At the end of a round the job waits 30 s × 4^(round − 1) ± 10%: 30 s after the first round and 2 min after the second. It fails after the third round |
+| Repeats | `domain.ErrFailureRepeats` | The job fails when the round ends, without the remaining rounds |
+| Snooze | `domain.ErrJobSnoozed` | The job is requeued at once, and the claim does not count as an attempt |
+
+A failure repeats when every retry would reproduce it:
+
+- an extraction slower than its timeout;
+- ffmpeg or ffprobe reporting FFmpeg's invalid-data error ("Invalid data found
+  when processing input");
+- ffprobe output that cannot be parsed (`invalid_metadata`).
+
+An I/O or permission error and an ffprobe timeout may pass, so they retry. The
+spread keeps jobs that failed together, such as every file on a disk that
+stopped answering, from retrying together.
+
+A kind may override the delay and the attempt limit, as a River or Oban worker
+can; an override without a limit retries until the job succeeds or repeats.
+`version_judge` keeps its own delays, 10 minutes, 1 hour, 6 hours and then
+daily, without a limit ([duplicate judging](duplicate-judging.md#the-work-is-a-job-per-pair)).
+Startup recovery requeues a running job without refunding its claim, so an
+interrupted run counts as an attempt.
+
+| Rejected | Why |
+| --- | --- |
+| Retry at once three times | A disk spinning up or a share reconnecting fails all three rounds within seconds |
+| Many attempts over hours (River `attempt^4` s, Oban `15 + 2^attempt` s) | With three rounds, a few minutes already cover a transient outage |
+| Treat every ffprobe exit error as repeating | ffprobe also exits with an error on `EIO`, `EACCES` or a file removed mid-read |
+
+## A feature that is off pauses its kinds
+
+A kind can be paused: its jobs stay queued and are not claimed, so they keep
+their attempts, as River and Oban pause a queue. `internal/app` owns the
+paused set. Each feature reports the kinds it holds back
+([`app.PausedJobKinds`](../../internal/app/paused_jobs.go)), `cmd/mdm` hands
+the collected set to the scheduler, and the scheduler reads it before each
+round and skips a paused kind like an empty one.
+
+| Kind | Paused while |
+| --- | --- |
+| `auto_tag` | "Use auto-tagging" is off |
+| `face`, `face_image`, `face_cast` | Face recognition is off, or the chosen recognizer's runtime is not ready |
+| `version_judge` | Duplicate judging is off |
+
+Turning a feature back on wakes the scheduler through the feature's existing
+settings callback, so its queued jobs are claimed at once; the face runtime's
+`Ready` callback, after a download or a helper check, wakes it the same way.
+
+| Rejected | Why |
+| --- | --- |
+| Claim the job and fail it while the feature is off | Each claim would spend an attempt, and the jobs would fail before the owner turns the feature on |
+
+## The scheduler sleeps until woken or until a retry is due
+
+Between rounds the scheduler waits on a [`jobs.Loop`](../../ARCHITECTURE.md#queue-workers)
+for a wakeup, for the earliest run-after time of a queued job, or for the next
+recheck of an unavailable folder, whichever comes first; it never polls an
+empty queue. A committed enqueue, a finished stage, every release, a returned
+lent slot or scan read, and the end of a scan's turn on a disk wake it. A claim
+error waits 5 seconds or for a wakeup.
+Grants, releases and lent slots are logged at debug level with the disk key
+and the slots in use, and each resolved disk with its type and read slots.
+
+On shutdown the scheduler stops granting and waits for running jobs to return.
+A cancelled job records no outcome, so startup recovery requeues it
+([process lifecycle](process-lifecycle.md)).

@@ -26,7 +26,7 @@ func TestAutoImportImportsAndRemovesFilesWithoutManualScan(t *testing.T) {
 		},
 		Logger: logger,
 	})
-	auto := newAutoImport(db.Settings(), db.ScanIndex(), scans, logger, func(o *app.AutoImportOptions) {
+	auto := newAutoImport(db.Settings(), db.ScanIndex(), scans, func() {}, logger, func(o *app.AutoImportOptions) {
 		o.Quiet = 50 * time.Millisecond
 		o.Settle = 100 * time.Millisecond
 	})

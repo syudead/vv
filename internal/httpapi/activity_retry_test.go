@@ -11,6 +11,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
 func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.ActivityListItem {
@@ -50,6 +51,9 @@ func (e *activityEnv) failImport(t *testing.T, name string) {
 			t.Fatal(err)
 		}
 		if err := ingest.FailClaimedJob(ctx, job, errors.New("ffprobe failed")); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.MakeJobsDueForTest(ctx, e.db); err != nil {
 			t.Fatal(err)
 		}
 	}

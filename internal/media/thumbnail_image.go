@@ -71,7 +71,7 @@ func runFitThumbnail(ctx context.Context, data []byte, filter, quality string) (
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	cmd := command(ctx, thumbnailCommand, fitThumbnailArgs(filter, quality)...)
+	cmd := command(ctx, PriorityNormal, thumbnailCommand, fitThumbnailArgs(filter, quality)...)
 	cmd.Stdin = bytes.NewReader(data)
 	output, err := cmd.Output()
 	if err != nil {

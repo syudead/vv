@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,11 @@ func TestProbeFailureCodes(t *testing.T) {
 	if err := os.WriteFile(text, []byte("plain text\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Probe(context.Background(), text); domain.ProbeErrorCodeOf(err) != domain.ProbeErrorProbeFailed {
+	_, err := Probe(context.Background(), text)
+	if domain.ProbeErrorCodeOf(err) != domain.ProbeErrorProbeFailed {
 		t.Errorf("non-video file: code = %q, want probe_failed (%v)", domain.ProbeErrorCodeOf(err), err)
+	}
+	if !errors.Is(err, domain.ErrFailureRepeats) {
+		t.Errorf("non-video file: %v, want a repeating failure", err)
 	}
 }

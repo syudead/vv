@@ -124,6 +124,8 @@ type fakeFrames struct {
 	missing map[int64]bool
 	// Positions returned by AutoThumbnailPositions.
 	auto []int64
+	// read, when set, runs on each extraction.
+	read func()
 
 	positions []int64
 }
@@ -132,10 +134,37 @@ func (f *fakeFrames) FrameAt(_ context.Context, _ string, positionMs int64) (dom
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.positions = append(f.positions, positionMs)
+	if f.read != nil {
+		f.read()
+	}
 	if f.frame.PNG == nil || f.missing[positionMs] {
 		return domain.ThumbnailFrame{}, errors.New("no frame")
 	}
 	return f.frame, nil
+}
+
+// recordedForeground appends each foreground read and its end to events.
+type recordedForeground struct {
+	events *[]string
+}
+
+func (r recordedForeground) ReadInForeground(path string) func() {
+	*r.events = append(*r.events, "open "+path)
+	return func() { *r.events = append(*r.events, "end") }
+}
+
+func TestThumbnailEditsHoldTheDiskWhileReadingAFrame(t *testing.T) {
+	f := newEditsFixture(t)
+	var events []string
+	f.frames.read = func() { events = append(events, "frame") }
+	f.edits.foreground = recordedForeground{events: &events}
+
+	if _, err := f.edits.VideoFrame(context.Background(), "/media/a.mp4", 1_000); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"open /media/a.mp4", "frame", "end"}; !slices.Equal(events, want) {
+		t.Fatalf("events = %q, want %q", events, want)
+	}
 }
 
 func (f *fakeFrames) AutoThumbnailPositions(int64) []int64 {

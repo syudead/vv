@@ -496,8 +496,8 @@ func (e *WorkInfoAtError) Error() string {
 
 func (e *WorkInfoAtError) Unwrap() error { return e.Err }
 
-// VideoWorkInfoChanged includes all videos sharing changed user-data keys; it notifies the UI and has the face worker
-// apply the cast rule.
+// VideoWorkInfoChanged includes all videos sharing changed user-data keys; it notifies the UI, and the write that
+// publishes it queued their face_cast jobs while face recognition is on.
 type VideoWorkInfoChanged struct {
 	VideoIDs []int64
 }

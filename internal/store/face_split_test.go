@@ -6,6 +6,7 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -125,20 +126,19 @@ func TestSplitFaceAppearanceKeepsTheCreditAnotherAppearanceStillLinks(t *testing
 	}
 }
 
-func TestSplitFaceAppearancePublishesTheNewFaceWithoutACreditChange(t *testing.T) {
+func TestSplitFaceAppearanceQueuesTheNewFaceWithoutACreditChange(t *testing.T) {
 	f, _ := newSplitFixture(t)
-	recorder := &committedFaceRecorder{t: t, db: f.db}
-	f.db.PublishTo(recorder)
 	if _, err := f.db.sql.Exec(`delete from video_work_people where role = 'performer'`); err != nil {
 		t.Fatal(err)
 	}
+	takeFaceImageJobs(t, f.db)
 
 	created, err := f.db.Credits().SplitFaceAppearances(context.Background(), f.named, []int64{faceAppearances(t, f.db)[0].id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := recorder.take(); !slices.Equal(got, []int64{created.ID}) {
-		t.Errorf("face events = %v, want [%d] for the new person", got, created.ID)
+	if got, want := takeFaceImageJobs(t, f.db), [][]any{{created.ID, int64(domain.JobPriorityOwner)}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("face_image jobs = %v, want %v for the new person", got, want)
 	}
 }
 

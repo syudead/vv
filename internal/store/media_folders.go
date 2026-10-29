@@ -23,6 +23,17 @@ func (s *LibraryStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFold
 	return listMediaFolders(ctx, s.db.sql)
 }
 
+// HasLocationsUnder reports whether a video's location lies under the media folder; an unknown folder has none.
+func (s *ScanIndexStore) HasLocationsUnder(ctx context.Context, folderID int64) (bool, error) {
+	var populated bool
+	if err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from media_folders mf
+		join video_locations l on `+inMediaFolderCondition("l.path")+` where mf.id = ?)`, folderID).
+		Scan(&populated); err != nil {
+		return false, fmt.Errorf("cannot check whether the media folder holds videos: %w", err)
+	}
+	return populated, nil
+}
+
 func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
 	rows, err := q.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
 	if err != nil {

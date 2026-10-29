@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"slices"
 	"testing"
@@ -149,10 +148,11 @@ func TestProbeResultPassesItsForceToThePreview(t *testing.T) {
 func finishFollowUps(t *testing.T, db *DB, contentKey string) {
 	t.Helper()
 	for _, statement := range []string{
-		`insert into auto_tag_queue (content_key, state, error, queued_at, updated_at) values (?, 'done', '', 0, 0)
-			on conflict (content_key) do update set state = 'done', activity_id = null`,
-		`insert into face_queue (content_key, state, updated_at) values (?, 'done', 0)
-			on conflict (content_key) do update set state = 'done', activity_id = null`,
+		`insert into auto_tag_results (content_key, state, error, updated_at) values (?, 'done', '', 0)
+			on conflict (content_key) do update set state = 'done'`,
+		`delete from jobs where kind = 'face' and subject_key = ?`,
+		`insert into face_results (content_key, state, updated_at) values (?, 'done', 0)
+			on conflict (content_key) do update set state = 'done'`,
 	} {
 		if _, err := db.sql.Exec(statement, contentKey); err != nil {
 			t.Fatal(err)
@@ -207,13 +207,10 @@ func TestForcedSeekStageQueuesFollowUpsAgain(t *testing.T) {
 			}
 
 			pipeline := onlyPipeline(t, db, importEntries(t, db)[0].ID)
-			for _, table := range []string{"auto_tag_queue", "face_queue"} {
-				var state string
-				var activityID sql.NullInt64
-				if err := db.sql.QueryRow(`select state, activity_id from `+table+` where content_key = ?`, key).
-					Scan(&state, &activityID); err != nil {
-					t.Fatal(err)
-				}
+			for _, queue := range []contentQueue{autoTagQueue, faceQueue} {
+				table := queue.what
+				state, activityID := contentItem(t, db, queue, key)
+
 				if !tc.on {
 					if state != "done" || activityID.Valid {
 						t.Errorf("%s row = %s, entry %v; want done and untouched while the feature is off",
@@ -353,6 +350,7 @@ func TestForcedThumbnailFailureKeepsAnOwnerEditSinceTheClaim(t *testing.T) {
 		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("ffmpeg failed")); err != nil {
 			t.Fatal(err)
 		}
+		makeJobsDue(t, db)
 	}
 
 	if got := getOwnerVideo(t, db, videoID).ThumbnailState; got != domain.ThumbnailStateDone {

@@ -302,6 +302,8 @@ func TestJobFinishedPublishesStageAndProcessing(t *testing.T) {
 	ingest, publisher := newTestIngest(newFakeIngestStore(), &fakeGenerator{})
 
 	ingest.JobFinished(domain.Job{Kind: domain.JobProbe, VideoID: 7})
+	// An auto_tag job has no video, so it must not announce an ingest change.
+	ingest.JobFinished(domain.Job{Kind: domain.JobAutoTag, ContentKey: "k1"})
 	ingest.JobFinished(domain.Job{Kind: domain.JobThumbnail, VideoID: 8})
 
 	want := []domain.Event{

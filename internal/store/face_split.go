@@ -89,8 +89,12 @@ func (s *CreditStore) relinkFaceAppearances(
 		return domain.FaceMove{}, err
 	}
 	if created {
-		// The new face is published even when no credit changed, such as for a video gone from the library.
-		events = append(events, personFaceEvents(domain.Credit{}, target)...)
+		// The new face is embedded even when no credit changed, such as for a video gone from the library.
+		queued, err := queuePersonFace(ctx, tx, domain.Credit{}, target)
+		if err != nil {
+			return domain.FaceMove{}, err
+		}
+		events = append(events, queued...)
 	}
 	c := &changes{}
 	c.matchesChanged()

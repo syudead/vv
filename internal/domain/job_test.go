@@ -1,10 +1,6 @@
 package domain
 
-import (
-	"errors"
-	"fmt"
-	"testing"
-)
+import "testing"
 
 func TestClaimAttemptsCountsOnlyNewRounds(t *testing.T) {
 	if got := ClaimAttempts(0, true); got != 1 {
@@ -15,56 +11,6 @@ func TestClaimAttemptsCountsOnlyNewRounds(t *testing.T) {
 	}
 	if got := ClaimAttempts(1, true); got != 2 {
 		t.Errorf("wrapped round = %d, want 2", got)
-	}
-}
-
-func TestJobStateAfterFailureStopsAtLimitOnLastLocation(t *testing.T) {
-	if MaxJobAttempts != 3 {
-		t.Fatalf("MaxJobAttempts = %d, want 3", MaxJobAttempts)
-	}
-	tests := []struct {
-		name         string
-		attempts     int
-		lastLocation bool
-		claimCurrent bool
-		want         JobState
-	}{
-		{"below limit", MaxJobAttempts - 1, true, true, JobQueued},
-		{"at limit", MaxJobAttempts, true, true, JobFailed},
-		{"over limit", MaxJobAttempts + 1, true, true, JobFailed},
-		{"untried location remains", MaxJobAttempts, false, true, JobQueued},
-		{"claim no longer current", MaxJobAttempts, true, false, JobQueued},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := JobStateAfterFailure(tt.attempts, tt.lastLocation, tt.claimCurrent); got != tt.want {
-				t.Fatalf("JobStateAfterFailure(%d, %v, %v) = %q, want %q",
-					tt.attempts, tt.lastLocation, tt.claimCurrent, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestJobRetriesUntilLimitAcrossLocations(t *testing.T) {
-	const locations = 2
-	attempts := 0
-	var state JobState
-	claims := 0
-	for state != JobFailed {
-		for i := range locations {
-			attempts = ClaimAttempts(attempts, i == 0)
-			claims++
-			state = JobStateAfterFailure(attempts, i == locations-1, true)
-			if state == JobFailed {
-				break
-			}
-		}
-		if claims > locations*(MaxJobAttempts+1) {
-			t.Fatal("job never failed")
-		}
-	}
-	if attempts != MaxJobAttempts || claims != locations*MaxJobAttempts {
-		t.Fatalf("failed after attempts=%d claims=%d, want %d and %d", attempts, claims, MaxJobAttempts, locations*MaxJobAttempts)
 	}
 }
 
@@ -111,14 +57,5 @@ func TestClaimConditionFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	}
 	if JobKinds[len(JobKinds)-1] != JobFingerprint {
 		t.Fatalf("JobKinds = %v, want fingerprint last", JobKinds)
-	}
-}
-
-func TestAttemptsAfterFailureSpendsRemainingAttemptsOnlyForRepeatingFailures(t *testing.T) {
-	if got := AttemptsAfterFailure(1, fmt.Errorf("%w: too slow", ErrFailureRepeats)); got != MaxJobAttempts {
-		t.Errorf("repeating failure = %d, want %d", got, MaxJobAttempts)
-	}
-	if got := AttemptsAfterFailure(1, errors.New("ffmpeg failed")); got != 1 {
-		t.Errorf("other failure = %d, want 1", got)
 	}
 }

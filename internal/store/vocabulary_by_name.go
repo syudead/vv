@@ -253,7 +253,11 @@ func renameCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name, n
 	if err != nil {
 		return domain.VocabularyOutcome{}, nil, err
 	}
-	return domain.VocabularyOutcome{Changed: changes.any()}, personFaceEvents(current, updated), nil
+	events, err := queuePersonFace(ctx, tx, current, updated)
+	if err != nil {
+		return domain.VocabularyOutcome{}, nil, err
+	}
+	return domain.VocabularyOutcome{Changed: changes.any()}, events, nil
 }
 
 func deleteCreditByName(ctx context.Context, tx *sql.Tx, t creditTables, name string) (domain.VocabularyOutcome, error) {

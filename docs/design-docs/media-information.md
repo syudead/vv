@@ -155,13 +155,15 @@ is never stored: a Matroska file without statistics tags has no breakdown.
 ## Videos imported earlier are read again in the background
 
 Bump `domain.MediaInfoVersion` when the parser adds items. A row of an older
-version still reads as what it holds, so the page keeps its groups, and
-`app.BackfillMediaInfo` re-reads one probed video at a time, a quarter second
-apart and a minute between passes, the same loop as the keyframe backfill
-([`internal/app/backfill.go`](../../internal/app/backfill.go)). It runs the
-import's `ffprobe` through `media.ProbeMediaInfo` and writes only
-`video_media_info`; the video's other probe results and its jobs are
-untouched. A video with a probe job queued or running is left to the import.
+version still reads as what it holds, so the page keeps its groups. At each
+startup the `queue_media_info` job queues a backfill-class `media_info` job per
+probed video without a row of this version
+([process lifecycle](process-lifecycle.md#backfills-run-as-jobs-after-the-listener-opens),
+[`internal/app/media_info_backfill.go`](../../internal/app/media_info_backfill.go)).
+Each job runs the import's `ffprobe` through `media.ProbeMediaInfo` within the
+disk's read slots and writes only `video_media_info`; the video's other probe
+results and its import jobs are untouched. A video with a probe job queued or
+running is left to the import.
 
 `IngestStore.SaveMediaInfoProbe` writes under the job identity check and only
 when the file still has the indexed size and modification time, so a file

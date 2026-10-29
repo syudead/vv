@@ -22,7 +22,7 @@ func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.Th
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	output, err := command(ctx, thumbnailCommand, frameArgs(videoPath, positionMs)...).Output()
+	output, err := command(ctx, PriorityNormal, thumbnailCommand, frameArgs(videoPath, positionMs)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {

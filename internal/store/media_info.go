@@ -90,10 +90,10 @@ func decodeMediaInfo(version int, encoded string) *domain.MediaInfo {
 	return &info
 }
 
-// NextMediaInfoProbe pages through probed videos without current media information, skipping one whose re-read
-// failed for the same file at this version.
-func (s *IngestStore) NextMediaInfoProbe(ctx context.Context, afterID int64) (domain.Job, error) {
-	return nextBackfillJob(ctx, s.db.sql, afterID, `not exists (select 1 from video_media_info m
+// QueueMediaInfoJobs queues, in class priority, a media_info job for each video without media information of this
+// version, skipping one whose re-read failed for the same file at this version.
+func (s *IngestStore) QueueMediaInfoJobs(ctx context.Context, priority domain.JobPriority) (int, error) {
+	return s.queueBackfillJobs(ctx, domain.JobMediaInfo, priority, `not exists (select 1 from video_media_info m
 			where m.video_id = v.id and m.version = ?)
 		and not exists (select 1 from video_media_info_failures f where f.video_id = v.id and f.version = ?
 			and f.size_bytes = l.size_bytes and f.mtime_ns = coalesce(l.mtime_ns, l.mtime * 1000000000))`,

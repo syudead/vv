@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strconv"
 	"testing"
@@ -169,19 +170,20 @@ func TestAProvisionalPersonsOwnFaceMergesNobody(t *testing.T) {
 	}
 }
 
-// A vector is written only for the face and the recognizer that are current when it is stored.
+// A vector is written only for the face and the recognizer that are current when it is stored; a vector of a replaced
+// face is refused, so its job reads the face again.
 func TestAFaceVectorIsStoredOnlyForTheCurrentFaceAndGeneration(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)
 	named := createPerson(t, db, "Named").ID
 	job := setFace(t, db, named)
-	if stale, err := db.Faces().StaleFaceImage(ctx); err != nil || stale.PersonID != named || stale.Embedded {
-		t.Fatalf("StaleFaceImage = %+v, %v; want the new face", stale, err)
+	if job.Embedded {
+		t.Fatalf("FaceImage = %+v, want the new face without a vector", job)
 	}
 
 	replaced := setFace(t, db, named)
-	if _, err := db.Faces().StoreFaceImageVector(ctx, job, faceBasis(0)); err != nil {
-		t.Fatalf("vector of a replaced face: %v", err)
+	if _, err := db.Faces().StoreFaceImageVector(ctx, job, faceBasis(0)); !errors.Is(err, domain.ErrFaceImageChanged) {
+		t.Fatalf("vector of a replaced face: %v, want ErrFaceImageChanged", err)
 	}
 	if got := storedFaceVectors(t, db); len(got) != 0 {
 		t.Fatalf("vectors after the face was replaced = %v, want none", got)
@@ -199,59 +201,40 @@ func TestAFaceVectorIsStoredOnlyForTheCurrentFaceAndGeneration(t *testing.T) {
 		t.Fatalf("vectors after the switch = %v, want none", got)
 	}
 
-	current, err := db.Faces().StaleFaceImage(ctx)
+	current, err := db.Faces().FaceImage(ctx, named)
 	if err != nil || current.Recognizer != domain.FaceRecognizerArcFaceR50 || current.Generation != 1 {
-		t.Fatalf("StaleFaceImage = %+v, %v; want the face under ArcFace and generation 1", current, err)
+		t.Fatalf("FaceImage = %+v, %v; want the face under ArcFace and generation 1", current, err)
 	}
 	if _, err := db.Faces().StoreFaceImageVector(ctx, current, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Faces().StaleFaceImage(ctx); !errors.Is(err, domain.ErrNoJob) {
-		t.Fatalf("StaleFaceImage after a face without a good face = %v, want ErrNoJob", err)
+	if after, err := db.Faces().FaceImage(ctx, named); err != nil || !after.Embedded || after.Vector != nil {
+		t.Fatalf("FaceImage after a face without a good face = %+v, %v; want it embedded without a vector", after, err)
 	}
 }
 
-// committedFaceRecorder checks through the read pool, which sees only committed rows, that each face event follows
-// its commit.
-type committedFaceRecorder struct {
-	t      *testing.T
-	db     *DB
-	people []int64
+// takeFaceImageJobs returns the people of the queued face_image jobs with their class, and deletes the jobs.
+func takeFaceImageJobs(t *testing.T, db *DB) [][]any {
+	t.Helper()
+	jobs := queryRows(t, db.sql, `select cast(subject_key as integer), priority from jobs
+		where kind = 'face_image' and state = 'queued' order by id`, 2)
+	execAll(t, db, `delete from jobs where kind = 'face_image'`)
+	return jobs
 }
 
-func (r *committedFaceRecorder) Publish(events ...domain.Event) {
-	for _, e := range events {
-		changed, ok := e.(domain.PersonImageChanged)
-		if !ok {
-			continue
-		}
-		var faces int
-		if err := r.db.read.QueryRow(`select count(*) from person_images where person_id = ?`, changed.PersonID).
-			Scan(&faces); err != nil || faces != 1 {
-			r.t.Errorf("face of person %d at its event = %d, %v; want committed", changed.PersonID, faces, err)
-		}
-		r.people = append(r.people, changed.PersonID)
-	}
-}
-
-func (r *committedFaceRecorder) take() []int64 {
-	people := r.people
-	r.people = nil
-	return people
-}
-
-func TestFaceChangesArePublishedAfterCommit(t *testing.T) {
+// Each write that sets, replaces or brings a face, or names a provisional person with one, queues the person's
+// face_image job in its own transaction, in the owner class.
+func TestFaceChangesQueueAFaceImageJob(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)
-	recorder := &committedFaceRecorder{t: t, db: db}
-	db.PublishTo(recorder)
 	named := createPerson(t, db, "Named").ID
 	faceless := createPerson(t, db, "Faceless").ID
 	provisional := provisionalPerson(t, db, faceBasis(0))
+	owner := int64(domain.JobPriorityOwner)
 
 	setFace(t, db, named)
-	if got := recorder.take(); !slices.Equal(got, []int64{named}) {
-		t.Fatalf("events of a set face = %v, want [%d]", got, named)
+	if got, want := takeFaceImageJobs(t, db), [][]any{{named, owner}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("jobs of a set face = %v, want %v", got, want)
 	}
 	if _, err := db.Credits().SetPersonImage(ctx, named+100, testFace); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("SetPersonImage of a missing person = %v", err)
@@ -259,24 +242,67 @@ func TestFaceChangesArePublishedAfterCommit(t *testing.T) {
 	if _, err := db.Credits().DeletePersonImage(ctx, named); err != nil {
 		t.Fatal(err)
 	}
-	if got := recorder.take(); len(got) != 0 {
-		t.Fatalf("events of a refused write and a removed face = %v, want none", got)
+	if got := takeFaceImageJobs(t, db); len(got) != 0 {
+		t.Fatalf("jobs of a refused write and a removed face = %v, want none", got)
 	}
 
 	setFace(t, db, provisional)
-	recorder.take()
+	takeFaceImageJobs(t, db)
 	name := "Named later"
 	if _, err := db.Credits().Update(ctx, domain.CreditPerson, provisional, domain.CreditPatch{Name: &name}); err != nil {
 		t.Fatal(err)
 	}
-	if got := recorder.take(); !slices.Equal(got, []int64{provisional}) {
-		t.Fatalf("events of naming a provisional person = %v, want [%d]", got, provisional)
+	if got, want := takeFaceImageJobs(t, db), [][]any{{provisional, owner}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("jobs of naming a provisional person = %v, want %v", got, want)
 	}
 
 	if _, err := db.Credits().Merge(ctx, domain.CreditPerson, faceless, []int64{provisional}); err != nil {
 		t.Fatal(err)
 	}
-	if got := recorder.take(); !slices.Equal(got, []int64{faceless}) {
-		t.Fatalf("events of a merge that brought a face = %v, want [%d]", got, faceless)
+	if got, want := takeFaceImageJobs(t, db), [][]any{{faceless, owner}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("jobs of a merge that brought a face = %v, want %v", got, want)
+	}
+}
+
+// A face replaced while its face_image job runs may come after the run read the old face, so the job runs again
+// after it ends, whether it succeeded or failed for good; without a request it ends.
+func TestAFaceReplacedWhileItsJobRunsQueuesTheJobAgain(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	person := createPerson(t, db, "Named").ID
+	setFace(t, db, person)
+	want := [][]any{{"queued", strconv.FormatInt(person, 10), int64(0), int64(domain.JobPriorityOwner)}}
+	for _, end := range []struct {
+		name string
+		run  func(job domain.Job) error
+	}{
+		{"completed", func(job domain.Job) error { return db.Ingest().CompleteClaimedJob(ctx, job) }},
+		{"failed for good", func(job domain.Job) error {
+			return db.Ingest().FailClaimedJob(ctx, job, domain.FailureRepeats(errors.New("unreadable face")))
+		}},
+	} {
+		job, err := db.Ingest().ClaimJob(ctx, domain.JobFaceImage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		setFace(t, db, person)
+		if err := end.run(job); err != nil {
+			t.Fatal(err)
+		}
+		got := queryRows(t, db.sql, `select state, subject_key, attempts, priority from jobs where kind = 'face_image'`, 4)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("jobs after the run %s = %v, want %v", end.name, got, want)
+		}
+	}
+
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobFaceImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := queryRows(t, db.sql, `select state from jobs where kind = 'face_image'`, 1); len(got) != 0 {
+		t.Fatalf("jobs after a run without a request = %v, want none", got)
 	}
 }

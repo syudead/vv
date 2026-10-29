@@ -4,5 +4,5 @@ package media
 
 import "os/exec"
 
-// applyProcessAttributes has nothing to set outside Windows.
-func applyProcessAttributes(*exec.Cmd) {}
+// applyProcessAttributes has nothing to set outside Windows; Linux lowers a started child instead.
+func applyProcessAttributes(*exec.Cmd, Priority) {}

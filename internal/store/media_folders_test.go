@@ -358,3 +358,22 @@ func TestMediaFolderVideoBytesSumsEveryLocationBelowTheFolder(t *testing.T) {
 		t.Fatalf("video bytes = %d, want 220", got)
 	}
 }
+
+func TestHasLocationsUnderReportsAVideoBelowTheFolder(t *testing.T) {
+	db, media, other := twoRootsDB(t)
+	addVideoAt(t, db, "/media/sub/movie.mp4", "movie")
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		folder int64
+		want   bool
+	}{{media, true}, {other, false}} {
+		got, err := db.ScanIndex().HasLocationsUnder(ctx, tc.folder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("HasLocationsUnder(%d) = %v, want %v", tc.folder, got, tc.want)
+		}
+	}
+}

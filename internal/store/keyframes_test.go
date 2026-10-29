@@ -28,7 +28,7 @@ func TestKeyframeBackfillAndImport(t *testing.T) {
 			db, id, p := keyframeFixture(t)
 			ctx := context.Background()
 			p.Spacing = spacing
-			job, err := db.Ingest().NextKeyframeProbe(ctx, 0)
+			job, err := nextBackfill(ctx, db, domain.JobKeyframes)
 			if err != nil || job.VideoID != id {
 				t.Fatalf("candidate = %+v, %v", job, err)
 			}
@@ -39,7 +39,7 @@ func TestKeyframeBackfillAndImport(t *testing.T) {
 			if err != nil || got != p {
 				t.Fatalf("saved = %+v, %v", got, err)
 			}
-			if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+			if _, err := nextBackfill(ctx, db, domain.JobKeyframes); !errors.Is(err, domain.ErrNoJob) {
 				t.Fatalf("completed candidate: %v", err)
 			}
 			p.Spacing = domain.KeyframesShort
@@ -63,7 +63,7 @@ func TestKeyframeBackfillRejectsChangedSource(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			db, id, p := keyframeFixture(t)
 			ctx := context.Background()
-			job, err := db.Ingest().NextKeyframeProbe(ctx, 0)
+			job, err := nextBackfill(ctx, db, domain.JobKeyframes)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,7 +82,7 @@ func TestKeyframeBackfillRejectsChangedSource(t *testing.T) {
 				if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, id, domain.ActivityByRule); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+				if _, err := nextBackfill(ctx, db, domain.JobKeyframes); !errors.Is(err, domain.ErrNoJob) {
 					t.Fatalf("candidate during probe: %v", err)
 				}
 				return
@@ -112,7 +112,7 @@ func TestKeyframeBackfillAfterSubsecondUpdate(t *testing.T) {
 		if err != nil || !indexed[file.Path].MTime.Equal(file.MTime) {
 			t.Fatalf("indexed timestamp = %v, %v", indexed[file.Path].MTime, err)
 		}
-		job, err := db.Ingest().NextKeyframeProbe(ctx, 0)
+		job, err := nextBackfill(ctx, db, domain.JobKeyframes)
 		if err != nil || job.VideoID != id {
 			t.Fatalf("updated candidate = %+v, %v", job, err)
 		}
@@ -124,7 +124,7 @@ func TestKeyframeBackfillAfterSubsecondUpdate(t *testing.T) {
 		if err != nil || !got.SparseFor(p.Source) {
 			t.Fatalf("updated sparse hint = %+v, %v", got, err)
 		}
-		if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+		if _, err := nextBackfill(ctx, db, domain.JobKeyframes); !errors.Is(err, domain.ErrNoJob) {
 			t.Fatalf("completed sample retried: %v", err)
 		}
 	}
@@ -143,7 +143,7 @@ func TestKeyframeBackfillLearnsLegacyTimestamp(t *testing.T) {
 			if !available {
 				p.Source = domain.FileStamp{}
 			}
-			job, err := db.Ingest().NextKeyframeProbe(ctx, 0)
+			job, err := nextBackfill(ctx, db, domain.JobKeyframes)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,7 +160,7 @@ func TestKeyframeBackfillLearnsLegacyTimestamp(t *testing.T) {
 			if !available && got.Spacing != domain.KeyframesUnknown {
 				t.Fatalf("unavailable sample = %+v", got)
 			}
-			if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+			if _, err := nextBackfill(ctx, db, domain.JobKeyframes); !errors.Is(err, domain.ErrNoJob) {
 				t.Fatalf("legacy sample retried: %v", err)
 			}
 		})
@@ -196,7 +196,7 @@ func TestLocationTimestampMigration(t *testing.T) {
 func TestKeyframeBackfillUnavailableAndVersionChange(t *testing.T) {
 	db, id, p := keyframeFixture(t)
 	ctx := context.Background()
-	job, err := db.Ingest().NextKeyframeProbe(ctx, 0)
+	job, err := nextBackfill(ctx, db, domain.JobKeyframes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,13 +204,13 @@ func TestKeyframeBackfillUnavailableAndVersionChange(t *testing.T) {
 	if err := db.Ingest().SaveKeyframeProbe(ctx, job, p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+	if _, err := nextBackfill(ctx, db, domain.JobKeyframes); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("unavailable retried: %v", err)
 	}
 	if _, err := db.sql.ExecContext(ctx, `update video_keyframe_spacing set version = 0 where video_id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Ingest().NextKeyframeProbe(ctx, 0); err != nil {
+	if _, err := nextBackfill(ctx, db, domain.JobKeyframes); err != nil {
 		t.Fatalf("old version not retried: %v", err)
 	}
 }

@@ -135,7 +135,7 @@ func TestMediaInfoBackfillReplacesOlderRowsAndRemembersFailures(t *testing.T) {
 	if got, err := db.Library().MediaInfo(ctx, id); err != nil || got == nil || got.Video.BitDepth != 8 {
 		t.Fatalf("古い版の行 = %+v, %v, want 読み直すまで今の値のまま", got, err)
 	}
-	job, err := db.Ingest().NextMediaInfoProbe(ctx, 0)
+	job, err := nextBackfill(ctx, db, domain.JobMediaInfo)
 	if err != nil || job.VideoID != id {
 		t.Fatalf("候補 = %+v, %v", job, err)
 	}
@@ -154,13 +154,13 @@ func TestMediaInfoBackfillReplacesOlderRowsAndRemembersFailures(t *testing.T) {
 	if got, _ := db.Library().MediaInfo(ctx, id); got == nil || got.Video.BitDepth != 8 {
 		t.Fatalf("読めなかったあとの値 = %+v, want 今の値を残す", got)
 	}
-	if _, err := db.Ingest().NextMediaInfoProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+	if _, err := nextBackfill(ctx, db, domain.JobMediaInfo); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("失敗した同じファイル: %v, want ErrNoJob", err)
 	}
 	if _, err := db.sql.Exec(`update video_locations set size_bytes = size_bytes + 1 where id = ?`, job.LocationID); err != nil {
 		t.Fatal(err)
 	}
-	if job, err = db.Ingest().NextMediaInfoProbe(ctx, 0); err != nil || job.VideoID != id {
+	if job, err = nextBackfill(ctx, db, domain.JobMediaInfo); err != nil || job.VideoID != id {
 		t.Fatalf("変わったファイル: %+v, %v, want もう一度候補", job, err)
 	}
 
@@ -171,7 +171,7 @@ func TestMediaInfoBackfillReplacesOlderRowsAndRemembersFailures(t *testing.T) {
 	if got, _ := db.Library().MediaInfo(ctx, id); got == nil || got.Video.BitDepth != 10 {
 		t.Fatalf("読み直した値 = %+v, want 新しい値", got)
 	}
-	if _, err := db.Ingest().NextMediaInfoProbe(ctx, 0); !errors.Is(err, domain.ErrNoJob) {
+	if _, err := nextBackfill(ctx, db, domain.JobMediaInfo); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("読み直したあと: %v, want ErrNoJob", err)
 	}
 }

@@ -13,7 +13,7 @@ import (
 // republishes it.
 
 // RepublishVirtualThumbnails publishes, from its stored image, each virtual video's thumbnail whose file is missing.
-// Startup runs it because no thumbnail job exists for a virtual video.
+// The virtual_thumbnails job each start queues runs it, because no thumbnail job exists for a virtual video.
 func (i *Ingest) RepublishVirtualThumbnails(ctx context.Context) error {
 	keys, err := i.store.VirtualThumbnailKeys(ctx)
 	if err != nil {

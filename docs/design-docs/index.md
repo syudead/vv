@@ -25,6 +25,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Hardware encoding for live transcoding](hardware-encoding.md)
 - [Windows desktop app (VVMDM.exe)](windows-app.md)
 - [Process lifecycle: startup and shutdown order](process-lifecycle.md)
+- [Job scheduling: one scheduler for every ingest stage](job-scheduling.md)
 - [Folder watching: importing changed media folders](folder-watching.md)
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)

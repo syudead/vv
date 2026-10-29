@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -37,13 +39,7 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		workers[kind] = wakers[kind]
 	}
 	judge := &countingWaker{}
-	var castChecks atomic.Int32
-	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge,
-		WorkInfoChanged: func(ids []int64) {
-			if slices.Equal(ids, []int64{4}) {
-				castChecks.Add(1)
-			}
-		}})
+	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
 
 	bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
 	bus.Publish(domain.ProcessingChanged{})
@@ -53,14 +49,13 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobSeekThumbnail})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
-	bus.Publish(domain.VideoWorkInfoChanged{VideoIDs: []int64{4}})
 	want := map[domain.JobKind]int32{
 		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
 		// Probe, thumbnail, and video deletion each wake the worker.
 		domain.JobSeekThumbnail: 3,
 	}
 	check := func() bool {
-		if judge.woken.Load() != 2 || castChecks.Load() != 1 {
+		if judge.woken.Load() != 2 {
 			return false
 		}
 		for kind, w := range wakers {
@@ -85,9 +80,6 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	}
 	if got := judge.woken.Load(); got != 2 {
 		t.Errorf("重複の判定の起床 = %d, want 2", got)
-	}
-	if got := castChecks.Load(); got != 1 {
-		t.Errorf("cast rule checks = %d, want 1 for the changed work information", got)
 	}
 }
 
@@ -119,12 +111,13 @@ func (probeOnlyGenerator) FitThumbnailSource(_ context.Context, image []byte, _ 
 
 type emptyClaims struct {
 	jobs.Queue
+	kind  domain.JobKind
 	empty chan struct{}
 }
 
-func (q emptyClaims) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
-	job, err := q.Queue.ClaimJob(ctx, kind)
-	if errors.Is(err, domain.ErrNoJob) {
+func (q emptyClaims) ClaimJobOn(ctx context.Context, claim domain.JobClaim) (domain.Job, error) {
+	job, err := q.Queue.ClaimJobOn(ctx, claim)
+	if claim.Kind == q.kind && errors.Is(err, domain.ErrNoJob) {
 		select {
 		case q.empty <- struct{}{}:
 		default:
@@ -149,16 +142,27 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 	return ctx, db, mediaDir
 }
 
-// Verify the subscription alone starts thumbnail work after probing, without queue polling.
-func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
-	ctx, db, mediaDir := openTestDB(t)
+// indexMovie writes and indexes movie.mp4 under mediaDir; a folder that lists nothing while it holds an indexed video
+// counts as unmounted and parks its jobs.
+func indexMovie(t *testing.T, ctx context.Context, db *store.DB, mediaDir string) domain.UpsertResult {
+	t.Helper()
+	path := filepath.Join(mediaDir, "movie.mp4")
+	if err := os.WriteFile(path, []byte("movie"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
-		MTime: time.Unix(1, 0), Container: "mp4",
+		Path: path, Title: "movie", ContentKey: "key-movie", SizeBytes: 1, MTime: time.Unix(1, 0), Container: "mp4",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return video
+}
+
+// Verify a queued probe wakes the sleeping scheduler and its completion starts thumbnail work, without queue polling.
+func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
+	ctx, db, mediaDir := openTestDB(t)
+	video := indexMovie(t, ctx, db, mediaDir)
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -171,21 +175,21 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		Publisher: bus, Logger: logger,
 	})
 	thumbnailStarted := make(chan domain.Job, 1)
-	thumbnailQueue := emptyClaims{Queue: db.Ingest(), empty: make(chan struct{}, 1)}
-	thumbnail := jobs.New(jobs.Options{
-		Kind: domain.JobThumbnail, Queue: thumbnailQueue, Logger: logger,
-		Handler: func(_ context.Context, job domain.Job) error {
-			thumbnailStarted <- job
-			return nil
+	queue := emptyClaims{Queue: db.Ingest(), kind: domain.JobThumbnail, empty: make(chan struct{}, 1)}
+	scheduler := jobs.NewScheduler(jobs.Options{
+		Queue: queue, Folders: db.ScanIndex(), Disks: mediafs.New().ResolveDisk, CPUSlots: domain.JobCPUSlots(1),
+		Logger: logger,
+		Handlers: map[domain.JobKind]jobs.Handler{
+			domain.JobProbe: ingest.Handler(domain.JobProbe),
+			domain.JobThumbnail: func(_ context.Context, job domain.Job) error {
+				thumbnailStarted <- job
+				return nil
+			},
 		},
 		Finished: ingest.JobFinished,
 	})
-	probe := jobs.New(jobs.Options{
-		Kind: domain.JobProbe, Queue: db.Ingest(), Logger: logger,
-		Handler: ingest.Handler(domain.JobProbe), Finished: ingest.JobFinished,
-	})
 	subs := subscribeEvents(bus, eventSubscribers{Workers: map[domain.JobKind]waker{
-		domain.JobProbe: probe, domain.JobThumbnail: thumbnail,
+		domain.JobProbe: scheduler, domain.JobThumbnail: scheduler,
 	}})
 
 	runCtx, stop := context.WithCancel(ctx)
@@ -196,15 +200,14 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		running.Wait()
 		bus.Close()
 	}()
-	running.Go(func() { thumbnail.Run(runCtx) })
-	// Before probing, the thumbnail worker finds no claim and sleeps.
+	running.Go(func() { scheduler.Run(runCtx) })
+	// Before probing, the scheduler finds no claimable thumbnail and sleeps.
 	select {
-	case <-thumbnailQueue.empty:
+	case <-queue.empty:
 	case <-time.After(5 * time.Second):
-		t.Fatal("サムネイルのワーカーが待ち行列を見ない")
+		t.Fatal("スケジューラーがサムネイルの待ち行列を見ない")
 	}
 
-	running.Go(func() { probe.Run(runCtx) })
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -251,13 +254,7 @@ func (finishedScanner) Rescan(context.Context, int64, domain.RescanScope, domain
 
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
-	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
-		MTime: time.Unix(1, 0), Container: "mp4",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	video := indexMovie(t, ctx, db, mediaDir)
 
 	bus := newTestBus()
 	db.PublishTo(bus)
