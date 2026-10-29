@@ -30,6 +30,7 @@ var peerOperations = []string{
 	"GET /api/videos/{id}/seek-thumbnail",
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}",
 	"GET /api/videos/{id}/frame",
+	"GET /api/videos/{id}/face-appearances",
 	"GET /api/folders",
 	"GET /api/folders/{rootId}",
 	"GET /api/folders/{rootId}/videos",

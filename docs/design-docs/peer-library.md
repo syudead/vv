@@ -168,6 +168,7 @@ session on the peer.
 | Videos, groups, smart folders, media-folder roots | Always the offset form |
 | Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form |
 | `open`, `progress`, favorites, playlists, history, `auto-tag`, `probe`, activity | `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
+| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false since crops are not offered for remote ids |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
 
