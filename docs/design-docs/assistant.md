@@ -71,9 +71,13 @@ minutes to a turn on a CPU.
 Every name in an outcome is resolved by the server with the stored search keys
 (width, case and kana folded), tag synonyms and person and organization
 aliases (`AssistantVocabulary`); one match is used, several or none answer
-`clarify` with the candidates, except a tag to attach, which the card marks as
-created. A name carries the kind the model inferred, and `any` tries person,
-organization and tag, so a name found under two kinds is a clarification.
+`clarify` with the candidates, with two exceptions for no match. A tag to
+attach is marked created on the card. A tag, person or organization in the
+filter of a `filter` outcome or a `count` or `list` question joins the filter's
+free text `q` as a search term, or is dropped when it is a field word such as
+`tags`, so one loose name does not fail a read. A name carries the
+kind the model inferred, and `any` tries person, organization and tag, so a name
+found under two kinds is a clarification.
 
 The diagram shows the rule for one name.
 
@@ -86,8 +90,18 @@ flowchart LR
   matches -->|several| ask[clarify with candidates]
   matches -->|none| attach{Tag to attach?}
   attach -->|yes| create[Card marks it created]
-  attach -->|no| ask
+  attach -->|no| read{Read-only filter?}
+  read -->|yes| text[Search it in q, or drop a field word]
+  read -->|no| ask
 ```
+
+| No match for a name in | Answer | Why |
+| --- | --- | --- |
+| A read-only filter (`filter`, `count`, `list`) | Search it as text in `q` | A local model often puts a topic or a field name where a tag goes; a wider read costs nothing and the owner sees the result |
+| A change's target, its arguments, or a smart folder rule | `clarify` | Guessing would change or save something the owner did not name |
+
+The prompt also tells the model that a topic such as `カラオケ関連` goes into
+`q` unless the owner calls it a tag.
 
 The panel sends the route, the selected videos, groups and smart folders, the
 library filter and the ids chosen in a clarification (`pinned`); the model
