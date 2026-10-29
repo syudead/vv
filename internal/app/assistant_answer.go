@@ -164,7 +164,7 @@ func (t *assistantTurn) answer(ctx context.Context, q *domain.AssistantQuestion)
 
 // listAnswer counts, and for list also names, the videos of the filter with the library's own read.
 func (t *assistantTurn) listAnswer(ctx context.Context, q *domain.AssistantQuestion, answer *domain.AssistantAnswer) error {
-	criteria, ok, err := t.criteria(ctx, q.Filter)
+	criteria, ok, err := t.criteria(ctx, q.Filter, false)
 	if !ok || err != nil {
 		return err
 	}

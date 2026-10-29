@@ -86,20 +86,24 @@ func (t *assistantTurn) kindsCandidates(
 	return found, nil
 }
 
-// nameUse says what a name is for: the clarification it asks and whether a missing name may be created.
+// nameUse says what a name is for: the clarification it asks, whether a missing name may be created, and whether
+// a read-only filter searches a missing name as text instead of asking.
 type nameUse struct {
-	about     string
-	creatable bool
+	about      string
+	creatable  bool
+	searchable bool
 }
 
 var (
-	targetName  = nameUse{about: "target"}
-	valueName   = nameUse{about: "value"}
-	createdName = nameUse{about: "value", creatable: true}
+	targetName   = nameUse{about: "target"}
+	valueName    = nameUse{about: "value"}
+	createdName  = nameUse{about: "value", creatable: true}
+	searchedName = nameUse{about: "value", searchable: true}
 )
 
-// one resolves a name to exactly one entity. Several matches, or none for a name that cannot be created, record a
-// clarification and return ok false; a creatable name that matches nothing returns a label without an id.
+// one resolves a name to exactly one entity. Several matches, or none for a name that cannot be created or searched,
+// record a clarification and return ok false; a creatable or searchable name that matches nothing returns a label
+// without an id.
 func (t *assistantTurn) one(
 	ctx context.Context, kind domain.AssistantLabelKind, name string, use nameUse,
 ) (domain.AssistantLabel, bool, error) {
@@ -121,6 +125,8 @@ func (t *assistantTurn) one(
 		return domain.AssistantLabel{}, false, nil
 	case use.creatable:
 		t.created = append(t.created, name)
+		return domain.AssistantLabel{Kind: kind, Name: name}, true, nil
+	case use.searchable:
 		return domain.AssistantLabel{Kind: kind, Name: name}, true, nil
 	default:
 		t.clarify(use.about, nil, name)

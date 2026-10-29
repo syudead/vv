@@ -228,7 +228,7 @@ func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTarget
 	case "current":
 		return d.currentIDs(ctx)
 	case "filter":
-		criteria, ok, err := d.t.criteria(ctx, target.Filter)
+		criteria, ok, err := d.t.criteria(ctx, target.Filter, true)
 		if !ok || err != nil {
 			return nil, false, err
 		}

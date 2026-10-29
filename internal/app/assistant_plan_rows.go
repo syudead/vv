@@ -303,7 +303,7 @@ func createSmartFolder(ctx context.Context, d *planDraft) (bool, error) {
 	var rule domain.SmartRule
 	switch {
 	case d.req.Target != nil && d.req.Target.Filter != nil:
-		criteria, ok, err := d.t.criteria(ctx, d.req.Target.Filter)
+		criteria, ok, err := d.t.criteria(ctx, d.req.Target.Filter, true)
 		if !ok || err != nil {
 			return false, err
 		}
