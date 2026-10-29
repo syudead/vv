@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -13,6 +14,9 @@ type AssistantVocabulary interface {
 	// FindNames returns the entities of kind whose name, tag synonym or alias folds (width, case and kana) to the
 	// same key as name, in id order, with their video counts.
 	FindNames(ctx context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error)
+	// FindSimilarNames returns the entities of kind whose folded name, tag synonym or alias contains the folded
+	// name, in id order, for the candidates a name that matches nothing offers.
+	FindSimilarNames(ctx context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error)
 	// EntityNames reads the current names of the ids that still exist.
 	EntityNames(ctx context.Context, kind domain.AssistantLabelKind, ids []int64) (map[int64]string, error)
 }
@@ -103,16 +107,18 @@ var (
 
 // one resolves a name to exactly one entity. Several matches, or none for a name that cannot be created or searched,
 // record a clarification and return ok false; a creatable or searchable name that matches nothing returns a label
-// without an id.
+// without an id. A name that matches nothing exactly offers the entities it is part of as candidates, so "コスプレ"
+// asks which of two cosplay tags is meant.
 func (t *assistantTurn) one(
 	ctx context.Context, kind domain.AssistantLabelKind, name string, use nameUse,
 ) (domain.AssistantLabel, bool, error) {
-	var found []domain.AssistantCandidate
-	var err error
-	if kind == "" {
-		found, err = t.kindsCandidates(ctx, anyKinds, name)
-	} else {
-		found, _, err = t.candidates(ctx, kind, name)
+	name = strings.TrimSpace(name)
+	found, err := t.exact(ctx, kind, name)
+	if err == nil && len(found) == 0 && kind == domain.AssistantLabelTag {
+		if short, ok := withoutTagWord(name); ok {
+			name = short
+			found, err = t.exact(ctx, kind, name)
+		}
 	}
 	if err != nil {
 		return domain.AssistantLabel{}, false, err
@@ -128,10 +134,61 @@ func (t *assistantTurn) one(
 		return domain.AssistantLabel{Kind: kind, Name: name}, true, nil
 	case use.searchable:
 		return domain.AssistantLabel{Kind: kind, Name: name}, true, nil
-	default:
-		t.clarify(use.about, nil, name)
-		return domain.AssistantLabel{}, false, nil
 	}
+	similar, err := t.similar(ctx, kind, name)
+	if err != nil {
+		return domain.AssistantLabel{}, false, err
+	}
+	if len(similar) > 0 {
+		t.clarify(use.about, similar)
+	} else {
+		t.clarify(use.about, nil, name)
+	}
+	return domain.AssistantLabel{}, false, nil
+}
+
+// exact finds the entities a name folds to, over every kind when kind is empty.
+func (t *assistantTurn) exact(
+	ctx context.Context, kind domain.AssistantLabelKind, name string,
+) ([]domain.AssistantCandidate, error) {
+	if kind == "" {
+		return t.kindsCandidates(ctx, anyKinds, name)
+	}
+	found, _, err := t.candidates(ctx, kind, name)
+	return found, err
+}
+
+// similar finds the entities whose name contains the name, over every kind when kind is empty.
+func (t *assistantTurn) similar(
+	ctx context.Context, kind domain.AssistantLabelKind, name string,
+) ([]domain.AssistantCandidate, error) {
+	kinds := []domain.AssistantLabelKind{kind}
+	if kind == "" {
+		kinds = anyKinds
+	}
+	var found []domain.AssistantCandidate
+	for _, k := range kinds {
+		matches, err := t.a.vocabulary.FindSimilarNames(ctx, k, name)
+		if err != nil {
+			return nil, err
+		}
+		found = append(found, matches...)
+	}
+	return found, nil
+}
+
+// tagWords are the suffixes an owner writes after a tag's name, which a model copies into the name: "tag" and its
+// katakana spelling (U+30BF U+30B0), built from runes since the lint keeps Japanese text out of the code.
+var tagWords = []string{string([]rune{0x30bf, 0x30b0}), "tag", "Tag"}
+
+// withoutTagWord strips a trailing tag word, so a name a model copied with it still finds the tag.
+func withoutTagWord(name string) (string, bool) {
+	for _, word := range tagWords {
+		if short := strings.TrimSpace(strings.TrimSuffix(name, word)); short != "" && short != name {
+			return short, true
+		}
+	}
+	return name, false
 }
 
 // each resolves every name and stops at the first that needs a clarification.

@@ -255,7 +255,9 @@ func dropNullTypes(s *jsonschema.Schema) {
 }
 
 // ParseAssistantOutcome checks the model's answer against the schema and the member its kind reads; any mismatch,
-// including a field the schema does not define, wraps ErrGenerationUnreadable.
+// including a field the schema does not define, wraps ErrGenerationUnreadable. Members of other kinds are
+// dropped, since models of every size add one beside the right member, and a filter beside an answer without one
+// is the answer's filter, where models often put it.
 func ParseAssistantOutcome(raw json.RawMessage) (AssistantOutcome, error) {
 	built, err := assistantOutcomeSchema()
 	if err != nil {
@@ -272,26 +274,36 @@ func ParseAssistantOutcome(raw json.RawMessage) (AssistantOutcome, error) {
 	if err := json.Unmarshal(raw, &outcome); err != nil {
 		return AssistantOutcome{}, fmt.Errorf("%w: %w", ErrGenerationUnreadable, err)
 	}
-	if !outcome.membersMatchKind() {
-		return AssistantOutcome{}, fmt.Errorf("%w: the %s outcome does not carry its own member alone",
+	if outcome.Kind == AssistantOutcomeAnswer && outcome.Answer != nil && outcome.Answer.Filter == nil {
+		outcome.Answer.Filter = outcome.Filter
+	}
+	if !outcome.keepOwnMember() {
+		return AssistantOutcome{}, fmt.Errorf("%w: the %s outcome does not carry its member",
 			ErrGenerationUnreadable, outcome.Kind)
 	}
 	return outcome, nil
 }
 
-func (o AssistantOutcome) membersMatchKind() bool {
-	present := map[AssistantOutcomeKind]bool{
-		AssistantOutcomeFilter:   o.Filter != nil,
-		AssistantOutcomeNavigate: o.Navigate != nil,
-		AssistantOutcomeAnswer:   o.Answer != nil,
-		AssistantOutcomeAction:   o.Action != nil,
-		AssistantOutcomeOrganize: o.Organize != nil,
-		AssistantOutcomeClarify:  o.Clarify != nil,
+// keepOwnMember drops the members of other kinds and reports whether the kind's own member is present.
+func (o *AssistantOutcome) keepOwnMember() bool {
+	own := AssistantOutcome{Kind: o.Kind}
+	switch o.Kind {
+	case AssistantOutcomeFilter:
+		own.Filter = o.Filter
+	case AssistantOutcomeNavigate:
+		own.Navigate = o.Navigate
+	case AssistantOutcomeAnswer:
+		own.Answer = o.Answer
+	case AssistantOutcomeAction:
+		own.Action = o.Action
+	case AssistantOutcomeOrganize:
+		own.Organize = o.Organize
+	case AssistantOutcomeClarify:
+		own.Clarify = o.Clarify
+	case AssistantOutcomeUnsupported:
+		*o = own
+		return true
 	}
-	for kind, has := range present {
-		if has != (kind == o.Kind) {
-			return false
-		}
-	}
-	return true
+	*o = own
+	return own != AssistantOutcome{Kind: o.Kind}
 }

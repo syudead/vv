@@ -142,8 +142,8 @@ func (t *assistantTurn) criteria(
 		return c, true, nil
 	}
 	c.Rule = domain.SmartRule{Q: f.Q, Favorite: f.Favorite, VideoConditions: domain.VideoConditions{
-		MinDurationMs: f.MinDurationMs, MaxDurationMs: f.MaxDurationMs,
-		AddedFrom: domain.CalendarDay(f.AddedFrom), AddedTo: domain.CalendarDay(f.AddedTo),
+		MinDurationMs: positiveDuration(f.MinDurationMs), MaxDurationMs: positiveDuration(f.MaxDurationMs),
+		AddedFrom: calendarDay(f.AddedFrom, strict), AddedTo: calendarDay(f.AddedTo, strict),
 		WatchState: domain.WatchState(f.WatchState),
 	}}
 	c.Sort = domain.VideoSort(f.Sort)
@@ -189,6 +189,25 @@ func (t *assistantTurn) criteria(
 		return c, false, nil
 	}
 	return c, true, nil
+}
+
+// calendarDay drops, from a filter that only reads, a day that is not a date, such as the "0000-00-00" a model
+// writes for a day the request does not set; a change's target keeps it, so the validation asks instead of
+// widening the target.
+func calendarDay(day string, strict bool) domain.CalendarDay {
+	parsed := domain.CalendarDay(day)
+	if strict || (domain.VideoConditions{AddedFrom: parsed}).Validate() == nil {
+		return parsed
+	}
+	return ""
+}
+
+// positiveDuration drops a bound of 0, which a model writes for a bound the request does not set.
+func positiveDuration(ms *int64) *int64 {
+	if ms == nil || *ms <= 0 {
+		return nil
+	}
+	return ms
 }
 
 // filterFieldWords are words, folded, that a model copies from the schema instead of a name.

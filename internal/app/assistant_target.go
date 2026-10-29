@@ -221,19 +221,31 @@ func (d *planDraft) setVideos(videos []domain.Video) {
 }
 
 // videoIDs reads the video ids a target names: the selection or open video, the current screen, a filter, or titles.
+// A filter on the selection or the current screen narrows their videos, which is how a follow-up such as "leave
+// out the long ones" keeps the previous target.
 func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTargetRequest) ([]int64, bool, error) {
-	switch target.Kind {
-	case "selection":
-		return d.selectionIDs(ctx)
-	case "current":
-		return d.currentIDs(ctx)
-	case "filter":
-		criteria, ok, err := d.t.criteria(ctx, target.Filter, true)
+	kind := target.Kind
+	if kind == "filter" && d.t.input.PreviousProposalID > 0 && len(d.t.input.Context.SelectedVideoIDs) > 0 {
+		// A follow-up to a proposal on the selection keeps the selection; models write the narrowing filter alone.
+		kind = "selection"
+	}
+	switch kind {
+	case "selection", "current":
+		read := d.selectionIDs
+		if target.Kind == "current" {
+			read = d.currentIDs
+		}
+		ids, ok, err := read(ctx)
+		if !ok || err != nil || target.Filter == nil {
+			return ids, ok, err
+		}
+		matching, ok, err := d.filterIDs(ctx, target.Filter)
 		if !ok || err != nil {
 			return nil, false, err
 		}
-		ids, err := d.t.queryIDs(ctx, criteria.Rule.Query())
-		return ids, err == nil, err
+		return slices.DeleteFunc(ids, func(id int64) bool { return !slices.Contains(matching, id) }), true, nil
+	case "filter":
+		return d.filterIDs(ctx, target.Filter)
 	default:
 		var ids []int64
 		for _, name := range target.Names {
@@ -245,6 +257,16 @@ func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTarget
 		}
 		return ids, true, nil
 	}
+}
+
+// filterIDs are the videos a strict filter matches, in library order.
+func (d *planDraft) filterIDs(ctx context.Context, filter *domain.AssistantFilter) ([]int64, bool, error) {
+	criteria, ok, err := d.t.criteria(ctx, filter, true)
+	if !ok || err != nil {
+		return nil, false, err
+	}
+	ids, err := d.t.queryIDs(ctx, criteria.Rule.Query())
+	return ids, err == nil, err
 }
 
 // selectionIDs are the list's selected videos and smart folders, or the open video; an operation that takes

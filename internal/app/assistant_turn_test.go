@@ -24,14 +24,20 @@ func (g *fakeStructuredGenerator) Generate(_ context.Context, req domain.Generat
 	return json.RawMessage(g.answer), g.err
 }
 
-// fakeVocabulary matches names exactly, per kind, and reads the current names of entities.
+// fakeVocabulary matches names exactly, per kind, offers similar names from its own table, and reads the current
+// names of entities.
 type fakeVocabulary struct {
 	names    map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
+	similar  map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
 	entities map[domain.AssistantLabelKind]map[int64]string
 }
 
 func (v fakeVocabulary) FindNames(_ context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error) {
 	return v.names[kind][name], nil
+}
+
+func (v fakeVocabulary) FindSimilarNames(_ context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error) {
+	return v.similar[kind][name], nil
 }
 
 func (v fakeVocabulary) EntityNames(_ context.Context, kind domain.AssistantLabelKind, ids []int64) (map[int64]string, error) {
@@ -198,6 +204,44 @@ func TestTurnMarksAMissingTagToAttachAsCreated(t *testing.T) {
 	plan := f.store.created
 	if tag, _ := plan.Call.Body["tag"].(map[string]any); tag["name"] != "sunset" || !slices.Equal(plan.Created, []string{"sunset"}) {
 		t.Fatalf("body = %+v, created = %v", plan.Call.Body, plan.Created)
+	}
+}
+
+// A name that matches nothing exactly offers the entities it is part of, so the owner chooses instead of retyping.
+func TestTurnOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
+	similar := []domain.AssistantCandidate{
+		{Kind: domain.AssistantLabelTag, ID: 4, Name: "コスプレ衣装", Count: 1},
+		{Kind: domain.AssistantLabelTag, ID: 5, Name: "コスプレ衣裳", Count: 1},
+	}
+	f := newTurnFixture(`{"kind":"action","action":{"operation":"deleteTag","target":{"kind":"named","names":["コスプレ"]}}}`, nil)
+	f.a.vocabulary = fakeVocabulary{similar: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
+		domain.AssistantLabelTag: {"コスプレ": similar},
+	}}
+	result, err := f.a.Turn(context.Background(), domain.AssistantTurnInput{Text: "コスプレのタグを消して"})
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnClarify || result.Clarify.About != "target" ||
+		!slices.Equal(result.Clarify.Candidates, similar) || len(result.Clarify.Names) != 0 {
+		t.Fatalf("result = %+v, clarify = %+v", result, result.Clarify)
+	}
+	if f.store.created.ActionID != "" {
+		t.Fatalf("a proposal was stored: %+v", f.store.created)
+	}
+}
+
+// A model copies the word "tag" into the name, as in "ライブタグ"; the tag is still found without it.
+func TestTurnFindsATagNamedWithTheWordTag(t *testing.T) {
+	f := newTurnFixture(tagAction("updateVideoTags.remove", "Catタグ"), map[string][]domain.AssistantCandidate{"Cat": {catTag}})
+	result, err := f.a.Turn(context.Background(), selection(7))
+	if err != nil {
+		t.Fatalf("Turn() error = %v", err)
+	}
+	if result.Kind != domain.AssistantTurnProposal {
+		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
+	}
+	if change := f.store.created.Change; len(change) != 1 || len(change[0].Labels) != 1 || change[0].Labels[0].ID != 3 {
+		t.Fatalf("change = %+v", change)
 	}
 }
 
