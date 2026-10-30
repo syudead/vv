@@ -17,12 +17,12 @@ func generating(url string) fixedSettings {
 	return fixedSettings{settings: domain.OllamaSettings{Endpoint: url, Model: "clef", GenerationModel: "qwen3:8b"}}
 }
 
-// chatServer records the request body and answers reply; /api/show reports a context of 40,960 tokens.
+// chatServer records the request body and answers reply; /api/ps reports the model loaded with 40,960 tokens.
 func chatServer(t *testing.T, status int, reply string, got *map[string]json.RawMessage) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == "/api/show" {
-			_, _ = w.Write([]byte(`{"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`))
+		if r.Method == http.MethodGet && r.URL.Path == "/api/ps" {
+			_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":40960}]}`))
 			return
 		}
 		if r.Method != http.MethodPost || r.URL.Path != "/api/chat" {
@@ -82,12 +82,14 @@ func TestChatSendsToolsAndReturnsToolCalls(t *testing.T) {
 		"tools":      `[{"type":"function","function":{"name":"listTags","description":"List tags","parameters":{"type":"object"}}}]`,
 		"stream":     `false`,
 		"keep_alive": `"10m"`,
-		"options":    `{"num_ctx":40960}`,
 	}
 	for key, value := range wantBody {
 		if string(got[key]) != value {
 			t.Errorf("%s = %s, want %s", key, got[key], value)
 		}
+	}
+	if _, ok := got["options"]; ok {
+		t.Errorf("options = %s, want none: Ollama sizes the context", got["options"])
 	}
 	if _, ok := got["format"]; ok {
 		t.Errorf("format = %s, want none", got["format"])
@@ -163,5 +165,25 @@ func TestChatWithoutGenerationModelSendsNothing(t *testing.T) {
 	_, err := NewChat(at(server.URL)).Chat(context.Background(), domain.ChatRequest{})
 	if !errors.Is(err, domain.ErrOllamaModel) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// Without the model in /api/ps, the reply reports Ollama's default context.
+func TestChatReportsOllamasDefaultContextWhenPsDoesNotSay(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/ps" {
+			_, _ = w.Write([]byte(`{"models":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"ok"},"done":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	reply, err := NewChat(generating(server.URL)).Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "?"}},
+	})
+
+	if err != nil || reply.Usage.ContextTokens != ollamaDefaultContext {
+		t.Fatalf("reply = %+v, %v; want the context %d", reply, err, ollamaDefaultContext)
 	}
 }

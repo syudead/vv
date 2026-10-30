@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -17,9 +17,6 @@ import (
 type Chat struct {
 	settings SettingsSource
 	http     *http.Client
-	// contexts caches each model's context length as /api/show reports it.
-	mu       sync.Mutex
-	contexts map[string]int
 }
 
 // NewChat waits as long as a classification, since a CPU host can take minutes to answer.
@@ -28,39 +25,44 @@ func NewChat(settings SettingsSource) *Chat {
 }
 
 func NewChatWithHTTPClient(settings SettingsSource, client *http.Client) *Chat {
-	return &Chat{settings: settings, http: client, contexts: map[string]int{}}
+	return &Chat{settings: settings, http: client}
 }
 
-type modelInfoResponse struct {
-	ModelInfo map[string]json.RawMessage `json:"model_info"`
+// ollamaDefaultContext is Ollama's documented default context, for an Ollama whose /api/ps does not report one.
+const ollamaDefaultContext = 4096
+
+type psResponse struct {
+	Models []struct {
+		Name          string `json:"name"`
+		Model         string `json:"model"`
+		ContextLength int    `json:"context_length"`
+	} `json:"models"`
 }
 
-// contextLength is the context the model was trained for, from the "<architecture>.context_length" entry of
-// /api/show; 0 when Ollama does not say, which leaves Ollama's own default. Ollama's default of a few thousand
-// tokens silently drops the oldest messages, the request among them; see docs/design-docs/ai-layer.md.
-func (c *Chat) contextLength(ctx context.Context, settings domain.OllamaSettings) int {
-	key := settings.Endpoint + "\x00" + settings.GenerationModel
-	c.mu.Lock()
-	n, ok := c.contexts[key]
-	c.mu.Unlock()
-	if ok {
-		return n
+// loadedContext is the context Ollama loaded the model with, as /api/ps reports it after a call. vv sends no
+// num_ctx: Ollama sizes the context for the host (OLLAMA_CONTEXT_LENGTH or its own default), and a context past
+// the GPU's memory runs on the CPU, many times slower; see docs/design-docs/ai-layer.md.
+func (c *Chat) loadedContext(ctx context.Context, settings domain.OllamaSettings) int {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(settings.Endpoint, "/")+"/api/ps", nil)
+	if err != nil {
+		return ollamaDefaultContext
 	}
-	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/api/show", showRequest{Model: settings.GenerationModel})
-	var info modelInfoResponse
-	if err != nil || status != http.StatusOK || json.Unmarshal(raw, &info) != nil {
-		return 0
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return ollamaDefaultContext
 	}
-	for name, value := range info.ModelInfo {
-		if strings.HasSuffix(name, ".context_length") && json.Unmarshal(value, &n) == nil && n > 0 {
-			break
+	defer func() { _ = resp.Body.Close() }()
+	var ps psResponse
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&ps) != nil {
+		return ollamaDefaultContext
+	}
+	for _, m := range ps.Models {
+		if (sameModel(m.Name, settings.GenerationModel) || sameModel(m.Model, settings.GenerationModel)) &&
+			m.ContextLength > 0 {
+			return m.ContextLength
 		}
-		n = 0
 	}
-	c.mu.Lock()
-	c.contexts[key] = n
-	c.mu.Unlock()
-	return n
+	return ollamaDefaultContext
 }
 
 // chatMessage omits Ollama's thinking field, so the model's reasoning never leaves the adapter.
@@ -92,17 +94,12 @@ type chatToolSpec struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-type chatOptions struct {
-	NumCtx int `json:"num_ctx"`
-}
-
 type chatRequest struct {
 	Model     string        `json:"model"`
 	Messages  []chatMessage `json:"messages"`
 	Tools     []chatTool    `json:"tools,omitempty"`
 	Stream    bool          `json:"stream"`
 	KeepAlive string        `json:"keep_alive"`
-	Options   *chatOptions  `json:"options,omitempty"`
 }
 
 type chatResponse struct {
@@ -138,15 +135,11 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 		Model: settings.GenerationModel, Messages: messages, Tools: wireTools(req.Tools), Stream: false,
 		KeepAlive: keepAlive,
 	}
-	contextTokens := c.contextLength(ctx, settings)
-	if contextTokens > 0 {
-		body.Options = &chatOptions{NumCtx: contextTokens}
-	}
 	decoded, usage, err := postChat(ctx, c.http, settings, body)
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
-	usage.ContextTokens = contextTokens
+	usage.ContextTokens = c.loadedContext(ctx, settings)
 	message := decoded.Message
 	if len(message.ToolCalls) == 0 {
 		return domain.ChatReply{Text: strings.TrimSpace(message.Content), Usage: usage}, nil

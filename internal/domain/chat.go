@@ -56,7 +56,7 @@ type ChatUsage struct {
 	PromptTokens  int
 	OutputTokens  int
 	ThinkingChars int
-	// ContextTokens is the context the call ran with, the model's own length; 0 when the provider did not say.
+	// ContextTokens is the context the provider ran the call with; 0 when it did not say.
 	ContextTokens int
 }
 

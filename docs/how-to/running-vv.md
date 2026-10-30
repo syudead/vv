@@ -395,6 +395,12 @@ is in [assistant.md](../design-docs/assistant.md).
 4. Press `Save and test connection` and wait for
    `Ollama is running and has both models.`
 
+Ollama decides the chat context, the text one model call holds, and vv fits
+each request to it. A small context makes the assistant drop earlier tool
+results sooner; a context past the GPU's memory makes every call slow. Set it on
+the Ollama host with `OLLAMA_CONTEXT_LENGTH`, for example `32768`, and restart
+Ollama.
+
 Until a generation model is saved, the panel shows
 `Choose a model for the assistant` with a link to Connections instead of the
 request field. Clearing the field (`None`) turns the assistant off again and
