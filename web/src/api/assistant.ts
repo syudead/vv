@@ -5,18 +5,16 @@ import type { components } from "./gen/openapi";
 
 export type AssistantReadiness = components["schemas"]["AssistantReadiness"];
 export type AssistantReadinessReason = NonNullable<AssistantReadiness["reason"]>;
-/**
- * Interim: the server now answers a request as a turn job (202), while the panel still shows the
- * one-shot outcome below. These types keep the panel compiling until it follows turns, which
- * replaces them with AssistantTurn.
- */
-export type AssistantTurnRequest = Omit<
-  components["schemas"]["AssistantTurnRequest"],
-  "previousTurnId"
-> & { previous?: AssistantOutcome };
+export type AssistantTurnRequest = components["schemas"]["AssistantTurnRequest"];
+export type AssistantTurn = components["schemas"]["AssistantTurn"];
+export type AssistantTurnStop = components["schemas"]["AssistantTurnStop"];
 export type AssistantTurnContext = components["schemas"]["AssistantTurnContext"];
 export type AssistantRoute = components["schemas"]["AssistantRoute"];
 export type AssistantPin = components["schemas"]["AssistantPin"];
+/**
+ * Interim: the reply rows the panel draws, which it derives from a finished turn until the panel
+ * shows turns themselves.
+ */
 export interface AssistantOutcome {
   kind:
     | "filter"
@@ -57,20 +55,27 @@ export function getAssistantReadiness(signal?: AbortSignal): Promise<AssistantRe
 }
 
 /**
- * One request and its outcome. 400 too_many_videos, 409 assistant_not_ready and 503
- * assistant_unavailable reject with RequestFailed; nothing is stored then.
+ * Starts one request as a running turn (202). 400 too_many_videos, 409 assistant_not_ready,
+ * 409 assistant_busy and 503 assistant_unavailable reject with RequestFailed.
  */
-export async function createAssistantTurn(
+export function createAssistantTurn(
   body: AssistantTurnRequest,
   signal?: AbortSignal,
-): Promise<AssistantOutcome> {
-  const response = await request<{ outcome: AssistantOutcome }>("/api/assistant/turns", {
+): Promise<AssistantTurn> {
+  return request<AssistantTurn>("/api/assistant/turns", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });
-  return response.outcome;
+}
+
+/** The panel reads a running turn again on each assistant event; 404 once it expired. */
+export function getAssistantTurn(
+  id: number,
+  signal?: AbortSignal,
+): Promise<AssistantTurn> {
+  return request<AssistantTurn>(`/api/assistant/turns/${String(id)}`, { signal });
 }
 
 export type AssistantProposalStatus = AssistantProposal["status"];

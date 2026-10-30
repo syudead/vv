@@ -4124,6 +4124,16 @@ export const en = {
           : `The generation model didn’t answer. Check that Ollama has “${model}”.`,
       timeout: "The model took too long. Try a shorter request, or a smaller model.",
     },
+    stopped: {
+      step_limit:
+        "Stopped: the request needed more steps than one request may take. Nothing was changed. Try a narrower request.",
+      timeout:
+        "Stopped: the request took longer than the time limit. Nothing was changed. Try a narrower request, or a faster model.",
+      ungrounded:
+        "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
+      interrupted:
+        "Stopped by a restart before it finished. Nothing was changed. Ask again.",
+    },
     tooManyVideos: "That is more than 20,000 videos. Narrow the selection or the filter.",
     failed: (reason: string) => `Couldn’t ask the assistant: ${reason}`,
     // One sentence per catalog row id; on is the change's public or enabled value when the row has one.
