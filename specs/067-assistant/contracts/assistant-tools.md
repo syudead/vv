@@ -97,10 +97,24 @@ below; the operations they call come from the spec.
 `applyThumbnailEdit`, and `discardThumbnailEdit` and `cancelThumbnailEdit`,
 which it calls when a stage fails.
 
-A schema row's card labels each id with the entity the parameter names.
-`PersonId` gives a person, `VideoId` a video, and so on. The kind comes
-from the parameter's `$ref` name in the spec, read through the generated
-file. An id the store does not hold makes the step `stale` before it runs.
+A schema row's card labels each id in its path parameters and its body with
+the entity the id names. The generated file records, per operation, each id
+field's location (`path` or a JSON pointer into the body) and its entity
+kind, outside the schemas sent to the model. The generator takes the kind
+from one of two sources in the spec, and the annotation wins:
+
+| Source | Example | Kind |
+| --- | --- | --- |
+| The path parameter's `$ref` name in `components/parameters` | `PersonId`, `VideoId`, `ActivityId`, `FaceAppearanceId` | `person`, `video`, `activity`, `faceAppearance` |
+| `x-vv-entity` on the parameter or property schema, or on an array's `items` | `FaceAppearanceMoveRequest.targetId`: `x-vv-entity: person`; its `appearanceIds` items: `faceAppearance`; `ActivityUndoRequest.tagId`: `tag` | The annotation's value |
+
+The annotation goes on every id the `$ref` name does not type, which covers
+every body id, because the generator inlines body `$ref`s. A test fails when
+an id-like integer field (named `id` or ending in `Id` or `Ids`) of a write
+tool's path parameters or body has no kind, or has a kind the card cannot
+label. `moveFaceAppearances` thus shows the source person from the path, the
+target person from `targetId`, and the count of `appearanceIds`. An id the
+store does not hold makes the step `stale` before it runs.
 
 ## Read tools
 

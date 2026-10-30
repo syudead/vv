@@ -129,9 +129,12 @@ The registry has three sources:
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
-| A generator run by `task generate` reads `api/openapi.yaml` with `kin-openapi` (already in `tools/go.mod`) and writes `internal/httpapi/gen/assistant_tools.gen.json`: per operation the method, path, summary, description, image response flag, and JSON Schemas of the path and query parameters and the JSON body with `$ref`s inlined; `internal/httpapi` embeds it | `embedded-spec` in oapi-codegen | It links `kin-openapi` and a YAML parser into the shipped binary and parses the spec at startup |
+| A generator run by `task generate` reads `api/openapi.yaml` with `kin-openapi` (already in `tools/go.mod`) and writes `internal/httpapi/gen/assistant_tools.gen.json`: per operation the method, path, summary, description, image response flag, and JSON Schemas of the path and query parameters and the JSON body with `$ref`s inlined, and each path and body id field's entity kind; `internal/httpapi` embeds it | `embedded-spec` in oapi-codegen | It links `kin-openapi` and a YAML parser into the shipped binary and parses the spec at startup |
 | (same) | Hand-written tool schemas | About 240 operations would drift from the spec; the old route table already had to be held equal to it by a test |
 | (same) | Schemas from the generated Go types with `jsonschema-go` | The generated types carry no descriptions, which are what the model reads |
+| An id field's entity kind comes from its path parameter's `$ref` name (`PersonId` gives `person`) or from an `x-vv-entity` extension on its schema in `api/openapi.yaml`, which wins; the extension goes on every id the name does not type, such as `FaceAppearanceMoveRequest.targetId` (`person`), and a test fails for an id-like integer in a write tool's path or body without a kind the card can label ([contracts/assistant-tools.md, Write tools](contracts/assistant-tools.md#write-tools)) | Only `$ref` names | Body `$ref`s are inlined, and plain integers such as `targetId` have none, so the card could not name the person a move targets |
+| (same) | A table of operations and fields in `internal/domain` | It drifts from the spec when a field is added; the annotation sits on the field it describes |
+| (same) | Guessing the kind from the field name | `targetId` and `id` do not say what they name |
 | Every owner operation is classified as a read tool, a write tool, or excluded with a reason and the page to use; a test fails for an operation in none or in two | Classifying writes only | Requirement 5 covers every function the screens use, reads included |
 | A read tool is any owner `GET`, and any `POST` that writes nothing (`tagImpact`, `summarizeVideoTags`, `searchWorkInfo`, `fetchWorkInfo`, `searchPeopleWithPlugin`, `fetchPersonWithPlugin`, the connection checks); its arguments are the operation's path and query parameters or body as the spec defines them, and the runner calls the handler in process as the owner | Typed question kinds | Requirement 6 asks for real data; the handlers already enforce plugin approval and viewer rules |
 | An operation that answers an image (`getVideoFrame`, `getVideoThumbnail`, `getPersonImage`, `getFaceAppearanceCrop`, covers, …) is an ordinary read tool whose result is an image reference, `{ "image": "<operationId>?<parameters>" }`, with its content type; an operation that answers a video stream or the event stream is excluded | Bytes in a tool result | A chat model holds text; the reference names an in-process call, so it holds no URL and needs no store |
@@ -347,8 +350,9 @@ The design stage writes `ui-design.md` before `plan-to-issues` runs.
 by `internal/httpapi`. The runner's route table is replaced by the generated
 method and path, and the runner also calls reads and image operations. The
 classification of every owner operation (read, write, excluded with reason
-and page) and the page table go in `internal/domain`. The coverage test
-covers every owner operation. Schema rows, `editVideoThumbnail` and the
+and page) and the page table go in `internal/domain`. The `x-vv-entity`
+annotations on the write tools' untyped ids go in `api/openapi.yaml`. The
+coverage test covers every owner operation. Schema rows, `editVideoThumbnail` and the
 shorter exclusions are part of this unit
 ([Tools](#tools), [contracts/assistant-tools.md](contracts/assistant-tools.md)).
 
@@ -361,6 +365,12 @@ shorter exclusions are part of this unit
 - `task check SCOPE=go` passes for `./internal/domain/... ./internal/httpapi/... ./scripts/generate/...`.
 - Coverage test: an owner operation added to a copy of the spec in neither
   list fails, and one in two lists fails.
+- Entity kind test: every id-like integer in a write tool's path parameters
+  and body has a kind the card can label, from its `$ref` name or
+  `x-vv-entity`; a copy of the spec with the annotation removed from
+  `FaceAppearanceMoveRequest.targetId` fails, and the generated data gives
+  `moveFaceAppearances` the kinds `person` (path `id`), `person`
+  (`/targetId`) and `faceAppearance` (`/appearanceIds`).
 - Runner tests with the real mux: a read tool's call (`listTags` with a
   query) answers the handler's body; an image operation answers bytes and
   its content type; an excluded operation is refused before any call; a
@@ -487,7 +497,8 @@ schema; Tool-calling chat port and tool capability in the Ollama connection
 
 **Scope**: Write tools from catalog rows in the loop. Name rows go through
 the shipped plan builders and schema rows through their schema and a
-describer that labels the ids. A clarification ends the turn with
+describer that labels the path and body ids by the kinds the generated
+registry records. A clarification ends the turn with
 candidates and no proposal. Names an earlier step creates resolve to that
 step. The turn's steps become one proposal, and a follow-up replaces the
 previous pending one. New builders cover `applyWorkInfoFetch`,
@@ -513,7 +524,8 @@ Multi-step proposals with step selection and ordered execution
   - `mergeTag` steps carry the irreversible mark and `impact.videos` (7);
   - `fetchWorkInfo` as a read then `applyWorkInfoFetch` as a step lists
     the fields it sets (1);
-  - a schema row's step labels the person its path id names.
+  - a `moveFaceAppearances` step labels the person its path id names, the
+    person its body `targetId` names and the count of `appearanceIds`.
 
 ### Assistant tools for the screen, help, navigation, review runs and exclusions
 
