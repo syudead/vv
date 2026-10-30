@@ -4296,6 +4296,17 @@ export const en = {
       updateComfyUISettings: () => "Change ComfyUI settings",
       startScan: () => "Start a scan",
       startRescan: () => "Start a rescan",
+      applyWorkInfoFetch: () => "Apply fetched work information",
+      applyPersonPluginFetch: () => "Apply fetched person details",
+      editVideoThumbnail: () => "Edit the thumbnail with ComfyUI",
+      revertThumbnailImage: () => "Restore the original thumbnail",
+      setVideoDetails: () => "Edit the video details",
+      putVideoProgress: () => "Set the watch position",
+      undoActivity: ({ name }) => quoted("Undo", name),
+      retryActivity: ({ name }) => quoted("Retry", name),
+      moveFaceAppearances: ({ name }) => quoted("Move faces to", name, "Move faces"),
+      splitFaceAppearances: () => "Split faces into a new person",
+      splitFaceAppearance: () => "Split faces into a new person",
     } satisfies Record<string, (input: OperationInput) => string>,
     // A row this build does not know, such as one added to the catalog later.
     otherOperation: "Change",
@@ -4341,6 +4352,11 @@ export const en = {
         sort: "Sort",
         parentName: "Parent",
         scope: "Scope",
+        people: "People",
+        organizations: "Organizations",
+        links: "Links",
+        atMs: "Frame",
+        instruction: "Instruction",
       } as Readonly<Record<string, string>>,
       mergeFrom: "Merge from",
       created: "Creates",
@@ -4350,6 +4366,9 @@ export const en = {
       private: "Private",
       newMark: "New",
       newNamed: (kind: string, name: string) => `New ${kind} ${name}`,
+      newImage: "New image",
+      none: "None",
+      restoreUndoes: "Restore the original thumbnail undoes it",
       irreversible: "Can’t be undone",
       moves: (count: number, name: string) =>
         selectPlural(count, {
@@ -4371,7 +4390,6 @@ export const en = {
       doneOnce: "Done",
       partial: (applied: number, failed: number, reason: string) =>
         `${formatNumber(applied)} changed · ${formatNumber(failed)} failed: ${reason}`,
-      stale: "Something changed since this was proposed, so nothing was done. Ask again.",
       failed: (reason: string) => `Failed: ${reason} · nothing changed`,
       interrupted: (applied: number) =>
         `Stopped by a restart. ${formatNumber(applied)} changed · ask again for the rest.`,
@@ -4380,6 +4398,27 @@ export const en = {
       dismissed: "Dismissed · nothing changed",
       openInActivity: "Open in Activity",
       progress: "Progress of the run",
+      // A card of two or more steps: one block per step, each with its checkbox and, after Execute, its state.
+      steps: {
+        heading: (count: number, selected: number) =>
+          `${formatNumber(count)} steps · ${formatNumber(selected)} selected`,
+        include: (step: number) => `Include step ${formatNumber(step)}`,
+        createdBy: (step: number) => `Created by step ${formatNumber(step)}`,
+        needs: (step: number) => `Needs step ${formatNumber(step)}`,
+        blocked: (step: number, needed: number) =>
+          `Step ${formatNumber(step)} needs step ${formatNumber(needed)}. Tick step ${formatNumber(needed)}, or untick step ${formatNumber(step)}.`,
+        noneSelected: "Tick at least one step.",
+        wontRun: "Won’t run",
+        execute: (count: number) => `Execute ${formatNumber(count)} steps`,
+        skipped: "Skipped",
+        waiting: "Waiting",
+        done: (applied: number) => `Done · ${formatNumber(applied)} changed`,
+        stale: "Changed since it was proposed, so it didn’t run. Ask again.",
+        failed: (reason: string) => `Failed: ${reason}`,
+        notRun: "Not run: an earlier step stopped",
+        allDone: (count: number) => `Done · ${counted(count, "step", "steps")}`,
+        stoppedAt: (step: number) => `Stopped at step ${formatNumber(step)}`,
+      },
     },
     recentRuns: "Recent runs",
     // The Activity entry's result for a run, after its operation sentence.

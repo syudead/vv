@@ -15,7 +15,7 @@ import VideoHeader from "../player/VideoHeader";
 import TopBar from "../shell/TopBar";
 import { SidebarProvider } from "../ui/shadcn/sidebar";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import { oneStepProposal } from "../testing/assistantProposal";
+import { createAndAttachProposal, oneStepProposal } from "../testing/assistantProposal";
 import { ToastProvider } from "../ui/Toast";
 import AssistantPanel from "./AssistantPanel";
 import { AssistantProvider, useAssistantScreen } from "./AssistantProvider";
@@ -674,6 +674,63 @@ describe("AssistantPanel", () => {
     expect(within(panel()).queryByRole("button", { name: /Execute/ })).toBeNull();
   });
 
+  it("手順 2 を外した Execute は steps: [0] を 1 回だけ送り、手順 2 を Skipped と出す", async () => {
+    server.turn = () => finished({ status: "done", proposal: createAndAttachProposal() });
+    let answer: (response: Response) => void = () => undefined;
+    server.execute = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "ライブ録画タグを作って付けて");
+
+    await user.click(
+      await within(panel()).findByRole("checkbox", { name: "Include step 2" }),
+    );
+    await user.click(within(panel()).getByRole("button", { name: "Execute" }));
+    await user.click(within(panel()).getByRole("button", { name: "Executing…" }));
+    await act(async () =>
+      answer(json(createAndAttachProposal("approved", [{}, { status: "skipped" }]), 202)),
+    );
+
+    expect(server.executes).toEqual([`/api/assistant/proposals/1/execute {"steps":[0]}`]);
+    expect(within(panel()).getByText("Skipped")).toBeDefined();
+    expect(within(panel()).getByText("Waiting")).toBeDefined();
+  });
+
+  it("手順 2 が失敗した実行は手順 1 の結果と手順 2 の理由、止まった手順を出す", async () => {
+    server.turn = () => finished({ status: "done", proposal: createAndAttachProposal() });
+    server.execute = () => json(createAndAttachProposal("approved"), 202);
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "ライブ録画タグを作って付けて");
+    await user.click(
+      await within(panel()).findByRole("button", { name: "Execute 2 steps" }),
+    );
+    await within(panel()).findAllByText("Waiting");
+
+    server.proposal = () =>
+      json({
+        ...createAndAttachProposal("failed", [
+          { status: "done", counts: { total: 1, applied: 1, failed: 0 } },
+          {
+            status: "failed",
+            counts: { total: 3, applied: 0, failed: 3 },
+            error: { code: "not_found", message: "not found" },
+          },
+        ]),
+        activityId: 77,
+      });
+    act(() => server.emit());
+
+    expect(await within(panel()).findByText("Stopped at step 2")).toBeDefined();
+    expect(within(panel()).getByText("Done")).toBeDefined();
+    expect(within(panel()).getByText(/^Failed: /)).toBeDefined();
+    expect(
+      within(panel())
+        .getByRole("link", { name: "Open in Activity" })
+        .getAttribute("href"),
+    ).toBe("/activity/77");
+  });
+
   it("Dismiss は何も送らずにカードを畳む", async () => {
     server.turn = () => finished({ status: "done", proposal: proposal() });
     const user = userEvent.setup();
@@ -802,7 +859,7 @@ describe("AssistantPanel", () => {
 
     expect(
       await within(panel()).findByText(
-        "Something changed since this was proposed, so nothing was done. Ask again.",
+        "Changed since it was proposed, so it didn’t run. Ask again.",
       ),
     ).toBeDefined();
   });

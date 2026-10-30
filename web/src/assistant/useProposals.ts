@@ -35,7 +35,7 @@ export interface Proposals {
    * cards still waiting; one rebuilt from the server carries its proposal's state instead.
    */
   settle: (exchangeId: number, turn: AssistantTurn, rebuilt: boolean) => void;
-  execute: (exchangeId: number) => void;
+  execute: (exchangeId: number, steps: readonly number[]) => void;
   dismiss: (exchangeId: number) => void;
   clear: () => void;
   loadRuns: () => void;
@@ -124,7 +124,7 @@ export function useProposals(open: boolean): Proposals {
   }, []);
 
   const execute = useCallback(
-    (exchangeId: number) => {
+    (exchangeId: number, steps: readonly number[]) => {
       const card = latestCards.current.get(exchangeId);
       if (
         card === undefined ||
@@ -151,10 +151,7 @@ export function useProposals(open: boolean): Proposals {
           })),
         );
       };
-      executeAssistantProposal(
-        card.proposal.id,
-        card.proposal.steps.map((step) => step.index),
-      ).then(
+      executeAssistantProposal(card.proposal.id, steps).then(
         (result) => {
           if (result.kind === "expired") {
             done((item) => ({ ...item, view: "expired" }));

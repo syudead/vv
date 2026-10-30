@@ -56,7 +56,7 @@ export interface AssistantStore {
   send: (text: string) => void;
   choose: (exchange: Exchange, candidate: AssistantCandidate) => void;
   clear: () => void;
-  execute: (exchangeId: number) => void;
+  execute: (exchangeId: number, steps: readonly number[]) => void;
   dismiss: (exchangeId: number) => void;
   setDraft: (draft: string) => void;
   checkReadiness: () => void;

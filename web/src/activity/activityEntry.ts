@@ -285,7 +285,7 @@ function assistantRunResult(entry: EntryFields): ResultPart[] {
     text(operationSentence(operation)),
     text(t.activity.separator),
   ]);
-  if (entry.outcome === "stale") return [...parts, text(t.assistant.card.stale)];
+  if (entry.outcome === "stale") return [...parts, text(t.assistant.card.steps.stale)];
   return [
     ...parts,
     text(t.assistant.runCounts(count(detail.applied), count(detail.failed))),

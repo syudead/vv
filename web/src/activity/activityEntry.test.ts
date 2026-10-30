@@ -163,9 +163,7 @@ describe("entryResult", () => {
           detail: '{"operation":"mergeTag","total":1,"applied":0,"failed":0}',
         }),
       ),
-    ).toBe(
-      "Merge tags · Something changed since this was proposed, so nothing was done. Ask again.",
-    );
+    ).toBe("Merge tags · Changed since it was proposed, so it didn’t run. Ask again.");
   });
 });
 
