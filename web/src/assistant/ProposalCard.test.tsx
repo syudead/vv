@@ -123,7 +123,11 @@ describe("ProposalCard", () => {
     renderCard(
       proposal({
         operation: "applyWorkInfoFetch",
-        targets: { kind: "video", count: 1, labels: [{ kind: "video", id: 1, name: "a" }] },
+        targets: {
+          kind: "video",
+          count: 1,
+          labels: [{ kind: "video", id: 1, name: "a" }],
+        },
         change: [
           { argument: "title", value: "取得した題名" },
           { argument: "dates.release", value: "2024-05-01" },
@@ -227,7 +231,11 @@ describe("ProposalCard with steps", () => {
         {
           operation: "mergeTag",
           irreversible: true,
-          targets: { kind: "tag", count: 1, labels: [{ kind: "tag", id: 9, name: "旅行" }] },
+          targets: {
+            kind: "tag",
+            count: 1,
+            labels: [{ kind: "tag", id: 9, name: "旅行" }],
+          },
           change: [{ argument: "names", labels: [{ kind: "tag", id: 8, name: "旅" }] }],
           impact: { videos: 4 },
           createdBy: [],

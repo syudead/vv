@@ -12,7 +12,10 @@ export function allSteps(proposal: AssistantProposal): Selection {
 }
 
 /** Kept steps in card order, as Execute sends them. */
-export function selectedIndexes(proposal: AssistantProposal, selected: Selection): number[] {
+export function selectedIndexes(
+  proposal: AssistantProposal,
+  selected: Selection,
+): number[] {
   return proposal.steps.map((step) => step.index).filter((index) => selected.has(index));
 }
 
@@ -36,13 +39,7 @@ export function blockedStep(
 
 const stopping: ReadonlySet<Step["status"]> = new Set(["partial", "stale", "failed"]);
 
-export type StepIcon =
-  | "skipped"
-  | "waiting"
-  | "running"
-  | "done"
-  | "warning"
-  | "failed";
+export type StepIcon = "skipped" | "waiting" | "running" | "done" | "warning" | "failed";
 
 export interface StepLine extends RunLine {
   icon: StepIcon;

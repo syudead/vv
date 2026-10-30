@@ -187,7 +187,8 @@ function fetchFieldName(operation: string, argument: string): string | undefined
   const work: Readonly<Record<string, string>> = t.player.workInfoFetch.fields;
   const person: Readonly<Record<string, string>> = t.credits.personPage.pluginFetch.items;
   if (operation === "applyWorkInfoFetch") return work[argument];
-  if (operation === "applyPersonPluginFetch") return person[argument] ?? person[`profile.${argument}`];
+  if (operation === "applyPersonPluginFetch")
+    return person[argument] ?? person[`profile.${argument}`];
   return undefined;
 }
 
@@ -255,10 +256,13 @@ export function valueParts(step: StepFields, change: Change): ValuePart[] {
   if (argument === "atMs" && typeof value === "number") {
     return [{ kind: "text", text: formatDuration(value) }];
   }
-  if (typeof value === "boolean") return [{ kind: "text", text: switchText(argument, value) }];
+  if (typeof value === "boolean")
+    return [{ kind: "text", text: switchText(argument, value) }];
   if (typeof value === "string") {
     if (value === "") return [];
-    return textRow ? [{ kind: "text", text: value, long: true }] : [{ kind: "name", name: value }];
+    return textRow
+      ? [{ kind: "text", text: value, long: true }]
+      : [{ kind: "name", name: value }];
   }
   if (Array.isArray(value)) {
     return value.map((item: unknown) =>

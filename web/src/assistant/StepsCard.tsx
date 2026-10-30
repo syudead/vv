@@ -103,11 +103,11 @@ function StepBlock({
   return (
     <div
       className={cn(
-        "grid grid-cols-[1rem_minmax(0,1fr)] gap-x-3 py-3",
+        "flex gap-3 py-3",
         step.irreversible && "border-l-2 border-warning pl-3",
       )}
     >
-      <div className="flex h-5 items-center">
+      <div className="flex h-5 w-4 shrink-0 items-center">
         {waiting ? (
           <Checkbox
             aria-label={words.include(number)}
@@ -118,7 +118,7 @@ function StepBlock({
           <StateIcon step={step} />
         )}
       </div>
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex flex-col gap-0.5">
           <p className="flex items-baseline gap-2">
             <span className="text-xs text-muted-foreground tabular-nums">
@@ -191,7 +191,9 @@ export default function StepsCard({
   const waiting = view === "live" && proposal.status === "proposed";
   const kept = waiting
     ? selectedIndexes(proposal, selected)
-    : proposal.steps.filter((step) => step.status !== "skipped").map((step) => step.index);
+    : proposal.steps
+        .filter((step) => step.status !== "skipped")
+        .map((step) => step.index);
   const words = t.assistant.card;
   const tick = (index: number, ticked: boolean) =>
     setSelected((current) => {
@@ -212,12 +214,7 @@ export default function StepsCard({
         {proposal.steps.map((step, index) => (
           <Fragment key={step.index}>
             {index > 0 && <Separator />}
-            <StepBlock
-              step={step}
-              waiting={waiting}
-              selected={selected}
-              onTick={tick}
-            />
+            <StepBlock step={step} waiting={waiting} selected={selected} onTick={tick} />
           </Fragment>
         ))}
       </div>

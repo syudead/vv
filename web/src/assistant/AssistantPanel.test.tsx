@@ -688,12 +688,7 @@ describe("AssistantPanel", () => {
     await user.click(within(panel()).getByRole("button", { name: "Execute" }));
     await user.click(within(panel()).getByRole("button", { name: "Executing…" }));
     await act(async () =>
-      answer(
-        json(
-          createAndAttachProposal("approved", [{}, { status: "skipped" }]),
-          202,
-        ),
-      ),
+      answer(json(createAndAttachProposal("approved", [{}, { status: "skipped" }]), 202)),
     );
 
     expect(server.executes).toEqual([`/api/assistant/proposals/1/execute {"steps":[0]}`]);
