@@ -37,6 +37,8 @@ const (
 	AssistantStopConnection AssistantStopReason = "connection"
 	AssistantStopModel      AssistantStopReason = "model"
 	AssistantStopUngrounded AssistantStopReason = "ungrounded"
+	// AssistantStopNoAnswer: the model replied with neither text nor a tool call, twice; the model itself answered.
+	AssistantStopNoAnswer AssistantStopReason = "no_answer"
 )
 
 // ErrAssistantBusy refuses a turn while another one runs; one local model serves one request at a time.

@@ -139,6 +139,9 @@ function ToolLine({
           )}
           {item.error !== undefined && ` · ${words.failed}`}
         </p>
+        {item.error !== undefined && (
+          <p className="wrap-anywhere text-muted-foreground">{item.error}</p>
+        )}
         {current && counted && (
           <Progress aria-label={words.progress} value={item.n} max={item.m} />
         )}

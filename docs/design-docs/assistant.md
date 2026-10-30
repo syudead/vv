@@ -39,7 +39,11 @@ always sees `find_tools` and the core reads (`listVideos`, `getVideo`,
 other tool of [the registry](#the-tool-registry-classifies-every-operation)
 by words over its name, summary and description, answers up to 15 with their
 kind and, for an excluded one, the reason and page, and adds the read and
-write tools it found to the later calls of the same turn. The built-in tools
+write tools it found to the later calls of the same turn. A call to a read or
+write tool of the registry that is not offered yet runs and loads it as well,
+since models often call a tool they know by name without searching first. The
+system message names the screen's route and, for a page that shows one item,
+its kind, id and name, so the first read needs no guessed id. The built-in tools
 are also always offered
 ([`assistant_core_tools.go`](../../internal/app/assistant_core_tools.go)):
 
@@ -109,7 +113,7 @@ answer text.
 | 10 minutes passed, or the model call timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
 | The model is missing or answers an `error` | `stopped`, `model` | The progress |
-| Two replies with neither text nor tool calls | `stopped`, `model` | The progress |
+| Two replies with neither text nor tool calls | `stopped`, `no_answer` | The progress |
 | A write call whose name needs the owner's choice | `clarify` with the name and its candidates | The progress; no proposal |
 | Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress and the proposal |
 | An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |
@@ -443,13 +447,13 @@ not rebuilt; active proposals no turn in the thread holds are listed under
 
 | Part of an exchange | What the panel shows |
 | --- | --- |
-| Tool calls | One `text-xs` muted line per progress item, the labels' names in `foreground`, `n of m` with a `Progress` on the running item, and a running line with the elapsed time; folded to `Show n tool calls` once the turn answers or asks, open when it stopped |
+| Tool calls | One `text-xs` muted line per progress item, the labels' names in `foreground`, `n of m` with a `Progress` on the running item, a failed item's `error` on a muted line under it, and a running line with the elapsed time; folded to `Show n tool calls` once the turn answers or asks, open when it stopped |
 | Answer | The model's text as plain text: line breaks kept, `- ` and `1. ` lines as lists, `**` dropped; `Judged by Clef` above it when `judged`; under it the progress labels the answer names as a token (the grounding check's rule), as links, at most 20. The panel draws no count of its own |
 | Directive | Applied without confirmation only when the turn ends in the tab that sent it while that tab is on the same path; otherwise `Show in the library` or `Open` |
 | `start_review` | The run's progress and `Open the review list` |
 | Proposal | The card under the reply; a turn that ends replaces a pending card. A card of two or more steps draws one block per step with a checkbox, marks a name an earlier step creates with `Created by step n` (`Needs step n` while that step is unticked, which keeps `Execute` disabled), edges an irreversible step in `warning` and turns `Execute` `destructive` while one is ticked, and sends the ticked indexes. After `Execute` each checkbox gives way to the step's state, and the card ends with `Done · k steps` or `Stopped at step n`. Every change field is shown, an object or a list of objects as text, so the card covers the exact body |
 | `clarify` | The question and one button per candidate |
-| Stop | A `warning` line for the limits, `ungrounded` and `interrupted`; the `destructive` alert with `Open Connections` for `connection` and `model`; for an excluded operation, the sentence and a link to its page |
+| Stop | A `warning` line for the limits, `no_answer`, `ungrounded` and `interrupted`; the `destructive` alert with `Open Connections` for `connection` and `model`; for an excluded operation, the sentence and a link to its page |
 | `409 assistant_busy` | A warning under the request, and the running turn the body names joins the thread |
 | `404` on a read | `This request is no longer kept.` in place of the reply |
 

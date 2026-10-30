@@ -181,6 +181,34 @@ func TestTurnLoopAnswersFromAReadResult(t *testing.T) {
 	}
 }
 
+func TestTurnLoopRunsAndLoadsAToolCalledWithoutFindTools(t *testing.T) {
+	f := newLoopFixture(t, calls(toolCall("listPlaylists", `{}`)), text("No playlists."))
+	f.runner.bodies["listPlaylists"] = `{"items":[]}`
+
+	turn := f.run(t, request)
+
+	if len(f.runner.reads) != 1 || f.runner.reads[0].Operation != "listPlaylists" || turn.Progress[0].Error != "" {
+		t.Fatalf("reads = %+v, progress = %+v, want listPlaylists run", f.runner.reads, turn.Progress)
+	}
+	if !slices.Contains(f.chat.toolNames(1), "listPlaylists") {
+		t.Fatalf("tools = %v, want listPlaylists offered after its call", f.chat.toolNames(1))
+	}
+}
+
+func TestTurnLoopNamesTheShownVideoAndItsIDInTheSystemMessage(t *testing.T) {
+	f := newLoopFixture(t, text("Clip 7 です。"))
+	f.a.videos = &fakeLibraryVideos{videos: map[int64]domain.Video{7: {ID: 7, Title: "Clip 7"}}}
+
+	f.run(t, domain.AssistantTurnInput{
+		Text: "この動画は?", Context: domain.AssistantTurnContext{Route: domain.AssistantRouteVideo, RouteID: 7},
+	})
+
+	system := f.chat.requests[0].Messages[0].Content
+	if !strings.Contains(system, "<screen>screen: video; showing: video id 7, Clip 7</screen>") {
+		t.Fatalf("system message = %q, want the shown video's id and title", system)
+	}
+}
+
 func TestTurnLoopOffersWhatFindToolsLoads(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("find_tools", `{"query":"playlists"}`)), text("No playlists."))
 
@@ -292,8 +320,8 @@ func TestTurnLoopStopsAfterASecondEmptyReply(t *testing.T) {
 
 	turn := f.run(t, request)
 
-	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopModel || turn.Answer != "" {
-		t.Fatalf("turn = %+v, want stopped as model with no answer", turn)
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopNoAnswer || turn.Answer != "" {
+		t.Fatalf("turn = %+v, want stopped as no_answer", turn)
 	}
 }
 
