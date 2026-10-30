@@ -52,7 +52,8 @@ func (o *OllamaConnection) Settings(ctx context.Context) (settings domain.Ollama
 	return o.store.SavedOllamaSettings(ctx)
 }
 
-// SaveSettings also rereads the generation model's capabilities; a failed read leaves them to readiness.
+// SaveSettings also rereads the generation model's capabilities from the stored settings, so the server only
+// connects to a saved endpoint; a failed read leaves them to readiness.
 func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error) {
 	normalized, err := domain.NormalizeOllamaSettings(settings)
 	if err != nil {
@@ -66,8 +67,8 @@ func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.Oll
 	if o.saved != nil {
 		o.saved(ctx)
 	}
-	if normalized.GenerationModel != "" {
-		_, _ = o.readCapabilities(ctx, normalized)
+	if stored, _, err := o.store.SavedOllamaSettings(ctx); err == nil && stored.GenerationModel != "" {
+		_, _ = o.readCapabilities(ctx, stored)
 	}
 	return normalized, nil
 }
