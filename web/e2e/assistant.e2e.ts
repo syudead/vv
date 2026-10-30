@@ -271,6 +271,11 @@ async function ask(page: Page, text: string) {
   await panel(page).getByRole("button", { name: "Send" }).click();
 }
 
+/** The proposal card that names text; the thread keeps the cards of earlier tests. */
+function card(page: Page, text: string): Locator {
+  return panel(page).getByRole("article").filter({ hasText: text });
+}
+
 function cardTitles(page: Page): Locator {
   return page.locator("article[data-video-id] h3");
 }
@@ -454,15 +459,15 @@ test.describe.serial("assistant", () => {
     await expect(panel(page).getByText("Talking about 2 selected videos")).toBeVisible();
     await ask(page, createAttachText);
 
-    await expect(panel(page).getByText("2 steps · 2 selected")).toBeVisible();
-    await expect(panel(page).getByText(`Create tag “${attachTag}”`)).toBeVisible();
-    await expect(panel(page).getByText("Add tags", { exact: true })).toBeVisible();
-    await expect(panel(page).getByText("Created by step 1")).toBeVisible();
+    const steps = card(page, `Create tag “${attachTag}”`);
+    await expect(steps.getByText("2 steps · 2 selected")).toBeVisible();
+    await expect(steps.getByText("Add tags", { exact: true })).toBeVisible();
+    await expect(steps.getByText("Created by step 1")).toBeVisible();
     // The proposal is stored; only Execute creates the tag and attaches it.
     expect(await findTag(request, attachTag)).toBeUndefined();
 
-    await panel(page).getByRole("button", { name: "Execute 2 steps" }).click();
-    await expect(panel(page).getByText("Done · 2 steps")).toBeVisible();
+    await steps.getByRole("button", { name: "Execute 2 steps" }).click();
+    await expect(steps.getByText("Done · 2 steps")).toBeVisible();
     expect(await findTag(request, attachTag)).toBeDefined();
     for (const title of ["助手確認C", "助手確認D"]) {
       const detail = (await (
@@ -492,14 +497,15 @@ test.describe.serial("assistant", () => {
     await openPanel(page);
     await ask(page, twoTagsText);
 
-    await expect(panel(page).getByText("2 steps · 2 selected")).toBeVisible();
-    await panel(page).getByRole("checkbox", { name: "Include step 2" }).uncheck();
-    await expect(panel(page).getByText("2 steps · 1 selected")).toBeVisible();
-    await expect(panel(page).getByText("Won’t run")).toBeVisible();
-    await panel(page).getByRole("button", { name: "Execute", exact: true }).click();
+    const steps = card(page, `Create tag “${firstTag}”`);
+    await expect(steps.getByText("2 steps · 2 selected")).toBeVisible();
+    await steps.getByRole("checkbox", { name: "Include step 2" }).uncheck();
+    await expect(steps.getByText("2 steps · 1 selected")).toBeVisible();
+    await expect(steps.getByText("Won’t run")).toBeVisible();
+    await steps.getByRole("button", { name: "Execute", exact: true }).click();
 
-    await expect(panel(page).getByText("Done · 1 step")).toBeVisible();
-    await expect(panel(page).getByText("Skipped")).toBeVisible();
+    await expect(steps.getByText("Done · 1 step")).toBeVisible();
+    await expect(steps.getByText("Skipped")).toBeVisible();
     expect(await findTag(request, firstTag)).toBeDefined();
     expect(await findTag(request, secondTag)).toBeUndefined();
   });
@@ -512,15 +518,12 @@ test.describe.serial("assistant", () => {
     await openPanel(page);
     await ask(page, mergeText);
 
-    await expect(
-      panel(page).getByText(`Merge tags into “${destinationTag}”`),
-    ).toBeVisible();
-    await expect(panel(page).getByText("Can’t be undone")).toBeVisible();
-    await expect(
-      panel(page).getByText(`3 videos move to “${destinationTag}”`),
-    ).toBeVisible();
+    const merge = card(page, `Merge tags into “${destinationTag}”`);
+    await expect(merge.getByText("Can’t be undone")).toBeVisible();
+    await expect(merge.getByText(`3 videos move to “${destinationTag}”`)).toBeVisible();
 
-    await panel(page).getByRole("button", { name: "Dismiss" }).click();
+    await merge.getByRole("button", { name: "Dismiss" }).click();
+    // A dismissed card gives way to one line.
     await expect(panel(page).getByText("Dismissed · nothing changed")).toBeVisible();
     expect(await findTag(request, sourceTag)).toBeDefined();
   });
@@ -535,9 +538,8 @@ test.describe.serial("assistant", () => {
         "The assistant can’t do this. Creating API tokens is done on its own page.",
       ),
     ).toBeVisible();
-    await expect(panel(page).getByRole("link", { name: /^Open / })).toHaveAttribute(
-      "href",
-      "/settings/api",
+    await expect(panel(page).locator('a[href="/settings/api"]')).toHaveText(
+      /^Open Settings, /,
     );
   });
 
