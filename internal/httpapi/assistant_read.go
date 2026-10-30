@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
+
 	"github.com/syudead/vv/internal/domain"
 )
 
@@ -108,14 +110,61 @@ func readArguments(op *registryOperation, raw json.RawMessage) (map[string]any, 
 	if err != nil {
 		return nil, err
 	}
-	if err := schema.Validate(instance); err != nil {
-		return nil, fmt.Errorf("%w: %w", domain.ErrAssistantInvalidArguments, err)
-	}
 	args, ok := instance.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%w: the arguments are not an object", domain.ErrAssistantInvalidArguments)
 	}
+	coerceParameters(schema.Schema(), args)
+	if err := schema.Validate(args); err != nil {
+		return nil, fmt.Errorf("%w: %w", domain.ErrAssistantInvalidArguments, err)
+	}
 	return args, nil
+}
+
+// coerceParameters reads a path or query argument as the text it becomes on the wire: chat models often write
+// "200" for an integer or one string for an array, which the URL would carry the same way, and null, "" or "null"
+// for a parameter they mean to leave out, which an absent parameter says. The body is left as is.
+func coerceParameters(schema *jsonschema.Schema, args map[string]any) {
+	for name, value := range args {
+		property := schema.Properties[name]
+		if name == assistantBodyArgument || property == nil {
+			continue
+		}
+		if value == nil || value == "" || value == "null" {
+			delete(args, name)
+			continue
+		}
+		if property.Type == "array" && property.Items != nil {
+			items, isList := value.([]any)
+			if !isList {
+				items = []any{value}
+			}
+			for i, item := range items {
+				items[i] = coerceScalar(property.Items.Type, item)
+			}
+			args[name] = items
+			continue
+		}
+		args[name] = coerceScalar(property.Type, value)
+	}
+}
+
+func coerceScalar(kind string, value any) any {
+	text, isText := value.(string)
+	if !isText {
+		return value
+	}
+	switch kind {
+	case "integer", "number":
+		if n, err := strconv.ParseFloat(strings.TrimSpace(text), 64); err == nil {
+			return n
+		}
+	case "boolean":
+		if b, err := strconv.ParseBool(strings.TrimSpace(text)); err == nil {
+			return b
+		}
+	}
+	return value
 }
 
 func pathValues(op *registryOperation, args map[string]any) map[string]string {

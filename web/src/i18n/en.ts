@@ -268,6 +268,7 @@ const errorCodes = {
   step_needs_skipped: "A kept step needs a step that is not ticked",
   assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
   assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
+  assistant_busy: "Another request is still running. It shows above when it finishes.",
   service_unavailable: "This isn't available right now. Try again later.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 

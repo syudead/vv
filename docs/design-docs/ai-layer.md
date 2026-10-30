@@ -12,10 +12,9 @@ flowchart LR
   feature[Feature: AutoTagger] -->|domain.ClassifierRequest| port[app.Classifier]
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
-  assistant -->|domain.GenerationRequest| gport[app.StructuredGenerator]
   assistant -->|domain.ChatRequest| tport[app.ToolChat]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
-  gport -.->|implemented by| gen[internal/ollama.Generator]
+  gport[app.StructuredGenerator] -.->|implemented by| gen[internal/ollama.Generator]
   tport -.->|implemented by| chat[internal/ollama.Chat]
   ollama -->|reads| settings[(ollama.* settings)]
   gen -->|reads| settings
@@ -55,10 +54,9 @@ facts and the question wording, and turns probabilities into decisions.
 The generation port takes a prompt and a JSON schema and returns one JSON
 value that satisfies the schema
 ([`internal/app/generator.go`](../../internal/app/generator.go),
-[`internal/domain/generation.go`](../../internal/domain/generation.go)). The
-assistant is its one feature; it validates the value against its own schema
-again, since a provider may not enforce every keyword
-([assistant.md](assistant.md#one-structured-answer-per-turn)).
+[`internal/domain/generation.go`](../../internal/domain/generation.go)). No
+feature calls it any more: the assistant runs a tool loop over the
+tool-calling port instead ([assistant.md](assistant.md#a-turn-is-a-tool-loop)).
 
 Failures wrap one domain cause each, so a feature maps them without reading
 messages.

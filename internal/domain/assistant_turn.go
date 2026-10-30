@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"encoding/json"
-	"errors"
-)
+import "errors"
 
 // Limits of one turn: the request text, as a smart rule's query, and the selection, as the bulk operations.
 const (
@@ -54,24 +51,20 @@ type AssistantTurnContext struct {
 type AssistantTurnInput struct {
 	Text    string
 	Context AssistantTurnContext
-	// Previous is the outcome the thread showed last, for a follow-up; nil starts a new thread.
-	Previous json.RawMessage
-	// PreviousProposalID is discarded when the follow-up is interpreted.
-	PreviousProposalID int64
+	// PreviousTurnID is the turn a follow-up continues; 0 starts a new thread.
+	PreviousTurnID int64
 }
 
-// AssistantTurnKind is what a turn answers the panel.
-type AssistantTurnKind string
+// AssistantResolutionKind is what resolving one filter, navigation, write or review request gave.
+type AssistantResolutionKind string
 
 const (
-	AssistantTurnFilter      AssistantTurnKind = "filter"
-	AssistantTurnNavigate    AssistantTurnKind = "navigate"
-	AssistantTurnAnswer      AssistantTurnKind = "answer"
-	AssistantTurnProposal    AssistantTurnKind = "proposal"
-	AssistantTurnReview      AssistantTurnKind = "review"
-	AssistantTurnClarify     AssistantTurnKind = "clarify"
-	AssistantTurnUnsupported AssistantTurnKind = "unsupported"
-	AssistantTurnUnreadable  AssistantTurnKind = "unreadable"
+	AssistantResolvedFilter      AssistantResolutionKind = "filter"
+	AssistantResolvedNavigate    AssistantResolutionKind = "navigate"
+	AssistantResolvedProposal    AssistantResolutionKind = "proposal"
+	AssistantResolvedReview      AssistantResolutionKind = "review"
+	AssistantResolvedClarify     AssistantResolutionKind = "clarify"
+	AssistantResolvedUnsupported AssistantResolutionKind = "unsupported"
 )
 
 // AssistantCriteria is a library filter with ids, and the labels the chips show for them.
@@ -86,21 +79,6 @@ type AssistantDestination struct {
 	Kind         string
 	ID           int64
 	SettingsPage string
-}
-
-// AssistantAnswerItem is one video an answer names.
-type AssistantAnswerItem struct {
-	ID    int64
-	Title string
-}
-
-// AssistantAnswer is a typed question's result; Link says where the number came from.
-type AssistantAnswer struct {
-	Question string
-	Total    *int
-	Items    []AssistantAnswerItem
-	Criteria *AssistantCriteria
-	Page     *AssistantDestination
 }
 
 // AssistantCandidate is one entity a name matched.
@@ -119,12 +97,12 @@ type AssistantClarification struct {
 	Names []string
 }
 
-// AssistantTurnResult is what the panel shows for a turn.
-type AssistantTurnResult struct {
-	Kind        AssistantTurnKind
+// AssistantResolution is what resolving one request against the library gave; the loop's tools turn it into a
+// directive, a proposal step or a review run.
+type AssistantResolution struct {
+	Kind        AssistantResolutionKind
 	Criteria    *AssistantCriteria
 	Destination *AssistantDestination
-	Answer      *AssistantAnswer
 	Proposal    *AssistantProposal
 	Review      *AssistantReviewRun
 	Clarify     *AssistantClarification

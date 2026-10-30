@@ -2,27 +2,14 @@ package app
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// fakeStructuredGenerator answers one fixed outcome, or an error, and keeps the request.
-type fakeStructuredGenerator struct {
-	answer string
-	err    error
-	got    domain.GenerationRequest
-}
-
-func (g *fakeStructuredGenerator) Generate(_ context.Context, req domain.GenerationRequest) (json.RawMessage, error) {
-	g.got = req
-	return json.RawMessage(g.answer), g.err
-}
 
 // fakeVocabulary matches names exactly, per kind, offers similar names from its own table, and reads the current
 // names of entities.
@@ -30,6 +17,7 @@ type fakeVocabulary struct {
 	names    map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
 	similar  map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate
 	entities map[domain.AssistantLabelKind]map[int64]string
+	known    []string
 }
 
 func (v fakeVocabulary) FindNames(_ context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error) {
@@ -45,6 +33,17 @@ func (v fakeVocabulary) EntityNames(_ context.Context, kind domain.AssistantLabe
 	for _, id := range ids {
 		if name, ok := v.entities[kind][id]; ok {
 			out[id] = name
+		}
+	}
+	return out, nil
+}
+
+// NamesIn finds the library names, kept folded in known, that the folded text contains.
+func (v fakeVocabulary) NamesIn(_ context.Context, text string) ([]string, error) {
+	var out []string
+	for _, name := range v.known {
+		if strings.Contains(domain.FoldForMatch(text), name) {
+			out = append(out, name)
 		}
 	}
 	return out, nil
@@ -90,21 +89,22 @@ func (f *fakeAssistantStore) DiscardProposal(_ context.Context, id int64, _ time
 }
 
 type turnFixture struct {
-	store  *fakeAssistantStore
-	gen    *fakeStructuredGenerator
-	videos *fakeLibraryVideos
-	a      *Assistant
+	store *fakeAssistantStore
+	// outcome is what the tool would have resolved, as {"kind": ..., plus the member of that kind}.
+	outcome string
+	videos  *fakeLibraryVideos
+	a       *Assistant
 }
 
-func newTurnFixture(answer string, tags map[string][]domain.AssistantCandidate) turnFixture {
+func newTurnFixture(outcome string, tags map[string][]domain.AssistantCandidate) turnFixture {
 	f := turnFixture{
-		store: &fakeAssistantStore{}, gen: &fakeStructuredGenerator{answer: answer},
+		store: &fakeAssistantStore{}, outcome: outcome,
 		videos: &fakeLibraryVideos{videos: map[int64]domain.Video{
 			7: {ID: 7, UserKey: "key-7", Title: "Clip 7"}, 8: {ID: 8, UserKey: "key-8", Title: "Clip 8"},
 		}},
 	}
 	f.a = NewAssistant(AssistantOptions{
-		Store: f.store, Generator: f.gen, Videos: f.videos,
+		Store: f.store, Videos: f.videos,
 		Vocabulary: fakeVocabulary{names: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
 			domain.AssistantLabelTag: tags,
 		}},
@@ -126,13 +126,13 @@ func tagAction(operation, tag string) string {
 
 var catTag = domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 3, Name: "Cat", Count: 12}
 
-func TestTurnAttachesAnExistingTagByID(t *testing.T) {
+func TestResolveAttachesAnExistingTagByID(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.add", "cat"), map[string][]domain.AssistantCandidate{"cat": {catTag}})
-	result, err := f.a.Turn(context.Background(), selection(7, 8))
+	result, err := f.resolve(context.Background(), selection(7, 8))
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnProposal {
+	if result.Kind != domain.AssistantResolvedProposal {
 		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
 	}
 	plan := f.store.created
@@ -142,19 +142,16 @@ func TestTurnAttachesAnExistingTagByID(t *testing.T) {
 	if tag, _ := plan.Call.Body["tag"].(map[string]any); tag["id"] != int64(3) || len(plan.Created) != 0 {
 		t.Fatalf("body = %+v, created = %v", plan.Call.Body, plan.Created)
 	}
-	if !json.Valid(f.gen.got.Schema) || len(f.gen.got.Schema) == 0 {
-		t.Fatal("the generator did not receive the outcome schema")
-	}
 }
 
-func TestTurnAsksWhenATagNameMatchesTwoTags(t *testing.T) {
+func TestResolveAsksWhenATagNameMatchesTwoTags(t *testing.T) {
 	other := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 4, Name: "CAT", Count: 2}
 	f := newTurnFixture(tagAction("updateVideoTags.add", "cat"), map[string][]domain.AssistantCandidate{"cat": {catTag, other}})
-	result, err := f.a.Turn(context.Background(), selection(7))
+	result, err := f.resolve(context.Background(), selection(7))
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnClarify || !slices.Equal(result.Clarify.Candidates, []domain.AssistantCandidate{catTag, other}) {
+	if result.Kind != domain.AssistantResolvedClarify || !slices.Equal(result.Clarify.Candidates, []domain.AssistantCandidate{catTag, other}) {
 		t.Fatalf("result = %+v", result)
 	}
 	if f.store.created.ActionID != "" {
@@ -162,44 +159,25 @@ func TestTurnAsksWhenATagNameMatchesTwoTags(t *testing.T) {
 	}
 }
 
-func TestTurnPinnedCandidateSettlesAnAliasThatMatchedTwoTags(t *testing.T) {
+func TestResolvePinnedCandidateSettlesAnAliasThatMatchedTwoTags(t *testing.T) {
 	other := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 4, Name: "Kitten", Count: 2}
 	f := newTurnFixture(tagAction("updateVideoTags.add", "neko"), map[string][]domain.AssistantCandidate{"neko": {catTag, other}})
 	in := selection(7)
 	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelTag, ID: catTag.ID, Name: catTag.Name}}
-	result, err := f.a.Turn(context.Background(), in)
-	if err != nil || result.Kind != domain.AssistantTurnProposal {
-		t.Fatalf("Turn() = %+v, %v", result, err)
+	result, err := f.resolve(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantResolvedProposal {
+		t.Fatalf("resolve() = %+v, %v", result, err)
 	}
 	if tag, _ := f.store.created.Call.Body["tag"].(map[string]any); tag["id"] != catTag.ID {
 		t.Fatalf("body = %+v", f.store.created.Call.Body)
 	}
 }
 
-func TestTurnPinnedPersonSettlesANameATagAlsoHolds(t *testing.T) {
-	person := domain.AssistantCandidate{Kind: domain.AssistantLabelPerson, ID: 5, Name: "Mika", Count: 3}
-	tag := domain.AssistantCandidate{Kind: domain.AssistantLabelTag, ID: 6, Name: "Mika", Count: 1}
-	f := newTurnFixture(`{"kind":"answer","answer":{"question":"appearances","entity":{"kind":"any","name":"mika"}}}`, nil)
-	f.a.vocabulary = fakeVocabulary{names: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
-		domain.AssistantLabelPerson: {"mika": {person}},
-		domain.AssistantLabelTag:    {"mika": {tag}},
-	}}
-	in := selection()
-	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelPerson, ID: person.ID, Name: person.Name}}
-	result, err := f.a.Turn(context.Background(), in)
-	if err != nil || result.Kind != domain.AssistantTurnAnswer {
-		t.Fatalf("Turn() = %+v, %v", result, err)
-	}
-	if q := f.videos.queries[0]; q.Person != person.ID || len(q.TagIDs) != 0 {
-		t.Fatalf("query = %+v", q)
-	}
-}
-
-func TestTurnMarksAMissingTagToAttachAsCreated(t *testing.T) {
+func TestResolveMarksAMissingTagToAttachAsCreated(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.add", "sunset"), nil)
-	result, err := f.a.Turn(context.Background(), selection(7))
-	if err != nil || result.Kind != domain.AssistantTurnProposal {
-		t.Fatalf("Turn() = %+v, %v", result, err)
+	result, err := f.resolve(context.Background(), selection(7))
+	if err != nil || result.Kind != domain.AssistantResolvedProposal {
+		t.Fatalf("resolve() = %+v, %v", result, err)
 	}
 	plan := f.store.created
 	if tag, _ := plan.Call.Body["tag"].(map[string]any); tag["name"] != "sunset" || !slices.Equal(plan.Created, []string{"sunset"}) {
@@ -208,7 +186,7 @@ func TestTurnMarksAMissingTagToAttachAsCreated(t *testing.T) {
 }
 
 // A name that matches nothing exactly offers the entities it is part of, so the owner chooses instead of retyping.
-func TestTurnOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
+func TestResolveOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
 	similar := []domain.AssistantCandidate{
 		{Kind: domain.AssistantLabelTag, ID: 4, Name: "コスプレ衣装", Count: 1},
 		{Kind: domain.AssistantLabelTag, ID: 5, Name: "コスプレ衣裳", Count: 1},
@@ -217,11 +195,11 @@ func TestTurnOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
 	f.a.vocabulary = fakeVocabulary{similar: map[domain.AssistantLabelKind]map[string][]domain.AssistantCandidate{
 		domain.AssistantLabelTag: {"コスプレ": similar},
 	}}
-	result, err := f.a.Turn(context.Background(), domain.AssistantTurnInput{Text: "コスプレのタグを消して"})
+	result, err := f.resolve(context.Background(), domain.AssistantTurnInput{Text: "コスプレのタグを消して"})
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnClarify || result.Clarify.About != "target" ||
+	if result.Kind != domain.AssistantResolvedClarify || result.Clarify.About != "target" ||
 		!slices.Equal(result.Clarify.Candidates, similar) || len(result.Clarify.Names) != 0 {
 		t.Fatalf("result = %+v, clarify = %+v", result, result.Clarify)
 	}
@@ -232,7 +210,7 @@ func TestTurnOffersSimilarNamesWhenATargetMatchesNothing(t *testing.T) {
 
 // Choosing a similar candidate re-sends the request with the candidate pinned; the pin settles it even though
 // the candidate's name is not the request's name.
-func TestTurnPinnedSimilarCandidateSettlesTheTarget(t *testing.T) {
+func TestResolvePinnedSimilarCandidateSettlesTheTarget(t *testing.T) {
 	similar := []domain.AssistantCandidate{
 		{Kind: domain.AssistantLabelTag, ID: 4, Name: "コスプレ衣装", Count: 1},
 		{Kind: domain.AssistantLabelTag, ID: 5, Name: "コスプレ衣裳", Count: 1},
@@ -244,11 +222,11 @@ func TestTurnPinnedSimilarCandidateSettlesTheTarget(t *testing.T) {
 	in := domain.AssistantTurnInput{Text: "コスプレのタグを消して", Context: domain.AssistantTurnContext{
 		Pinned: []domain.AssistantPin{{Kind: domain.AssistantLabelTag, Name: "コスプレ衣裳", ID: 5}},
 	}}
-	result, err := f.a.Turn(context.Background(), in)
+	result, err := f.resolve(context.Background(), in)
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnProposal {
+	if result.Kind != domain.AssistantResolvedProposal {
 		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
 	}
 	if labels := f.store.created.Targets.Labels; len(labels) != 1 || labels[0].ID != 5 {
@@ -257,13 +235,13 @@ func TestTurnPinnedSimilarCandidateSettlesTheTarget(t *testing.T) {
 }
 
 // A model copies the word "tag" into the name, as in "ライブタグ"; the tag is still found without it.
-func TestTurnFindsATagNamedWithTheWordTag(t *testing.T) {
+func TestResolveFindsATagNamedWithTheWordTag(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.remove", "Catタグ"), map[string][]domain.AssistantCandidate{"Cat": {catTag}})
-	result, err := f.a.Turn(context.Background(), selection(7))
+	result, err := f.resolve(context.Background(), selection(7))
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnProposal {
+	if result.Kind != domain.AssistantResolvedProposal {
 		t.Fatalf("kind = %q, clarify = %+v", result.Kind, result.Clarify)
 	}
 	if change := f.store.created.Change; len(change) != 1 || len(change[0].Labels) != 1 || change[0].Labels[0].ID != 3 {
@@ -271,89 +249,36 @@ func TestTurnFindsATagNamedWithTheWordTag(t *testing.T) {
 	}
 }
 
-func TestTurnAsksWhenATagToRemoveIsMissing(t *testing.T) {
+func TestResolveAsksWhenATagToRemoveIsMissing(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.remove", "sunset"), nil)
-	result, err := f.a.Turn(context.Background(), selection(7))
+	result, err := f.resolve(context.Background(), selection(7))
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnClarify || !slices.Equal(result.Clarify.Names, []string{"sunset"}) {
+	if result.Kind != domain.AssistantResolvedClarify || !slices.Equal(result.Clarify.Names, []string{"sunset"}) {
 		t.Fatalf("result = %+v", result)
 	}
 }
 
-func TestTurnAsksForTheTargetWhenNothingIsSelected(t *testing.T) {
+func TestResolveAsksForTheTargetWhenNothingIsSelected(t *testing.T) {
 	f := newTurnFixture(tagAction("updateVideoTags.add", "cat"), map[string][]domain.AssistantCandidate{"cat": {catTag}})
-	result, err := f.a.Turn(context.Background(), selection())
+	result, err := f.resolve(context.Background(), selection())
 	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
+		t.Fatalf("resolve() error = %v", err)
 	}
-	if result.Kind != domain.AssistantTurnClarify || result.Clarify.About != "target" {
+	if result.Kind != domain.AssistantResolvedClarify || result.Clarify.About != "target" {
 		t.Fatalf("result = %+v", result)
 	}
 }
 
-func TestTurnAnswersACountWithTheLibraryTotal(t *testing.T) {
-	f := newTurnFixture(`{"kind":"answer","answer":{"question":"count","filter":{"tags":["cat"],"maxDurationMs":600000}}}`,
-		map[string][]domain.AssistantCandidate{"cat": {catTag}})
-	f.videos.total = 42
-	result, err := f.a.Turn(context.Background(), selection())
-	if err != nil {
-		t.Fatalf("Turn() error = %v", err)
-	}
-	if result.Kind != domain.AssistantTurnAnswer || result.Answer.Total == nil || *result.Answer.Total != 42 {
-		t.Fatalf("result = %+v", result)
-	}
-	q := f.videos.queries[0]
-	if !slices.Equal(q.TagIDs, []int64{3}) || q.MaxDurationMs == nil || *q.MaxDurationMs != 600000 {
-		t.Fatalf("query = %+v", q)
-	}
-	if !slices.Equal(result.Answer.Criteria.Rule.Tags, []int64{3}) {
-		t.Fatalf("link criteria = %+v", result.Answer.Criteria)
-	}
-}
-
-func TestTurnFollowUpDiscardsThePreviousProposal(t *testing.T) {
-	f := newTurnFixture(tagAction("updateVideoTags.add", "cat"), map[string][]domain.AssistantCandidate{"cat": {catTag}})
-	in := selection(7)
-	in.Previous, in.PreviousProposalID = json.RawMessage(`{"kind":"proposal"}`), 5
-	if _, err := f.a.Turn(context.Background(), in); err != nil {
-		t.Fatalf("Turn() error = %v", err)
-	}
-	if !slices.Equal(f.store.discarded, []int64{5}) {
-		t.Fatalf("discarded = %v", f.store.discarded)
-	}
-}
-
-func TestTurnStoresNothingWhenTheModelTimesOut(t *testing.T) {
-	f := newTurnFixture("", nil)
-	f.gen.err = fmt.Errorf("model: %w", domain.ErrOllamaTimeout)
-	in := selection(7)
-	in.PreviousProposalID = 5
-	if _, err := f.a.Turn(context.Background(), in); !errors.Is(err, domain.ErrOllamaTimeout) {
-		t.Fatalf("Turn() error = %v, want ErrOllamaTimeout", err)
-	}
-	if f.store.created.ActionID != "" || len(f.store.discarded) > 0 {
-		t.Fatalf("stored %+v, discarded %v", f.store.created, f.store.discarded)
-	}
-}
-
-func TestTurnAnswersUnreadableForJSONOutsideTheSchema(t *testing.T) {
-	f := newTurnFixture(`{"kind":"answer","text":"You have 3 videos."}`, nil)
-	result, err := f.a.Turn(context.Background(), selection())
-	if err != nil || result.Kind != domain.AssistantTurnUnreadable {
-		t.Fatalf("Turn() = %+v, %v", result, err)
-	}
-}
-
-func TestTurnPinnedVideoSettlesATitleThatMatchedTwoVideos(t *testing.T) {
+func TestResolvePinnedVideoSettlesATitleThatMatchedTwoVideos(t *testing.T) {
 	f := newTurnFixture(`{"kind":"navigate","navigate":{"to":"video","name":"clip"}}`, nil)
 	f.videos.items, f.videos.total = []domain.Video{f.videos.videos[7], f.videos.videos[8]}, 2
 	in := selection()
 	in.Context.Pinned = []domain.AssistantPin{{Kind: domain.AssistantLabelVideo, ID: 8, Name: "Clip 8"}}
-	result, err := f.a.Turn(context.Background(), in)
-	if err != nil || result.Kind != domain.AssistantTurnNavigate {
-		t.Fatalf("Turn() = %+v, %v", result, err)
+	result, err := f.resolve(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantResolvedNavigate {
+		t.Fatalf("resolve() = %+v, %v", result, err)
 	}
 	if result.Destination.ID != 8 {
 		t.Fatalf("destination = %+v, want video 8", result.Destination)
@@ -372,13 +297,13 @@ func favoritesFixture() turnFixture {
 
 // The library favorites a selected group without its members and a selected smart folder as itself; no smart
 // folder port is configured, so expanding the folder would fail the turn.
-func TestTurnFavoritesSelectedCollectionsAsThemselves(t *testing.T) {
+func TestResolveFavoritesSelectedCollectionsAsThemselves(t *testing.T) {
 	f := favoritesFixture()
 	in := selection(7, 8)
 	in.Context.SelectedGroupIDs, in.Context.SelectedSmartFolderIDs = []int64{20}, []int64{30}
-	result, err := f.a.Turn(context.Background(), in)
-	if err != nil || result.Kind != domain.AssistantTurnProposal {
-		t.Fatalf("Turn() = %+v, %v", result, err)
+	result, err := f.resolve(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantResolvedProposal {
+		t.Fatalf("resolve() = %+v, %v", result, err)
 	}
 	plan := f.store.created
 	if !slices.Equal(plan.Targets.VideoKeys, []string{"key-7"}) {
@@ -395,16 +320,16 @@ func TestTurnFavoritesSelectedCollectionsAsThemselves(t *testing.T) {
 	}
 }
 
-func TestTurnFavoritesTheOpenSmartFolderAsItself(t *testing.T) {
+func TestResolveFavoritesTheOpenSmartFolderAsItself(t *testing.T) {
 	f := favoritesFixture()
-	f.gen.answer = `{"kind":"action","action":{"operation":"updateFavorites","target":{"kind":"current"},` +
+	f.outcome = `{"kind":"action","action":{"operation":"updateFavorites","target":{"kind":"current"},` +
 		`"arguments":{"enabled":true}}}`
 	in := domain.AssistantTurnInput{Text: "request", Context: domain.AssistantTurnContext{
 		Route: domain.AssistantRouteSmartFolder, RouteID: 30,
 	}}
-	result, err := f.a.Turn(context.Background(), in)
-	if err != nil || result.Kind != domain.AssistantTurnProposal {
-		t.Fatalf("Turn() = %+v, %v", result, err)
+	result, err := f.resolve(context.Background(), in)
+	if err != nil || result.Kind != domain.AssistantResolvedProposal {
+		t.Fatalf("resolve() = %+v, %v", result, err)
 	}
 	plan := f.store.created
 	folders, _ := plan.Call.Body["smartFolderIds"].([]int64)

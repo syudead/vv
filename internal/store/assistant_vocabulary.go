@@ -218,3 +218,30 @@ func (s *AssistantStore) EntityNames(
 	}
 	return out, tx.Commit()
 }
+
+// NamesIn returns the folded tag, person and organization names, synonyms and aliases of at least
+// domain.AssistantNameMinRunes characters that the folded text contains; instr needs no escaping.
+func (s *AssistantStore) NamesIn(ctx context.Context, text string) ([]string, error) {
+	rows, err := s.db.read.QueryContext(ctx, `select search_key from tag_names
+			where length(search_key) >= ?1 and instr(?2, search_key) > 0
+		union select search_key from people_names where length(search_key) >= ?1 and instr(?2, search_key) > 0
+		union select search_key from organization_names
+			where length(search_key) >= ?1 and instr(?2, search_key) > 0
+		order by 1`, domain.AssistantNameMinRunes, domain.FoldForMatch(text))
+	if err != nil {
+		return nil, fmt.Errorf("cannot find the names in the answer: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("cannot find the names in the answer: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot find the names in the answer: %w", err)
+	}
+	return names, nil
+}

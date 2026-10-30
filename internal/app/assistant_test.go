@@ -73,6 +73,7 @@ func (f *fakeAssistantStore) FinishProposal(_ context.Context, _ int64, result d
 // fakeRunner fails the calls whose index is in failAt, answers the bodies by call index, and runs before each
 // call when set.
 type fakeRunner struct {
+	ActionRunner
 	calls  []domain.AssistantCall
 	failAt map[int]error
 	bodies map[int]string

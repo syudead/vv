@@ -5,11 +5,44 @@ import type { components } from "./gen/openapi";
 
 export type AssistantReadiness = components["schemas"]["AssistantReadiness"];
 export type AssistantReadinessReason = NonNullable<AssistantReadiness["reason"]>;
-export type AssistantTurnRequest = components["schemas"]["AssistantTurnRequest"];
+/**
+ * Interim: the server now answers a request as a turn job (202), while the panel still shows the
+ * one-shot outcome below. These types keep the panel compiling until it follows turns, which
+ * replaces them with AssistantTurn.
+ */
+export type AssistantTurnRequest = Omit<
+  components["schemas"]["AssistantTurnRequest"],
+  "previousTurnId"
+> & { previous?: AssistantOutcome };
 export type AssistantTurnContext = components["schemas"]["AssistantTurnContext"];
 export type AssistantRoute = components["schemas"]["AssistantRoute"];
 export type AssistantPin = components["schemas"]["AssistantPin"];
-export type AssistantOutcome = components["schemas"]["AssistantTurnOutcome"];
+export interface AssistantOutcome {
+  kind:
+    | "filter"
+    | "navigate"
+    | "answer"
+    | "proposal"
+    | "review"
+    | "clarify"
+    | "unsupported"
+    | "unreadable";
+  criteria?: components["schemas"]["AssistantCriteria"];
+  destination?: components["schemas"]["AssistantDestination"];
+  question?: "count" | "appearances" | "recent" | "list";
+  total?: number;
+  items?: { id: number; title: string }[];
+  link?: {
+    criteria?: components["schemas"]["AssistantCriteria"];
+    destination?: components["schemas"]["AssistantDestination"];
+  };
+  proposal?: components["schemas"]["AssistantProposal"];
+  run?: components["schemas"]["AssistantReviewRun"];
+  about?: "operation" | "target" | "value";
+  candidates?: components["schemas"]["AssistantCandidate"][];
+  names?: string[];
+  operation?: string;
+}
 export type AssistantCriteria = components["schemas"]["AssistantCriteria"];
 export type AssistantDestination = components["schemas"]["AssistantDestination"];
 export type AssistantCandidate = components["schemas"]["AssistantCandidate"];
@@ -31,15 +64,12 @@ export async function createAssistantTurn(
   body: AssistantTurnRequest,
   signal?: AbortSignal,
 ): Promise<AssistantOutcome> {
-  const response = await request<components["schemas"]["AssistantTurnResponse"]>(
-    "/api/assistant/turns",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal,
-    },
-  );
+  const response = await request<{ outcome: AssistantOutcome }>("/api/assistant/turns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
   return response.outcome;
 }
 

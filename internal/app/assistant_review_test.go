@@ -107,16 +107,16 @@ func TestReviewRunJudgesEverySetAndListsFromHalf(t *testing.T) {
 	}
 }
 
-func TestOrganizeTurnAnswersTheRunTheStoreStarted(t *testing.T) {
+func TestResolveOrganizeAnswersTheRunTheStoreStarted(t *testing.T) {
 	f := newTurnFixture(`{"kind":"organize","organize":{"kind":"tags"}}`, nil)
 	reviews := &fakeAssistantReviews{}
 	f.a.reviews = reviews
 
-	result, err := f.a.Turn(context.Background(), domain.AssistantTurnInput{Text: "タグを整理して"})
+	result, err := f.resolve(context.Background(), domain.AssistantTurnInput{Text: "タグを整理して"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Kind != domain.AssistantTurnReview || result.Review == nil || result.Review.ID != 5 {
+	if result.Kind != domain.AssistantResolvedReview || result.Review == nil || result.Review.ID != 5 {
 		t.Fatalf("result = %+v, want the review run 5", result)
 	}
 	if len(reviews.started) != 1 || reviews.started[0].Kind != domain.AssistantReviewTags ||

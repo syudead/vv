@@ -42,14 +42,14 @@ type AssistantStore interface {
 
 type AssistantOptions struct {
 	Store AssistantStore
-	// Generator, Vocabulary and Videos are required by Turn; History by the recent question, SmartFolders by
+	// Turns, Chat and Vocabulary are required by turns; Videos by names that resolve to videos, SmartFolders by
 	// targets that expand smart folders and Groups by favorites on selected groups.
-	Generator    StructuredGenerator
+	Turns        AssistantTurnStore
+	Chat         ToolChat
 	Vocabulary   AssistantVocabulary
 	Videos       AssistantVideos
 	SmartFolders AssistantSmartFolders
 	Groups       AssistantGroups
-	History      AssistantHistory
 	// Reviews and Classifier are required by review runs; without Reviews an organize request is unsupported.
 	Reviews    AssistantReviewStore
 	Classifier Classifier
@@ -59,22 +59,23 @@ type AssistantOptions struct {
 	Now func() time.Time
 }
 
-// Assistant interprets requests into typed outcomes, stores write proposals and executes the approved ones, one at a time, through the screen API's own
-// operations, in batches of user keys.
+// Assistant runs requests as server-side tool loops over the generation model, stores write proposals and executes
+// the approved ones, one at a time, through the screen API's own operations, in batches of user keys.
 type Assistant struct {
 	store        AssistantStore
-	generator    StructuredGenerator
+	turns        AssistantTurnStore
+	chat         ToolChat
 	vocabulary   AssistantVocabulary
 	videos       AssistantVideos
 	smartFolders AssistantSmartFolders
 	groups       AssistantGroups
-	history      AssistantHistory
 	reviews      AssistantReviewStore
 	classifier   Classifier
 	logger       *slog.Logger
 	now          func() time.Time
 	wake         chan struct{}
 	reviewWake   chan struct{}
+	turnWake     chan struct{}
 
 	runnerMu sync.RWMutex
 	runner   ActionRunner
@@ -91,20 +92,21 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 		now = time.Now
 	}
 	return &Assistant{
-		store: opts.Store, generator: opts.Generator, vocabulary: opts.Vocabulary, videos: opts.Videos,
-		smartFolders: opts.SmartFolders, groups: opts.Groups, history: opts.History, reviews: opts.Reviews, classifier: opts.Classifier,
+		store: opts.Store, turns: opts.Turns, chat: opts.Chat, vocabulary: opts.Vocabulary, videos: opts.Videos,
+		smartFolders: opts.SmartFolders, groups: opts.Groups, reviews: opts.Reviews, classifier: opts.Classifier,
 		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
-		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1),
+		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1), turnWake: make(chan struct{}, 1),
 	}
 }
 
-// UseRunner registers the runner once the HTTP server that implements it exists, and wakes the worker.
+// UseRunner registers the runner once the HTTP server that implements it exists, and wakes the workers.
 func (a *Assistant) UseRunner(runner ActionRunner) {
 	a.runnerMu.Lock()
 	a.runner = runner
 	a.runnerMu.Unlock()
 	a.Wake()
+	a.wakeTurns()
 }
 
 func (a *Assistant) currentRunner() ActionRunner {
@@ -172,10 +174,13 @@ func (a *Assistant) ActiveProposals(ctx context.Context) ([]domain.AssistantProp
 	return a.store.ActiveProposals(ctx, a.now().Add(-domain.AssistantProposalTTL))
 }
 
-// Recover must run before Run and RunReviews: proposals whose thread is gone are deleted, proposals a restart
-// stopped fail and review runs it stopped are interrupted.
+// Recover must run before Run, RunReviews and RunTurns: proposals whose thread is gone are deleted, proposals a
+// restart stopped fail, and review runs and turns it stopped are interrupted.
 func (a *Assistant) Recover(ctx context.Context) error {
 	if err := a.recoverReviews(ctx); err != nil {
+		return err
+	}
+	if err := a.recoverTurns(ctx); err != nil {
 		return err
 	}
 	recovered, err := a.store.RecoverProposals(ctx, a.now())

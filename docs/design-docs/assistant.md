@@ -1,8 +1,9 @@
 # In-app assistant
 
-The assistant turns one request from the owner into one typed outcome through
-the owner's Ollama, and carries out a write only after the owner approves the
-card that shows it. The use case is `app.Assistant`
+The assistant runs one request from the owner as a server-side job: a loop
+over the owner's Ollama chat model in which the model calls the app's own
+operations as tools until it answers. It carries out a write only after the
+owner approves the card that shows it. The use case is `app.Assistant`
 ([`internal/app/assistant*.go`](../../internal/app)), its rules are in
 [`internal/domain/assistant*.go`](../../internal/domain), its rows are
 `AssistantStore` ([`internal/store/assistant*.go`](../../internal/store)), and
@@ -14,78 +15,110 @@ The diagram shows one request from the panel to its effect.
 
 ```mermaid
 flowchart LR
-  panel[Assistant panel] -->|text and context| turn[POST /api/assistant/turns]
-  turn --> assistant[app.Assistant]
-  assistant -->|prompt and schema| gen[app.StructuredGenerator]
-  assistant -->|resolve names, count| store[(AssistantStore)]
-  assistant -->|outcome| panel
+  panel[Assistant panel] -->|text and context| post[POST /api/assistant/turns]
+  post --> turn[(assistant_turns)]
+  turn --> loop[Turn worker: tool loop]
+  loop -->|messages and tools| chat[app.ToolChat]
+  loop -->|read tools| runner[app.ActionRunner: screen API handlers]
+  loop -->|progress, result| turn
+  turn -->|assistant event| panel
   panel -->|Execute| exec[POST execute]
   exec --> worker[Assistant worker]
   worker -->|app.ActionRunner| api[Screen API handlers]
-  turn -->|organize| reviews[Review run worker]
-  reviews -->|one question per set| cls[app.Classifier]
+  reviews[Review run worker] -->|one question per set| cls[app.Classifier]
 ```
 
-## One structured answer per turn
+## A turn is a tool loop
 
-A turn is one call to the generation port whose JSON schema is the union of
-the outcome kinds, so the model answers `filter`, `navigate`, `answer`,
-`action`, `organize`, `clarify` or `unsupported` and nothing else
-([`assistant_outcome.go`](../../internal/domain/assistant_outcome.go)). The
-model writes no sentence the owner reads: the screen composes every sentence
-from the typed outcome and the server's counts, so a count is never restated
-by the model, and text from file names or plugins that carries instructions
-has no way to reach the owner.
+The loop sends the messages and the offered tools to `app.ToolChat`, runs the
+tool calls the model returns in order, appends each result as a `tool`
+message, and repeats until the model answers with text and no tool call
+([`assistant_loop.go`](../../internal/app/assistant_loop.go)). The model
+always sees `find_tools` and the core reads (`listVideos`, `getVideo`,
+`listTags`, `listPeople`, `listOrganizations`). `find_tools` searches every
+other tool of [the registry](#the-tool-registry-classifies-every-operation)
+by words over its name, summary and description, answers up to 15 with their
+kind and, for an excluded one, the reason and page, and adds the read and
+write tools it found to the later calls of the same turn. The diagram shows
+one round.
 
-The schema is built once from the outcome types with `jsonschema-go`, every
-object has `additionalProperties: false`, and the operation ids are an enum of
-the catalog. An answer the schema rejects, or that lacks the member its kind
-reads, is the outcome `unreadable` and changes nothing; the call is not
-retried, since a second call doubles a wait of minutes on a CPU host. A member
-of another kind beside the right one is dropped, and a `filter` beside an
-`answer` without one is the answer's filter: models of every size write both,
-and a dropped member changes nothing, since every change is a confirmed
-proposal.
+```mermaid
+flowchart LR
+  call[Model call] --> reply{Tool calls?}
+  reply -->|no| ground[Grounding check]
+  ground -->|pass| done[Turn done with the answer]
+  ground -->|fail once| call
+  ground -->|fail twice| ungrounded[Stopped: ungrounded]
+  reply -->|yes| each[Run each call, record progress]
+  each --> limit{Limits left?}
+  limit -->|yes| call
+  limit -->|no| stop[Stopped: step_limit or timeout]
+```
 
-The prompt carries the outcome's members by kind, today's date, one line per
-operation the turn can build, the screen context by names, the previous
-outcome on a follow-up with the request its proposal came from, and the
-request (at most 500 characters). The members are described because Ollama
-enforces the schema as a grammar without showing it to the model: without
-them, models of every size wrote an `action` member under `answer` and
-`navigate` outcomes. The request, the context and the previous outcome sit
-inside `<request>`, `<context>`, `<previous-request>` and `<previous>` marks
-that the instructions call data. The library's vocabulary stays out of the
-prompt: a library holds thousands of tags and people, and each thousand names
-adds minutes to a turn on a CPU. A prompt change is checked by hand against
-real models, through `scripts/clefrelay` when no local Ollama is at hand
-([running-vv.md](../how-to/running-vv.md#assistant)).
+| Rule | Why |
+| --- | --- |
+| A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
+| A read runs at once through the owner's handler and comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
+| Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
+| A write tool found by `find_tools` answers an error result for now; turning it into a proposal step is the next part of the loop | A write never runs before the owner approves it |
+| Each tool call adds a progress item (`tool`, `kind`, the names its id arguments point at, `error`) composed by the server, committed as the call starts | The panel shows what is running from facts only, never from model text |
+| The system message carries the rules, today's date, the screen as names and counts, and on a follow-up the previous request and its proposal's steps; the request, the screen and the tool results are marked as data | A follow-up needs only the previous request and proposal, and titles from files or plugins can carry instructions |
+| The model answers in the request's language | The panel's own labels follow the app's language |
 
-| Failure | Answer | Stored |
+The grounding check reads the answer before the turn ends
+([`assistant_grounding.go`](../../internal/domain/assistant_grounding.go)):
+every number of two or more digits, and every tag, person or organization name
+of 3 or more characters that the answer contains (by the stored folded search
+keys), must appear in this turn's tool results, the request, the screen or
+today's date. The first failure goes back to the model as one correction
+round that lists the unsupported items; a second failure stops the turn as
+`ungrounded` with no answer text.
+
+| Ending | Turn | Kept |
 | --- | --- | --- |
-| Readiness false (`ollama_not_saved`, `generation_model_unset`, `generation_model_without_tools`) | `409 assistant_not_ready` | Nothing |
-| Ollama not reached, or not Ollama | `503 assistant_unavailable`, reason `connection` | Nothing |
-| The model is missing or answers an `error` | `503`, reason `model` | Nothing |
-| No answer within 10 minutes | `503`, reason `timeout` | Nothing |
-| JSON the schema rejects | Outcome `unreadable` | Nothing |
+| Text that passes the grounding check | `done` with the answer | The progress |
+| 12 model calls or 40 tool calls used | `stopped`, `step_limit` | The progress |
+| 10 minutes passed, or the model call timed out | `stopped`, `timeout` | The progress |
+| Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
+| The model is missing or answers an `error` | `stopped`, `model` | The progress |
+| Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress |
+| The server stopped during the turn | `interrupted` at the next start | The progress |
 
 | Rejected | Why |
 | --- | --- |
-| Ollama tool calling (`tools`) | It depends on each model's template and lets the model answer in prose; `format` is enforced by Ollama's grammar for any chat model |
-| The model writes the HTTP request | A free request reaches operations the catalog excludes |
-| The model phrases the reply | A phrased reply can restate a number wrongly or relay instructions from titles |
-| A SQL or filter language for questions | The four typed questions (`count`, `appearances`, `recent`, `list`) use the reads the screens use, so the count equals the page's |
+| One structured-output call per request with a schema of outcome kinds | The owner's requests combine reads, judging and writes that no fixed set of outcomes covers |
+| Every tool on every call | About 240 schemas need far more than the context holds |
+| A citation format the model fills | Small models do not fill citation fields reliably; the check needs only data the server already has |
+| Proposing the steps gathered before a limit | A stopped request proposes nothing |
+
+## Turns are server-side jobs
+
+`POST /api/assistant/turns` stores an `assistant_turns` row in `running` and
+answers `202` with it; the turn worker (`app.Assistant.RunTurns`) runs its
+loop, and every progress item, the status and the result are committed to the
+row, each commit followed by `AssistantChanged`. The panel re-reads
+`GET /api/assistant/turns/{id}` on the `assistant` event, and
+`GET /api/assistant/turns?active=true` lists the running turn and the turns
+finished within the last hour, so closing the panel or reloading the page
+loses nothing. The transcript stays in memory for the turn.
+
+| Rule | Enforced in |
+| --- | --- |
+| One running turn at a time; a second request answers `409 assistant_busy` with the running turn's id | A partial unique index on `status`, and the create transaction |
+| A turn moves from `running` to `done`, `clarify`, `stopped` or `interrupted` once | A guarded `UPDATE` |
+| A turn running at startup becomes `interrupted` | `Assistant.Recover` |
+| A turn finished more than 24 hours ago is deleted; reading it answers `404` | The turn worker |
+| Readiness false answers `409 assistant_not_ready` before anything is stored | The handler |
 
 ## The server resolves names, targets and counts
 
-Every name in an outcome is resolved by the server with the stored search keys
+Every name a request resolves is resolved by the server with the stored search keys
 (width, case and kana folded), tag synonyms and person and organization
 aliases (`AssistantVocabulary`); one match is used, several answer `clarify`
 with the candidates, and none answers `clarify` with the entities whose names
 contain the name (`コスプレ` offers `コスプレ衣装` and `コスプレ衣裳`), with two
 exceptions. A tag to attach is marked created on the card. A tag, person or
-organization in the filter of a `filter` outcome or a `count` or `list`
-question joins the filter's free text `q` as a literal search term, quoted when
+organization in a filter that only reads joins the filter's free text `q` as a literal search term, quoted when
 the search grammar would otherwise read it as an operator or several words, so
 one loose name does not fail a read. The name is dropped when it is a field
 word such as `tags`, or when `q` already requires it as a positive term. A
@@ -115,11 +148,8 @@ flowchart LR
 
 | No match for a name in | Answer | Why |
 | --- | --- | --- |
-| A read-only filter (`filter`, `count`, `list`) | Search it as text in `q` | A local model often puts a topic or a field name where a tag goes; a wider read costs nothing and the owner sees the result |
+| A filter that only reads | Search it as text in `q` | A local model often puts a topic or a field name where a tag goes; a wider read costs nothing and the owner sees the result |
 | A change's target, its arguments, or a smart folder rule | `clarify` | Guessing would change or save something the owner did not name |
-
-The prompt also tells the model that a topic such as `カラオケ関連` goes into
-`q` unless the owner calls it a tag.
 
 The panel sends the route, the selected videos, groups and smart folders, the
 library filter and the ids chosen in a clarification (`pinned`); the model
@@ -210,8 +240,7 @@ no URL.
 | `openVideoFile`, video and event streams, subtitles, the transcode start, `getHealth` | The video page | Loopback-only, or a stream rather than data |
 | `/api/assistant/*` | | The assistant does not call itself |
 
-A row whose request the turn cannot build from names alone is left out of the
-prompt and answered `unsupported`: rows addressed by an item id within a
+A row whose request cannot be built from names alone answers `unsupported`: rows addressed by an item id within a
 playlist or group, per-video work codes, a virtual video's content version, a
 version candidate pair, a smart folder change, and the rows whose builders
 are not written yet.
@@ -271,7 +300,7 @@ the status of that step.
 
 ## Review runs judge candidate sets for the owner
 
-An `organize` outcome starts a review run of one kind; a finder lists
+A request to tidy up tags, people or works starts a review run of one kind; a finder lists
 candidate sets from the store, the run asks `app.Classifier` one yes/no
 question per set with facts only, and the review list
 (`/assistant/reviews/:id`) shows the sets at 0.5 or more, most probable first,
@@ -304,8 +333,8 @@ review stopped.
 Every approved proposal is one `assistant_run` activity entry, written in the
 transactions that change the proposal
 ([activity.md](activity.md#an-assistant-run-is-one-entry-per-approved-proposal)).
-`AssistantChanged` is published after every committed change of a proposal or
-a review run and reaches owner streams as the payload-free `assistant` event;
+`AssistantChanged` is published after every committed change of a turn, a
+proposal or a review run and reaches owner streams as the payload-free `assistant` event;
 the panel and the review list re-read what they show on it.
 
 ## The screens

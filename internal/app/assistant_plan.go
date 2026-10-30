@@ -17,11 +17,11 @@ func jsonValue(value any) (json.RawMessage, error) {
 }
 
 // action resolves the target and the arguments into the plan the card shows, and stores it as a proposal.
-func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionRequest) (domain.AssistantTurnResult, error) {
+func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionRequest) (domain.AssistantResolution, error) {
 	row, found := domain.LookupAssistantAction(req.Operation)
 	build, buildable := planBuilders[req.Operation]
 	if !found || !buildable {
-		return domain.AssistantTurnResult{Kind: domain.AssistantTurnUnsupported, Unsupported: req.Operation}, nil
+		return domain.AssistantResolution{Kind: domain.AssistantResolvedUnsupported, Unsupported: req.Operation}, nil
 	}
 	d := &planDraft{
 		t: t, row: row, req: req,
@@ -31,17 +31,17 @@ func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionR
 		d.args = *req.Arguments
 	}
 	if ok, err := d.resolveTarget(ctx); !ok || err != nil {
-		return domain.AssistantTurnResult{}, err
+		return domain.AssistantResolution{}, err
 	}
 	if ok, err := build(ctx, d); !ok || err != nil {
-		return domain.AssistantTurnResult{}, err
+		return domain.AssistantResolution{}, err
 	}
 	d.plan.Created = t.created
 	proposal, err := t.a.Propose(ctx, 0, t.input.Text, []domain.AssistantPlan{d.plan})
 	if err != nil {
-		return domain.AssistantTurnResult{}, err
+		return domain.AssistantResolution{}, err
 	}
-	return domain.AssistantTurnResult{Kind: domain.AssistantTurnProposal, Proposal: &proposal}, nil
+	return domain.AssistantResolution{Kind: domain.AssistantResolvedProposal, Proposal: &proposal}, nil
 }
 
 // planBuilder fills the request of one catalog row from its resolved arguments; false means the turn asks first.
