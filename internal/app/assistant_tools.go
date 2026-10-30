@@ -1,7 +1,6 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,6 +40,8 @@ type turnTools struct {
 	byName  map[string]domain.AssistantTool
 	all     []domain.AssistantTool
 	offered []string
+	// builtins are the built-in tools offered on every call besides find_tools.
+	builtins []domain.ToolDefinition
 }
 
 func newTurnTools(registry []domain.AssistantTool) *turnTools {
@@ -64,9 +65,9 @@ func (t *turnTools) load(name string) {
 	}
 }
 
-// definitions are the tools the next model call receives: find_tools, the core tools and those loaded.
+// definitions are the tools the next model call receives: find_tools, the built-in and core tools and those loaded.
 func (t *turnTools) definitions() []domain.ToolDefinition {
-	out := []domain.ToolDefinition{findToolsDefinition}
+	out := append([]domain.ToolDefinition{findToolsDefinition}, t.builtins...)
 	for _, name := range t.offered {
 		tool := t.byName[name]
 		description := strings.TrimSpace(tool.Summary + "\n" + tool.Description)
@@ -91,33 +92,18 @@ type foundTool struct {
 	Page    string                   `json:"page,omitempty"`
 }
 
-// find ranks the tools by how many of the words their name, summary and description contain, and loads the read
-// and write tools among the first 15.
-func (t *turnTools) find(query string) []foundTool {
-	words := strings.Fields(domain.FoldForMatch(query))
-	type scored struct {
-		tool  domain.AssistantTool
-		score int
-	}
-	var matches []scored
-	for _, tool := range t.all {
-		text := domain.FoldForMatch(tool.Name + " " + tool.Summary + " " + tool.Description)
-		score := 0
-		for _, word := range words {
-			if strings.Contains(text, word) {
-				score++
-			}
-		}
-		if score > 0 && !slices.Contains(assistantCoreTools, tool.Name) {
-			matches = append(matches, scored{tool, score})
-		}
-	}
-	slices.SortStableFunc(matches, func(a, b scored) int {
-		return cmp.Or(b.score-a.score, strings.Compare(a.tool.Name, b.tool.Name))
+// find ranks the tools by how many of the words their name, summary and description contain, ties by name, and
+// loads the read and write tools among the first 15. It also reports whether the first tool contains more of the
+// words than any other.
+func (t *turnTools) find(query string) ([]foundTool, bool) {
+	candidates := slices.DeleteFunc(slices.Clone(t.all), func(tool domain.AssistantTool) bool {
+		return slices.Contains(assistantCoreTools, tool.Name)
 	})
+	slices.SortStableFunc(candidates, func(a, b domain.AssistantTool) int { return strings.Compare(a.Name, b.Name) })
 	found := []foundTool{}
-	for _, match := range matches[:min(len(matches), findToolsLimit)] {
-		tool := match.tool
+	matches := ranked(candidates, searchWords(query), toolSearchText, findToolsLimit)
+	for _, match := range matches {
+		tool := match.item
 		item := foundTool{Name: tool.Name, Kind: tool.Kind, Summary: tool.Summary}
 		if tool.Exclusion != nil {
 			item.Reason, item.Page = tool.Exclusion.Reason, tool.Exclusion.Page
@@ -126,7 +112,7 @@ func (t *turnTools) find(query string) []foundTool {
 		}
 		found = append(found, item)
 	}
-	return found
+	return found, len(matches) == 1 || (len(matches) > 1 && matches[0].score > matches[1].score)
 }
 
 // toolError is the result the model receives for a call that did not run or failed.
@@ -147,7 +133,11 @@ func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, erro
 	if err := l.record(ctx, item); err != nil {
 		return "", err
 	}
-	content, failure := l.runTool(ctx, call, tool, known)
+	content, failure, err := l.dispatch(ctx, call, tool, known)
+	if err != nil {
+		return "", err
+	}
+	l.note(call.Name, tool, known, failure)
 	if failure != "" {
 		l.turn.Progress[len(l.turn.Progress)-1].Error = failure
 		if err := l.a.turns.RecordTurnProgress(ctx, l.turn.ID, l.turn.Progress); err != nil && ctx.Err() == nil {
@@ -156,6 +146,50 @@ func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, erro
 		return toolError(failure), nil
 	}
 	return content, nil
+}
+
+// dispatch runs a built-in tool, recording what its progress item shows, or any other tool; an error is a storage
+// failure.
+func (l *turnLoop) dispatch(
+	ctx context.Context, call domain.ToolCall, tool domain.AssistantTool, known bool,
+) (string, string, error) {
+	builtin, ok := builtinTools()[call.Name]
+	if !ok || !slices.ContainsFunc(l.tools.builtins, func(d domain.ToolDefinition) bool { return d.Name == call.Name }) {
+		content, failure := l.runTool(ctx, call, tool, known)
+		return content, failure, nil
+	}
+	out, err := l.runBuiltin(ctx, builtin, call.Arguments)
+	if err != nil || (len(out.labels) == 0 && out.reviewRunID == 0) {
+		return out.content, out.failure, err
+	}
+	item := &l.turn.Progress[len(l.turn.Progress)-1]
+	item.Labels, item.ReviewRunID = out.labels[:min(len(out.labels), progressLabelLimit)], out.reviewRunID
+	if item.Labels == nil {
+		item.Labels = []domain.AssistantLabel{}
+	}
+	return out.content, out.failure, l.a.turns.RecordTurnProgress(ctx, l.turn.ID, l.turn.Progress)
+}
+
+// passiveTools only search or read the screen; a turn that ran nothing else did nothing for the request.
+var passiveTools = []string{toolFind, toolAppHelp, toolScreenContext}
+
+// note keeps the excluded operation the model asked for by name, and whether the turn did anything else.
+func (l *turnLoop) note(name string, tool domain.AssistantTool, known bool, failure string) {
+	switch {
+	case known && tool.Kind == domain.AssistantToolExcluded:
+		l.askedExcluded(tool)
+	case failure == "" && !slices.Contains(passiveTools, name):
+		l.acted = true
+	}
+}
+
+// askedExcluded keeps the first excluded operation the turn asked for.
+func (l *turnLoop) askedExcluded(tool domain.AssistantTool) {
+	if l.excluded == nil && tool.Exclusion != nil {
+		l.excluded = &domain.AssistantExcludedRef{
+			Operation: tool.Name, Reason: tool.Exclusion.Reason, Page: tool.Exclusion.Page,
+		}
+	}
 }
 
 // record commits the turn's progress with the new item, so the panel shows the call while it runs.
@@ -189,7 +223,12 @@ func (l *turnLoop) runTool(ctx context.Context, call domain.ToolCall, tool domai
 		if err := json.Unmarshal(call.Arguments, &args); err != nil || strings.TrimSpace(args.Query) == "" {
 			return "", "find_tools needs a query of English words"
 		}
-		encoded, _ := json.Marshal(map[string]any{"tools": l.tools.find(args.Query)}) // Plain values always encode.
+		found, clear := l.tools.find(args.Query)
+		if clear && found[0].Kind == domain.AssistantToolExcluded {
+			// A clear best match is what the request asked for.
+			l.askedExcluded(l.tools.byName[found[0].Name])
+		}
+		encoded, _ := json.Marshal(map[string]any{"tools": found}) // Plain values always encode.
 		return string(encoded), ""
 	case !known:
 		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name)

@@ -4184,6 +4184,9 @@ type AssistantProgressItem struct {
 	M *int `json:"m,omitempty"`
 	N *int `json:"n,omitempty"`
 
+	// ReviewRunId For start_review, the review run it started or found running; the panel links its review list.
+	ReviewRunId *int64 `json:"reviewRunId,omitempty"`
+
 	// Tool The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools.
 	Tool string `json:"tool"`
 }
@@ -4419,7 +4422,7 @@ type AssistantTurn struct {
 	// Status interrupted was running when the server stopped.
 	Status AssistantTurnStatus `json:"status"`
 
-	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
 	Stop *AssistantTurnStop `json:"stop,omitempty"`
 }
 
@@ -4469,7 +4472,7 @@ type AssistantTurnRequest struct {
 	Text string `json:"text"`
 }
 
-// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
 type AssistantTurnStop struct {
 	// Excluded An operation the assistant leaves to its page, which the model asked for.
 	Excluded *AssistantExcludedOperation `json:"excluded,omitempty"`
