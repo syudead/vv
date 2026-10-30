@@ -124,8 +124,18 @@ func TestLoadDescribesParametersBodyAndResponse(t *testing.T) {
 	move := operation(t, registry, "moveFaceAppearances")
 	properties, _ := move.Parameters["properties"].(map[string]any)
 	body, _ := properties[BodyArgument].(map[string]any)
-	if _, ok := properties["id"]; !ok || !move.Body || body["type"] != "object" {
-		t.Errorf("moveFaceAppearances parameters = %v, want the path id and the body", move.Parameters)
+	if _, ok := properties["id"]; !ok || !move.Body || move.BodyType != bodyJSON || body["type"] != "object" {
+		t.Errorf("moveFaceAppearances parameters = %v, want the path id and the JSON body", move.Parameters)
+	}
+	// A multipart body keeps its text fields and drops its file parts, which the assistant cannot send.
+	run := operation(t, registry, "runThumbnailEdit")
+	runBody, _ := run.Parameters["properties"].(map[string]any)[BodyArgument].(map[string]any)
+	fields, _ := runBody["properties"].(map[string]any)
+	if _, ok := fields["prompt"]; !ok || len(fields) != 1 || !run.Body || run.BodyType != bodyMultipart {
+		t.Errorf("runThumbnailEdit body = %v (%s), want the prompt field of a multipart body", runBody, run.BodyType)
+	}
+	if image := operation(t, registry, "uploadPersonImage"); image.Body {
+		t.Error("uploadPersonImage, whose only part is a file, takes a body")
 	}
 	if strings.Contains(mustEncode(t, registry), "$ref") || strings.Contains(mustEncode(t, registry), "x-vv-") {
 		t.Error("the registry keeps a $ref or an x-vv- extension")

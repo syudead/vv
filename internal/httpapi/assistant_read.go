@@ -32,7 +32,7 @@ func (r *ActionRunner) Read(ctx context.Context, read domain.AssistantRead) (dom
 	if op.Body {
 		body, _ = args[assistantBodyArgument].(map[string]any)
 	}
-	result, err := r.send(ctx, op.Method, target, body)
+	result, err := r.send(ctx, op.Method, target, op.BodyType, body)
 	if err != nil {
 		return domain.AssistantReadResult{}, err
 	}
@@ -70,7 +70,7 @@ func (r *ActionRunner) Image(ctx context.Context, reference string) (domain.Assi
 	if err != nil {
 		return domain.AssistantImage{}, fmt.Errorf("%w: %w", domain.ErrAssistantInvalidArguments, err)
 	}
-	result, err := r.send(ctx, http.MethodGet, target, nil)
+	result, err := r.send(ctx, http.MethodGet, target, "", nil)
 	if err != nil {
 		return domain.AssistantImage{}, err
 	}

@@ -192,3 +192,35 @@ func TestNewServerRunnerCallsTheScreenHandlers(t *testing.T) {
 		t.Errorf("mergeTag の自己統合: err = %v, want 400 merge_same_tag", err)
 	}
 }
+
+// A multipart stage sends its fields as text parts that the handler's own multipart reader accepts.
+func TestActionRunnerSendsAMultipartStageAsFormFields(t *testing.T) {
+	var target string
+	var got domain.ThumbnailEditRunInput
+	calls := 0
+	runner := &ActionRunner{api: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		target = r.URL.RequestURI()
+		if input, ok := (&server{}).readThumbnailEditRun(w, r); ok {
+			got = input
+			w.WriteHeader(http.StatusAccepted)
+		}
+	})}
+	stage := domain.AssistantCall{
+		ActionID: "editVideoThumbnail", Operation: "runThumbnailEdit", Path: map[string]string{"editId": "e1"},
+		Body: map[string]any{"prompt": "空を青くする"},
+	}
+
+	result, err := runner.Run(context.Background(), stage)
+	if err != nil || result.Status != http.StatusAccepted {
+		t.Fatalf("runThumbnailEdit: 状態 %d, err = %v, want 202", result.Status, err)
+	}
+	if target != "/api/thumbnail-edits/e1/runs" || got.Instruction != "空を青くする" {
+		t.Errorf("送信先 %s, 指示 %q, want /api/thumbnail-edits/e1/runs と prompt パート", target, got.Instruction)
+	}
+
+	stage.Body = map[string]any{"prompt": []any{"空"}}
+	if _, err := runner.Run(context.Background(), stage); !errors.Is(err, domain.ErrAssistantInvalidArguments) || calls != 1 {
+		t.Errorf("テキストでないフィールド: err = %v, 呼び出し %d 回, want 送る前の ErrAssistantInvalidArguments", err, calls)
+	}
+}

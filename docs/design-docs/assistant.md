@@ -149,7 +149,7 @@ registry has three sources, and only `internal/httpapi` reads the spec data:
 
 | Source | Holds |
 | --- | --- |
-| `internal/httpapi/gen/assistant_tools.gen.json`, written by `task generate` ([`tools/assistanttools`](../../tools/assistanttools)) from `api/openapi.yaml` and embedded by `internal/httpapi` | Each operation's method, path, summary, description, whether it needs a session, whether it answers JSON, an image or a stream, whether its response reaches a credential, its arguments as one JSON Schema (path and query parameters by name, the JSON body as `body`, every `$ref` inlined), and the entity kind of each id in its path and body |
+| `internal/httpapi/gen/assistant_tools.gen.json`, written by `task generate` ([`tools/assistanttools`](../../tools/assistanttools)) from `api/openapi.yaml` and embedded by `internal/httpapi` | Each operation's method, path, summary, description, whether it needs a session, whether it answers JSON, an image or a stream, whether its response reaches a credential, its arguments as one JSON Schema (path and query parameters by name, the body as `body`, every `$ref` inlined), the body's media type (JSON, or `multipart/form-data` whose text fields the runner sends as parts; file parts are left out), and the entity kind of each id in its path and body |
 | [`assistant_tools.go`](../../internal/domain/assistant_tools.go) and [`assistant_catalog.go`](../../internal/domain/assistant_catalog.go) in `internal/domain` | The classification, the write rows, the exclusions with their reasons and pages, and the table of the app's pages (route, title, purpose) |
 | `httpapi.ActionRunner.Tools()` | The tools built from both, which `internal/app` receives without reading the spec |
 

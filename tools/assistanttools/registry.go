@@ -30,11 +30,13 @@ type Operation struct {
 	PathParams []string     `json:"pathParams,omitempty"`
 	Query      []QueryParam `json:"query,omitempty"`
 	// Parameters is the JSON Schema object of a tool's arguments, with every $ref inlined: the path and query
-	// parameters by name, and the JSON body as the property named BodyArgument.
+	// parameters by name, and the body as the property named BodyArgument.
 	Parameters map[string]any `json:"parameters"`
-	// Body is true when the operation takes a JSON body.
-	Body bool      `json:"body,omitempty"`
-	IDs  []IDField `json:"ids,omitempty"`
+	// Body is true when the operation takes a JSON body, or a multipart body whose text fields the arguments hold.
+	Body bool `json:"body,omitempty"`
+	// BodyType is the body's media type, application/json or multipart/form-data.
+	BodyType string    `json:"bodyType,omitempty"`
+	IDs      []IDField `json:"ids,omitempty"`
 }
 
 // QueryParam is a query parameter; an array with Explode false is sent comma-joined.
@@ -58,6 +60,9 @@ const (
 	responseImage = "image"
 	responseMedia = "media"
 	responseNone  = "none"
+
+	bodyJSON      = "application/json"
+	bodyMultipart = "multipart/form-data"
 
 	// BodyArgument is the argument that holds the request body; no path or query parameter takes the name.
 	BodyArgument = "body"
@@ -195,13 +200,21 @@ func (o *Operation) addBody(body *openapi3.RequestBodyRef) error {
 	if body == nil || body.Value == nil {
 		return nil
 	}
-	media := body.Value.Content.Get("application/json")
+	bodyType := bodyJSON
+	media := body.Value.Content.Get(bodyType)
+	if media == nil {
+		bodyType = bodyMultipart
+		media = body.Value.Content.Get(bodyType)
+	}
 	if media == nil || media.Schema == nil {
 		return nil
 	}
 	schema, err := inline(media.Schema, nil)
 	if err != nil {
 		return fmt.Errorf("request body: %w", err)
+	}
+	if bodyType == bodyMultipart && !keepTextParts(schema) {
+		return nil
 	}
 	properties, _ := o.Parameters["properties"].(map[string]any)
 	if _, taken := properties[BodyArgument]; taken {
@@ -212,9 +225,32 @@ func (o *Operation) addBody(body *openapi3.RequestBodyRef) error {
 		required, _ := o.Parameters["required"].([]string)
 		o.Parameters["required"] = append(required, BodyArgument)
 	}
-	o.Body = true
+	o.Body, o.BodyType = true, bodyType
 	o.IDs = append(o.IDs, bodyIDs(media.Schema, "", "", nil)...)
 	return nil
+}
+
+// keepTextParts drops a multipart body's file parts, as the assistant holds no file to send, and reports whether a
+// text field is left.
+func keepTextParts(schema map[string]any) bool {
+	properties, _ := schema["properties"].(map[string]any)
+	for name, property := range properties {
+		if part, _ := property.(map[string]any); part["format"] == "binary" {
+			delete(properties, name)
+		}
+	}
+	if required, ok := schema["required"].([]any); ok {
+		required = slices.DeleteFunc(required, func(name any) bool {
+			field, _ := name.(string)
+			_, kept := properties[field]
+			return !kept
+		})
+		schema["required"] = required
+		if len(required) == 0 {
+			delete(schema, "required")
+		}
+	}
+	return len(properties) > 0
 }
 
 // bodyIDs walks the body's objects and arrays for id-like integers. A kind comes from x-vv-entity on the

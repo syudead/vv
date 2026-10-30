@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"slices"
@@ -52,13 +53,13 @@ func (r *ActionRunner) Run(ctx context.Context, call domain.AssistantCall) (doma
 		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
 	}
 	if !op.Body {
-		return r.send(ctx, op.Method, target, nil)
+		return r.send(ctx, op.Method, target, "", nil)
 	}
 	body, err := r.rowBody(ctx, row, op, target, call.Body)
 	if err != nil {
 		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
 	}
-	return r.send(ctx, op.Method, target, body)
+	return r.send(ctx, op.Method, target, op.BodyType, body)
 }
 
 // rowBody builds the request body of a row: the current settings for a settings row, the call's fields, and the
@@ -167,7 +168,7 @@ func requestTarget(op *registryOperation, path map[string]string, query url.Valu
 
 // current reads the settings and keeps the fields the update request takes.
 func (r *ActionRunner) current(ctx context.Context, op *registryOperation, target string) (map[string]any, error) {
-	result, err := r.send(ctx, http.MethodGet, target, nil)
+	result, err := r.send(ctx, http.MethodGet, target, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -188,21 +189,24 @@ func (r *ActionRunner) current(ctx context.Context, op *registryOperation, targe
 	return body, nil
 }
 
-func (r *ActionRunner) send(ctx context.Context, method, target string, body map[string]any) (domain.AssistantCallResult, error) {
+// send calls the operation; bodyType is the generated registry's media type of a non-nil body.
+func (r *ActionRunner) send(
+	ctx context.Context, method, target, bodyType string, body map[string]any,
+) (domain.AssistantCallResult, error) {
 	var reader io.Reader = http.NoBody
+	contentType := ""
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if reader, contentType, err = encodeBody(bodyType, body); err != nil {
 			return domain.AssistantCallResult{}, fmt.Errorf("encode the request of %s %s: %w", method, target, err)
 		}
-		reader = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(withAudience(ctx, domain.AudienceOwner), method, target, reader)
 	if err != nil {
 		return domain.AssistantCallResult{}, fmt.Errorf("build %s %s: %w", method, target, err)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	res := &capturedResponse{header: http.Header{}}
 	r.api.ServeHTTP(res, req)
@@ -212,6 +216,36 @@ func (r *ActionRunner) send(ctx context.Context, method, target string, body map
 		}, nil
 	}
 	return domain.AssistantCallResult{}, callError(res)
+}
+
+const multipartBody = "multipart/form-data"
+
+// encodeBody writes a JSON body, or a multipart body with one text part per field, and returns its Content-Type.
+func encodeBody(bodyType string, body map[string]any) (io.Reader, string, error) {
+	if bodyType != multipartBody {
+		encoded, err := json.Marshal(body)
+		return bytes.NewReader(encoded), "application/json", err
+	}
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	for _, name := range slices.Sorted(maps.Keys(body)) {
+		var value string
+		switch field := body[name].(type) {
+		case string:
+			value = field
+		case float64, int, int64, bool:
+			value = fmt.Sprint(field)
+		default:
+			return nil, "", fmt.Errorf("%w: the form field %s is not text", domain.ErrAssistantInvalidArguments, name)
+		}
+		if err := form.WriteField(name, value); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := form.Close(); err != nil {
+		return nil, "", err
+	}
+	return &buf, form.FormDataContentType(), nil
 }
 
 // callError keeps the screen API's code and reason so the proposal row can show them.

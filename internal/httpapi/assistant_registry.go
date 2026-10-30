@@ -41,6 +41,7 @@ type registryOperation struct {
 	Query       []registryQuery `json:"query"`
 	Parameters  json.RawMessage `json:"parameters"`
 	Body        bool            `json:"body"`
+	BodyType    string          `json:"bodyType"`
 	IDs         []registryID    `json:"ids"`
 
 	schemaOnce sync.Once
