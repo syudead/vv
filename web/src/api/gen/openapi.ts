@@ -1093,7 +1093,7 @@ export interface paths {
         put?: never;
         /**
          * Check the saved Ollama connection and model availability
-         * @description Uses only GET /api/version and GET /api/tags, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md.
+         * @description Uses only GET /api/version, GET /api/tags and, for a saved generation model, POST /api/show, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md.
          */
         post: operations["checkOllama"];
         delete?: never;
@@ -1111,7 +1111,7 @@ export interface paths {
         };
         /**
          * List the models at the saved Ollama endpoint
-         * @description Uses only GET /api/version and GET /api/tags at the saved URL, never a request-supplied URL, without loading a model. Names come in the order Ollama lists them, for the decision and generation model pickers; see docs/design-docs/ai-layer.md.
+         * @description Uses only GET /api/version, GET /api/tags and POST /api/show for each model at the saved URL, never a request-supplied URL, without loading a model. Models come in the order Ollama lists them, with whether each can call tools and see images, for the decision and generation model pickers; see docs/design-docs/ai-layer.md.
          */
         get: operations["listOllamaModels"];
         put?: never;
@@ -1131,7 +1131,7 @@ export interface paths {
         };
         /**
          * Say whether the assistant can take a request
-         * @description Reads only the saved Ollama connection and generation model; sends no request to Ollama.
+         * @description Reads the saved Ollama connection and generation model. The model's capabilities come from POST /api/show on the first read for an endpoint and model pair and are kept after that; when Ollama cannot be reached then, ready is true and the turn reports the failure.
          */
         get: operations["getAssistantReadiness"];
         put?: never;
@@ -4256,6 +4256,10 @@ export interface components {
         OllamaModel: {
             /** @description Model name as Ollama lists it, such as qwen3:8b. */
             name: string;
+            /** @description The model can call tools, from capabilities of POST /api/show; false when Ollama reports none. */
+            tools: boolean;
+            /** @description The model can see images, from capabilities of POST /api/show; false when Ollama reports none. */
+            vision: boolean;
         };
         AssistantTurnRequest: {
             /** @description The owner's request, as untranslated user data; at most 500 characters. */
@@ -4501,10 +4505,12 @@ export interface components {
         AssistantReadiness: {
             ready: boolean;
             /**
-             * @description ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
+             * @description ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
              * @enum {string}
              */
-            reason?: "ollama_not_saved" | "generation_model_unset";
+            reason?: "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools";
+            /** @description The generation model can see images; false when it is unknown. */
+            vision: boolean;
         };
         /**
          * @description ComfyUI provider: self_hosted for the owner's instance, cloud for Comfy Cloud.
@@ -4561,10 +4567,10 @@ export interface components {
             /** @description Unavailability reason in English, possibly including the provider's JSON error message. */
             message?: string;
             /**
-             * @description Ollama checks only: the decision model is listed but the saved generation model is not.
+             * @description Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
              * @enum {string}
              */
-            reason?: "generation_model_missing";
+            reason?: "generation_model_missing" | "generation_model_without_tools";
             /** @description ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows. */
             missing?: components["schemas"]["ComfyUIMissingItem"][];
         };
@@ -8187,7 +8193,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -10396,7 +10402,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Model names */
+            /** @description Models and their capabilities */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10462,7 +10468,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved or generation_model_unset) */
+            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools) */
             409: {
                 headers: {
                     [name: string]: unknown;

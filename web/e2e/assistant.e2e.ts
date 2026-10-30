@@ -73,10 +73,15 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** The chat API only: the server saves the connection without contacting Ollama. */
+/** The chat API, and /api/show so that readiness finds a model that can call tools. */
 async function startStubOllama(): Promise<Server> {
   const server = createServer((req, res) => {
     void (async () => {
+      if (req.method === "POST" && req.url === "/api/show") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ capabilities: ["completion", "tools"] }));
+        return;
+      }
       if (req.method !== "POST" || req.url !== "/api/chat") {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "not found" }));

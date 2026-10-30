@@ -93,6 +93,7 @@ export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type UpdateOllamaSettings = components["schemas"]["UpdateOllamaSettingsRequest"];
 export type OllamaModelList = components["schemas"]["OllamaModelList"];
+export type OllamaModel = components["schemas"]["OllamaModel"];
 export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];

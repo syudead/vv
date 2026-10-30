@@ -15,9 +15,9 @@ type OllamaConnection interface {
 	Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error)
 	SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error
-	// Models lists the names at the saved endpoint; errors wrap domain.ErrOllamaUnreachable or domain.ErrNotOllama.
-	Models(ctx context.Context) ([]string, error)
-	AssistantReadiness(ctx context.Context) (domain.AssistantNotReady, error)
+	// Models lists the models at the saved endpoint; errors wrap domain.ErrOllamaUnreachable or domain.ErrNotOllama.
+	Models(ctx context.Context) ([]domain.OllamaModel, error)
+	AssistantReadiness(ctx context.Context) (domain.AssistantStatus, error)
 }
 
 func (s *server) ollamaConfigured(w http.ResponseWriter) bool {
@@ -95,8 +95,14 @@ func (s *server) CheckOllama(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.ollama.Check(r.Context())
 	result := checkResult(err)
-	if errors.Is(err, domain.ErrGenerationModelMissing) {
-		reason := gen.GenerationModelMissing
+	var reason gen.CheckResultReason
+	switch {
+	case errors.Is(err, domain.ErrGenerationModelMissing):
+		reason = gen.CheckResultReasonGenerationModelMissing
+	case errors.Is(err, domain.ErrGenerationModelWithoutTools):
+		reason = gen.CheckResultReasonGenerationModelWithoutTools
+	}
+	if reason != "" {
 		result.Reason = &reason
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -107,7 +113,7 @@ func (s *server) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
 	if !s.ollamaConfigured(w) {
 		return
 	}
-	names, err := s.ollama.Models(r.Context())
+	models, err := s.ollama.Models(r.Context())
 	switch {
 	case errors.Is(err, domain.ErrOllamaUnreachable), errors.Is(err, domain.ErrOllamaTimeout):
 		s.writeReasonError(w, http.StatusConflict, codeOllamaUnreachable, gen.ErrorReasonConnection, err.Error())
@@ -119,27 +125,27 @@ func (s *server) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not list the Ollama models.", err)
 		return
 	}
-	items := make([]gen.OllamaModel, len(names))
-	for i, name := range names {
-		items[i] = gen.OllamaModel{Name: name}
+	items := make([]gen.OllamaModel, len(models))
+	for i, m := range models {
+		items[i] = gen.OllamaModel{Name: m.Name, Tools: m.Capabilities.Tools, Vision: m.Capabilities.Vision}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.OllamaModelList{Items: items}, s.logger)
 }
 
-// GetAssistantReadiness never contacts Ollama, so opening the panel stays instant.
+// GetAssistantReadiness asks Ollama only on the first read for a model, so opening the panel stays quick.
 func (s *server) GetAssistantReadiness(w http.ResponseWriter, r *http.Request) {
 	if !s.ollamaConfigured(w) {
 		return
 	}
-	notReady, err := s.ollama.AssistantReadiness(r.Context())
+	status, err := s.ollama.AssistantReadiness(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the assistant readiness.", err)
 		return
 	}
-	body := gen.AssistantReadiness{Ready: notReady == domain.AssistantReady}
+	body := gen.AssistantReadiness{Ready: status.NotReady == domain.AssistantReady, Vision: status.Vision}
 	if !body.Ready {
-		reason := gen.AssistantReadinessReason(notReady)
+		reason := gen.AssistantReadinessReason(status.NotReady)
 		body.Reason = &reason
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

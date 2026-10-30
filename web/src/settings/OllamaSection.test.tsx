@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AssistantReadiness } from "../api/assistant";
 import type { CheckResult, OllamaSettings } from "../api/client";
 import OllamaSection from "./OllamaSection";
 
@@ -23,6 +24,7 @@ describe("OllamaSection", () => {
   let saved: unknown;
   let check: CheckResult;
   let models: Response;
+  let readiness: AssistantReadiness;
 
   function route(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = String(input);
@@ -34,6 +36,7 @@ describe("OllamaSection", () => {
     if (url === URL) return Promise.resolve(json(current));
     if (url === `${URL}/check`) return Promise.resolve(json(check));
     if (url === `${URL}/models`) return Promise.resolve(models.clone());
+    if (url === "/api/assistant/readiness") return Promise.resolve(json(readiness));
     return Promise.reject(new Error(`unexpected request: ${url}`));
   }
 
@@ -46,7 +49,13 @@ describe("OllamaSection", () => {
     };
     saved = undefined;
     check = { available: false, message: "cannot reach Ollama at http://gpu:11434" };
-    models = json({ items: [{ name: "clef-flash:latest" }, { name: "qwen3:8b" }] });
+    models = json({
+      items: [
+        { name: "clef-flash:latest", tools: false, vision: true },
+        { name: "qwen3:8b", tools: true, vision: false },
+      ],
+    });
+    readiness = { ready: true, vision: false };
     toast.mockReset();
     fetchMock.mockReset();
     fetchMock.mockImplementation(route);
@@ -161,5 +170,62 @@ describe("OllamaSection", () => {
         "role",
       ),
     ).toBe("status");
+  });
+
+  it("marks generation models that can't call tools or see images, and names in the decision picker", async () => {
+    models = json({
+      items: [
+        { name: "clef-flash:latest", tools: false, vision: true },
+        { name: "qwen3:8b", tools: true, vision: false },
+        { name: "gemma3:27b", tools: true, vision: true },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<OllamaSection />);
+    await user.click(await screen.findByRole("combobox", { name: "Generation model" }));
+    expect(
+      (await screen.findAllByRole("option")).map((option) => option.textContent),
+    ).toEqual([
+      "None",
+      "clef-flash:latest · can’t call tools",
+      "qwen3:8b",
+      "gemma3:27b · sees images",
+    ]);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Decision model" }));
+    expect(
+      (await screen.findAllByRole("option")).map((option) => option.textContent),
+    ).toEqual(["clef-flash:latest", "qwen3:8b", "gemma3:27b"]);
+  });
+
+  it("warns under the row while the saved generation model can't call tools", async () => {
+    current = { ...current, generationModel: "llava:7b", saved: true };
+    readiness = { ready: false, reason: "generation_model_without_tools", vision: true };
+    check = {
+      available: false,
+      reason: "generation_model_without_tools",
+      message: "no tools",
+    };
+    const user = userEvent.setup();
+    render(<OllamaSection />);
+    await screen.findByText(
+      "“llava:7b” can’t call tools, so the assistant won’t take requests.",
+    );
+    await user.click(screen.getByRole("button", { name: "Save and test connection" }));
+    await screen.findByText(
+      "Ollama has “llava:7b”, but it can’t call tools. The assistant needs a model that can.",
+    );
+
+    readiness = { ready: true, vision: false };
+    await user.click(screen.getByRole("combobox", { name: "Generation model" }));
+    await user.click(await screen.findByRole("option", { name: "qwen3:8b" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(
+          "“llava:7b” can’t call tools, so the assistant won’t take requests.",
+        ),
+      ).toBeNull(),
+    );
   });
 });

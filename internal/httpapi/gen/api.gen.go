@@ -518,14 +518,17 @@ func (e AssistantProposalStatus) Valid() bool {
 
 // Defines values for AssistantReadinessReason.
 const (
-	AssistantReadinessReasonGenerationModelUnset AssistantReadinessReason = "generation_model_unset"
-	AssistantReadinessReasonOllamaNotSaved       AssistantReadinessReason = "ollama_not_saved"
+	AssistantReadinessReasonGenerationModelUnset        AssistantReadinessReason = "generation_model_unset"
+	AssistantReadinessReasonGenerationModelWithoutTools AssistantReadinessReason = "generation_model_without_tools"
+	AssistantReadinessReasonOllamaNotSaved              AssistantReadinessReason = "ollama_not_saved"
 )
 
 // Valid indicates whether the value is a known member of the AssistantReadinessReason enum.
 func (e AssistantReadinessReason) Valid() bool {
 	switch e {
 	case AssistantReadinessReasonGenerationModelUnset:
+		return true
+	case AssistantReadinessReasonGenerationModelWithoutTools:
 		return true
 	case AssistantReadinessReasonOllamaNotSaved:
 		return true
@@ -758,13 +761,16 @@ func (e AuthSessionState) Valid() bool {
 
 // Defines values for CheckResultReason.
 const (
-	GenerationModelMissing CheckResultReason = "generation_model_missing"
+	CheckResultReasonGenerationModelMissing      CheckResultReason = "generation_model_missing"
+	CheckResultReasonGenerationModelWithoutTools CheckResultReason = "generation_model_without_tools"
 )
 
 // Valid indicates whether the value is a known member of the CheckResultReason enum.
 func (e CheckResultReason) Valid() bool {
 	switch e {
-	case GenerationModelMissing:
+	case CheckResultReasonGenerationModelMissing:
+		return true
+	case CheckResultReasonGenerationModelWithoutTools:
 		return true
 	default:
 		return false
@@ -1115,6 +1121,7 @@ const (
 	ErrorReasonFingerprintChanged            ErrorReason = "fingerprint_changed"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonGenerationModelUnset          ErrorReason = "generation_model_unset"
+	ErrorReasonGenerationModelWithoutTools   ErrorReason = "generation_model_without_tools"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
@@ -1265,6 +1272,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonFolderNotFound:
 		return true
 	case ErrorReasonGenerationModelUnset:
+		return true
+	case ErrorReasonGenerationModelWithoutTools:
 		return true
 	case ErrorReasonGroupCycle:
 		return true
@@ -4149,11 +4158,14 @@ type AssistantProposalTargets struct {
 type AssistantReadiness struct {
 	Ready bool `json:"ready"`
 
-	// Reason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
+	// Reason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
 	Reason *AssistantReadinessReason `json:"reason,omitempty"`
+
+	// Vision The generation model can see images; false when it is unknown.
+	Vision bool `json:"vision"`
 }
 
-// AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved.
+// AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
 type AssistantReadinessReason string
 
 // AssistantReviewAdoption defines model for AssistantReviewAdoption.
@@ -4402,11 +4414,11 @@ type CheckResult struct {
 	// Missing ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows.
 	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
 
-	// Reason Ollama checks only: the decision model is listed but the saved generation model is not.
+	// Reason Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
 	Reason *CheckResultReason `json:"reason,omitempty"`
 }
 
-// CheckResultReason Ollama checks only: the decision model is listed but the saved generation model is not.
+// CheckResultReason Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
 type CheckResultReason string
 
 // CollectionsDeleteRequest defines model for CollectionsDeleteRequest.
@@ -5698,6 +5710,12 @@ type NetworkSettings struct {
 type OllamaModel struct {
 	// Name Model name as Ollama lists it, such as qwen3:8b.
 	Name string `json:"name"`
+
+	// Tools The model can call tools, from capabilities of POST /api/show; false when Ollama reports none.
+	Tools bool `json:"tools"`
+
+	// Vision The model can see images, from capabilities of POST /api/show; false when Ollama reports none.
+	Vision bool `json:"vision"`
 }
 
 // OllamaModelList Models at the saved Ollama endpoint, in Ollama's order.

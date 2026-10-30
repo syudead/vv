@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -50,8 +52,9 @@ func (c *Classifier) Check(ctx context.Context) error {
 	return nil
 }
 
-// Models lists the model names at the saved endpoint in Ollama's order, without loading any.
-func (c *Classifier) Models(ctx context.Context) ([]string, error) {
+// Models lists the models at the saved endpoint in Ollama's order, each with its capabilities, without
+// loading any. A model that /api/show refuses is listed with no capabilities.
+func (c *Classifier) Models(ctx context.Context) ([]domain.OllamaModel, error) {
 	settings, err := c.settings.OllamaSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
@@ -60,13 +63,54 @@ func (c *Classifier) Models(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(tags.Models))
+	models := make([]domain.OllamaModel, 0, len(tags.Models))
 	for _, m := range tags.Models {
-		if name := cmp.Or(m.Name, m.Model); name != "" {
-			names = append(names, name)
+		name := cmp.Or(m.Name, m.Model)
+		if name == "" {
+			continue
 		}
+		capabilities, err := c.Capabilities(ctx, settings.Endpoint, name)
+		if err != nil && !errors.Is(err, domain.ErrOllamaModel) {
+			return nil, err
+		}
+		models = append(models, domain.OllamaModel{Name: name, Capabilities: capabilities})
 	}
-	return names, nil
+	return models, nil
+}
+
+type showRequest struct {
+	Model string `json:"model"`
+}
+
+type showResponse struct {
+	Capabilities []string `json:"capabilities"`
+	Error        string   `json:"error"`
+}
+
+// Capabilities reads tools and vision from /api/show; an Ollama that reports no capabilities has neither.
+// The caller passes the saved endpoint, never one from a request.
+func (c *Classifier) Capabilities(ctx context.Context, endpoint, model string) (domain.ModelCapabilities, error) {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	status, raw, err := postJSON(ctx, c.http, endpoint, "/api/show", showRequest{Model: model})
+	if err != nil {
+		return domain.ModelCapabilities{}, err
+	}
+	var decoded showResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return domain.ModelCapabilities{}, notOllama(endpoint, status)
+	}
+	if decoded.Error != "" {
+		return domain.ModelCapabilities{}, kindErrorf(domain.ErrOllamaModel, nil, "model %q: %s", model,
+			statusMessage(status, decoded.Error))
+	}
+	if status != http.StatusOK {
+		return domain.ModelCapabilities{}, notOllama(endpoint, status)
+	}
+	return domain.ModelCapabilities{
+		Tools:  slices.Contains(decoded.Capabilities, "tools"),
+		Vision: slices.Contains(decoded.Capabilities, "vision"),
+	}, nil
 }
 
 // listModels confirms that the endpoint is Ollama before reading its tags.

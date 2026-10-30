@@ -1,9 +1,9 @@
 # AI layer: classifier port and providers
 
-VVMDM's features reach a model only through two task-agnostic ports,
-`app.Classifier` for yes/no decisions and `app.StructuredGenerator` for one
-structured value, and the provider behind each is an adapter chosen in
-`cmd/mdm`. A feature does not know which provider answers, where it runs, or
+VVMDM's features reach a model only through task-agnostic ports:
+`app.Classifier` for yes/no decisions, `app.StructuredGenerator` for one
+structured value, and `app.ToolChat` for a conversation in which the model
+calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
 
@@ -13,14 +13,18 @@ flowchart LR
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
   assistant -->|domain.GenerationRequest| gport[app.StructuredGenerator]
+  assistant -->|domain.ChatRequest| tport[app.ToolChat]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
   gport -.->|implemented by| gen[internal/ollama.Generator]
+  tport -.->|implemented by| chat[internal/ollama.Chat]
   ollama -->|reads| settings[(ollama.* settings)]
   gen -->|reads| settings
+  chat -->|reads| settings
   ollama -->|/v1/systemone| server[Ollama]
-  gen -->|/api/chat| server
+  gen -->|/api/chat with format| server
+  chat -->|/api/chat with tools| server
   conn[app.OllamaConnection] --> settings
-  conn -->|Check and model list| ollama
+  conn -->|Check, model list, capabilities| ollama
 ```
 
 ## Port
@@ -72,6 +76,30 @@ messages.
 | A text answer on the classifier port | The classifier answers yes/no questions with probabilities; a plan is one structured value, and the two calls' models and limits differ |
 | The name `app.Generator` | `internal/app` already uses it for ingest's probe and thumbnail port |
 
+## Tool-calling chat port
+
+The tool-calling chat port takes the conversation and the tools offered to the
+model, and returns either the tool calls the model asks for or its text
+answer ([`internal/app/toolchat.go`](../../internal/app/toolchat.go),
+[`internal/domain/chat.go`](../../internal/domain/chat.go)). It replaces the
+generation port for the assistant's tool loop: the model's own template
+formats the calls the way the model was trained.
+
+| Value | Holds |
+| --- | --- |
+| `ChatMessage` | A role (`system`, `user`, `assistant`, `tool`), the text, encoded images, the calls an assistant message made, and the tool a `tool` message answers |
+| `ToolDefinition` | A name, a description and a JSON Schema object for the arguments |
+| `ChatReply` | The tool calls, each with a JSON object of arguments, or the text; a reply with calls carries no text |
+
+The failure causes are those of the generation port except
+`ErrGenerationUnreadable`, since a text answer is never parsed. The model's
+reasoning (`thinking`) is dropped in the adapter, so the owner sees only facts
+from tools and the answer.
+
+| Rejected | Why |
+| --- | --- |
+| The next tool call as JSON in `format` on the generation port | A tool-calling model is trained on its own call format, and Ollama's `tools` applies it |
+
 ## Ollama provider
 
 [`internal/ollama`](../../internal/ollama) implements the classifier port
@@ -84,6 +112,8 @@ owner chooses. It owns everything specific to that provider:
 | Connection | Reads the saved URL and models (`ollama.endpoint`, `ollama.model`, `ollama.generation_model`) on every call, so a change takes effect without a restart |
 | Wire format, decisions | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
 | Wire format, generation | One user message, the schema in `format`, `stream: false`; Ollama's grammar holds the answer to the schema for any chat model from 0.5.0 on |
+| Wire format, tool chat | The messages with base64 `images`, `tool_calls` and `tool_name`, the tools as `function` entries, `stream: false` and `options.num_ctx` 16,384; Ollama's default context of a few thousand tokens silently drops the oldest messages and with them the tool results an answer cites |
+| Capabilities | `POST /api/show` lists them; `tools` and `vision` are read, and an Ollama that reports none has neither |
 | Batches | 16 questions per decision call, all with the same input; answers are merged. A generation call is never split or retried |
 | Time | Each call times out after 10 minutes; the model stays loaded for 10 minutes after it (`keep_alive`) |
 | Errors | Only the `error` text of an Ollama JSON reply is passed on; any other body is dropped |
@@ -110,21 +140,37 @@ connection test does not depend on what the model is used for.
 
 | Test | Proves | Requests | Time |
 | --- | --- | --- | --- |
-| Connection (Settings, Connections, Ollama) | Ollama runs at the URL, and has the decision model and, when one is saved, the generation model (a name without a tag means `:latest`) | `GET /api/version`, `GET /api/tags` | Seconds; no model is loaded |
+| Connection (Settings, Connections, Ollama) | Ollama runs at the URL, and has the decision model and, when one is saved, the generation model (a name without a tag means `:latest`), which can call tools | `GET /api/version`, `GET /api/tags`, and `POST /api/show` for a saved generation model | Seconds; no model is loaded |
 | Judging (Settings, Auto-tagging, "Test judging") | The classifier port answers a question with a probability | One question through `app.Classifier` | Up to minutes, as it loads the model |
 
 The connection test reports one of: Ollama cannot be reached, the server is not
-Ollama, the decision model is missing, or the generation model is missing
-(`reason: generation_model_missing`). The judging test belongs to the feature
+Ollama, the decision model is missing, the generation model is missing
+(`reason: generation_model_missing`), or it cannot call tools
+(`reason: generation_model_without_tools`). The judging test belongs to the feature
 that uses the port, so it works with whatever provider is behind it.
 
 The two model fields are pickers filled from `GET /api/settings/ollama/models`,
-which lists the names at the saved endpoint with the same two requests and
-answers `409 ollama_unreachable` (`connection` or `not_ollama`) when it cannot;
-a picker also saves a typed name that is not listed. `GET
-/api/assistant/readiness` answers whether a generation call can be made from
-the saved settings alone (`ollama_not_saved`, `generation_model_unset`),
-without a request to Ollama.
+which lists the names at the saved endpoint with the same two requests, adds
+`tools` and `vision` from `POST /api/show` for each, and answers
+`409 ollama_unreachable` (`connection` or `not_ollama`) when it cannot; a
+picker also saves a typed name that is not listed. The generation model's
+picker marks the models that cannot call tools and those that can see images,
+and a line under it warns while the saved one cannot call tools.
+
+`GET /api/assistant/readiness` answers whether the assistant can take a
+request (`ollama_not_saved`, `generation_model_unset`,
+`generation_model_without_tools`) and whether the generation model sees
+images (`vision`). `app.OllamaConnection` reads a model's capabilities when the
+settings are saved, by the connection test, and on readiness's first read for
+an endpoint and model pair, and keeps them in memory for that pair, since
+readiness is read each time the panel opens. When Ollama cannot answer then,
+nothing is kept, readiness answers ready, and the request reports the
+connection failure.
+
+| Rejected | Why |
+| --- | --- |
+| Calling `/api/show` on every readiness read | The panel reads readiness each time it opens |
+| Trying a chat call and reporting a model without tools afterwards | The owner sees the reason before sending a request |
 
 | Setting | Default |
 | --- | --- |
