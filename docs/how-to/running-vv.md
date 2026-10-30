@@ -404,9 +404,28 @@ Without a local Ollama, `scripts/clefrelay` stands in for it during
 development: run `CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay`
 (with `CLOUDFLARE_API_TOKEN` unless a proxy adds the credentials), save
 `http://127.0.0.1:11434` as the Ollama URL, and choose one of the chat models
-it lists, such as `llama3.2:3b` or `llama3.3:70b`, as the generation model.
-The relay sends the outcome schema to Workers AI as a JSON schema and logs
-every answer, so the raw output behind an outcome is in its log.
+it lists as the generation model. The relay maps only Workers AI models whose
+catalog entry lists function calling, and answers `/api/show` with `tools` for
+each of them and `vision` for those that also take images:
+
+| Model | Workers AI model | Images |
+| --- | --- | --- |
+| `llama3.3:70b` | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | No |
+| `qwen3:30b` | `@cf/qwen/qwen3-30b-a3b-fp8` | No |
+| `granite4:micro` | `@cf/ibm-granite/granite-4.0-h-micro` | No |
+| `gemma4:26b` | `@cf/google/gemma-4-26b-a4b-it` | Yes |
+| `mistral-small3.1:24b` | `@cf/mistralai/mistral-small-3.1-24b-instruct` | Yes |
+| `llama4:scout` | `@cf/meta/llama-4-scout-17b-16e-instruct` | Yes |
+
+The relay sends the request's tools to Workers AI as OpenAI-style functions,
+returns the model's calls as Ollama `tool_calls` with object arguments, and
+sends a message's images as data URLs, tiling more than four into one. It
+refuses images for a model without `vision`. Every answer and tool call is
+logged, so the raw output behind a turn is in its log. `llama3.3:70b`,
+`gemma4:26b` and `mistral-small3.1:24b` follow tool results most reliably;
+`granite4:micro` sometimes garbles its arguments. Vision models without
+function calling, such as `@cf/meta/llama-3.2-11b-vision-instruct`, are not
+mapped, because the assistant needs tools.
 
 The browser e2e test answers fixed outcomes from a stub, so how a real model
 reads Japanese requests is checked by hand after a change to the prompt, the
