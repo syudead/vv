@@ -389,7 +389,9 @@ is in [assistant.md](../design-docs/assistant.md).
 1. Pull a chat model on the Ollama host with `ollama pull <model>`.
 2. In Settings, Connections, Ollama, save the Ollama URL.
 3. Choose the model under `Generation model`; the list comes from the saved
-   URL, and a typed name is kept.
+   URL, and a typed name is kept. Choose one that can call tools: the list
+   marks the others `can’t call tools`, and a warning stays under the field
+   while the saved model is one of them.
 4. Press `Save and test connection` and wait for
    `Ollama is running and has both models.`
 

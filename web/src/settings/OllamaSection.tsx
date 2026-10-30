@@ -1,11 +1,13 @@
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getAssistantReadiness } from "../api/assistant";
 import {
   checkOllama,
   getOllamaSettings,
   isAborted,
   listOllamaModels,
+  type OllamaModel,
   type OllamaSettings,
   updateOllamaSettings,
 } from "../api/client";
@@ -29,7 +31,7 @@ type CheckState =
 
 type ModelList =
   | { status: "loading" }
-  | { status: "ready"; names: string[] }
+  | { status: "ready"; items: OllamaModel[] }
   | { status: "failed"; reason: UiText };
 
 /** Combobox values cannot be empty, so None needs a sentinel; a model name never has a space. */
@@ -49,8 +51,7 @@ function useOllamaModels(): { models: ModelList; reload: (open: boolean) => void
     setModels({ status: "loading" });
     listOllamaModels(abort.signal).then(
       (list) => {
-        if (!abort.signal.aborted)
-          setModels({ status: "ready", names: list.items.map((item) => item.name) });
+        if (!abort.signal.aborted) setModels({ status: "ready", items: list.items });
       },
       (failure: unknown) => {
         if (!isAborted(failure))
@@ -68,7 +69,7 @@ function ModelPicker({
   onChange,
   models,
   onOpenChange,
-  allowNone,
+  generation,
 }: {
   id: string;
   label: string;
@@ -76,13 +77,17 @@ function ModelPicker({
   onChange: (value: string) => void;
   models: ModelList;
   onOpenChange: (open: boolean) => void;
-  allowNone: boolean;
+  /** The generation model picker offers None and marks what each model can do. */
+  generation: boolean;
 }) {
   const text = t.settings.ollama;
-  const names = models.status === "ready" ? models.names : [];
+  const items = models.status === "ready" ? models.items : [];
   const options: ComboboxOption[] = [
-    ...(allowNone ? [{ value: noModel, label: text.none }] : []),
-    ...names.map((name) => ({ value: name, label: name })),
+    ...(generation ? [{ value: noModel, label: text.none }] : []),
+    ...items.map((item) => ({
+      value: item.name,
+      label: generation ? generationOptionLabel(item) : item.name,
+    })),
   ];
   const status =
     models.status === "loading" ? (
@@ -111,6 +116,24 @@ function ModelPicker({
   );
 }
 
+/** Not calling tools outweighs seeing images, since the assistant cannot run without tools. */
+function generationOptionLabel(model: OllamaModel): string {
+  const text = t.settings.ollama;
+  if (!model.tools) return text.withoutToolsOption(model.name);
+  if (model.vision) return text.visionOption(model.name);
+  return model.name;
+}
+
+/** Readiness tells whether Ollama reports that the saved generation model cannot call tools. */
+async function savedModelWithoutTools(signal: AbortSignal): Promise<boolean> {
+  try {
+    const readiness = await getAssistantReadiness(signal);
+    return readiness.reason === "generation_model_without_tools";
+  } catch {
+    return false;
+  }
+}
+
 function sameSettings(a: OllamaSettings, b: OllamaSettings): boolean {
   return (
     a.endpoint === b.endpoint &&
@@ -128,8 +151,23 @@ export default function OllamaSection() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
   const [check, setCheck] = useState<CheckState>({ kind: "idle" });
+  const [withoutTools, setWithoutTools] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const toolsController = useRef<AbortController | null>(null);
   const { models, reload } = useOllamaModels();
+
+  const readTools = useCallback((saved: OllamaSettings) => {
+    toolsController.current?.abort();
+    if (!saved.saved || saved.generationModel === "") {
+      setWithoutTools(false);
+      return;
+    }
+    const abort = new AbortController();
+    toolsController.current = abort;
+    void savedModelWithoutTools(abort.signal).then((without) => {
+      if (!abort.signal.aborted) setWithoutTools(without);
+    });
+  }, []);
 
   const load = useCallback(async () => {
     controller.current?.abort();
@@ -141,15 +179,19 @@ export default function OllamaSection() {
       setSettings(next);
       setDraft(next);
       setLoadError(null);
+      readTools(next);
     } catch (failure) {
       if (isAborted(failure)) return;
       setLoadError(errorText(failure));
     }
-  }, []);
+  }, [readTools]);
 
   useEffect(() => {
     void load();
-    return () => controller.current?.abort();
+    return () => {
+      controller.current?.abort();
+      toolsController.current?.abort();
+    };
   }, [load]);
 
   const dirty = draft !== null && settings !== null && !sameSettings(draft, settings);
@@ -161,6 +203,7 @@ export default function OllamaSection() {
       const saved = await updateOllamaSettings(draft);
       setSettings(saved);
       setDraft(saved);
+      readTools(saved);
       return saved;
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
@@ -198,6 +241,11 @@ export default function OllamaSection() {
         setCheck({
           kind: "failed",
           message: text.generationModelMissing(tested.generationModel),
+        });
+      } else if (result.reason === "generation_model_without_tools") {
+        setCheck({
+          kind: "failed",
+          message: text.checkWithoutTools(tested.generationModel),
         });
       } else {
         setCheck({ kind: "failed", message: text.checkFailed(result.message ?? "") });
@@ -257,7 +305,7 @@ export default function OllamaSection() {
           onChange={(model) => update({ model })}
           models={models}
           onOpenChange={reload}
-          allowNone={false}
+          generation={false}
         />
       </FormRow>
       <FormRow
@@ -272,9 +320,15 @@ export default function OllamaSection() {
           onChange={(generationModel) => update({ generationModel })}
           models={models}
           onOpenChange={reload}
-          allowNone
+          generation
         />
       </FormRow>
+      {withoutTools && settings !== null && (
+        <p className="flex items-center gap-2 text-xs text-warning">
+          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+          {text.savedWithoutTools(settings.generationModel)}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button
