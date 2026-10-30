@@ -18,10 +18,27 @@ func jsonValue(value any) (json.RawMessage, error) {
 
 // action resolves the target and the arguments into the plan the card shows, and stores it as a proposal.
 func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionRequest) (domain.AssistantResolution, error) {
+	if _, buildable := planBuilders[req.Operation]; !buildable {
+		return domain.AssistantResolution{Kind: domain.AssistantResolvedUnsupported, Unsupported: req.Operation}, nil
+	}
+	plan, ok, err := t.buildPlan(ctx, req)
+	if !ok || err != nil {
+		return domain.AssistantResolution{}, err
+	}
+	proposal, err := t.a.Propose(ctx, 0, t.input.Text, []domain.AssistantPlan{plan})
+	if err != nil {
+		return domain.AssistantResolution{}, err
+	}
+	return domain.AssistantResolution{Kind: domain.AssistantResolvedProposal, Proposal: &proposal}, nil
+}
+
+// buildPlan resolves the target and the arguments of a row that has a builder into the plan the card shows; false
+// means the turn asks first, or refuses the arguments with a failure.
+func (t *assistantTurn) buildPlan(ctx context.Context, req *domain.AssistantActionRequest) (domain.AssistantPlan, bool, error) {
 	row, found := domain.LookupAssistantAction(req.Operation)
 	build, buildable := planBuilders[req.Operation]
 	if !found || !buildable {
-		return domain.AssistantResolution{Kind: domain.AssistantResolvedUnsupported, Unsupported: req.Operation}, nil
+		return domain.AssistantPlan{}, false, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, req.Operation)
 	}
 	d := &planDraft{
 		t: t, row: row, req: req,
@@ -31,17 +48,13 @@ func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionR
 		d.args = *req.Arguments
 	}
 	if ok, err := d.resolveTarget(ctx); !ok || err != nil {
-		return domain.AssistantResolution{}, err
+		return d.plan, false, err
 	}
 	if ok, err := build(ctx, d); !ok || err != nil {
-		return domain.AssistantResolution{}, err
+		return d.plan, false, err
 	}
 	d.plan.Created = t.created
-	proposal, err := t.a.Propose(ctx, 0, t.input.Text, []domain.AssistantPlan{d.plan})
-	if err != nil {
-		return domain.AssistantResolution{}, err
-	}
-	return domain.AssistantResolution{Kind: domain.AssistantResolvedProposal, Proposal: &proposal}, nil
+	return d.plan, true, nil
 }
 
 // planBuilder fills the request of one catalog row from its resolved arguments; false means the turn asks first.
@@ -67,6 +80,8 @@ var planBuilders = map[string]planBuilder{
 	"makeRepresentativeVersion": nothing,
 	"unbundleVideo":             nothing,
 	"createVirtualVideo":        virtualVideo,
+	"applyWorkInfoFetch":        applyWorkInfoFetch,
+	"editVideoThumbnail":        editVideoThumbnail,
 
 	// Tags and tag kinds
 	"createTag":             createTag,
@@ -89,18 +104,19 @@ var planBuilders = map[string]planBuilder{
 	"setTagKindCardFirst":   boolTo(domain.AssistantArgEnabled, "cardFirst"),
 
 	// People and organizations
-	"createPerson":         createCredit(false),
-	"updatePerson":         updateCredit(false),
-	"deletePerson":         nothing,
-	"mergePeople":          mergeSources(domain.AssistantLabelPerson),
-	"deletePersonImage":    nothing,
-	"confirmFaceCandidate": faceCandidate,
-	"dismissFaceCandidate": faceCandidate,
-	"reopenFaceCandidate":  faceCandidate,
-	"createOrganization":   createCredit(true),
-	"updateOrganization":   updateCredit(true),
-	"deleteOrganization":   nothing,
-	"mergeOrganizations":   mergeSources(domain.AssistantLabelOrganization),
+	"createPerson":           createCredit(false),
+	"updatePerson":           updateCredit(false),
+	"deletePerson":           nothing,
+	"mergePeople":            mergeSources(domain.AssistantLabelPerson),
+	"deletePersonImage":      nothing,
+	"confirmFaceCandidate":   faceCandidate,
+	"dismissFaceCandidate":   faceCandidate,
+	"reopenFaceCandidate":    faceCandidate,
+	"applyPersonPluginFetch": applyPersonPluginFetch,
+	"createOrganization":     createCredit(true),
+	"updateOrganization":     updateCredit(true),
+	"deleteOrganization":     nothing,
+	"mergeOrganizations":     mergeSources(domain.AssistantLabelOrganization),
 
 	// Playlists, groups and smart folders
 	"createPlaylist":    stringTo(domain.AssistantArgName, "name"),

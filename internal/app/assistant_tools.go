@@ -74,6 +74,13 @@ func (t *turnTools) definitions() []domain.ToolDefinition {
 			description += "\n" + assistantWriteNote
 		}
 		parameters := tool.Parameters
+		if tool.Row != nil && !tool.Row.Schema {
+			parameters = domain.AssistantRowParameters(*tool.Row)
+		}
+		if tool.Row != nil && tool.Row.Action != "" {
+			// Variants share their operation's description, which names every action.
+			description += "\nThis tool does " + tool.Row.Action + " only."
+		}
 		if len(parameters) == 0 {
 			parameters = emptyParameters
 		}
@@ -108,7 +115,8 @@ func (t *turnTools) find(query string) []foundTool {
 				score++
 			}
 		}
-		if score > 0 && !slices.Contains(assistantCoreTools, tool.Name) {
+		if score > 0 && !slices.Contains(assistantCoreTools, tool.Name) &&
+			(tool.Kind != domain.AssistantToolWrite || proposable(tool)) {
 			matches = append(matches, scored{tool, score})
 		}
 	}
@@ -147,7 +155,10 @@ func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, erro
 	if err := l.record(ctx, item); err != nil {
 		return "", err
 	}
-	content, failure := l.runTool(ctx, call, tool, known)
+	content, failure, err := l.runTool(ctx, call, tool, known)
+	if err != nil {
+		return "", err
+	}
 	if failure != "" {
 		l.turn.Progress[len(l.turn.Progress)-1].Error = failure
 		if err := l.a.turns.RecordTurnProgress(ctx, l.turn.ID, l.turn.Progress); err != nil && ctx.Err() == nil {
@@ -179,33 +190,36 @@ func progressKind(tool domain.AssistantTool) domain.AssistantProgressKind {
 	return domain.AssistantProgressRead
 }
 
-// runTool answers the content of a call, or the reason it failed.
-func (l *turnLoop) runTool(ctx context.Context, call domain.ToolCall, tool domain.AssistantTool, known bool) (string, string) {
+// runTool answers the content of a call, or the reason it failed; it returns an error only for a storage failure.
+func (l *turnLoop) runTool(
+	ctx context.Context, call domain.ToolCall, tool domain.AssistantTool, known bool,
+) (string, string, error) {
 	switch {
 	case call.Name == toolFind:
 		var args struct {
 			Query string `json:"query"`
 		}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil || strings.TrimSpace(args.Query) == "" {
-			return "", "find_tools needs a query of English words"
+			return "", "find_tools needs a query of English words", nil
 		}
 		encoded, _ := json.Marshal(map[string]any{"tools": l.tools.find(args.Query)}) // Plain values always encode.
-		return string(encoded), ""
+		return string(encoded), "", nil
 	case !known:
-		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name)
+		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name), nil
 	case tool.Kind == domain.AssistantToolExcluded:
 		return "", fmt.Sprintf("%s is excluded: %s; the owner does it on the page %s", tool.Name,
-			tool.Exclusion.Reason, tool.Exclusion.Page)
+			tool.Exclusion.Reason, tool.Exclusion.Page), nil
 	case !l.tools.isOffered(call.Name):
-		return "", fmt.Sprintf("%s is not loaded; call find_tools first", call.Name)
+		return "", fmt.Sprintf("%s is not loaded; call find_tools first", call.Name), nil
 	case tool.Kind == domain.AssistantToolWrite:
-		return "", "changes cannot be proposed yet; tell the owner which page does it"
+		return l.write(ctx, call, tool)
 	}
 	result, err := l.runner.Read(ctx, domain.AssistantRead{Operation: tool.Operation, Arguments: call.Arguments})
 	if err != nil {
-		return "", readFailure(err)
+		return "", readFailure(err), nil
 	}
-	return domain.TrimAssistantToolResult(result.Body), ""
+	l.writes.remember(tool.Operation, result.Body)
+	return domain.TrimAssistantToolResult(result.Body), "", nil
 }
 
 // readFailure says why a read did not answer, in words the model can act on.

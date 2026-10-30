@@ -536,6 +536,10 @@ var assistantLabelNames = map[domain.AssistantLabelKind]string{
 	domain.AssistantLabelGroup:       `select id, name from groups where id in (select value from json_each(?))`,
 	domain.AssistantLabelSmartFolder: `select id, name from smart_folders where id in (select value from json_each(?))`,
 	domain.AssistantLabelFolderRoot:  `select id, path from media_folders where id in (select value from json_each(?))`,
+	domain.AssistantLabelActivity: `select id, subject_label from activity_entries
+		where id in (select value from json_each(?))`,
+	domain.AssistantLabelFaceAppearance: `select a.id, ` + contentLabelExpr("a.content_key") + `
+		from face_appearances a where a.id in (select value from json_each(?))`,
 }
 
 // CurrentLabels re-reads the named entities and the videos of a plan from one snapshot, for the stale check.
