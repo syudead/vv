@@ -82,6 +82,8 @@ type Assistant struct {
 	wake         chan struct{}
 	reviewWake   chan struct{}
 	turnWake     chan struct{}
+	// editPoll is how often a thumbnail edit step reads its session while ComfyUI runs.
+	editPoll time.Duration
 
 	runnerMu sync.RWMutex
 	runner   ActionRunner
@@ -104,6 +106,7 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
 		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1), turnWake: make(chan struct{}, 1),
+		editPoll: 2 * time.Second,
 	}
 }
 
@@ -334,7 +337,7 @@ func (a *Assistant) runStep(
 				endStep(step, batch, batchCount(plan, ids), &domain.AssistantProposalError{Code: "internal"})
 				return 0, nil
 			}
-			response, err := runner.Run(ctx, call)
+			response, err := a.runCall(ctx, runner, call)
 			if err != nil {
 				if ctx.Err() != nil {
 					return 0, ctx.Err()

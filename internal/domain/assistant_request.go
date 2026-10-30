@@ -58,6 +58,10 @@ type AssistantArguments struct {
 	Sort              string   `json:"sort,omitempty"`
 	ParentName        string   `json:"parentName,omitempty"`
 	Scope             string   `json:"scope,omitempty"`
+	FetchID           string   `json:"fetchId,omitempty"`
+	Fields            []string `json:"fields,omitempty"`
+	AtMs              *int64   `json:"atMs,omitempty"`
+	Instruction       string   `json:"instruction,omitempty"`
 }
 
 // AssistantActionRequest is one catalog operation the owner confirms before it runs.

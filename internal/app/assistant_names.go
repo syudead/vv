@@ -127,10 +127,17 @@ func (t *assistantTurn) one(
 	if err != nil {
 		return domain.AssistantLabel{}, false, err
 	}
+	if label, ok := t.idPinned(name, found); ok {
+		return label, true, nil
+	}
+	if label, ok := t.writes.createdEarlier(kind, name); ok && len(found) == 0 {
+		return label, true, nil
+	}
 	switch {
 	case len(found) == 1:
 		return domain.AssistantLabel{Kind: found[0].Kind, ID: found[0].ID, Name: found[0].Name}, true, nil
 	case len(found) > 1:
+		t.noteClarify(kind, name, found)
 		t.clarify(use.about, found)
 		return domain.AssistantLabel{}, false, nil
 	case use.creatable:
@@ -146,6 +153,10 @@ func (t *assistantTurn) one(
 	if chosen, ok := t.pinnedAmong(similar); ok {
 		return chosen, true, nil
 	}
+	if chosen, ok := t.idPinned(name, similar); ok {
+		return chosen, true, nil
+	}
+	t.noteClarify(kind, name, similar)
 	if len(similar) > 0 {
 		t.clarify(use.about, similar)
 	} else {

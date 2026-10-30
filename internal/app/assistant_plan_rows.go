@@ -6,9 +6,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// tagInput is a screen API TagInput: an existing tag by id, or a missing one by the name that creates it.
+// tagInput is a screen API TagInput: an existing tag by id, or a missing one by the name that creates it, which
+// also finds the tag an earlier step creates.
 func tagInput(label domain.AssistantLabel) map[string]any {
-	if label.ID == 0 {
+	if label.ID <= 0 {
 		return map[string]any{"name": label.Name}
 	}
 	return map[string]any{"id": label.ID}

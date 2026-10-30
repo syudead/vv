@@ -2314,6 +2314,7 @@
                           "type": "integer"
                         },
                         "kind": {
+                          "description": "activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.",
                           "enum": [
                             "video",
                             "tag",
@@ -2323,7 +2324,9 @@
                             "playlist",
                             "group",
                             "smartFolder",
-                            "folderRoot"
+                            "folderRoot",
+                            "activity",
+                            "faceAppearance"
                           ],
                           "type": "string"
                         },

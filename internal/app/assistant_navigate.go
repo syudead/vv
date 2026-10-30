@@ -82,6 +82,12 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 		return domain.AssistantLabel{}, false, fmt.Errorf("cannot find the video by title: %w", err)
 	}
 	v, ok := t.pinnedVideo(page.Items)
+	if id, pinned := t.idPins[domain.FoldForMatch(name)]; !ok && pinned {
+		i := slices.IndexFunc(page.Items, func(v domain.Video) bool { return v.ID == id })
+		if ok = i >= 0; ok {
+			v = page.Items[i]
+		}
+	}
 	if !ok && page.Total == 1 && len(page.Items) == 1 {
 		v, ok = page.Items[0], true
 	}
@@ -92,6 +98,7 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 	for i, v := range page.Items {
 		candidates[i] = domain.AssistantCandidate{Kind: domain.AssistantLabelVideo, ID: v.ID, Name: v.Title}
 	}
+	t.noteClarify(domain.AssistantLabelVideo, name, candidates)
 	t.clarify("target", candidates, name)
 	return domain.AssistantLabel{}, false, nil
 }

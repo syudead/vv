@@ -71,7 +71,7 @@ flowchart LR
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
 | A read runs at once through the owner's handler; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
-| A write tool found by `find_tools` answers an error result for now; turning it into a proposal step is the next part of the loop | A write never runs before the owner approves it |
+| A write call becomes one step of the turn's proposal and runs nothing ([Write calls become steps](#write-calls-become-steps)) | A write never runs before the owner approves it |
 | The turn carries the last `show_in_library` or `open_page` as its directive, which the panel applies without confirmation | Showing and moving change nothing (requirement 13) |
 | A name a directive tool cannot settle comes back to the model as an error result with the candidates, not as the turn's clarification | The model can call again with a candidate's name or ask the owner; a turn's clarification belongs to the write steps it would drop |
 | Built-in arguments that are `null` or an empty string are dropped, and `"true"`, `"false"` and numbers written as strings are read as the boolean or integer the schema asks for, before the schema check | Chat models write them for an argument they mean to leave out, or quote scalars |
@@ -99,12 +99,13 @@ answer text.
 
 | Ending | Turn | Kept |
 | --- | --- | --- |
-| Text that passes the grounding check | `done` with the answer | The progress |
+| Text that passes the grounding check | `done` with the answer | The progress and the proposal |
 | 12 model calls or 40 tool calls used | `stopped`, `step_limit` | The progress |
 | 10 minutes passed, or the model call timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
 | The model is missing or answers an `error` | `stopped`, `model` | The progress |
-| Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress |
+| A write call whose name needs the owner's choice | `clarify` with the name and its candidates | The progress; no proposal |
+| Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress and the proposal |
 | An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |
 | The server stopped during the turn | `interrupted` at the next start | The progress |
 
@@ -265,10 +266,40 @@ no URL.
 | `openVideoFile`, video and event streams, subtitles, the transcode start, `getHealth` | The video page | Loopback-only, or a stream rather than data |
 | `/api/assistant/*` | | The assistant does not call itself |
 
-A row whose request cannot be built from names alone answers `unsupported`: rows addressed by an item id within a
-playlist or group, per-video work codes, a virtual video's content version, a
-version candidate pair, a smart folder change, and the rows whose builders
-are not written yet.
+A name-based row whose request cannot be built from names alone is not
+offered by `find_tools`, and a call to it answers an error result: rows
+addressed by an item id within a playlist or group, per-video work codes, a
+virtual video's content version, a version candidate pair and a smart folder
+change.
+
+## Write calls become steps
+
+Each write call of a turn is resolved into one step, and the turn's steps
+become one proposal when the turn ends `done`, or `stopped` as `ungrounded`
+([`assistant_loop_write.go`](../../internal/app/assistant_loop_write.go)). The
+tool result tells the model the step's number and what it proposes, and that
+nothing has changed. A follow-up turn that builds a proposal discards the
+pending proposal of the turn it follows.
+
+| Row kind | Tool arguments | Step |
+| --- | --- | --- |
+| Name-based | `target` (when the row has one) and the row's arguments, each with one shared description (`domain.AssistantRowParameters`) | The shipped plan builder resolves the names; a name item may be `{ name, id }`, and the id wins only among the entities the name finds |
+| Schema | The operation's own schema; `ActionRunner.WriteCall` validates the arguments and splits them into path, query and body | Each path and body id is labeled by the kind the registry records: a path id names the target, a body id the change under its field, and a list of ids shows its first entity and its count; the other body fields show as values, and so does the whole top-level field a nested id sits in, so the card covers the exact body. A path video id is kept by its user key and filled with that key's current id at execution, like a name-based video target |
+| Composite | As a name-based row | `editVideoThumbnail`: the worker runs its stages, polls the session until the run ends, and cancels and discards the session when a stage fails |
+
+| Rule | Why |
+| --- | --- |
+| A name that matches several entities, or none for a row that does not create it, ends the turn as `clarify` with the name and its candidates and drops every step; the owner's choice comes back as a follow-up with the id pinned | The owner chooses, not the model |
+| A missing or unusable target or argument, an id that names nothing, and invalid schema arguments come back to the model as an error result | The model can fix the call itself |
+| A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
+| A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |
+| A call identical to an earlier step of the turn is answered as that step | Models repeat a call after its result |
+| At most 30 steps per proposal | One card stays reviewable |
+
+| Rejected | Why |
+| --- | --- |
+| Returning an ambiguous name to the model to pick | The model would choose for the owner |
+| A step per tool call as its own proposal | One request is one card |
 
 ## Images reach Clef or the model
 
