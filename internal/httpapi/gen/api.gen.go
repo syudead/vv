@@ -4238,7 +4238,7 @@ type AssistantProposalCounts struct {
 	Total   int `json:"total"`
 }
 
-// AssistantProposalError The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart.
+// AssistantProposalError The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart.
 type AssistantProposalError struct {
 	Code    string  `json:"code"`
 	Message *string `json:"message,omitempty"`
@@ -4267,7 +4267,7 @@ type AssistantProposalStep struct {
 	// CreatedBy Names this step uses that an earlier step of the same proposal creates.
 	CreatedBy []AssistantCreatedBy `json:"createdBy"`
 
-	// Error The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart.
+	// Error The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart.
 	Error *AssistantProposalError `json:"error,omitempty"`
 
 	// Impact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.

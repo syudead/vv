@@ -75,7 +75,7 @@ func (t *assistantTurn) entity(
 // video resolves "current" or a blank name to the open video and any other name by a title search that must find
 // one video, or that finds the video pinned in a clarification among the candidates it offers. A peer's video,
 // which the search does not read, is found by the remote id the call gives with the name, or by its title when
-// the screen shows or selects it.
+// the screen shows or selects it; several such videos with that title are asked about as the search's are.
 func (t *assistantTurn) video(ctx context.Context, name string) (domain.AssistantLabel, bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "current" {
@@ -84,28 +84,38 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 	if id := t.idPins[domain.FoldForMatch(name)]; domain.IsRemoteID(id) {
 		return t.videoByID(ctx, id)
 	}
-	if label, ok, err := t.screenRemoteVideo(ctx, name); ok || err != nil {
-		return label, ok, err
+	remote, err := t.screenRemoteVideos(ctx, name)
+	if err != nil {
+		return domain.AssistantLabel{}, false, err
+	}
+	if len(remote) > 0 {
+		return t.oneVideo(name, remote, len(remote))
 	}
 	page, err := t.a.videos.ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: name, Limit: assistantClarifyLimit})
 	if err != nil {
 		return domain.AssistantLabel{}, false, fmt.Errorf("cannot find the video by title: %w", err)
 	}
-	v, ok := t.pinnedVideo(page.Items)
+	return t.oneVideo(name, page.Items, page.Total)
+}
+
+// oneVideo picks the video name settles among found, of total matches: the one a clarification or the call's id
+// pins, or the only match; otherwise it asks the owner to choose among them.
+func (t *assistantTurn) oneVideo(name string, found []domain.Video, total int) (domain.AssistantLabel, bool, error) {
+	v, ok := t.pinnedVideo(found)
 	if id, pinned := t.idPins[domain.FoldForMatch(name)]; !ok && pinned {
-		i := slices.IndexFunc(page.Items, func(v domain.Video) bool { return v.ID == id })
+		i := slices.IndexFunc(found, func(v domain.Video) bool { return v.ID == id })
 		if ok = i >= 0; ok {
-			v = page.Items[i]
+			v = found[i]
 		}
 	}
-	if !ok && page.Total == 1 && len(page.Items) == 1 {
-		v, ok = page.Items[0], true
+	if !ok && total == 1 && len(found) == 1 {
+		v, ok = found[0], true
 	}
 	if ok {
 		return videoLabel(v), true, nil
 	}
-	candidates := make([]domain.AssistantCandidate, len(page.Items))
-	for i, v := range page.Items {
+	candidates := make([]domain.AssistantCandidate, len(found))
+	for i, v := range found {
 		candidates[i] = domain.AssistantCandidate{Kind: domain.AssistantLabelVideo, ID: v.ID, Name: v.Title}
 	}
 	t.noteClarify(domain.AssistantLabelVideo, name, candidates)

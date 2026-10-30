@@ -117,3 +117,53 @@ func TestWorkerSendsThePeerVideosOfABatchByTheirRemoteIDs(t *testing.T) {
 		t.Fatalf("videoIds = %v, want the local id and the remote id", runner.calls[0].Body["videoIds"])
 	}
 }
+
+// Two of the peer's videos the screen selects share a title; the first one selected used to be edited.
+func TestWriteCallOnAPeerVideoTitleTwoSelectedVideosShareAsksWhichOne(t *testing.T) {
+	f := newPeerVideoFixture(t,
+		calls(toolCall("updateVideoTags__add", `{"target":{"kind":"named","names":["Peer clip"]},"tagNames":["ライブ"]}`)),
+		text("どちらですか。"))
+	other := domain.ToRemoteID(43)
+
+	turn := f.runIn(t, 0, "Peer clip にライブタグを付けて",
+		domain.AssistantTurnContext{Route: domain.AssistantRouteLibrary, SelectedVideoIDs: []int64{peerClip, other}})
+
+	want := []domain.AssistantCandidate{
+		{Kind: domain.AssistantLabelVideo, ID: peerClip, Name: "Peer clip"},
+		{Kind: domain.AssistantLabelVideo, ID: other, Name: "Peer clip"},
+	}
+	if turn.Status != domain.AssistantTurnClarify || turn.Clarify == nil ||
+		!slices.Equal(turn.Clarify.Candidates, want) || len(f.store.plans) != 0 {
+		t.Fatalf("turn = %+v, clarify = %+v, plans = %+v; want a clarification among %+v",
+			turn, turn.Clarify, f.store.plans, want)
+	}
+}
+
+// A bulk edit answers 200 with the peer's part failed; the step used to count every video as applied.
+func TestWorkerRecordsAFailedPeerPartOfABulkEditAsPartial(t *testing.T) {
+	plan := domain.AssistantPlan{
+		ActionID: "updateVideoVisibility",
+		Targets: domain.AssistantPlanTargets{
+			Kind: domain.AssistantTargetVideos, VideoKeys: []string{"key-7", domain.AssistantRemoteVideoKey(peerClip)},
+		},
+		Call: domain.AssistantPlanCall{VideoField: "videoIds", Body: map[string]any{"visibility": "private"}},
+	}
+	store := &fakeAssistantStore{current: domain.AssistantCurrent{Videos: map[string]int64{"key-7": 7}}}
+	runner := &fakeRunner{bodies: map[int]string{
+		0: `{"applied":1,"remote":{"applied":0,"failedVideoIds":[1099511627818],"reason":"peer_unreachable"}}`,
+	}}
+
+	newTestAssistant(store).execute(context.Background(), runner, runningProposal(plan))
+
+	step := store.finished.Steps[0]
+	failure := domain.AssistantProposalError{
+		Code: "remote_failed", Reason: "peer_unreachable", Message: "the other VVMDM did not apply its part of the change",
+	}
+	if step.Status != domain.AssistantStepPartial || step.Applied != 1 || step.Failed != 1 ||
+		step.Error == nil || *step.Error != failure {
+		t.Fatalf("step = %+v with %+v; want partial, 1 applied, 1 failed and %+v", step, step.Error, failure)
+	}
+	if store.finished.Status != domain.AssistantPartial {
+		t.Fatalf("proposal = %s, want partial", store.finished.Status)
+	}
+}

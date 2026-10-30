@@ -72,10 +72,10 @@ func videoLabel(v domain.Video) domain.AssistantLabel {
 	return domain.AssistantLabel{Kind: domain.AssistantLabelVideo, ID: v.ID, Key: v.UserKey, Name: v.Title}
 }
 
-// screenRemoteVideo finds, among the peer's videos the screen shows or selects, the one titled name, since the
+// screenRemoteVideos finds, among the peer's videos the screen shows or selects, every one titled name, since the
 // title search reads this node's library only. It reads at most assistantClarifyLimit of them, and a peer that
 // cannot be read leaves the name to the title search.
-func (t *assistantTurn) screenRemoteVideo(ctx context.Context, name string) (domain.AssistantLabel, bool, error) {
+func (t *assistantTurn) screenRemoteVideos(ctx context.Context, name string) ([]domain.Video, error) {
 	c := t.input.Context
 	var ids []int64
 	if c.Route == domain.AssistantRouteVideo && domain.IsRemoteID(c.RouteID) {
@@ -87,17 +87,35 @@ func (t *assistantTurn) screenRemoteVideo(ctx context.Context, name string) (dom
 		}
 	}
 	if len(ids) == 0 {
-		return domain.AssistantLabel{}, false, nil
+		return nil, nil
 	}
 	videos, failure, err := t.a.videosByIDs(ctx, t.runner, ids[:min(len(ids), assistantClarifyLimit)])
 	if failure != "" || err != nil {
-		return domain.AssistantLabel{}, false, err
+		return nil, err
 	}
 	key := domain.FoldForMatch(name)
-	for _, v := range videos {
-		if domain.FoldForMatch(v.Title) == key {
-			return videoLabel(v), true, nil
-		}
+	return slices.DeleteFunc(videos, func(v domain.Video) bool { return domain.FoldForMatch(v.Title) != key }), nil
+}
+
+// assistantRemoteFailed is the step error's code for a bulk edit that answered 2xx while the peer's part failed;
+// the reason is the peer's.
+const assistantRemoteFailed = "remote_failed"
+
+// remotePartFailure reads the peer's part of a bulk edit's answer, which reports its failure inside a 2xx body:
+// how many of the call's count the peer did not change, and the step's error, nil when the part applied or the
+// answer has none.
+func remotePartFailure(body []byte, count int) (int, *domain.AssistantProposalError) {
+	var answer struct {
+		Remote *struct {
+			FailedVideoIDs []int64 `json:"failedVideoIds"`
+			Reason         string  `json:"reason"`
+		} `json:"remote"`
 	}
-	return domain.AssistantLabel{}, false, nil
+	if json.Unmarshal(body, &answer) != nil || answer.Remote == nil || len(answer.Remote.FailedVideoIDs) == 0 {
+		return 0, nil
+	}
+	return min(len(answer.Remote.FailedVideoIDs), count), &domain.AssistantProposalError{
+		Code: assistantRemoteFailed, Reason: answer.Remote.Reason,
+		Message: "the other VVMDM did not apply its part of the change",
+	}
 }
