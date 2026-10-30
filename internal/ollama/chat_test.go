@@ -17,10 +17,14 @@ func generating(url string) fixedSettings {
 	return fixedSettings{settings: domain.OllamaSettings{Endpoint: url, Model: "clef", GenerationModel: "qwen3:8b"}}
 }
 
-// chatServer records the request body and answers reply.
+// chatServer records the request body and answers reply; /api/show reports a context of 40,960 tokens.
 func chatServer(t *testing.T, status int, reply string, got *map[string]json.RawMessage) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/show" {
+			_, _ = w.Write([]byte(`{"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`))
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/api/chat" {
 			t.Errorf("request = %s %s", r.Method, r.URL.Path)
 		}
@@ -78,7 +82,7 @@ func TestChatSendsToolsAndReturnsToolCalls(t *testing.T) {
 		"tools":      `[{"type":"function","function":{"name":"listTags","description":"List tags","parameters":{"type":"object"}}}]`,
 		"stream":     `false`,
 		"keep_alive": `"10m"`,
-		"options":    `{"num_ctx":16384}`,
+		"options":    `{"num_ctx":40960}`,
 	}
 	for key, value := range wantBody {
 		if string(got[key]) != value {
@@ -107,7 +111,9 @@ func TestChatReportsHowAnEmptyReplyEnded(t *testing.T) {
 	reply, err := NewChat(generating(url)).Chat(context.Background(), domain.ChatRequest{
 		Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "何人？"}},
 	})
-	want := domain.ChatUsage{DoneReason: "length", PromptTokens: 16000, OutputTokens: 384, ThinkingChars: 11}
+	want := domain.ChatUsage{
+		DoneReason: "length", PromptTokens: 16000, OutputTokens: 384, ThinkingChars: 11, ContextTokens: 40960,
+	}
 	if err != nil || reply.Text != "" || reply.Usage != want {
 		t.Fatalf("reply = %+v, %v, want usage %+v", reply, err, want)
 	}

@@ -6,12 +6,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// The chat context is Ollama's num_ctx (see internal/ollama/chat.go). A prompt past it makes Ollama drop the oldest
-// messages, the request among them, so the turn keeps its estimate under the context less a reserve for the reply
-// and a reasoning model's thinking.
+// The chat context is the model's own length, which the provider reports with each reply. A prompt past it makes
+// Ollama drop the oldest messages, the request among them, so the turn keeps its estimate under the context less a
+// reserve for the reply and a reasoning model's thinking.
 const (
-	assistantContextTokens = 16384
-	assistantReplyReserve  = 4096
+	assistantReplyReserve = 4096
 	// bytesPerToken roughly matches Japanese text, three bytes a character; schemaBytesPerToken matches the English
 	// JSON of tool definitions.
 	bytesPerToken       = 3
@@ -23,15 +22,19 @@ const (
 // droppedResult replaces an old tool result that no longer fits; the grounding evidence keeps the original.
 const droppedResult = `{"note":"this earlier result was dropped to fit the context; call the tool again if you need it"}`
 
-// fitContext replaces the oldest tool results with droppedResult until the messages and tools fit the context. The
-// results of the latest round stay, since dropping them makes the model call the same tools again.
+// fitContext replaces the oldest tool results with droppedResult until the messages and tools fit the context the
+// last reply reported; before any reply, or when the provider does not say, it changes nothing. The results of the
+// latest round stay, since dropping them makes the model call the same tools again.
 func (l *turnLoop) fitContext(tools []domain.ToolDefinition) {
+	if l.usage.ContextTokens == 0 {
+		return
+	}
 	encoded, _ := json.Marshal(tools) // Tool definitions are plain data and always encode.
 	used := len(encoded) / schemaBytesPerToken
 	for _, m := range l.messages {
 		used += messageTokens(m)
 	}
-	budget := assistantContextTokens - assistantReplyReserve
+	budget := l.usage.ContextTokens - assistantReplyReserve
 	for i := range l.lastRound() {
 		if used <= budget {
 			return

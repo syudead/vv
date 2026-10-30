@@ -193,7 +193,8 @@ function StopReply({ turn }: { turn: AssistantTurn }) {
   if (reason === "connection" || reason === "model") {
     return <UnavailableReply reason={reason} detail={turn.stop?.detail} />;
   }
-  const detail = reason === "no_answer" ? turn.stop?.detail : undefined;
+  const detail =
+    reason === "no_answer" || reason === "ungrounded" ? turn.stop?.detail : undefined;
   return (
     <WarningLine>
       <span className="flex flex-col gap-1">

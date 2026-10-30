@@ -99,7 +99,8 @@ type AssistantExcludedRef struct {
 type AssistantTurnStop struct {
 	Reason   AssistantStopReason   `json:"reason"`
 	Excluded *AssistantExcludedRef `json:"excluded,omitempty"`
-	// Detail is the provider's error, or how it ended an empty reply, for model and no_answer.
+	// Detail is the provider's error for model, how it ended an empty reply for no_answer, and the unchecked items
+	// for ungrounded.
 	Detail string `json:"detail,omitempty"`
 }
 

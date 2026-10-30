@@ -4493,7 +4493,7 @@ type AssistantTurnRequest struct {
 
 // AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
 type AssistantTurnStop struct {
-	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length). English, for diagnosis.
+	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis.
 	Detail *string `json:"detail,omitempty"`
 
 	// Excluded An operation the assistant leaves to its page, which the model asked for.

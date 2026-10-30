@@ -78,8 +78,8 @@ flowchart LR
 | Rule | Why |
 | --- | --- |
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
-| A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 8 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
-| Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the context less 4,096 tokens, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
+| A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 8 KB, each cut marked with the original length | The context also holds the tools and earlier results; `total` fields keep the counts |
+| Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the model's context, as the last reply reported it, less 4,096 tokens, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
 | A tool reaches the model under a name with each `.` written `__` (`updateVideoTags__add`), and a call's name is turned back before anything runs; progress items, steps and excluded operations keep the tool's own name | Providers accept only function names matching `^[a-zA-Z0-9_-]{1,64}$`, and Workers AI's Mistral refuses the whole request over one dotted name |
 | A reply with neither text nor tool calls gets one correction round that asks for text or a tool call; a second one stops the turn as `model` | Some models leave the call in their reasoning, and an empty reply is no answer |
@@ -107,7 +107,8 @@ and letters and digits together, so the tag `ライブ` is not mentioned in
 unchecked; the rule prefers that to stopping ordinary answers. The first
 failure goes back to the model as one correction round that lists the
 unsupported items; a second failure stops the turn as `ungrounded` with no
-answer text.
+answer text and the unsupported items as `detail`. A turn whose model looked at
+images with `view_images` skips the check: what it saw is in no text result.
 
 | Ending | Turn | Kept |
 | --- | --- | --- |
@@ -118,7 +119,7 @@ answer text.
 | The model is missing or answers an `error` | `stopped`, `model`, with Ollama's error as `detail` | The progress |
 | Two replies with neither text nor tool calls | `stopped`, `no_answer`, with the last reply's `done_reason`, token counts and reasoning length as `detail` | The progress |
 | A write call whose name needs the owner's choice | `clarify` with the name and its candidates | The progress; no proposal |
-| Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress and the proposal |
+| Two answers that fail the grounding check, in a turn that did not look at images | `stopped`, `ungrounded`, with the unsupported items as `detail` | The progress and the proposal |
 | An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |
 | The server stopped during the turn | `interrupted` at the next start | The progress |
 

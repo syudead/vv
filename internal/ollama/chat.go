@@ -7,28 +7,60 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// chatContextTokens replaces Ollama's default context of a few thousand tokens, which silently drops the
-// oldest messages and with them the tool results an answer cites; see docs/design-docs/ai-layer.md.
-const chatContextTokens = 16384
 
 // Chat calls tools through Ollama's chat API with the saved generation model; see
 // docs/design-docs/ai-layer.md. Use NewChat.
 type Chat struct {
 	settings SettingsSource
 	http     *http.Client
+	// contexts caches each model's context length as /api/show reports it.
+	mu       sync.Mutex
+	contexts map[string]int
 }
 
 // NewChat waits as long as a classification, since a CPU host can take minutes to answer.
 func NewChat(settings SettingsSource) *Chat {
-	return &Chat{settings: settings, http: &http.Client{Timeout: requestTimeout}}
+	return NewChatWithHTTPClient(settings, &http.Client{Timeout: requestTimeout})
 }
 
 func NewChatWithHTTPClient(settings SettingsSource, client *http.Client) *Chat {
-	return &Chat{settings: settings, http: client}
+	return &Chat{settings: settings, http: client, contexts: map[string]int{}}
+}
+
+type modelInfoResponse struct {
+	ModelInfo map[string]json.RawMessage `json:"model_info"`
+}
+
+// contextLength is the context the model was trained for, from the "<architecture>.context_length" entry of
+// /api/show; 0 when Ollama does not say, which leaves Ollama's own default. Ollama's default of a few thousand
+// tokens silently drops the oldest messages, the request among them; see docs/design-docs/ai-layer.md.
+func (c *Chat) contextLength(ctx context.Context, settings domain.OllamaSettings) int {
+	key := settings.Endpoint + "\x00" + settings.GenerationModel
+	c.mu.Lock()
+	n, ok := c.contexts[key]
+	c.mu.Unlock()
+	if ok {
+		return n
+	}
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/api/show", showRequest{Model: settings.GenerationModel})
+	var info modelInfoResponse
+	if err != nil || status != http.StatusOK || json.Unmarshal(raw, &info) != nil {
+		return 0
+	}
+	for name, value := range info.ModelInfo {
+		if strings.HasSuffix(name, ".context_length") && json.Unmarshal(value, &n) == nil && n > 0 {
+			break
+		}
+		n = 0
+	}
+	c.mu.Lock()
+	c.contexts[key] = n
+	c.mu.Unlock()
+	return n
 }
 
 // chatMessage omits Ollama's thinking field, so the model's reasoning never leaves the adapter.
@@ -102,17 +134,19 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
-	decoded, usage, err := postChat(ctx, c.http, settings, chatRequest{
-		Model:     settings.GenerationModel,
-		Messages:  messages,
-		Tools:     wireTools(req.Tools),
-		Stream:    false,
+	body := chatRequest{
+		Model: settings.GenerationModel, Messages: messages, Tools: wireTools(req.Tools), Stream: false,
 		KeepAlive: keepAlive,
-		Options:   &chatOptions{NumCtx: chatContextTokens},
-	})
+	}
+	contextTokens := c.contextLength(ctx, settings)
+	if contextTokens > 0 {
+		body.Options = &chatOptions{NumCtx: contextTokens}
+	}
+	decoded, usage, err := postChat(ctx, c.http, settings, body)
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
+	usage.ContextTokens = contextTokens
 	message := decoded.Message
 	if len(message.ToolCalls) == 0 {
 		return domain.ChatReply{Text: strings.TrimSpace(message.Content), Usage: usage}, nil
