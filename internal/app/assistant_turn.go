@@ -30,6 +30,15 @@ type assistantTurn struct {
 	input         domain.AssistantTurnInput
 	clarification *domain.AssistantClarification
 	created       []string
+	// clarifyName and clarifyKind are the name the first clarification asks about, when a name asked it.
+	clarifyName string
+	clarifyKind domain.AssistantLabelKind
+	// failure says why a write call cannot become a step, for the model to fix the call.
+	failure string
+	// idPins are the ids a write call gave with its names, by folded name; each wins only among the name's matches.
+	idPins map[string]int64
+	// writes are the turn's earlier steps, whose created names later steps resolve to.
+	writes *turnWrites
 }
 
 // criteria resolves a filter's names to ids; a condition out of order or a name that is not one entity asks. A filter
