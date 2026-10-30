@@ -4196,6 +4196,8 @@ export const en = {
         "Stopped: the request took longer than the time limit. Nothing was changed. Try a narrower request, or a faster model.",
       ungrounded:
         "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
+      no_answer:
+        "Stopped: the model ended without an answer. Nothing was changed. Ask again, or try another model.",
       interrupted:
         "Stopped by a restart before it finished. Nothing was changed. Ask again.",
     },

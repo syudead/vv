@@ -302,11 +302,11 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 // call stays in their reasoning.
 const emptyAnswerCorrection = "Your reply was empty. Answer the request in text, or call a tool."
 
-// emptyReply gives a reply with neither text nor tool calls one correction round, and stops the turn as model on the
-// second; it reports whether the turn ended.
+// emptyReply gives a reply with neither text nor tool calls one correction round, and stops the turn as no_answer on
+// the second; it reports whether the turn ended.
 func (l *turnLoop) emptyReply() bool {
 	if l.prompted {
-		l.stop(domain.AssistantStopModel)
+		l.stop(domain.AssistantStopNoAnswer)
 		return true
 	}
 	l.prompted = true

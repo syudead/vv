@@ -432,6 +432,31 @@ describe("AssistantPanel", () => {
     ).toBeDefined();
   });
 
+  it("答えずに止まった turn は no_answer の理由と、失敗した道具の理由を出す", async () => {
+    const failed: AssistantProgressItem = {
+      tool: "getVideo",
+      kind: "read",
+      labels: [],
+      at: "2026-10-30T00:00:01Z",
+      error: "the operation answered 404 not_found: video not found",
+    };
+    server.turn = () =>
+      finished({ status: "stopped", stop: { reason: "no_answer" }, progress: [failed] });
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "この動画は何？");
+
+    expect(
+      await within(panel()).findByText(
+        "Stopped: the model ended without an answer. Nothing was changed. Ask again, or try another model.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(panel()).getByText("the operation answered 404 not_found: video not found"),
+    ).toBeDefined();
+  });
+
   it("turn の途中でパネルを閉じて開き直すと、同じ turn にその間の行が足されている", async () => {
     server.turn = () =>
       json(turn({ id: 3, request: "何かして", status: "running" }), 202);

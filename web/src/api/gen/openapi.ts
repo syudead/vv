@@ -4394,10 +4394,10 @@ export interface components {
             kind: components["schemas"]["AssistantLabelKind"];
             candidates: components["schemas"]["AssistantCandidate"][];
         };
-        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
+        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
         AssistantTurnStop: {
             /** @enum {string} */
-            reason: "step_limit" | "timeout" | "connection" | "model" | "ungrounded";
+            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "ungrounded";
             excluded?: components["schemas"]["AssistantExcludedOperation"];
         };
         /** @description An operation the assistant leaves to its page, which the model asked for. */

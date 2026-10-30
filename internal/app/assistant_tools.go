@@ -249,9 +249,10 @@ func (l *turnLoop) runTool(
 	case tool.Kind == domain.AssistantToolExcluded:
 		return "", fmt.Sprintf("%s is excluded: %s; the owner does it on the page %s", domain.AssistantModelToolName(tool.Name),
 			tool.Exclusion.Reason, tool.Exclusion.Page), nil
-	case !l.tools.isOffered(call.Name):
-		return "", fmt.Sprintf("%s is not loaded; call find_tools first", domain.AssistantModelToolName(call.Name)), nil
-	case tool.Kind == domain.AssistantToolWrite:
+	}
+	// A model often calls a tool it knows by name without find_tools; the call loads it rather than failing.
+	l.tools.load(call.Name)
+	if tool.Kind == domain.AssistantToolWrite {
 		return l.write(ctx, call, tool)
 	}
 	result, err := l.runner.Read(ctx, domain.AssistantRead{Operation: tool.Operation, Arguments: call.Arguments})

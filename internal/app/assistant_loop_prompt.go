@@ -108,17 +108,18 @@ func labelNames(labels []domain.AssistantLabel) string {
 	return strings.Join(names, ", ")
 }
 
-// screen describes the context with the names the server reads; ids reach the model only through tools.
+// screen describes the context with the names the server reads. The shown item's id is included, since a model that
+// skips screen_context otherwise guesses the id its first read needs.
 func (l *turnLoop) screen(ctx context.Context) (string, error) {
 	c := l.turn.Context
 	parts := []string{"screen: " + string(c.Route)}
-	if kind, ok := routeKinds[c.Route]; ok && kind != domain.AssistantLabelVideo && c.RouteID > 0 {
-		names, err := l.a.vocabulary.EntityNames(ctx, kind, []int64{c.RouteID})
+	if kind, ok := routeKinds[c.Route]; ok && c.RouteID > 0 {
+		name, err := l.entityName(ctx, kind, c.RouteID)
 		if err != nil {
 			return "", err
 		}
-		if name, ok := names[c.RouteID]; ok {
-			parts = append(parts, "showing: "+name)
+		if name != "" {
+			parts = append(parts, fmt.Sprintf("showing: %s id %d, %s", kind, c.RouteID, name))
 		}
 	}
 	if n := len(c.SelectedVideoIDs); n > 0 {

@@ -775,6 +775,7 @@ func (e AssistantTurnStatus) Valid() bool {
 const (
 	AssistantTurnStopReasonConnection AssistantTurnStopReason = "connection"
 	AssistantTurnStopReasonModel      AssistantTurnStopReason = "model"
+	AssistantTurnStopReasonNoAnswer   AssistantTurnStopReason = "no_answer"
 	AssistantTurnStopReasonStepLimit  AssistantTurnStopReason = "step_limit"
 	AssistantTurnStopReasonTimeout    AssistantTurnStopReason = "timeout"
 	AssistantTurnStopReasonUngrounded AssistantTurnStopReason = "ungrounded"
@@ -786,6 +787,8 @@ func (e AssistantTurnStopReason) Valid() bool {
 	case AssistantTurnStopReasonConnection:
 		return true
 	case AssistantTurnStopReasonModel:
+		return true
+	case AssistantTurnStopReasonNoAnswer:
 		return true
 	case AssistantTurnStopReasonStepLimit:
 		return true
@@ -4436,7 +4439,7 @@ type AssistantTurn struct {
 	// Status interrupted was running when the server stopped.
 	Status AssistantTurnStatus `json:"status"`
 
-	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
 	Stop *AssistantTurnStop `json:"stop,omitempty"`
 }
 
@@ -4488,7 +4491,7 @@ type AssistantTurnRequest struct {
 	Text string `json:"text"`
 }
 
-// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
 type AssistantTurnStop struct {
 	// Excluded An operation the assistant leaves to its page, which the model asked for.
 	Excluded *AssistantExcludedOperation `json:"excluded,omitempty"`

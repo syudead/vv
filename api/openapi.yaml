@@ -7218,11 +7218,11 @@ components:
       type: object
       required: [reason]
       additionalProperties: false
-      description: "Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal."
+      description: "Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal."
       properties:
         reason:
           type: string
-          enum: [step_limit, timeout, connection, model, ungrounded]
+          enum: [step_limit, timeout, connection, model, no_answer, ungrounded]
         excluded:
           $ref: "#/components/schemas/AssistantExcludedOperation"
 
