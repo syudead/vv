@@ -156,13 +156,18 @@ type turnLoop struct {
 	// attached and attachedNames hold the images view_images read this round, for the message after the results.
 	attached      [][]byte
 	attachedNames []string
+	// excluded is the first excluded operation the model asked for, and acted whether any other tool ran.
+	excluded *domain.AssistantExcludedRef
+	acted    bool
 }
 
 func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *turnLoop {
-	return &turnLoop{
+	l := &turnLoop{
 		a: a, runner: runner, turn: turn, deadline: turn.StartedAt.Add(domain.AssistantTurnBudget),
 		tools: newTurnTools(runner.Tools()),
 	}
+	l.tools.builtins = a.builtinDefinitions()
+	return l
 }
 
 // run returns an error only for a storage failure; every other ending is the turn's status.
@@ -255,6 +260,12 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 
 // answer applies the grounding check: the first failure is a correction round, the second stops the turn.
 func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
+	if l.excluded != nil && !l.acted && l.turn.ProposalID == 0 {
+		// The panel answers the excluded operation's reason and page in place of the model's words.
+		l.stop(domain.AssistantStopModel)
+		l.turn.Stop.Excluded = l.excluded
+		return true, nil
+	}
 	names, err := l.a.vocabulary.NamesIn(ctx, text)
 	if err != nil {
 		return true, err

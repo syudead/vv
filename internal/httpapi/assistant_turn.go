@@ -186,6 +186,9 @@ func toAPIAssistantProgressItem(item domain.AssistantProgressItem) gen.Assistant
 	if item.Error != "" {
 		out.Error = &item.Error
 	}
+	if item.ReviewRunID > 0 {
+		out.ReviewRunId = &item.ReviewRunID
+	}
 	return out
 }
 
