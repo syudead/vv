@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useLocation } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  AssistantProgressItem,
   AssistantProposal,
   AssistantTurn,
   AssistantTurnRequest,
@@ -34,6 +35,8 @@ interface Server {
   turns: AssistantTurnRequest[];
   /** GET /api/assistant/turns/{id}. */
   turnRead: () => Response;
+  /** GET /api/assistant/turns?active=true. */
+  active: () => Response;
   execute: () => Promise<Response> | Response;
   executes: string[];
   proposal: () => Response;
@@ -44,10 +47,11 @@ interface Server {
 
 function installServer(): Server {
   const server: Server = {
-    readiness: () => json({ ready: true }),
+    readiness: () => json({ ready: true, vision: true }),
     turn: () => finished({ answer: "ok" }),
     turns: [],
     turnRead: () => json({ code: "not_found", message: "not found" }, 404),
+    active: () => json({ items: [] }),
     execute: () => json({ code: "not_found", message: "not found" }, 404),
     executes: [],
     proposal: () => json({ code: "not_found", message: "not found" }, 404),
@@ -55,9 +59,10 @@ function installServer(): Server {
     emit: () => undefined,
   };
   beforeEach(() => {
-    server.readiness = () => json({ ready: true });
+    server.readiness = () => json({ ready: true, vision: true });
     server.turns = [];
     server.turnRead = () => json({ code: "not_found", message: "not found" }, 404);
+    server.active = () => json({ items: [] });
     server.executes = [];
     server.list = () => json({ items: [] });
     server.execute = () => json({ code: "not_found", message: "not found" }, 404);
@@ -73,6 +78,11 @@ function installServer(): Server {
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/assistant/readiness") return Promise.resolve(server.readiness());
+      if (url === "/api/settings/ollama") {
+        return Promise.resolve(
+          json({ endpoint: "", model: "", generationModel: "gemma3", saved: true }),
+        );
+      }
       if (url === "/api/assistant/proposals?active=true")
         return Promise.resolve(server.list());
       if (url.endsWith("/execute") && init?.method === "POST") {
@@ -81,6 +91,8 @@ function installServer(): Server {
       }
       if (url.startsWith("/api/assistant/proposals/"))
         return Promise.resolve(server.proposal());
+      if (url === "/api/assistant/turns?active=true")
+        return Promise.resolve(server.active());
       if (url.startsWith("/api/assistant/turns/"))
         return Promise.resolve(server.turnRead());
       if (url === "/api/assistant/turns" && init?.method === "POST") {
@@ -107,6 +119,27 @@ function installServer(): Server {
   });
   return server;
 }
+
+const findTools: AssistantProgressItem = {
+  tool: "find_tools",
+  kind: "builtin",
+  labels: [],
+  at: "2026-10-30T00:00:01Z",
+};
+
+const listVideos: AssistantProgressItem = {
+  tool: "listVideos",
+  kind: "read",
+  labels: [
+    { kind: "tag", id: 4, name: "旅行" },
+    { kind: "tag", id: 5, name: "夏" },
+    { kind: "tag", id: 6, name: "海" },
+    { kind: "tag", id: 7, name: "山" },
+  ],
+  n: 12,
+  m: 40,
+  at: "2026-10-30T00:00:02Z",
+};
 
 function turn(extra: Partial<AssistantTurn> = {}): AssistantTurn {
   return {
@@ -150,8 +183,14 @@ function proposal(extra: Partial<CardProposal> = {}): AssistantProposal {
 
 function LocationProbe() {
   const location = useLocation();
+  const navigate = useNavigate();
   return (
-    <output aria-label="location">{`${location.pathname}${location.search}`}</output>
+    <>
+      <output aria-label="location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => void navigate("/settings/scan")}>
+        go to settings
+      </button>
+    </>
   );
 }
 
@@ -227,6 +266,23 @@ describe("AssistantPanel", () => {
 
     const alert = await within(panel()).findByRole("alert");
     expect(alert.textContent).toContain("Choose a model for the assistant");
+    expect(
+      within(alert).getByRole("link", { name: "Open Connections" }).getAttribute("href"),
+    ).toBe("/settings/connections");
+    expect(screen.queryByRole("textbox", { name: "Request" })).toBeNull();
+  });
+
+  it("道具を呼べないモデルなら、モデル名と Connections への案内を出す", async () => {
+    server.readiness = () =>
+      json({ ready: false, reason: "generation_model_without_tools", vision: false });
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(trigger());
+
+    const alert = await within(panel()).findByRole("alert");
+    expect(alert.textContent).toContain("The model can’t use tools");
+    await waitFor(() => expect(alert.textContent).toContain("“gemma3” can’t call tools"));
     expect(
       within(alert).getByRole("link", { name: "Open Connections" }).getAttribute("href"),
     ).toBe("/settings/connections");
@@ -311,27 +367,55 @@ describe("AssistantPanel", () => {
     });
   });
 
-  it("running の turn を assistant イベントで読み直し、終わったら答えの文を出す", async () => {
+  it("assistant イベントのたびに turn を読み直し、道具の行を順に足し、終わるとたたむ", async () => {
     server.turn = () => json(turn({ id: 9, status: "running" }), 202);
     const reads = vi.fn(() => json(turn({ id: 9, status: "running" })));
     server.turnRead = reads;
     const user = userEvent.setup();
     renderApp();
-
     await ask(user, "お気に入りは何本？");
-    // The first read follows the 202 at once; the event makes the second.
     await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
-    act(() => server.emit());
-    await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
-    expect(within(panel()).getByRole("status").textContent).toContain("Asking the model");
 
     reads.mockImplementation(() =>
-      json(turn({ id: 9, answer: "お気に入りは\n12 本です。" })),
+      json(turn({ id: 9, status: "running", progress: [findTools] })),
+    );
+    act(() => server.emit());
+    const lines = () =>
+      within(within(panel()).getByRole("list", { name: "Tool calls" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
+    await waitFor(() => expect(lines()[0]).toBe("Looking for tools"));
+    expect(lines()[1]).toMatch(/^Working · \d+:\d\d/);
+
+    reads.mockImplementation(() =>
+      json(turn({ id: 9, status: "running", progress: [findTools, listVideos] })),
+    );
+    act(() => server.emit());
+    await waitFor(() =>
+      expect(lines().slice(0, 2)).toEqual([
+        "Looking for tools",
+        "Reading listVideos · 旅行, 夏, 海 +1 12 of 40",
+      ]),
+    );
+
+    reads.mockImplementation(() =>
+      json(
+        turn({
+          id: 9,
+          progress: [findTools, listVideos],
+          answer: "お気に入りは\n12 本です。",
+        }),
+      ),
     );
     act(() => server.emit());
 
     expect(await within(panel()).findByText(/12 本です。/)).toBeDefined();
-    expect(within(panel()).queryByRole("status")).toBeNull();
+    expect(within(panel()).queryByRole("list", { name: "Tool calls" })).toBeNull();
+    await user.click(within(panel()).getByRole("button", { name: "Show 2 tool calls" }));
+    expect(lines()).toEqual([
+      "Looking for tools",
+      "Reading listVideos · 旅行, 夏, 海 +1 12 of 40",
+    ]);
   });
 
   it("止まった turn はその理由を出す", async () => {
@@ -348,30 +432,120 @@ describe("AssistantPanel", () => {
     ).toBeDefined();
   });
 
-  it("turn の途中でパネルを閉じて開き直すと、届いた答えが出ている", async () => {
-    let answer: (response: Response) => void = () => undefined;
-    server.turn = () => new Promise<Response>((resolve) => (answer = resolve));
+  it("turn の途中でパネルを閉じて開き直すと、同じ turn にその間の行が足されている", async () => {
+    server.turn = () =>
+      json(turn({ id: 3, request: "何かして", status: "running" }), 202);
+    server.turnRead = () => json(turn({ id: 3, request: "何かして", status: "running" }));
     const user = userEvent.setup();
     renderApp();
     await ask(user, "何かして");
     await user.click(within(panel()).getByRole("button", { name: "Close" }));
     expect(trigger().getAttribute("aria-label")).toBe("Assistant · working");
 
+    const later = turn({
+      id: 3,
+      request: "何かして",
+      status: "running",
+      progress: [findTools],
+    });
+    server.turnRead = () => json(later);
+    server.active = () => json({ items: [later] });
+    act(() => server.emit());
+    await user.click(trigger());
+
+    expect(await within(panel()).findByText("Looking for tools")).toBeDefined();
+    expect(within(panel()).getAllByText("何かして")).toHaveLength(1);
+  });
+
+  it("再読み込みのあとは active な turn からスレッドを組み立て直し、消した時刻より前は出さない", async () => {
+    window.localStorage.setItem(
+      "vv.assistantThreadCleared.v1",
+      String(Date.parse("2026-10-30T00:30:00Z")),
+    );
+    const running = turn({
+      id: 8,
+      request: "後の依頼",
+      status: "running",
+      startedAt: "2026-10-30T01:00:00Z",
+      progress: [findTools],
+    });
+    server.active = () =>
+      json({
+        items: [
+          running,
+          turn({ id: 7, request: "消す前の依頼", startedAt: "2026-10-30T00:00:00Z" }),
+        ],
+      });
+    server.turnRead = () => json(running);
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(trigger());
+
+    expect(await within(panel()).findByText("後の依頼")).toBeDefined();
+    expect(within(panel()).getByText("Looking for tools")).toBeDefined();
+    expect(within(panel()).queryByText("消す前の依頼")).toBeNull();
+    expect(
+      within(panel()).getByRole("button", { name: "Send" }).getAttribute("aria-disabled"),
+    ).toBe("true");
+    window.localStorage.clear();
+  });
+
+  it("送ったページを離れていれば directive を適用せず、Show in the library を出す", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    server.turn = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp({ path: "/folders" });
+    await ask(user, "旅行の動画を表示して");
+
+    await user.click(screen.getByRole("button", { name: "go to settings" }));
     await act(async () =>
       answer(
         finished({
-          status: "stopped",
-          stop: {
-            reason: "step_limit",
-            excluded: { operation: "unknown", reason: "", page: "/" },
+          answer: "旅行の動画です。",
+          directive: {
+            kind: "filter",
+            criteria: {
+              rule: { tags: [4] },
+              labels: [{ kind: "tag", id: 4, name: "旅行" }],
+            },
           },
         }),
       ),
     );
-    await user.click(trigger());
 
-    expect(within(panel()).getByText("何かして")).toBeDefined();
-    expect(within(panel()).getByText("The assistant can’t do that.")).toBeDefined();
+    expect(location().textContent).toBe("/settings/scan");
+    expect(
+      within(panel())
+        .getByRole("link", { name: "Show in the library" })
+        .getAttribute("href"),
+    ).toBe("/?tag=4");
+  });
+
+  it("別の turn が走っていれば、その turn をスレッドに加えて待つ旨を出す", async () => {
+    server.turn = () => json({ code: "assistant_busy", message: "busy", turnId: 4 }, 409);
+    server.turnRead = () =>
+      json(
+        turn({
+          id: 4,
+          request: "前の依頼",
+          status: "running",
+          startedAt: "2026-10-30T00:00:00Z",
+        }),
+      );
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "次の依頼");
+
+    expect(
+      await within(panel()).findByText(
+        "Another request is still running. It shows above when it finishes.",
+      ),
+    ).toBeDefined();
+    expect(await within(panel()).findByText("前の依頼")).toBeDefined();
+    const log = within(panel()).getByRole("log").textContent ?? "";
+    expect(log.indexOf("前の依頼")).toBeLessThan(log.indexOf("次の依頼"));
   });
 
   it("turn の途中でスレッドを消すと、遅れて届いた結果でページを変えず、次の依頼を送れる", async () => {

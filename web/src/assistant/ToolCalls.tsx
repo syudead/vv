@@ -74,7 +74,11 @@ function lineText(item: AssistantProgressItem, page: string, review: string): Li
   }
   switch (item.kind) {
     case "write":
-      return { icon: ListPlus, text: words.write(operationSentence(item.tool)), names: true };
+      return {
+        icon: ListPlus,
+        text: words.write(operationSentence(item.tool)),
+        names: true,
+      };
     case "image":
       return { icon: Image, text: words.image(item.tool), names: true };
     case "excluded":
@@ -106,7 +110,8 @@ function ToolLine({
 }) {
   const store = useAssistant();
   const page = usePageName(item, turn);
-  const run = item.reviewRunId === undefined ? undefined : store?.reviews.get(item.reviewRunId);
+  const run =
+    item.reviewRunId === undefined ? undefined : store?.reviews.get(item.reviewRunId);
   const review = run === undefined ? "" : t.assistant.review.kinds[run.kind];
   const { icon: Icon, text, names } = lineText(item, page, review);
   const words = t.assistant.tools;

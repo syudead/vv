@@ -45,7 +45,8 @@ function useRunRequest(id: number): string | undefined {
   const store = useAssistant();
   for (const exchange of store?.exchanges ?? []) {
     const turn = exchange.turn;
-    if (turn?.progress.some((item) => item.reviewRunId === id) === true) return turn.request;
+    if (turn?.progress.some((item) => item.reviewRunId === id) === true)
+      return turn.request;
   }
   return undefined;
 }

@@ -87,7 +87,8 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
       shownTurns.current.set(turn.id, exchangeId);
       const ending = turn.status !== "running" && !ended.current.has(turn.id);
       if (ending) ended.current.add(turn.id);
-      const stayed = sentFrom !== undefined && latestLocation.current.pathname === sentFrom;
+      const stayed =
+        sentFrom !== undefined && latestLocation.current.pathname === sentFrom;
       const path = ending && stayed ? directivePath(turn.directive) : undefined;
       update(exchangeId, (exchange) =>
         exchange.turn !== undefined && !isNewerTurn(turn, exchange.turn)
@@ -138,7 +139,9 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
     listActiveAssistantTurns(controller.signal).then(
       (turns) => {
         if (controller.signal.aborted) return;
-        const kept = turns.filter((turn) => Date.parse(turn.startedAt) >= clearedAt.current);
+        const kept = turns.filter(
+          (turn) => Date.parse(turn.startedAt) >= clearedAt.current,
+        );
         merge(kept.reverse());
         setLoading(false);
       },

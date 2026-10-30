@@ -398,18 +398,29 @@ the panel and the review list re-read what they show on it.
 The panel is mounted at the app root, above the routes, so it opens from the
 top bar and from the playback screen's header band, for the owner only; it is
 the design system's `SidePanel` ([design-system.md](design-system.md)). The
-thread and the request in flight live in a root store, so closing the panel or
-changing the route keeps them, and a reload loses them; the runs that matter
-are in the store and are listed under `Recent runs` when the panel opens.
+thread lives in a root store and follows each running turn on the `assistant`
+event. Opening the panel reads readiness, the active turns and the active
+proposals, and adds the turns the thread lacks in the order they started, so
+a close, a route change or a reload loses nothing less than an hour old.
+`Clear thread` stores its time on the device, and turns started before it are
+not rebuilt; active proposals no turn in the thread holds are listed under
+`Recent runs`.
 
-| Outcome | The thread |
+| Part of an exchange | What the panel shows |
 | --- | --- |
-| `filter` | Opens the library URL with the conditions, and offers `Save as smart folder…` |
-| `navigate` | Opens the page |
-| `answer` | The number from the server, with a link to the list it came from |
-| `proposal` | The card: the operation, the count, the targets, the change, created names and the irreversible mark, with `Execute` as the one primary button; a follow-up replaces a pending card |
-| `review` | The run's progress and `Open the review list` |
-| `clarify` | One button per candidate |
+| Tool calls | One `text-xs` muted line per progress item, the labels' names in `foreground`, `n of m` with a `Progress` on the running item, and a running line with the elapsed time; folded to `Show n tool calls` once the turn answers or asks, open when it stopped |
+| Answer | The model's text as plain text: line breaks kept, `- ` and `1. ` lines as lists, `**` dropped; `Judged by Clef` above it when `judged`; under it the progress labels the answer names as a token (the grounding check's rule), as links, at most 20. The panel draws no count of its own |
+| Directive | Applied without confirmation only when the turn ends in the tab that sent it while that tab is on the same path; otherwise `Show in the library` or `Open` |
+| `start_review` | The run's progress and `Open the review list` |
+| Proposal | The card under the reply; a turn that ends replaces a pending card |
+| `clarify` | The question and one button per candidate |
+| Stop | A `warning` line for the limits, `ungrounded` and `interrupted`; the `destructive` alert with `Open Connections` for `connection` and `model`; for an excluded operation, the sentence and a link to its page |
+| `409 assistant_busy` | A warning under the request, and the running turn the body names joins the thread |
+| `404` on a read | `This request is no longer kept.` in place of the reply |
+
+The trigger shows its dot while a turn, a run or a review is working, and
+says `Assistant · waiting for you` when a turn ended on a card or a question
+while the panel was closed.
 
 The duration, added-date and watch-state conditions a filter sets are library
 conditions like any other ([library-ui.md](library-ui.md)).

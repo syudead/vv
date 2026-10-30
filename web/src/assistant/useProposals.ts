@@ -99,19 +99,22 @@ export function useProposals(open: boolean): Proposals {
     );
   }, []);
 
-  const settle = useCallback((exchangeId: number, turn: AssistantTurn, rebuilt: boolean) => {
-    setCards((current) => {
-      const next = new Map(rebuilt ? current : replaceWaiting(current));
-      if (turn.proposal !== undefined) {
-        next.set(exchangeId, {
-          proposal: turn.proposal,
-          view: "live",
-          executing: false,
-        });
-      }
-      return next;
-    });
-  }, []);
+  const settle = useCallback(
+    (exchangeId: number, turn: AssistantTurn, rebuilt: boolean) => {
+      setCards((current) => {
+        const next = new Map(rebuilt ? current : replaceWaiting(current));
+        if (turn.proposal !== undefined) {
+          next.set(exchangeId, {
+            proposal: turn.proposal,
+            view: "live",
+            executing: false,
+          });
+        }
+        return next;
+      });
+    },
+    [],
+  );
 
   const reread = useCallback((id: number) => {
     getAssistantProposal(id).then(

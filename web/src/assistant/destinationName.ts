@@ -81,7 +81,9 @@ const routeNames: Readonly<Record<string, () => string>> = {
  * with a parameter, such as a video page, which names no page to open.
  */
 export function routePageName(route: string): string | undefined {
-  const slug = route.startsWith("/settings/") ? route.slice("/settings/".length) : undefined;
+  const slug = route.startsWith("/settings/")
+    ? route.slice("/settings/".length)
+    : undefined;
   if (slug !== undefined) {
     const pages: Readonly<Record<string, string>> = t.settings.pages;
     const page = pages[slug];

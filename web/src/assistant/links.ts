@@ -100,7 +100,9 @@ export function labelPath(kind: AssistantLabelKind, id: number): string | undefi
 }
 
 /** The URL a turn's directive applies without confirmation. */
-export function directivePath(directive: AssistantDirective | undefined): string | undefined {
+export function directivePath(
+  directive: AssistantDirective | undefined,
+): string | undefined {
   if (directive?.kind === "filter" && directive.criteria !== undefined) {
     return criteriaPath(directive.criteria);
   }

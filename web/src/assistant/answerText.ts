@@ -2,8 +2,7 @@ import type { AssistantLabel, AssistantProgressItem } from "../api/assistant";
 
 /** A run of plain lines, or of list lines, of the model's answer. */
 export type AnswerBlock =
-  | { kind: "text"; text: string }
-  | { kind: "list"; ordered: boolean; items: string[] };
+  { kind: "text"; text: string } | { kind: "list"; ordered: boolean; items: string[] };
 
 const bulletLine = /^\s*- (.*)$/;
 const numberedLine = /^\s*\d+\. (.*)$/;

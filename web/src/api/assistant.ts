@@ -28,8 +28,7 @@ export function getAssistantReadiness(signal?: AbortSignal): Promise<AssistantRe
 
 /** What sending a request led to: a turn started, or another one is still running (409 assistant_busy). */
 export type StartTurnResult =
-  | { kind: "started"; turn: AssistantTurn }
-  | { kind: "busy"; turnId: number };
+  { kind: "started"; turn: AssistantTurn } | { kind: "busy"; turnId: number };
 
 /**
  * Starts one request as a running turn (202). 400 too_many_videos and 409 assistant_not_ready reject
