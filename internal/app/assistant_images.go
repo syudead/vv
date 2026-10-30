@@ -203,7 +203,7 @@ func (l *turnLoop) attachImages() {
 			dataText.Replace(strings.Join(l.attachedNames, ", "))),
 		Images: l.attached,
 	})
-	l.attached, l.attachedNames = nil, nil
+	l.attached, l.attachedNames, l.viewed = nil, nil, true
 }
 
 // fitViewImage keeps an image within viewImageMaxSide as it is and re-encodes a larger one as a scaled JPEG.

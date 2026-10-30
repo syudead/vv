@@ -156,6 +156,8 @@ type turnLoop struct {
 	corrected  bool
 	// prompted marks a turn whose empty reply already received its correction round.
 	prompted bool
+	// viewed marks a turn whose model looked at images with view_images.
+	viewed bool
 	// usage is how the provider ended the last reply.
 	usage domain.ChatUsage
 	// clef and vision say which image tools the turn offers; judged marks a turn that received Clef's answers.
@@ -288,12 +290,14 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 		return true, err
 	}
 	ungrounded := domain.AssistantUngrounded(text, l.evidence.String(), names)
-	if len(ungrounded) == 0 {
+	if len(ungrounded) == 0 || l.viewed {
+		// What the model saw in images is in no text result, so a turn that looked at images answers as it is.
 		l.turn.Status, l.turn.Answer, l.turn.Judged = domain.AssistantTurnDone, text, l.judged
 		return true, nil
 	}
 	if l.corrected {
 		l.stop(domain.AssistantStopUngrounded)
+		l.turn.Stop.Detail = strings.Join(ungrounded, ", ")
 		return true, nil
 	}
 	l.corrected = true
@@ -329,6 +333,6 @@ func emptyReplyDetail(u domain.ChatUsage) string {
 	if u == (domain.ChatUsage{}) {
 		return ""
 	}
-	return fmt.Sprintf("done_reason %q, prompt %d tokens, output %d tokens, reasoning %d characters",
-		u.DoneReason, u.PromptTokens, u.OutputTokens, u.ThinkingChars)
+	return fmt.Sprintf("done_reason %q, prompt %d tokens, output %d tokens, reasoning %d characters, context %d tokens",
+		u.DoneReason, u.PromptTokens, u.OutputTokens, u.ThinkingChars, u.ContextTokens)
 }

@@ -7,8 +7,8 @@ import (
 	"unicode/utf8"
 )
 
-// Bounds of a read result as the model sees it: the context holds 16,384 tokens with the tools and earlier results,
-// so one result stays near 3,000 tokens; total fields keep the counts.
+// Bounds of a read result as the model sees it: the context also holds the tools and earlier results, so one result
+// stays near 3,000 tokens; total fields keep the counts.
 const (
 	AssistantResultItemMax  = 50
 	AssistantResultTextMax  = 500

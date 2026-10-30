@@ -309,8 +309,9 @@ func TestTurnLoopCorrectsAnUngroundedAnswerOnce(t *testing.T) {
 	if last := correction[len(correction)-1]; last.Role != domain.ChatRoleUser || !strings.Contains(last.Content, "42") {
 		t.Fatalf("correction = %+v", last)
 	}
-	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopUngrounded || turn.Answer != "" {
-		t.Fatalf("turn = %+v, want ungrounded with no answer", turn)
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopUngrounded || turn.Answer != "" ||
+		turn.Stop.Detail != "43" {
+		t.Fatalf("turn = %+v, want ungrounded with no answer and 43 as the detail", turn)
 	}
 }
 
@@ -339,7 +340,7 @@ func TestTurnLoopStopsAfterASecondEmptyReply(t *testing.T) {
 	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopNoAnswer || turn.Answer != "" {
 		t.Fatalf("turn = %+v, want stopped as no_answer", turn)
 	}
-	want := `done_reason "length", prompt 16000 tokens, output 384 tokens, reasoning 900 characters`
+	want := `done_reason "length", prompt 16000 tokens, output 384 tokens, reasoning 900 characters, context 0 tokens`
 	if turn.Stop.Detail != want {
 		t.Fatalf("detail = %q, want %q", turn.Stop.Detail, want)
 	}

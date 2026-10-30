@@ -10,7 +10,7 @@ import (
 // Old tool results give way, oldest first, until the estimate fits; the request and the newest result stay.
 func TestFitContextDropsTheOldestResultsFirst(t *testing.T) {
 	big := strings.Repeat("あ", 6000) // 18,000 bytes, about 6,000 tokens.
-	l := &turnLoop{messages: []domain.ChatMessage{
+	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 16384}, messages: []domain.ChatMessage{
 		{Role: domain.ChatRoleSystem, Content: "rules"},
 		{Role: domain.ChatRoleUser, Content: "<request>この動画は?</request>"},
 		{Role: domain.ChatRoleAssistant},
@@ -34,7 +34,7 @@ func TestFitContextDropsTheOldestResultsFirst(t *testing.T) {
 // The latest round's results stay even past the budget: dropping them makes the model call the same tools again.
 func TestFitContextKeepsTheLatestRound(t *testing.T) {
 	big := strings.Repeat("あ", 20000)
-	l := &turnLoop{messages: []domain.ChatMessage{
+	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 16384}, messages: []domain.ChatMessage{
 		{Role: domain.ChatRoleUser, Content: "<request>何人?</request>"},
 		{Role: domain.ChatRoleAssistant},
 		{Role: domain.ChatRoleTool, Content: big},

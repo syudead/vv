@@ -195,3 +195,16 @@ func TestClefReadsArgumentsWrittenAsJSONStrings(t *testing.T) {
 		t.Fatalf("wire requests = %+v, want the decoded image and question", wire.requests)
 	}
 }
+
+// What the model saw in images is in no text result, so after view_images an answer with numbers of its own stands.
+func TestAnAnswerAfterViewImagesSkipsTheGroundingCheck(t *testing.T) {
+	args := `{"images":["` + frameA + `"]}`
+	f := newLoopFixture(t, calls(toolCall("view_images", args)), text("映っているのは 12 人です。"))
+	f.a.model = fakeModel{vision: true}
+
+	turn := f.runImages(t, map[string][]byte{frameA: pngOf(t, 320, 180)})
+
+	if turn.Status != domain.AssistantTurnDone || turn.Answer != "映っているのは 12 人です。" {
+		t.Fatalf("turn = %+v, want the answer shown", turn)
+	}
+}

@@ -18,7 +18,7 @@ const toolFind = "find_tools"
 var assistantCoreTools = []string{"listVideos", "getVideo", "listTags", "listPeople", "listOrganizations"}
 
 // findToolsLimit bounds the tools one search answers, and findToolsLoaded the ones it loads: each loaded schema is
-// sent on every later call, and 15 of them fill much of the 16,384-token context.
+// sent on every later call, and 15 of them fill much of a small model's context.
 const (
 	findToolsLimit  = 15
 	findToolsLoaded = 3
