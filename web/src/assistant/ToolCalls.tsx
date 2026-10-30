@@ -16,7 +16,11 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { AssistantProgressItem, AssistantTurn } from "../api/assistant";
+import {
+  stopAssistantTurn,
+  type AssistantProgressItem,
+  type AssistantTurn,
+} from "../api/assistant";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
@@ -160,17 +164,32 @@ function useNow(): number {
   return now;
 }
 
-function RunningLine({ startedAt }: { startedAt: string }) {
+/** The turn has no time limit, so the running line carries the owner's way to stop it. */
+function RunningLine({ turn }: { turn: AssistantTurn }) {
   const now = useNow();
-  const elapsed = Math.max(0, now - Date.parse(startedAt));
+  const [stopping, setStopping] = useState(false);
+  const elapsed = Math.max(0, now - Date.parse(turn.startedAt));
   const time = formatDuration(elapsed);
   const words = t.assistant.tools;
+  const stop = () => {
+    setStopping(true);
+    stopAssistantTurn(turn.id).catch(() => setStopping(false));
+  };
   return (
-    <li className="flex items-start gap-1.5">
-      <Spinner aria-hidden="true" className="mt-0.5 size-3" />
+    <li className="flex items-center gap-1.5">
+      <Spinner aria-hidden="true" className="size-3" />
       <span className="tabular-nums">
         {elapsed >= longRunMs ? words.workingLong(time) : words.working(time)}
       </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="ml-auto h-6 px-2 text-xs"
+        disabled={stopping}
+        onClick={stop}
+      >
+        {words.stop}
+      </Button>
     </li>
   );
 }
@@ -192,7 +211,7 @@ function Lines({ turn }: { turn: AssistantTurn }) {
           current={running && index === last}
         />
       ))}
-      {running && <RunningLine startedAt={turn.startedAt} />}
+      {running && <RunningLine turn={turn} />}
     </ul>
   );
 }

@@ -17,22 +17,15 @@ const toolFind = "find_tools"
 // assistantCoreTools are the operations sent on every model call.
 var assistantCoreTools = []string{"listVideos", "getVideo", "listTags", "listPeople", "listOrganizations"}
 
-// findToolsLimit bounds the tools one search answers, and findToolsLoaded the ones it loads: each loaded schema is
-// sent on every later call, and 15 of them fill much of a small model's context.
-const (
-	findToolsLimit  = 15
-	findToolsLoaded = 3
-)
-
 // assistantWriteNote ends a write tool's description.
 const assistantWriteNote = "Proposed for the owner's approval; it does not run now."
 
 var findToolsDefinition = domain.ToolDefinition{
 	Name: toolFind,
-	Description: "Search the app's other tools by English words over their names and descriptions. Answers up to " +
-		"15 tools with their kind (read, write or excluded) and summary, and loads the schemas of the first 3 read " +
-		"or write tools; any read or write tool it finds can be called by name. An excluded tool says why and on " +
-		"which page the owner does it instead.",
+	Description: "Search the app's other tools by English words over their names and descriptions. Answers every " +
+		"matching tool, best first, with its kind (read, write or excluded) and summary, and loads the schemas of " +
+		"the best read and write tools; any read or write tool it finds can be called by name. An excluded tool " +
+		"says why and on which page the owner does it instead.",
 	Parameters: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string",` +
 		`"description":"English words, such as \"favorite videos\" or \"merge tags\"."}},"required":["query"]}`),
 }
@@ -105,9 +98,10 @@ type foundTool struct {
 }
 
 // find ranks the tools by how many of the words their name, summary and description contain, ties by name, answers
-// the first 15 and loads the first findToolsLoaded read and write tools among them. It also reports whether the
-// first tool contains more of the words than any other.
-func (t *turnTools) find(query string) ([]foundTool, bool) {
+// every match and loads the read and write tools in rank order while their schemas fit loadBytes (0 loads them all),
+// since each loaded schema is sent on every later call. It also reports whether the first tool contains more of the
+// words than any other.
+func (t *turnTools) find(query string, loadBytes int) ([]foundTool, bool) {
 	candidates := slices.DeleteFunc(slices.Clone(t.all), func(tool domain.AssistantTool) bool {
 		return slices.Contains(assistantCoreTools, tool.Name) ||
 			(tool.Kind == domain.AssistantToolWrite && !proposable(tool))
@@ -115,16 +109,19 @@ func (t *turnTools) find(query string) ([]foundTool, bool) {
 	slices.SortStableFunc(candidates, func(a, b domain.AssistantTool) int { return strings.Compare(a.Name, b.Name) })
 	found := []foundTool{}
 	loaded := 0
-	matches := ranked(candidates, searchWords(query), toolSearchText, findToolsLimit)
+	matches := ranked(candidates, searchWords(query), toolSearchText, len(candidates))
 	for _, match := range matches {
 		tool := match.item
 		item := foundTool{Name: domain.AssistantModelToolName(tool.Name), Kind: tool.Kind, Summary: tool.Summary}
 		switch {
 		case tool.Exclusion != nil:
 			item.Reason, item.Page = tool.Exclusion.Reason, tool.Exclusion.Page
-		case loaded < findToolsLoaded:
-			t.load(tool.Name)
-			loaded++
+		default:
+			size := len(tool.Description) + len(tool.Parameters)
+			if loadBytes == 0 || loaded+size <= loadBytes || loaded == 0 {
+				t.load(tool.Name)
+				loaded += size
+			}
 		}
 		found = append(found, item)
 	}
@@ -242,7 +239,8 @@ func (l *turnLoop) runTool(
 		if err := json.Unmarshal(call.Arguments, &args); err != nil || strings.TrimSpace(args.Query) == "" {
 			return "", "find_tools needs a query of English words", nil
 		}
-		found, clear := l.tools.find(args.Query)
+		// The loaded schemas may take a quarter of the prompt.
+		found, clear := l.tools.find(args.Query, l.promptBudget()/4*schemaBytesPerToken)
 		if clear && found[0].Kind == domain.AssistantToolExcluded {
 			// A clear best match is what the request asked for.
 			l.askedExcluded(l.tools.byName[domain.AssistantToolNameFromModel(found[0].Name)])
@@ -269,7 +267,7 @@ func (l *turnLoop) runTool(
 			trimArguments(call.Arguments), readFailure(err)), nil
 	}
 	l.writes.remember(tool.Operation, result.Body)
-	return domain.TrimAssistantToolResult(result.Body), "", nil
+	return domain.AssistantToolResultText(result.Body), "", nil
 }
 
 // failedArgumentsMax bounds the arguments a failure repeats, so the model and the owner see what was sent.

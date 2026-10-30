@@ -255,7 +255,7 @@ func clarifyFailure(c *domain.AssistantClarification) string {
 // encodeResult bounds a built-in tool's result as a read's result is bounded, so that it fits the model's context.
 func encodeResult(value any) string {
 	encoded, _ := json.Marshal(value) // The result types hold only plain values, which always encode.
-	return domain.TrimAssistantToolResult(encoded)
+	return domain.AssistantToolResultText(encoded)
 }
 
 // criteriaResult is a resolved library filter in the names the library URL uses, with the entities it names.

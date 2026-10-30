@@ -104,9 +104,6 @@ func (l *turnLoop) write(ctx context.Context, call domain.ToolCall, tool domain.
 		return "", fmt.Sprintf("%s cannot be proposed by the assistant; tell the owner to do it on its page",
 			domain.AssistantModelToolName(tool.Name)), nil
 	}
-	if len(l.writes.plans) >= domain.AssistantProposalStepMax {
-		return "", fmt.Sprintf("a proposal holds at most %d steps", domain.AssistantProposalStepMax), nil
-	}
 	build := l.nameStep
 	if tool.Row.Schema {
 		build = l.schemaStep

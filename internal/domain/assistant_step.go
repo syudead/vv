@@ -7,9 +7,6 @@ import (
 	"strconv"
 )
 
-// AssistantProposalStepMax bounds the steps of one proposal, and so the write calls of one turn.
-const AssistantProposalStepMax = 30
-
 // AssistantStepStatus is one step's state within a proposal; a step moves forward only, as CanMove allows.
 type AssistantStepStatus string
 

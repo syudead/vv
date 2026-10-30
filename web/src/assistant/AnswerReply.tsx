@@ -1,4 +1,4 @@
-import { Scale } from "lucide-react";
+import { Scale, TriangleAlert } from "lucide-react";
 import { useId } from "react";
 import { Link } from "react-router";
 
@@ -123,6 +123,12 @@ export default function AnswerReply({ turn }: { turn: AssistantTurn }) {
         </p>
       )}
       <AnswerText answer={answer} />
+      {turn.unchecked !== undefined && turn.unchecked.length > 0 && (
+        <p className="flex items-start gap-1.5 text-xs text-warning">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+          {t.assistant.unchecked(turn.unchecked.join(", "))}
+        </p>
+      )}
       <Mentioned labels={mentionedLabels(answer, turn.progress)} />
     </div>
   );

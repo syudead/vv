@@ -87,6 +87,11 @@ type Assistant struct {
 
 	runnerMu sync.RWMutex
 	runner   ActionRunner
+
+	// running is the turn the worker runs and the cancel that StopTurn calls; the turn has no time limit of its own.
+	runningMu     sync.Mutex
+	runningID     int64
+	cancelRunning context.CancelFunc
 }
 
 // NewAssistant does not execute proposals until Run, nor before UseRunner registers the runner.

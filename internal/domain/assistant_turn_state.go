@@ -5,11 +5,8 @@ import (
 	"time"
 )
 
-// Limits of one turn of the tool loop; see docs/design-docs/assistant.md.
+// Lifetimes of a turn; see docs/design-docs/assistant.md.
 const (
-	AssistantModelCallMax = 12
-	AssistantToolCallMax  = 40
-	AssistantTurnBudget   = 10 * time.Minute
 	// AssistantTurnTTL is how long a finished turn is kept.
 	AssistantTurnTTL = 24 * time.Hour
 	// AssistantActiveTurnWindow is how long a finished turn stays in the active list the panel rebuilds from.
@@ -36,6 +33,8 @@ const (
 	AssistantStopTimeout    AssistantStopReason = "timeout"
 	AssistantStopConnection AssistantStopReason = "connection"
 	AssistantStopModel      AssistantStopReason = "model"
+	// AssistantStopCancelled: the owner stopped the turn from the panel.
+	AssistantStopCancelled  AssistantStopReason = "cancelled"
 	AssistantStopUngrounded AssistantStopReason = "ungrounded"
 	// AssistantStopNoAnswer: the model replied with neither text nor a tool call, twice; the model itself answered.
 	AssistantStopNoAnswer AssistantStopReason = "no_answer"
@@ -112,8 +111,9 @@ type AssistantTurn struct {
 	Context        AssistantTurnContext
 	PreviousTurnID int64
 	Progress       []AssistantProgressItem
-	// Answer is the model's text after the grounding check.
-	Answer string
+	// Answer is the model's text; Unchecked lists its numbers and names the grounding check did not find.
+	Answer    string
+	Unchecked []string
 	// Judged marks an answer that used Clef's answers.
 	Judged     bool
 	Directive  *AssistantDirective

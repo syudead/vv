@@ -39,6 +39,8 @@ interface Server {
   active: () => Response;
   execute: () => Promise<Response> | Response;
   executes: string[];
+  /** POST /api/assistant/turns/{id}/stop, by URL. */
+  stops: string[];
   proposal: () => Response;
   list: () => Response;
   /** Delivers an assistant event to every subscriber, as /api/events would. */
@@ -54,6 +56,7 @@ function installServer(): Server {
     active: () => json({ items: [] }),
     execute: () => json({ code: "not_found", message: "not found" }, 404),
     executes: [],
+    stops: [],
     proposal: () => json({ code: "not_found", message: "not found" }, 404),
     list: () => json({ items: [] }),
     emit: () => undefined,
@@ -64,6 +67,7 @@ function installServer(): Server {
     server.turnRead = () => json({ code: "not_found", message: "not found" }, 404);
     server.active = () => json({ items: [] });
     server.executes = [];
+    server.stops = [];
     server.list = () => json({ items: [] });
     server.execute = () => json({ code: "not_found", message: "not found" }, 404);
     server.proposal = () => json({ code: "not_found", message: "not found" }, 404);
@@ -88,6 +92,10 @@ function installServer(): Server {
       if (url.endsWith("/execute") && init?.method === "POST") {
         server.executes.push(`${url} ${String(init.body)}`);
         return Promise.resolve(server.execute());
+      }
+      if (url.endsWith("/stop") && init?.method === "POST") {
+        server.stops.push(url);
+        return Promise.resolve(new Response(null, { status: 204 }));
       }
       if (url.startsWith("/api/assistant/proposals/"))
         return Promise.resolve(server.proposal());
@@ -427,7 +435,34 @@ describe("AssistantPanel", () => {
 
     expect(
       await within(panel()).findByText(
-        "Stopped: the request needed more steps than one request may take. Nothing was changed. Try a narrower request.",
+        "Stopped: the model repeated the same tool calls. Nothing was changed. Ask again in other words, or try another model.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("実行中の turn は Stop で止められる", async () => {
+    server.turn = () => json(turn({ id: 9, status: "running" }), 202);
+    server.turnRead = () => json(turn({ id: 9, status: "running" }));
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "全部まとめて整理して");
+
+    await user.click(await within(panel()).findByRole("button", { name: "Stop" }));
+
+    await waitFor(() => expect(server.stops).toEqual(["/api/assistant/turns/9/stop"]));
+  });
+
+  it("確かめられなかった数や名前は答えの下に出す", async () => {
+    server.turn = () => finished({ answer: "43 本です。", unchecked: ["43"] });
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "何本？");
+
+    expect(await within(panel()).findByText("43 本です。")).toBeDefined();
+    expect(
+      within(panel()).getByText(
+        "Not found in what the assistant read: 43. Check these yourself.",
       ),
     ).toBeDefined();
   });

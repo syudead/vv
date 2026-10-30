@@ -61,6 +61,20 @@ func (s *server) GetAssistantTurn(w http.ResponseWriter, r *http.Request, id gen
 	}
 }
 
+func (s *server) StopAssistantTurn(w http.ResponseWriter, _ *http.Request, id gen.AssistantTurnId) {
+	if !s.assistantConfigured(w, id) {
+		return
+	}
+	switch err := s.assistant.StopTurn(id); {
+	case errors.Is(err, domain.ErrAssistantTurnNotRunning):
+		s.writeError(w, http.StatusConflict, codeConflict, "The request is not running.")
+	case err != nil:
+		s.internalError(w, "Could not stop the request.", err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func (s *server) ListAssistantTurns(w http.ResponseWriter, r *http.Request, params gen.ListAssistantTurnsParams) {
 	if !s.assistantConfigured(w, 1) {
 		return
@@ -158,6 +172,9 @@ func (s *server) toAPIAssistantTurn(ctx context.Context, t domain.AssistantTurn)
 		out.Clarify = &gen.AssistantTurnClarification{
 			Name: c.Name, Kind: gen.AssistantLabelKind(c.Kind), Candidates: toAPIAssistantCandidates(c.Candidates),
 		}
+	}
+	if len(t.Unchecked) > 0 {
+		out.Unchecked = &t.Unchecked
 	}
 	if t.Stop != nil {
 		out.Stop = &gen.AssistantTurnStop{Reason: gen.AssistantTurnStopReason(t.Stop.Reason)}

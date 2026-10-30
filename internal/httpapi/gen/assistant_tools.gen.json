@@ -2222,7 +2222,7 @@
       "method": "POST",
       "path": "/api/assistant/turns",
       "summary": "Start one request as a server-side turn",
-      "description": "Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers or a limit stops it: at most 12 model calls and 40 tool calls, and 10 minutes from the start. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. text over 500 characters, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.",
+      "description": "Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers, repeats its previous tool calls exactly, or the owner stops it with stopAssistantTurn. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. Empty text, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.",
       "owner": true,
       "response": "json",
       "parameters": {
@@ -11248,6 +11248,38 @@
           "in": "path",
           "field": "id",
           "kind": "video"
+        }
+      ]
+    },
+    {
+      "operationId": "stopAssistantTurn",
+      "method": "POST",
+      "path": "/api/assistant/turns/{id}/stop",
+      "summary": "Stop the running assistant turn",
+      "description": "Owner-only. Cancels the running turn with this id; it then ends stopped with reason cancelled, keeping its progress and building no proposal. A turn that is not running returns 409 conflict.",
+      "owner": true,
+      "response": "none",
+      "pathParams": [
+        "id"
+      ],
+      "parameters": {
+        "properties": {
+          "id": {
+            "description": "Assistant turn ID",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "ids": [
+        {
+          "in": "path",
+          "field": "id",
+          "kind": "assistantTurn"
         }
       ]
     },

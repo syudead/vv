@@ -129,7 +129,7 @@ func (l *turnLoop) runClef(ctx context.Context, raw json.RawMessage) (string, st
 		return "", "clef failed: " + err.Error()
 	}
 	l.judged = true
-	return domain.TrimAssistantToolResult(answer), ""
+	return domain.AssistantToolResultText(answer), ""
 }
 
 // viewImages reads and downscales the images and keeps them for the user message after this round's tool results,

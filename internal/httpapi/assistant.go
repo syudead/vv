@@ -19,6 +19,8 @@ type AssistantProposals interface {
 	// Turn returns domain.ErrNotFound for a missing or expired turn.
 	Turn(ctx context.Context, id int64) (domain.AssistantTurn, error)
 	ActiveTurns(ctx context.Context) ([]domain.AssistantTurn, error)
+	// StopTurn cancels the running turn with the id; any other turn answers domain.ErrAssistantTurnNotRunning.
+	StopTurn(id int64) error
 	// Approve keeps the steps at the given indexes. It returns domain.ErrNotFound for a missing, discarded or
 	// expired proposal, the proposal with domain.ErrAssistantProposalNotPending when it is no longer proposed,
 	// domain.ErrAssistantStepsInvalid for an index it does not have, and *domain.AssistantStepNeedsSkippedError for

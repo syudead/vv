@@ -31,8 +31,9 @@ func TestFitContextDropsTheOldestResultsFirst(t *testing.T) {
 	}
 }
 
-// The latest round's results stay even past the budget: dropping them makes the model call the same tools again.
-func TestFitContextKeepsTheLatestRound(t *testing.T) {
+// The latest round's results are cut, not dropped, past the budget: dropping them makes the model call the same tools
+// again.
+func TestFitContextCutsTheLatestRound(t *testing.T) {
 	big := strings.Repeat("あ", 20000)
 	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 16384}, messages: []domain.ChatMessage{
 		{Role: domain.ChatRoleUser, Content: "<request>何人?</request>"},
@@ -42,7 +43,9 @@ func TestFitContextKeepsTheLatestRound(t *testing.T) {
 
 	l.fitContext(nil)
 
-	if l.messages[2].Content != big {
-		t.Fatal("the latest result was dropped")
+	got := l.messages[2].Content
+	if !strings.HasPrefix(got, "あああ") || !strings.Contains(got, "cut to fit the context: 60000 bytes in all") ||
+		len(got) >= len(big) {
+		t.Fatalf("latest result = %.40q…, want its start kept and the cut noted", got)
 	}
 }

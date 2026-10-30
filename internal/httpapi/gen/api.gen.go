@@ -773,6 +773,7 @@ func (e AssistantTurnStatus) Valid() bool {
 
 // Defines values for AssistantTurnStopReason.
 const (
+	AssistantTurnStopReasonCancelled  AssistantTurnStopReason = "cancelled"
 	AssistantTurnStopReasonConnection AssistantTurnStopReason = "connection"
 	AssistantTurnStopReasonModel      AssistantTurnStopReason = "model"
 	AssistantTurnStopReasonNoAnswer   AssistantTurnStopReason = "no_answer"
@@ -784,6 +785,8 @@ const (
 // Valid indicates whether the value is a known member of the AssistantTurnStopReason enum.
 func (e AssistantTurnStopReason) Valid() bool {
 	switch e {
+	case AssistantTurnStopReasonCancelled:
+		return true
 	case AssistantTurnStopReasonConnection:
 		return true
 	case AssistantTurnStopReasonModel:
@@ -4414,7 +4417,7 @@ type AssistantStepStatus string
 
 // AssistantTurn One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason.
 type AssistantTurn struct {
-	// Answer The model's final text in the request's language, after every number and library name in it was found in this turn's tool results, the request, the screen or today's date. It is model text: show it as plain text.
+	// Answer The model's final text in the request's language. It is model text: show it as plain text.
 	Answer *string `json:"answer,omitempty"`
 
 	// Clarify The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
@@ -4439,8 +4442,11 @@ type AssistantTurn struct {
 	// Status interrupted was running when the server stopped.
 	Status AssistantTurnStatus `json:"status"`
 
-	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+	// Stop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
 	Stop *AssistantTurnStop `json:"stop,omitempty"`
+
+	// Unchecked Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images.
+	Unchecked *[]string `json:"unchecked,omitempty"`
 }
 
 // AssistantTurnStatus interrupted was running when the server stopped.
@@ -4491,7 +4497,7 @@ type AssistantTurnRequest struct {
 	Text string `json:"text"`
 }
 
-// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+// AssistantTurnStop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
 type AssistantTurnStop struct {
 	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis.
 	Detail *string `json:"detail,omitempty"`
@@ -10092,6 +10098,9 @@ type ServerInterface interface {
 	// GetAssistantTurn Read one assistant turn
 	// (GET /api/assistant/turns/{id})
 	GetAssistantTurn(w http.ResponseWriter, r *http.Request, id AssistantTurnId)
+	// StopAssistantTurn Stop the running assistant turn
+	// (POST /api/assistant/turns/{id}/stop)
+	StopAssistantTurn(w http.ResponseWriter, r *http.Request, id AssistantTurnId)
 	// Login Sign in with a username and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -11342,6 +11351,32 @@ func (siw *ServerInterfaceWrapper) GetAssistantTurn(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssistantTurn(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) StopAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantTurnId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopAssistantTurn(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18366,6 +18401,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns", wrapper.ListAssistantTurns)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns", wrapper.CreateAssistantTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns/{id}", wrapper.GetAssistantTurn)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns/{id}/stop", wrapper.StopAssistantTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)

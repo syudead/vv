@@ -36,6 +36,15 @@ func (f *fakeTurns) Turn(_ context.Context, id int64) (domain.AssistantTurn, err
 	return f.turn, nil
 }
 
+// StopTurn stops only the turn it holds while that one runs, as the worker does.
+func (f *fakeTurns) StopTurn(id int64) error {
+	if id != f.turn.ID || f.turn.Status != domain.AssistantTurnRunning {
+		return domain.ErrAssistantTurnNotRunning
+	}
+	f.turn.Status = domain.AssistantTurnStopped
+	return nil
+}
+
 func (f *fakeTurns) Proposal(_ context.Context, id int64) (domain.AssistantProposal, error) {
 	if id != f.proposal.ID {
 		return domain.AssistantProposal{}, domain.ErrNotFound
@@ -155,5 +164,17 @@ func TestGetAssistantTurnEmbedsItsProposalAndStop(t *testing.T) {
 	}
 	if res := send(http.MethodGet, "/api/assistant/turns/8", ""); res.Code != http.StatusNotFound {
 		t.Fatalf("expired turn: status = %d", res.Code)
+	}
+}
+
+func TestStopAssistantTurnStopsOnlyTheRunningTurn(t *testing.T) {
+	turns := &fakeTurns{turn: runningTurn}
+	send := turnEnv(t, turns, domain.AssistantReady)
+
+	if res := send(http.MethodPost, "/api/assistant/turns/7/stop", ""); res.Code != http.StatusNoContent {
+		t.Fatalf("stop: status = %d: %s", res.Code, res.Body)
+	}
+	if res := send(http.MethodPost, "/api/assistant/turns/7/stop", ""); res.Code != http.StatusConflict {
+		t.Fatalf("stop again: status = %d, want 409", res.Code)
 	}
 }

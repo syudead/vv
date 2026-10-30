@@ -4077,6 +4077,7 @@ export const en = {
       of: (n: number, m: number) => `${formatNumber(n)} of ${formatNumber(m)}`,
       more: (count: number) => `+${formatNumber(count)}`,
       working: (time: string) => `Working · ${time}`,
+      stop: "Stop",
       workingLong: (time: string) =>
         `Working · ${time} · it keeps going if you close the panel`,
       show: (count: number) =>
@@ -4089,6 +4090,8 @@ export const en = {
       progress: "Progress of the tool call",
     },
     judged: "Judged by Clef · its probabilities are estimates",
+    unchecked: (items: string) =>
+      `Not found in what the assistant read: ${items}. Check these yourself.`,
     mentioned: "Mentioned",
     showInLibrary: "Show in the library",
     excludedReply: (operation: string) =>
@@ -4191,9 +4194,10 @@ export const en = {
     },
     stopped: {
       step_limit:
-        "Stopped: the request needed more steps than one request may take. Nothing was changed. Try a narrower request.",
+        "Stopped: the model repeated the same tool calls. Nothing was changed. Ask again in other words, or try another model.",
       timeout:
-        "Stopped: the request took longer than the time limit. Nothing was changed. Try a narrower request, or a faster model.",
+        "Stopped: the model didn’t answer in time. Nothing was changed. Ask again, or try a faster model.",
+      cancelled: "Stopped. Nothing was changed.",
       ungrounded:
         "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
       no_answer:
