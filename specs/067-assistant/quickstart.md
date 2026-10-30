@@ -13,7 +13,7 @@ answers scripted tool calls.
   ([running-vv.md](../../docs/how-to/running-vv.md#assistant)).
 - A generation model whose `/api/show` lists `tools`, on a local Ollama or
   through `scripts/clefrelay`. The steps marked vision also need a model
-  that lists `vision`, such as `@cf/meta/llama-3.2-11b-vision-instruct`
+  that lists `vision`, such as `gemma4:26b` or `mistral-small3.1:24b`
   through the relay. The decision model is Clef (`clef-flash`).
 - Settings, Connections, Ollama: endpoint, decision model and generation
   model saved; the check is green.
@@ -29,7 +29,7 @@ progress items and the answer or card for each step in the PR.
 | Send `カラオケ関連の動画` | The answer gives a count equal to the library filtered by `カラオケ` | 2 |
 | Open a video and send `この動画に合いそうなタグを付けて` | A card attaches existing tags; progress may show `clef` or `view_images` on its frames | 3 |
 | Select three videos and send `選択した動画の共通点は？` | Each name in the answer is in all three videos' details | 4 |
-| Select videos and send `ライブ録画タグを作って選択中の動画に付けて` | One card with two steps, the second marked `created by step 1`; `Execute` runs both | 5 |
+| Select videos and send `ライブ録画タグを作って選択中の動画に付けて` | One card with two steps, the second marked `Created by step 1`; `Execute` runs both | 5 |
 | Untick one step, then `Execute` | The unticked step is `skipped` | 6 |
 | Send `重複してるタグをまとめて` | Merge steps, each irreversible with the number of videos that move | 7 |
 | Send `お気に入りの使い方を教えて` | How to favorite and find favorites; no card | 8 |
