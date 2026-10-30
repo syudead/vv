@@ -136,7 +136,8 @@ func TestWriteCallsBecomeOneProposalWithTheCreatedTagFromStepOne(t *testing.T) {
 	if turn.Status != domain.AssistantTurnDone || turn.ProposalID != 1 || len(f.store.plans) != 2 {
 		t.Fatalf("turn = %+v, plans = %+v; want one proposal of two steps", turn, f.store.plans)
 	}
-	offered := f.chat.toolNames(1)
+	// find_tools loads only its first matches; the call by name loads updateVideoTags.add for the next model call.
+	offered := f.chat.toolNames(2)
 	if !slices.Contains(offered, "updateVideoTags__add") {
 		t.Fatalf("offered tools = %v, want updateVideoTags.add as updateVideoTags__add", offered)
 	}

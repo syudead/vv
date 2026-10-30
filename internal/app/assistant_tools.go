@@ -17,8 +17,12 @@ const toolFind = "find_tools"
 // assistantCoreTools are the operations sent on every model call.
 var assistantCoreTools = []string{"listVideos", "getVideo", "listTags", "listPeople", "listOrganizations"}
 
-// findToolsLimit bounds the tools one search answers.
-const findToolsLimit = 15
+// findToolsLimit bounds the tools one search answers, and findToolsLoaded the ones it loads: each loaded schema is
+// sent on every later call, and 15 of them fill much of the 16,384-token context.
+const (
+	findToolsLimit  = 15
+	findToolsLoaded = 3
+)
 
 // assistantWriteNote ends a write tool's description.
 const assistantWriteNote = "Proposed for the owner's approval; it does not run now."
@@ -26,8 +30,9 @@ const assistantWriteNote = "Proposed for the owner's approval; it does not run n
 var findToolsDefinition = domain.ToolDefinition{
 	Name: toolFind,
 	Description: "Search the app's other tools by English words over their names and descriptions. Answers up to " +
-		"15 tools with their kind (read, write or excluded) and summary; the read and write tools it finds can be " +
-		"called after it. An excluded tool says why and on which page the owner does it instead.",
+		"15 tools with their kind (read, write or excluded) and summary, and loads the schemas of the first 3 read " +
+		"or write tools; any read or write tool it finds can be called by name. An excluded tool says why and on " +
+		"which page the owner does it instead.",
 	Parameters: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string",` +
 		`"description":"English words, such as \"favorite videos\" or \"merge tags\"."}},"required":["query"]}`),
 }
@@ -99,9 +104,9 @@ type foundTool struct {
 	Page    string                   `json:"page,omitempty"`
 }
 
-// find ranks the tools by how many of the words their name, summary and description contain, ties by name, and
-// loads the read and write tools among the first 15. It also reports whether the first tool contains more of the
-// words than any other.
+// find ranks the tools by how many of the words their name, summary and description contain, ties by name, answers
+// the first 15 and loads the first findToolsLoaded read and write tools among them. It also reports whether the
+// first tool contains more of the words than any other.
 func (t *turnTools) find(query string) ([]foundTool, bool) {
 	candidates := slices.DeleteFunc(slices.Clone(t.all), func(tool domain.AssistantTool) bool {
 		return slices.Contains(assistantCoreTools, tool.Name) ||
@@ -109,14 +114,17 @@ func (t *turnTools) find(query string) ([]foundTool, bool) {
 	})
 	slices.SortStableFunc(candidates, func(a, b domain.AssistantTool) int { return strings.Compare(a.Name, b.Name) })
 	found := []foundTool{}
+	loaded := 0
 	matches := ranked(candidates, searchWords(query), toolSearchText, findToolsLimit)
 	for _, match := range matches {
 		tool := match.item
 		item := foundTool{Name: domain.AssistantModelToolName(tool.Name), Kind: tool.Kind, Summary: tool.Summary}
-		if tool.Exclusion != nil {
+		switch {
+		case tool.Exclusion != nil:
 			item.Reason, item.Page = tool.Exclusion.Reason, tool.Exclusion.Page
-		} else {
+		case loaded < findToolsLoaded:
 			t.load(tool.Name)
+			loaded++
 		}
 		found = append(found, item)
 	}
