@@ -125,6 +125,22 @@ Every owner `GET` is a read tool, except the excluded ones below. These
 `searchPeopleWithPlugin`, `fetchPersonWithPlugin`, `checkOllama`,
 `checkComfyUI` and `checkAutoTaggingClassifier`.
 
+A read whose response carries a credential is excluded, not a read tool.
+The spec marks such a response property with `x-vv-secret: true`;
+`PluginProxySettings.url` carries it, because the saved proxy URL may hold
+`user:pass@`. The generator records, per operation, whether its response
+reaches a property that has `x-vv-secret: true` or `format: password`, or a
+string property named `password`, `secret`, `token`, `apiKey` or
+`credential`. A test fails when such an operation is classified as a read
+tool. The other owner `GET`s that could return credentials are already
+excluded (`getAccount`, `listApiTokens`, `getAuthSession`). Plugin settings
+answer no secret values, and ComfyUI answers only `apiKeySet`.
+
+As a second guard, the runner replaces the userinfo of every URL in a read
+result with `***` before the result reaches the model
+(`socks5://user:pass@host:1080` becomes `socks5://***@host:1080`). This also
+covers the Ollama endpoint and ComfyUI URLs.
+
 ## Excluded operations
 
 | Excluded | Operations | Page | Why |
@@ -132,6 +148,7 @@ Every owner `GET` is a read tool, except the excluded ones below. These
 | Account, authentication and API tokens (Issue) | `setupAccount`, `login`, `logout`, `updateAccount`, `createApiToken`, `deleteApiToken`, `getAuthSession`, `getAccount`, `listApiTokens` | Settings, Account | Out of scope in the Issue |
 | Plugin upload, approval, settings and order (Issue) | `uploadWorkInfoPlugin`, `deleteWorkInfoPlugin`, `approveWorkInfoPlugin`, `revokeWorkInfoPluginApproval`, `setWorkInfoPluginSettings`, `setWorkInfoPluginLinkOrder` | Settings, Plugins | Out of scope in the Issue |
 | Network and proxy settings (Issue) | `updateNetworkSettings`, `updatePluginProxySettings` | Settings, Network | Out of scope in the Issue |
+| Credentials in the response | `getPluginProxySettings` | Settings, Network | Its `url` may hold the proxy's user and password (`x-vv-secret`), which would reach the model |
 | Media folders (Issue) | `createMediaFolder`, `updateMediaFolder`, `deleteMediaFolder` | Settings, Media folders | Out of scope in the Issue |
 | Watch history deletion (Issue) | `clearWatchHistory`, `deleteWatchHistoryEntry` | History | Out of scope in the Issue |
 | Face runtime download (Issue) | `downloadFaceRuntime` | Settings, Face recognition | Out of scope in the Issue |

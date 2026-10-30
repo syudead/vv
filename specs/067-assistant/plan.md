@@ -137,6 +137,8 @@ The registry has three sources:
 | (same) | Guessing the kind from the field name | `targetId` and `id` do not say what they name |
 | Every owner operation is classified as a read tool, a write tool, or excluded with a reason and the page to use; a test fails for an operation in none or in two | Classifying writes only | Requirement 5 covers every function the screens use, reads included |
 | A read tool is any owner `GET`, and any `POST` that writes nothing (`tagImpact`, `summarizeVideoTags`, `searchWorkInfo`, `fetchWorkInfo`, `searchPeopleWithPlugin`, `fetchPersonWithPlugin`, the connection checks); its arguments are the operation's path and query parameters or body as the spec defines them, and the runner calls the handler in process as the owner | Typed question kinds | Requirement 6 asks for real data; the handlers already enforce plugin approval and viewer rules |
+| A read whose response carries a credential is excluded with the other exclusions in `internal/domain`: the spec marks such a property `x-vv-secret: true` (`PluginProxySettings.url`, which may hold proxy userinfo), the generator records which operations reach a marked, `format: password` or credential-named property, and a test fails when one is a read tool; the runner also replaces URL userinfo in every read result with `***` ([contracts/assistant-tools.md, Read tools](contracts/assistant-tools.md#read-tools)) | Every owner `GET` as a read tool | A tool result goes to the model, which may run at an outside provider; `getPluginProxySettings` answers `socks5://user:pass@…` as saved |
+| (same) | Redaction only | A credential outside a URL would still reach the model; the exclusion keeps the rule on the operation, and redaction guards URLs the marks miss |
 | An operation that answers an image (`getVideoFrame`, `getVideoThumbnail`, `getPersonImage`, `getFaceAppearanceCrop`, covers, …) is an ordinary read tool whose result is an image reference, `{ "image": "<operationId>?<parameters>" }`, with its content type; an operation that answers a video stream or the event stream is excluded | Bytes in a tool result | A chat model holds text; the reference names an in-process call, so it holds no URL and needs no store |
 | A read result goes to the model as JSON with arrays cut to 50 items and strings to 500 characters, each cut marked with the original length, and the whole result cut to 24 KB | Whole responses | The context is 16,384 tokens; `total` fields still give the counts |
 | A write tool is a catalog row. Name-based rows keep their plan builders and target object. A new kind, the schema row, takes the operation's own body and path schema with ids, so operations without a name form (activity undo and retry, face appearance moves and splits, plugin fetch applies, `setVideoDetails`, `putVideoProgress`, `revertThumbnailImage`) are offered too | Name-based rows only | Requirement 5 and the general-primitives rule; an id the model passes comes from a read result, and the card shows what the id names |
@@ -148,7 +150,7 @@ The registry has three sources:
 | `app_help` searches the registry's summaries and a table of the app's pages (route, title, what it is for) in `internal/domain`, and answers the pages and operations that match | A hand-written help text | Operation summaries already describe each function; the page table also gives each exclusion its page |
 | `show_in_library` and `open_page` reuse the shipped filter resolution and navigation; the turn carries the last one as a directive that the panel applies without confirmation | A write step | Requirement 13 |
 | `start_review` starts a review run of a kind, as the `organize` outcome did | A write step | Judging changes nothing; adopting from the list makes the proposals (requirement 15) |
-| The exclusions are the Issue's out-of-scope list plus `deleteVideo`, `clearPeople`, file uploads (`uploadThumbnailImage`, `uploadPersonImage`), drag operations (`organize*`), `openVideoFile`, pairing and the peer's own calls, and `/api/assistant/*` | The shipped, longer list | The general-primitives rule; each remaining exclusion either has no input the server holds or is a trust or irreversible decision the Issue keeps on its page |
+| The exclusions are the Issue's out-of-scope list plus `deleteVideo`, `clearPeople`, file uploads (`uploadThumbnailImage`, `uploadPersonImage`), drag operations (`organize*`), `getPluginProxySettings` (its response may hold credentials), `openVideoFile`, pairing and the peer's own calls, and `/api/assistant/*` | The shipped, longer list | The general-primitives rule; each remaining exclusion either has no input the server holds or is a trust or irreversible decision the Issue keeps on its page |
 
 ## Images, Clef and vision
 
@@ -351,7 +353,8 @@ by `internal/httpapi`. The runner's route table is replaced by the generated
 method and path, and the runner also calls reads and image operations. The
 classification of every owner operation (read, write, excluded with reason
 and page) and the page table go in `internal/domain`. The `x-vv-entity`
-annotations on the write tools' untyped ids go in `api/openapi.yaml`. The
+annotations on the write tools' untyped ids and `x-vv-secret` on
+`PluginProxySettings.url` go in `api/openapi.yaml`. The
 coverage test covers every owner operation. Schema rows, `editVideoThumbnail` and the
 shorter exclusions are part of this unit
 ([Tools](#tools), [contracts/assistant-tools.md](contracts/assistant-tools.md)).
@@ -365,6 +368,11 @@ shorter exclusions are part of this unit
 - `task check SCOPE=go` passes for `./internal/domain/... ./internal/httpapi/... ./scripts/generate/...`.
 - Coverage test: an owner operation added to a copy of the spec in neither
   list fails, and one in two lists fails.
+- Secret test: an operation whose response reaches an `x-vv-secret`,
+  `format: password` or credential-named property fails when classified as
+  a read tool; `getPluginProxySettings` is excluded with its reason and page.
+- Runner test: a read result holding `socks5://user:pass@host:1080` reaches
+  the model as `socks5://***@host:1080`.
 - Entity kind test: every id-like integer in a write tool's path parameters
   and body has a kind the card can label, from its `$ref` name or
   `x-vv-entity`; a copy of the spec with the annotation removed from
