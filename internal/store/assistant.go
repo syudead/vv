@@ -550,13 +550,11 @@ func (s *AssistantStore) CurrentLabels(ctx context.Context, plan domain.Assistan
 	}
 	defer func() { _ = tx.Rollback() }()
 	byKind := map[domain.AssistantLabelKind][]int64{}
-	keys := append([]string{}, plan.Targets.VideoKeys...)
+	keys := plan.VideoKeys()
 	for _, label := range plan.Labels() {
-		if label.Kind == domain.AssistantLabelVideo {
-			keys = append(keys, label.Key)
-			continue
+		if label.Kind != domain.AssistantLabelVideo {
+			byKind[label.Kind] = append(byKind[label.Kind], label.ID)
 		}
-		byKind[label.Kind] = append(byKind[label.Kind], label.ID)
 	}
 	current := domain.AssistantCurrent{Names: map[domain.AssistantLabelRef]string{}}
 	for kind, ids := range byKind {

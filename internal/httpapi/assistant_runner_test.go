@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -222,5 +223,26 @@ func TestActionRunnerSendsAMultipartStageAsFormFields(t *testing.T) {
 	stage.Body = map[string]any{"prompt": []any{"空"}}
 	if _, err := runner.Run(context.Background(), stage); !errors.Is(err, domain.ErrAssistantInvalidArguments) || calls != 1 {
 		t.Errorf("テキストでないフィールド: err = %v, 呼び出し %d 回, want 送る前の ErrAssistantInvalidArguments", err, calls)
+	}
+}
+
+// The rows that take a single peer's video by its path are exactly those whose operations remoteBoundary forwards
+// or answers for a remote video, so the assistant proposes on the peer's videos what the screens edit.
+func TestAssistantRemoteVideoRowsMatchTheRemoteBoundary(t *testing.T) {
+	videos := remoteCollections[0]
+	for _, row := range domain.AssistantCatalog() {
+		pathed, offered := false, true
+		for _, operation := range row.Operations() {
+			op, ok := loadAssistantRegistry().byID[operation]
+			if !ok || !strings.HasPrefix(op.Path, remoteVideoPrefix+"{id}") {
+				continue
+			}
+			pattern := op.Method + " " + op.Path
+			_, forwarded := videos.operations[pattern]
+			pathed, offered = true, offered && (forwarded || videos.merged[pattern])
+		}
+		if pathed && row.RemoteVideos() != offered {
+			t.Errorf("%s: RemoteVideos = %v, remoteBoundary offers it: %v", row.ID, row.RemoteVideos(), offered)
+		}
 	}
 }

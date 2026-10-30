@@ -250,6 +250,19 @@ var assistantCatalog = []AssistantAction{
 	schemaRow("retryActivity", canUndo),
 }
 
+// assistantRemoteVideoRows also act on the peer's videos, which carry PeerIDOffset, wherever the screens edit them:
+// the bulk edits split their selection between the nodes, and the single-video rows call the operations
+// remoteBoundary forwards or answers for a remote video. Every other video row refuses a remote video.
+var assistantRemoteVideoRows = map[string]bool{
+	"updateVideoTags.add": true, "updateVideoTags.remove": true, "applyVideoEdits.add": true,
+	"applyVideoEdits.remove": true, "applyVideoCodeEdits": true, "updateVideoVisibility": true,
+	"setVideoDisplayName": true, "setVideoWorkInfo": true, "setVideoDetails": true, "setVideoThumbnailPosition": true,
+	"confirmVideoTag": true, "rejectVideoTag": true, "applyWorkInfoFetch": true,
+}
+
+// RemoteVideos reports whether the row also acts on the peer's videos.
+func (a AssistantAction) RemoteVideos() bool { return assistantRemoteVideoRows[a.ID] }
+
 // LookupAssistantAction finds a row by its id, such as "batchTags.reject".
 func LookupAssistantAction(id string) (AssistantAction, bool) {
 	i := slices.IndexFunc(assistantCatalog, func(row AssistantAction) bool { return row.ID == id })

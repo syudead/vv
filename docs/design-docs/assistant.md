@@ -311,11 +311,28 @@ pending proposal of the turn it follows.
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |
 | A call identical to an earlier step of the turn is answered as that step | Models repeat a call after its result |
+| A blank name comes back to the model as an error result, never as `clarify` | A clarification about an empty name asks the owner nothing they can answer |
 
 | Rejected | Why |
 | --- | --- |
 | Returning an ambiguous name to the model to pick | The model would choose for the owner |
 | A step per tool call as its own proposal | One request is one card |
+
+### The peer's videos
+
+A paired node's video carries its remote id (`domain.PeerIDOffset` and up), and
+this node's library holds no user key for it
+([peer-library.md](peer-library.md)). A write row whose catalog entry has
+`RemoteVideos` also targets such a video; any other video row refuses it
+([`assistant_remote.go`](../../internal/app/assistant_remote.go)).
+
+| Rule | Why |
+| --- | --- |
+| The rows that take the peer's videos are the bulk edits that split a selection between the nodes (`updateVideoTags`, `applyVideoEdits`, `applyVideoCodeEdits`, `updateVideoVisibility`) and the single-video rows whose operations `remoteBoundary` forwards or answers for a remote video (`setVideoDisplayName`, `setVideoWorkInfo`, `setVideoDetails`, `setVideoThumbnailPosition`, `confirmVideoTag`, `rejectVideoTag`, `applyWorkInfoFetch`); a test holds the single-video rows to `remoteVideoOperations` | The assistant edits the peer's videos wherever the screens do |
+| Any other row answers the model `… is not available for a video of the other VVMDM` as the call's error result | The model tells the owner instead of the turn ending in an empty clarification |
+| The peer's video is resolved by its remote id: the open or selected video, a `{ name, id }` item with a remote id, or a title that matches a remote video the screen shows or selects. The server reads its title through `ActionRunner`, which forwards the read; a read that fails is the call's error result. A title that several of those videos share, with no id or clarification pinning one, ends the turn `clarify` with them as candidates, as the title search does | The title search reads this node's library only, and the order of the selection must not pick the video |
+| The plan keeps the video by the key `peer:<remote id>`, and the worker sends that id at execution without the stale check's presence test | The peer answers a video it no longer has with the forwarded call's error |
+| A bulk edit's 2xx answer whose `remote.failedVideoIds` is not empty counts those videos as failed and the rest of the batch as applied, and ends the step as a failed batch does, with the error code `remote_failed` and the peer's `reason` | The screen API reports the peer's part inside a successful answer, so the status code alone would show a video left public as made private |
 
 ## Images reach Clef or the model
 

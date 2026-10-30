@@ -4625,7 +4625,7 @@ export interface components {
             applied: number;
             failed: number;
         };
-        /** @description The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart. */
+        /** @description The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart. */
         AssistantProposalError: {
             code: string;
             reason?: string;

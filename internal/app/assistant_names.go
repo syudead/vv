@@ -117,6 +117,9 @@ func (t *assistantTurn) one(
 	ctx context.Context, kind domain.AssistantLabelKind, name string, use nameUse,
 ) (domain.AssistantLabel, bool, error) {
 	name = strings.TrimSpace(name)
+	if name == "" {
+		return domain.AssistantLabel{}, t.emptyName(kind, use.about), nil
+	}
 	found, err := t.exact(ctx, kind, name)
 	_, createdWhole := t.writes.createdEarlier(kind, name)
 	// A tag an earlier step creates keeps its whole name, tag word included.

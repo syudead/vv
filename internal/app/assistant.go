@@ -313,8 +313,8 @@ func (a *Assistant) run(ctx context.Context, runner ActionRunner, p domain.Assis
 }
 
 // runStep re-reads step i's labels before its first call, except those an earlier kept step acts on, then runs
-// its batches in order and stops at the first failed one; a video gone between batches counts as failed. It
-// returns the id the step's response carries, for a step that creates something.
+// its batches in order and stops at the first failed one, including one whose 2xx answer says the peer's part
+// failed; a video gone between batches counts as failed. It returns the id the step's response carries, for a step that creates something.
 func (a *Assistant) runStep(
 	ctx context.Context, runner ActionRunner, proposalID int64, steps []domain.AssistantStep, i int,
 	created map[int]int64,
@@ -325,6 +325,7 @@ func (a *Assistant) runStep(
 	if err != nil {
 		return 0, err
 	}
+	current.Videos = domain.WithRemoteVideos(current.Videos, plan.VideoKeys())
 	if plan.Stale(current, domain.TouchedBefore(steps, i)) {
 		step.Status = domain.AssistantStepStale
 		return 0, nil
@@ -350,7 +351,13 @@ func (a *Assistant) runStep(
 				endStep(step, batch, batchCount(plan, ids), callFailure(err))
 				return 0, nil
 			}
-			step.Applied += batchCount(plan, ids)
+			count := batchCount(plan, ids)
+			if failed, failure := remotePartFailure(response.Body, count); failure != nil {
+				step.Applied += count - failed
+				endStep(step, batch, failed, failure)
+				return 0, nil
+			}
+			step.Applied += count
 			id = createdID(response.Body)
 		}
 		if err := a.store.RecordProgress(ctx, proposalID, steps, a.now()); err != nil {
@@ -396,6 +403,7 @@ func (a *Assistant) batchVideos(
 		if found, err = a.store.VideoIDs(ctx, keys); err != nil {
 			return nil, 0, err
 		}
+		found = domain.WithRemoteVideos(found, keys)
 	}
 	ids := make([]int64, 0, len(keys))
 	for _, key := range keys {

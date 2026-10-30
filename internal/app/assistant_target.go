@@ -154,7 +154,8 @@ func (d *planDraft) collectionOrKind(
 	return domain.AssistantLabel{Kind: found[0].Kind, ID: found[0].ID, Name: found[0].Name}, true, nil
 }
 
-// videoTarget expands the target to videos, checks the count the row takes and stores their keys in plan order.
+// videoTarget expands the target to videos, checks the count the row takes and stores their keys in plan order. A
+// peer's video is refused by a row the screens do not offer for it.
 func (d *planDraft) videoTarget(ctx context.Context, target *domain.AssistantTargetRequest) (bool, error) {
 	ids, ok, err := d.videoIDs(ctx, target)
 	if !ok || err != nil {
@@ -163,9 +164,15 @@ func (d *planDraft) videoTarget(ctx context.Context, target *domain.AssistantTar
 	if len(ids) > domain.AssistantSelectionMax {
 		return false, domain.ErrAssistantTooManyVideos
 	}
-	videos, err := d.t.a.videos.VideosByIDs(ctx, domain.AudienceOwner, ids)
+	if slices.ContainsFunc(ids, domain.IsRemoteID) && !d.row.RemoteVideos() {
+		return d.t.refuse("%s", remoteVideoRefusal(d.row.ID)), nil
+	}
+	videos, failure, err := d.t.a.videosByIDs(ctx, d.t.runner, ids)
 	if err != nil {
 		return false, fmt.Errorf("cannot read the target videos: %w", err)
+	}
+	if failure != "" {
+		return d.t.refuse("%s", failure), nil
 	}
 	order := make(map[int64]int, len(ids))
 	for i, id := range ids {

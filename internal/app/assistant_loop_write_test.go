@@ -112,10 +112,16 @@ func newWriteFixture(t *testing.T, replies ...domain.ChatReply) *writeFixture {
 
 func (f *writeFixture) run(t *testing.T, previous int64) domain.AssistantTurn {
 	t.Helper()
+	return f.runIn(t, previous, "タグを作って選択中の動画に付けて",
+		domain.AssistantTurnContext{Route: domain.AssistantRouteLibrary, SelectedVideoIDs: []int64{7}})
+}
+
+// runIn runs one turn of the request on the screen and answers the turn as stored.
+func (f *writeFixture) runIn(t *testing.T, previous int64, request string, screen domain.AssistantTurnContext) domain.AssistantTurn {
+	t.Helper()
 	f.a.runTurn(context.Background(), f.runner, domain.AssistantTurn{
-		ID: 1, Status: domain.AssistantTurnRunning, Request: "タグを作って選択中の動画に付けて", PreviousTurnID: previous,
-		Context:   domain.AssistantTurnContext{Route: domain.AssistantRouteLibrary, SelectedVideoIDs: []int64{7}},
-		StartedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
+		ID: 1, Status: domain.AssistantTurnRunning, Request: request, PreviousTurnID: previous,
+		Context: screen, StartedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
 	})
 	if f.turns.finished == nil {
 		t.Fatal("the turn was not finished")
