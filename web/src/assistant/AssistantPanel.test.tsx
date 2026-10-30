@@ -34,7 +34,7 @@ interface Server {
   turn: (body: AssistantTurnRequest) => Promise<Response> | Response;
   turns: AssistantTurnRequest[];
   /** GET /api/assistant/turns/{id}. */
-  turnRead: () => Response;
+  turnRead: () => Promise<Response> | Response;
   /** GET /api/assistant/turns?active=true. */
   active: () => Response;
   execute: () => Promise<Response> | Response;
@@ -546,6 +546,38 @@ describe("AssistantPanel", () => {
     expect(await within(panel()).findByText("前の依頼")).toBeDefined();
     const log = within(panel()).getByRole("log").textContent ?? "";
     expect(log.indexOf("前の依頼")).toBeLessThan(log.indexOf("次の依頼"));
+  });
+
+  it("409 の turn を読んでいる間にスレッドを消すと、遅れて届いた turn を足さず、次の依頼を送れる", async () => {
+    server.turn = () => json({ code: "assistant_busy", message: "busy", turnId: 4 }, 409);
+    let answer: (response: Response) => void = () => undefined;
+    server.turnRead = () => new Promise<Response>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    renderApp();
+    await ask(user, "次の依頼");
+    await within(panel()).findByText(
+      "Another request is still running. It shows above when it finishes.",
+    );
+
+    await user.click(within(panel()).getByRole("button", { name: "Clear thread" }));
+    await act(async () =>
+      answer(
+        json(
+          turn({
+            id: 4,
+            request: "前の依頼",
+            status: "running",
+            startedAt: "2026-10-30T00:00:00Z",
+          }),
+        ),
+      ),
+    );
+
+    expect(within(panel()).queryByText("前の依頼")).toBeNull();
+    server.turn = () => finished({ answer: "できました" });
+    await user.type(field(), "何かして{Enter}");
+    expect(await within(panel()).findByText("できました")).toBeDefined();
+    expect(server.turns).toHaveLength(2);
   });
 
   it("turn の途中でスレッドを消すと、遅れて届いた結果でページを変えず、次の依頼を送れる", async () => {

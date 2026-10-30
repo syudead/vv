@@ -66,6 +66,7 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
   const clearedAt = useRef(readThreadClearedAt());
   const sending = useRef<AbortController | null>(null);
   const loadRequest = useRef<AbortController | null>(null);
+  const adoptRequest = useRef<AbortController | null>(null);
 
   const publish = useCallback<Publish>((next) => {
     setScreen(next);
@@ -154,8 +155,13 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
   /** The running turn a 409 named joins the thread, whenever it started. */
   const adopt = useCallback(
     (turnId: number) => {
-      getAssistantTurn(turnId).then(
-        (turn) => merge([turn]),
+      adoptRequest.current?.abort();
+      const controller = new AbortController();
+      adoptRequest.current = controller;
+      getAssistantTurn(turnId, controller.signal).then(
+        (turn) => {
+          if (!controller.signal.aborted) merge([turn]);
+        },
         () => undefined,
       );
     },
@@ -227,6 +233,7 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
     sending.current?.abort();
     sending.current = null;
     loadRequest.current?.abort();
+    adoptRequest.current?.abort();
     setLoading(false);
     const now = Date.now();
     clearedAt.current = now;
@@ -280,6 +287,7 @@ export function useThread({ onApplied, onNotReady, onTurn }: ThreadEvents) {
     () => () => {
       sending.current?.abort();
       loadRequest.current?.abort();
+      adoptRequest.current?.abort();
     },
     [],
   );

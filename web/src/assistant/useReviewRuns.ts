@@ -53,14 +53,17 @@ export function useReviewRuns(ids: readonly number[]): ReviewRunsStore {
   useEffect(() => {
     if (runningIds === "") return;
     const refresh = () => {
-      for (const run of latest.current.values()) if (isRunning(run)) read(run.id);
+      for (const id of runningIds.split(",")) read(Number(id));
     };
-    return subscribeServerEvents({
+    const unsubscribe = subscribeServerEvents({
       assistant: refresh,
       open: (reconnected) => {
         if (reconnected) refresh();
       },
     });
+    // A run that finished after its first read and before this subscription sends no later event.
+    refresh();
+    return unsubscribe;
   }, [runningIds, read]);
 
   return { reviews, reviewing };
