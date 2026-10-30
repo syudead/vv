@@ -136,21 +136,21 @@ func (a *Assistant) runTurn(ctx context.Context, runner ActionRunner, turn domai
 	a.runningMu.Lock()
 	a.runningID, a.cancelRunning = turn.ID, cancel
 	a.runningMu.Unlock()
-	defer func() {
-		a.runningMu.Lock()
-		a.runningID, a.cancelRunning = 0, nil
-		a.runningMu.Unlock()
-		cancel()
-	}()
+	defer cancel()
 	loop := newTurnLoop(a, runner, turn)
 	err := loop.run(turnCtx)
-	if err == nil && turnCtx.Err() == nil {
+	// From here a Stop is refused: the turn either ended cancelled or builds its proposal whole.
+	a.runningMu.Lock()
+	cancelled := turnCtx.Err() != nil
+	a.runningID, a.cancelRunning = 0, nil
+	a.runningMu.Unlock()
+	if err == nil && !cancelled {
 		err = loop.propose(ctx)
 	}
 	if ctx.Err() != nil {
 		return
 	}
-	if turnCtx.Err() != nil {
+	if cancelled {
 		// The owner stopped it; what the loop held is dropped, the progress so far is kept.
 		err = nil
 		loop.stop(domain.AssistantStopCancelled)

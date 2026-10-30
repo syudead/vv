@@ -23,11 +23,16 @@ type fakeAssistantStore struct {
 	finished  *domain.AssistantRunResult
 	gone      map[string]bool
 	discarded []int64
+	// creating runs as a proposal is stored.
+	creating func()
 }
 
 func (f *fakeAssistantStore) CreateProposal(
 	_ context.Context, _ int64, request string, plans []domain.AssistantPlan, now time.Time,
 ) (domain.AssistantProposal, error) {
+	if f.creating != nil {
+		f.creating()
+	}
 	f.plans = plans
 	if len(plans) > 0 {
 		f.created = plans[0]

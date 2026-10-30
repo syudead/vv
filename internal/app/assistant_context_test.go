@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -47,5 +48,35 @@ func TestFitContextCutsTheLatestRound(t *testing.T) {
 	if !strings.HasPrefix(got, "あああ") || !strings.Contains(got, "cut to fit the context: 60000 bytes in all") ||
 		len(got) >= len(big) {
 		t.Fatalf("latest result = %.40q…, want its start kept and the cut noted", got)
+	}
+}
+
+// Past what dropping results frees, whole earlier rounds give way to one note; the request and the latest round stay,
+// and no result outlives its call.
+func TestFitContextDropsWholeEarlierRounds(t *testing.T) {
+	args := json.RawMessage(`{"q":"` + strings.Repeat("x", 9000) + `"}`)
+	round := func() []domain.ChatMessage {
+		return []domain.ChatMessage{
+			{Role: domain.ChatRoleAssistant, ToolCalls: []domain.ToolCall{{Name: "listVideos", Arguments: args}}},
+			{Role: domain.ChatRoleTool, Content: droppedResult},
+		}
+	}
+	messages := []domain.ChatMessage{
+		{Role: domain.ChatRoleSystem, Content: "rules"},
+		{Role: domain.ChatRoleUser, Content: "<request>何人?</request>"},
+	}
+	for range 5 {
+		messages = append(messages, round()...)
+	}
+	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 8192}, messages: messages}
+
+	l.fitContext(nil)
+
+	got := l.messages
+	if got[1].Content != "<request>何人?</request>" || got[2].Content != droppedRounds {
+		t.Fatalf("messages start %+v, want the request then the note", got[:3])
+	}
+	if got[3].Role != domain.ChatRoleAssistant || len(got) != 2+1+2*2 {
+		t.Fatalf("kept %d messages starting with %s, want the note and the last 2 whole rounds", len(got), got[3].Role)
 	}
 }

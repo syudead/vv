@@ -56,7 +56,37 @@ func (l *turnLoop) fitContext(tools []domain.ToolDefinition) {
 		m.Content = droppedResult
 		used += messageTokens(*m)
 	}
+	used, round = l.dropRounds(used, budget, round)
 	l.cutLatest(round, used-budget)
+}
+
+// droppedRounds stands for the earlier rounds dropRounds removed.
+const droppedRounds = "Earlier tool calls and their results were dropped to fit the context; call a tool again if you need it."
+
+// dropRounds removes whole earlier rounds after the request, oldest first, until the prompt fits, and puts one
+// note in their place; the system message, the request and the latest round stay. It answers the tokens used and
+// the latest round's new index.
+func (l *turnLoop) dropRounds(used, budget, round int) (int, int) {
+	const kept = 2 // The system message and the request.
+	end := kept
+	if end < len(l.messages) && l.messages[end].Content == droppedRounds {
+		end++
+	}
+	start := end
+	// A round ends where the next assistant message starts, so no tool result outlives its call.
+	for end < round && (used > budget || l.messages[end].Role != domain.ChatRoleAssistant) {
+		used -= messageTokens(l.messages[end])
+		end++
+	}
+	if end == start {
+		return used, round
+	}
+	note := domain.ChatMessage{Role: domain.ChatRoleUser, Content: droppedRounds}
+	if start == kept {
+		used += messageTokens(note)
+	}
+	l.messages = append(append(l.messages[:kept:kept], note), l.messages[end:]...)
+	return used, round - (end - kept) + 1
 }
 
 // cutLatest takes over tokens from the latest round's tool results, longest first, ending each cut with a note.
