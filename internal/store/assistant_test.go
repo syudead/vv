@@ -163,14 +163,27 @@ func TestApproveAssistantProposalSkipsUntickedSteps(t *testing.T) {
 	}
 }
 
-// The step migration deletes the proposals the one-shot build stored, whose plan column holds a single plan.
+// The step migration deletes the proposals the one-shot build stored, whose plan column holds a single plan, and
+// interrupts the unfinished run entry of an approved one, which no recovery reaches once its proposal is gone.
 func TestAssistantStepsMigrationDeletesOneShotProposals(t *testing.T) {
 	db, provider := migrateTo(t, 88)
-	execSQL(t, db, `insert into assistant_proposals (status, request, plan, created_at)
-		values ('proposed', 'x', '{"actionId":"mergeTag"}', 1), ('done', 'y', '{"actionId":"deleteTag"}', 2)`)
+	execSQL(t, db, `insert into activity_entries (id, kind, feature, subject_kind, subject_key, subject_label, status,
+		reason, decider, created_at, updated_at) values
+		(7, 'assistant_run', 'assistant', 'proposal', '2', 'y', 'running', 'waiting', 'owner', 1, 1),
+		(8, 'assistant_run', 'assistant', 'proposal', '3', 'z', 'attention', 'failed', 'owner', 1, 1),
+		(9, 'import', 'import', 'video', 'k', 'v', 'running', 'waiting', 'rule', 1, 1)`)
+	execSQL(t, db, `insert into assistant_proposals (status, request, plan, created_at, activity_id)
+		values ('proposed', 'x', '{"actionId":"mergeTag"}', 1, null), ('approved', 'y', '{"actionId":"deleteTag"}', 2, 7),
+		('failed', 'z', '{"actionId":"deleteTag"}', 3, 8)`)
 
 	if _, err := provider.UpTo(context.Background(), 89); err != nil {
 		t.Fatal(err)
+	}
+	want := [][]any{{int64(7), "attention", "interrupted", int64(1)}, {int64(8), "attention", "failed", int64(0)},
+		{int64(9), "running", "waiting", int64(0)}}
+	if got := queryRows(t, db.sql, `select id, status, reason, updated_at > 1 from activity_entries order by id`,
+		4); !reflect.DeepEqual(got, want) {
+		t.Errorf("activity entries after the migration = %v, want %v", got, want)
 	}
 	var count int
 	if err := db.sql.QueryRow(`select count(*) from assistant_proposals`).Scan(&count); err != nil {
