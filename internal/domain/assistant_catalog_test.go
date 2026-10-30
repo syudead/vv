@@ -10,11 +10,13 @@ func TestAssistantCatalogRowIDsAreUnique(t *testing.T) {
 			t.Errorf("行 ID %s が重複している", row.ID)
 		}
 		seen[row.ID] = true
-		operations[row.Operation] = true
+		for _, operation := range row.Operations() {
+			operations[operation] = true
+		}
 	}
-	// The contract counts 74 operations in 80 rows.
-	if len(seen) != 80 || len(operations) != 74 {
-		t.Errorf("行 %d / 操作 %d, want 80 / 74", len(seen), len(operations))
+	// 80 shipped rows on 74 operations, plus 8 schema rows, 2 fetch-apply rows and the thumbnail edit on 5.
+	if len(seen) != 91 || len(operations) != 89 {
+		t.Errorf("行 %d / 操作 %d, want 91 / 89", len(seen), len(operations))
 	}
 }
 

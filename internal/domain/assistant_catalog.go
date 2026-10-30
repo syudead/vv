@@ -57,13 +57,24 @@ const (
 	AssistantArgSort              AssistantArgument = "sort"
 	AssistantArgParentName        AssistantArgument = "parentName"
 	AssistantArgScope             AssistantArgument = "scope"
+	AssistantArgFetchID           AssistantArgument = "fetchId"
+	AssistantArgFields            AssistantArgument = "fields"
+	AssistantArgAtMs              AssistantArgument = "atMs"
+	AssistantArgInstruction       AssistantArgument = "instruction"
 )
 
 // AssistantAction is one catalog row: the only writes the assistant may propose and run.
 type AssistantAction struct {
 	// ID is the operationId, or operationId.action when the request picks one of several actions.
-	ID        string
+	ID string
+	// Operation is empty for a composite row, which runs Stages instead.
 	Operation string
+	// Schema rows take the operation's own path parameters and body, ids included, instead of a target and
+	// named arguments.
+	Schema bool
+	// Stages are the operations a composite row runs in order; Cleanup are those it calls when a stage fails.
+	Stages  []string
+	Cleanup []string
 	// Action is the variant the runner sends; empty for an operation with one action.
 	Action    string
 	Target    AssistantTarget
@@ -106,6 +117,20 @@ func smartFolderRow(id string, target AssistantTarget, args ...AssistantArgument
 	return row
 }
 
+func schemaRow(id string, irreversible bool) AssistantAction {
+	row := assistantRow(id, AssistantTargetNone, false, irreversible)
+	row.Schema = true
+	return row
+}
+
+// editVideoThumbnail runs a ComfyUI edit session from start to apply; revertThumbnailImage undoes the result.
+var editVideoThumbnail = AssistantAction{
+	ID: "editVideoThumbnail", Target: AssistantTargetVideo,
+	Arguments: []AssistantArgument{AssistantArgAtMs, AssistantArgInstruction},
+	Stages:    []string{"startThumbnailEdit", "runThumbnailEdit", "applyThumbnailEdit"},
+	Cleanup:   []string{"cancelThumbnailEdit", "discardThumbnailEdit"},
+}
+
 const (
 	viaBatches, oneCall = true, false
 	cannotUndo, canUndo = true, false
@@ -139,6 +164,11 @@ var assistantCatalog = []AssistantAction{
 	assistantRow("rejudgeVersionCandidate", AssistantTargetVideoPair, oneCall, canUndo),
 	assistantRow("createVirtualVideo", AssistantTargetNone, oneCall, canUndo, AssistantArgName, AssistantArgURL),
 	assistantRow("mergeVirtualVideo", AssistantTargetVirtualVideo, oneCall, cannotUndo, AssistantArgNames),
+	assistantRow("applyWorkInfoFetch", AssistantTargetVideo, oneCall, canUndo, AssistantArgFetchID, AssistantArgFields),
+	editVideoThumbnail,
+	schemaRow("revertThumbnailImage", canUndo),
+	schemaRow("setVideoDetails", canUndo),
+	schemaRow("putVideoProgress", canUndo),
 
 	// Tags and tag kinds
 	assistantRow("createTag", AssistantTargetNone, oneCall, canUndo, AssistantArgName, AssistantArgTagKindName),
@@ -169,6 +199,11 @@ var assistantCatalog = []AssistantAction{
 	assistantRow("confirmFaceCandidate", AssistantTargetPerson, oneCall, cannotUndo, AssistantArgNames),
 	assistantRow("dismissFaceCandidate", AssistantTargetPerson, oneCall, canUndo, AssistantArgNames),
 	assistantRow("reopenFaceCandidate", AssistantTargetPerson, oneCall, canUndo, AssistantArgNames),
+	assistantRow("applyPersonPluginFetch", AssistantTargetPerson, oneCall, canUndo,
+		AssistantArgFetchID, AssistantArgFields),
+	schemaRow("moveFaceAppearances", cannotUndo),
+	schemaRow("splitFaceAppearances", cannotUndo),
+	schemaRow("splitFaceAppearance", cannotUndo),
 	assistantRow("createOrganization", AssistantTargetNone, oneCall, canUndo,
 		AssistantArgName, AssistantArgAliases, AssistantArgParentName),
 	assistantRow("updateOrganization", AssistantTargetOrganization, oneCall, canUndo,
@@ -209,70 +244,11 @@ var assistantCatalog = []AssistantAction{
 	settingsRow("updateComfyUISettings", AssistantArgProvider, AssistantArgURL, AssistantArgModel),
 	assistantRow("startScan", AssistantTargetNone, oneCall, canUndo),
 	assistantRow("startRescan", AssistantTargetNone, oneCall, canUndo, AssistantArgScope),
+
+	// Activity
+	schemaRow("undoActivity", canUndo),
+	schemaRow("retryActivity", canUndo),
 }
-
-// AssistantExclusion is a non-GET screen operation the assistant never offers, with the reason group.
-type AssistantExclusion struct {
-	Operation string
-	Group     string
-	// ByIssue separates the parent Issue's exclusions from those the plan added.
-	ByIssue bool
-}
-
-func excluded(group string, byIssue bool, operations ...string) []AssistantExclusion {
-	out := make([]AssistantExclusion, 0, len(operations))
-	for _, op := range operations {
-		out = append(out, AssistantExclusion{Operation: op, Group: group, ByIssue: byIssue})
-	}
-	return out
-}
-
-var assistantExclusions = slices.Concat(
-	excluded("Account, authentication and API tokens", true,
-		"setupAccount", "login", "logout", "updateAccount", "createApiToken", "deleteApiToken"),
-	excluded("Plugin upload, approval, settings and order", true,
-		"uploadWorkInfoPlugin", "deleteWorkInfoPlugin", "approveWorkInfoPlugin", "revokeWorkInfoPluginApproval",
-		"setWorkInfoPluginSettings", "setWorkInfoPluginLinkOrder"),
-	excluded("Network and proxy settings", true, "updateNetworkSettings", "updatePluginProxySettings"),
-	excluded("Media folders", true, "createMediaFolder", "updateMediaFolder", "deleteMediaFolder"),
-	excluded("Watch history deletion", true, "clearWatchHistory", "deleteWatchHistoryEntry"),
-	excluded("Face runtime download", true, "downloadFaceRuntime"),
-	excluded("Onboarding", true, "updateOnboarding", "pickOnboardingInterests"),
-
-	excluded("Deleting every person", false, "clearPeople"),
-	excluded("Deleting a video", false, "deleteVideo"),
-	excluded("Images the page sends", false, "uploadThumbnailImage", "revertThumbnailImage", "uploadPersonImage"),
-	excluded("Thumbnail edit sessions", false,
-		"startThumbnailEdit", "startThumbnailEditFromImage", "discardThumbnailEdit", "runThumbnailEdit",
-		"cancelThumbnailEdit", "applyThumbnailEdit"),
-	excluded("Plugin fetches", false,
-		"searchWorkInfo", "fetchWorkInfo", "applyWorkInfoFetch", "searchPeopleWithPlugin", "fetchPersonWithPlugin",
-		"applyPersonPluginFetch"),
-	excluded("Face appearances", false, "moveFaceAppearances", "splitFaceAppearances", "splitFaceAppearance"),
-	excluded("Drag operations", false,
-		"organizeReorder", "organizeGroup", "organizeMove", "organizeMerge", "organizeBundle", "organizeUndo"),
-	excluded("Activity log actions", false, "retryActivity", "undoActivity"),
-	excluded("Playback and the server PC", false, "putVideoProgress", "openVideoFile"),
-	excluded("Two operations in one", false, "setVideoDetails"),
-	excluded("Reads and tests sent as POST", false,
-		"summarizeVideoTags", "summarizeVideoEdits", "summarizeVideoCodeEdits", "tagImpact", "checkOllama",
-		"checkComfyUI", "checkAutoTaggingClassifier", "listWorkInfoFillTargets"),
-	// Pairing is a trust decision made with the other node's code and certificate fingerprint on its own page,
-	// and the fetch, match and vocabulary calls are the paired node's, with its credential, never the screens'.
-	excluded("Pairing with another node and the peer's own calls", false,
-		"issuePairingCode", "pairPeer", "updatePeerAddress", "confirmPeerCertificate", "unpairPeer", "forgetPeer",
-		"revokePeerGrant", "applyPeerVocabulary", "matchPeerCredits", "applyPeerFetchedWorkInfo",
-		"applyPeerFetchedPerson"),
-)
-
-// AssistantExcludedPathPrefix holds the assistant's own operations, which it never calls.
-const AssistantExcludedPathPrefix = "/api/assistant/"
-
-// AssistantCatalog returns the rows in contract order; callers may not change the shared rows.
-func AssistantCatalog() []AssistantAction { return slices.Clone(assistantCatalog) }
-
-// AssistantExclusions returns the operations the catalog leaves out on purpose.
-func AssistantExclusions() []AssistantExclusion { return slices.Clone(assistantExclusions) }
 
 // LookupAssistantAction finds a row by its id, such as "batchTags.reject".
 func LookupAssistantAction(id string) (AssistantAction, bool) {
@@ -287,17 +263,21 @@ func LookupAssistantAction(id string) (AssistantAction, bool) {
 type AssistantCall struct {
 	// ActionID is the catalog row id; the runner refuses any other value before calling.
 	ActionID string
+	// Operation names the stage or cleanup a composite row calls; other rows leave it empty.
+	Operation string
 	// Path fills the operation's path parameters by name, such as "id" or "tagId".
 	Path  map[string]string
 	Query map[string]string
 	// Body holds the request fields; the runner adds the row's action and, for settings, the current values.
+	// A schema row's body is checked against the operation's schema before the call.
 	Body map[string]any
 }
 
 // AssistantCallResult is the successful response of an operation call.
 type AssistantCallResult struct {
-	Status int
-	Body   []byte
+	Status      int
+	ContentType string
+	Body        []byte
 }
 
 // AssistantCallError is a failed operation call, carrying the screen API's error code and reason.

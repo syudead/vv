@@ -7,116 +7,29 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ActionRunner calls the screen API handler of an assistant catalog row in process, as the owner,
-// the way /mcp calls the external API mux; it implements app.ActionRunner.
+// ActionRunner calls screen API handlers in process, as the owner, the way /mcp calls the external API mux: the
+// write rows of the assistant catalog, the read tools, and the images read tools refer to. It implements
+// app.ActionRunner. Each operation's method, path and schemas come from the generated tool registry.
 type ActionRunner struct {
 	// api is the generated mux without the auth and mutation boundaries: the caller is the server itself.
 	api http.Handler
 }
 
-// assistantRoute is how a catalog operation is sent; tests keep it equal to api/openapi.yaml.
-type assistantRoute struct {
-	method string
-	path   string
-	body   bool
-	// actionField receives the catalog row's action.
-	actionField string
-	// actionKeys are fields whose objects, or array elements, take the action as their key (add or remove);
-	// a key of another action is refused.
-	actionKeys []string
-	// current lists the request fields copied from GET path before the call's own fields replace them.
-	current []string
-}
+// assistantActionKeys are body fields whose objects, or array elements, take the row's action as their key (add
+// or remove); a key of another action is refused. Other rows with an action send it as the body's action field.
+var assistantActionKeys = map[string][]string{"applyVideoEdits": {"tags", "credits"}}
 
-var assistantRoutes = map[string]assistantRoute{
-	"addGroupItems":       {method: http.MethodPost, path: "/api/groups/{id}/items", body: true},
-	"addPlaylistItems":    {method: http.MethodPost, path: "/api/playlists/{id}/items", body: true},
-	"addTagSynonym":       {method: http.MethodPost, path: "/api/tags/{id}/synonyms", body: true},
-	"applyVideoCodeEdits": {method: http.MethodPost, path: "/api/video-code-edits", body: true},
-	"applyVideoEdits": {
-		method: http.MethodPost, path: "/api/video-edits", body: true, actionKeys: []string{"tags", "credits"},
-	},
-	"autoTagVideo":                  {method: http.MethodPost, path: "/api/videos/{id}/auto-tag"},
-	"batchTags":                     {method: http.MethodPost, path: "/api/tags/batch", body: true, actionField: "action"},
-	"bundleVideos":                  {method: http.MethodPost, path: "/api/video-bundles", body: true},
-	"changeSmartFolder":             {method: http.MethodPatch, path: "/api/smart-folders/{id}", body: true},
-	"confirmFaceCandidate":          {method: http.MethodPost, path: "/api/people/{id}/face-candidates/{otherId}/confirm"},
-	"confirmTag":                    {method: http.MethodPost, path: "/api/tags/{id}/confirm"},
-	"confirmVideoTag":               {method: http.MethodPost, path: "/api/videos/{id}/tags/{tagId}/confirm"},
-	"createGroup":                   {method: http.MethodPost, path: "/api/groups", body: true},
-	"createOrganization":            {method: http.MethodPost, path: "/api/organizations", body: true},
-	"createPerson":                  {method: http.MethodPost, path: "/api/people", body: true},
-	"createPlaylist":                {method: http.MethodPost, path: "/api/playlists", body: true},
-	"createSmartFolder":             {method: http.MethodPost, path: "/api/smart-folders", body: true},
-	"createTag":                     {method: http.MethodPost, path: "/api/tags", body: true},
-	"createTagKind":                 {method: http.MethodPost, path: "/api/tag-kinds", body: true},
-	"createVirtualVideo":            {method: http.MethodPost, path: "/api/virtual-videos", body: true},
-	"deleteCollections":             {method: http.MethodPost, path: "/api/collections/delete", body: true},
-	"deleteOrganization":            {method: http.MethodDelete, path: "/api/organizations/{id}"},
-	"deletePerson":                  {method: http.MethodDelete, path: "/api/people/{id}"},
-	"deletePersonImage":             {method: http.MethodDelete, path: "/api/people/{id}/image"},
-	"deletePlaylist":                {method: http.MethodDelete, path: "/api/playlists/{id}"},
-	"deleteSmartFolder":             {method: http.MethodDelete, path: "/api/smart-folders/{id}"},
-	"deleteTag":                     {method: http.MethodDelete, path: "/api/tags/{id}"},
-	"deleteTagKind":                 {method: http.MethodDelete, path: "/api/tag-kinds/{id}"},
-	"dismissFaceCandidate":          {method: http.MethodPost, path: "/api/people/{id}/face-candidates/{otherId}/dismiss"},
-	"dismissVersionCandidate":       {method: http.MethodPost, path: "/api/version-candidates/dismiss", body: true},
-	"dissolveGroup":                 {method: http.MethodDelete, path: "/api/groups/{id}"},
-	"forgetRejectedTagName":         {method: http.MethodDelete, path: "/api/tags/rejected-names"},
-	"makeRepresentativeVersion":     {method: http.MethodPost, path: "/api/videos/{id}/make-representative"},
-	"mergeOrganizations":            {method: http.MethodPost, path: "/api/organizations/{id}/merge", body: true},
-	"mergePeople":                   {method: http.MethodPost, path: "/api/people/{id}/merge", body: true},
-	"mergeTag":                      {method: http.MethodPost, path: "/api/tags/{id}/merge", body: true},
-	"mergeVirtualVideo":             {method: http.MethodPost, path: "/api/virtual-videos/{id}/merge", body: true},
-	"moveGroupItem":                 {method: http.MethodPost, path: "/api/groups/{id}/items/{itemId}/move", body: true},
-	"movePlaylistItem":              {method: http.MethodPost, path: "/api/playlists/{id}/items/{itemId}/move", body: true},
-	"rejectTag":                     {method: http.MethodPost, path: "/api/tags/{id}/reject"},
-	"rejectVideoTag":                {method: http.MethodPost, path: "/api/videos/{id}/tags/{tagId}/reject"},
-	"rejudgeVersionCandidate":       {method: http.MethodPost, path: "/api/version-candidates/rejudge", body: true},
-	"removeGroupItems":              {method: http.MethodPost, path: "/api/groups/{id}/items/remove", body: true},
-	"removePlaylistItem":            {method: http.MethodDelete, path: "/api/playlists/{id}/items/{itemId}"},
-	"removeTagSynonym":              {method: http.MethodDelete, path: "/api/tags/{id}/synonyms"},
-	"renameGroup":                   {method: http.MethodPatch, path: "/api/groups/{id}", body: true},
-	"renamePlaylist":                {method: http.MethodPatch, path: "/api/playlists/{id}", body: true},
-	"renameTag":                     {method: http.MethodPatch, path: "/api/tags/{id}", body: true},
-	"renameTagKind":                 {method: http.MethodPatch, path: "/api/tag-kinds/{id}", body: true},
-	"reopenFaceCandidate":           {method: http.MethodPost, path: "/api/people/{id}/face-candidates/{otherId}/reopen"},
-	"reprobeVideo":                  {method: http.MethodPost, path: "/api/videos/{id}/probe"},
-	"setFolderGrouping":             {method: http.MethodPut, path: "/api/folders/{rootId}/grouping", body: true},
-	"setTagKindCardFirst":           {method: http.MethodPut, path: "/api/tag-kinds/{id}/card-first", body: true},
-	"setVideoDisplayName":           {method: http.MethodPut, path: "/api/videos/{id}/display-name", body: true},
-	"setVideoThumbnailPosition":     {method: http.MethodPut, path: "/api/videos/{id}/thumbnail-position", body: true},
-	"setVideoWorkInfo":              {method: http.MethodPut, path: "/api/videos/{id}/work-info", body: true},
-	"startAutoTagging":              {method: http.MethodPost, path: "/api/auto-tagging/runs", body: true},
-	"startFaceRecognition":          {method: http.MethodPost, path: "/api/face-recognition/runs", body: true},
-	"startRescan":                   {method: http.MethodPost, path: "/api/scans/rescan", body: true},
-	"startScan":                     {method: http.MethodPost, path: "/api/scans", body: true},
-	"tagGroup":                      {method: http.MethodPost, path: "/api/groups/{id}/tag"},
-	"unbundleVideo":                 {method: http.MethodPost, path: "/api/videos/{id}/unbundle"},
-	"updateFavorites":               {method: http.MethodPut, path: "/api/favorites", body: true},
-	"updateOrganization":            {method: http.MethodPatch, path: "/api/organizations/{id}", body: true},
-	"updatePerson":                  {method: http.MethodPatch, path: "/api/people/{id}", body: true},
-	"updateVideoTags":               {method: http.MethodPost, path: "/api/video-tags", body: true, actionField: "action"},
-	"updateVideoVisibility":         {method: http.MethodPut, path: "/api/video-visibility", body: true},
-	"updateAutoImportSettings":      settingsRoute("/api/settings/auto-import", "enabled"),
-	"updateAutoTaggingSettings":     settingsRoute("/api/settings/auto-tagging", "enabled", "afterImport", "threshold", "tentativeThreshold"),
-	"updateComfyUISettings":         settingsRoute("/api/settings/comfyui", "provider", "url", "model"),
-	"updateFaceRecognitionSettings": settingsRoute("/api/settings/face-recognition", "enabled", "recognizer"),
-	"updateOllamaSettings":          settingsRoute("/api/settings/ollama", "endpoint", "model", "generationModel"),
-	"updateTranscodingSettings":     settingsRoute("/api/settings/transcoding", "videoEncoder"),
-	"updateVersionJudgingSettings":  settingsRoute("/api/settings/version-judging", "enabled"),
-}
-
-func settingsRoute(path string, current ...string) assistantRoute {
-	return assistantRoute{method: http.MethodPut, path: path, body: true, current: current}
-}
+// Tools lists the assistant's tools: every owner read and excluded operation and every catalog row.
+func (r *ActionRunner) Tools() []domain.AssistantTool { return loadAssistantRegistry().tools() }
 
 // Run implements app.ActionRunner.
 func (r *ActionRunner) Run(ctx context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error) {
@@ -124,37 +37,91 @@ func (r *ActionRunner) Run(ctx context.Context, call domain.AssistantCall) (doma
 	if !ok {
 		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q", domain.ErrAssistantActionUnknown, call.ActionID)
 	}
-	route, ok := assistantRoutes[row.Operation]
-	if !ok {
-		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q has no route", domain.ErrAssistantActionUnknown, row.ID)
+	operation := row.Operation
+	if operation == "" {
+		operation = call.Operation
 	}
-	target, err := route.target(call)
+	if !slices.Contains(row.Operations(), operation) || (row.Operation != "" && call.Operation != "" && call.Operation != row.Operation) {
+		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q does not call %q", domain.ErrAssistantActionUnknown, row.ID, call.Operation)
+	}
+	op, ok := loadAssistantRegistry().byID[operation]
+	if !ok {
+		return domain.AssistantCallResult{}, fmt.Errorf("%w: %q has no operation", domain.ErrAssistantActionUnknown, row.ID)
+	}
+	target, err := requestTarget(op, call.Path, queryValues(call.Query))
 	if err != nil {
 		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
 	}
-	if !route.body {
-		return r.send(ctx, route.method, target, nil)
+	if !op.Body {
+		return r.send(ctx, op.Method, target, "", nil)
 	}
-	body := map[string]any{}
-	if len(route.current) > 0 {
-		if body, err = r.current(ctx, target, route.current); err != nil {
-			return domain.AssistantCallResult{}, err
-		}
-	}
-	maps.Copy(body, call.Body)
-	if route.actionField != "" {
-		body[route.actionField] = row.Action
-	}
-	if err := route.checkActionKeys(row.Action, body); err != nil {
+	body, err := r.rowBody(ctx, row, op, target, call.Body)
+	if err != nil {
 		return domain.AssistantCallResult{}, fmt.Errorf("assistant action %s: %w", row.ID, err)
 	}
-	return r.send(ctx, route.method, target, body)
+	return r.send(ctx, op.Method, target, op.BodyType, body)
 }
 
-var assistantActionKeys = []string{"add", "remove"}
+// rowBody builds the request body of a row: the current settings for a settings row, the call's fields, and the
+// row's action; a schema row's body must match the operation's schema.
+func (r *ActionRunner) rowBody(
+	ctx context.Context, row domain.AssistantAction, op *registryOperation, target string, fields map[string]any,
+) (map[string]any, error) {
+	body := map[string]any{}
+	if row.ReadsCurrent {
+		current, err := r.current(ctx, op, target)
+		if err != nil {
+			return nil, err
+		}
+		body = current
+	}
+	maps.Copy(body, fields)
+	if row.Schema {
+		if err := validateBody(op, body); err != nil {
+			return nil, err
+		}
+	}
+	keys, keyed := assistantActionKeys[row.Operation]
+	if row.Action != "" && !keyed {
+		body["action"] = row.Action
+	}
+	if err := checkActionKeys(keys, row.Action, body); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
 
-func (route assistantRoute) checkActionKeys(action string, body map[string]any) error {
-	for _, field := range route.actionKeys {
+func validateBody(op *registryOperation, body map[string]any) error {
+	_, schema, err := op.schemas()
+	if err != nil {
+		return err
+	}
+	if schema == nil {
+		return fmt.Errorf("%w: %s takes no body", domain.ErrAssistantInvalidArguments, op.ID)
+	}
+	// Round trip through JSON so typed Go values validate as the decoded JSON a handler receives.
+	var instance any
+	if err := roundTrip(body, &instance); err != nil {
+		return err
+	}
+	if err := schema.Validate(instance); err != nil {
+		return fmt.Errorf("%w: %w", domain.ErrAssistantInvalidArguments, err)
+	}
+	return nil
+}
+
+func roundTrip(value any, out any) error {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("encode assistant arguments: %w", err)
+	}
+	return json.Unmarshal(encoded, out)
+}
+
+var assistantActionNames = []string{"add", "remove"}
+
+func checkActionKeys(fields []string, action string, body map[string]any) error {
+	for _, field := range fields {
 		var edits []any
 		switch value := body[field].(type) {
 		case []any:
@@ -164,9 +131,9 @@ func (route assistantRoute) checkActionKeys(action string, body map[string]any) 
 			edits = []any{value}
 		}
 		for _, edit := range edits {
-			fields, _ := edit.(map[string]any)
-			for _, key := range assistantActionKeys {
-				if _, ok := fields[key]; ok && key != action {
+			values, _ := edit.(map[string]any)
+			for _, key := range assistantActionNames {
+				if _, ok := values[key]; ok && key != action {
 					return fmt.Errorf("%s holds %s, which is not the action %s", field, key, action)
 				}
 			}
@@ -175,45 +142,43 @@ func (route assistantRoute) checkActionKeys(action string, body map[string]any) 
 	return nil
 }
 
-// target fills the path parameters, escaping each value, and appends the query.
-func (route assistantRoute) target(call domain.AssistantCall) (string, error) {
-	var path strings.Builder
-	rest := route.path
-	for {
-		start := strings.IndexByte(rest, '{')
-		if start < 0 {
-			path.WriteString(rest)
-			break
-		}
-		end := strings.IndexByte(rest, '}')
-		name := rest[start+1 : end]
-		value, ok := call.Path[name]
-		if !ok || value == "" {
+func queryValues(query map[string]string) url.Values {
+	values := url.Values{}
+	for key, value := range query {
+		values.Set(key, value)
+	}
+	return values
+}
+
+// requestTarget fills the path parameters, escaping each value, and appends the query.
+func requestTarget(op *registryOperation, path map[string]string, query url.Values) (string, error) {
+	target := op.Path
+	for _, name := range op.PathParams {
+		value := path[name]
+		if value == "" {
 			return "", fmt.Errorf("path parameter %s is missing", name)
 		}
-		path.WriteString(rest[:start])
-		path.WriteString(url.PathEscape(value))
-		rest = rest[end+1:]
+		target = strings.Replace(target, "{"+name+"}", url.PathEscape(value), 1)
 	}
-	if len(call.Query) == 0 {
-		return path.String(), nil
+	if len(query) == 0 {
+		return target, nil
 	}
-	query := url.Values{}
-	for key, value := range call.Query {
-		query.Set(key, value)
-	}
-	return path.String() + "?" + query.Encode(), nil
+	return target + "?" + query.Encode(), nil
 }
 
 // current reads the settings and keeps the fields the update request takes.
-func (r *ActionRunner) current(ctx context.Context, target string, fields []string) (map[string]any, error) {
-	result, err := r.send(ctx, http.MethodGet, target, nil)
+func (r *ActionRunner) current(ctx context.Context, op *registryOperation, target string) (map[string]any, error) {
+	result, err := r.send(ctx, http.MethodGet, target, "", nil)
 	if err != nil {
 		return nil, err
 	}
 	var settings map[string]json.RawMessage
 	if err := json.Unmarshal(result.Body, &settings); err != nil {
 		return nil, fmt.Errorf("read the current settings at %s: %w", target, err)
+	}
+	fields, err := op.bodyFields()
+	if err != nil {
+		return nil, err
 	}
 	body := map[string]any{}
 	for _, field := range fields {
@@ -224,28 +189,63 @@ func (r *ActionRunner) current(ctx context.Context, target string, fields []stri
 	return body, nil
 }
 
-func (r *ActionRunner) send(ctx context.Context, method, target string, body map[string]any) (domain.AssistantCallResult, error) {
+// send calls the operation; bodyType is the generated registry's media type of a non-nil body.
+func (r *ActionRunner) send(
+	ctx context.Context, method, target, bodyType string, body map[string]any,
+) (domain.AssistantCallResult, error) {
 	var reader io.Reader = http.NoBody
+	contentType := ""
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if reader, contentType, err = encodeBody(bodyType, body); err != nil {
 			return domain.AssistantCallResult{}, fmt.Errorf("encode the request of %s %s: %w", method, target, err)
 		}
-		reader = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(withAudience(ctx, domain.AudienceOwner), method, target, reader)
 	if err != nil {
 		return domain.AssistantCallResult{}, fmt.Errorf("build %s %s: %w", method, target, err)
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	res := &capturedResponse{header: http.Header{}}
 	r.api.ServeHTTP(res, req)
 	if res.status >= 200 && res.status < 300 {
-		return domain.AssistantCallResult{Status: res.status, Body: res.body.Bytes()}, nil
+		return domain.AssistantCallResult{
+			Status: res.status, ContentType: res.header.Get("Content-Type"), Body: res.body.Bytes(),
+		}, nil
 	}
 	return domain.AssistantCallResult{}, callError(res)
+}
+
+const multipartBody = "multipart/form-data"
+
+// encodeBody writes a JSON body, or a multipart body with one text part per field, and returns its Content-Type.
+func encodeBody(bodyType string, body map[string]any) (io.Reader, string, error) {
+	if bodyType != multipartBody {
+		encoded, err := json.Marshal(body)
+		return bytes.NewReader(encoded), "application/json", err
+	}
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	for _, name := range slices.Sorted(maps.Keys(body)) {
+		var value string
+		switch field := body[name].(type) {
+		case string:
+			value = field
+		case float64, int, int64, bool:
+			value = fmt.Sprint(field)
+		default:
+			return nil, "", fmt.Errorf("%w: the form field %s is not text", domain.ErrAssistantInvalidArguments, name)
+		}
+		if err := form.WriteField(name, value); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := form.Close(); err != nil {
+		return nil, "", err
+	}
+	return &buf, form.FormDataContentType(), nil
 }
 
 // callError keeps the screen API's code and reason so the proposal row can show them.
