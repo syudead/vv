@@ -10,12 +10,15 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// AssistantProposals interprets requests, approves and reads the assistant's write proposals, and reads and
+// AssistantProposals starts and reads the assistant's turns, approves and reads its write proposals, and reads and
 // decides its review runs; app.Assistant implements it.
 type AssistantProposals interface {
-	// Turn returns domain.ErrAssistantTooManyVideos for a target over the selection limit, and the generator's
-	// domain.ErrOllama* causes when the model cannot answer.
-	Turn(ctx context.Context, in domain.AssistantTurnInput) (domain.AssistantTurnResult, error)
+	// StartTurn stores a running turn and starts its loop; while another turn runs it returns that turn with
+	// domain.ErrAssistantBusy.
+	StartTurn(ctx context.Context, in domain.AssistantTurnInput) (domain.AssistantTurn, error)
+	// Turn returns domain.ErrNotFound for a missing or expired turn.
+	Turn(ctx context.Context, id int64) (domain.AssistantTurn, error)
+	ActiveTurns(ctx context.Context) ([]domain.AssistantTurn, error)
 	// Approve keeps the steps at the given indexes. It returns domain.ErrNotFound for a missing, discarded or
 	// expired proposal, the proposal with domain.ErrAssistantProposalNotPending when it is no longer proposed,
 	// domain.ErrAssistantStepsInvalid for an index it does not have, and *domain.AssistantStepNeedsSkippedError for

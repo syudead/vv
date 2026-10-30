@@ -34,19 +34,19 @@ type AssistantReviewStore interface {
 }
 
 // organize starts a review run of the kind, or answers the one already running.
-func (t *assistantTurn) organize(ctx context.Context, req *domain.AssistantOrganizeRequest) (domain.AssistantTurnResult, error) {
+func (t *assistantTurn) organize(ctx context.Context, req *domain.AssistantOrganizeRequest) (domain.AssistantResolution, error) {
 	kind := domain.AssistantReviewKind(req.Kind)
 	if t.a.reviews == nil || !kind.Valid() {
-		return domain.AssistantTurnResult{Kind: domain.AssistantTurnUnsupported}, nil
+		return domain.AssistantResolution{Kind: domain.AssistantResolvedUnsupported}, nil
 	}
 	run, started, err := t.a.reviews.StartReviewRun(ctx, kind, t.input.Text, t.a.now())
 	if err != nil {
-		return domain.AssistantTurnResult{}, err
+		return domain.AssistantResolution{}, err
 	}
 	if started {
 		t.a.wakeReviews()
 	}
-	return domain.AssistantTurnResult{Kind: domain.AssistantTurnReview, Review: &run}, nil
+	return domain.AssistantResolution{Kind: domain.AssistantResolvedReview, Review: &run}, nil
 }
 
 func (a *Assistant) wakeReviews() {

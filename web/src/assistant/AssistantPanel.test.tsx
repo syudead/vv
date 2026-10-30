@@ -4,9 +4,8 @@ import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  AssistantOutcome,
   AssistantProposal,
-  AssistantReviewRun,
+  AssistantTurn,
   AssistantTurnRequest,
 } from "../api/assistant";
 import * as events from "../api/serverEvents";
@@ -33,11 +32,12 @@ interface Server {
   readiness: () => Response;
   turn: (body: AssistantTurnRequest) => Promise<Response> | Response;
   turns: AssistantTurnRequest[];
+  /** GET /api/assistant/turns/{id}. */
+  turnRead: () => Response;
   execute: () => Promise<Response> | Response;
   executes: string[];
   proposal: () => Response;
   list: () => Response;
-  reviewRun: () => Response;
   /** Delivers an assistant event to every subscriber, as /api/events would. */
   emit: () => void;
 }
@@ -45,21 +45,21 @@ interface Server {
 function installServer(): Server {
   const server: Server = {
     readiness: () => json({ ready: true }),
-    turn: () => json({ outcome: { kind: "unreadable" } }),
+    turn: () => finished({ answer: "ok" }),
     turns: [],
+    turnRead: () => json({ code: "not_found", message: "not found" }, 404),
     execute: () => json({ code: "not_found", message: "not found" }, 404),
     executes: [],
     proposal: () => json({ code: "not_found", message: "not found" }, 404),
     list: () => json({ items: [] }),
-    reviewRun: () => json({ code: "not_found", message: "not found" }, 404),
     emit: () => undefined,
   };
   beforeEach(() => {
     server.readiness = () => json({ ready: true });
     server.turns = [];
+    server.turnRead = () => json({ code: "not_found", message: "not found" }, 404);
     server.executes = [];
     server.list = () => json({ items: [] });
-    server.reviewRun = () => json({ code: "not_found", message: "not found" }, 404);
     server.execute = () => json({ code: "not_found", message: "not found" }, 404);
     server.proposal = () => json({ code: "not_found", message: "not found" }, 404);
     const subscribers = new Set<events.ServerEventHandlers>();
@@ -81,8 +81,8 @@ function installServer(): Server {
       }
       if (url.startsWith("/api/assistant/proposals/"))
         return Promise.resolve(server.proposal());
-      if (url.startsWith("/api/assistant/review-runs/"))
-        return Promise.resolve(server.reviewRun());
+      if (url.startsWith("/api/assistant/turns/"))
+        return Promise.resolve(server.turnRead());
       if (url === "/api/assistant/turns" && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as AssistantTurnRequest;
         server.turns.push(body);
@@ -108,8 +108,21 @@ function installServer(): Server {
   return server;
 }
 
-function outcome(value: AssistantOutcome): Response {
-  return json({ outcome: value });
+function turn(extra: Partial<AssistantTurn> = {}): AssistantTurn {
+  return {
+    id: 1,
+    status: "done",
+    request: "",
+    startedAt: "2026-10-30T00:00:00Z",
+    progress: [],
+    judged: false,
+    ...extra,
+  };
+}
+
+/** The 202 a turn the server finished before answering would carry. */
+function finished(extra: Partial<AssistantTurn> = {}): Response {
+  return json(turn(extra), 202);
 }
 
 function proposal(extra: Partial<CardProposal> = {}): AssistantProposal {
@@ -220,13 +233,15 @@ describe("AssistantPanel", () => {
     expect(screen.queryByRole("textbox", { name: "Request" })).toBeNull();
   });
 
-  it("filter の結果でライブラリの URL を条件に変え、lg 未満ではパネルを閉じる", async () => {
+  it("filter の directive でライブラリの URL を条件に変え、lg 未満ではパネルを閉じる", async () => {
     server.turn = () =>
-      outcome({
-        kind: "filter",
-        criteria: {
-          rule: { tags: [4], minDurationMs: 1_800_000, watchState: "unwatched" },
-          labels: [{ kind: "tag", id: 4, name: "旅行" }],
+      finished({
+        directive: {
+          kind: "filter",
+          criteria: {
+            rule: { tags: [4], minDurationMs: 1_800_000, watchState: "unwatched" },
+            labels: [{ kind: "tag", id: 4, name: "旅行" }],
+          },
         },
       });
     const user = userEvent.setup();
@@ -250,11 +265,13 @@ describe("AssistantPanel", () => {
     ).toEqual(["旅行", "30 min or longer", "Unwatched"]);
   });
 
-  it("navigate の結果で開くページへ移る", async () => {
+  it("navigate の directive で開くページへ移る", async () => {
     server.turn = () =>
-      outcome({
-        kind: "navigate",
-        destination: { kind: "settings", settingsPage: "scan" },
+      finished({
+        directive: {
+          kind: "navigate",
+          destination: { kind: "settings", settingsPage: "scan" },
+        },
       });
     const user = userEvent.setup();
     renderApp();
@@ -266,49 +283,69 @@ describe("AssistantPanel", () => {
 
   it("聞き返しで候補を選ぶと、元の依頼を選んだ ID を pin して送り直す", async () => {
     server.turn = () =>
-      outcome({
-        kind: "clarify",
-        about: "value",
-        candidates: [
-          { kind: "tag", id: 11, name: "コスプレ衣装", count: 12 },
-          { kind: "tag", id: 12, name: "コスプレ衣裳", count: 3 },
-        ],
+      finished({
+        id: 5,
+        status: "clarify",
+        clarify: {
+          name: "コスプレ",
+          kind: "tag",
+          candidates: [
+            { kind: "tag", id: 11, name: "コスプレ衣装", count: 12 },
+            { kind: "tag", id: 12, name: "コスプレ衣裳", count: 3 },
+          ],
+        },
       });
     const user = userEvent.setup();
     renderApp();
     await ask(user, "コスプレのタグを消して");
     const choice = await within(panel()).findByRole("button", { name: /^コスプレ衣裳/ });
 
-    server.turn = () => outcome({ kind: "unreadable" });
+    server.turn = () => finished({ id: 6, answer: "ok" });
     await user.click(choice);
 
     await waitFor(() => expect(server.turns).toHaveLength(2));
     expect(server.turns[1]).toMatchObject({
       text: "コスプレのタグを消して",
       context: { pinned: [{ kind: "tag", id: 12, name: "コスプレ衣裳" }] },
-      previous: { kind: "clarify" },
+      previousTurnId: 5,
     });
   });
 
-  it("count の答えは数とライブラリへのリンクを出す", async () => {
-    server.turn = () =>
-      outcome({
-        kind: "answer",
-        question: "count",
-        total: 1234,
-        link: { criteria: { rule: { favorite: true }, labels: [] } },
-      });
+  it("running の turn を assistant イベントで読み直し、終わったら答えの文を出す", async () => {
+    server.turn = () => json(turn({ id: 9, status: "running" }), 202);
+    const reads = vi.fn(() => json(turn({ id: 9, status: "running" })));
+    server.turnRead = reads;
     const user = userEvent.setup();
     renderApp();
 
     await ask(user, "お気に入りは何本？");
+    // The first read follows the 202 at once; the event makes the second.
+    await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+    act(() => server.emit());
+    await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+    expect(within(panel()).getByRole("status").textContent).toContain("Asking the model");
 
-    expect(await within(panel()).findByText("1,234 videos")).toBeDefined();
+    reads.mockImplementation(() =>
+      json(turn({ id: 9, answer: "お気に入りは\n12 本です。" })),
+    );
+    act(() => server.emit());
+
+    expect(await within(panel()).findByText(/12 本です。/)).toBeDefined();
+    expect(within(panel()).queryByRole("status")).toBeNull();
+  });
+
+  it("止まった turn はその理由を出す", async () => {
+    server.turn = () => finished({ status: "stopped", stop: { reason: "step_limit" } });
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "全部まとめて整理して");
+
     expect(
-      within(panel())
-        .getByRole("link", { name: "Show in the library" })
-        .getAttribute("href"),
-    ).toBe("/?fav=1");
+      await within(panel()).findByText(
+        "Stopped: the request needed more steps than one request may take. Nothing was changed. Try a narrower request.",
+      ),
+    ).toBeDefined();
   });
 
   it("turn の途中でパネルを閉じて開き直すと、届いた答えが出ている", async () => {
@@ -320,7 +357,17 @@ describe("AssistantPanel", () => {
     await user.click(within(panel()).getByRole("button", { name: "Close" }));
     expect(trigger().getAttribute("aria-label")).toBe("Assistant · working");
 
-    await act(async () => answer(outcome({ kind: "unsupported" })));
+    await act(async () =>
+      answer(
+        finished({
+          status: "stopped",
+          stop: {
+            reason: "step_limit",
+            excluded: { operation: "unknown", reason: "", page: "/" },
+          },
+        }),
+      ),
+    );
     await user.click(trigger());
 
     expect(within(panel()).getByText("何かして")).toBeDefined();
@@ -337,19 +384,19 @@ describe("AssistantPanel", () => {
     await user.click(within(panel()).getByRole("button", { name: "Clear thread" }));
     await act(async () =>
       answer(
-        outcome({
-          kind: "navigate",
-          destination: { kind: "settings", settingsPage: "scan" },
+        finished({
+          directive: {
+            kind: "navigate",
+            destination: { kind: "settings", settingsPage: "scan" },
+          },
         }),
       ),
     );
 
     expect(location().textContent).toBe("/folders");
-    server.turn = () => outcome({ kind: "unsupported" });
+    server.turn = () => finished({ answer: "できました" });
     await user.type(field(), "何かして{Enter}");
-    expect(
-      await within(panel()).findByText("The assistant can’t do that."),
-    ).toBeDefined();
+    expect(await within(panel()).findByText("できました")).toBeDefined();
     expect(server.turns).toHaveLength(2);
   });
 
@@ -389,7 +436,7 @@ describe("AssistantPanel", () => {
   });
 
   it("Execute を 2 回押しても要求は 1 回で、カードの状態は 409 の本文から来る", async () => {
-    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.turn = () => finished({ status: "done", proposal: proposal() });
     let answer: (response: Response) => void = () => undefined;
     server.execute = () => new Promise<Response>((resolve) => (answer = resolve));
     const user = userEvent.setup();
@@ -422,7 +469,7 @@ describe("AssistantPanel", () => {
   });
 
   it("Dismiss は何も送らずにカードを畳む", async () => {
-    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.turn = () => finished({ status: "done", proposal: proposal() });
     const user = userEvent.setup();
     renderApp();
     await ask(user, "これに旅行タグを付けて");
@@ -434,15 +481,15 @@ describe("AssistantPanel", () => {
   });
 
   it("追いの指示の答えで前のカードを置き換え、Execute は 1 つだけになる", async () => {
-    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.turn = () => finished({ status: "done", proposal: proposal() });
     const user = userEvent.setup();
     renderApp();
     await ask(user, "これに旅行タグを付けて");
     await within(panel()).findByRole("button", { name: "Execute" });
 
     server.turn = () =>
-      outcome({
-        kind: "proposal",
+      finished({
+        id: 2,
         proposal: proposal({
           id: 2,
           targets: { kind: "videos", count: 2, labels: [] },
@@ -457,17 +504,13 @@ describe("AssistantPanel", () => {
     expect(within(panel()).getByText("2 videos")).toBeDefined();
     expect(within(panel()).queryByText("3 videos")).toBeNull();
     expect(within(panel()).getAllByRole("button", { name: "Execute" })).toHaveLength(1);
-    expect(server.turns[1]?.previous).toMatchObject({
-      kind: "proposal",
-      proposal: { id: 1 },
-    });
+    expect(server.turns[1]?.previousTurnId).toBe(1);
   });
 
   it("assistant イベントで提案を読み直し、件数と結果の行を出す", async () => {
     const big = { kind: "videos", count: 1200, labels: [] };
     server.turn = () =>
-      outcome({
-        kind: "proposal",
+      finished({
         proposal: proposal({
           targets: big,
           counts: { total: 1200, applied: 0, failed: 0 },
@@ -519,95 +562,8 @@ describe("AssistantPanel", () => {
     ).toBe("/activity/77");
   });
 
-  it("review の結果は assistant イベントで進み具合を読み直し、レビュー一覧へリンクする", async () => {
-    const reviewRun = (extra: Partial<AssistantReviewRun>): AssistantReviewRun => ({
-      id: 7,
-      kind: "tags",
-      status: "running",
-      total: 40,
-      judged: 0,
-      listed: 0,
-      startedAt: new Date().toISOString(),
-      ...extra,
-    });
-    server.turn = () => outcome({ kind: "review", run: reviewRun({}) });
-    const user = userEvent.setup();
-    renderApp();
-    await ask(user, "タグを整理して");
-
-    expect(
-      await within(panel()).findByText("Looking for duplicate tags… Judged 0 of 40"),
-    ).toBeDefined();
-    expect(within(panel()).queryByText(/already running/)).toBeNull();
-    expect(
-      within(panel())
-        .getByRole("link", { name: "Open the review list" })
-        .getAttribute("href"),
-    ).toBe("/assistant/reviews/7");
-
-    server.reviewRun = () =>
-      json({ run: reviewRun({ judged: 25, listed: 3 }), items: [] });
-    act(() => server.emit());
-    expect(
-      await within(panel()).findByText("Looking for duplicate tags… Judged 25 of 40"),
-    ).toBeDefined();
-
-    server.reviewRun = () =>
-      json({ run: reviewRun({ status: "done", judged: 40, listed: 3 }), items: [] });
-    act(() => server.emit());
-    expect(await within(panel()).findByText("3 candidates to review")).toBeDefined();
-  });
-
-  it("答えが届く前に終わった review は、イベントを待たずに読み直した結果を出す", async () => {
-    const started = {
-      id: 7,
-      kind: "tags",
-      status: "running",
-      total: 0,
-      judged: 0,
-      listed: 0,
-      startedAt: new Date().toISOString(),
-    } satisfies AssistantReviewRun;
-    server.turn = () => outcome({ kind: "review", run: started });
-    // The run's last event went out before the turn answered, so no further event comes.
-    server.reviewRun = () => json({ run: { ...started, status: "done" }, items: [] });
-    const user = userEvent.setup();
-    renderApp();
-    await ask(user, "タグを整理して");
-
-    expect(
-      await within(panel()).findByText("Nothing looked like a duplicate"),
-    ).toBeDefined();
-  });
-
-  it("同じ種類の review が実行中なら、そのことと同じ進み具合を出す", async () => {
-    server.turn = () =>
-      outcome({
-        kind: "review",
-        run: {
-          id: 7,
-          kind: "people",
-          status: "running",
-          total: 40,
-          judged: 12,
-          listed: 2,
-          startedAt: "2026-10-25T10:00:00Z",
-        },
-      });
-    const user = userEvent.setup();
-    renderApp();
-    await ask(user, "人物を整理して");
-
-    expect(
-      await within(panel()).findByText("A review of duplicate people is already running"),
-    ).toBeDefined();
-    expect(
-      within(panel()).getByText("Looking for duplicate people… Judged 12 of 40"),
-    ).toBeDefined();
-  });
-
   it("Execute の答えより先に実行が終わっても、カードは読み直した結果を出す", async () => {
-    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.turn = () => finished({ status: "done", proposal: proposal() });
     let answer: (response: Response) => void = () => undefined;
     server.execute = () => new Promise<Response>((resolve) => (answer = resolve));
     const user = userEvent.setup();
@@ -627,7 +583,7 @@ describe("AssistantPanel", () => {
   });
 
   it("stale の結果はもう一度頼む行を出す", async () => {
-    server.turn = () => outcome({ kind: "proposal", proposal: proposal() });
+    server.turn = () => finished({ status: "done", proposal: proposal() });
     server.execute = () => json(proposal({ status: "approved" }), 202);
     const user = userEvent.setup();
     renderApp();

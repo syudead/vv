@@ -45,7 +45,7 @@ function useRunRequest(id: number): string | undefined {
   const store = useAssistant();
   for (const exchange of store?.exchanges ?? []) {
     const reply = exchange.reply;
-    if (reply?.kind === "outcome" && reply.outcome.run?.id === id) return exchange.text;
+    if (reply?.kind === "turn" && reply.outcome?.run?.id === id) return exchange.text;
   }
   return undefined;
 }

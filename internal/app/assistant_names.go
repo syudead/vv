@@ -19,6 +19,9 @@ type AssistantVocabulary interface {
 	FindSimilarNames(ctx context.Context, kind domain.AssistantLabelKind, name string) ([]domain.AssistantCandidate, error)
 	// EntityNames reads the current names of the ids that still exist.
 	EntityNames(ctx context.Context, kind domain.AssistantLabelKind, ids []int64) (map[int64]string, error)
+	// NamesIn returns the folded tag, person and organization names of at least domain.AssistantNameMinRunes
+	// characters that the folded text contains, for the grounding check.
+	NamesIn(ctx context.Context, text string) ([]string, error)
 }
 
 // assistantClarifyLimit bounds the candidates a clarification offers.

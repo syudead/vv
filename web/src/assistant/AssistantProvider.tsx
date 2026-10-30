@@ -16,17 +16,20 @@ import {
   type AssistantPin,
   type AssistantProposal,
   type AssistantReadinessReason,
+  type AssistantTurn,
   createAssistantTurn,
   getAssistantReadiness,
 } from "../api/assistant";
+import { followTurn } from "./followTurn";
 import { criteriaPath, destinationPath } from "./links";
 import { type AssistantScreen, hasSelection, turnContext } from "./screenContext";
 import {
   type Exchange,
   isWaiting,
-  previousOutcome,
+  previousTurnId,
   type Reply,
   turnFailure,
+  turnOutcome,
 } from "./thread";
 import { type Cards, useProposals } from "./useProposals";
 import { type ReviewRuns, useReviewRuns } from "./useReviewRuns";
@@ -93,7 +96,8 @@ function isWide(): boolean {
 }
 
 /** The URL a filter or navigate outcome applies at once, without confirmation. */
-function appliedPath(outcome: AssistantOutcome): string | undefined {
+function appliedPath(outcome: AssistantOutcome | undefined): string | undefined {
+  if (outcome === undefined) return undefined;
   if (outcome.kind === "filter" && outcome.criteria !== undefined) {
     return criteriaPath(outcome.criteria);
   }
@@ -111,7 +115,7 @@ interface SendOptions {
 function useThread(
   onApplied: (path: string) => void,
   onNotReady: (reason: AssistantReadinessReason) => void,
-  onOutcome: (exchangeId: number, outcome: AssistantOutcome) => void,
+  onTurn: (exchangeId: number, turn: AssistantTurn) => void,
 ) {
   const location = useLocation();
   const latestLocation = useRef(location);
@@ -149,7 +153,7 @@ function useThread(
         hadSelection: hasSelection(latestScreen.current),
         startedAt: Date.now(),
       };
-      const previous = previousOutcome(current);
+      const previous = previousTurnId(current);
       const context = turnContext(latestLocation.current, latestScreen.current, pinned);
       setExchanges([...current, exchange]);
       const controller = new AbortController();
@@ -158,34 +162,38 @@ function useThread(
         {
           text,
           context,
-          ...(previous !== undefined && { previous }),
+          ...(previous !== undefined && { previousTurnId: previous }),
         },
         controller.signal,
-      ).then(
-        (outcome) => {
-          if (controller.signal.aborted) return;
-          const path = appliedPath(outcome);
-          settle(exchange.id, {
-            kind: "outcome",
-            outcome,
-            ...(path !== undefined && { path }),
-          });
-          onOutcome(exchange.id, outcome);
-          if (path !== undefined) onApplied(path);
-        },
-        (error: unknown) => {
-          if (controller.signal.aborted) return;
-          const failure = turnFailure(error);
-          if (failure.kind === "reply") {
-            settle(exchange.id, failure.reply);
-            return;
-          }
-          setExchanges((all) => all.filter((item) => item.id !== exchange.id));
-          onNotReady(failure.reason);
-        },
-      );
+      )
+        .then((started) => followTurn(started, controller.signal))
+        .then(
+          (turn) => {
+            if (controller.signal.aborted) return;
+            const outcome = turnOutcome(turn);
+            const path = appliedPath(outcome);
+            settle(exchange.id, {
+              kind: "turn",
+              turn,
+              ...(outcome !== undefined && { outcome }),
+              ...(path !== undefined && { path }),
+            });
+            onTurn(exchange.id, turn);
+            if (path !== undefined) onApplied(path);
+          },
+          (error: unknown) => {
+            if (controller.signal.aborted) return;
+            const failure = turnFailure(error);
+            if (failure.kind === "reply") {
+              settle(exchange.id, failure.reply);
+              return;
+            }
+            setExchanges((all) => all.filter((item) => item.id !== exchange.id));
+            onNotReady(failure.reason);
+          },
+        );
     },
-    [onApplied, onNotReady, onOutcome, settle],
+    [onApplied, onNotReady, onTurn, settle],
   );
 
   const choose = useCallback(
@@ -203,7 +211,7 @@ function useThread(
     [sendTurn],
   );
 
-  // Clearing abandons a running turn, so its late outcome neither changes the page nor blocks the next request.
+  // Clearing stops following a running turn, so its late result neither changes the page nor blocks the next request.
   const clear = useCallback(() => {
     turnRequest.current?.abort();
     turnRequest.current = null;
@@ -260,16 +268,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
   const proposals = useProposals(open);
   const reviewRuns = useReviewRuns();
-  const settleProposal = proposals.settle;
-  const settleReview = reviewRuns.settle;
-  const onOutcome = useCallback(
-    (exchangeId: number, outcome: AssistantOutcome) => {
-      settleProposal(exchangeId, outcome);
-      settleReview(outcome);
-    },
-    [settleProposal, settleReview],
-  );
-  const thread = useThread(onApplied, onNotReady, onOutcome);
+  const thread = useThread(onApplied, onNotReady, proposals.settle);
   const { loadRuns } = proposals;
 
   const latestOpen = useRef(open);

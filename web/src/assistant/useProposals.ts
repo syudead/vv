@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  type AssistantOutcome,
   type AssistantProposal,
+  type AssistantTurn,
   executeAssistantProposal,
   getAssistantProposal,
   listActiveAssistantProposals,
@@ -30,7 +30,8 @@ export interface Proposals {
   runs: readonly AssistantProposal[];
   /** A run is approved or running, so the trigger shows its dot while the panel is closed. */
   running: boolean;
-  settle: (exchangeId: number, outcome: AssistantOutcome) => void;
+  /** A finished turn's proposal becomes its exchange's card. */
+  settle: (exchangeId: number, turn: AssistantTurn) => void;
   execute: (exchangeId: number) => void;
   dismiss: (exchangeId: number) => void;
   clear: () => void;
@@ -56,7 +57,7 @@ function withProposal(cards: Cards, proposal: AssistantProposal): Cards {
   return next ?? cards;
 }
 
-/** Any later outcome means the server discarded the waiting proposal it was sent as previous. */
+/** Any later turn means the server discarded the waiting proposal it was sent as previous. */
 function replaceWaiting(cards: Cards): Cards {
   let next: Map<number, Card> | undefined;
   for (const [id, card] of cards) {
@@ -92,12 +93,12 @@ export function useProposals(open: boolean): Proposals {
     );
   }, []);
 
-  const settle = useCallback((exchangeId: number, outcome: AssistantOutcome) => {
+  const settle = useCallback((exchangeId: number, turn: AssistantTurn) => {
     setCards((current) => {
       const next = new Map(replaceWaiting(current));
-      if (outcome.kind === "proposal" && outcome.proposal !== undefined) {
+      if (turn.proposal !== undefined) {
         next.set(exchangeId, {
-          proposal: outcome.proposal,
+          proposal: turn.proposal,
           view: "live",
           executing: false,
         });

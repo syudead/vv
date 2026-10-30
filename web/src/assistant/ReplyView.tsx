@@ -1,8 +1,12 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 
-import type { AssistantCandidate, AssistantOutcome } from "../api/assistant";
+import type {
+  AssistantCandidate,
+  AssistantOutcome,
+  AssistantTurn,
+} from "../api/assistant";
 import { getOllamaSettings } from "../api/client";
 import { errorText, formatNumber, t } from "../i18n";
 import { settingsPagePath } from "../settings/settingsPages";
@@ -189,6 +193,56 @@ function OutcomeReply({
   }
 }
 
+type WarningStop = keyof typeof t.assistant.stopped;
+
+/** Interim: why a turn ended without its result; connection and model keep the shipped alert. */
+function StopReply({ turn }: { turn: AssistantTurn }) {
+  const reason: WarningStop | "connection" | "model" | undefined =
+    turn.status === "interrupted" ? "interrupted" : turn.stop?.reason;
+  if (reason === undefined || turn.stop?.excluded !== undefined) return null;
+  if (reason === "connection" || reason === "model") {
+    return <UnavailableReply reason={reason} />;
+  }
+  return (
+    <p className="flex items-start gap-2 text-sm text-warning">
+      <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      {t.assistant.stopped[reason]}
+    </p>
+  );
+}
+
+/** Interim: the finished turn's answer as plain text, then the row its result maps to. */
+function TurnReply({
+  turn,
+  outcome,
+  path,
+  exchange,
+  onChoose,
+}: {
+  turn: AssistantTurn;
+  outcome?: AssistantOutcome;
+  path?: string;
+  exchange: Exchange;
+  onChoose?: (candidate: AssistantCandidate) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {turn.answer !== undefined && turn.answer !== "" && (
+        <p className="text-sm whitespace-pre-wrap">{turn.answer}</p>
+      )}
+      <StopReply turn={turn} />
+      {outcome !== undefined && (
+        <OutcomeReply
+          outcome={outcome}
+          path={path}
+          exchange={exchange}
+          onChoose={onChoose}
+        />
+      )}
+    </div>
+  );
+}
+
 /** The reply rows under one request. `onChoose` is absent while another turn runs. */
 export default function ReplyView({
   exchange,
@@ -200,9 +254,10 @@ export default function ReplyView({
   onChoose?: (candidate: AssistantCandidate) => void;
 }) {
   switch (reply.kind) {
-    case "outcome":
+    case "turn":
       return (
-        <OutcomeReply
+        <TurnReply
+          turn={reply.turn}
           outcome={reply.outcome}
           path={reply.path}
           exchange={exchange}

@@ -225,8 +225,8 @@ func (d *planDraft) setVideos(videos []domain.Video) {
 // out the long ones" keeps the previous target.
 func (d *planDraft) videoIDs(ctx context.Context, target *domain.AssistantTargetRequest) ([]int64, bool, error) {
 	kind := target.Kind
-	if kind == "filter" && d.t.input.PreviousProposalID > 0 && len(d.t.input.Context.SelectedVideoIDs) > 0 {
-		// A follow-up to a proposal on the selection keeps the selection; models write the narrowing filter alone.
+	if kind == "filter" && d.t.input.PreviousTurnID > 0 && len(d.t.input.Context.SelectedVideoIDs) > 0 {
+		// A follow-up on the selection keeps the selection; models write the narrowing filter alone.
 		kind = "selection"
 	}
 	switch kind {

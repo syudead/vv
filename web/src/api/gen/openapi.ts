@@ -1149,13 +1149,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List the assistant's active turns
+         * @description Owner-only. Lists, newest first, the running turn and the turns finished within the last hour, so the panel rebuilds its thread after a reload. active=true is the only filter and is required.
+         */
+        get: operations["listAssistantTurns"];
         put?: never;
         /**
-         * Interpret one request into one outcome
-         * @description Owner-only. Sends the request, the screen context and, for a follow-up, the previous outcome to the saved generation model as one structured-output call, then resolves every name the model returned against the library: one match is used, several or none answer clarify with the candidates, except a tag to attach, which the proposal lists in created. An action outcome stores a proposal and answers it; a follow-up discards the previous proposal once the new request is understood. filter, navigate and answer change nothing. An answer the schema does not match is unreadable and changes nothing. text over 500 characters, or a target or selection of more than 20,000 videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Ollama that cannot be reached (connection), a missing or refusing model (model) or a timeout (timeout) returns 503 assistant_unavailable and stores nothing. The call waits for the model up to 10 minutes.
+         * Start one request as a server-side turn
+         * @description Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers or a limit stops it: at most 12 model calls and 40 tool calls, and 10 minutes from the start. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. text over 500 characters, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.
          */
         post: operations["createAssistantTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turns/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one assistant turn
+         * @description Owner-only. The panel reads it again on each assistant event. A turn is kept for 24 hours after it finished; a missing or expired turn returns 404 not_found.
+         */
+        get: operations["getAssistantTurn"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4265,7 +4289,11 @@ export interface components {
             /** @description The owner's request, as untranslated user data; at most 500 characters. */
             text: string;
             context: components["schemas"]["AssistantTurnContext"];
-            previous?: components["schemas"]["AssistantTurnOutcome"];
+            /**
+             * Format: int64
+             * @description The turn a follow-up continues; its request and its proposal's steps go to the model.
+             */
+            previousTurnId?: number;
         };
         /** @description The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it. */
         AssistantTurnContext: {
@@ -4298,30 +4326,81 @@ export interface components {
             /** Format: int64 */
             id: number;
         };
-        AssistantTurnResponse: {
-            outcome: components["schemas"]["AssistantTurnOutcome"];
+        /** @description One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason. */
+        AssistantTurn: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * @description interrupted was running when the server stopped.
+             * @enum {string}
+             */
+            status: "running" | "done" | "clarify" | "stopped" | "interrupted";
+            /** @description The owner's request, as untranslated user data. */
+            request: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            progress: components["schemas"]["AssistantProgressItem"][];
+            /** @description The model's final text in the request's language, after every number and library name in it was found in this turn's tool results, the request, the screen or today's date. It is model text: show it as plain text. */
+            answer?: string;
+            /** @description The answer used the classifier's answers, which are estimates. */
+            judged: boolean;
+            directive?: components["schemas"]["AssistantDirective"];
+            clarify?: components["schemas"]["AssistantTurnClarification"];
+            proposal?: components["schemas"]["AssistantProposal"];
+            stop?: components["schemas"]["AssistantTurnStop"];
         };
-        /** @description One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing. */
-        AssistantTurnOutcome: {
+        AssistantTurnList: {
+            items: components["schemas"]["AssistantTurn"][];
+        };
+        /** @description One tool call, composed by the server from the tool and its arguments, never from the model's text. */
+        AssistantProgressItem: {
+            /** @description The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools. */
+            tool: string;
+            /**
+             * @description image is a read that answers an image.
+             * @enum {string}
+             */
+            kind: "builtin" | "read" | "image" | "write" | "excluded";
+            /** @description The entities the call's id arguments name. */
+            labels: components["schemas"]["AssistantLabel"][];
+            /** @description Images the call sends. */
+            images?: number;
+            n?: number;
+            /** @description With n, how far a call over m items has come. */
+            m?: number;
+            /** @description Why the call came back as an error result, in English; the model may recover. */
+            error?: string;
+            /** Format: date-time */
+            at: string;
+        };
+        /** @description The turn's last library filter or navigation, which the panel applies without confirmation. */
+        AssistantDirective: {
             /** @enum {string} */
-            kind: "filter" | "navigate" | "answer" | "proposal" | "review" | "clarify" | "unsupported" | "unreadable";
+            kind: "filter" | "navigate";
             criteria?: components["schemas"]["AssistantCriteria"];
             destination?: components["schemas"]["AssistantDestination"];
+        };
+        /** @description The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal. */
+        AssistantTurnClarification: {
+            /** @description As untranslated user data. */
+            name: string;
+            kind: components["schemas"]["AssistantLabelKind"];
+            candidates: components["schemas"]["AssistantCandidate"][];
+        };
+        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
+        AssistantTurnStop: {
             /** @enum {string} */
-            question?: "count" | "appearances" | "recent" | "list";
-            /** @description The count the screens show for the same filter or entity. */
-            total?: number;
-            items?: components["schemas"]["AssistantAnswerItem"][];
-            link?: components["schemas"]["AssistantAnswerLink"];
-            proposal?: components["schemas"]["AssistantProposal"];
-            run?: components["schemas"]["AssistantReviewRun"];
-            /** @enum {string} */
-            about?: "operation" | "target" | "value";
-            candidates?: components["schemas"]["AssistantCandidate"][];
-            /** @description Names that matched nothing, as untranslated user data. */
-            names?: string[];
-            /** @description The catalog row id the model named that the assistant cannot build a request for yet. */
-            operation?: string;
+            reason: "step_limit" | "timeout" | "connection" | "model" | "ungrounded";
+            excluded?: components["schemas"]["AssistantExcludedOperation"];
+        };
+        /** @description An operation the assistant leaves to its page, which the model asked for. */
+        AssistantExcludedOperation: {
+            operation: string;
+            reason: string;
+            /** @description The route of the page that does it. */
+            page: string;
         };
         /** @description Library conditions with ids, in the names the library URL uses, and the labels of the entities they name. */
         AssistantCriteria: {
@@ -4336,17 +4415,6 @@ export interface components {
             id?: number;
             /** @enum {string} */
             settingsPage?: "scan" | "library" | "auto-tagging" | "face-recognition" | "connections" | "plugins" | "conversion" | "network" | "account" | "api" | "danger-zone";
-        };
-        AssistantAnswerItem: {
-            /** Format: int64 */
-            id: number;
-            /** @description The video's title, as untranslated user data. */
-            title: string;
-        };
-        /** @description Where the number came from: the library with criteria, or the page of the entity. */
-        AssistantAnswerLink: {
-            criteria?: components["schemas"]["AssistantCriteria"];
-            destination?: components["schemas"]["AssistantDestination"];
         };
         AssistantCandidate: {
             kind: components["schemas"]["AssistantLabelKind"];
@@ -8197,7 +8265,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "service_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "assistant_busy" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -8220,6 +8288,11 @@ export interface components {
             proposal?: components["schemas"]["AssistantProposal"];
             /** @description The index of the kept step that uses what an unticked step creates; only for step_needs_skipped. */
             step?: number;
+            /**
+             * Format: int64
+             * @description The running turn; only for assistant_busy.
+             */
+            turnId?: number;
         };
         /**
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -8322,6 +8395,8 @@ export interface components {
     parameters: {
         /** @description Assistant review run ID */
         AssistantReviewRunId: number;
+        /** @description Assistant turn ID */
+        AssistantTurnId: number;
         /** @description Assistant proposal ID */
         AssistantProposalId: number;
         /** @description Activity record ID */
@@ -10476,6 +10551,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listAssistantTurns: {
+        parameters: {
+            query: {
+                /** @description Must be true. */
+                active: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active turns */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTurnList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     createAssistantTurn: {
         parameters: {
             query?: never;
@@ -10489,18 +10589,18 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The outcome */
-            200: {
+            /** @description The running turn */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssistantTurnResponse"];
+                    "application/json": components["schemas"]["AssistantTurn"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools) */
+            /** @description The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools), or another turn is running (`assistant_busy`, its id in turnId) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -10509,15 +10609,32 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description The model cannot answer (`assistant_unavailable`, reason connection, model or timeout); nothing is stored */
-            503: {
+        };
+    };
+    getAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant turn ID */
+                id: components["parameters"]["AssistantTurnId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The turn */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["AssistantTurn"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAssistantProposals: {

@@ -268,6 +268,7 @@ const errorCodes = {
   step_needs_skipped: "A kept step needs a step that is not ticked",
   assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
   assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
+  assistant_busy: "Another request is still running. It shows above when it finishes.",
   service_unavailable: "This isn't available right now. Try again later.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
@@ -4122,6 +4123,16 @@ export const en = {
           ? "The generation model didn’t answer. Check that Ollama has it."
           : `The generation model didn’t answer. Check that Ollama has “${model}”.`,
       timeout: "The model took too long. Try a shorter request, or a smaller model.",
+    },
+    stopped: {
+      step_limit:
+        "Stopped: the request needed more steps than one request may take. Nothing was changed. Try a narrower request.",
+      timeout:
+        "Stopped: the request took longer than the time limit. Nothing was changed. Try a narrower request, or a faster model.",
+      ungrounded:
+        "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
+      interrupted:
+        "Stopped by a restart before it finished. Nothing was changed. Ask again.",
     },
     tooManyVideos: "That is more than 20,000 videos. Narrow the selection or the filter.",
     failed: (reason: string) => `Couldn’t ask the assistant: ${reason}`,

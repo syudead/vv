@@ -35,6 +35,25 @@ func TestActionRunnerReadsThroughTheScreenHandler(t *testing.T) {
 	}
 }
 
+// A query argument the model wrote as text, or as one item where the spec takes an array, is read as the URL would
+// carry it; text that is not a number still fails the schema.
+func TestActionRunnerReadsQueryArgumentsAsTheirWireText(t *testing.T) {
+	tags := &fakeTags{tags: []domain.Tag{{ID: 3, Name: "karaoke", Synonyms: []string{}}}}
+	_, runner := NewServer(Options{Tags: tags, Auth: ownerAuth{}, Assets: emptyAssets{}})
+
+	if _, err := runner.Read(context.Background(), domain.AssistantRead{
+		Operation: "listTags", Arguments: json.RawMessage(`{"limit":"5","unused":"false","cursor":"null","q":null}`),
+	}); err != nil || tags.lastListQuery.Limit != 5 {
+		t.Fatalf("Read: %v, query = %+v", err, tags.lastListQuery)
+	}
+	_, err := runner.Read(context.Background(), domain.AssistantRead{
+		Operation: "listTags", Arguments: json.RawMessage(`{"limit":"many"}`),
+	})
+	if !errors.Is(err, domain.ErrAssistantInvalidArguments) {
+		t.Fatalf("Read(limit=many) error = %v", err)
+	}
+}
+
 // An image operation answers a reference, and the reference reads back the handler's bytes and content type.
 func TestActionRunnerAnswersAnImageAsAReferenceThatReadsBack(t *testing.T) {
 	credits := &faceAppearanceCredits{crop: []byte("jpeg-bytes")}

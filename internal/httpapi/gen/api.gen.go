@@ -441,6 +441,24 @@ func (e AssistantDestinationSettingsPage) Valid() bool {
 	}
 }
 
+// Defines values for AssistantDirectiveKind.
+const (
+	Filter   AssistantDirectiveKind = "filter"
+	Navigate AssistantDirectiveKind = "navigate"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDirectiveKind enum.
+func (e AssistantDirectiveKind) Valid() bool {
+	switch e {
+	case Filter:
+		return true
+	case Navigate:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssistantLabelKind.
 const (
 	AssistantLabelKindFolderRoot   AssistantLabelKind = "folderRoot"
@@ -474,6 +492,33 @@ func (e AssistantLabelKind) Valid() bool {
 	case AssistantLabelKindTagKind:
 		return true
 	case AssistantLabelKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantProgressItemKind.
+const (
+	AssistantProgressItemKindBuiltin  AssistantProgressItemKind = "builtin"
+	AssistantProgressItemKindExcluded AssistantProgressItemKind = "excluded"
+	AssistantProgressItemKindImage    AssistantProgressItemKind = "image"
+	AssistantProgressItemKindRead     AssistantProgressItemKind = "read"
+	AssistantProgressItemKindWrite    AssistantProgressItemKind = "write"
+)
+
+// Valid indicates whether the value is a known member of the AssistantProgressItemKind enum.
+func (e AssistantProgressItemKind) Valid() bool {
+	switch e {
+	case AssistantProgressItemKindBuiltin:
+		return true
+	case AssistantProgressItemKindExcluded:
+		return true
+	case AssistantProgressItemKindImage:
+		return true
+	case AssistantProgressItemKindRead:
+		return true
+	case AssistantProgressItemKindWrite:
 		return true
 	default:
 		return false
@@ -693,81 +738,54 @@ func (e AssistantStepStatus) Valid() bool {
 	}
 }
 
-// Defines values for AssistantTurnOutcomeAbout.
+// Defines values for AssistantTurnStatus.
 const (
-	Operation AssistantTurnOutcomeAbout = "operation"
-	Target    AssistantTurnOutcomeAbout = "target"
-	Value     AssistantTurnOutcomeAbout = "value"
+	AssistantTurnStatusClarify     AssistantTurnStatus = "clarify"
+	AssistantTurnStatusDone        AssistantTurnStatus = "done"
+	AssistantTurnStatusInterrupted AssistantTurnStatus = "interrupted"
+	AssistantTurnStatusRunning     AssistantTurnStatus = "running"
+	AssistantTurnStatusStopped     AssistantTurnStatus = "stopped"
 )
 
-// Valid indicates whether the value is a known member of the AssistantTurnOutcomeAbout enum.
-func (e AssistantTurnOutcomeAbout) Valid() bool {
+// Valid indicates whether the value is a known member of the AssistantTurnStatus enum.
+func (e AssistantTurnStatus) Valid() bool {
 	switch e {
-	case Operation:
+	case AssistantTurnStatusClarify:
 		return true
-	case Target:
+	case AssistantTurnStatusDone:
 		return true
-	case Value:
+	case AssistantTurnStatusInterrupted:
+		return true
+	case AssistantTurnStatusRunning:
+		return true
+	case AssistantTurnStatusStopped:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for AssistantTurnOutcomeKind.
+// Defines values for AssistantTurnStopReason.
 const (
-	AssistantTurnOutcomeKindAnswer      AssistantTurnOutcomeKind = "answer"
-	AssistantTurnOutcomeKindClarify     AssistantTurnOutcomeKind = "clarify"
-	AssistantTurnOutcomeKindFilter      AssistantTurnOutcomeKind = "filter"
-	AssistantTurnOutcomeKindNavigate    AssistantTurnOutcomeKind = "navigate"
-	AssistantTurnOutcomeKindProposal    AssistantTurnOutcomeKind = "proposal"
-	AssistantTurnOutcomeKindReview      AssistantTurnOutcomeKind = "review"
-	AssistantTurnOutcomeKindUnreadable  AssistantTurnOutcomeKind = "unreadable"
-	AssistantTurnOutcomeKindUnsupported AssistantTurnOutcomeKind = "unsupported"
+	AssistantTurnStopReasonConnection AssistantTurnStopReason = "connection"
+	AssistantTurnStopReasonModel      AssistantTurnStopReason = "model"
+	AssistantTurnStopReasonStepLimit  AssistantTurnStopReason = "step_limit"
+	AssistantTurnStopReasonTimeout    AssistantTurnStopReason = "timeout"
+	AssistantTurnStopReasonUngrounded AssistantTurnStopReason = "ungrounded"
 )
 
-// Valid indicates whether the value is a known member of the AssistantTurnOutcomeKind enum.
-func (e AssistantTurnOutcomeKind) Valid() bool {
+// Valid indicates whether the value is a known member of the AssistantTurnStopReason enum.
+func (e AssistantTurnStopReason) Valid() bool {
 	switch e {
-	case AssistantTurnOutcomeKindAnswer:
+	case AssistantTurnStopReasonConnection:
 		return true
-	case AssistantTurnOutcomeKindClarify:
+	case AssistantTurnStopReasonModel:
 		return true
-	case AssistantTurnOutcomeKindFilter:
+	case AssistantTurnStopReasonStepLimit:
 		return true
-	case AssistantTurnOutcomeKindNavigate:
+	case AssistantTurnStopReasonTimeout:
 		return true
-	case AssistantTurnOutcomeKindProposal:
-		return true
-	case AssistantTurnOutcomeKindReview:
-		return true
-	case AssistantTurnOutcomeKindUnreadable:
-		return true
-	case AssistantTurnOutcomeKindUnsupported:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AssistantTurnOutcomeQuestion.
-const (
-	Appearances AssistantTurnOutcomeQuestion = "appearances"
-	Count       AssistantTurnOutcomeQuestion = "count"
-	List        AssistantTurnOutcomeQuestion = "list"
-	Recent      AssistantTurnOutcomeQuestion = "recent"
-)
-
-// Valid indicates whether the value is a known member of the AssistantTurnOutcomeQuestion enum.
-func (e AssistantTurnOutcomeQuestion) Valid() bool {
-	switch e {
-	case Appearances:
-		return true
-	case Count:
-		return true
-	case List:
-		return true
-	case Recent:
+	case AssistantTurnStopReasonUngrounded:
 		return true
 	default:
 		return false
@@ -968,6 +986,7 @@ const (
 	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
 	ErrorCodeActivityNotRetryable        ErrorCode = "activity_not_retryable"
 	ErrorCodeActivityNotUndoable         ErrorCode = "activity_not_undoable"
+	ErrorCodeAssistantBusy               ErrorCode = "assistant_busy"
 	ErrorCodeAssistantNotReady           ErrorCode = "assistant_not_ready"
 	ErrorCodeAssistantUnavailable        ErrorCode = "assistant_unavailable"
 	ErrorCodeConflict                    ErrorCode = "conflict"
@@ -1027,6 +1046,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeActivityNotRetryable:
 		return true
 	case ErrorCodeActivityNotUndoable:
+		return true
+	case ErrorCodeAssistantBusy:
 		return true
 	case ErrorCodeAssistantNotReady:
 		return true
@@ -4034,21 +4055,6 @@ type ApproveWorkInfoPluginRequest struct {
 	Digest string `json:"digest"`
 }
 
-// AssistantAnswerItem defines model for AssistantAnswerItem.
-type AssistantAnswerItem struct {
-	Id int64 `json:"id"`
-
-	// Title The video's title, as untranslated user data.
-	Title string `json:"title"`
-}
-
-// AssistantAnswerLink Where the number came from: the library with criteria, or the page of the entity.
-type AssistantAnswerLink struct {
-	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
-	Criteria    *AssistantCriteria    `json:"criteria,omitempty"`
-	Destination *AssistantDestination `json:"destination,omitempty"`
-}
-
 // AssistantCandidate defines model for AssistantCandidate.
 type AssistantCandidate struct {
 	// Count Videos the tag is on or the person or organization is credited on; 0 for other kinds.
@@ -4105,6 +4111,26 @@ type AssistantDestinationKind string
 // AssistantDestinationSettingsPage defines model for AssistantDestination.SettingsPage.
 type AssistantDestinationSettingsPage string
 
+// AssistantDirective The turn's last library filter or navigation, which the panel applies without confirmation.
+type AssistantDirective struct {
+	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+	Criteria    *AssistantCriteria     `json:"criteria,omitempty"`
+	Destination *AssistantDestination  `json:"destination,omitempty"`
+	Kind        AssistantDirectiveKind `json:"kind"`
+}
+
+// AssistantDirectiveKind defines model for AssistantDirective.Kind.
+type AssistantDirectiveKind string
+
+// AssistantExcludedOperation An operation the assistant leaves to its page, which the model asked for.
+type AssistantExcludedOperation struct {
+	Operation string `json:"operation"`
+
+	// Page The route of the page that does it.
+	Page   string `json:"page"`
+	Reason string `json:"reason"`
+}
+
 // AssistantExecution defines model for AssistantExecution.
 type AssistantExecution struct {
 	// Steps The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped.
@@ -4137,6 +4163,33 @@ type AssistantPin struct {
 	// Name The name the clarification asked about, as untranslated user data.
 	Name string `json:"name"`
 }
+
+// AssistantProgressItem One tool call, composed by the server from the tool and its arguments, never from the model's text.
+type AssistantProgressItem struct {
+	At time.Time `json:"at"`
+
+	// Error Why the call came back as an error result, in English; the model may recover.
+	Error *string `json:"error,omitempty"`
+
+	// Images Images the call sends.
+	Images *int `json:"images,omitempty"`
+
+	// Kind image is a read that answers an image.
+	Kind AssistantProgressItemKind `json:"kind"`
+
+	// Labels The entities the call's id arguments name.
+	Labels []AssistantLabel `json:"labels"`
+
+	// M With n, how far a call over m items has come.
+	M *int `json:"m,omitempty"`
+	N *int `json:"n,omitempty"`
+
+	// Tool The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools.
+	Tool string `json:"tool"`
+}
+
+// AssistantProgressItemKind image is a read that answers an image.
+type AssistantProgressItemKind string
 
 // AssistantProposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
 type AssistantProposal struct {
@@ -4339,6 +4392,49 @@ type AssistantSelectedCollections struct {
 // AssistantStepStatus pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
 type AssistantStepStatus string
 
+// AssistantTurn One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason.
+type AssistantTurn struct {
+	// Answer The model's final text in the request's language, after every number and library name in it was found in this turn's tool results, the request, the screen or today's date. It is model text: show it as plain text.
+	Answer *string `json:"answer,omitempty"`
+
+	// Clarify The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
+	Clarify *AssistantTurnClarification `json:"clarify,omitempty"`
+
+	// Directive The turn's last library filter or navigation, which the panel applies without confirmation.
+	Directive  *AssistantDirective `json:"directive,omitempty"`
+	FinishedAt *time.Time          `json:"finishedAt,omitempty"`
+	Id         int64               `json:"id"`
+
+	// Judged The answer used the classifier's answers, which are estimates.
+	Judged   bool                    `json:"judged"`
+	Progress []AssistantProgressItem `json:"progress"`
+
+	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
+	Proposal *AssistantProposal `json:"proposal,omitempty"`
+
+	// Request The owner's request, as untranslated user data.
+	Request   string    `json:"request"`
+	StartedAt time.Time `json:"startedAt"`
+
+	// Status interrupted was running when the server stopped.
+	Status AssistantTurnStatus `json:"status"`
+
+	// Stop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+	Stop *AssistantTurnStop `json:"stop,omitempty"`
+}
+
+// AssistantTurnStatus interrupted was running when the server stopped.
+type AssistantTurnStatus string
+
+// AssistantTurnClarification The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
+type AssistantTurnClarification struct {
+	Candidates []AssistantCandidate `json:"candidates"`
+	Kind       AssistantLabelKind   `json:"kind"`
+
+	// Name As untranslated user data.
+	Name string `json:"name"`
+}
+
 // AssistantTurnContext The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
 type AssistantTurnContext struct {
 	// Filter Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
@@ -4356,63 +4452,32 @@ type AssistantTurnContext struct {
 	Sort *VideoSort `json:"sort,omitempty"`
 }
 
-// AssistantTurnOutcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
-type AssistantTurnOutcome struct {
-	About      *AssistantTurnOutcomeAbout `json:"about,omitempty"`
-	Candidates *[]AssistantCandidate      `json:"candidates,omitempty"`
-
-	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
-	Criteria    *AssistantCriteria       `json:"criteria,omitempty"`
-	Destination *AssistantDestination    `json:"destination,omitempty"`
-	Items       *[]AssistantAnswerItem   `json:"items,omitempty"`
-	Kind        AssistantTurnOutcomeKind `json:"kind"`
-
-	// Link Where the number came from: the library with criteria, or the page of the entity.
-	Link *AssistantAnswerLink `json:"link,omitempty"`
-
-	// Names Names that matched nothing, as untranslated user data.
-	Names *[]string `json:"names,omitempty"`
-
-	// Operation The catalog row id the model named that the assistant cannot build a request for yet.
-	Operation *string `json:"operation,omitempty"`
-
-	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
-	Proposal *AssistantProposal            `json:"proposal,omitempty"`
-	Question *AssistantTurnOutcomeQuestion `json:"question,omitempty"`
-
-	// Run A search for candidate sets of one kind and their judging by the classifier, one question per set.
-	Run *AssistantReviewRun `json:"run,omitempty"`
-
-	// Total The count the screens show for the same filter or entity.
-	Total *int `json:"total,omitempty"`
+// AssistantTurnList defines model for AssistantTurnList.
+type AssistantTurnList struct {
+	Items []AssistantTurn `json:"items"`
 }
-
-// AssistantTurnOutcomeAbout defines model for AssistantTurnOutcome.About.
-type AssistantTurnOutcomeAbout string
-
-// AssistantTurnOutcomeKind defines model for AssistantTurnOutcome.Kind.
-type AssistantTurnOutcomeKind string
-
-// AssistantTurnOutcomeQuestion defines model for AssistantTurnOutcome.Question.
-type AssistantTurnOutcomeQuestion string
 
 // AssistantTurnRequest defines model for AssistantTurnRequest.
 type AssistantTurnRequest struct {
 	// Context The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
 	Context AssistantTurnContext `json:"context"`
 
-	// Previous One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
-	Previous *AssistantTurnOutcome `json:"previous,omitempty"`
+	// PreviousTurnId The turn a follow-up continues; its request and its proposal's steps go to the model.
+	PreviousTurnId *int64 `json:"previousTurnId,omitempty"`
 
 	// Text The owner's request, as untranslated user data; at most 500 characters.
 	Text string `json:"text"`
 }
 
-// AssistantTurnResponse defines model for AssistantTurnResponse.
-type AssistantTurnResponse struct {
-	// Outcome One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing.
-	Outcome AssistantTurnOutcome `json:"outcome"`
+// AssistantTurnStop Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal.
+type AssistantTurnStop struct {
+	// Excluded An operation the assistant leaves to its page, which the model asked for.
+	Excluded *AssistantExcludedOperation `json:"excluded,omitempty"`
+	Reason   AssistantTurnStopReason     `json:"reason"`
 }
+
+// AssistantTurnStopReason defines model for AssistantTurnStop.Reason.
+type AssistantTurnStopReason string
 
 // AuthRedirect defines model for AuthRedirect.
 type AuthRedirect struct {
@@ -4718,6 +4783,9 @@ type Error struct {
 
 	// TagName Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required.
 	TagName *string `json:"tagName,omitempty"`
+
+	// TurnId The running turn; only for assistant_busy.
+	TurnId *int64 `json:"turnId,omitempty"`
 }
 
 // ErrorCode Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
@@ -8828,6 +8896,9 @@ type AssistantProposalId = int64
 // AssistantReviewRunId defines model for AssistantReviewRunId.
 type AssistantReviewRunId = int64
 
+// AssistantTurnId defines model for AssistantTurnId.
+type AssistantTurnId = int64
+
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -9008,6 +9079,12 @@ type GetAssistantReviewRunParams struct {
 
 	// Limit Candidates per page; 50 when omitted.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAssistantTurnsParams defines parameters for ListAssistantTurns.
+type ListAssistantTurnsParams struct {
+	// Active Must be true.
+	Active bool `form:"active" json:"active"`
 }
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
@@ -9981,9 +10058,15 @@ type ServerInterface interface {
 	// RejectAssistantReviewCandidates Reject review candidates
 	// (POST /api/assistant/review-runs/{id}/candidates/reject)
 	RejectAssistantReviewCandidates(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId)
-	// CreateAssistantTurn Interpret one request into one outcome
+	// ListAssistantTurns List the assistant's active turns
+	// (GET /api/assistant/turns)
+	ListAssistantTurns(w http.ResponseWriter, r *http.Request, params ListAssistantTurnsParams)
+	// CreateAssistantTurn Start one request as a server-side turn
 	// (POST /api/assistant/turns)
 	CreateAssistantTurn(w http.ResponseWriter, r *http.Request)
+	// GetAssistantTurn Read one assistant turn
+	// (GET /api/assistant/turns/{id})
+	GetAssistantTurn(w http.ResponseWriter, r *http.Request, id AssistantTurnId)
 	// Login Sign in with a username and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -11170,11 +11253,70 @@ func (siw *ServerInterfaceWrapper) RejectAssistantReviewCandidates(w http.Respon
 	handler.ServeHTTP(w, r)
 }
 
+// ListAssistantTurns operation middleware
+func (siw *ServerInterfaceWrapper) ListAssistantTurns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssistantTurnsParams
+
+	// ------------- Required query parameter "active" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "active", r.URL.Query(), &params.Active, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "active"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "active", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssistantTurns(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateAssistantTurn operation middleware
 func (siw *ServerInterfaceWrapper) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAssistantTurn(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantTurnId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantTurn(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18196,7 +18338,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama/models", wrapper.ListOllamaModels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/readiness", wrapper.GetAssistantReadiness)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns", wrapper.ListAssistantTurns)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns", wrapper.CreateAssistantTurn)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns/{id}", wrapper.GetAssistantTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)

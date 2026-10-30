@@ -2,14 +2,18 @@ import type {
   AssistantOutcome,
   AssistantPin,
   AssistantReadinessReason,
+  AssistantTurn,
 } from "../api/assistant";
 import { RequestFailed } from "../api/client";
 
 export type UnavailableReason = "connection" | "model" | "timeout";
 
-/** The reply under one request; an outcome keeps the URL it applied, for the link back. */
+/**
+ * The reply under one request. A finished turn keeps the reply rows derived from it and the URL
+ * its directive applied, for the link back.
+ */
 export type Reply =
-  | { kind: "outcome"; outcome: AssistantOutcome; path?: string }
+  | { kind: "turn"; turn: AssistantTurn; outcome?: AssistantOutcome; path?: string }
   | { kind: "unavailable"; reason: UnavailableReason }
   | { kind: "tooManyVideos" }
   | { kind: "failed"; error: unknown };
@@ -28,13 +32,36 @@ export interface Exchange {
   reply?: Reply;
 }
 
-/** The outcome a follow-up sends as previous: the last reply that is one. */
-export function previousOutcome(
-  exchanges: readonly Exchange[],
-): AssistantOutcome | undefined {
+/** The turn a follow-up continues: the last reply that is one. */
+export function previousTurnId(exchanges: readonly Exchange[]): number | undefined {
   for (let index = exchanges.length - 1; index >= 0; index -= 1) {
     const reply = exchanges[index]?.reply;
-    if (reply?.kind === "outcome") return reply.outcome;
+    if (reply?.kind === "turn") return reply.turn.id;
+  }
+  return undefined;
+}
+
+/**
+ * Interim: the shipped reply row a finished turn maps to, until the panel draws turns themselves.
+ * A clarification or a proposal ends the turn without a directive, so at most one applies.
+ */
+export function turnOutcome(turn: AssistantTurn): AssistantOutcome | undefined {
+  if (turn.clarify !== undefined) {
+    const { candidates, name } = turn.clarify;
+    return candidates.length > 0
+      ? { kind: "clarify", about: "value", candidates }
+      : { kind: "clarify", about: "value", names: [name] };
+  }
+  if (turn.proposal !== undefined) return { kind: "proposal", proposal: turn.proposal };
+  if (turn.stop?.excluded !== undefined) {
+    return { kind: "unsupported", operation: turn.stop.excluded.operation };
+  }
+  const directive = turn.directive;
+  if (directive?.kind === "filter" && directive.criteria !== undefined) {
+    return { kind: "filter", criteria: directive.criteria };
+  }
+  if (directive?.kind === "navigate" && directive.destination !== undefined) {
+    return { kind: "navigate", destination: directive.destination };
   }
   return undefined;
 }

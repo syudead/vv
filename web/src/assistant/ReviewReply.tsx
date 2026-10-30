@@ -15,8 +15,8 @@ function earlierRunIds(exchanges: readonly Exchange[], before: number): Set<numb
   const ids = new Set<number>();
   for (const exchange of exchanges) {
     const reply = exchange.reply;
-    if (exchange.id >= before || reply?.kind !== "outcome") continue;
-    if (reply.outcome.run !== undefined) ids.add(reply.outcome.run.id);
+    if (exchange.id >= before || reply?.kind !== "turn") continue;
+    if (reply.outcome?.run !== undefined) ids.add(reply.outcome.run.id);
   }
   return ids;
 }

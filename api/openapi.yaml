@@ -1837,8 +1837,8 @@ paths:
   /api/assistant/turns:
     post:
       operationId: createAssistantTurn
-      summary: "Interpret one request into one outcome"
-      description: "Owner-only. Sends the request, the screen context and, for a follow-up, the previous outcome to the saved generation model as one structured-output call, then resolves every name the model returned against the library: one match is used, several or none answer clarify with the candidates, except a tag to attach, which the proposal lists in created. An action outcome stores a proposal and answers it; a follow-up discards the previous proposal once the new request is understood. filter, navigate and answer change nothing. An answer the schema does not match is unreadable and changes nothing. text over 500 characters, or a target or selection of more than 20,000 videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Ollama that cannot be reached (connection), a missing or refusing model (model) or a timeout (timeout) returns 503 assistant_unavailable and stores nothing. The call waits for the model up to 10 minutes."
+      summary: "Start one request as a server-side turn"
+      description: "Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers or a limit stops it: at most 12 model calls and 40 tool calls, and 10 minutes from the start. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. text over 500 characters, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId."
       requestBody:
         required: true
         content:
@@ -1846,28 +1846,65 @@ paths:
             schema:
               $ref: "#/components/schemas/AssistantTurnRequest"
       responses:
-        "200":
-          description: "The outcome"
+        "202":
+          description: "The running turn"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantTurnResponse"
+                $ref: "#/components/schemas/AssistantTurn"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools)"
+          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools), or another turn is running (`assistant_busy`, its id in turnId)"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "503":
-          description: "The model cannot answer (`assistant_unavailable`, reason connection, model or timeout); nothing is stored"
+    get:
+      operationId: listAssistantTurns
+      summary: "List the assistant's active turns"
+      description: "Owner-only. Lists, newest first, the running turn and the turns finished within the last hour, so the panel rebuilds its thread after a reload. active=true is the only filter and is required."
+      parameters:
+        - name: active
+          in: query
+          required: true
+          description: "Must be true."
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: "Active turns"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/AssistantTurnList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/assistant/turns/{id}:
+    get:
+      operationId: getAssistantTurn
+      summary: "Read one assistant turn"
+      description: "Owner-only. The panel reads it again on each assistant event. A turn is kept for 24 hours after it finished; a missing or expired turn returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantTurnId"
+      responses:
+        "200":
+          description: "The turn"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantTurn"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/assistant/proposals:
     get:
@@ -6141,6 +6178,14 @@ components:
       schema:
         type: integer
         format: int64
+    AssistantTurnId:
+      name: id
+      in: path
+      required: true
+      description: "Assistant turn ID"
+      schema:
+        type: integer
+        format: int64
     AssistantProposalId:
       name: id
       in: path
@@ -6971,8 +7016,10 @@ components:
           description: "The owner's request, as untranslated user data; at most 500 characters."
         context:
           $ref: "#/components/schemas/AssistantTurnContext"
-        previous:
-          $ref: "#/components/schemas/AssistantTurnOutcome"
+        previousTurnId:
+          type: integer
+          format: int64
+          description: "The turn a follow-up continues; its request and its proposal's steps go to the model."
 
     AssistantTurnContext:
       type: object
@@ -7046,60 +7093,148 @@ components:
           type: integer
           format: int64
 
-    AssistantTurnResponse:
+    AssistantTurn:
       type: object
-      required: [outcome]
+      required: [id, status, request, startedAt, progress, judged]
+      additionalProperties: false
+      description: "One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason."
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [running, done, clarify, stopped, interrupted]
+          description: "interrupted was running when the server stopped."
+        request:
+          type: string
+          description: "The owner's request, as untranslated user data."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        progress:
+          type: array
+          maxItems: 40
+          items:
+            $ref: "#/components/schemas/AssistantProgressItem"
+        answer:
+          type: string
+          description: "The model's final text in the request's language, after every number and library name in it was found in this turn's tool results, the request, the screen or today's date. It is model text: show it as plain text."
+        judged:
+          type: boolean
+          description: "The answer used the classifier's answers, which are estimates."
+        directive:
+          $ref: "#/components/schemas/AssistantDirective"
+        clarify:
+          $ref: "#/components/schemas/AssistantTurnClarification"
+        proposal:
+          $ref: "#/components/schemas/AssistantProposal"
+        stop:
+          $ref: "#/components/schemas/AssistantTurnStop"
+
+    AssistantTurnList:
+      type: object
+      required: [items]
       additionalProperties: false
       properties:
-        outcome:
-          $ref: "#/components/schemas/AssistantTurnOutcome"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantTurn"
 
-    AssistantTurnOutcome:
+    AssistantProgressItem:
+      type: object
+      required: [tool, kind, labels, at]
+      additionalProperties: false
+      description: "One tool call, composed by the server from the tool and its arguments, never from the model's text."
+      properties:
+        tool:
+          type: string
+          description: "The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools."
+        kind:
+          type: string
+          enum: [builtin, read, image, write, excluded]
+          description: "image is a read that answers an image."
+        labels:
+          type: array
+          maxItems: 20
+          description: "The entities the call's id arguments name."
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+        images:
+          type: integer
+          description: "Images the call sends."
+        "n":
+          type: integer
+        m:
+          type: integer
+          description: "With n, how far a call over m items has come."
+        error:
+          type: string
+          description: "Why the call came back as an error result, in English; the model may recover."
+        at:
+          type: string
+          format: date-time
+
+    AssistantDirective:
       type: object
       required: [kind]
       additionalProperties: false
-      description: "One turn's outcome. The panel composes every sentence from these typed members; none is text from the model. filter carries criteria; navigate destination; answer question with total, items and link; proposal the stored proposal; review the review run the request started, or the one of its kind already running; clarify about with candidates or the names that matched nothing; unsupported the catalog operation the assistant cannot build yet, when the model named one; unreadable nothing."
+      description: "The turn's last library filter or navigation, which the panel applies without confirmation."
       properties:
         kind:
           type: string
-          enum: [filter, navigate, answer, proposal, review, clarify, unsupported, unreadable]
+          enum: [filter, navigate]
         criteria:
           $ref: "#/components/schemas/AssistantCriteria"
         destination:
           $ref: "#/components/schemas/AssistantDestination"
-        question:
+
+    AssistantTurnClarification:
+      type: object
+      required: [name, kind, candidates]
+      additionalProperties: false
+      description: "The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal."
+      properties:
+        name:
           type: string
-          enum: [count, appearances, recent, list]
-        total:
-          type: integer
-          description: "The count the screens show for the same filter or entity."
-        items:
-          type: array
-          maxItems: 20
-          items:
-            $ref: "#/components/schemas/AssistantAnswerItem"
-        link:
-          $ref: "#/components/schemas/AssistantAnswerLink"
-        proposal:
-          $ref: "#/components/schemas/AssistantProposal"
-        run:
-          $ref: "#/components/schemas/AssistantReviewRun"
-        about:
-          type: string
-          enum: [operation, target, value]
+          description: "As untranslated user data."
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
         candidates:
           type: array
           maxItems: 10
           items:
             $ref: "#/components/schemas/AssistantCandidate"
-        names:
-          type: array
-          description: "Names that matched nothing, as untranslated user data."
-          items:
-            type: string
+
+    AssistantTurnStop:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      description: "Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal."
+      properties:
+        reason:
+          type: string
+          enum: [step_limit, timeout, connection, model, ungrounded]
+        excluded:
+          $ref: "#/components/schemas/AssistantExcludedOperation"
+
+    AssistantExcludedOperation:
+      type: object
+      required: [operation, reason, page]
+      additionalProperties: false
+      description: "An operation the assistant leaves to its page, which the model asked for."
+      properties:
         operation:
           type: string
-          description: "The catalog row id the model named that the assistant cannot build a request for yet."
+        reason:
+          type: string
+        page:
+          type: string
+          description: "The route of the page that does it."
 
     AssistantCriteria:
       type: object
@@ -7130,28 +7265,6 @@ components:
         settingsPage:
           type: string
           enum: [scan, library, auto-tagging, face-recognition, connections, plugins, conversion, network, account, api, danger-zone]
-
-    AssistantAnswerItem:
-      type: object
-      required: [id, title]
-      additionalProperties: false
-      properties:
-        id:
-          type: integer
-          format: int64
-        title:
-          type: string
-          description: "The video's title, as untranslated user data."
-
-    AssistantAnswerLink:
-      type: object
-      additionalProperties: false
-      description: "Where the number came from: the library with criteria, or the page of the entity."
-      properties:
-        criteria:
-          $ref: "#/components/schemas/AssistantCriteria"
-        destination:
-          $ref: "#/components/schemas/AssistantDestination"
 
     AssistantCandidate:
       type: object
@@ -14235,6 +14348,7 @@ components:
             - step_needs_skipped
             - assistant_not_ready
             - assistant_unavailable
+            - assistant_busy
             - service_unavailable
         message:
           type: string
@@ -14274,6 +14388,10 @@ components:
         step:
           type: integer
           description: "The index of the kept step that uses what an unticked step creates; only for step_needs_skipped."
+        turnId:
+          type: integer
+          format: int64
+          description: "The running turn; only for assistant_busy."
     ErrorReason:
       type: string
       description: "Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants."

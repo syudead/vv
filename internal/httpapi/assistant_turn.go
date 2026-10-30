@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,18 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
-
-// assistantUnavailable maps a generator failure to the reason the panel shows; nothing was stored.
-var assistantUnavailable = []struct {
-	cause  error
-	reason gen.ErrorReason
-}{
-	{domain.ErrOllamaUnreachable, gen.ErrorReasonConnection},
-	{domain.ErrNotOllama, gen.ErrorReasonConnection},
-	{domain.ErrOllamaModel, gen.ErrorReasonModel},
-	{domain.ErrGenerationModelMissing, gen.ErrorReasonModel},
-	{domain.ErrOllamaTimeout, gen.ErrorReasonTimeout},
-}
 
 func (s *server) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
 	if !s.assistantConfigured(w, 1) || !s.ollamaConfigured(w) {
@@ -44,34 +33,66 @@ func (s *server) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
 			"Save the Ollama connection and a generation model that can call tools first.")
 		return
 	}
-	result, err := s.assistant.Turn(r.Context(), in)
-	if err != nil {
-		s.writeAssistantTurnError(w, err)
-		return
+	turn, err := s.assistant.StartTurn(r.Context(), in)
+	switch {
+	case errors.Is(err, domain.ErrAssistantBusy):
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code: gen.ErrorCodeAssistantBusy, Message: "Another request is still running.", TurnId: &turn.ID,
+		})
+	case err != nil:
+		s.internalError(w, "Could not start the request.", err)
+	default:
+		s.writeAssistantTurn(w, r.Context(), http.StatusAccepted, turn)
 	}
-	outcome, err := toAPIAssistantOutcome(result)
-	if err != nil {
-		s.internalError(w, "Could not encode the assistant outcome.", err)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.AssistantTurnResponse{Outcome: outcome}, s.logger)
 }
 
-func (s *server) writeAssistantTurnError(w http.ResponseWriter, err error) {
-	if errors.Is(err, domain.ErrAssistantTooManyVideos) {
-		s.invalidRequestLimit(w, reasonTooManyVideos, domain.AssistantSelectionMax,
-			"The request names more videos than one change can take. Narrow it down.")
+func (s *server) GetAssistantTurn(w http.ResponseWriter, r *http.Request, id gen.AssistantTurnId) {
+	if !s.assistantConfigured(w, id) {
 		return
 	}
-	for _, failure := range assistantUnavailable {
-		if errors.Is(err, failure.cause) {
-			s.writeReasonError(w, http.StatusServiceUnavailable, gen.ErrorCodeAssistantUnavailable, failure.reason,
-				"The generation model could not answer. Nothing was changed.")
+	turn, err := s.assistant.Turn(r.Context(), id)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, "The request does not exist or is no longer kept.")
+	case err != nil:
+		s.internalError(w, "Could not read the request.", err)
+	default:
+		s.writeAssistantTurn(w, r.Context(), http.StatusOK, turn)
+	}
+}
+
+func (s *server) ListAssistantTurns(w http.ResponseWriter, r *http.Request, params gen.ListAssistantTurnsParams) {
+	if !s.assistantConfigured(w, 1) {
+		return
+	}
+	if !params.Active {
+		s.invalidRequest(w, "Only active=true is supported.")
+		return
+	}
+	turns, err := s.assistant.ActiveTurns(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not list the requests.", err)
+		return
+	}
+	items := make([]gen.AssistantTurn, len(turns))
+	for i, turn := range turns {
+		if items[i], err = s.toAPIAssistantTurn(r.Context(), turn); err != nil {
+			s.internalError(w, "Could not encode the request.", err)
 			return
 		}
 	}
-	s.internalError(w, "Could not interpret the request.", err)
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.AssistantTurnList{Items: items}, s.logger)
+}
+
+func (s *server) writeAssistantTurn(w http.ResponseWriter, ctx context.Context, status int, turn domain.AssistantTurn) {
+	body, err := s.toAPIAssistantTurn(ctx, turn)
+	if err != nil {
+		s.internalError(w, "Could not encode the request.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, status, body, s.logger)
 }
 
 // assistantTurnInput checks the limits the schema states and converts the context; false has written the error.
@@ -81,12 +102,9 @@ func (s *server) assistantTurnInput(w http.ResponseWriter, body gen.AssistantTur
 		return domain.AssistantTurnInput{}, false
 	}
 	c := body.Context
-	in := domain.AssistantTurnInput{Text: body.Text, Context: domain.AssistantTurnContext{
-		Route: domain.AssistantRouteKind(c.Route.Kind), SelectedVideoIDs: deref(c.SelectedVideoIds),
+	in := domain.AssistantTurnInput{Text: body.Text, PreviousTurnID: valueOrZero(body.PreviousTurnId), Context: domain.AssistantTurnContext{
+		Route: domain.AssistantRouteKind(c.Route.Kind), RouteID: valueOrZero(c.Route.Id), SelectedVideoIDs: deref(c.SelectedVideoIds),
 	}}
-	if c.Route.Id != nil {
-		in.Context.RouteID = *c.Route.Id
-	}
 	if c.SelectedCollectionIds != nil {
 		in.Context.SelectedGroupIDs = deref(c.SelectedCollectionIds.Groups)
 		in.Context.SelectedSmartFolderIDs = deref(c.SelectedCollectionIds.SmartFolders)
@@ -111,44 +129,93 @@ func (s *server) assistantTurnInput(w http.ResponseWriter, body gen.AssistantTur
 		}
 		in.Context.Filter = &rule
 	}
-	if body.Previous != nil {
-		in.Previous, _ = json.Marshal(body.Previous) // A decoded outcome always encodes.
-		if body.Previous.Proposal != nil {
-			in.PreviousProposalID = body.Previous.Proposal.Id
-		}
-	}
 	return in, true
 }
 
-func toAPIAssistantOutcome(r domain.AssistantTurnResult) (gen.AssistantTurnOutcome, error) {
-	out := gen.AssistantTurnOutcome{Kind: gen.AssistantTurnOutcomeKind(r.Kind)}
-	var err error
-	if r.Criteria != nil {
-		if out.Criteria, err = toAPIAssistantCriteria(*r.Criteria); err != nil {
+// toAPIAssistantTurn embeds the turn's proposal as it stands; an expired proposal is left out.
+func (s *server) toAPIAssistantTurn(ctx context.Context, t domain.AssistantTurn) (gen.AssistantTurn, error) {
+	out := gen.AssistantTurn{
+		Id: t.ID, Status: gen.AssistantTurnStatus(t.Status), Request: t.Request, StartedAt: t.StartedAt,
+		Judged: t.Judged, Progress: make([]gen.AssistantProgressItem, len(t.Progress)),
+	}
+	if !t.FinishedAt.IsZero() {
+		out.FinishedAt = &t.FinishedAt
+	}
+	if t.Answer != "" {
+		out.Answer = &t.Answer
+	}
+	for i, item := range t.Progress {
+		out.Progress[i] = toAPIAssistantProgressItem(item)
+	}
+	if t.Directive != nil {
+		directive, err := toAPIAssistantDirective(*t.Directive)
+		if err != nil {
 			return out, err
 		}
+		out.Directive = &directive
 	}
-	if r.Destination != nil {
-		out.Destination = toAPIAssistantDestination(*r.Destination)
-	}
-	if r.Answer != nil {
-		if err := setAPIAssistantAnswer(&out, *r.Answer); err != nil {
-			return out, err
+	if c := t.Clarify; c != nil {
+		out.Clarify = &gen.AssistantTurnClarification{
+			Name: c.Name, Kind: gen.AssistantLabelKind(c.Kind), Candidates: toAPIAssistantCandidates(c.Candidates),
 		}
 	}
-	if r.Proposal != nil {
-		proposal := toAPIAssistantProposal(*r.Proposal)
-		out.Proposal = &proposal
+	if t.Stop != nil {
+		out.Stop = &gen.AssistantTurnStop{Reason: gen.AssistantTurnStopReason(t.Stop.Reason)}
+		if e := t.Stop.Excluded; e != nil {
+			out.Stop.Excluded = &gen.AssistantExcludedOperation{Operation: e.Operation, Reason: e.Reason, Page: e.Page}
+		}
 	}
-	if r.Review != nil {
-		run := toAPIAssistantReviewRun(*r.Review)
-		out.Run = &run
+	if t.ProposalID > 0 {
+		p, err := s.assistant.Proposal(ctx, t.ProposalID)
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return out, err
+		}
+		if err == nil {
+			proposal := toAPIAssistantProposal(p)
+			out.Proposal = &proposal
+		}
 	}
-	if r.Clarify != nil {
-		setAPIAssistantClarify(&out, *r.Clarify)
+	return out, nil
+}
+
+func toAPIAssistantProgressItem(item domain.AssistantProgressItem) gen.AssistantProgressItem {
+	out := gen.AssistantProgressItem{
+		Tool: item.Tool, Kind: gen.AssistantProgressItemKind(item.Kind), Labels: toAPIAssistantLabels(item.Labels),
+		At: item.At, Images: positive(item.Images), N: positive(item.N), M: positive(item.M),
 	}
-	if r.Unsupported != "" {
-		out.Operation = &r.Unsupported
+	if item.Error != "" {
+		out.Error = &item.Error
+	}
+	return out
+}
+
+// positive answers nil for zero, which the schema leaves out.
+func positive(n int) *int {
+	if n <= 0 {
+		return nil
+	}
+	return &n
+}
+
+func toAPIAssistantCandidates(candidates []domain.AssistantCandidate) []gen.AssistantCandidate {
+	out := make([]gen.AssistantCandidate, len(candidates))
+	for i, c := range candidates {
+		out[i] = gen.AssistantCandidate{Kind: gen.AssistantLabelKind(c.Kind), Id: c.ID, Name: c.Name, Count: c.Count}
+	}
+	return out
+}
+
+func toAPIAssistantDirective(d domain.AssistantDirective) (gen.AssistantDirective, error) {
+	out := gen.AssistantDirective{Kind: gen.AssistantDirectiveKind(d.Kind)}
+	if d.Criteria != nil {
+		criteria, err := toAPIAssistantCriteria(*d.Criteria)
+		if err != nil {
+			return out, err
+		}
+		out.Criteria = criteria
+	}
+	if d.Destination != nil {
+		out.Destination = toAPIAssistantDestination(*d.Destination)
 	}
 	return out, nil
 }
@@ -179,46 +246,4 @@ func toAPIAssistantDestination(d domain.AssistantDestination) *gen.AssistantDest
 		out.SettingsPage = &page
 	}
 	return out
-}
-
-func setAPIAssistantAnswer(out *gen.AssistantTurnOutcome, a domain.AssistantAnswer) error {
-	question := gen.AssistantTurnOutcomeQuestion(a.Question)
-	out.Question, out.Total = &question, a.Total
-	items := make([]gen.AssistantAnswerItem, len(a.Items))
-	for i, item := range a.Items {
-		items[i] = gen.AssistantAnswerItem{Id: item.ID, Title: item.Title}
-	}
-	out.Items = &items
-	if a.Criteria == nil && a.Page == nil {
-		return nil
-	}
-	out.Link = &gen.AssistantAnswerLink{}
-	if a.Page != nil {
-		out.Link.Destination = toAPIAssistantDestination(*a.Page)
-	}
-	if a.Criteria != nil {
-		criteria, err := toAPIAssistantCriteria(*a.Criteria)
-		if err != nil {
-			return err
-		}
-		out.Link.Criteria = criteria
-	}
-	return nil
-}
-
-func setAPIAssistantClarify(out *gen.AssistantTurnOutcome, c domain.AssistantClarification) {
-	about := gen.AssistantTurnOutcomeAbout(c.About)
-	out.About = &about
-	if len(c.Candidates) > 0 {
-		candidates := make([]gen.AssistantCandidate, len(c.Candidates))
-		for i, candidate := range c.Candidates {
-			candidates[i] = gen.AssistantCandidate{
-				Kind: gen.AssistantLabelKind(candidate.Kind), Id: candidate.ID, Name: candidate.Name, Count: candidate.Count,
-			}
-		}
-		out.Candidates = &candidates
-	}
-	if len(c.Names) > 0 {
-		out.Names = &c.Names
-	}
 }
