@@ -14,8 +14,17 @@ const stepStatus: Record<AssistantProposal["status"], AssistantProposalStep["sta
 
 /** A proposal of one step, written as the one-operation card shows it. */
 export function oneStepProposal(view: CardProposal): AssistantProposal {
-  const { id, status, request, turnId, activityId, startedAt, finishedAt, error, ...step } =
-    view;
+  const {
+    id,
+    status,
+    request,
+    turnId,
+    activityId,
+    startedAt,
+    finishedAt,
+    error,
+    ...step
+  } = view;
   return {
     id,
     status,

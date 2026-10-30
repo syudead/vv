@@ -235,7 +235,11 @@ function Actions({
       <div className="flex justify-end gap-2">
         <Button
           size="sm"
-          variant={card.proposal.steps.some((step) => step.irreversible) ? "destructive" : "default"}
+          variant={
+            card.proposal.steps.some((step) => step.irreversible)
+              ? "destructive"
+              : "default"
+          }
           aria-disabled={card.executing}
           aria-describedby={describedBy}
           onClick={() => {

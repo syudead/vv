@@ -257,7 +257,9 @@ function completedResult(entry: EntryFields): ResultPart[] {
 function runOperations(detail: { operation?: unknown; steps?: unknown }): string[] {
   if (Array.isArray(detail.steps)) {
     const steps = detail.steps as { operation?: unknown }[];
-    return steps.map((step) => (typeof step.operation === "string" ? step.operation : ""));
+    return steps.map((step) =>
+      typeof step.operation === "string" ? step.operation : "",
+    );
   }
   return [typeof detail.operation === "string" ? detail.operation : ""];
 }
@@ -267,8 +269,12 @@ function runOperations(detail: { operation?: unknown; steps?: unknown }): string
  * panel's card showed them.
  */
 function assistantRunResult(entry: EntryFields): ResultPart[] {
-  let detail: { operation?: unknown; steps?: unknown; applied?: unknown; failed?: unknown } =
-    {};
+  let detail: {
+    operation?: unknown;
+    steps?: unknown;
+    applied?: unknown;
+    failed?: unknown;
+  } = {};
   try {
     detail = (JSON.parse(entry.detail ?? "") ?? {}) as typeof detail;
   } catch {

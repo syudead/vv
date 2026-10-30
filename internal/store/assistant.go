@@ -161,27 +161,35 @@ func (s *AssistantStore) Proposal(ctx context.Context, id int64) (domain.Assista
 
 // ActiveProposals lists, newest first, the approved and running proposals and those finished at or after since.
 func (s *AssistantStore) ActiveProposals(ctx context.Context, since time.Time) ([]domain.AssistantProposal, error) {
-	rows, err := s.db.read.QueryContext(ctx, `select `+assistantProposalColumns+` from assistant_proposals
-		where status in (?, ?) or (status in (?, ?, ?, ?) and finished_at >= ?) order by id desc`,
+	proposals, err := queryAssistantProposals(ctx, s.db.read, `where status in (?, ?)
+		or (status in (?, ?, ?, ?) and finished_at >= ?) order by id desc`,
 		string(domain.AssistantApproved), string(domain.AssistantRunning), string(domain.AssistantDone),
 		string(domain.AssistantPartial), string(domain.AssistantStale), string(domain.AssistantFailed),
 		since.UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the assistant proposals: %w", err)
 	}
+	return proposals, nil
+}
+
+// queryAssistantProposals reads the proposals the where clause, with its order, selects.
+func queryAssistantProposals(
+	ctx context.Context, q queryExecer, where string, args ...any,
+) ([]domain.AssistantProposal, error) {
+	rows, err := q.QueryContext(ctx, `select `+assistantProposalColumns+` from assistant_proposals `+where, args...)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = rows.Close() }()
 	proposals := []domain.AssistantProposal{}
 	for rows.Next() {
 		p, err := scanAssistantProposal(rows)
 		if err != nil {
-			return nil, fmt.Errorf("cannot list the assistant proposals: %w", err)
+			return nil, err
 		}
 		proposals = append(proposals, p)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot list the assistant proposals: %w", err)
-	}
-	return proposals, nil
+	return proposals, rows.Err()
 }
 
 // ApproveProposal moves a proposed proposal to approved with the kept steps, skips the others and opens its
@@ -500,21 +508,8 @@ func (s *AssistantStore) RecoverProposals(ctx context.Context, now time.Time) (i
 
 // interruptAssistantSteps fails the running step of every running proposal and marks the steps after it notRun.
 func interruptAssistantSteps(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, `select `+assistantProposalColumns+` from assistant_proposals where status = ?`,
-		string(domain.AssistantRunning))
+	running, err := queryAssistantProposals(ctx, tx, `where status = ?`, string(domain.AssistantRunning))
 	if err != nil {
-		return fmt.Errorf("cannot read the running assistant proposals: %w", err)
-	}
-	var running []domain.AssistantProposal
-	for rows.Next() {
-		p, err := scanAssistantProposal(rows)
-		if err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("cannot read the running assistant proposals: %w", err)
-		}
-		running = append(running, p)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return fmt.Errorf("cannot read the running assistant proposals: %w", err)
 	}
 	for _, p := range running {

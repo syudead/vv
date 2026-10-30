@@ -416,9 +416,7 @@ describe("AssistantPanel", () => {
       ),
     );
 
-    expect(server.executes).toEqual([
-      `/api/assistant/proposals/1/execute {"steps":[0]}`,
-    ]);
+    expect(server.executes).toEqual([`/api/assistant/proposals/1/execute {"steps":[0]}`]);
     expect(within(panel()).getByText("Running · 0 of 3")).toBeDefined();
     expect(within(panel()).queryByRole("button", { name: /Execute/ })).toBeNull();
   });
