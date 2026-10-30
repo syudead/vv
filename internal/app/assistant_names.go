@@ -118,7 +118,9 @@ func (t *assistantTurn) one(
 ) (domain.AssistantLabel, bool, error) {
 	name = strings.TrimSpace(name)
 	found, err := t.exact(ctx, kind, name)
-	if err == nil && len(found) == 0 && kind == domain.AssistantLabelTag {
+	_, createdWhole := t.writes.createdEarlier(kind, name)
+	// A tag an earlier step creates keeps its whole name, tag word included.
+	if err == nil && len(found) == 0 && kind == domain.AssistantLabelTag && !createdWhole {
 		if short, ok := withoutTagWord(name); ok {
 			name = short
 			found, err = t.exact(ctx, kind, name)

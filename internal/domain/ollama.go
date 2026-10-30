@@ -26,8 +26,6 @@ var (
 	// ErrOllamaModel covers a missing model and a model that refused the request.
 	ErrOllamaModel   = errors.New("the Ollama model is missing or refused the request")
 	ErrOllamaTimeout = errors.New("the Ollama request timed out")
-	// ErrGenerationUnreadable means the model's answer is not JSON; callers do not retry it.
-	ErrGenerationUnreadable = errors.New("the model's answer is not JSON")
 	// ErrGenerationModelMissing means the check found the decision model but not the generation model.
 	ErrGenerationModelMissing = errors.New("the generation model is not at the Ollama endpoint")
 	// ErrGenerationModelWithoutTools means the generation model is there but cannot call tools.

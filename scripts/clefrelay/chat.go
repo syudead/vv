@@ -93,27 +93,20 @@ type ollamaChatMessage struct {
 	ToolName  string           `json:"tool_name,omitempty"`
 }
 
-// Request body sent by internal/ollama; format is a JSON schema, the word "json" or absent.
+// Request body sent by internal/ollama.
 type ollamaChatRequest struct {
 	Model    string              `json:"model"`
 	Messages []ollamaChatMessage `json:"messages"`
 	Tools    []json.RawMessage   `json:"tools"`
-	Format   json.RawMessage     `json:"format"`
-}
-
-type responseFormat struct {
-	Type       string          `json:"type"`
-	JSONSchema json.RawMessage `json:"json_schema,omitempty"`
 }
 
 type workersChatRequest struct {
-	Messages       []workersChatMessage `json:"messages"`
-	Tools          []json.RawMessage    `json:"tools,omitempty"`
-	ResponseFormat *responseFormat      `json:"response_format,omitempty"`
-	MaxTokens      int                  `json:"max_tokens"`
+	Messages  []workersChatMessage `json:"messages"`
+	Tools     []json.RawMessage    `json:"tools,omitempty"`
+	MaxTokens int                  `json:"max_tokens"`
 }
 
-// Workers AI chat models answer either response (a string, or the parsed object in JSON mode) or an OpenAI-style
+// Workers AI chat models answer either response (a string, or a parsed object) or an OpenAI-style
 // choices list; tool calls come in the choice, or at the top level with the arguments as an object.
 type workersChatResponse struct {
 	Success bool `json:"success"`
@@ -136,18 +129,6 @@ type workersChatResponse struct {
 		} `json:"usage"`
 	} `json:"result"`
 	Errors []workersError `json:"errors"`
-}
-
-func chatFormat(format json.RawMessage) *responseFormat {
-	trimmed := bytes.TrimSpace(format)
-	switch {
-	case len(trimmed) == 0 || string(trimmed) == "null":
-		return nil
-	case trimmed[0] == '{':
-		return &responseFormat{Type: "json_schema", JSONSchema: trimmed}
-	default:
-		return &responseFormat{Type: "json_object"}
-	}
 }
 
 func relayChat(w http.ResponseWriter, r *http.Request, cfg config, client *http.Client) {
@@ -203,7 +184,7 @@ func workersChatBody(in ollamaChatRequest, model chatModelInfo) ([]byte, error) 
 			strings.Join(visionModelNames(), ", "))
 	}
 	return json.Marshal(workersChatRequest{
-		Messages: messages, Tools: in.Tools, ResponseFormat: chatFormat(in.Format), MaxTokens: chatMaxTokens,
+		Messages: messages, Tools: in.Tools, MaxTokens: chatMaxTokens,
 	})
 }
 

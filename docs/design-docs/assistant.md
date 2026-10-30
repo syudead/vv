@@ -155,7 +155,8 @@ the search grammar would otherwise read it as an operator or several words, so
 one loose name does not fail a read. The name is dropped when it is a field
 word such as `tags`, or when `q` already requires it as a positive term. A
 name is trimmed, and a tag name is tried again without a trailing tag word
-(`ライブタグ`), since models copy both from the request. A name carries the
+(`ライブタグ`), since models copy both from the request, unless an earlier step
+of the turn creates the whole name. A name carries the
 kind the model inferred, and `any` tries person, organization and tag, so a name
 found under two kinds is a clarification. A read-only filter also drops a
 duration bound of `0` and a day that is not a date, which a model writes for a
@@ -458,3 +459,19 @@ while the panel was closed.
 
 The duration, added-date and watch-state conditions a filter sets are library
 conditions like any other ([library-ui.md](library-ui.md)).
+
+## Testing the loop
+
+A real model's choices vary from run to run, so the automated tests pin what
+the loop does with a given reply rather than what a model replies.
+
+| Level | Model | What it shows |
+| --- | --- | --- |
+| Application tests in `internal/app` | A scripted fake `app.ToolChat` that lists the replies (tool calls, then text) and checks the messages and tools it receives | The loop's limits, grounding, write steps and stop reasons |
+| Browser e2e ([`assistant.e2e.ts`](../../web/e2e/assistant.e2e.ts)) | A stub Ollama that answers `/api/show` with `tools` and, for each fixed request, a scripted sequence of tool calls and a final text | The turn job, progress, the step card, Execute and the activity entry through the real server |
+| By hand ([running-vv.md](../how-to/running-vv.md#assistant)) | A tool-calling model on Ollama or through `scripts/clefrelay` | That a real model combines the tools for the owner's requests |
+
+| Rejected | Why |
+| --- | --- |
+| Recorded real model output in tests | It pins one model's wording, and the loop's contract is what it does with a reply |
+| A CI job with a real model | CI has no model; the relay keeps the check possible without a GPU |

@@ -5,8 +5,8 @@
 //
 // Set CLOUDFLARE_API_TOKEN unless the proxy supplies authentication. Connection checks stay local; use "Test judging" to verify Workers AI.
 // The adapter tiles more than four images, drops keep_alive, relays tools and tool calls as OpenAI-style function
-// calling (reading the Gemma calls Workers AI leaves in the reasoning), sends a chat format as a JSON schema, logs
-// every chat answer, and converts Workers AI responses and errors to Ollama format.
+// calling (reading the Gemma calls Workers AI leaves in the reasoning), logs every chat answer, and converts Workers AI
+// responses and errors to Ollama format.
 package main
 
 import (
