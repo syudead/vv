@@ -9,6 +9,7 @@ import type {
   AssistantReviewRun,
 } from "../api/assistant";
 import * as events from "../api/serverEvents";
+import { oneStepProposal } from "../testing/assistantProposal";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ToastProvider } from "../ui/Toast";
 import { AssistantProvider } from "./AssistantProvider";
@@ -55,7 +56,7 @@ function mergeProposal(
   id: number,
   status: AssistantProposal["status"],
 ): AssistantProposal {
-  return {
+  return oneStepProposal({
     id,
     status,
     request: "タグを整理して",
@@ -66,7 +67,7 @@ function mergeProposal(
     created: [],
     impact: { videos: 4 },
     counts: { total: 1, applied: status === "done" ? 1 : 0, failed: 0 },
-  };
+  });
 }
 
 interface Server {

@@ -67,7 +67,7 @@ func (f *fakeAssistantReviews) AdoptReviewCandidate(
 	_ context.Context, id int64, request string, plan domain.AssistantPlan, _ time.Time,
 ) (domain.AssistantProposal, error) {
 	f.adopted = append(f.adopted, plan)
-	return domain.AssistantProposal{ID: id * 10, Status: domain.AssistantApproved, Request: request, Plan: plan}, nil
+	return domain.AssistantProposal{ID: id * 10, Status: domain.AssistantApproved, Request: request, Steps: domain.NewAssistantSteps([]domain.AssistantPlan{plan})}, nil
 }
 
 // factClassifier answers each request's question from the probability of its tag_a fact, and keeps the requests.

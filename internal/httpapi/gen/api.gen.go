@@ -654,6 +654,42 @@ func (e AssistantRouteKind) Valid() bool {
 	}
 }
 
+// Defines values for AssistantStepStatus.
+const (
+	AssistantStepStatusDone    AssistantStepStatus = "done"
+	AssistantStepStatusFailed  AssistantStepStatus = "failed"
+	AssistantStepStatusNotRun  AssistantStepStatus = "notRun"
+	AssistantStepStatusPartial AssistantStepStatus = "partial"
+	AssistantStepStatusPending AssistantStepStatus = "pending"
+	AssistantStepStatusRunning AssistantStepStatus = "running"
+	AssistantStepStatusSkipped AssistantStepStatus = "skipped"
+	AssistantStepStatusStale   AssistantStepStatus = "stale"
+)
+
+// Valid indicates whether the value is a known member of the AssistantStepStatus enum.
+func (e AssistantStepStatus) Valid() bool {
+	switch e {
+	case AssistantStepStatusDone:
+		return true
+	case AssistantStepStatusFailed:
+		return true
+	case AssistantStepStatusNotRun:
+		return true
+	case AssistantStepStatusPartial:
+		return true
+	case AssistantStepStatusPending:
+		return true
+	case AssistantStepStatusRunning:
+		return true
+	case AssistantStepStatusSkipped:
+		return true
+	case AssistantStepStatusStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssistantTurnOutcomeAbout.
 const (
 	Operation AssistantTurnOutcomeAbout = "operation"
@@ -966,6 +1002,7 @@ const (
 	ErrorCodeServiceUnavailable          ErrorCode = "service_unavailable"
 	ErrorCodeSmartFolderCycle            ErrorCode = "smart_folder_cycle"
 	ErrorCodeSmartFolderNotFound         ErrorCode = "smart_folder_not_found"
+	ErrorCodeStepNeedsSkipped            ErrorCode = "step_needs_skipped"
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
@@ -1064,6 +1101,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeSmartFolderCycle:
 		return true
 	case ErrorCodeSmartFolderNotFound:
+		return true
+	case ErrorCodeStepNeedsSkipped:
 		return true
 	case ErrorCodeTagMergeRequired:
 		return true
@@ -4024,6 +4063,15 @@ type AssistantChange struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
+// AssistantCreatedBy defines model for AssistantCreatedBy.
+type AssistantCreatedBy struct {
+	// Name The name as the card shows it, as untranslated user data.
+	Name string `json:"name"`
+
+	// Step The index of the step that creates it.
+	Step int `json:"step"`
+}
+
 // AssistantCriteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
 type AssistantCriteria struct {
 	Labels []AssistantLabel `json:"labels"`
@@ -4047,6 +4095,12 @@ type AssistantDestinationKind string
 
 // AssistantDestinationSettingsPage defines model for AssistantDestination.SettingsPage.
 type AssistantDestinationSettingsPage string
+
+// AssistantExecution defines model for AssistantExecution.
+type AssistantExecution struct {
+	// Steps The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped.
+	Steps []int `json:"steps"`
+}
 
 // AssistantImpact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
 type AssistantImpact struct {
@@ -4075,41 +4129,23 @@ type AssistantPin struct {
 	Name string `json:"name"`
 }
 
-// AssistantProposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+// AssistantProposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
 type AssistantProposal struct {
 	// ActivityId The assistant_run activity entry, present once the proposal is approved.
-	ActivityId *int64 `json:"activityId,omitempty"`
-
-	// Change The arguments after resolution, one per argument, in the order the card shows them.
-	Change []AssistantChange `json:"change"`
-
-	// Counts In videos for a batched operation, otherwise 0 or 1 for the one call.
-	Counts AssistantProposalCounts `json:"counts"`
-
-	// Created Names the operation creates, such as a tag to attach that does not exist yet.
-	Created []string `json:"created"`
-
-	// Error The first failed call's screen API code and reason, or the code interrupted after a restart.
-	Error      *AssistantProposalError `json:"error,omitempty"`
-	FinishedAt *time.Time              `json:"finishedAt,omitempty"`
-	Id         int64                   `json:"id"`
-
-	// Impact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
-	Impact *AssistantImpact `json:"impact,omitempty"`
-
-	// Irreversible From the catalog row; the card marks the change as one that cannot be undone.
-	Irreversible bool `json:"irreversible"`
-
-	// Operation The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.
-	Operation string `json:"operation"`
+	ActivityId *int64     `json:"activityId,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Id         int64      `json:"id"`
 
 	// Request The owner's text, as untranslated user data.
 	Request   string     `json:"request"`
 	StartedAt *time.Time `json:"startedAt,omitempty"`
 
-	// Status proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
-	Status  AssistantProposalStatus  `json:"status"`
-	Targets AssistantProposalTargets `json:"targets"`
+	// Status proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
+	Status AssistantProposalStatus `json:"status"`
+	Steps  []AssistantProposalStep `json:"steps"`
+
+	// TurnId The turn that built the proposal; absent for an adoption from a review list.
+	TurnId *int64 `json:"turnId,omitempty"`
 }
 
 // AssistantProposalCounts In videos for a batched operation, otherwise 0 or 1 for the one call.
@@ -4119,10 +4155,11 @@ type AssistantProposalCounts struct {
 	Total   int `json:"total"`
 }
 
-// AssistantProposalError The first failed call's screen API code and reason, or the code interrupted after a restart.
+// AssistantProposalError The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart.
 type AssistantProposalError struct {
-	Code   string  `json:"code"`
-	Reason *string `json:"reason,omitempty"`
+	Code    string  `json:"code"`
+	Message *string `json:"message,omitempty"`
+	Reason  *string `json:"reason,omitempty"`
 }
 
 // AssistantProposalList defines model for AssistantProposalList.
@@ -4130,8 +4167,42 @@ type AssistantProposalList struct {
 	Items []AssistantProposal `json:"items"`
 }
 
-// AssistantProposalStatus proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
+// AssistantProposalStatus proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
 type AssistantProposalStatus string
+
+// AssistantProposalStep One write of a proposal: what the card shows for it and its progress.
+type AssistantProposalStep struct {
+	// Change The arguments after resolution, one per argument, in the order the card shows them.
+	Change []AssistantChange `json:"change"`
+
+	// Counts In videos for a batched operation, otherwise 0 or 1 for the one call.
+	Counts AssistantProposalCounts `json:"counts"`
+
+	// Created Names the operation creates, such as a tag to attach that does not exist yet.
+	Created []string `json:"created"`
+
+	// CreatedBy Names this step uses that an earlier step of the same proposal creates.
+	CreatedBy []AssistantCreatedBy `json:"createdBy"`
+
+	// Error The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart.
+	Error *AssistantProposalError `json:"error,omitempty"`
+
+	// Impact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
+	Impact *AssistantImpact `json:"impact,omitempty"`
+
+	// Index Position in the card, from 0.
+	Index int `json:"index"`
+
+	// Irreversible From the catalog row; the card marks the change as one that cannot be undone.
+	Irreversible bool `json:"irreversible"`
+
+	// Operation The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.
+	Operation string `json:"operation"`
+
+	// Status pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+	Status  AssistantStepStatus      `json:"status"`
+	Targets AssistantProposalTargets `json:"targets"`
+}
 
 // AssistantProposalTargets defines model for AssistantProposalTargets.
 type AssistantProposalTargets struct {
@@ -4253,6 +4324,9 @@ type AssistantSelectedCollections struct {
 	SmartFolders *[]int64 `json:"smartFolders,omitempty"`
 }
 
+// AssistantStepStatus pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+type AssistantStepStatus string
+
 // AssistantTurnContext The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
 type AssistantTurnContext struct {
 	// Filter Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
@@ -4290,7 +4364,7 @@ type AssistantTurnOutcome struct {
 	// Operation The catalog row id the model named that the assistant cannot build a request for yet.
 	Operation *string `json:"operation,omitempty"`
 
-	// Proposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
 	Proposal *AssistantProposal            `json:"proposal,omitempty"`
 	Question *AssistantTurnOutcomeQuestion `json:"question,omitempty"`
 
@@ -4618,7 +4692,7 @@ type Error struct {
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
 
-	// Proposal A write the assistant proposed, with what the confirmation card shows and the run's progress.
+	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
 	Proposal *AssistantProposal `json:"proposal,omitempty"`
 
 	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -4626,6 +4700,9 @@ type Error struct {
 
 	// SettingKeys Required setting keys without values, in declaration order; only for plugin_settings_missing.
 	SettingKeys *[]string `json:"settingKeys,omitempty"`
+
+	// Step The index of the kept step that uses what an unticked step creates; only for step_needs_skipped.
+	Step *int `json:"step,omitempty"`
 
 	// TagName Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required.
 	TagName *string `json:"tagName,omitempty"`
@@ -9523,6 +9600,9 @@ type UndoActivityJSONRequestBody = ActivityUndoRequest
 
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
+
+// ExecuteAssistantProposalJSONRequestBody defines body for ExecuteAssistantProposal for application/json ContentType.
+type ExecuteAssistantProposalJSONRequestBody = AssistantExecution
 
 // AdoptAssistantReviewCandidatesJSONRequestBody defines body for AdoptAssistantReviewCandidates for application/json ContentType.
 type AdoptAssistantReviewCandidatesJSONRequestBody = AssistantReviewCandidateIds

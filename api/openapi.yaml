@@ -1918,9 +1918,15 @@ paths:
     post:
       operationId: executeAssistantProposal
       summary: "Approve an assistant proposal for execution"
-      description: "Owner-only; no body. Moves a proposed proposal to approved and returns it with 202; the assistant worker then executes exactly its stored plan in the background, in batches of 500 videos, and the progress follows assistant events. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field."
+      description: "Owner-only. Moves a proposed proposal to approved with the steps the owner kept, marks the others skipped and returns it with 202; the assistant worker then runs exactly the kept steps' stored plans in card order in the background, each in batches of 500 videos, stops at the first step that ends stale or with a failed batch, and the progress follows assistant events. No index, or an index the proposal does not have, returns 400 invalid_request. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field; a kept step that uses what an unticked step creates returns 409 step_needs_skipped with that kept step's index in the error's step field."
       parameters:
         - $ref: "#/components/parameters/AssistantProposalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantExecution"
       responses:
         "202":
           description: "The approved proposal"
@@ -1935,7 +1941,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: "The proposal is not pending (`proposal_not_pending`); proposal carries it"
+          description: "The proposal is not pending (`proposal_not_pending`), and proposal carries it; or a kept step needs an unticked one (`step_needs_skipped`), and step is its index"
           content:
             application/json:
               schema:
@@ -7301,11 +7307,23 @@ components:
           items:
             $ref: "#/components/schemas/AssistantProposal"
 
+    AssistantExecution:
+      type: object
+      required: [steps]
+      additionalProperties: false
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          description: "The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped."
+          items:
+            type: integer
+
     AssistantProposal:
       type: object
-      required: [id, status, request, operation, irreversible, targets, change, created, counts]
+      required: [id, status, request, steps]
       additionalProperties: false
-      description: "A write the assistant proposed, with what the confirmation card shows and the run's progress."
+      description: "The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress."
       properties:
         id:
           type: integer
@@ -7315,6 +7333,34 @@ components:
         request:
           type: string
           description: "The owner's text, as untranslated user data."
+        turnId:
+          type: integer
+          format: int64
+          description: "The turn that built the proposal; absent for an adoption from a review list."
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantProposalStep"
+        activityId:
+          type: integer
+          format: int64
+          description: "The assistant_run activity entry, present once the proposal is approved."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    AssistantProposalStep:
+      type: object
+      required: [index, operation, irreversible, targets, change, created, createdBy, status, counts]
+      additionalProperties: false
+      description: "One write of a proposal: what the card shows for it and its progress."
+      properties:
+        index:
+          type: integer
+          description: "Position in the card, from 0."
         operation:
           type: string
           description: "The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add."
@@ -7333,27 +7379,41 @@ components:
           description: "Names the operation creates, such as a tag to attach that does not exist yet."
           items:
             type: string
+        createdBy:
+          type: array
+          description: "Names this step uses that an earlier step of the same proposal creates."
+          items:
+            $ref: "#/components/schemas/AssistantCreatedBy"
         impact:
           $ref: "#/components/schemas/AssistantImpact"
+        status:
+          $ref: "#/components/schemas/AssistantStepStatus"
         counts:
           $ref: "#/components/schemas/AssistantProposalCounts"
         error:
           $ref: "#/components/schemas/AssistantProposalError"
-        activityId:
+
+    AssistantCreatedBy:
+      type: object
+      required: [name, step]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "The name as the card shows it, as untranslated user data."
+        step:
           type: integer
-          format: int64
-          description: "The assistant_run activity entry, present once the proposal is approved."
-        startedAt:
-          type: string
-          format: date-time
-        finishedAt:
-          type: string
-          format: date-time
+          description: "The index of the step that creates it."
+
+    AssistantStepStatus:
+      type: string
+      enum: [pending, skipped, running, done, partial, stale, failed, notRun]
+      description: "pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run."
 
     AssistantProposalStatus:
       type: string
       enum: [proposed, approved, running, done, partial, stale, failed, discarded]
-      description: "proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up."
+      description: "proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up."
 
     AssistantProposalTargets:
       type: object
@@ -7430,11 +7490,13 @@ components:
       type: object
       required: [code]
       additionalProperties: false
-      description: "The first failed call's screen API code and reason, or the code interrupted after a restart."
+      description: "The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart."
       properties:
         code:
           type: string
         reason:
+          type: string
+        message:
           type: string
 
     AssistantReadiness:
@@ -14152,6 +14214,7 @@ components:
             - activity_not_undoable
             - ollama_unreachable
             - proposal_not_pending
+            - step_needs_skipped
             - assistant_not_ready
             - assistant_unavailable
             - service_unavailable
@@ -14190,6 +14253,9 @@ components:
             type: string
         proposal:
           $ref: "#/components/schemas/AssistantProposal"
+        step:
+          type: integer
+          description: "The index of the kept step that uses what an unticked step creates; only for step_needs_skipped."
     ErrorReason:
       type: string
       description: "Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants."

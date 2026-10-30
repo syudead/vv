@@ -168,44 +168,56 @@ row, so the schema does not let the model name them.
 
 ## A write is a proposal the worker executes
 
-An `action` outcome is stored as a `proposed` row holding the resolved plan:
-the targets with the labels the card showed, the videos by user key, the
-request template of the operation, the names to create and, for a merge, the
-impact. Approval moves it to `approved` in one `UPDATE ... WHERE status =
-'proposed'`, and one worker goroutine executes approved rows oldest first by
-calling the screen API handler of the row in process as the owner
-(`app.ActionRunner`, implemented by `httpapi.ActionRunner`).
+A proposal is a `proposed` row holding ordered steps, one per write, as the
+card shows them. Each step holds a resolved plan: the targets with the labels
+the card showed, the videos by user key, the request template of the
+operation, the names to create, the names an earlier step creates
+(`createdBy`) and, for a merge, the impact. Execute names the steps the owner
+kept; the others become `skipped`, and the proposal moves to `approved` in one
+`UPDATE ... WHERE status = 'proposed'`. One worker goroutine executes approved
+rows oldest first, running the kept steps in card order by calling the screen
+API handler of each step's row in process as the owner (`app.ActionRunner`,
+implemented by `httpapi.ActionRunner`)
+([`assistant_step.go`](../../internal/domain/assistant_step.go)).
 
 The diagram shows a proposal's states.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> proposed: turn stores the plan
-  proposed --> approved: Execute
+  [*] --> proposed: turn stores the steps
+  proposed --> approved: Execute with the kept steps
   proposed --> discarded: follow-up replaces it
   proposed --> [*]: deleted after 1 hour or at startup
   approved --> running: worker claims it
-  running --> stale: re-read differs, no call made
-  running --> done: every batch applied
-  running --> partial: a later batch failed
-  running --> failed: the first batch failed, or interrupted
+  running --> done: the last step that ran is done
+  running --> partial: the last step that ran is partial
+  running --> stale: the last step that ran is stale
+  running --> failed: the last step that ran failed, or interrupted
 ```
+
+A step moves from `pending` to `skipped` at approval, or to `running` and then
+`done`, `partial`, `stale` or `failed`. When a step ends `stale` or with a
+failed batch, the kept steps after it become `notRun`, and the proposal takes
+the status of that step.
 
 | Rule | Why |
 | --- | --- |
 | A second Execute answers `409 proposal_not_pending` with the row | Two tabs can show the same card |
-| Before the first call the worker re-reads every label and video; a renamed or deleted entity, or a video gone, ends the run `stale` with no call; a name the plan creates has nothing to re-read and is not checked | The owner approved what the card showed, not what the ids hold now |
-| Video targets run in batches of 500 user keys, one call per batch, with the counts written after each | Progress for a large selection, and a failed batch leaves the earlier ones applied with both counts shown |
+| A kept step that names what an unticked step creates refuses Execute with `409 step_needs_skipped` and the step's index | The step would call with an id that never exists |
+| Before a step's first call the worker re-reads that step's labels and videos; a renamed or deleted entity, or a video gone, ends the step `stale` with no call. A name the step creates, and an entity an earlier kept step acts on, are not checked | The owner approved what the card showed, not what the ids hold now; an earlier step that renames or merges what a later one names is expected |
+| A step that uses an earlier step's creation takes the `id` of that step's response before it calls (`stepIds`) | The created entity has no id when the card is shown |
+| Video targets run in batches of 500 user keys, one call per batch, with the step's counts written after each; a failed batch ends the step `partial`, or `failed` when nothing applied, and stops the run | Progress for a large selection, and a failed batch leaves the earlier ones applied with both counts shown |
 | Operations whose catalog row acts on a version (`makeRepresentativeVersion`, `unbundleVideo`) hold content keys and resolve to that version | A user key names the bundle, so it would act on another version |
-| A merge proposal carries `impact.videos`, the distinct videos carrying a source tag or credited to a source person or organization | `targets.count` of a merge is its one destination |
-| An approved row survives a restart and runs; a `running` row becomes `failed` with `interrupted` | The operations have no undo, so a half-run batch is not repeated |
+| A merge step carries `impact.videos`, the distinct videos carrying a source tag or credited to a source person or organization | `targets.count` of a merge is its one destination |
+| An approved row survives a restart and runs; a `running` row becomes `failed` with `interrupted`, its running step `failed` and the later kept steps `notRun` | The operations have no undo, so a half-run batch is not repeated |
 | The runner is registered after the HTTP server is built (`UseRunner`) | The server is built with the assistant, so the runner exists only after it |
 
 | Rejected | Why |
 | --- | --- |
 | Executing inside the execute request | The run continues when the page is left, and a restart marks it like other workers |
 | One store role per operation called from `internal/app` | 74 operations already have their validation, events and activity entries as handlers; `/mcp` calls its mux the same way |
-| Rolling back applied batches | The operations have no undo |
+| Rolling back applied batches or steps | The operations have no undo |
+| Checking every step's labels before the first step | An earlier step changing what a later step names is expected, and a change made elsewhere during the run is caught at the step it affects |
 
 ## Review runs judge candidate sets for the owner
 
@@ -228,7 +240,7 @@ for the owner to adopt or reject together
 | A set below 0.5 is dropped, and nothing is adopted without the owner | The owner decides every merge |
 | A rejected set is remembered by kind and member ids, and later runs skip it | The next `タグを整理して` would list the same pair |
 | One running run per kind; a second request answers the running one | Its candidates would repeat the first's |
-| Each adopted set is one approved proposal executed by the assistant worker | Two adopted pairs are two merges with different destinations, and one path writes progress and activity |
+| Each adopted set is one approved proposal of one step executed by the assistant worker | Two adopted pairs are two merges with different destinations, and one path writes progress and activity |
 | A set whose member was deleted or merged is left out when the list is read | The members carry no foreign key to the candidate |
 | The display counts and the destination are read when the list is read | The data can change between judging and adoption |
 

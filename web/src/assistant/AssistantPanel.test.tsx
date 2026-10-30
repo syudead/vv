@@ -15,9 +15,11 @@ import VideoHeader from "../player/VideoHeader";
 import TopBar from "../shell/TopBar";
 import { SidebarProvider } from "../ui/shadcn/sidebar";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { oneStepProposal } from "../testing/assistantProposal";
 import { ToastProvider } from "../ui/Toast";
 import AssistantPanel from "./AssistantPanel";
 import { AssistantProvider, useAssistantScreen } from "./AssistantProvider";
+import type { CardProposal } from "./proposal";
 import type { AssistantScreen } from "./screenContext";
 
 function json(body: unknown, status = 200): Response {
@@ -74,7 +76,7 @@ function installServer(): Server {
       if (url === "/api/assistant/proposals?active=true")
         return Promise.resolve(server.list());
       if (url.endsWith("/execute") && init?.method === "POST") {
-        server.executes.push(url);
+        server.executes.push(`${url} ${String(init.body)}`);
         return Promise.resolve(server.execute());
       }
       if (url.startsWith("/api/assistant/proposals/"))
@@ -110,8 +112,8 @@ function outcome(value: AssistantOutcome): Response {
   return json({ outcome: value });
 }
 
-function proposal(extra: Partial<AssistantProposal> = {}): AssistantProposal {
-  return {
+function proposal(extra: Partial<CardProposal> = {}): AssistantProposal {
+  return oneStepProposal({
     id: 1,
     status: "proposed",
     request: "これに旅行タグを付けて",
@@ -130,7 +132,7 @@ function proposal(extra: Partial<AssistantProposal> = {}): AssistantProposal {
     created: [],
     counts: { total: 3, applied: 0, failed: 0 },
     ...extra,
-  };
+  });
 }
 
 function LocationProbe() {
@@ -414,7 +416,9 @@ describe("AssistantPanel", () => {
       ),
     );
 
-    expect(server.executes).toEqual(["/api/assistant/proposals/1/execute"]);
+    expect(server.executes).toEqual([
+      `/api/assistant/proposals/1/execute {"steps":[0]}`,
+    ]);
     expect(within(panel()).getByText("Running · 0 of 3")).toBeDefined();
     expect(within(panel()).queryByRole("button", { name: /Execute/ })).toBeNull();
   });

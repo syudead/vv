@@ -3,10 +3,12 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { AssistantProposal } from "../api/assistant";
+import { oneStepProposal } from "../testing/assistantProposal";
+import type { CardProposal } from "./proposal";
 import ProposalCard from "./ProposalCard";
 
-function proposal(extra: Partial<AssistantProposal> = {}): AssistantProposal {
-  return {
+function proposal(extra: Partial<CardProposal> = {}): AssistantProposal {
+  return oneStepProposal({
     id: 1,
     status: "proposed",
     request: "これに旅行タグを付けて",
@@ -25,7 +27,7 @@ function proposal(extra: Partial<AssistantProposal> = {}): AssistantProposal {
     created: [],
     counts: { total: 3, applied: 0, failed: 0 },
     ...extra,
-  };
+  });
 }
 
 function renderCard(value: AssistantProposal) {

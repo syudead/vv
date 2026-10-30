@@ -13,6 +13,8 @@ import { Progress } from "../ui/shadcn/progress";
 import { Spinner } from "../ui/shadcn/spinner";
 import {
   argumentName,
+  type CardProposal,
+  cardProposal,
   createdElsewhere,
   impactText,
   isCreated,
@@ -37,7 +39,7 @@ const toneClass: Record<RunTone, string> = {
 
 /** The run's state: the card's last row, and the second line of a run in Recent runs. */
 export function RunState({ proposal }: { proposal: AssistantProposal }) {
-  const line = runLine(proposal);
+  const line = runLine(cardProposal(proposal));
   if (line === undefined) return null;
   const Icon =
     line.tone === "success"
@@ -65,7 +67,7 @@ export function RunState({ proposal }: { proposal: AssistantProposal }) {
   );
 }
 
-function ActivityLink({ proposal }: { proposal: AssistantProposal }) {
+function ActivityLink({ proposal }: { proposal: CardProposal }) {
   if (!isFinished(proposal.status) || proposal.activityId === undefined) return null;
   return (
     <Button asChild variant="link" size="sm" className="h-auto self-start p-0">
@@ -112,7 +114,7 @@ function LabelBadge({ label }: { label: AssistantLabel }) {
   return <Badge variant="secondary">{label.name}</Badge>;
 }
 
-function Targets({ proposal }: { proposal: AssistantProposal }) {
+function Targets({ proposal }: { proposal: CardProposal }) {
   const { labels } = proposal.targets;
   const more = moreTargets(proposal);
   if (labels.length === 0) return null;
@@ -140,8 +142,8 @@ function ChangeLine({
   proposal,
   change,
 }: {
-  proposal: AssistantProposal;
-  change: AssistantProposal["change"][number];
+  proposal: CardProposal;
+  change: CardProposal["change"][number];
 }) {
   const text = valueText(change.argument, change.value);
   const names = valueStrings(change.value);
@@ -171,7 +173,7 @@ function ChangeLine({
   );
 }
 
-function Changes({ proposal }: { proposal: AssistantProposal }) {
+function Changes({ proposal }: { proposal: CardProposal }) {
   const extra = createdElsewhere(proposal);
   return (
     <>
@@ -194,7 +196,7 @@ function Changes({ proposal }: { proposal: AssistantProposal }) {
   );
 }
 
-function Irreversible({ proposal, id }: { proposal: AssistantProposal; id: string }) {
+function Irreversible({ proposal, id }: { proposal: CardProposal; id: string }) {
   const destination = mergeDestination(proposal);
   return (
     <div id={id} className="flex flex-col gap-1">
@@ -233,7 +235,7 @@ function Actions({
       <div className="flex justify-end gap-2">
         <Button
           size="sm"
-          variant={card.proposal.irreversible ? "destructive" : "default"}
+          variant={card.proposal.steps.some((step) => step.irreversible) ? "destructive" : "default"}
           aria-disabled={card.executing}
           aria-describedby={describedBy}
           onClick={() => {
@@ -273,7 +275,8 @@ export default function ProposalCard({
   onDismiss: () => void;
 }) {
   const ids = useId();
-  const { proposal, view } = card;
+  const { view } = card;
+  const proposal = cardProposal(card.proposal);
   if (view === "dismissed") return <Collapsed>{t.assistant.card.dismissed}</Collapsed>;
   if (view === "replaced" || proposal.status === "discarded") {
     return <Collapsed>{t.assistant.card.replaced}</Collapsed>;
@@ -320,7 +323,7 @@ export default function ProposalCard({
           onDismiss={onDismiss}
         />
       ) : (
-        view === "live" && <RunState proposal={proposal} />
+        view === "live" && <RunState proposal={card.proposal} />
       )}
       <ActivityLink proposal={proposal} />
     </article>
@@ -328,11 +331,12 @@ export default function ProposalCard({
 }
 
 /** One run in Recent runs: its title and state line, without targets and change. */
-export function RunRow({ proposal }: { proposal: AssistantProposal }) {
+export function RunRow({ proposal: shown }: { proposal: AssistantProposal }) {
+  const proposal = cardProposal(shown);
   return (
     <li className="flex flex-col gap-1">
       <p className="text-sm font-medium">{proposalSentence(proposal)}</p>
-      <RunState proposal={proposal} />
+      <RunState proposal={shown} />
     </li>
   );
 }

@@ -45,6 +45,9 @@ const AssistantProposalTTL = time.Hour
 // ErrAssistantProposalNotPending refuses approving a proposal that is no longer proposed.
 var ErrAssistantProposalNotPending = errors.New("the assistant proposal is not pending")
 
+// ErrAssistantStepsInvalid refuses an approval that keeps no step or names a step the proposal does not have.
+var ErrAssistantStepsInvalid = errors.New("the kept steps are not steps of the proposal")
+
 // AssistantLabelKind is the kind of entity a confirmation card names.
 type AssistantLabelKind string
 
@@ -99,6 +102,8 @@ type AssistantPlanCall struct {
 	Body           map[string]any    `json:"body,omitempty"`
 	VideoField     string            `json:"videoField,omitempty"`
 	VideoPathParam string            `json:"videoPathParam,omitempty"`
+	// StepIDs fill the request with the ids that earlier steps of the same proposal create.
+	StepIDs []AssistantStepID `json:"stepIds,omitempty"`
 }
 
 // AssistantImpact counts the videos a merge moves, as the card showed it.
@@ -115,6 +120,8 @@ type AssistantPlan struct {
 	Created []string          `json:"created,omitempty"`
 	Call    AssistantPlanCall `json:"call"`
 	Impact  *AssistantImpact  `json:"impact,omitempty"`
+	// CreatedBy are the names this plan uses that an earlier step of the same proposal creates.
+	CreatedBy []AssistantCreatedBy `json:"createdBy,omitempty"`
 }
 
 // Action returns the plan's catalog row.
@@ -168,8 +175,9 @@ type AssistantCurrent struct {
 }
 
 // Stale is true when a video is gone or a named entity was renamed or deleted since the card showed it. A label
-// without an id names an entity the plan creates, so it has no current name to compare.
-func (p AssistantPlan) Stale(current AssistantCurrent) bool {
+// without an id names an entity the plan creates, so it has no current name to compare; a touched entity is one an
+// earlier step acts on (see TouchedBefore) and is not compared either.
+func (p AssistantPlan) Stale(current AssistantCurrent, touched map[AssistantLabelRef]bool) bool {
 	for _, key := range p.Targets.VideoKeys {
 		if _, ok := current.Videos[key]; !ok {
 			return true
@@ -182,10 +190,11 @@ func (p AssistantPlan) Stale(current AssistantCurrent) bool {
 			}
 			continue
 		}
-		if label.ID == 0 {
+		ref := AssistantLabelRef{Kind: label.Kind, ID: label.ID}
+		if label.ID == 0 || touched[ref] {
 			continue
 		}
-		name, ok := current.Names[AssistantLabelRef{Kind: label.Kind, ID: label.ID}]
+		name, ok := current.Names[ref]
 		if !ok || name != label.Name {
 			return true
 		}
@@ -247,10 +256,12 @@ var assistantVersionOperations = map[string]bool{
 	"dismissVersionCandidate": true, "rejudgeVersionCandidate": true,
 }
 
-// AssistantProposalError is the first failed call's screen API code and reason, or "interrupted" after a restart.
+// AssistantProposalError is the first failed call's screen API code, reason and message, or "interrupted" after a
+// restart.
 type AssistantProposalError struct {
-	Code   string `json:"code"`
-	Reason string `json:"reason,omitempty"`
+	Code    string `json:"code"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // AssistantInterrupted is the error of a run a restart stopped.
@@ -263,12 +274,16 @@ type AssistantCounts struct {
 	Failed  int
 }
 
-// AssistantProposal is one stored write proposal.
+// AssistantProposal is one stored write proposal: ordered steps the owner approves together, except the ones they
+// untick.
 type AssistantProposal struct {
-	ID         int64
-	Status     AssistantProposalStatus
-	Request    string
-	Plan       AssistantPlan
+	ID      int64
+	Status  AssistantProposalStatus
+	Request string
+	// TurnID is the turn that built the proposal; 0 for an adoption from a review list.
+	TurnID int64
+	Steps  []AssistantStep
+	// Counts are the sums over the steps, and Error is the error of the step the run stopped at.
 	Counts     AssistantCounts
 	Error      *AssistantProposalError
 	ActivityID int64
@@ -278,17 +293,25 @@ type AssistantProposal struct {
 	FinishedAt time.Time
 }
 
-// Irreversible comes from the catalog row; the model never decides it.
-func (p AssistantProposal) Irreversible() bool {
-	row, ok := p.Plan.Action()
-	return ok && row.Irreversible
-}
-
-// AssistantRunResult is how a run ended.
+// AssistantRunResult is how a run ended: the steps as they ended, and the status, sums and error that follow
+// from them (see NewAssistantRunResult).
 type AssistantRunResult struct {
 	Status AssistantProposalStatus
+	Steps  []AssistantStep
 	Counts AssistantCounts
 	Error  *AssistantProposalError
+}
+
+// NewAssistantRunResult takes the status and error of the last step that ran; a run in which no step ran,
+// which approval prevents, ends failed.
+func NewAssistantRunResult(steps []AssistantStep) AssistantRunResult {
+	result := AssistantRunResult{Status: AssistantFailed, Steps: steps, Counts: AssistantStepCounts(steps)}
+	for _, step := range steps {
+		if status, ran := step.Status.ProposalStatus(); ran {
+			result.Status, result.Error = status, step.Error
+		}
+	}
+	return result
 }
 
 // ActivityOutcome maps a finished run to its activity entry's outcome.
@@ -305,12 +328,37 @@ func (r AssistantRunResult) ActivityOutcome() ActivityOutcome {
 	}
 }
 
-// AssistantRunDetail is the activity entry's detail of a run, as JSON the Activity screen reads.
+// AssistantRunDetail is the activity entry's detail of a run, as JSON the Activity screen reads: the sums, and each
+// step's operation, status and counts in card order.
 type AssistantRunDetail struct {
-	Operation string `json:"operation"`
-	Total     int    `json:"total"`
-	Applied   int    `json:"applied"`
-	Failed    int    `json:"failed"`
+	Total   int                `json:"total"`
+	Applied int                `json:"applied"`
+	Failed  int                `json:"failed"`
+	Steps   []AssistantRunStep `json:"steps"`
+}
+
+// AssistantRunStep is one step of a run's activity detail.
+type AssistantRunStep struct {
+	Operation string              `json:"operation"`
+	Status    AssistantStepStatus `json:"status"`
+	Total     int                 `json:"total"`
+	Applied   int                 `json:"applied"`
+	Failed    int                 `json:"failed"`
+}
+
+// NewAssistantRunDetail lists every step with its current state.
+func NewAssistantRunDetail(steps []AssistantStep) AssistantRunDetail {
+	counts := AssistantStepCounts(steps)
+	d := AssistantRunDetail{
+		Total: counts.Total, Applied: counts.Applied, Failed: counts.Failed, Steps: make([]AssistantRunStep, len(steps)),
+	}
+	for i, step := range steps {
+		d.Steps[i] = AssistantRunStep{
+			Operation: step.Plan.ActionID, Status: step.Status,
+			Total: step.Total, Applied: step.Applied, Failed: step.Failed,
+		}
+	}
+	return d
 }
 
 // Encode never fails for this struct.

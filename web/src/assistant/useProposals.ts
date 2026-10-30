@@ -141,7 +141,10 @@ export function useProposals(open: boolean): Proposals {
           })),
         );
       };
-      executeAssistantProposal(card.proposal.id).then(
+      executeAssistantProposal(
+        card.proposal.id,
+        card.proposal.steps.map((step) => step.index),
+      ).then(
         (result) => {
           if (result.kind === "expired") {
             done((item) => ({ ...item, view: "expired" }));

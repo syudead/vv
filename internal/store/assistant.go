@@ -15,23 +15,29 @@ import (
 // Every transaction that changes a proposal publishes AssistantChanged after commit, and the ones that move it
 // past proposed also write its assistant_run entry.
 
-const assistantProposalColumns = `id, status, request, plan, total, applied, failed, coalesce(error, ''),
-	coalesce(activity_id, 0), created_at, approved_at, started_at, finished_at`
+const assistantProposalColumns = `id, status, request, coalesce(turn_id, 0), plan, steps, total, applied, failed,
+	coalesce(error, ''), coalesce(activity_id, 0), created_at, approved_at, started_at, finished_at`
+
+// assistantStepPlans is the plan column: the plans as the card showed them, in step order.
+type assistantStepPlans struct {
+	Steps []domain.AssistantPlan `json:"steps"`
+}
 
 func scanAssistantProposal(row rowScanner) (domain.AssistantProposal, error) {
 	var (
 		p                                 domain.AssistantProposal
-		status, plan, failure             string
+		status, plan, steps, failure      string
 		createdAt                         int64
 		approvedAt, startedAt, finishedAt sql.NullInt64
 	)
-	if err := row.Scan(&p.ID, &status, &p.Request, &plan, &p.Counts.Total, &p.Counts.Applied, &p.Counts.Failed,
-		&failure, &p.ActivityID, &createdAt, &approvedAt, &startedAt, &finishedAt); err != nil {
+	if err := row.Scan(&p.ID, &status, &p.Request, &p.TurnID, &plan, &steps, &p.Counts.Total, &p.Counts.Applied,
+		&p.Counts.Failed, &failure, &p.ActivityID, &createdAt, &approvedAt, &startedAt, &finishedAt); err != nil {
 		return domain.AssistantProposal{}, err
 	}
 	p.Status = domain.AssistantProposalStatus(status)
-	if err := json.Unmarshal([]byte(plan), &p.Plan); err != nil {
-		return domain.AssistantProposal{}, fmt.Errorf("cannot read the plan of proposal %d: %w", p.ID, err)
+	var err error
+	if p.Steps, err = decodeAssistantSteps(plan, steps); err != nil {
+		return domain.AssistantProposal{}, fmt.Errorf("cannot read the steps of proposal %d: %w", p.ID, err)
 	}
 	if failure != "" {
 		p.Error = &domain.AssistantProposalError{}
@@ -42,6 +48,33 @@ func scanAssistantProposal(row rowScanner) (domain.AssistantProposal, error) {
 	p.CreatedAt = time.UnixMilli(createdAt)
 	p.ApprovedAt, p.StartedAt, p.FinishedAt = millisTime(approvedAt), millisTime(startedAt), millisTime(finishedAt)
 	return p, nil
+}
+
+// decodeAssistantSteps joins the plan column with the steps column; a step without a stored state is pending.
+func decodeAssistantSteps(plan, states string) ([]domain.AssistantStep, error) {
+	var plans assistantStepPlans
+	if err := json.Unmarshal([]byte(plan), &plans); err != nil {
+		return nil, err
+	}
+	var stored []domain.AssistantStepState
+	if err := json.Unmarshal([]byte(states), &stored); err != nil {
+		return nil, err
+	}
+	steps := domain.NewAssistantSteps(plans.Steps)
+	for i := range min(len(steps), len(stored)) {
+		steps[i].AssistantStepState = stored[i]
+	}
+	return steps, nil
+}
+
+// encodeAssistantStates encodes the steps column; a slice of plain structs always encodes.
+func encodeAssistantStates(steps []domain.AssistantStep) string {
+	states := make([]domain.AssistantStepState, len(steps))
+	for i, step := range steps {
+		states[i] = step.AssistantStepState
+	}
+	encoded, _ := json.Marshal(states)
+	return string(encoded)
 }
 
 func millisTime(value sql.NullInt64) time.Time {
@@ -63,21 +96,22 @@ func assistantProposalByID(ctx context.Context, q rowQueryer, id int64) (domain.
 	return p, nil
 }
 
-// CreateProposal stores a proposed plan with its total.
+// CreateProposal stores the plans as a proposed proposal's pending steps, in card order, with their total; turnID
+// is 0 for a proposal without a turn.
 func (s *AssistantStore) CreateProposal(
-	ctx context.Context, request string, plan domain.AssistantPlan, now time.Time,
+	ctx context.Context, turnID int64, request string, plans []domain.AssistantPlan, now time.Time,
 ) (domain.AssistantProposal, error) {
-	return s.storeProposal(ctx, request, plan, now, nil)
+	return s.storeProposal(ctx, turnID, request, plans, now, nil)
 }
 
 // proposalStep changes a just stored proposal in the same transaction.
 type proposalStep func(tx *sql.Tx, c *changes, p domain.AssistantProposal) (domain.AssistantProposal, error)
 
-// storeProposal stores a proposed plan, runs then on it when given, and commits both.
+// storeProposal stores a proposed proposal, runs then on it when given, and commits both.
 func (s *AssistantStore) storeProposal(
-	ctx context.Context, request string, plan domain.AssistantPlan, now time.Time, then proposalStep,
+	ctx context.Context, turnID int64, request string, plans []domain.AssistantPlan, now time.Time, then proposalStep,
 ) (domain.AssistantProposal, error) {
-	encoded, err := json.Marshal(plan)
+	encoded, err := json.Marshal(assistantStepPlans{Steps: plans})
 	if err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot encode the assistant plan: %w", err)
 	}
@@ -86,7 +120,7 @@ func (s *AssistantStore) storeProposal(
 		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	p, err := insertAssistantProposal(ctx, tx, request, encoded, plan.Total(), now)
+	p, err := insertAssistantProposal(ctx, tx, turnID, request, encoded, domain.NewAssistantSteps(plans), now)
 	if err != nil {
 		return domain.AssistantProposal{}, err
 	}
@@ -103,12 +137,18 @@ func (s *AssistantStore) storeProposal(
 }
 
 func insertAssistantProposal(
-	ctx context.Context, tx *sql.Tx, request string, plan []byte, total int, now time.Time,
+	ctx context.Context, tx *sql.Tx, turnID int64, request string, plan []byte, steps []domain.AssistantStep,
+	now time.Time,
 ) (domain.AssistantProposal, error) {
+	var turn any
+	if turnID != 0 {
+		turn = turnID
+	}
 	var id int64
-	if err := tx.QueryRowContext(ctx, `insert into assistant_proposals (status, request, plan, total, created_at)
-		values (?, ?, ?, ?, ?) returning id`, string(domain.AssistantProposed), request, string(plan),
-		total, now.UnixMilli()).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, `insert into assistant_proposals (status, request, turn_id, plan, steps, total,
+		created_at) values (?, ?, ?, ?, ?, ?, ?) returning id`, string(domain.AssistantProposed), request, turn,
+		string(plan), encodeAssistantStates(steps), domain.AssistantStepCounts(steps).Total,
+		now.UnixMilli()).Scan(&id); err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot store the assistant proposal: %w", err)
 	}
 	return assistantProposalByID(ctx, tx, id)
@@ -144,18 +184,21 @@ func (s *AssistantStore) ActiveProposals(ctx context.Context, since time.Time) (
 	return proposals, nil
 }
 
-// ApproveProposal moves a proposed proposal to approved and opens its assistant_run entry. A missing, discarded or
-// expired proposal is domain.ErrNotFound; any other status returns the proposal with
-// domain.ErrAssistantProposalNotPending. The expiry is checked in the guarded UPDATE, so a proposal the worker has
-// not deleted yet still cannot be approved after domain.AssistantProposalTTL.
-func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time.Time) (domain.AssistantProposal, error) {
+// ApproveProposal moves a proposed proposal to approved with the kept steps, skips the others and opens its
+// assistant_run entry. A missing, discarded or expired proposal is domain.ErrNotFound; any other status returns the
+// proposal with domain.ErrAssistantProposalNotPending; a selection domain.AssistantProposal.Select refuses returns
+// its error. The expiry is checked in the guarded UPDATE, so a proposal the worker has not deleted yet still cannot
+// be approved after domain.AssistantProposalTTL.
+func (s *AssistantStore) ApproveProposal(
+	ctx context.Context, id int64, kept []int, now time.Time,
+) (domain.AssistantProposal, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.AssistantProposal{}, fmt.Errorf("cannot approve the assistant proposal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	c := &changes{}
-	p, err := approveAssistantProposal(ctx, tx, c, id, now)
+	p, err := approveAssistantProposal(ctx, tx, c, id, kept, now)
 	if err != nil {
 		return p, err
 	}
@@ -167,29 +210,43 @@ func (s *AssistantStore) ApproveProposal(ctx context.Context, id int64, now time
 
 // approveAssistantProposal is ApproveProposal inside the caller's transaction.
 func approveAssistantProposal(
-	ctx context.Context, tx *sql.Tx, c *changes, id int64, now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, id int64, kept []int, now time.Time,
 ) (domain.AssistantProposal, error) {
-	moved, err := moveAssistantProposalIf(ctx, tx, id, domain.AssistantProposed, domain.AssistantApproved,
-		`created_at >= ?`, []any{now.Add(-domain.AssistantProposalTTL).UnixMilli()}, `approved_at = ?`, now.UnixMilli())
-	if err != nil {
-		return domain.AssistantProposal{}, err
-	}
 	p, err := assistantProposalByID(ctx, tx, id)
 	if err != nil {
 		return domain.AssistantProposal{}, err
 	}
-	if !moved {
-		// A proposal still proposed here failed only the expiry guard.
-		if p.Status == domain.AssistantDiscarded || p.Status == domain.AssistantProposed {
-			return domain.AssistantProposal{}, domain.ErrNotFound
-		}
+	switch {
+	case p.Status == domain.AssistantDiscarded:
+		return domain.AssistantProposal{}, domain.ErrNotFound
+	case p.Status != domain.AssistantProposed:
 		return p, domain.ErrAssistantProposalNotPending
+	case p.CreatedAt.Before(now.Add(-domain.AssistantProposalTTL)):
+		return domain.AssistantProposal{}, domain.ErrNotFound
+	}
+	steps, err := p.Select(kept)
+	if err != nil {
+		return domain.AssistantProposal{}, err
+	}
+	counts := domain.AssistantStepCounts(steps)
+	moved, err := moveAssistantProposalIf(ctx, tx, id, domain.AssistantProposed, domain.AssistantApproved,
+		`created_at >= ?`, []any{now.Add(-domain.AssistantProposalTTL).UnixMilli()},
+		`approved_at = ?, steps = ?, total = ?`, now.UnixMilli(), encodeAssistantStates(steps), counts.Total)
+	if err != nil {
+		return domain.AssistantProposal{}, err
+	}
+	if !moved {
+		// The proposal read as proposed in this transaction, so only the expiry guard failed.
+		return domain.AssistantProposal{}, domain.ErrNotFound
+	}
+	if p, err = assistantProposalByID(ctx, tx, id); err != nil {
+		return domain.AssistantProposal{}, err
 	}
 	entryID, err := recordActivity(ctx, tx, c, domain.ActivityEntry{
 		Kind:    domain.ActivityAssistantRun,
 		Subject: domain.ActivitySubject{Kind: domain.ActivitySubjectProposal, Key: strconv.FormatInt(id, 10), Label: p.Request},
 		Status:  domain.ActivityRunning, Reason: domain.ActivityWaiting, Decider: domain.ActivityByOwner,
-		Detail: assistantRunDetail(p.Plan.ActionID, p.Counts),
+		Detail: domain.NewAssistantRunDetail(p.Steps).Encode(),
 	}, now)
 	if err != nil {
 		return domain.AssistantProposal{}, err
@@ -233,12 +290,6 @@ func moveAssistantProposalIf(
 	return affected == 1, nil
 }
 
-func assistantRunDetail(actionID string, counts domain.AssistantCounts) string {
-	return domain.AssistantRunDetail{
-		Operation: actionID, Total: counts.Total, Applied: counts.Applied, Failed: counts.Failed,
-	}.Encode()
-}
-
 // ClaimProposal moves the oldest approved proposal to running; domain.ErrNoJob when none waits.
 func (s *AssistantStore) ClaimProposal(ctx context.Context, now time.Time) (domain.AssistantProposal, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -276,18 +327,18 @@ func (s *AssistantStore) ClaimProposal(ctx context.Context, now time.Time) (doma
 	return p, nil
 }
 
-// RecordProgress writes a running proposal's counts and its entry's detail after a batch.
-func (s *AssistantStore) RecordProgress(ctx context.Context, id int64, counts domain.AssistantCounts, now time.Time) error {
+// RecordProgress writes a running proposal's steps, their sums and its entry's detail.
+func (s *AssistantStore) RecordProgress(ctx context.Context, id int64, steps []domain.AssistantStep, now time.Time) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot record the assistant progress: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var actionID string
+	counts := domain.AssistantStepCounts(steps)
 	var entryID int64
-	err = tx.QueryRowContext(ctx, `update assistant_proposals set total = ?, applied = ?, failed = ?
-		where id = ? and status = ? returning json_extract(plan, '$.actionId'), coalesce(activity_id, 0)`,
-		counts.Total, counts.Applied, counts.Failed, id, string(domain.AssistantRunning)).Scan(&actionID, &entryID)
+	err = tx.QueryRowContext(ctx, `update assistant_proposals set steps = ?, total = ?, applied = ?, failed = ?
+		where id = ? and status = ? returning coalesce(activity_id, 0)`, encodeAssistantStates(steps),
+		counts.Total, counts.Applied, counts.Failed, id, string(domain.AssistantRunning)).Scan(&entryID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("the assistant proposal %d is not running", id)
 	}
@@ -295,7 +346,7 @@ func (s *AssistantStore) RecordProgress(ctx context.Context, id int64, counts do
 		return fmt.Errorf("cannot record the assistant progress: %w", err)
 	}
 	c := &changes{}
-	if err := writeAssistantRunDetail(ctx, tx, c, entryID, actionID, counts, now); err != nil {
+	if err := writeAssistantRunDetail(ctx, tx, c, entryID, steps, now); err != nil {
 		return err
 	}
 	if err := s.db.commitWith(ctx, tx, c, domain.AssistantChanged{}); err != nil {
@@ -305,14 +356,13 @@ func (s *AssistantStore) RecordProgress(ctx context.Context, id int64, counts do
 }
 
 func writeAssistantRunDetail(
-	ctx context.Context, tx *sql.Tx, c *changes, entryID int64, actionID string, counts domain.AssistantCounts,
-	now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, entryID int64, steps []domain.AssistantStep, now time.Time,
 ) error {
 	if entryID == 0 {
 		return nil
 	}
 	if _, err := tx.ExecContext(ctx, `update activity_entries set detail = ?, updated_at = ? where id = ?`,
-		assistantRunDetail(actionID, counts), now.UnixMilli(), entryID); err != nil {
+		domain.NewAssistantRunDetail(steps).Encode(), now.UnixMilli(), entryID); err != nil {
 		return fmt.Errorf("cannot update the assistant run entry (id=%d): %w", entryID, err)
 	}
 	c.activityChanged()
@@ -333,7 +383,7 @@ func (s *AssistantStore) FinishProposal(
 	}
 	defer func() { _ = tx.Rollback() }()
 	moved, err := moveAssistantProposal(ctx, tx, id, domain.AssistantRunning, result.Status,
-		`total = ?, applied = ?, failed = ?, error = ?, finished_at = ?`,
+		`steps = ?, total = ?, applied = ?, failed = ?, error = ?, finished_at = ?`, encodeAssistantStates(result.Steps),
 		result.Counts.Total, result.Counts.Applied, result.Counts.Failed, failure, now.UnixMilli())
 	if err != nil {
 		return err
@@ -346,7 +396,7 @@ func (s *AssistantStore) FinishProposal(
 		return err
 	}
 	c := &changes{}
-	if err := writeAssistantRunDetail(ctx, tx, c, p.ActivityID, p.Plan.ActionID, result.Counts, now); err != nil {
+	if err := writeAssistantRunDetail(ctx, tx, c, p.ActivityID, p.Steps, now); err != nil {
 		return err
 	}
 	if p.ActivityID != 0 {
@@ -419,6 +469,9 @@ func (s *AssistantStore) RecoverProposals(ctx context.Context, now time.Time) (i
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the assistant proposals: %w", err)
 	}
+	if err := interruptAssistantSteps(ctx, tx); err != nil {
+		return 0, err
+	}
 	entries, err := collectActivityIDs(tx.QueryContext(ctx, `update assistant_proposals set status = ?, error = ?,
 		finished_at = ? where status = ? returning coalesce(activity_id, 0)`,
 		string(domain.AssistantFailed), failure, now.UnixMilli(), string(domain.AssistantRunning)))
@@ -443,6 +496,34 @@ func (s *AssistantStore) RecoverProposals(ctx context.Context, now time.Time) (i
 		return 0, fmt.Errorf("cannot recover the assistant proposals: %w", err)
 	}
 	return int(removed) + len(entries), nil
+}
+
+// interruptAssistantSteps fails the running step of every running proposal and marks the steps after it notRun.
+func interruptAssistantSteps(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `select `+assistantProposalColumns+` from assistant_proposals where status = ?`,
+		string(domain.AssistantRunning))
+	if err != nil {
+		return fmt.Errorf("cannot read the running assistant proposals: %w", err)
+	}
+	var running []domain.AssistantProposal
+	for rows.Next() {
+		p, err := scanAssistantProposal(rows)
+		if err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("cannot read the running assistant proposals: %w", err)
+		}
+		running = append(running, p)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return fmt.Errorf("cannot read the running assistant proposals: %w", err)
+	}
+	for _, p := range running {
+		steps := encodeAssistantStates(domain.InterruptAssistantSteps(p.Steps))
+		if _, err := tx.ExecContext(ctx, `update assistant_proposals set steps = ? where id = ?`, steps, p.ID); err != nil {
+			return fmt.Errorf("cannot interrupt the assistant proposal %d: %w", p.ID, err)
+		}
+	}
+	return nil
 }
 
 // assistantLabelNames reads each kind's current display name by id; a provisional person reads as empty.

@@ -215,7 +215,7 @@ func TestAdoptReviewCandidateStoresOneApprovedProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Status != domain.AssistantApproved || p.ActivityID == 0 || p.Plan.ActionID != "mergeTag" {
+	if p.Status != domain.AssistantApproved || p.ActivityID == 0 || len(p.Steps) != 1 || p.Steps[0].Plan.ActionID != "mergeTag" {
 		t.Errorf("proposal = %+v, want an approved mergeTag with its entry", p)
 	}
 	if _, err := db.Assistant().AdoptReviewCandidate(ctx, candidate.ID, "x", plan, assistantNow); !errors.Is(err, domain.ErrAssistantCandidateNotListed) {
