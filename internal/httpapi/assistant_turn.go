@@ -34,14 +34,14 @@ func (s *server) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	notReady, err := s.ollama.AssistantReadiness(r.Context())
+	readiness, err := s.ollama.AssistantReadiness(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the assistant readiness.", err)
 		return
 	}
-	if notReady != domain.AssistantReady {
-		s.writeReasonError(w, http.StatusConflict, gen.ErrorCodeAssistantNotReady, gen.ErrorReason(notReady),
-			"Save the Ollama connection and a generation model first.")
+	if readiness.NotReady != domain.AssistantReady {
+		s.writeReasonError(w, http.StatusConflict, gen.ErrorCodeAssistantNotReady, gen.ErrorReason(readiness.NotReady),
+			"Save the Ollama connection and a generation model that can call tools first.")
 		return
 	}
 	result, err := s.assistant.Turn(r.Context(), in)

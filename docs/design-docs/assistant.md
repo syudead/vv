@@ -63,7 +63,7 @@ real models, through `scripts/clefrelay` when no local Ollama is at hand
 
 | Failure | Answer | Stored |
 | --- | --- | --- |
-| Readiness false (`ollama_not_saved`, `generation_model_unset`) | `409 assistant_not_ready` | Nothing |
+| Readiness false (`ollama_not_saved`, `generation_model_unset`, `generation_model_without_tools`) | `409 assistant_not_ready` | Nothing |
 | Ollama not reached, or not Ollama | `503 assistant_unavailable`, reason `connection` | Nothing |
 | The model is missing or answers an `error` | `503`, reason `model` | Nothing |
 | No answer within 10 minutes | `503`, reason `timeout` | Nothing |

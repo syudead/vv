@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -26,6 +27,10 @@ func (s *fakeOllamaStore) SaveOllamaSettings(_ context.Context, settings domain.
 type fakeProbe struct {
 	err    error
 	checks int
+	caps   domain.ModelCapabilities
+	// capsErr fails Capabilities; shows records each call as "endpoint model".
+	capsErr error
+	shows   []string
 }
 
 func (p *fakeProbe) Check(context.Context) error {
@@ -33,13 +38,18 @@ func (p *fakeProbe) Check(context.Context) error {
 	return p.err
 }
 
-func (p *fakeProbe) Models(context.Context) ([]string, error) {
+func (p *fakeProbe) Models(context.Context) ([]domain.OllamaModel, error) {
 	return nil, p.err
+}
+
+func (p *fakeProbe) Capabilities(_ context.Context, endpoint, model string) (domain.ModelCapabilities, error) {
+	p.shows = append(p.shows, endpoint+" "+model)
+	return p.caps, p.capsErr
 }
 
 func TestAssistantReadinessFollowsSavedConnection(t *testing.T) {
 	store := &fakeOllamaStore{settings: domain.DefaultOllamaSettings()}
-	conn := NewOllamaConnection(store, &fakeProbe{})
+	conn := NewOllamaConnection(store, &fakeProbe{caps: domain.ModelCapabilities{Tools: true}})
 	ctx := context.Background()
 	readiness := func() domain.AssistantNotReady {
 		t.Helper()
@@ -47,7 +57,7 @@ func TestAssistantReadinessFollowsSavedConnection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return got
+		return got.NotReady
 	}
 	if got := readiness(); got != domain.AssistantOllamaNotSaved {
 		t.Fatalf("未保存 = %q", got)
@@ -66,6 +76,72 @@ func TestAssistantReadinessFollowsSavedConnection(t *testing.T) {
 	}
 	if got := readiness(); got != domain.AssistantGenerationModelUnset {
 		t.Fatalf("空の生成用のモデル = %q", got)
+	}
+}
+
+func TestAssistantReadinessReadsCapabilitiesOncePerModel(t *testing.T) {
+	ctx := context.Background()
+	gemma := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "gemma3:27b"}
+	store := &fakeOllamaStore{settings: gemma, saved: true}
+	probe := &fakeProbe{caps: domain.ModelCapabilities{Vision: true}}
+	conn := NewOllamaConnection(store, probe)
+
+	for range 2 {
+		got, err := conn.AssistantReadiness(ctx)
+		want := domain.AssistantStatus{NotReady: domain.AssistantGenerationModelWithoutTools, Vision: true}
+		if err != nil || got != want {
+			t.Fatalf("readiness = %+v, %v; want %+v", got, err, want)
+		}
+	}
+	if !slices.Equal(probe.shows, []string{"http://h:1 gemma3:27b"}) {
+		t.Fatalf("shows = %v, want one read for the pair", probe.shows)
+	}
+
+	// Saving rereads the pair, so a model updated in Ollama is seen without a restart.
+	probe.caps = domain.ModelCapabilities{Tools: true, Vision: true}
+	if _, err := conn.SaveSettings(ctx, gemma); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := conn.AssistantReadiness(ctx); err != nil || got != (domain.AssistantStatus{Vision: true}) {
+		t.Fatalf("after save = %+v, %v", got, err)
+	}
+	if len(probe.shows) != 2 {
+		t.Errorf("shows = %v, want the save's read only", probe.shows)
+	}
+}
+
+func TestAssistantReadinessWhenOllamaCannotAnswer(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeOllamaStore{
+		settings: domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "qwen3:8b"}, saved: true,
+	}
+	probe := &fakeProbe{capsErr: domain.ErrOllamaUnreachable}
+	conn := NewOllamaConnection(store, probe)
+	if got, err := conn.AssistantReadiness(ctx); err != nil || got != (domain.AssistantStatus{}) {
+		t.Fatalf("unreachable = %+v, %v; want ready, the turn reports the failure", got, err)
+	}
+	// Nothing is kept, so the next read asks again once Ollama is up.
+	probe.capsErr = nil
+	if got, _ := conn.AssistantReadiness(ctx); got.NotReady != domain.AssistantGenerationModelWithoutTools || len(probe.shows) != 2 {
+		t.Fatalf("second read = %+v, shows = %v", got, probe.shows)
+	}
+}
+
+func TestOllamaConnectionCheckNamesModelWithoutTools(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeOllamaStore{settings: domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef", GenerationModel: "qwen2:0.5b"}}
+	probe := &fakeProbe{}
+	conn := NewOllamaConnection(store, probe)
+	if err := conn.Check(ctx); !errors.Is(err, domain.ErrGenerationModelWithoutTools) {
+		t.Fatalf("Check = %v", err)
+	}
+	probe.caps = domain.ModelCapabilities{Tools: true}
+	if err := conn.Check(ctx); err != nil {
+		t.Fatalf("with tools: Check = %v", err)
+	}
+	store.settings.GenerationModel = ""
+	if err := conn.Check(ctx); err != nil || len(probe.shows) != 2 {
+		t.Fatalf("no generation model: Check = %v, shows = %v", err, probe.shows)
 	}
 }
 

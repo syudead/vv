@@ -1787,7 +1787,7 @@ paths:
     post:
       operationId: checkOllama
       summary: "Check the saved Ollama connection and model availability"
-      description: "Uses only GET /api/version and GET /api/tags, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md."
+      description: "Uses only GET /api/version, GET /api/tags and, for a saved generation model, POST /api/show, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md."
       responses:
         "200":
           description: "Check result"
@@ -1802,10 +1802,10 @@ paths:
     get:
       operationId: listOllamaModels
       summary: "List the models at the saved Ollama endpoint"
-      description: "Uses only GET /api/version and GET /api/tags at the saved URL, never a request-supplied URL, without loading a model. Names come in the order Ollama lists them, for the decision and generation model pickers; see docs/design-docs/ai-layer.md."
+      description: "Uses only GET /api/version, GET /api/tags and POST /api/show for each model at the saved URL, never a request-supplied URL, without loading a model. Models come in the order Ollama lists them, with whether each can call tools and see images, for the decision and generation model pickers; see docs/design-docs/ai-layer.md."
       responses:
         "200":
-          description: "Model names"
+          description: "Models and their capabilities"
           content:
             application/json:
               schema:
@@ -1823,7 +1823,7 @@ paths:
     get:
       operationId: getAssistantReadiness
       summary: "Say whether the assistant can take a request"
-      description: "Reads only the saved Ollama connection and generation model; sends no request to Ollama."
+      description: "Reads the saved Ollama connection and generation model. The model's capabilities come from POST /api/show on the first read for an endpoint and model pair and are kept after that; when Ollama cannot be reached then, ready is true and the turn reports the failure."
       responses:
         "200":
           description: "Readiness"
@@ -1857,7 +1857,7 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved or generation_model_unset)"
+          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools)"
           content:
             application/json:
               schema:
@@ -6945,12 +6945,18 @@ components:
             $ref: "#/components/schemas/OllamaModel"
     OllamaModel:
       type: object
-      required: [name]
+      required: [name, tools, vision]
       additionalProperties: false
       properties:
         name:
           type: string
           description: "Model name as Ollama lists it, such as qwen3:8b."
+        tools:
+          type: boolean
+          description: "The model can call tools, from capabilities of POST /api/show; false when Ollama reports none."
+        vision:
+          type: boolean
+          description: "The model can see images, from capabilities of POST /api/show; false when Ollama reports none."
     AssistantTurnRequest:
       type: object
       required: [text, context]
@@ -7501,7 +7507,7 @@ components:
 
     AssistantReadiness:
       type: object
-      required: [ready]
+      required: [ready, vision]
       additionalProperties: false
       description: "Whether a turn can run; reason is present only when ready is false."
       properties:
@@ -7509,8 +7515,11 @@ components:
           type: boolean
         reason:
           type: string
-          enum: [ollama_not_saved, generation_model_unset]
-          description: "ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved."
+          enum: [ollama_not_saved, generation_model_unset, generation_model_without_tools]
+          description: "ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools."
+        vision:
+          type: boolean
+          description: "The generation model can see images; false when it is unknown."
 
     ComfyUIProvider:
       type: string
@@ -7602,8 +7611,8 @@ components:
           description: "Unavailability reason in English, possibly including the provider's JSON error message."
         reason:
           type: string
-          enum: [generation_model_missing]
-          description: "Ollama checks only: the decision model is listed but the saved generation model is not."
+          enum: [generation_model_missing, generation_model_without_tools]
+          description: "Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools."
         missing:
           type: array
           description: "ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows."
@@ -14366,6 +14375,7 @@ components:
         - timeout
         - ollama_not_saved
         - generation_model_unset
+        - generation_model_without_tools
         - peer_unknown
         - peer_not_allowed
         - invalid_address

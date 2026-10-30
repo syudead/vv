@@ -32,8 +32,8 @@ type readinessOnly struct {
 	notReady domain.AssistantNotReady
 }
 
-func (r readinessOnly) AssistantReadiness(context.Context) (domain.AssistantNotReady, error) {
-	return r.notReady, nil
+func (r readinessOnly) AssistantReadiness(context.Context) (domain.AssistantStatus, error) {
+	return domain.AssistantStatus{NotReady: r.notReady}, nil
 }
 
 func turnEnv(t *testing.T, turns *fakeTurns, notReady domain.AssistantNotReady) func(body string) *httptest.ResponseRecorder {
@@ -118,8 +118,8 @@ func TestCreateAssistantTurnRefusesBeforeInterpreting(t *testing.T) {
 	}{
 		{name: "text over 500 characters", text: strings.Repeat("猫", 501), status: http.StatusBadRequest,
 			code: gen.ErrorCodeInvalidRequest},
-		{name: "not ready", text: "猫", notReady: domain.AssistantGenerationModelUnset, status: http.StatusConflict,
-			code: gen.ErrorCodeAssistantNotReady, reason: gen.ErrorReasonGenerationModelUnset},
+		{name: "not ready", text: "猫", notReady: domain.AssistantGenerationModelWithoutTools, status: http.StatusConflict,
+			code: gen.ErrorCodeAssistantNotReady, reason: gen.ErrorReasonGenerationModelWithoutTools},
 		{name: "timeout", text: "猫", err: fmt.Errorf("chat: %w", domain.ErrOllamaTimeout),
 			status: http.StatusServiceUnavailable, code: gen.ErrorCodeAssistantUnavailable, reason: gen.ErrorReasonTimeout,
 			turns: 1},
