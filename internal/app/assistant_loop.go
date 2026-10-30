@@ -201,7 +201,9 @@ func (l *turnLoop) run(ctx context.Context) error {
 			return nil
 		}
 		l.modelCalls++
-		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: append(l.tools.definitions(), l.imageDefinitions()...)})
+		tools := append(l.tools.definitions(), l.imageDefinitions()...)
+		l.fitContext(tools)
+		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: tools})
 		if err != nil {
 			l.stop(l.chatStop(ctx, err))
 			if l.turn.Stop.Reason == domain.AssistantStopModel {

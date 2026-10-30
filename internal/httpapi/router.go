@@ -569,7 +569,8 @@ func NewServer(opts Options) (http.Handler, *ActionRunner) {
 	registerExternalAPI(mux, srv)
 	mux.Handle(mcpPath, newMCPHandler(srv))
 	generated := gen.HandlerWithOptions(srv, generatedOptions(mux, logger))
-	runner := &ActionRunner{api: gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger))}
+	// The runner skips the auth and mutation boundaries but forwards a peer's entity like the screens do.
+	runner := &ActionRunner{api: srv.remoteBoundary(gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger)))}
 	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated))))), runner
 }
 

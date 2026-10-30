@@ -96,6 +96,7 @@ type authEnv struct {
 	t       *testing.T
 	db      *store.DB
 	handler http.Handler
+	runner  *ActionRunner
 	logs    *syncBuffer
 
 	mu  sync.Mutex
@@ -150,7 +151,7 @@ func newAuthEnvWrapped(
 	if opts.Pinger == nil {
 		opts.Pinger = db
 	}
-	env.handler = newTestServer(t, opts)
+	env.handler, env.runner = NewServer(testServerOptions(opts))
 	return env
 }
 

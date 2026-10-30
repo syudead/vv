@@ -247,7 +247,11 @@ func sampleVideo(id int64, title string) domain.Video {
 
 func newTestServer(t *testing.T, opts Options) http.Handler {
 	t.Helper()
+	return NewRouter(testServerOptions(opts))
+}
 
+// testServerOptions fills the options a test leaves out with empty assets, files and an owner.
+func testServerOptions(opts Options) Options {
 	if opts.Assets == nil {
 		opts.Assets = emptyAssets{}
 	}
@@ -257,7 +261,7 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 	if opts.Auth == nil {
 		opts.Auth = ownerAuth{}
 	}
-	return NewRouter(opts)
+	return opts
 }
 
 // Use ownerAuth to isolate routes; auth_test.go verifies the real boundary.
