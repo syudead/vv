@@ -325,6 +325,7 @@ func (a *Assistant) runStep(
 	if err != nil {
 		return 0, err
 	}
+	current.Videos = domain.WithRemoteVideos(current.Videos, plan.VideoKeys())
 	if plan.Stale(current, domain.TouchedBefore(steps, i)) {
 		step.Status = domain.AssistantStepStale
 		return 0, nil
@@ -396,6 +397,7 @@ func (a *Assistant) batchVideos(
 		if found, err = a.store.VideoIDs(ctx, keys); err != nil {
 			return nil, 0, err
 		}
+		found = domain.WithRemoteVideos(found, keys)
 	}
 	ids := make([]int64, 0, len(keys))
 	for _, key := range keys {

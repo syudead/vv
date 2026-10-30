@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -71,11 +72,20 @@ func (t *assistantTurn) entity(
 	return domain.AssistantLabel{}, false, nil
 }
 
-// video resolves "current" to the open video and any other name by a title search that must find one video, or
-// that finds the video pinned in a clarification among the candidates it offers.
+// video resolves "current" or a blank name to the open video and any other name by a title search that must find
+// one video, or that finds the video pinned in a clarification among the candidates it offers. A peer's video,
+// which the search does not read, is found by the remote id the call gives with the name, or by its title when
+// the screen shows or selects it.
 func (t *assistantTurn) video(ctx context.Context, name string) (domain.AssistantLabel, bool, error) {
+	name = strings.TrimSpace(name)
 	if name == "" || name == "current" {
 		return t.entityVideo(ctx)
+	}
+	if id := t.idPins[domain.FoldForMatch(name)]; domain.IsRemoteID(id) {
+		return t.videoByID(ctx, id)
+	}
+	if label, ok, err := t.screenRemoteVideo(ctx, name); ok || err != nil {
+		return label, ok, err
 	}
 	page, err := t.a.videos.ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: name, Limit: assistantClarifyLimit})
 	if err != nil {
@@ -92,7 +102,7 @@ func (t *assistantTurn) video(ctx context.Context, name string) (domain.Assistan
 		v, ok = page.Items[0], true
 	}
 	if ok {
-		return domain.AssistantLabel{Kind: domain.AssistantLabelVideo, ID: v.ID, Key: v.UserKey, Name: v.Title}, true, nil
+		return videoLabel(v), true, nil
 	}
 	candidates := make([]domain.AssistantCandidate, len(page.Items))
 	for i, v := range page.Items {
@@ -119,17 +129,26 @@ func (t *assistantTurn) pinnedVideo(found []domain.Video) (domain.Video, bool) {
 func (t *assistantTurn) entityVideo(ctx context.Context) (domain.AssistantLabel, bool, error) {
 	route := t.input.Context
 	if route.Route == domain.AssistantRouteVideo && route.RouteID > 0 {
-		videos, err := t.a.videos.VideosByIDs(ctx, domain.AudienceOwner, []int64{route.RouteID})
-		if err != nil {
-			return domain.AssistantLabel{}, false, fmt.Errorf("cannot read the open video: %w", err)
-		}
-		if len(videos) == 1 {
-			v := videos[0]
-			return domain.AssistantLabel{Kind: domain.AssistantLabelVideo, ID: v.ID, Key: v.UserKey, Name: v.Title}, true, nil
-		}
+		return t.videoByID(ctx, route.RouteID)
 	}
 	t.clarify("target", nil)
 	return domain.AssistantLabel{}, false, nil
+}
+
+// videoByID resolves one video of either node by its id.
+func (t *assistantTurn) videoByID(ctx context.Context, id int64) (domain.AssistantLabel, bool, error) {
+	videos, failure, err := t.a.videosByIDs(ctx, t.runner, []int64{id})
+	switch {
+	case err != nil:
+		return domain.AssistantLabel{}, false, fmt.Errorf("cannot read the video %d: %w", id, err)
+	case failure != "":
+		t.clarify("target", nil)
+		return domain.AssistantLabel{}, t.refuse("%s", failure), nil
+	case len(videos) != 1:
+		t.clarify("target", nil)
+		return domain.AssistantLabel{}, false, nil
+	}
+	return videoLabel(videos[0]), true, nil
 }
 
 // resume finds the video played most recently that is still in progress.

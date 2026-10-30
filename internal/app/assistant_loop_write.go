@@ -132,10 +132,8 @@ func (l *turnLoop) nameStep(ctx context.Context, tool domain.AssistantTool, raw 
 	if failure != "" {
 		return domain.AssistantPlan{}, failure, nil
 	}
-	t := &assistantTurn{
-		a: l.a, idPins: pins, writes: &l.writes,
-		input: domain.AssistantTurnInput{Text: l.turn.Request, Context: l.turn.Context, PreviousTurnID: l.turn.PreviousTurnID},
-	}
+	t := l.resolver()
+	t.idPins, t.writes = pins, &l.writes
 	plan, ok, err := t.buildPlan(ctx, req)
 	switch {
 	case errors.Is(err, domain.ErrAssistantTooManyVideos):
@@ -169,7 +167,8 @@ func (l *turnLoop) unresolved(t *assistantTurn) string {
 	return "an argument the operation needs is missing or has a value it does not take"
 }
 
-// noteClarify records the name and kind the first clarification asks about.
+// noteClarify records the name and kind the first clarification asks about. A blank name asks nothing the owner
+// can answer, so unresolved gives the model a failure instead.
 func (t *assistantTurn) noteClarify(kind domain.AssistantLabelKind, name string, candidates []domain.AssistantCandidate) {
 	if t.clarification != nil {
 		return
@@ -177,7 +176,16 @@ func (t *assistantTurn) noteClarify(kind domain.AssistantLabelKind, name string,
 	if kind == "" && len(candidates) > 0 {
 		kind = candidates[0].Kind
 	}
-	t.clarifyName, t.clarifyKind = name, kind
+	t.clarifyName, t.clarifyKind = strings.TrimSpace(name), kind
+}
+
+// emptyName refuses a name that is blank, which would otherwise ask the owner about nothing or match everything.
+func (t *assistantTurn) emptyName(kind domain.AssistantLabelKind, about string) bool {
+	if kind == "" {
+		kind = "entity"
+	}
+	t.clarify(about, nil)
+	return t.refuse("a %s name in the call is empty; give its name, or its id with the name", kind)
 }
 
 // refuse records why the call cannot become a step.

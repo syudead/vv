@@ -225,14 +225,19 @@ func coerceScalar(kind string, value any) any {
 
 // resolver resolves names the way the shipped filter and navigation did, for this turn's request and screen.
 func (l *turnLoop) resolver() *assistantTurn {
-	return &assistantTurn{a: l.a, input: domain.AssistantTurnInput{
+	return &assistantTurn{a: l.a, runner: l.runner, input: domain.AssistantTurnInput{
 		Text: l.turn.Request, Context: l.turn.Context, PreviousTurnID: l.turn.PreviousTurnID,
 	}}
 }
 
-// clarifyFailure tells the model what a name or value did not settle, so it can call again or ask the owner.
-func clarifyFailure(c *domain.AssistantClarification) string {
-	if c == nil {
+// clarifyFailure tells the model why the call was refused, or what a name or value did not settle, so it can call
+// again or ask the owner.
+func (t *assistantTurn) clarifyFailure() string {
+	c := t.clarification
+	switch {
+	case t.failure != "":
+		return t.failure
+	case c == nil:
 		return "the request is not complete"
 	}
 	if len(c.Candidates) > 0 {
@@ -279,7 +284,7 @@ func (l *turnLoop) showInLibrary(ctx context.Context, raw json.RawMessage) (buil
 		return builtinOutcome{}, err
 	}
 	if !ok {
-		return builtinOutcome{failure: clarifyFailure(t.clarification)}, nil
+		return builtinOutcome{failure: t.clarifyFailure()}, nil
 	}
 	result := struct {
 		Criteria criteriaResult `json:"criteria"`
@@ -313,7 +318,7 @@ func (l *turnLoop) openPage(ctx context.Context, raw json.RawMessage) (builtinOu
 		return builtinOutcome{}, err
 	}
 	if t.clarification != nil || resolved.Destination == nil {
-		return builtinOutcome{failure: clarifyFailure(t.clarification)}, nil
+		return builtinOutcome{failure: t.clarifyFailure()}, nil
 	}
 	dest := resolved.Destination
 	result := struct {

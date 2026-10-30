@@ -55,7 +55,7 @@ func (l *turnLoop) schemaStep(ctx context.Context, tool domain.AssistantTool, ra
 		if !ok || len(ids) == 0 {
 			continue
 		}
-		labels, failure, err := l.cardLabels(ctx, kind, ids)
+		labels, failure, err := l.cardLabels(ctx, *tool.Row, kind, ids)
 		if failure != "" || err != nil {
 			return plan, failure, err
 		}
@@ -106,27 +106,15 @@ func addIDLabels(plan *domain.AssistantPlan, field domain.AssistantIDField, labe
 	plan.Change = append(plan.Change, change)
 }
 
-// cardLabels names every id, so the card and the stale check have them; an id that names nothing is the model's
-// mistake to fix.
-func (l *turnLoop) cardLabels(ctx context.Context, kind domain.AssistantLabelKind, ids []int64) ([]domain.AssistantLabel, string, error) {
-	labels := make([]domain.AssistantLabel, 0, len(ids))
+// cardLabels names every id, so the card and the stale check have them; an id that names nothing, or a peer's video
+// for a row the screens do not offer for it, is the model's mistake to fix.
+func (l *turnLoop) cardLabels(
+	ctx context.Context, row domain.AssistantAction, kind domain.AssistantLabelKind, ids []int64,
+) ([]domain.AssistantLabel, string, error) {
 	if kind == domain.AssistantLabelVideo {
-		if l.a.videos == nil {
-			return nil, "", errors.New("the assistant cannot read videos: it is not configured")
-		}
-		videos, err := l.a.videos.VideosByIDs(ctx, domain.AudienceOwner, ids)
-		if err != nil {
-			return nil, "", fmt.Errorf("cannot read the videos a step names: %w", err)
-		}
-		for _, id := range ids {
-			i := slices.IndexFunc(videos, func(v domain.Video) bool { return v.ID == id })
-			if i < 0 {
-				return nil, fmt.Sprintf("there is no video with id %d", id), nil
-			}
-			labels = append(labels, domain.AssistantLabel{Kind: kind, ID: id, Key: videos[i].UserKey, Name: videos[i].Title})
-		}
-		return labels, "", nil
+		return l.videoCardLabels(ctx, row, ids)
 	}
+	labels := make([]domain.AssistantLabel, 0, len(ids))
 	names, err := l.a.vocabulary.EntityNames(ctx, kind, ids)
 	if err != nil {
 		return nil, "", err
@@ -137,6 +125,28 @@ func (l *turnLoop) cardLabels(ctx context.Context, kind domain.AssistantLabelKin
 			return nil, fmt.Sprintf("there is no %s with id %d", kind, id), nil
 		}
 		labels = append(labels, domain.AssistantLabel{Kind: kind, ID: id, Name: name})
+	}
+	return labels, "", nil
+}
+
+func (l *turnLoop) videoCardLabels(ctx context.Context, row domain.AssistantAction, ids []int64) ([]domain.AssistantLabel, string, error) {
+	if slices.ContainsFunc(ids, domain.IsRemoteID) && !row.RemoteVideos() {
+		return nil, remoteVideoRefusal(row.ID), nil
+	}
+	videos, failure, err := l.a.videosByIDs(ctx, l.runner, ids)
+	if failure != "" || err != nil {
+		if err != nil {
+			err = fmt.Errorf("cannot read the videos a step names: %w", err)
+		}
+		return nil, failure, err
+	}
+	labels := make([]domain.AssistantLabel, 0, len(ids))
+	for _, id := range ids {
+		i := slices.IndexFunc(videos, func(v domain.Video) bool { return v.ID == id })
+		if i < 0 {
+			return nil, fmt.Sprintf("there is no video with id %d", id), nil
+		}
+		labels = append(labels, videoLabel(videos[i]))
 	}
 	return labels, "", nil
 }

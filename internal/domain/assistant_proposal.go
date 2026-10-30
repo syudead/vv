@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -167,6 +168,52 @@ func (p AssistantPlan) Labels() []AssistantLabel {
 		labels = append(labels, change.Labels...)
 	}
 	return labels
+}
+
+// VideoKeys returns the target keys and the keys of the video labels, which the stale check reads.
+func (p AssistantPlan) VideoKeys() []string {
+	keys := slices.Clone(p.Targets.VideoKeys)
+	for _, label := range p.Labels() {
+		if label.Kind == AssistantLabelVideo {
+			keys = append(keys, label.Key)
+		}
+	}
+	return keys
+}
+
+// assistantRemoteKeyPrefix marks a plan key that holds a peer's video by its remote id, since the peer's videos
+// have no user key on this node.
+const assistantRemoteKeyPrefix = "peer:"
+
+// AssistantRemoteVideoKey is the plan key of the peer's video that this node addresses as remoteID.
+func AssistantRemoteVideoKey(remoteID int64) string {
+	return assistantRemoteKeyPrefix + strconv.FormatInt(remoteID, 10)
+}
+
+// AssistantRemoteVideoID is the remote id a plan key of the peer's video holds; ok is false for any other key.
+func AssistantRemoteVideoID(key string) (int64, bool) {
+	rest, found := strings.CutPrefix(key, assistantRemoteKeyPrefix)
+	if !found {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(rest, 10, 64)
+	return id, err == nil && IsRemoteID(id)
+}
+
+// WithRemoteVideos adds each key among keys that holds a peer's video to found, mapped to its remote id. This node
+// cannot see whether the peer still has the video; the forwarded call answers that.
+func WithRemoteVideos(found map[string]int64, keys []string) map[string]int64 {
+	for _, key := range keys {
+		id, ok := AssistantRemoteVideoID(key)
+		if !ok {
+			continue
+		}
+		if found == nil {
+			found = map[string]int64{}
+		}
+		found[key] = id
+	}
+	return found
 }
 
 // AssistantCurrent is what the store reads back before the first batch.

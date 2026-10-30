@@ -39,6 +39,8 @@ type assistantTurn struct {
 	idPins map[string]int64
 	// writes are the turn's earlier steps, whose created names later steps resolve to.
 	writes *turnWrites
+	// runner reads the peer's videos; without it a remote video id cannot be resolved.
+	runner ActionRunner
 }
 
 // criteria resolves a filter's names to ids; a condition out of order or a name that is not one entity asks. A filter
