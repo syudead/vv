@@ -38,14 +38,14 @@ function useOpenPanel(): () => void {
 }
 
 /**
- * The owner's words that started the run, from the thread that asked; the run does not carry them,
- * so after a reload the header has no description.
+ * The owner's words that started the run, from the thread's turn that started it; the run does not
+ * carry them, so without that turn in the thread the header has no description.
  */
 function useRunRequest(id: number): string | undefined {
   const store = useAssistant();
   for (const exchange of store?.exchanges ?? []) {
-    const reply = exchange.reply;
-    if (reply?.kind === "turn" && reply.outcome?.run?.id === id) return exchange.text;
+    const turn = exchange.turn;
+    if (turn?.progress.some((item) => item.reviewRunId === id) === true) return turn.request;
   }
   return undefined;
 }

@@ -1,6 +1,7 @@
 import { Bot, CircleAlert, Eraser, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 
+import type { AssistantReadinessReason } from "../api/assistant";
 import { useAudience } from "../auth/audience";
 import { errorText, t } from "../i18n";
 import { SidePanel } from "../ui/patterns/side-panel";
@@ -11,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { type AssistantStore, type Readiness, useAssistant } from "./AssistantProvider";
 import Composer from "./Composer";
 import ProposalCard, { RunRow } from "./ProposalCard";
-import ReplyView, { ConnectionsLink, WaitingRow } from "./ReplyView";
+import ReplyView, { ConnectionsLink, useGenerationModel } from "./ReplyView";
 import type { Exchange } from "./thread";
 
 export const assistantPanelId = "assistant-panel";
@@ -66,31 +67,49 @@ function ReadinessAlert({
     );
   }
   if (readiness.state !== "notReady") return null;
-  const saved = readiness.reason === "generation_model_unset";
+  return <NotReadyAlert reason={readiness.reason} />;
+}
+
+function NotReadyAlert({ reason }: { reason: AssistantReadinessReason }) {
+  const words = t.assistant.readiness;
+  const model = useGenerationModel(reason === "generation_model_without_tools");
+  const [title, description] =
+    reason === "generation_model_without_tools"
+      ? [words.withoutToolsTitle, words.withoutTools(model)]
+      : reason === "generation_model_unset"
+        ? [words.modelUnsetTitle, words.modelUnset]
+        : [words.ollamaNotSavedTitle, words.ollamaNotSaved];
   return (
     <Alert>
       <Bot aria-hidden="true" />
-      <AlertTitle>{saved ? words.modelUnsetTitle : words.ollamaNotSavedTitle}</AlertTitle>
-      <AlertDescription>
-        {saved ? words.modelUnset : words.ollamaNotSaved}
-      </AlertDescription>
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{description}</AlertDescription>
       <ConnectionsLink />
     </Alert>
   );
 }
 
-function EmptyThread({ onExample }: { onExample: (text: string) => void }) {
+function EmptyThread({
+  onExample,
+  vision,
+}: {
+  onExample: (text: string) => void;
+  vision: boolean;
+}) {
   const examples = t.assistant.examples;
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
       <p className="text-sm text-muted-foreground">{t.assistant.empty}</p>
       <div className="flex flex-col items-center gap-2">
-        {[examples.filter, examples.count, examples.tidy].map((text) => (
+        {[examples.library, examples.help, examples.tidy].map((text) => (
           <Button key={text} variant="outline" size="sm" onClick={() => onExample(text)}>
             {text}
           </Button>
         ))}
       </div>
+      {!vision && (
+        <p className="text-xs text-muted-foreground">{t.assistant.withoutVision}</p>
+      )}
     </div>
   );
 }
@@ -116,23 +135,21 @@ function ExchangeReply({
   exchange: Exchange;
 }) {
   const card = store.cards.get(exchange.id);
-  if (card !== undefined) {
-    return (
-      <ProposalCard
-        card={card}
-        onExecute={() => store.execute(exchange.id)}
-        onDismiss={() => store.dismiss(exchange.id)}
-      />
-    );
-  }
-  if (exchange.reply === undefined) return <WaitingRow startedAt={exchange.startedAt} />;
   const { waiting, choose } = store;
   return (
-    <ReplyView
-      exchange={exchange}
-      reply={exchange.reply}
-      onChoose={waiting ? undefined : (candidate) => choose(exchange, candidate)}
-    />
+    <>
+      <ReplyView
+        exchange={exchange}
+        onChoose={waiting ? undefined : (candidate) => choose(exchange, candidate)}
+      />
+      {card !== undefined && exchange.reply?.kind !== "expired" && (
+        <ProposalCard
+          card={card}
+          onExecute={() => store.execute(exchange.id)}
+          onDismiss={() => store.dismiss(exchange.id)}
+        />
+      )}
+    </>
   );
 }
 
@@ -172,9 +189,9 @@ function Thread({ store }: { store: AssistantStore }) {
 function ThreadBody({ store }: { store: AssistantStore }) {
   const { exchanges, readiness } = store;
   if (exchanges.length > 0) return <Thread store={store} />;
-  if (readiness.state === "checking") return <CheckingThread />;
+  if (readiness.state === "checking" || store.loading) return <CheckingThread />;
   if (readiness.state !== "ready") return null;
-  return <EmptyThread onExample={store.setDraft} />;
+  return <EmptyThread onExample={store.setDraft} vision={readiness.vision} />;
 }
 
 function PanelBody({ store }: { store: AssistantStore }) {
@@ -230,7 +247,10 @@ export default function AssistantPanel() {
       }
       footer={
         composer ? (
-          <Composer store={store} checking={readiness.state === "checking"} />
+          <Composer
+            store={store}
+            checking={readiness.state === "checking" || store.loading}
+          />
         ) : (
           <ReadinessAlert readiness={readiness} retry={store.checkReadiness} />
         )

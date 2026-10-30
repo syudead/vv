@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  type AssistantOutcome,
-  type AssistantReviewRun,
-  getAssistantReviewRun,
-} from "../api/assistant";
+import { type AssistantReviewRun, getAssistantReviewRun } from "../api/assistant";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { isNewerRun, isRunning } from "./review";
 
@@ -15,8 +11,6 @@ export interface ReviewRunsStore {
   reviews: ReviewRuns;
   /** A run the thread shows is still judging, so the trigger shows its dot while the panel is closed. */
   reviewing: boolean;
-  settle: (outcome: AssistantOutcome) => void;
-  clear: () => void;
 }
 
 function withRun(runs: ReviewRuns, run: AssistantReviewRun): ReviewRuns {
@@ -25,52 +19,49 @@ function withRun(runs: ReviewRuns, run: AssistantReviewRun): ReviewRuns {
   return new Map(runs).set(run.id, run);
 }
 
-/** Follows the review runs started from the thread on assistant events until they finish. */
-export function useReviewRuns(): ReviewRunsStore {
+/** Reads the review runs the thread's turns started, and follows them on assistant events until they finish. */
+export function useReviewRuns(ids: readonly number[]): ReviewRunsStore {
   const [reviews, setReviews] = useState<ReviewRuns>(new Map());
   const latest = useRef(reviews);
   latest.current = reviews;
+  const idsKey = ids.join(",");
 
-  const settle = useCallback((outcome: AssistantOutcome) => {
-    const run = outcome.run;
-    if (outcome.kind !== "review" || run === undefined) return;
-    setReviews((current) => withRun(current, run));
+  // The progress row needs the run only; one candidate is the smallest page.
+  const read = useCallback((id: number) => {
+    getAssistantReviewRun(id, { limit: 1 }).then(
+      (page) => setReviews((current) => withRun(current, page.run)),
+      () => undefined,
+    );
   }, []);
 
-  const clear = useCallback(() => setReviews(new Map()), []);
+  useEffect(() => {
+    for (const id of idsKey === "" ? [] : idsKey.split(",").map(Number)) {
+      if (!latest.current.has(id)) read(id);
+    }
+  }, [idsKey, read]);
 
-  const runningIds = useMemo(
-    () =>
-      [...reviews.values()]
-        .filter(isRunning)
-        .map((run) => run.id)
-        .join(","),
-    [reviews],
-  );
+  // A cleared thread no longer names its runs, so they stop counting as working.
+  const runningIds = useMemo(() => {
+    const named = new Set(idsKey.split(","));
+    return [...reviews.values()]
+      .filter((run) => isRunning(run) && named.has(String(run.id)))
+      .map((run) => run.id)
+      .join(",");
+  }, [reviews, idsKey]);
   const reviewing = runningIds !== "";
 
   useEffect(() => {
     if (runningIds === "") return;
     const refresh = () => {
-      for (const run of latest.current.values()) {
-        if (!isRunning(run)) continue;
-        // The progress row needs the run only; one candidate is the smallest page.
-        getAssistantReviewRun(run.id, { limit: 1 }).then(
-          (page) => setReviews((current) => withRun(current, page.run)),
-          () => undefined,
-        );
-      }
+      for (const run of latest.current.values()) if (isRunning(run)) read(run.id);
     };
-    const unsubscribe = subscribeServerEvents({
+    return subscribeServerEvents({
       assistant: refresh,
       open: (reconnected) => {
         if (reconnected) refresh();
       },
     });
-    // A run can move or finish before the turn that returned it reaches the thread.
-    refresh();
-    return unsubscribe;
-  }, [runningIds]);
+  }, [runningIds, read]);
 
-  return { reviews, reviewing, settle, clear };
+  return { reviews, reviewing };
 }

@@ -90,7 +90,11 @@ export default function Composer({
           over ? "text-destructive" : "hidden text-muted-foreground sm:block",
         )}
       >
-        {over ? t.assistant.tooLong(length) : t.assistant.hint}
+        {over
+          ? t.assistant.tooLong(length)
+          : store.waiting
+            ? t.assistant.busyHint
+            : t.assistant.hint}
       </p>
     </form>
   );

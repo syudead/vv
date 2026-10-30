@@ -71,20 +71,17 @@ export function isNewerRun(
   return next.status !== "running" || next.judged >= current.judged;
 }
 
-/** The run the server answered with had begun before the request: it was a review already running. */
+/** The run had begun before the request that named it, or an earlier request named it: it was already running. */
 export function wasAlreadyRunning(
   run: AssistantReviewRun,
-  requestedAt: number,
+  turnStartedAt: string,
   earlierRunIds: ReadonlySet<number>,
 ): boolean {
   if (run.status !== "running") return false;
   if (earlierRunIds.has(run.id)) return true;
-  // A run this request started has judged nothing yet when the turn answers.
-  return run.judged > 0 || Date.parse(run.startedAt) < requestedAt - clockSkewMs;
+  // Both times come from the server's clock.
+  return Date.parse(run.startedAt) < Date.parse(turnStartedAt);
 }
-
-/** The server's clock may differ from the browser's; a minute keeps a new run from looking old. */
-const clockSkewMs = 60_000;
 
 /** Which candidate each adopted proposal is: the answer lists them in the order of ids, without the skipped. */
 export function proposalsByCandidate(
