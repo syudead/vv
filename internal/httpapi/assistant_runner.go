@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -210,6 +211,9 @@ func (r *ActionRunner) send(
 	}
 	res := &capturedResponse{header: http.Header{}}
 	r.api.ServeHTTP(res, req)
+	if res.overflow {
+		return domain.AssistantCallResult{}, fmt.Errorf("%s %s answered more than %d bytes", method, target, capturedResponseMax)
+	}
 	if res.status >= 200 && res.status < 300 {
 		return domain.AssistantCallResult{
 			Status: res.status, ContentType: res.header.Get("Content-Type"), Body: res.body.Bytes(),
@@ -264,11 +268,19 @@ func callError(res *capturedResponse) *domain.AssistantCallError {
 	return failure
 }
 
+// capturedResponseMax bounds a response the runner holds, since a peer's forwarded body can be of any size; the
+// largest real one, a video frame, is a few megabytes.
+const capturedResponseMax = 32 << 20
+
+// errResponseTooLarge stops a handler that writes past capturedResponseMax.
+var errResponseTooLarge = errors.New("the response is too large for the assistant")
+
 // capturedResponse records a handler's response; the runner reads it once the handler returns.
 type capturedResponse struct {
-	header http.Header
-	status int
-	body   bytes.Buffer
+	header   http.Header
+	status   int
+	body     bytes.Buffer
+	overflow bool
 }
 
 func (c *capturedResponse) Header() http.Header { return c.header }
@@ -281,5 +293,9 @@ func (c *capturedResponse) WriteHeader(status int) {
 
 func (c *capturedResponse) Write(p []byte) (int, error) {
 	c.WriteHeader(http.StatusOK)
+	if c.overflow || c.body.Len()+len(p) > capturedResponseMax {
+		c.overflow = true
+		return 0, errResponseTooLarge
+	}
 	return c.body.Write(p)
 }

@@ -265,3 +265,20 @@ func TestActionRunnerToolsHaveModelNamesThatRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// A response past the bound, such as a peer streaming without end, fails the read instead of filling memory.
+func TestActionRunnerRefusesAResponsePastItsBound(t *testing.T) {
+	runner := &ActionRunner{api: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		chunk := make([]byte, 1<<20)
+		for range capturedResponseMax>>20 + 1 {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+		t.Error("the writes past the bound succeeded")
+	})}
+
+	if _, err := runner.Read(context.Background(), domain.AssistantRead{Operation: "listTags"}); err == nil {
+		t.Fatal("Read succeeded, want the oversized response refused")
+	}
+}

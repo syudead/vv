@@ -7,15 +7,16 @@ import (
 	"unicode/utf8"
 )
 
-// Bounds of a read result as the model sees it: the context holds 16,384 tokens, and total fields keep the counts.
+// Bounds of a read result as the model sees it: the context holds 16,384 tokens with the tools and earlier results,
+// so one result stays near 3,000 tokens; total fields keep the counts.
 const (
 	AssistantResultItemMax  = 50
 	AssistantResultTextMax  = 500
-	AssistantResultBytesMax = 24 * 1024
+	AssistantResultBytesMax = 8 * 1024
 )
 
 // TrimAssistantToolResult cuts arrays to 50 items and strings to 500 characters, marking each cut with the
-// original length, and then the whole result to 24 KB. A body that is not JSON is cut as text.
+// original length, and then the whole result to 8 KB. A body that is not JSON is cut as text.
 func TrimAssistantToolResult(body []byte) string {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
