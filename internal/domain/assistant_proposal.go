@@ -61,6 +61,9 @@ const (
 	AssistantLabelGroup        AssistantLabelKind = "group"
 	AssistantLabelSmartFolder  AssistantLabelKind = "smartFolder"
 	AssistantLabelFolderRoot   AssistantLabelKind = "folderRoot"
+	// AssistantLabelActivity names an activity entry by its subject; AssistantLabelFaceAppearance by its video.
+	AssistantLabelActivity       AssistantLabelKind = "activity"
+	AssistantLabelFaceAppearance AssistantLabelKind = "faceAppearance"
 )
 
 // AssistantLabel is one entity as the card showed it. A video carries its user key, which survives a rebuild,

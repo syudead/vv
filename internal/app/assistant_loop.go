@@ -122,6 +122,9 @@ func (a *Assistant) waitTurns(ctx context.Context, timer <-chan time.Time) {
 func (a *Assistant) runTurn(ctx context.Context, runner ActionRunner, turn domain.AssistantTurn) {
 	loop := newTurnLoop(a, runner, turn)
 	err := loop.run(ctx)
+	if err == nil {
+		err = loop.propose(ctx)
+	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -154,6 +157,7 @@ type turnLoop struct {
 	// excluded is the first excluded operation the model asked for, and acted whether any other tool ran.
 	excluded *domain.AssistantExcludedRef
 	acted    bool
+	writes   turnWrites
 }
 
 func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *turnLoop {
@@ -238,7 +242,7 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 		}
 		l.toolCalls++
 		content, err := l.call(ctx, call)
-		if err != nil {
+		if err != nil || l.turn.Status == domain.AssistantTurnClarify {
 			return true, err
 		}
 		if l.expired(ctx) {

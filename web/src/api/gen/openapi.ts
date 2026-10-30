@@ -4430,8 +4430,11 @@ export interface components {
             /** @description Videos the tag is on or the person or organization is credited on; 0 for other kinds. */
             count: number;
         };
-        /** @enum {string} */
-        AssistantLabelKind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot";
+        /**
+         * @description activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+         * @enum {string}
+         */
+        AssistantLabelKind: "video" | "tag" | "tagKind" | "person" | "organization" | "playlist" | "group" | "smartFolder" | "folderRoot" | "activity" | "faceAppearance";
         /** @description A search for candidate sets of one kind and their judging by the classifier, one question per set. */
         AssistantReviewRun: {
             /** Format: int64 */

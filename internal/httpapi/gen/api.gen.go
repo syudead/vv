@@ -461,20 +461,26 @@ func (e AssistantDirectiveKind) Valid() bool {
 
 // Defines values for AssistantLabelKind.
 const (
-	AssistantLabelKindFolderRoot   AssistantLabelKind = "folderRoot"
-	AssistantLabelKindGroup        AssistantLabelKind = "group"
-	AssistantLabelKindOrganization AssistantLabelKind = "organization"
-	AssistantLabelKindPerson       AssistantLabelKind = "person"
-	AssistantLabelKindPlaylist     AssistantLabelKind = "playlist"
-	AssistantLabelKindSmartFolder  AssistantLabelKind = "smartFolder"
-	AssistantLabelKindTag          AssistantLabelKind = "tag"
-	AssistantLabelKindTagKind      AssistantLabelKind = "tagKind"
-	AssistantLabelKindVideo        AssistantLabelKind = "video"
+	AssistantLabelKindActivity       AssistantLabelKind = "activity"
+	AssistantLabelKindFaceAppearance AssistantLabelKind = "faceAppearance"
+	AssistantLabelKindFolderRoot     AssistantLabelKind = "folderRoot"
+	AssistantLabelKindGroup          AssistantLabelKind = "group"
+	AssistantLabelKindOrganization   AssistantLabelKind = "organization"
+	AssistantLabelKindPerson         AssistantLabelKind = "person"
+	AssistantLabelKindPlaylist       AssistantLabelKind = "playlist"
+	AssistantLabelKindSmartFolder    AssistantLabelKind = "smartFolder"
+	AssistantLabelKindTag            AssistantLabelKind = "tag"
+	AssistantLabelKindTagKind        AssistantLabelKind = "tagKind"
+	AssistantLabelKindVideo          AssistantLabelKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the AssistantLabelKind enum.
 func (e AssistantLabelKind) Valid() bool {
 	switch e {
+	case AssistantLabelKindActivity:
+		return true
+	case AssistantLabelKindFaceAppearance:
+		return true
 	case AssistantLabelKindFolderRoot:
 		return true
 	case AssistantLabelKindGroup:
@@ -4058,9 +4064,11 @@ type ApproveWorkInfoPluginRequest struct {
 // AssistantCandidate defines model for AssistantCandidate.
 type AssistantCandidate struct {
 	// Count Videos the tag is on or the person or organization is credited on; 0 for other kinds.
-	Count int                `json:"count"`
-	Id    int64              `json:"id"`
-	Kind  AssistantLabelKind `json:"kind"`
+	Count int   `json:"count"`
+	Id    int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
 
 	// Name The entity's name, as untranslated user data.
 	Name string `json:"name"`
@@ -4145,19 +4153,23 @@ type AssistantImpact struct {
 // AssistantLabel defines model for AssistantLabel.
 type AssistantLabel struct {
 	// Id The entity's id when the card showed it; absent when unknown.
-	Id   *int64             `json:"id,omitempty"`
+	Id *int64 `json:"id,omitempty"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
 	Kind AssistantLabelKind `json:"kind"`
 
 	// Name The name the card showed, as untranslated user data.
 	Name string `json:"name"`
 }
 
-// AssistantLabelKind defines model for AssistantLabelKind.
+// AssistantLabelKind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
 type AssistantLabelKind string
 
 // AssistantPin defines model for AssistantPin.
 type AssistantPin struct {
-	Id   int64              `json:"id"`
+	Id int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
 	Kind AssistantLabelKind `json:"kind"`
 
 	// Name The name the clarification asked about, as untranslated user data.
@@ -4328,7 +4340,9 @@ type AssistantReviewMember struct {
 	Count int `json:"count"`
 
 	// Id The tag or person, or a current library video of the member.
-	Id   int64              `json:"id"`
+	Id int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
 	Kind AssistantLabelKind `json:"kind"`
 
 	// Name The current name, or the video's title when the set was judged, as untranslated user data.
@@ -4432,7 +4446,9 @@ type AssistantTurnStatus string
 // AssistantTurnClarification The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
 type AssistantTurnClarification struct {
 	Candidates []AssistantCandidate `json:"candidates"`
-	Kind       AssistantLabelKind   `json:"kind"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
 
 	// Name As untranslated user data.
 	Name string `json:"name"`

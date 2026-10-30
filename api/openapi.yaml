@@ -7289,7 +7289,8 @@ components:
 
     AssistantLabelKind:
       type: string
-      enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot]
+      description: "activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title."
+      enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot, activity, faceAppearance]
 
     AssistantReviewRun:
       type: object

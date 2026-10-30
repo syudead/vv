@@ -4113,6 +4113,8 @@ export const en = {
         group: "group",
         smartFolder: "smart folder",
         folderRoot: "media folder",
+        activity: "activity entry",
+        faceAppearance: "face appearance",
       } satisfies Record<components["schemas"]["AssistantLabelKind"], string>,
     },
     // Keyed by the excluded screen operation; the sentence names what the owner does on its own page.
@@ -4308,6 +4310,9 @@ export const en = {
         group: (count: number) => counted(count, "group", "groups"),
         smartFolder: (count: number) => counted(count, "smart folder", "smart folders"),
         folderRoot: (count: number) => counted(count, "media folder", "media folders"),
+        activity: (count: number) => counted(count, "activity entry", "activity entries"),
+        faceAppearance: (count: number) =>
+          counted(count, "face appearance", "face appearances"),
         items: (count: number) => counted(count, "item", "items"),
         setting: "This setting",
       },
