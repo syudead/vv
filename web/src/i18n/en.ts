@@ -4024,13 +4024,19 @@ export const en = {
       screen: "Talking about this screen",
     },
     empty:
-      "Ask in Japanese: filter the library, open a page, change tags, or tidy up. Writes are shown for approval first.",
+      "Ask about your library, how something works, or for a change. Changes are shown for approval first.",
     // Sample requests in the language the assistant is asked in.
     examples: {
-      filter: "去年追加した30分以上の未視聴",
-      count: "〇〇の出演作は何本？",
+      library: "カラオケ関連の動画",
+      help: "お気に入りの使い方を教えて",
       tidy: "タグを整理して",
     },
+    withoutVision:
+      "This model can’t see images, so the assistant asks Clef to judge them.",
+    awaiting: "Assistant · waiting for you",
+    busyHint: "The assistant is working on the request above",
+    busy: "Another request is still running. It shows above when it finishes.",
+    expired: "This request is no longer kept.",
     readiness: {
       ollamaNotSavedTitle: "The assistant needs Ollama",
       ollamaNotSaved:
@@ -4038,49 +4044,65 @@ export const en = {
       modelUnsetTitle: "Choose a model for the assistant",
       modelUnset:
         "Pick a generation model in Settings, Connections. The decision model used for tagging can’t chat.",
+      withoutToolsTitle: "The model can’t use tools",
+      withoutTools: (model: string) =>
+        `“${model}” can’t call tools, which the assistant needs. Choose another generation model in Settings, Connections.`,
       openConnections: "Open Connections",
       failed: (reason: string) => `Couldn’t check the assistant: ${reason}`,
     },
-    waiting: "Asking the model… Loading it can take a few minutes.",
-    stillWaiting:
-      "Still waiting for the model. The request keeps running if you close the panel.",
+    // One line per tool call; {tool} is the operation's name as the progress item carries it.
+    tools: {
+      screen_context: "Checking the screen",
+      find_tools: "Looking for tools",
+      app_help: "Looking up how the app works",
+      read: (tool: string) => `Reading ${tool}`,
+      image: (tool: string) => `Reading an image with ${tool}`,
+      clef: (images: number) =>
+        selectPlural(images, {
+          one: `Asking Clef about ${formatNumber(images)} image`,
+          other: `Asking Clef about ${formatNumber(images)} images`,
+        }),
+      view_images: (images: number) =>
+        selectPlural(images, {
+          one: `Looking at ${formatNumber(images)} image`,
+          other: `Looking at ${formatNumber(images)} images`,
+        }),
+      write: (sentence: string) => `Proposing: ${sentence}`,
+      show_in_library: "Filtering the library",
+      open_page: (page: string) => (page === "" ? "Opening a page" : `Opening ${page}`),
+      start_review: (kind: string) =>
+        kind === "" ? "Starting a review" : `Starting a review of ${kind}`,
+      excluded: (tool: string) => `Can’t use ${tool}: it is done on its own page`,
+      failed: "didn’t work",
+      of: (n: number, m: number) => `${formatNumber(n)} of ${formatNumber(m)}`,
+      more: (count: number) => `+${formatNumber(count)}`,
+      working: (time: string) => `Working · ${time}`,
+      workingLong: (time: string) =>
+        `Working · ${time} · it keeps going if you close the panel`,
+      show: (count: number) =>
+        selectPlural(count, {
+          one: `Show ${formatNumber(count)} tool call`,
+          other: `Show ${formatNumber(count)} tool calls`,
+        }),
+      hide: "Hide tool calls",
+      list: "Tool calls",
+      progress: "Progress of the tool call",
+    },
+    judged: "Judged by Clef · its probabilities are estimates",
+    mentioned: "Mentioned",
+    showInLibrary: "Show in the library",
+    excludedReply: (operation: string) =>
+      `The assistant can’t do this. ${operation} is done on its own page.`,
+    openPage: (page: string) => `Open ${page}`,
+    settingsPage: (page: string) => `Settings, ${page}`,
     filtered: "Filtered the library",
     show: "Show",
     saveSmartFolder: "Save as smart folder…",
     opened: (name: string) => `Opened ${name}`,
     open: "Open",
-    answer: {
-      videos: (count: number) =>
-        count === 0
-          ? "No videos match"
-          : selectPlural(count, {
-              one: `${formatNumber(count)} video`,
-              other: `${formatNumber(count)} videos`,
-            }),
-      videosWith: (count: number, name: string) =>
-        count === 0
-          ? "No videos match"
-          : selectPlural(count, {
-              one: `${formatNumber(count)} video with ${name}`,
-              other: `${formatNumber(count)} videos with ${name}`,
-            }),
-      showInLibrary: "Show in the library",
-      openNamed: (name: string) => `Open ${name}`,
-      recent: "Recently watched",
-      listed: (count: number, shown: number) =>
-        `${selectPlural(count, {
-          one: `${formatNumber(count)} video`,
-          other: `${formatNumber(count)} videos`,
-        })} · showing the first ${formatNumber(shown)}`,
-    },
     clarify: {
-      operation: "What should the assistant do? Say the action and what it applies to.",
-      target: "Which videos or items? Select them, open their page, or name them.",
-      value: "Which value? Say the name, tag or date to use.",
-      which: (kind: string) => `Which ${kind} did you mean?`,
+      which: (kind: string, name: string) => `Which ${kind} did you mean by “${name}”?`,
       notFound: (name: string) => `Couldn’t find “${name}”. Check the name.`,
-      nothingSelected:
-        "Nothing is selected. Select videos, or open the video or page you mean.",
       kinds: {
         video: "video",
         tag: "tag",
@@ -4095,16 +4117,17 @@ export const en = {
         faceAppearance: "face appearance",
       } satisfies Record<components["schemas"]["AssistantLabelKind"], string>,
     },
-    unsupported: "The assistant can’t do that.",
-    unsupportedKnown: (operation: string) =>
-      `The assistant can’t do that. ${operation} is done on its own page.`,
     // Keyed by the excluded screen operation; the sentence names what the owner does on its own page.
     excluded: {
-      createApiToken: "Creating API tokens",
-      deleteMediaFolder: "Deleting a media folder",
-      clearWatchHistory: "Deleting watch history",
-      deleteWatchHistoryEntry: "Deleting watch history",
+      setupAccount: "Changing the account",
+      login: "Signing in",
+      logout: "Signing out",
       updateAccount: "Changing the account",
+      getAuthSession: "Reading the sign-in",
+      getAccount: "Reading the account",
+      createApiToken: "Creating API tokens",
+      deleteApiToken: "Deleting API tokens",
+      listApiTokens: "Listing API tokens",
       uploadWorkInfoPlugin: "Changing plugins",
       deleteWorkInfoPlugin: "Changing plugins",
       approveWorkInfoPlugin: "Changing plugins",
@@ -4113,18 +4136,58 @@ export const en = {
       setWorkInfoPluginLinkOrder: "Changing plugins",
       updateNetworkSettings: "Changing network settings",
       updatePluginProxySettings: "Changing network settings",
+      getPluginProxySettings: "Reading the plugin proxy",
+      createMediaFolder: "Adding a media folder",
+      updateMediaFolder: "Changing a media folder",
+      deleteMediaFolder: "Deleting a media folder",
+      clearWatchHistory: "Deleting watch history",
+      deleteWatchHistoryEntry: "Deleting watch history",
       downloadFaceRuntime: "Downloading the face runtime",
       updateOnboarding: "Onboarding",
       pickOnboardingInterests: "Onboarding",
-    },
-    unreadable: "Couldn’t turn that into something to do. Try saying it another way.",
+      issuePairingCode: "Pairing",
+      pairPeer: "Pairing",
+      updatePeerAddress: "Pairing",
+      confirmPeerCertificate: "Pairing",
+      unpairPeer: "Pairing",
+      forgetPeer: "Pairing",
+      revokePeerGrant: "Pairing",
+      applyPeerVocabulary: "Pairing",
+      matchPeerCredits: "Pairing",
+      applyPeerFetchedWorkInfo: "Pairing",
+      applyPeerFetchedPerson: "Pairing",
+      peerHandshake: "Pairing",
+      getPeerRelatedClues: "Pairing",
+      rankPeerRelated: "Pairing",
+      countPeerRuleMatches: "Pairing",
+      deleteVideo: "Deleting a video",
+      clearPeople: "Clearing every person",
+      uploadThumbnailImage: "Uploading an image",
+      startThumbnailEditFromImage: "Uploading an image",
+      uploadPersonImage: "Uploading an image",
+      organizeReorder: "Dragging",
+      organizeGroup: "Dragging",
+      organizeMove: "Dragging",
+      organizeMerge: "Dragging",
+      organizeBundle: "Dragging",
+      organizeUndo: "Dragging",
+      openVideoFile: "Playing",
+      streamVideo: "Playing",
+      transcodeVideo: "Playing",
+      getTranscodeStart: "Playing",
+      getVideoSubtitle: "Playing",
+      getVideoPreview: "Playing",
+      streamEvents: "Playing",
+      getHealth: "Playing",
+    } as Readonly<Record<string, string>>,
+    // An excluded operation this build does not know.
+    excludedOther: "This",
     unavailable: {
       connection: "Couldn’t reach Ollama. Check the URL in Settings, Connections.",
       model: (model: string) =>
         model === ""
           ? "The generation model didn’t answer. Check that Ollama has it."
           : `The generation model didn’t answer. Check that Ollama has “${model}”.`,
-      timeout: "The model took too long. Try a shorter request, or a smaller model.",
     },
     stopped: {
       step_limit:

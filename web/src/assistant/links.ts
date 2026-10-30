@@ -1,5 +1,10 @@
 import { videoConditionNames } from "../api/client";
-import type { AssistantCriteria, AssistantDestination } from "../api/assistant";
+import type {
+  AssistantCriteria,
+  AssistantDestination,
+  AssistantDirective,
+  AssistantLabelKind,
+} from "../api/assistant";
 import type { SmartRule } from "../api/smartFolders";
 import { personPath } from "../credits/person/personPath";
 import { groupPagePath } from "../groups/groupPaths";
@@ -65,7 +70,10 @@ const listPaths: Partial<Record<AssistantDestination["kind"], string>> = {
   activity: "/activity",
 };
 
-function entityPath(kind: AssistantDestination["kind"], id: number): string | undefined {
+function entityPath(
+  kind: AssistantDestination["kind"] | AssistantLabelKind,
+  id: number,
+): string | undefined {
   switch (kind) {
     case "video":
       return `/videos/${String(id)}`;
@@ -86,7 +94,25 @@ function entityPath(kind: AssistantDestination["kind"], id: number): string | un
   }
 }
 
-/** The route a navigate outcome opens. */
+/** The page of the entity a label names; tag kinds and media folders have none. */
+export function labelPath(kind: AssistantLabelKind, id: number): string | undefined {
+  return entityPath(kind, id);
+}
+
+/** The URL a turn's directive applies without confirmation. */
+export function directivePath(
+  directive: AssistantDirective | undefined,
+): string | undefined {
+  if (directive?.kind === "filter" && directive.criteria !== undefined) {
+    return criteriaPath(directive.criteria);
+  }
+  if (directive?.kind === "navigate" && directive.destination !== undefined) {
+    return destinationPath(directive.destination);
+  }
+  return undefined;
+}
+
+/** The route a navigate directive opens. */
 export function destinationPath(destination: AssistantDestination): string {
   if (destination.kind === "settings") {
     return destination.settingsPage === undefined

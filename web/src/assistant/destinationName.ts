@@ -70,6 +70,28 @@ function pageName(destination: AssistantDestination): UiText | undefined {
   }
 }
 
+const routeNames: Readonly<Record<string, () => string>> = {
+  "/": () => t.shell.nav.library,
+  "/history": () => t.shell.nav.history,
+  "/welcome": () => t.onboarding.documentTitle,
+};
+
+/**
+ * The title of the page an excluded operation is done on, from its route; undefined for a route
+ * with a parameter, such as a video page, which names no page to open.
+ */
+export function routePageName(route: string): string | undefined {
+  const slug = route.startsWith("/settings/")
+    ? route.slice("/settings/".length)
+    : undefined;
+  if (slug !== undefined) {
+    const pages: Readonly<Record<string, string>> = t.settings.pages;
+    const page = pages[slug];
+    return page === undefined ? undefined : t.assistant.settingsPage(page);
+  }
+  return routeNames[route]?.();
+}
+
 /** Undefined while an entity's name loads, or when it cannot be read. */
 export function useDestinationName(
   destination: AssistantDestination | undefined,

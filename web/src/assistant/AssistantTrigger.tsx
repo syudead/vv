@@ -13,7 +13,12 @@ export default function AssistantTrigger() {
   const owner = useAudience() === "owner";
   if (store === null || !owner) return null;
   const working = store.working && !store.open;
-  const label = working ? t.assistant.working : t.assistant.trigger;
+  const awaiting = store.awaiting && !store.open;
+  const label = working
+    ? t.assistant.working
+    : awaiting
+      ? t.assistant.awaiting
+      : t.assistant.trigger;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -28,7 +33,7 @@ export default function AssistantTrigger() {
           onClick={() => store.toggle(true)}
         >
           <BotMessageSquare aria-hidden="true" />
-          {working && (
+          {(working || awaiting) && (
             <span
               aria-hidden="true"
               className="absolute top-1 right-1 size-2 rounded-full bg-primary"

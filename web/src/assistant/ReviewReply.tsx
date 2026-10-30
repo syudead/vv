@@ -1,7 +1,7 @@
 import { TriangleAlert } from "lucide-react";
 import { Link } from "react-router";
 
-import type { AssistantReviewRun } from "../api/assistant";
+import type { AssistantReviewRun, AssistantTurn } from "../api/assistant";
 import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Progress } from "../ui/shadcn/progress";
@@ -10,13 +10,14 @@ import { useAssistant } from "./AssistantProvider";
 import { reviewPath, wasAlreadyRunning } from "./review";
 import type { Exchange } from "./thread";
 
-/** The runs earlier replies in the thread answered, so asking again names the same run as running. */
+/** The runs earlier turns in the thread named, so asking again names the same run as running. */
 function earlierRunIds(exchanges: readonly Exchange[], before: number): Set<number> {
   const ids = new Set<number>();
   for (const exchange of exchanges) {
-    const reply = exchange.reply;
-    if (exchange.id >= before || reply?.kind !== "turn") continue;
-    if (reply.outcome?.run !== undefined) ids.add(reply.outcome.run.id);
+    if (exchange.id === before) break;
+    for (const item of exchange.turn?.progress ?? []) {
+      if (item.reviewRunId !== undefined) ids.add(item.reviewRunId);
+    }
   }
   return ids;
 }
@@ -47,21 +48,24 @@ function ReviewState({ run }: { run: AssistantReviewRun }) {
 }
 
 /**
- * A review outcome's rows: the run's progress, which follows assistant events through the store,
- * and the link to its review list.
+ * The rows of a review run a turn started: its progress, which follows assistant events through
+ * the store, and the link to its review list. Nothing shows until the run is read.
  */
 export default function ReviewReply({
-  run: answered,
+  runId,
+  turn,
   exchange,
 }: {
-  run: AssistantReviewRun;
+  runId: number;
+  turn: AssistantTurn;
   exchange: Exchange;
 }) {
   const store = useAssistant();
-  const run = store?.reviews.get(answered.id) ?? answered;
+  const run = store?.reviews.get(runId);
+  if (run === undefined) return null;
   const alreadyRunning = wasAlreadyRunning(
-    answered,
-    exchange.startedAt,
+    run,
+    turn.startedAt,
     earlierRunIds(store?.exchanges ?? [], exchange.id),
   );
   const words = t.assistant.review;

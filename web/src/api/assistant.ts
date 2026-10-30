@@ -11,36 +11,8 @@ export type AssistantTurnStop = components["schemas"]["AssistantTurnStop"];
 export type AssistantTurnContext = components["schemas"]["AssistantTurnContext"];
 export type AssistantRoute = components["schemas"]["AssistantRoute"];
 export type AssistantPin = components["schemas"]["AssistantPin"];
-/**
- * Interim: the reply rows the panel draws, which it derives from a finished turn until the panel
- * shows turns themselves.
- */
-export interface AssistantOutcome {
-  kind:
-    | "filter"
-    | "navigate"
-    | "answer"
-    | "proposal"
-    | "review"
-    | "clarify"
-    | "unsupported"
-    | "unreadable";
-  criteria?: components["schemas"]["AssistantCriteria"];
-  destination?: components["schemas"]["AssistantDestination"];
-  question?: "count" | "appearances" | "recent" | "list";
-  total?: number;
-  items?: { id: number; title: string }[];
-  link?: {
-    criteria?: components["schemas"]["AssistantCriteria"];
-    destination?: components["schemas"]["AssistantDestination"];
-  };
-  proposal?: components["schemas"]["AssistantProposal"];
-  run?: components["schemas"]["AssistantReviewRun"];
-  about?: "operation" | "target" | "value";
-  candidates?: components["schemas"]["AssistantCandidate"][];
-  names?: string[];
-  operation?: string;
-}
+export type AssistantProgressItem = components["schemas"]["AssistantProgressItem"];
+export type AssistantDirective = components["schemas"]["AssistantDirective"];
 export type AssistantCriteria = components["schemas"]["AssistantCriteria"];
 export type AssistantDestination = components["schemas"]["AssistantDestination"];
 export type AssistantCandidate = components["schemas"]["AssistantCandidate"];
@@ -54,20 +26,48 @@ export function getAssistantReadiness(signal?: AbortSignal): Promise<AssistantRe
   return request<AssistantReadiness>("/api/assistant/readiness", { signal });
 }
 
+/** What sending a request led to: a turn started, or another one is still running (409 assistant_busy). */
+export type StartTurnResult =
+  { kind: "started"; turn: AssistantTurn } | { kind: "busy"; turnId: number };
+
 /**
- * Starts one request as a running turn (202). 400 too_many_videos, 409 assistant_not_ready,
- * 409 assistant_busy and 503 assistant_unavailable reject with RequestFailed.
+ * Starts one request as a running turn (202). 400 too_many_videos and 409 assistant_not_ready reject
+ * with RequestFailed.
  */
-export function createAssistantTurn(
+export async function createAssistantTurn(
   body: AssistantTurnRequest,
   signal?: AbortSignal,
-): Promise<AssistantTurn> {
-  return request<AssistantTurn>("/api/assistant/turns", {
+): Promise<StartTurnResult> {
+  const response = await apiFetch("/api/assistant/turns", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });
+  if (response.ok) {
+    return { kind: "started", turn: (await response.json()) as AssistantTurn };
+  }
+  if (response.status === 409) {
+    const failure = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { code?: string; turnId?: number } | null;
+    if (failure?.code === "assistant_busy" && typeof failure.turnId === "number") {
+      return { kind: "busy", turnId: failure.turnId };
+    }
+  }
+  throw await toRequestFailed(response);
+}
+
+/** The running turn and those finished within the last hour, newest first. */
+export async function listActiveAssistantTurns(
+  signal?: AbortSignal,
+): Promise<AssistantTurn[]> {
+  const list = await request<components["schemas"]["AssistantTurnList"]>(
+    "/api/assistant/turns?active=true",
+    { signal },
+  );
+  return list.items;
 }
 
 /** The panel reads a running turn again on each assistant event; 404 once it expired. */
