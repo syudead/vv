@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// screenVideoLimit bounds the selected videos screen_context lists; the count covers the rest.
-const screenVideoLimit = 50
-
 type screenEntity struct {
 	Kind domain.AssistantLabelKind `json:"kind,omitempty"`
 	ID   int64                     `json:"id"`
@@ -20,19 +17,25 @@ type screenEntity struct {
 }
 
 type screenResult struct {
-	Route                domain.AssistantRouteKind `json:"route"`
-	Showing              *screenEntity             `json:"showing,omitempty"`
-	SelectedVideoCount   int                       `json:"selectedVideoCount"`
-	SelectedVideos       []screenEntity            `json:"selectedVideos,omitempty"`
-	SelectedGroups       []screenEntity            `json:"selectedGroups,omitempty"`
-	SelectedSmartFolders []screenEntity            `json:"selectedSmartFolders,omitempty"`
-	Filter               *criteriaResult           `json:"filter,omitempty"`
+	Route                    domain.AssistantRouteKind `json:"route"`
+	Showing                  *screenEntity             `json:"showing,omitempty"`
+	SelectedVideoCount       int                       `json:"selectedVideoCount"`
+	SelectedVideos           []screenEntity            `json:"selectedVideos,omitempty"`
+	SelectedGroupCount       int                       `json:"selectedGroupCount"`
+	SelectedGroups           []screenEntity            `json:"selectedGroups,omitempty"`
+	SelectedSmartFolderCount int                       `json:"selectedSmartFolderCount"`
+	SelectedSmartFolders     []screenEntity            `json:"selectedSmartFolders,omitempty"`
+	Filter                   *criteriaResult           `json:"filter,omitempty"`
 }
 
-// screenContext answers the screen with ids and names; the system message carries only names and counts.
+// screenContext answers the screen with ids and names; the system message carries only names and counts. Each
+// selection names at most domain.AssistantResultItemMax items, and its count covers the rest.
 func (l *turnLoop) screenContext(ctx context.Context, _ json.RawMessage) (builtinOutcome, error) {
 	c := l.turn.Context
-	result := screenResult{Route: c.Route, SelectedVideoCount: len(c.SelectedVideoIDs)}
+	result := screenResult{
+		Route: c.Route, SelectedVideoCount: len(c.SelectedVideoIDs), SelectedGroupCount: len(c.SelectedGroupIDs),
+		SelectedSmartFolderCount: len(c.SelectedSmartFolderIDs),
+	}
 	if c.RouteID > 0 {
 		result.Showing = &screenEntity{Kind: routeKinds[c.Route], ID: c.RouteID}
 		if result.Showing.Kind != "" {
@@ -44,13 +47,14 @@ func (l *turnLoop) screenContext(ctx context.Context, _ json.RawMessage) (builti
 		}
 	}
 	var err error
-	if result.SelectedVideos, err = l.selectedVideos(ctx, c.SelectedVideoIDs); err != nil {
+	if result.SelectedVideos, err = l.selectedVideos(ctx, listed(c.SelectedVideoIDs)); err != nil {
 		return builtinOutcome{}, err
 	}
-	if result.SelectedGroups, err = l.namedEntities(ctx, domain.AssistantLabelGroup, c.SelectedGroupIDs); err != nil {
+	if result.SelectedGroups, err = l.namedEntities(ctx, domain.AssistantLabelGroup, listed(c.SelectedGroupIDs)); err != nil {
 		return builtinOutcome{}, err
 	}
-	if result.SelectedSmartFolders, err = l.namedEntities(ctx, domain.AssistantLabelSmartFolder, c.SelectedSmartFolderIDs); err != nil {
+	smartFolders := listed(c.SelectedSmartFolderIDs)
+	if result.SelectedSmartFolders, err = l.namedEntities(ctx, domain.AssistantLabelSmartFolder, smartFolders); err != nil {
 		return builtinOutcome{}, err
 	}
 	if c.Filter != nil {
@@ -63,11 +67,15 @@ func (l *turnLoop) screenContext(ctx context.Context, _ json.RawMessage) (builti
 	return builtinOutcome{content: encodeResult(result)}, nil
 }
 
+// listed keeps the first ids of a selection, the ones screen_context names.
+func listed(ids []int64) []int64 {
+	return ids[:min(len(ids), domain.AssistantResultItemMax)]
+}
+
 func (l *turnLoop) selectedVideos(ctx context.Context, ids []int64) ([]screenEntity, error) {
 	if len(ids) == 0 || l.a.videos == nil {
 		return nil, nil
 	}
-	ids = ids[:min(len(ids), screenVideoLimit)]
 	videos, err := l.a.videos.VideosByIDs(ctx, domain.AudienceOwner, ids)
 	if err != nil {
 		return nil, err

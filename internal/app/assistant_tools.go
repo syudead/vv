@@ -228,8 +228,7 @@ func (l *turnLoop) runTool(ctx context.Context, call domain.ToolCall, tool domai
 			// A clear best match is what the request asked for.
 			l.askedExcluded(l.tools.byName[found[0].Name])
 		}
-		encoded, _ := json.Marshal(map[string]any{"tools": found}) // Plain values always encode.
-		return string(encoded), ""
+		return encodeResult(map[string]any{"tools": found}), ""
 	case !known:
 		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name)
 	case tool.Kind == domain.AssistantToolExcluded:

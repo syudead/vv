@@ -45,7 +45,7 @@ are also always offered
 
 | Tool | What it does |
 | --- | --- |
-| `screen_context` | Answers the route and the entity it shows, the selected videos (id and title, the first 50, with the count), the selected groups and smart folders, and the library filter with the names its ids point at |
+| `screen_context` | Answers the route and the entity it shows, the selected videos (id and title, the first 50, with the count), the selected groups and smart folders (the first 50 of each, with the count), and the library filter with the names its ids point at |
 | `app_help` | Searches the page table in `internal/domain` (route, title and what the page is for, in the screens' own labels) and the operations' summaries by the query's English words, and answers the pages and operations that match; an excluded operation carries its reason and page. A query that matches nothing answers every page title, so the model can search again |
 | `show_in_library` | Resolves the shipped filter fields as a filter that only reads, answers the conditions with the names and the number of matching videos, and sets the turn's `filter` directive |
 | `open_page` | Resolves the shipped navigation fields and sets the turn's `navigate` directive |
@@ -69,7 +69,7 @@ flowchart LR
 | Rule | Why |
 | --- | --- |
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
-| A read runs at once through the owner's handler and comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
+| A read runs at once through the owner's handler; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
 | A write tool found by `find_tools` answers an error result for now; turning it into a proposal step is the next part of the loop | A write never runs before the owner approves it |
 | The turn carries the last `show_in_library` or `open_page` as its directive, which the panel applies without confirmation | Showing and moving change nothing (requirement 13) |
