@@ -129,8 +129,11 @@ func messageContent(m ollamaChatMessage) (any, error) {
 	return parts, nil
 }
 
+// objectOrEmpty sends {} for arguments that are not an object, such as the string a model wrote when it put several
+// calls in one, because Workers AI refuses the whole conversation over one such call.
 func objectOrEmpty(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 || string(raw) == "null" {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil || object == nil {
 		return json.RawMessage(`{}`)
 	}
 	return raw

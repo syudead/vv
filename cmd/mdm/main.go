@@ -271,7 +271,7 @@ func run(opts runOptions) error {
 	assistant := app.NewAssistant(app.AssistantOptions{
 		Store: db.Assistant(), Turns: db.Assistant(), Chat: ollama.NewChat(settingsStore), Vocabulary: db.Assistant(),
 		Videos: libraryStore, SmartFolders: db.SmartFolders(), Groups: libraryStore,
-		Reviews: db.Assistant(), Classifier: classifier, Logger: logger,
+		Reviews: db.Assistant(), Classifier: classifier, Clef: classifier, Model: ollamaConnection, Logger: logger,
 	})
 	if err := assistant.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not recover the assistant proposals and turns", slog.Any("error", err))

@@ -182,3 +182,41 @@ func TestRelayChatSendsMessageImagesToAVisionModel(t *testing.T) {
 		t.Fatalf("content = %+v", parts)
 	}
 }
+
+// A call whose arguments the model wrote as a string goes back as {}, which Workers AI accepts.
+func TestRelayChatSendsArgumentsThatAreNotAnObjectAsEmpty(t *testing.T) {
+	var got workersChatRequest
+	chat := chatThrough(t, "gemma4:26b", func(w http.ResponseWriter, r *http.Request) {
+		got = decodeWorkersChat(t, r)
+		_, _ = io.WriteString(w, textAnswer)
+	})
+	_, err := chat.Chat(context.Background(), domain.ChatRequest{Messages: []domain.ChatMessage{
+		{Role: domain.ChatRoleUser, Content: "request"},
+		{Role: domain.ChatRoleAssistant, ToolCalls: []domain.ToolCall{
+			{Name: "getVideoFrame", Arguments: json.RawMessage(`"{\"id\": 1}{\"id\": 2}"`)},
+		}},
+		{Role: domain.ChatRoleTool, ToolName: "getVideoFrame", Content: "error"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := got.Messages[1].ToolCalls; len(calls) != 1 || string(calls[0].Function.Arguments) != `"{}"` {
+		t.Fatalf("calls = %+v, want the arguments as {}", calls)
+	}
+}
+
+// Gemma writes parallel calls of one tool as objects one after another in one argument string.
+func TestRelayChatSplitsConcatenatedArgumentsIntoCalls(t *testing.T) {
+	chat := chatThrough(t, "gemma4:26b", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"success":true,"result":{"choices":[{"message":{"role":"assistant","content":null,`+
+			`"tool_calls":[{"id":"a","type":"function","function":{"name":"getVideoFrame",`+
+			`"arguments":"{\"id\": 1, \"positionMs\": 0}{\"id\": 2, \"positionMs\": 0}"}}]}}]}}`)
+	})
+	reply, err := chat.Chat(context.Background(), domain.ChatRequest{Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "r"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reply.ToolCalls) != 2 || string(reply.ToolCalls[1].Arguments) != `{"id":2,"positionMs":0}` {
+		t.Fatalf("calls = %+v, want one call per object", reply.ToolCalls)
+	}
+}

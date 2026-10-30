@@ -114,15 +114,11 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 	if err != nil {
 		return nil, err
 	}
-	var decoded responseBody
-	decodeErr := json.Unmarshal(raw, &decoded)
 	if status != http.StatusOK {
-		if decodeErr != nil {
-			decoded.Error = ""
-		}
-		return nil, errors.New(statusMessage(status, decoded.Error))
+		return nil, answerError(status, raw)
 	}
-	if decodeErr != nil {
+	var decoded responseBody
+	if decodeErr := json.Unmarshal(raw, &decoded); decodeErr != nil {
 		return nil, fmt.Errorf("cannot read the classifier response: %w", decodeErr)
 	}
 	if decoded.Answers == nil {
@@ -135,4 +131,47 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 		}
 	}
 	return probabilities, nil
+}
+
+// answerError passes on only the error text of an Ollama JSON answer.
+func answerError(status int, raw []byte) error {
+	var decoded responseBody
+	if json.Unmarshal(raw, &decoded) != nil {
+		decoded.Error = ""
+	}
+	return errors.New(statusMessage(status, decoded.Error))
+}
+
+// SystemOne sends Clef's own request with the saved decision model and keep-alive, and answers the endpoint's JSON
+// as it is. More images than Ollama takes are tiled into one, since splitting would change what Clef judges together.
+func (c *Classifier) SystemOne(ctx context.Context, req domain.ClefRequest) (json.RawMessage, error) {
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
+	}
+	images, err := encodeImages(req.Images, maxImages)
+	if err != nil {
+		return nil, fmt.Errorf("cannot tile the images: %w", err)
+	}
+	body := requestBody{
+		Model: settings.Model, State: req.State, Images: images,
+		Questions: make(map[string]question, len(req.Questions)), KeepAlive: keepAlive,
+	}
+	if body.State == nil {
+		body.State = map[string]string{}
+	}
+	for key, q := range req.Questions {
+		body.Questions[key] = question(q)
+	}
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, answerError(status, raw)
+	}
+	if !json.Valid(raw) {
+		return nil, errors.New("the classifier response is not JSON")
+	}
+	return raw, nil
 }

@@ -85,6 +85,35 @@ func TestActionRunnerAnswersAnImageAsAReferenceThatReadsBack(t *testing.T) {
 	}
 }
 
+// A frame read answers a reference that keeps its query, so reading the reference asks for the same frame.
+func TestActionRunnerReadsAVideoFrameBackFromItsReference(t *testing.T) {
+	api := &stubAPI{respond: func(*http.Request) (int, string) { return http.StatusOK, "png-bytes" }}
+	runner := &ActionRunner{api: api}
+
+	result, err := runner.Read(context.Background(), domain.AssistantRead{
+		Operation: "getVideoFrame", Arguments: json.RawMessage(`{"id":7,"positionMs":1500}`),
+	})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	var reference struct {
+		Image string `json:"image"`
+	}
+	if err := json.Unmarshal(result.Body, &reference); err != nil || reference.Image != "getVideoFrame?id=7&positionMs=1500" {
+		t.Fatalf("結果 = %s, want getVideoFrame?id=7&positionMs=1500 の参照", result.Body)
+	}
+	image, err := runner.Image(context.Background(), reference.Image)
+	if err != nil {
+		t.Fatalf("Image: %v", err)
+	}
+	if string(image.Bytes) != "png-bytes" {
+		t.Errorf("画像 = %q, want フレームのバイト列", image.Bytes)
+	}
+	if len(api.calls) != 2 || api.calls[1].target != "/api/videos/7/frame?positionMs=1500" {
+		t.Errorf("呼び出し = %+v, want 2 回目も同じフレームの GET", api.calls)
+	}
+}
+
 func TestActionRunnerRefusesReadsOutsideTheReadTools(t *testing.T) {
 	cases := []struct {
 		name, operation, args string
