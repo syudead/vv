@@ -12,15 +12,25 @@ import (
 	"time"
 )
 
-// chatModels maps the names /api/tags lists to Workers AI chat models that accept a JSON schema, so the assistant's
+type chatModelInfo struct {
+	id string
+	// tools and vision repeat the function calling and vision properties of the model's Workers AI catalog entry.
+	tools  bool
+	vision bool
+	// userAfterTool is false for a model that rejects a user message right after a tool result, as Mistral does
+	// for the images view_images attaches.
+	userAfterTool bool
+}
+
+// chatModels maps the names /api/tags lists to Workers AI chat models with function calling, so the assistant's
 // generation model can be chosen as on a local Ollama. A name starting with @cf/ is sent to Workers AI as it is.
-var chatModels = map[string]string{
-	"llama3.2:3b":          "@cf/meta/llama-3.2-3b-instruct",
-	"granite4:micro":       "@cf/ibm-granite/granite-4.0-h-micro",
-	"gemma4:26b":           "@cf/google/gemma-4-26b-a4b-it",
-	"qwen3:30b":            "@cf/qwen/qwen3-30b-a3b-fp8",
-	"mistral-small3.1:24b": "@cf/mistralai/mistral-small-3.1-24b-instruct",
-	"llama3.3:70b":         "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+var chatModels = map[string]chatModelInfo{
+	"granite4:micro":       {id: "@cf/ibm-granite/granite-4.0-h-micro", tools: true, userAfterTool: true},
+	"gemma4:26b":           {id: "@cf/google/gemma-4-26b-a4b-it", tools: true, vision: true, userAfterTool: true},
+	"qwen3:30b":            {id: "@cf/qwen/qwen3-30b-a3b-fp8", tools: true, userAfterTool: true},
+	"mistral-small3.1:24b": {id: "@cf/mistralai/mistral-small-3.1-24b-instruct", tools: true, vision: true},
+	"llama3.3:70b":         {id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", tools: true, userAfterTool: true},
+	"llama4:scout":         {id: "@cf/meta/llama-4-scout-17b-16e-instruct", tools: true, vision: true, userAfterTool: true},
 }
 
 // Workers AI answers at most 256 tokens unless told otherwise, which cuts a thinking model's answer off.
@@ -35,28 +45,60 @@ func chatModelNames() []string {
 	return names
 }
 
-func chatModel(name string) (string, bool) {
+// chatModel resolves a listed name; a raw @cf/ name is relayed with no known capabilities.
+func chatModel(name string) (chatModelInfo, bool) {
 	name = strings.TrimSpace(name)
 	if strings.HasPrefix(name, "@cf/") {
-		return name, true
+		return chatModelInfo{id: name, userAfterTool: true}, true
 	}
-	if id, ok := chatModels[name]; ok {
-		return id, true
+	if info, ok := chatModels[name]; ok {
+		return info, true
 	}
-	id, ok := chatModels[strings.TrimSuffix(name, ":latest")]
-	return id, ok
+	info, ok := chatModels[strings.TrimSuffix(name, ":latest")]
+	return info, ok
 }
 
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+// showCapabilities answers /api/show as Ollama does, so the product reads tools and vision from the relay.
+func showCapabilities(name string) ([]string, bool) {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(name), ":latest")
+	if slices.Contains(models, trimmed) {
+		return []string{"completion"}, true
+	}
+	info, ok := chatModel(name)
+	if !ok {
+		return nil, false
+	}
+	capabilities := []string{"completion"}
+	if info.tools {
+		capabilities = append(capabilities, "tools")
+	}
+	if info.vision {
+		capabilities = append(capabilities, "vision")
+	}
+	return capabilities, true
 }
 
-// Request body sent by internal/ollama's generator; format is a JSON schema, the word "json" or absent.
+type ollamaToolCall struct {
+	Function struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	} `json:"function"`
+}
+
+type ollamaChatMessage struct {
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	Images    []string         `json:"images,omitempty"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	ToolName  string           `json:"tool_name,omitempty"`
+}
+
+// Request body sent by internal/ollama; format is a JSON schema, the word "json" or absent.
 type ollamaChatRequest struct {
-	Model    string          `json:"model"`
-	Messages []chatMessage   `json:"messages"`
-	Format   json.RawMessage `json:"format"`
+	Model    string              `json:"model"`
+	Messages []ollamaChatMessage `json:"messages"`
+	Tools    []json.RawMessage   `json:"tools"`
+	Format   json.RawMessage     `json:"format"`
 }
 
 type responseFormat struct {
@@ -65,22 +107,28 @@ type responseFormat struct {
 }
 
 type workersChatRequest struct {
-	Messages       []chatMessage   `json:"messages"`
-	ResponseFormat *responseFormat `json:"response_format,omitempty"`
-	MaxTokens      int             `json:"max_tokens"`
+	Messages       []workersChatMessage `json:"messages"`
+	Tools          []json.RawMessage    `json:"tools,omitempty"`
+	ResponseFormat *responseFormat      `json:"response_format,omitempty"`
+	MaxTokens      int                  `json:"max_tokens"`
 }
 
 // Workers AI chat models answer either response (a string, or the parsed object in JSON mode) or an OpenAI-style
-// choices list.
+// choices list; tool calls come in the choice, or at the top level with the arguments as an object.
 type workersChatResponse struct {
 	Success bool `json:"success"`
 	Result  *struct {
 		Response json.RawMessage `json:"response"`
 		Choices  []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content   *string           `json:"content"`
+				ToolCalls []workersToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
+		ToolCalls []struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		} `json:"tool_calls"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
 			CompletionTokens int `json:"completion_tokens"`
@@ -114,14 +162,12 @@ func relayChat(w http.ResponseWriter, r *http.Request, cfg config, client *http.
 			in.Model, strings.Join(chatModelNames(), ", ")))
 		return
 	}
-	body, err := json.Marshal(workersChatRequest{
-		Messages: in.Messages, ResponseFormat: chatFormat(in.Format), MaxTokens: chatMaxTokens,
-	})
+	body, err := workersChatBody(in, model)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	url := fmt.Sprintf("%s/accounts/%s/ai/run/%s", strings.TrimRight(cfg.baseURL, "/"), cfg.account, model)
+	url := fmt.Sprintf("%s/accounts/%s/ai/run/%s", strings.TrimRight(cfg.baseURL, "/"), cfg.account, model.id)
 	status, raw, err := postWorkers(r, cfg, client, url, body)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
@@ -130,17 +176,89 @@ func relayChat(w http.ResponseWriter, r *http.Request, cfg config, client *http.
 	var out workersChatResponse
 	decodeErr := json.Unmarshal(raw, &out)
 	if status == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
-		content := chatContent(out)
-		log.Printf("clefrelay: %s %d→%d tokens, %s, answer: %s", model, out.Result.Usage.PromptTokens,
-			out.Result.Usage.CompletionTokens, time.Since(started).Round(time.Millisecond), content)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"model": in.Model, "message": chatMessage{Role: "assistant", Content: content}, "done": true,
-		})
+		message := chatAnswer(out)
+		log.Printf("clefrelay: %s %d→%d tokens, %s, answer: %s", model.id, out.Result.Usage.PromptTokens,
+			out.Result.Usage.CompletionTokens, time.Since(started).Round(time.Millisecond), logLine(message))
+		writeJSON(w, http.StatusOK, map[string]any{"model": in.Model, "message": message, "done": true})
 		return
 	}
 	message := errorMessage(status, out.Errors)
-	log.Printf("clefrelay: %s failed (%d): %s", model, status, message)
+	log.Printf("clefrelay: %s failed (%d): %s", model.id, status, message)
 	writeError(w, errorStatus(status), message)
+}
+
+// workersChatBody refuses tools and images a mapped model does not support, with Ollama's wording for tools.
+func workersChatBody(in ollamaChatRequest, model chatModelInfo) ([]byte, error) {
+	known := !strings.HasPrefix(strings.TrimSpace(in.Model), "@cf/")
+	if known && len(in.Tools) > 0 && !model.tools {
+		return nil, fmt.Errorf("%s does not support tools", in.Model)
+	}
+	messages, err := workersMessages(in.Messages, model.userAfterTool)
+	if err != nil {
+		return nil, err
+	}
+	if known && !model.vision && slices.ContainsFunc(in.Messages, func(m ollamaChatMessage) bool { return len(m.Images) > 0 }) {
+		return nil, fmt.Errorf("%s does not support images; use one of the vision models %s", in.Model,
+			strings.Join(visionModelNames(), ", "))
+	}
+	return json.Marshal(workersChatRequest{
+		Messages: messages, Tools: in.Tools, ResponseFormat: chatFormat(in.Format), MaxTokens: chatMaxTokens,
+	})
+}
+
+func visionModelNames() []string {
+	return slices.DeleteFunc(chatModelNames(), func(name string) bool { return !chatModels[name].vision })
+}
+
+// chatAnswer prefers tool calls over text, since the loop runs the calls before the model answers.
+func chatAnswer(out workersChatResponse) ollamaChatMessage {
+	message := ollamaChatMessage{Role: "assistant"}
+	if len(out.Result.Choices) > 0 {
+		for _, call := range out.Result.Choices[0].Message.ToolCalls {
+			message.ToolCalls = append(message.ToolCalls, ollamaCall(call.Function.Name, call.Function.Arguments))
+		}
+	}
+	if len(message.ToolCalls) == 0 {
+		for _, call := range out.Result.ToolCalls {
+			message.ToolCalls = append(message.ToolCalls, ollamaCall(call.Name, call.Arguments))
+		}
+	}
+	if len(message.ToolCalls) == 0 {
+		message.Content = chatContent(out)
+	}
+	return message
+}
+
+func ollamaCall(name string, arguments json.RawMessage) ollamaToolCall {
+	var call ollamaToolCall
+	call.Function.Name = name
+	call.Function.Arguments = argumentObject(arguments)
+	return call
+}
+
+// argumentObject turns OpenAI's JSON-encoded argument string, which some models encode twice, into the object
+// Ollama returns. Anything that is not an object is passed on as a string for the loop to reject.
+func argumentObject(raw json.RawMessage) json.RawMessage {
+	value := bytes.TrimSpace(raw)
+	for range 2 {
+		if len(value) == 0 || value[0] != '"' {
+			break
+		}
+		var text string
+		if err := json.Unmarshal(value, &text); err != nil {
+			break
+		}
+		value = bytes.TrimSpace([]byte(text))
+	}
+	if len(value) == 0 || string(value) == "null" {
+		return json.RawMessage(`{}`)
+	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, value) == nil && compact.Bytes()[0] == '{' {
+		return compact.Bytes()
+	}
+	quoted, _ := json.Marshal(string(value))
+	return quoted
 }
 
 // chatContent takes the answer as text on one line, so the log holds one answer per line.
@@ -148,18 +266,29 @@ func chatContent(out workersChatResponse) string {
 	var text string
 	raw := bytes.TrimSpace(out.Result.Response)
 	switch {
-	case len(out.Result.Choices) > 0:
-		text = out.Result.Choices[0].Message.Content
+	case len(out.Result.Choices) > 0 && out.Result.Choices[0].Message.Content != nil:
+		text = *out.Result.Choices[0].Message.Content
 	case len(raw) > 0 && raw[0] == '"':
 		if err := json.Unmarshal(raw, &text); err != nil {
 			text = string(raw)
 		}
-	default:
+	case len(raw) > 0 && string(raw) != "null":
 		text = string(raw)
 	}
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, []byte(strings.TrimSpace(text))); err == nil {
 		return compact.String()
 	}
-	return strings.ReplaceAll(text, "\n", " ")
+	return strings.ReplaceAll(strings.TrimSpace(text), "\n", " ")
+}
+
+func logLine(message ollamaChatMessage) string {
+	if len(message.ToolCalls) == 0 {
+		return message.Content
+	}
+	calls := make([]string, len(message.ToolCalls))
+	for i, call := range message.ToolCalls {
+		calls[i] = call.Function.Name + string(call.Function.Arguments)
+	}
+	return "tool calls " + strings.Join(calls, ", ")
 }

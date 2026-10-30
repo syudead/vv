@@ -1,10 +1,12 @@
 // clefrelay adapts Ollama judging and chat requests to Workers AI for development without a local Ollama server.
 // Run CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay, then select http://127.0.0.1:11434 and clef or clef-flash.
-// The assistant's generation model is one of the chat models in chat.go, such as llama3.2:3b or llama3.3:70b.
+// The assistant's generation model is one of the function calling chat models in chat.go, such as llama3.3:70b;
+// /api/show reports which of them take tools and images.
 //
 // Set CLOUDFLARE_API_TOKEN unless the proxy supplies authentication. Connection checks stay local; use "Test judging" to verify Workers AI.
-// The adapter tiles more than four images, drops keep_alive, sends a chat format as a JSON schema, logs every chat
-// answer, and converts Workers AI responses and errors to Ollama format.
+// The adapter tiles more than four images, drops keep_alive, relays tools and tool calls as OpenAI-style function
+// calling, sends a chat format as a JSON schema, logs every chat answer, and converts Workers AI responses and errors
+// to Ollama format.
 package main
 
 import (
@@ -134,6 +136,21 @@ func newRelay(cfg config, client *http.Client) http.Handler {
 			list = append(list, map[string]string{"name": m, "model": m})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"models": list})
+	})
+	mux.HandleFunc("POST /api/show", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "cannot read the request: "+err.Error())
+			return
+		}
+		capabilities, ok := showCapabilities(in.Model)
+		if !ok {
+			writeError(w, http.StatusNotFound, fmt.Sprintf("model '%s' not found", in.Model))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"capabilities": capabilities})
 	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		relay(w, r, cfg, client)

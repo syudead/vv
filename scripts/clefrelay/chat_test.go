@@ -29,7 +29,7 @@ func generatorThrough(t *testing.T, model string, workers http.HandlerFunc) *oll
 func TestRelayChatSendsTheFormatAsAJSONSchemaAndAnswersTheChoice(t *testing.T) {
 	var got map[string]json.RawMessage
 	var path string
-	gen := generatorThrough(t, "llama3.2:3b", func(w http.ResponseWriter, r *http.Request) {
+	gen := generatorThrough(t, "llama3.3:70b", func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
@@ -44,7 +44,7 @@ func TestRelayChatSendsTheFormatAsAJSONSchemaAndAnswersTheChoice(t *testing.T) {
 	if string(answer) != `{"kind":"unsupported"}` {
 		t.Errorf("answer = %s", answer)
 	}
-	if path != "/accounts/acct/ai/run/@cf/meta/llama-3.2-3b-instruct" {
+	if path != "/accounts/acct/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast" {
 		t.Errorf("path = %q", path)
 	}
 	var format responseFormat
@@ -81,7 +81,7 @@ func TestRelayChatRejectsAModelThatIsNotAChatModel(t *testing.T) {
 		t.Error("the judging model reached the chat endpoint")
 	})
 	_, err := gen.Generate(context.Background(), domain.GenerationRequest{Prompt: "request", Schema: json.RawMessage(`{}`)})
-	if !errors.Is(err, domain.ErrOllamaModel) || !strings.Contains(err.Error(), "llama3.2:3b") {
+	if !errors.Is(err, domain.ErrOllamaModel) || !strings.Contains(err.Error(), "llama3.3:70b") {
 		t.Fatalf("err = %v", err)
 	}
 }
