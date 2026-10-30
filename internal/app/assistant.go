@@ -53,6 +53,10 @@ type AssistantOptions struct {
 	// Reviews and Classifier are required by review runs; without Reviews an organize request is unsupported.
 	Reviews    AssistantReviewStore
 	Classifier Classifier
+	// Clef serves the clef tool, which is offered only with it; Model tells whether the generation model sees images,
+	// and without it view_images is never offered.
+	Clef  ClefWire
+	Model AssistantModel
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 	// Nil uses time.Now.
@@ -71,6 +75,8 @@ type Assistant struct {
 	groups       AssistantGroups
 	reviews      AssistantReviewStore
 	classifier   Classifier
+	clef         ClefWire
+	model        AssistantModel
 	logger       *slog.Logger
 	now          func() time.Time
 	wake         chan struct{}
@@ -94,6 +100,7 @@ func NewAssistant(opts AssistantOptions) *Assistant {
 	return &Assistant{
 		store: opts.Store, turns: opts.Turns, chat: opts.Chat, vocabulary: opts.Vocabulary, videos: opts.Videos,
 		smartFolders: opts.SmartFolders, groups: opts.Groups, reviews: opts.Reviews, classifier: opts.Classifier,
+		clef: opts.Clef, model: opts.Model,
 		logger: logger.With(slog.String("component", "assistant")), now: now,
 		// Coalesce wakeups in a one-element buffer.
 		wake: make(chan struct{}, 1), reviewWake: make(chan struct{}, 1), turnWake: make(chan struct{}, 1),

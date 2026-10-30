@@ -1,9 +1,9 @@
 # AI layer: classifier port and providers
 
 VVMDM's features reach a model only through task-agnostic ports:
-`app.Classifier` for yes/no decisions, `app.StructuredGenerator` for one
-structured value, and `app.ToolChat` for a conversation in which the model
-calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
+`app.Classifier` for yes/no decisions, `app.ClefWire` for Clef's own request
+and answer, `app.StructuredGenerator` for one structured value, and
+`app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
 
@@ -13,7 +13,9 @@ flowchart LR
   judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   assistant[Feature: Assistant] -->|domain.ClassifierRequest| port
   assistant -->|domain.ChatRequest| tport[app.ToolChat]
+  assistant -->|domain.ClefRequest| wport[app.ClefWire]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
+  wport -.->|implemented by| ollama
   gport[app.StructuredGenerator] -.->|implemented by| gen[internal/ollama.Generator]
   tport -.->|implemented by| chat[internal/ollama.Chat]
   ollama -->|reads| settings[(ollama.* settings)]
@@ -48,6 +50,21 @@ facts and the question wording, and turns probabilities into decisions.
 | Auto-tagging | One question per candidate tag; the thumbnail, 8 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
 | Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
 | Assistant review runs | One question per candidate set; as facts, the two names with their synonyms or aliases and 3 titles each, or up to 10 titles and their folders of a work; no images | [assistant.md](assistant.md#review-runs-judge-candidate-sets-for-the-owner) |
+
+## Clef wire port
+
+`app.ClefWire` takes Clef's own request without the model:
+`domain.ClefRequest` holds the `state` facts, the encoded images and the
+`questions`, each `{ type, instructions }` under the caller's own key. It
+answers the endpoint's JSON as it is, or an error with the endpoint's error
+text ([`internal/app/classifier.go`](../../internal/app/classifier.go)). The
+assistant's `clef` tool is its caller, so the model can ask what it needs and
+read Clef's answers itself
+([assistant.md](assistant.md#images-reach-clef-or-the-model)).
+
+| Rejected | Why |
+| --- | --- |
+| The classifier port for the `clef` tool | It answers probabilities for keyed questions only, and drops the rest of Clef's answer |
 
 ## Generation port
 
@@ -100,15 +117,17 @@ from tools and the answer.
 
 ## Ollama provider
 
-[`internal/ollama`](../../internal/ollama) implements the classifier port
-with Ollama's decision API (`POST /v1/systemone`) and a Clef model, and the
-generation port with Ollama's chat API (`POST /api/chat`) and a chat model the
+[`internal/ollama`](../../internal/ollama) implements the classifier port and
+the Clef wire port with Ollama's decision API (`POST /v1/systemone`) and a Clef
+model, and the generation port with Ollama's chat API (`POST /api/chat`) and a chat model the
 owner chooses. It owns everything specific to that provider:
 
 | Concern | Rule |
 | --- | --- |
 | Connection | Reads the saved URL and models (`ollama.endpoint`, `ollama.model`, `ollama.generation_model`) on every call, so a change takes effect without a restart |
 | Wire format, decisions | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
+| Wire format, Clef wire | The request's `state`, `images` and `questions` as given, with the decision model and `keep_alive` added |
+| Images | Ollama takes at most 8 images on one request; the Clef wire and each chat message tile more into one near-square grid of cells sized from the first image, at most 640 px wide, as a JPEG. The classifier port's features send no more than 8. `scripts/clefrelay` uses the same tiling for Workers AI's limit of 4 |
 | Wire format, generation | One user message, the schema in `format`, `stream: false`; Ollama's grammar holds the answer to the schema for any chat model from 0.5.0 on |
 | Wire format, tool chat | The messages with base64 `images`, `tool_calls` and `tool_name`, the tools as `function` entries, `stream: false` and `options.num_ctx` 16,384; Ollama's default context of a few thousand tokens silently drops the oldest messages and with them the tool results an answer cites |
 | Capabilities | `POST /api/show` lists them; `tools` and `vision` are read, and an Ollama that reports none has neither |

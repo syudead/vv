@@ -144,6 +144,7 @@ func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, erro
 		item.Kind = progressKind(tool)
 		item.Labels = l.labels(ctx, tool, call.Arguments)
 	}
+	item.Images = l.imageCount(call)
 	if err := l.record(ctx, item); err != nil {
 		return "", err
 	}
@@ -191,6 +192,8 @@ func (l *turnLoop) runTool(ctx context.Context, call domain.ToolCall, tool domai
 		}
 		encoded, _ := json.Marshal(map[string]any{"tools": l.tools.find(args.Query)}) // Plain values always encode.
 		return string(encoded), ""
+	case l.isImageTool(call.Name):
+		return l.runImageTool(ctx, call)
 	case !known:
 		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name)
 	case tool.Kind == domain.AssistantToolExcluded:

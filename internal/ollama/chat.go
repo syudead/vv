@@ -3,7 +3,6 @@ package ollama
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,9 +89,13 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 	if settings.GenerationModel == "" {
 		return domain.ChatReply{}, kindErrorf(domain.ErrOllamaModel, nil, "no generation model is saved")
 	}
+	messages, err := wireMessages(req.Messages)
+	if err != nil {
+		return domain.ChatReply{}, err
+	}
 	message, err := postChat(ctx, c.http, settings, chatRequest{
 		Model:     settings.GenerationModel,
-		Messages:  wireMessages(req.Messages),
+		Messages:  messages,
 		Tools:     wireTools(req.Tools),
 		Stream:    false,
 		KeepAlive: keepAlive,
@@ -135,20 +138,22 @@ func notOllama(endpoint string, status int) error {
 	return kindErrorf(domain.ErrNotOllama, nil, "the server at %s is not Ollama (%s)", endpoint, statusMessage(status, ""))
 }
 
-func wireMessages(messages []domain.ChatMessage) []chatMessage {
+// wireMessages tiles a message's images into one when there are more than Ollama takes, as for Clef.
+func wireMessages(messages []domain.ChatMessage) ([]chatMessage, error) {
 	out := make([]chatMessage, len(messages))
 	for i, m := range messages {
-		out[i] = chatMessage{Role: string(m.Role), Content: m.Content, ToolName: m.ToolName}
-		for _, image := range m.Images {
-			out[i].Images = append(out[i].Images, base64.StdEncoding.EncodeToString(image))
+		images, err := encodeImages(m.Images, maxImages)
+		if err != nil {
+			return nil, fmt.Errorf("cannot tile the images of message %d: %w", i, err)
 		}
+		out[i] = chatMessage{Role: string(m.Role), Content: m.Content, Images: images, ToolName: m.ToolName}
 		for _, call := range m.ToolCalls {
 			out[i].ToolCalls = append(out[i].ToolCalls, chatToolCall{
 				Function: chatFunction{Name: call.Name, Arguments: objectOrEmpty(call.Arguments)},
 			})
 		}
 	}
-	return out
+	return out, nil
 }
 
 func wireTools(tools []domain.ToolDefinition) []chatTool {

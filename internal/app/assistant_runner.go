@@ -15,6 +15,8 @@ type ActionRunner interface {
 	// refuses them, a *domain.AssistantExcludedError an excluded operation, and domain.ErrAssistantNotReadTool any
 	// other operation that is not a read tool. A non-2xx response is a *domain.AssistantCallError.
 	Read(ctx context.Context, read domain.AssistantRead) (domain.AssistantReadResult, error)
+	// Image reads the image a reference from an image read names, with the errors of Read.
+	Image(ctx context.Context, reference string) (domain.AssistantImage, error)
 	// Run returns domain.ErrAssistantActionUnknown before any call for an id outside the catalog, and a
 	// *domain.AssistantCallError for a non-2xx response.
 	Run(ctx context.Context, call domain.AssistantCall) (domain.AssistantCallResult, error)

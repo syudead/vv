@@ -245,6 +245,34 @@ playlist or group, per-video work codes, a virtual video's content version, a
 version candidate pair, a smart folder change, and the rows whose builders
 are not written yet.
 
+## Images reach Clef or the model
+
+Two built-in tools take the image references that image reads answer, and the
+model chooses between them
+([`assistant_images.go`](../../internal/app/assistant_images.go)). Both are
+sent on every model call: `clef` whenever the Clef wire is configured, and
+`view_images` only while the generation model has `vision`.
+
+| Tool | Arguments | What the server does | Result |
+| --- | --- | --- | --- |
+| `clef` | Clef's own request: `state` (facts as strings), `images` (references) and `questions` (`{ type: "noul", instructions }` keyed by the model's keys) | Replaces each reference with the bytes of its in-process read and sends the rest unchanged through `app.ClefWire`, which adds the decision model and `keep_alive` | The endpoint's JSON answer (`answers`, each with `noul`), or the error text |
+| `view_images` | `images` (references) | Reads each image, keeps one within 1,024 px on its long side as it is and re-encodes a larger one as a scaled JPEG, and attaches them to one `user` message after the round's tool results, marked as data | `{ "attached": n }` |
+
+| Rule | Why |
+| --- | --- |
+| Every reference is read before anything is sent; one that cannot be read is the tool's error result, and nothing is sent | The model built the request and decides what to do without that image |
+| Neither tool has a limit of its own; the turn's call and time limits apply | The owner asked for no invented constraints |
+| An argument written as a JSON string of its object or array is read as that value | `llama3.3:70b` writes nested arguments that way |
+| More images than the endpoint takes are tiled into one grid by the adapter ([ai-layer.md](ai-layer.md#ollama-provider)) | One request answers one set of images; splitting it would change what Clef judges together |
+| The progress item of either tool carries the number of images it sends | Judging images takes minutes on a CPU |
+| A turn that received an answer from `clef` ends with `judged` set, which marks its answer as the judge's | A probability is a model's opinion, not stored data |
+| The images go on a `user` message, not on the `tool` message | Ollama reads images on chat messages, and not every model template carries them on a tool message |
+
+| Rejected | Why |
+| --- | --- |
+| A judging tool with its own subjects, questions and caps | The owner asked for Clef's native input, so the model can ask what it needs |
+| Vision required, or never used | A multimodal model sees images directly, while text-only tool models stay supported through `clef` |
+
 ## A write is a proposal the worker executes
 
 A proposal is a `proposed` row holding ordered steps, one per write, as the
