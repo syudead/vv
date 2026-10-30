@@ -37,10 +37,14 @@ export function answerBlocks(answer: string): AnswerBlock[] {
 
 type Script = "other" | "word" | "hiragana" | "katakana" | "han";
 
+// The long-vowel mark counts as katakana, and the closing mark as han, as the server reads them.
+const longVowelMark = String.fromCodePoint(0x30fc);
+const closingMark = String.fromCodePoint(0x3006);
+
 function scriptOf(char: string): Script {
-  if (char === "ー" || /\p{Script=Katakana}/u.test(char)) return "katakana";
+  if (char === longVowelMark || /\p{Script=Katakana}/u.test(char)) return "katakana";
   if (/\p{Script=Hiragana}/u.test(char)) return "hiragana";
-  if (/\p{Script=Han}/u.test(char) || char === "〆") return "han";
+  if (/\p{Script=Han}/u.test(char) || char === closingMark) return "han";
   if (/[\p{L}\p{N}]/u.test(char)) return "word";
   return "other";
 }
