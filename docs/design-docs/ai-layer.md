@@ -2,8 +2,7 @@
 
 VVMDM's features reach a model only through task-agnostic ports:
 `app.Classifier` for yes/no decisions, `app.ClefWire` for Clef's own request
-and answer, `app.StructuredGenerator` for one structured value, and
-`app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
+and answer, and `app.ToolChat` for a conversation in which the model calls tools. The provider behind each is an adapter chosen in `cmd/mdm`. A feature does not know which provider answers, where it runs, or
 how many questions it accepts per call; a provider does not know which feature
 asks or what the questions mean.
 
@@ -16,13 +15,10 @@ flowchart LR
   assistant -->|domain.ClefRequest| wport[app.ClefWire]
   port -.->|implemented by| ollama[internal/ollama.Classifier]
   wport -.->|implemented by| ollama
-  gport[app.StructuredGenerator] -.->|implemented by| gen[internal/ollama.Generator]
   tport -.->|implemented by| chat[internal/ollama.Chat]
   ollama -->|reads| settings[(ollama.* settings)]
-  gen -->|reads| settings
   chat -->|reads| settings
   ollama -->|/v1/systemone| server[Ollama]
-  gen -->|/api/chat with format| server
   chat -->|/api/chat with tools| server
   conn[app.OllamaConnection] --> settings
   conn -->|Check, model list, capabilities| ollama
@@ -66,39 +62,13 @@ read Clef's answers itself
 | --- | --- |
 | The classifier port for the `clef` tool | It answers probabilities for keyed questions only, and drops the rest of Clef's answer |
 
-## Generation port
-
-The generation port takes a prompt and a JSON schema and returns one JSON
-value that satisfies the schema
-([`internal/app/generator.go`](../../internal/app/generator.go),
-[`internal/domain/generation.go`](../../internal/domain/generation.go)). No
-feature calls it any more: the assistant runs a tool loop over the
-tool-calling port instead ([assistant.md](assistant.md#a-turn-is-a-tool-loop)).
-
-Failures wrap one domain cause each, so a feature maps them without reading
-messages.
-
-| Cause | When |
-| --- | --- |
-| `ErrOllamaUnreachable` | The endpoint cannot be reached |
-| `ErrNotOllama` | The reply is not Ollama's |
-| `ErrOllamaModel` | No generation model is saved, or Ollama answers an `error` (a missing model, for one) |
-| `ErrOllamaTimeout` | No answer within the time limit |
-| `ErrGenerationUnreadable` | The answer is not JSON |
-
-| Rejected | Why |
-| --- | --- |
-| A text answer on the classifier port | The classifier answers yes/no questions with probabilities; a plan is one structured value, and the two calls' models and limits differ |
-| The name `app.Generator` | `internal/app` already uses it for ingest's probe and thumbnail port |
-
 ## Tool-calling chat port
 
 The tool-calling chat port takes the conversation and the tools offered to the
 model, and returns either the tool calls the model asks for or its text
 answer ([`internal/app/toolchat.go`](../../internal/app/toolchat.go),
-[`internal/domain/chat.go`](../../internal/domain/chat.go)). It replaces the
-generation port for the assistant's tool loop: the model's own template
-formats the calls the way the model was trained.
+[`internal/domain/chat.go`](../../internal/domain/chat.go)). The model's own
+template formats the calls the way the model was trained.
 
 | Value | Holds |
 | --- | --- |
@@ -106,21 +76,32 @@ formats the calls the way the model was trained.
 | `ToolDefinition` | A name, a description and a JSON Schema object for the arguments |
 | `ChatReply` | The tool calls, each with a JSON object of arguments, or the text; a reply with calls carries no text |
 
-The failure causes are those of the generation port except
-`ErrGenerationUnreadable`, since a text answer is never parsed. The model's
+Failures wrap one domain cause each, so the assistant maps them without
+reading messages.
+
+| Cause | When |
+| --- | --- |
+| `ErrOllamaUnreachable` | The endpoint cannot be reached |
+| `ErrNotOllama` | The reply is not Ollama's |
+| `ErrOllamaModel` | No generation model is saved, or Ollama answers an `error` (a missing model, for one) |
+| `ErrOllamaTimeout` | No answer within the time limit |
+
+The model's
 reasoning (`thinking`) is dropped in the adapter, so the owner sees only facts
 from tools and the answer.
 
 | Rejected | Why |
 | --- | --- |
-| The next tool call as JSON in `format` on the generation port | A tool-calling model is trained on its own call format, and Ollama's `tools` applies it |
+| One structured value per call, with a JSON schema in `format`, asking for the next tool call | A tool-calling model is trained on its own call format, and Ollama's `tools` applies it |
+| A text answer on the classifier port | The classifier answers yes/no questions with probabilities, and the two calls' models and limits differ |
+| The name `app.Chat` or `app.Generator` | `internal/app` already uses `Generator` for ingest's probe and thumbnail port; `ToolChat` says what the port adds |
 
 ## Ollama provider
 
 [`internal/ollama`](../../internal/ollama) implements the classifier port and
 the Clef wire port with Ollama's decision API (`POST /v1/systemone`) and a Clef
-model, and the generation port with Ollama's chat API (`POST /api/chat`) and a chat model the
-owner chooses. It owns everything specific to that provider:
+model, and the tool-calling chat port with Ollama's chat API (`POST /api/chat`)
+and a chat model the owner chooses. It owns everything specific to that provider:
 
 | Concern | Rule |
 | --- | --- |
@@ -128,10 +109,9 @@ owner chooses. It owns everything specific to that provider:
 | Wire format, decisions | Facts become the `state` object, images are base64 `images`, every question is a `noul` question |
 | Wire format, Clef wire | The request's `state`, `images` and `questions` as given, with the decision model and `keep_alive` added |
 | Images | Ollama takes at most 8 images on one request; the Clef wire and each chat message tile more into one near-square grid of cells sized from the first image, at most 640 px wide, as a JPEG. The classifier port's features send no more than 8. `scripts/clefrelay` uses the same tiling for Workers AI's limit of 4 |
-| Wire format, generation | One user message, the schema in `format`, `stream: false`; Ollama's grammar holds the answer to the schema for any chat model from 0.5.0 on |
 | Wire format, tool chat | The messages with base64 `images`, `tool_calls` and `tool_name`, the tools as `function` entries, `stream: false` and `options.num_ctx` 16,384; Ollama's default context of a few thousand tokens silently drops the oldest messages and with them the tool results an answer cites |
 | Capabilities | `POST /api/show` lists them; `tools` and `vision` are read, and an Ollama that reports none has neither |
-| Batches | 16 questions per decision call, all with the same input; answers are merged. A generation call is never split or retried |
+| Batches | 16 questions per decision call, all with the same input; answers are merged. A chat call is never split or retried |
 | Time | Each call times out after 10 minutes; the model stays loaded for 10 minutes after it (`keep_alive`) |
 | Errors | Only the `error` text of an Ollama JSON reply is passed on; any other body is dropped |
 
@@ -270,7 +250,7 @@ body.
 
 A new provider is a new adapter package that implements
 `Classify(ctx, domain.ClassifierRequest)` or
-`Generate(ctx, domain.GenerationRequest)`, reads its own settings, and splits
+`Chat(ctx, domain.ChatRequest)`, reads its own settings, and splits
 requests to its own limits. `cmd/mdm` passes it to the features in place of
 `internal/ollama`; no feature changes. depguard keeps `internal/app` from
 importing a provider package ([.golangci.yml](../../.golangci.yml)).

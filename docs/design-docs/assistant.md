@@ -155,7 +155,8 @@ the search grammar would otherwise read it as an operator or several words, so
 one loose name does not fail a read. The name is dropped when it is a field
 word such as `tags`, or when `q` already requires it as a positive term. A
 name is trimmed, and a tag name is tried again without a trailing tag word
-(`ライブタグ`), since models copy both from the request. A name carries the
+(`ライブタグ`), since models copy both from the request, unless an earlier step
+of the turn creates the whole name. A name carries the
 kind the model inferred, and `any` tries person, organization and tag, so a name
 found under two kinds is a clarification. A read-only filter also drops a
 duration bound of `0` and a day that is not a date, which a model writes for a

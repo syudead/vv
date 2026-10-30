@@ -13,6 +13,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+func generating(url string) fixedSettings {
+	return fixedSettings{settings: domain.OllamaSettings{Endpoint: url, Model: "clef", GenerationModel: "qwen3:8b"}}
+}
+
 // chatServer records the request body and answers reply.
 func chatServer(t *testing.T, status int, reply string, got *map[string]json.RawMessage) string {
 	t.Helper()
@@ -101,6 +105,8 @@ func TestChatTellsFailuresApart(t *testing.T) {
 	expired := func() (context.Context, context.CancelFunc) {
 		return context.WithDeadline(context.Background(), time.Unix(0, 0))
 	}
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
 	for _, tc := range []struct {
 		name string
 		url  string
@@ -111,6 +117,7 @@ func TestChatTellsFailuresApart(t *testing.T) {
 		{"not Ollama", chatServer(t, http.StatusOK, `<html>secret</html>`, nil), nil, domain.ErrNotOllama},
 		{"no message", chatServer(t, http.StatusOK, `{"done":true}`, nil), nil, domain.ErrNotOllama},
 		{"timeout", chatServer(t, http.StatusOK, `{}`, nil), expired, domain.ErrOllamaTimeout},
+		{"unreachable", closed.URL, nil, domain.ErrOllamaUnreachable},
 	} {
 		ctx, cancel := context.Background(), func() {}
 		if tc.ctx != nil {
@@ -118,7 +125,8 @@ func TestChatTellsFailuresApart(t *testing.T) {
 		}
 		_, err := NewChat(generating(tc.url)).Chat(ctx, domain.ChatRequest{})
 		cancel()
-		for _, kind := range []error{domain.ErrOllamaModel, domain.ErrNotOllama, domain.ErrOllamaTimeout} {
+		for _, kind := range []error{domain.ErrOllamaModel, domain.ErrNotOllama, domain.ErrOllamaTimeout,
+			domain.ErrOllamaUnreachable} {
 			if want := errors.Is(tc.want, kind); errors.Is(err, kind) != want {
 				t.Errorf("%s: err = %v, Is(%v) = %v", tc.name, err, kind, !want)
 			}
@@ -126,5 +134,16 @@ func TestChatTellsFailuresApart(t *testing.T) {
 		if tc.name == "not Ollama" && err != nil && strings.Contains(err.Error(), "secret") {
 			t.Errorf("not Ollama: the body leaked into %q", err)
 		}
+	}
+}
+
+func TestChatWithoutGenerationModelSendsNothing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s", r.URL.Path)
+	}))
+	defer server.Close()
+	_, err := NewChat(at(server.URL)).Chat(context.Background(), domain.ChatRequest{})
+	if !errors.Is(err, domain.ErrOllamaModel) {
+		t.Fatalf("err = %v", err)
 	}
 }

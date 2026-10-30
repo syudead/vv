@@ -427,23 +427,29 @@ logged, so the raw output behind a turn is in its log. `llama3.3:70b`,
 function calling, such as `@cf/meta/llama-3.2-11b-vision-instruct`, are not
 mapped, because the assistant needs tools.
 
-The browser e2e test answers fixed outcomes from a stub, so how a real model
-reads Japanese requests is checked by hand after a change to the prompt, the
-outcome schema or the catalog. On a library with at least 30 videos, the tags
-`コスプレ衣装` and `コスプレ衣裳`, one person with credits, and watched and
-unwatched videos:
+The browser e2e test scripts the model's tool calls with a stub, so how a
+real model chooses tools for Japanese requests is checked by hand after a
+change to the rules in the system message, the tools or the loop. Use a
+library with at least 30 videos, among them videos with cats in their frames,
+the tags `コスプレ衣装` and `コスプレ衣裳`, a person with face candidates,
+watched and unwatched videos, and an approved work-info plugin. Send each
+request and compare the progress and the reply:
 
 | Request | Expected |
 | --- | --- |
-| `去年追加した30分以上の未視聴` on the library | Chips for last year, 30 minutes and unwatched |
-| `これにコスプレ衣装タグを付けて` with three videos selected | A card naming 3 videos and the tag; nothing changes until `Execute` |
-| `長いのは除いて` after it | The card is replaced by one with fewer videos |
-| `コスプレ衣裳タグをコスプレ衣装に統合して` | A card marked `Can’t be undone` with the number of videos that move |
-| `コスプレのタグを消して` | The thread asks which of the two tags; nothing is deleted |
-| `〇〇の出演作は何本？` with a person's name | The number on that person's page |
-| `タグを整理して` | Progress, then the review list with the two tags as one candidate |
-| `APIトークンを作って` | The assistant can’t do that |
-| Any request with Ollama stopped | The thread names the connection; nothing changes |
+| `この動画の情報を取得して` on a video page | Progress shows the plugin search and fetch; a card lists the fields to apply, and nothing changes until `Execute` |
+| `カラオケ関連の動画` | The number of videos the library shows for `カラオケ` |
+| `この動画に合いそうなタグを付けて` on a video page | A card that attaches existing tags; progress may show frame reads and `clef` or `view_images` |
+| `選択した動画の共通点は？` with three videos selected | Only names that all three videos carry |
+| `ライブ録画タグを作って選択中の動画に付けて` with videos selected | One card of two steps, the second marked `Created by step 1` |
+| `重複してるタグをまとめて` | Merge steps marked `Can’t be undone` with the videos that move, or a review run |
+| `お気に入りの使い方を教えて` | How to favorite and find favorites; no card |
+| `先月追加した30分以上の未視聴を再生リストにして` | Create-playlist and add-items steps over the library's same filter |
+| `猫が映ってる動画を探して` | Frame reads and `clef` (or `view_images` with a vision model); the answer is marked `Judged by Clef` when Clef answered |
+| `この人物の顔候補が本人か確かめて` on a person page | Face candidate crops judged by `clef`, with a probability each |
+| `Show me videos I haven't watched yet` | Unwatched videos, answered in English |
+| `APIトークンを作って` | The assistant can’t do this, with a link to Settings, API |
+| Any request with Ollama stopped | `Couldn’t reach Ollama`; nothing changes |
 
 ## Face recognition downloads
 

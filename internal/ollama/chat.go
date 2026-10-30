@@ -65,13 +65,12 @@ type chatOptions struct {
 }
 
 type chatRequest struct {
-	Model     string          `json:"model"`
-	Messages  []chatMessage   `json:"messages"`
-	Tools     []chatTool      `json:"tools,omitempty"`
-	Format    json.RawMessage `json:"format,omitempty"`
-	Stream    bool            `json:"stream"`
-	KeepAlive string          `json:"keep_alive"`
-	Options   *chatOptions    `json:"options,omitempty"`
+	Model     string        `json:"model"`
+	Messages  []chatMessage `json:"messages"`
+	Tools     []chatTool    `json:"tools,omitempty"`
+	Stream    bool          `json:"stream"`
+	KeepAlive string        `json:"keep_alive"`
+	Options   *chatOptions  `json:"options,omitempty"`
 }
 
 type chatResponse struct {

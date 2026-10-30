@@ -160,6 +160,21 @@ func TestWriteCallsBecomeOneProposalWithTheCreatedTagFromStepOne(t *testing.T) {
 	}
 }
 
+// A created name that ends in the tag word is the earlier step's tag, not a new tag without the word.
+func TestWriteCallKeepsTheTagWordOfANameAnEarlierStepCreates(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("createTag", `{"name":"新曲タグ"}`),
+			toolCall("updateVideoTags__add", `{"target":{"kind":"selection"},"tagNames":["新曲タグ"]}`)),
+		text("提案しました。"))
+
+	f.run(t, 0)
+
+	attach := f.store.plans[1]
+	if !slices.Equal(attach.CreatedBy, []domain.AssistantCreatedBy{{Name: "新曲タグ", Step: 0}}) || len(attach.Created) != 0 {
+		t.Fatalf("second step createdBy = %+v, created = %v; want created by step 1", attach.CreatedBy, attach.Created)
+	}
+}
+
 func TestWriteCallWithANameOfTwoTagsEndsTheTurnAsClarify(t *testing.T) {
 	f := newWriteFixture(t,
 		calls(toolCall("createTag", `{"name":"新曲"}`),
