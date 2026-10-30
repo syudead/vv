@@ -135,7 +135,7 @@ func TestGetAssistantTurnEmbedsItsProposalAndStop(t *testing.T) {
 	turn.Progress = []domain.AssistantProgressItem{{
 		Tool: "getVideo", Kind: domain.AssistantProgressRead, At: turn.StartedAt, Error: "the operation answered 404",
 		Labels: []domain.AssistantLabel{{Kind: domain.AssistantLabelVideo, ID: 7, Name: "Clip 7"}},
-	}}
+	}, {Tool: "start_review", Kind: domain.AssistantProgressBuiltin, At: turn.StartedAt, ReviewRunID: 5}}
 	turns := &fakeTurns{turn: turn, proposal: domain.AssistantProposal{ID: 9, Status: domain.AssistantProposed}}
 	send := turnEnv(t, turns, domain.AssistantReady)
 
@@ -149,6 +149,9 @@ func TestGetAssistantTurnEmbedsItsProposalAndStop(t *testing.T) {
 	if item := got.Progress[0]; item.Tool != "getVideo" || item.Error == nil || len(item.Labels) != 1 ||
 		item.Labels[0].Name != "Clip 7" {
 		t.Fatalf("progress = %+v", got.Progress)
+	}
+	if item := got.Progress[1]; item.ReviewRunId == nil || *item.ReviewRunId != 5 || got.Progress[0].ReviewRunId != nil {
+		t.Fatalf("review run ids = %+v", got.Progress)
 	}
 	if res := send(http.MethodGet, "/api/assistant/turns/8", ""); res.Code != http.StatusNotFound {
 		t.Fatalf("expired turn: status = %d", res.Code)
