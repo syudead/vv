@@ -37,7 +37,13 @@ export function blockedStep(
   return undefined;
 }
 
-const stopping: ReadonlySet<Step["status"]> = new Set(["partial", "stale", "failed"]);
+/**
+ * Mirrors AssistantStepState.Stops in internal/domain/assistant_step.go: a partial step without an
+ * error lost videos between batches, and the run went on past it.
+ */
+function stops(step: Step): boolean {
+  return step.status === "stale" || step.status === "failed" || step.error !== undefined;
+}
 
 export type StepIcon = "skipped" | "waiting" | "running" | "done" | "warning" | "failed";
 
@@ -106,7 +112,7 @@ export function stepLine(step: Step): StepLine {
 export function cardResult(proposal: AssistantProposal): RunLine | undefined {
   if (!isFinished(proposal.status)) return undefined;
   const words = t.assistant.card.steps;
-  const stop = proposal.steps.find((step) => stopping.has(step.status));
+  const stop = proposal.steps.find(stops);
   if (stop !== undefined) {
     return { text: words.stoppedAt(stop.index + 1), tone: stepLine(stop).tone };
   }
