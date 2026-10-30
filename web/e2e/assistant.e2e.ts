@@ -148,7 +148,7 @@ async function scriptedReply(body: ChatBody): Promise<unknown> {
   const request = first.replace(/^<request>/, "").replace(/<\/request>$/, "");
   const script = scripts[request] ?? [{ text: "わかりません。" }];
   const step = body.messages.filter((message) => message.role === "assistant").length;
-  const reply = script[Math.min(step, script.length - 1)];
+  const reply = script[Math.min(step, script.length - 1)] ?? {};
   if (step === script.length - 1) await holds.get(request);
   return {
     role: "assistant",
