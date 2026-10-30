@@ -92,7 +92,7 @@ func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
 	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", "shadcn", succeeding); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(calls, []string{"oapi-codegen", "oapi-codegen", "openapi-typescript", "shadcn"}) {
+	if !slices.Equal(calls, []string{"oapi-codegen", "oapi-codegen", "openapi-typescript", "go", "shadcn"}) {
 		t.Errorf("生成器の呼び出しが揃っていない: %v", calls)
 	}
 }

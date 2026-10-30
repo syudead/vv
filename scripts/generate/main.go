@@ -20,8 +20,12 @@ var generated = []string{
 	"internal/httpapi/gen/api.gen.go",
 	"internal/httpapi/extgen/api.gen.go",
 	"web/src/api/gen/openapi.ts",
+	assistantToolsOut,
 	registryOut,
 }
+
+// The assistant's tool registry, written by tools/assistanttools from api/openapi.yaml.
+const assistantToolsOut = "internal/httpapi/gen/assistant_tools.gen.json"
 
 // Directory of registry items emitted by shadcn build.
 const registryOut = "web/registry/r"
@@ -104,6 +108,12 @@ func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) e
 	}
 	if err := run(root, openapiTypescript,
 		"api/openapi.yaml", "-o", "web/src/api/gen/openapi.ts"); err != nil {
+		return err
+	}
+	// kin-openapi lives in the tools module so that the shipped binary does not link it.
+	if err := run(filepath.Join(root, "tools"), "go", "run", "./assistanttools",
+		"-spec", filepath.Join(root, "api", "openapi.yaml"),
+		"-out", filepath.Join(root, filepath.FromSlash(assistantToolsOut))); err != nil {
 		return err
 	}
 	// Clear stale registry entries because shadcn build does not delete removed items.

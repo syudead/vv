@@ -6,76 +6,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// The route table is hand-written, so it must name each catalog operation's method, path and body as openapi.yaml does.
-func TestAssistantRoutesMatchOpenAPI(t *testing.T) {
-	declared := openAPIOperationIDs(t)
-	withBody, _ := openAPIOperations(t)
-	actions := map[string]bool{}
-	current := map[string]bool{}
-	for _, row := range domain.AssistantCatalog() {
-		actions[row.Operation] = actions[row.Operation] || row.Action != ""
-		current[row.Operation] = row.ReadsCurrent
-	}
-
-	for operation, route := range assistantRoutes {
-		op, ok := declared[operation]
-		if !ok {
-			t.Errorf("%s は openapi.yaml に無い", operation)
-			continue
-		}
-		if _, ok := actions[operation]; !ok {
-			t.Errorf("%s の経路があるがカタログに行が無い", operation)
-		}
-		if route.method != op.method || route.path != op.path || route.body != slices.Contains(withBody, op) {
-			t.Errorf("%s = %s %s (本文 %v), openapi.yaml は %s %s (本文 %v)", operation,
-				route.method, route.path, route.body, op.method, op.path, slices.Contains(withBody, op))
-		}
-		if (route.actionField != "" || len(route.actionKeys) > 0) != actions[operation] {
-			t.Errorf("%s: actionField %q とカタログの変種の有無 %v が合わない", operation, route.actionField, actions[operation])
-		}
-		if (len(route.current) > 0) != current[operation] {
-			t.Errorf("%s: 現在値のフィールド %v とカタログの ReadsCurrent %v が合わない", operation, route.current, current[operation])
-		}
-	}
-	for operation := range actions {
-		if _, ok := assistantRoutes[operation]; !ok {
-			t.Errorf("カタログの %s に経路が無い", operation)
-		}
-	}
-}
-
-var openAPIOperationID = regexp.MustCompile(`^      operationId: (\S+)$`)
-
-func openAPIOperationIDs(t *testing.T) map[string]operation {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "api", "openapi.yaml"))
-	if err != nil {
-		t.Fatalf("api/openapi.yaml を読めない: %v", err)
-	}
-	ids := map[string]operation{}
-	var current operation
-	for _, line := range strings.Split(string(raw), "\n") {
-		if m := openAPIPath.FindStringSubmatch(line); m != nil {
-			current.path = m[1]
-		} else if m := openAPIMethod.FindStringSubmatch(line); m != nil {
-			current.method = openAPIMethodSet[m[1]]
-		} else if m := openAPIOperationID.FindStringSubmatch(line); m != nil {
-			ids[m[1]] = current
-		}
-	}
-	return ids
-}
 
 type recordedCall struct {
 	method, target, contentType string
