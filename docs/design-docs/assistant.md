@@ -141,30 +141,80 @@ operations do. A clarification choice is sent again as the same request with
 the chosen id pinned; a pinned id wins only when it is among the candidates the
 name finds, so a chosen alias does not ask the same question again.
 
-## The catalog is the allow-list
+## The tool registry classifies every operation
 
-`domain.AssistantCatalog` holds one row per operation and variant the
-assistant may propose, each with its target kind, the arguments it reads,
-whether video targets run in batches, and whether the card marks it
-irreversible ([`assistant_catalog.go`](../../internal/domain/assistant_catalog.go)).
-A test in [`assistantcheck`](../../internal/domain/assistantcheck) fails when an
-owner write operation of `api/openapi.yaml` is in neither the catalog nor the
-exclusion list, so a new screen operation is a decision, not an accident.
+Every owner operation of the screen API is exactly one of a read tool, a
+write tool, or an exclusion with a reason and the page to use instead. The
+registry has three sources, and only `internal/httpapi` reads the spec data:
+
+| Source | Holds |
+| --- | --- |
+| `internal/httpapi/gen/assistant_tools.gen.json`, written by `task generate` ([`tools/assistanttools`](../../tools/assistanttools)) from `api/openapi.yaml` and embedded by `internal/httpapi` | Each operation's method, path, summary, description, whether it needs a session, whether it answers JSON, an image or a stream, whether its response reaches a credential, its arguments as one JSON Schema (path and query parameters by name, the body as `body`, every `$ref` inlined), the body's media type (JSON, or `multipart/form-data` whose text fields the runner sends as parts; file parts are left out), and the entity kind of each id in its path and body |
+| [`assistant_tools.go`](../../internal/domain/assistant_tools.go) and [`assistant_catalog.go`](../../internal/domain/assistant_catalog.go) in `internal/domain` | The classification, the write rows, the exclusions with their reasons and pages, and the table of the app's pages (route, title, purpose) |
+| `httpapi.ActionRunner.Tools()` | The tools built from both, which `internal/app` receives without reading the spec |
+
+The classification follows these rules
+(`domain.ClassifyAssistantOperation`):
+
+| Kind | Operations |
+| --- | --- |
+| Excluded | The listed exclusions and `/api/assistant/*`; each answers its reason and page |
+| Write | Every operation a catalog row calls |
+| Read | Every other `GET`, and the `POST`s that write nothing (`tagImpact`, `summarizeVideoTags`, `searchWorkInfo`, `fetchWorkInfo`, the connection checks, …) |
+
+A test in [`assistantcheck`](../../internal/domain/assistantcheck) reads the
+generated file and fails when an owner operation is in no list or in two,
+when a listed operation is missing from the spec, when a read answers a
+credential or a stream, or when a schema row's id has no kind a card can
+label. A new screen operation is therefore a decision, not an accident.
+
+Write rows come in three kinds:
+
+| Kind | Arguments | Examples |
+| --- | --- | --- |
+| Name-based | A target and named arguments that plan builders resolve to ids | `updateVideoTags.add`, `mergeTag`, `applyWorkInfoFetch` |
+| Schema | The operation's own path parameters and body, ids included; the runner checks the body against the schema before the call | `moveFaceAppearances`, `undoActivity`, `setVideoDetails` |
+| Composite | A target and named arguments; the row runs its stages in order and calls its cleanup when a stage fails | `editVideoThumbnail`: `startThumbnailEdit`, `runThumbnailEdit`, `applyThumbnailEdit`, then `cancelThumbnailEdit` or `discardThumbnailEdit` |
+
+An id's entity kind comes from its path parameter's name in
+`components/parameters` (`PersonId` names a person) or from `x-vv-entity` on
+the parameter or property, which wins. Body ids need the annotation, since
+body `$ref`s are inlined: `FaceAppearanceMoveRequest.targetId` is a
+`person`, and its `appearanceIds` items are `faceAppearance`s. An annotation on
+an object names the kind of that object's own `id`, which lets the shared
+`CreditIdRef` name a person in one place and an organization in another.
+
+Credentials stay away from the model in two ways. The spec marks a response
+property that may hold one with `x-vv-secret: true`
+(`PluginProxySettings.url`, which may carry `user:pass@`), and the generator
+also flags `format: password` and string properties named `password`,
+`secret`, `token`, `apiKey` or `credential`; such an operation must be
+excluded. The runner then replaces the userinfo of every URL in a read result
+with `***`, which covers saved URLs the marks miss.
+
+The runner calls every operation in process as the owner. A read's arguments
+are checked against its schema before the call, and an operation that is not
+a read is refused before any call. An image operation answers a reference,
+`{ "image": "<operationId>?<parameters>", "contentType": ... }`, which
+`ActionRunner.Image` reads back as bytes, so a tool result holds no bytes and
+no URL.
+
+| Excluded | Page | Why |
+| --- | --- | --- |
+| The account, sign-in and API tokens; plugin upload, approval and settings; network and proxy settings; media folders; watch history deletion; the face runtime download; onboarding | Their settings page, History, or Welcome | The feature's requirement keeps them on their own pages |
+| `getPluginProxySettings` | Settings, Network | Its URL may hold the proxy's user and password |
+| Pairing with another node and the peer's own calls (`applyPeerVocabulary`, `rankPeerRelated`, …) | Settings, Pairing | Pairing is a trust decision made with the other node's code; the peer's calls carry its credential ([peer-library.md](peer-library.md)) |
+| `deleteVideo`, `clearPeople` | The video page; Settings, Danger zone | An irreversible delete stays on its page |
+| `uploadThumbnailImage`, `uploadPersonImage`, `startThumbnailEditFromImage` | The video or person page | The server holds no such file; the fetch-apply rows cover plugin images |
+| Drag operations (`organize*`) | Library | They take drag tokens; the group, bundle and playlist rows make the same changes |
+| `openVideoFile`, video and event streams, subtitles, the transcode start, `getHealth` | The video page | Loopback-only, or a stream rather than data |
+| `/api/assistant/*` | | The assistant does not call itself |
 
 A row whose request the turn cannot build from names alone is left out of the
 prompt and answered `unsupported`: rows addressed by an item id within a
 playlist or group, per-video work codes, a virtual video's content version, a
-version candidate pair, and a smart folder change. Excluded operations have no
-row, so the schema does not let the model name them.
-
-| Excluded | Why |
-| --- | --- |
-| The account, API tokens, plugins and their approval, network and proxy settings, media folders, watch history deletion, the face runtime download, onboarding | The feature's requirement keeps them on their own pages |
-| `deleteVideo`, `clearPeople` | An irreversible delete stays on its page, with the video's `contentVersion` check or the danger zone |
-| Images, thumbnail edit sessions, plugin fetches, face appearances, drag operations | The input is a file, a drag token, or a choice made by looking at images or candidates |
-| `retryActivity`, `undoActivity`, `putVideoProgress`, `openVideoFile`, `setVideoDetails` | They act on an entry chosen in the log, belong to the player or the server PC, or are covered by two catalog rows |
-| Reads and tests sent as `POST` (`tagImpact`, `checkOllama`, …), and `/api/assistant/*` | They write nothing, or are the assistant itself |
-| Pairing with another node (`pairPeer`, `confirmPeerCertificate`, `revokePeerGrant`, …) and the peer's own calls (`applyPeerVocabulary`, `matchPeerCredits`, `applyPeerFetchedWorkInfo`, `applyPeerFetchedPerson`) | Pairing and its withdrawal are trust decisions made with the other node's code and certificate fingerprint on the Pairing page; the peer's calls carry its credential and never come from the screens ([peer-library.md](peer-library.md)) |
+version candidate pair, a smart folder change, and the rows whose builders
+are not written yet.
 
 ## A write is a proposal the worker executes
 

@@ -6415,6 +6415,7 @@ components:
       in: path
       required: true
       description: "ID of the other person of the pair"
+      x-vv-entity: person
       schema:
         type: integer
         format: int64
@@ -6811,6 +6812,7 @@ components:
         url:
           type: string
           maxLength: 2048
+          x-vv-secret: true
           description: "Saved URL with http, https or socks5 scheme, host, optional port/userinfo, and no path/query. Empty string disables the proxy."
     UpdatePluginProxySettingsRequest:
       type: object
@@ -9312,6 +9314,7 @@ components:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditIdRef"
+          x-vv-entity: person
 
     WorkOrganizationInput:
       type: object
@@ -9322,6 +9325,7 @@ components:
           $ref: "#/components/schemas/WorkOrganizationRole"
         organization:
           $ref: "#/components/schemas/CreditIdRef"
+          x-vv-entity: organization
 
     WorkInfoInput:
       type: object
@@ -9821,10 +9825,12 @@ components:
             type: integer
             format: int64
             minimum: 1
+            x-vv-entity: faceAppearance
         targetId:
           type: integer
           format: int64
           minimum: 1
+          x-vv-entity: person
         restoreCredits:
           type: array
           maxItems: 200
@@ -9871,6 +9877,7 @@ components:
           items:
             type: integer
             format: int64
+            x-vv-entity: faceAppearance
             minimum: 1
 
     FaceFocus:
@@ -13643,10 +13650,12 @@ components:
           type: integer
           format: int64
           description: "Tag to undo on an auto_tag record; unused for other kinds."
+          x-vv-entity: tag
         appearanceId:
           type: integer
           format: int64
           minimum: 1
+          x-vv-entity: faceAppearance
           description: "Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds."
 
     VideoChanged:
