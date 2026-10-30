@@ -115,7 +115,8 @@ func (l *turnLoop) write(ctx context.Context, call domain.ToolCall, tool domain.
 		return "", failure, err
 	}
 	if i := slices.IndexFunc(l.writes.plans, func(p domain.AssistantPlan) bool {
-		return p.ActionID == plan.ActionID && reflect.DeepEqual(p.Call, plan.Call)
+		return p.ActionID == plan.ActionID && reflect.DeepEqual(p.Call, plan.Call) &&
+			slices.Equal(p.Targets.VideoKeys, plan.Targets.VideoKeys)
 	}); i >= 0 {
 		return "", fmt.Sprintf("this is step %d again; it is proposed once", i+1), nil
 	}
@@ -321,7 +322,7 @@ func bindCreated(plan domain.AssistantPlan) (domain.AssistantPlan, string, error
 			plan.Call.StepIDs = append(plan.Call.StepIDs, domain.AssistantStepID{Step: step, Field: field})
 		}
 		switch {
-		case rest == nil:
+		case rest == nil && len(steps) > 0:
 			delete(plan.Call.Body, field)
 		case hasPlaceholder(rest):
 			return plan, fmt.Sprintf("%s cannot use what an earlier step creates in %s; propose it in a later "+

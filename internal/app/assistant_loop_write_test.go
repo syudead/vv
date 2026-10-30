@@ -54,7 +54,11 @@ func writeRegistry() []domain.AssistantTool {
 		{In: "body", Field: "/appearanceIds", Kind: "faceAppearance"},
 		{In: "body", Field: "/targetId", Kind: "person"},
 	}
-	return append(slices.Clone(loopRegistry),
+	details := writeTool("setVideoDetails")
+	details.IDs = []domain.AssistantIDField{
+		{In: "path", Field: "id", Kind: "video"}, {In: "body", Field: "/workInfo/people/*/person/id", Kind: "person"},
+	}
+	return append(slices.Clone(loopRegistry), details,
 		domain.AssistantTool{Name: "fetchWorkInfo", Kind: domain.AssistantToolRead, Operation: "fetchWorkInfo", Summary: "fetch"},
 		writeTool("createTag"), writeTool("updateVideoTags.add"), writeTool("mergeTag"),
 		writeTool("applyWorkInfoFetch"), move)
@@ -82,7 +86,7 @@ func newWriteFixture(t *testing.T, replies ...domain.ChatReply) *writeFixture {
 	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	f := &writeFixture{
 		chat: &scriptedChat{t: t, replies: append([]domain.ChatReply{
-			calls(toolCall("find_tools", `{"query":"tag fetch move"}`)),
+			calls(toolCall("find_tools", `{"query":"tag fetch move details"}`)),
 		}, replies...)},
 		turns: &fakeTurnStore{turns: map[int64]domain.AssistantTurn{}}, store: &fakeAssistantStore{},
 		runner: &writeRunner{fakeToolRunner: &fakeToolRunner{bodies: map[string]string{}}, tools: writeRegistry()},
@@ -251,5 +255,66 @@ func TestMoveFaceAppearancesStepLabelsBothPeopleAndCountsTheAppearances(t *testi
 	}
 	if len(plan.Change) != 2 || !domain.NewAssistantSteps(f.store.plans)[0].Irreversible() {
 		t.Fatalf("change = %+v; want only the two id fields, marked irreversible", plan.Change)
+	}
+}
+
+func TestVideoSchemaStepSendsTheIDItsUserKeyHasAtExecution(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("setVideoDetails", `{"id":7,"body":{"title":"New"}}`)), text("提案しました。"))
+	f.run(t, 0)
+	if len(f.store.plans) != 1 {
+		t.Fatalf("plans = %+v", f.store.plans)
+	}
+	plan := f.store.plans[0]
+
+	t.Run("a rescan gave the video a new id", func(t *testing.T) {
+		store := &fakeAssistantStore{current: domain.AssistantCurrent{Videos: map[string]int64{"key-7": 70}}}
+		runner := &fakeRunner{}
+		newTestAssistant(store).execute(context.Background(), runner, runningProposal(plan))
+		if len(runner.calls) != 1 || runner.calls[0].Path["id"] != "70" || runner.calls[0].Body["title"] != "New" {
+			t.Fatalf("calls = %+v, want one call on the new id 70", runner.calls)
+		}
+	})
+	t.Run("the video is gone", func(t *testing.T) {
+		store := &fakeAssistantStore{current: domain.AssistantCurrent{Videos: map[string]int64{}}}
+		runner := &fakeRunner{}
+		newTestAssistant(store).execute(context.Background(), runner, runningProposal(plan))
+		got := finishedStatuses(t, store)
+		if len(runner.calls) != 0 || !slices.Equal(got, []domain.AssistantStepStatus{domain.AssistantStepStale}) {
+			t.Fatalf("calls = %+v, steps = %v; want no call and a stale step", runner.calls, got)
+		}
+	})
+}
+
+func TestBindCreatedKeepsANullBodyField(t *testing.T) {
+	plan, failure, _ := bindCreated(domain.AssistantPlan{
+		ActionID: "setVideoThumbnailPosition", Call: domain.AssistantPlanCall{Body: map[string]any{"positionMs": nil}},
+	})
+	if value, ok := plan.Call.Body["positionMs"]; failure != "" || !ok || value != nil {
+		t.Fatalf("body = %+v, failure = %q; want positionMs kept as null", plan.Call.Body, failure)
+	}
+}
+
+func TestVideoDetailsStepShowsTheWholeObjectANestedIDSitsIn(t *testing.T) {
+	f := newWriteFixture(t, calls(toolCall("setVideoDetails",
+		`{"id":7,"body":{"workInfo":{"description":"rewritten","people":[{"role":"performer","person":{"id":11}}]}}}`)),
+		text("提案しました。"))
+
+	f.run(t, 0)
+
+	if len(f.store.plans) != 1 {
+		t.Fatalf("plans = %+v", f.store.plans)
+	}
+	byArgument := map[domain.AssistantArgument]domain.AssistantChange{}
+	for _, change := range f.store.plans[0].Change {
+		byArgument[change.Argument] = change
+	}
+	person := byArgument["workInfo/people/*/person/id"]
+	if len(person.Labels) != 1 || person.Labels[0].Name != "Aさん" {
+		t.Fatalf("change = %+v, want the person the nested id names", f.store.plans[0].Change)
+	}
+	var shown map[string]any
+	if err := json.Unmarshal(byArgument["workInfo"].Value, &shown); err != nil || shown["description"] != "rewritten" {
+		t.Fatalf("workInfo on the card = %s, want the whole object with its description", byArgument["workInfo"].Value)
 	}
 }

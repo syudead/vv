@@ -60,7 +60,14 @@ func (l *turnLoop) schemaStep(ctx context.Context, tool domain.AssistantTool, ra
 			return plan, failure, err
 		}
 		addIDLabels(&plan, field, labels, len(ids))
-		labeled[strings.Split(strings.TrimPrefix(field.Field, "/"), "/")[0]] = field.In == "body"
+		if kind == domain.AssistantLabelVideo && field.In == "path" {
+			keyVideoPath(&plan, field.Field, labels[0])
+		}
+		// Only a top-level id field is wholly shown by its labels; a nested id's object keeps its other fields,
+		// so the card shows that whole body field as well.
+		if root := strings.TrimPrefix(field.Field, "/"); field.In == "body" && !strings.Contains(root, "/") {
+			labeled[root] = true
+		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(call.Body)) {
 		if labeled[name] {
@@ -71,6 +78,14 @@ func (l *turnLoop) schemaStep(ctx context.Context, tool domain.AssistantTool, ra
 		}
 	}
 	return plan, "", nil
+}
+
+// keyVideoPath keeps a path video by its user key, which survives a rescan, so the worker sends the id the key
+// has at execution and marks the step stale when the video is gone.
+func keyVideoPath(plan *domain.AssistantPlan, param string, label domain.AssistantLabel) {
+	plan.Targets.VideoKeys = append(plan.Targets.VideoKeys, label.Key)
+	plan.Call.VideoPathParam = param
+	delete(plan.Call.Path, param)
 }
 
 // assistantBodyArgument is the tool argument that holds a schema row's JSON body.

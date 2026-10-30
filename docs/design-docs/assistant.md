@@ -259,7 +259,7 @@ pending proposal of the turn it follows.
 | Row kind | Tool arguments | Step |
 | --- | --- | --- |
 | Name-based | `target` (when the row has one) and the row's arguments, each with one shared description (`domain.AssistantRowParameters`) | The shipped plan builder resolves the names; a name item may be `{ name, id }`, and the id wins only among the entities the name finds |
-| Schema | The operation's own schema; `ActionRunner.WriteCall` validates the arguments and splits them into path, query and body | Each path and body id is labeled by the kind the registry records: a path id names the target, a body id the change under its field, and a list of ids shows its first entity and its count; the other body fields show as values |
+| Schema | The operation's own schema; `ActionRunner.WriteCall` validates the arguments and splits them into path, query and body | Each path and body id is labeled by the kind the registry records: a path id names the target, a body id the change under its field, and a list of ids shows its first entity and its count; the other body fields show as values, and so does the whole top-level field a nested id sits in, so the card covers the exact body. A path video id is kept by its user key and filled with that key's current id at execution, like a name-based video target |
 | Composite | As a name-based row | `editVideoThumbnail`: the worker runs its stages, polls the session until the run ends, and cancels and discards the session when a stage fails |
 
 | Rule | Why |
