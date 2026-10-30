@@ -272,6 +272,31 @@ func TestTurnLoopCorrectsAnUngroundedAnswerOnce(t *testing.T) {
 	}
 }
 
+func TestTurnLoopAsksAgainAfterAnEmptyReply(t *testing.T) {
+	f := newLoopFixture(t, calls(toolCall("listVideos", `{}`)), text(""), text("カラオケの動画は 12 本です。"))
+	f.runner.bodies["listVideos"] = `{"items":[],"total":12}`
+
+	turn := f.run(t, request)
+
+	retry := f.chat.requests[2].Messages
+	if last := retry[len(retry)-1]; last.Role != domain.ChatRoleUser || last.Content != emptyAnswerCorrection {
+		t.Fatalf("message after the empty reply = %+v, want the correction", last)
+	}
+	if turn.Status != domain.AssistantTurnDone || turn.Answer != "カラオケの動画は 12 本です。" {
+		t.Fatalf("turn = %+v, want the answer after the correction", turn)
+	}
+}
+
+func TestTurnLoopStopsAfterASecondEmptyReply(t *testing.T) {
+	f := newLoopFixture(t, text(""), text(" \n"))
+
+	turn := f.run(t, request)
+
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopModel || turn.Answer != "" {
+		t.Fatalf("turn = %+v, want stopped as model with no answer", turn)
+	}
+}
+
 func TestTurnLoopChecksLibraryNamesInTheAnswer(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("listTags", `{}`)), text("The tag Karaoke is used."), text("The tag Live is used."))
 	f.a.vocabulary = fakeVocabulary{known: []string{"karaoke", "live"}}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -218,5 +219,61 @@ func TestRelayChatSplitsConcatenatedArgumentsIntoCalls(t *testing.T) {
 	}
 	if len(reply.ToolCalls) != 2 || string(reply.ToolCalls[1].Arguments) != `{"id":2,"positionMs":0}` {
 		t.Fatalf("calls = %+v, want one call per object", reply.ToolCalls)
+	}
+}
+
+// gemmaReasoningAnswer is a Workers AI answer with no content or calls and the reasoning given.
+func gemmaReasoningAnswer(reasoning string) string {
+	message, _ := json.Marshal(map[string]any{"role": "assistant", "content": nil, "reasoning_content": reasoning})
+	return `{"success":true,"result":{"choices":[{"message":` + string(message) + `}]}}`
+}
+
+// Workers AI sometimes leaves Gemma's calls in reasoning_content, in Gemma's own format, with no content.
+func TestRelayChatReadsGemmaCallsLeftInTheReasoning(t *testing.T) {
+	reasoning := `<|tool_call>call:clef{images:[<|"|>getVideoFrame?id=4&positionMs=1000<|"|>],` +
+		`questions:{cat:{instructions:<|"|>Is a "cat" visible?<|"|>,type:<|"|>noul<|"|>}},state:{}}<tool_call|>` +
+		"\n" + `<|tool_call>call:getVideoFrame{id:12,positionMs:1000,exact:true}<tool_call|>`
+	chat := chatThrough(t, "gemma4:26b", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, gemmaReasoningAnswer(reasoning))
+	})
+	reply, err := chat.Chat(context.Background(), domain.ChatRequest{Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "r"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.ToolCall{
+		{Name: "clef", Arguments: json.RawMessage(`{"images":["getVideoFrame?id=4&positionMs=1000"],` +
+			`"questions":{"cat":{"instructions":"Is a \"cat\" visible?","type":"noul"}},"state":{}}`)},
+		{Name: "getVideoFrame", Arguments: json.RawMessage(`{"id":12,"positionMs":1000,"exact":true}`)},
+	}
+	if len(reply.ToolCalls) != len(want) {
+		t.Fatalf("calls = %+v, want %d", reply.ToolCalls, len(want))
+	}
+	for i, call := range reply.ToolCalls {
+		var got, wanted any
+		_ = json.Unmarshal(call.Arguments, &got)
+		_ = json.Unmarshal(want[i].Arguments, &wanted)
+		if call.Name != want[i].Name || !reflect.DeepEqual(got, wanted) {
+			t.Errorf("call %d = %s %s, want %s %s", i, call.Name, call.Arguments, want[i].Name, want[i].Arguments)
+		}
+	}
+}
+
+// Reasoning that is not only Gemma calls is the model's thinking, so the reply stays empty for the loop to correct.
+func TestRelayChatLeavesOtherReasoningOut(t *testing.T) {
+	for _, reasoning := range []string{
+		"I will call `listVideos(tags=[\"Rewatch\"])` and count the results.",
+		`<|tool_call>call:listVideos{q:<|"|>cat<|"|>}<tool_call|> then count them`,
+		`<|tool_call>call:listVideos{q:<|"|>cat}<tool_call|>`,
+	} {
+		chat := chatThrough(t, "gemma4:26b", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, gemmaReasoningAnswer(reasoning))
+		})
+		reply, err := chat.Chat(context.Background(), domain.ChatRequest{Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "r"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(reply.ToolCalls) != 0 || reply.Text != "" {
+			t.Errorf("%q: reply = %+v, want an empty reply", reasoning, reply)
+		}
 	}
 }

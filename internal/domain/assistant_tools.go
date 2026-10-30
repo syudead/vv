@@ -173,6 +173,13 @@ var assistantReadPosts = []string{
 // AssistantCatalog returns the write rows in contract order; callers may not change the shared rows.
 func AssistantCatalog() []AssistantAction { return slices.Clone(assistantCatalog) }
 
+// AssistantModelToolName is the name a model receives for a tool. Providers take only function names matching
+// ^[a-zA-Z0-9_-]{1,64}$, so a variant row's "." is written "__", which no tool name contains.
+func AssistantModelToolName(name string) string { return strings.ReplaceAll(name, ".", "__") }
+
+// AssistantToolNameFromModel turns a name a model called back into the tool's name.
+func AssistantToolNameFromModel(name string) string { return strings.ReplaceAll(name, "__", ".") }
+
 // AssistantExclusions returns the operations the assistant leaves out on purpose.
 func AssistantExclusions() []AssistantExclusion { return slices.Clone(assistantExclusions) }
 

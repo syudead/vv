@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"testing"
@@ -121,10 +122,13 @@ func (f *writeFixture) run(t *testing.T, previous int64) domain.AssistantTurn {
 	return *f.turns.finished
 }
 
+// modelFunctionName is the function name rule providers share.
+var modelFunctionName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+
 func TestWriteCallsBecomeOneProposalWithTheCreatedTagFromStepOne(t *testing.T) {
 	f := newWriteFixture(t,
 		calls(toolCall("createTag", `{"name":"新曲"}`),
-			toolCall("updateVideoTags.add", `{"target":{"kind":"selection"},"tagNames":["新曲"]}`)),
+			toolCall("updateVideoTags__add", `{"target":{"kind":"selection"},"tagNames":["新曲"]}`)),
 		text("提案しました。"))
 
 	turn := f.run(t, 0)
@@ -132,7 +136,19 @@ func TestWriteCallsBecomeOneProposalWithTheCreatedTagFromStepOne(t *testing.T) {
 	if turn.Status != domain.AssistantTurnDone || turn.ProposalID != 1 || len(f.store.plans) != 2 {
 		t.Fatalf("turn = %+v, plans = %+v; want one proposal of two steps", turn, f.store.plans)
 	}
+	offered := f.chat.toolNames(1)
+	if !slices.Contains(offered, "updateVideoTags__add") {
+		t.Fatalf("offered tools = %v, want updateVideoTags.add as updateVideoTags__add", offered)
+	}
+	for _, name := range offered {
+		if !modelFunctionName.MatchString(name) {
+			t.Errorf("offered tool %q is not a valid function name", name)
+		}
+	}
 	attach := f.store.plans[1]
+	if attach.ActionID != "updateVideoTags.add" || turn.Progress[2].Tool != "updateVideoTags.add" {
+		t.Fatalf("step action = %q, progress tool = %q; want the row id", attach.ActionID, turn.Progress[2].Tool)
+	}
 	if !slices.Equal(attach.CreatedBy, []domain.AssistantCreatedBy{{Name: "新曲", Step: 0}}) || len(attach.Created) != 0 {
 		t.Fatalf("second step createdBy = %+v, created = %v; want created by step 1", attach.CreatedBy, attach.Created)
 	}
