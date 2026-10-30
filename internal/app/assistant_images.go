@@ -145,13 +145,15 @@ func (l *turnLoop) viewImages(ctx context.Context, raw json.RawMessage) (string,
 	if failure != "" {
 		return "", failure
 	}
+	// A call that fails attaches none of its images, so the attached images and their names stay in step.
+	fitted := make([][]byte, len(images))
 	for i, data := range images {
-		fitted, err := fitViewImage(data)
-		if err != nil {
+		var err error
+		if fitted[i], err = fitViewImage(data); err != nil {
 			return "", fmt.Sprintf("the image %s cannot be decoded", args.Images[i])
 		}
-		l.attached = append(l.attached, fitted)
 	}
+	l.attached = append(l.attached, fitted...)
 	l.attachedNames = append(l.attachedNames, args.Images...)
 	encoded, _ := json.Marshal(map[string]int{"attached": len(images)}) // A map of ints always encodes.
 	return string(encoded), ""

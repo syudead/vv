@@ -156,6 +156,32 @@ func TestViewImagesAttachesTheImagesForAVisionModelOnly(t *testing.T) {
 	}
 }
 
+// A view_images call whose later image cannot be decoded attaches none of its images, and a successful call in the
+// same round keeps each attached image beside its own reference.
+func TestViewImagesAttachesNothingFromACallThatFails(t *testing.T) {
+	const broken = "getCover?id=3"
+	failing := `{"images":["` + frameB + `","` + broken + `"]}`
+	f := newLoopFixture(t,
+		calls(toolCall("view_images", failing), toolCall("view_images", `{"images":["`+frameA+`"]}`)),
+		text("猫が映っています。"))
+	f.a.model = fakeModel{vision: true}
+	frame := pngOf(t, 320, 180)
+
+	f.runImages(t, map[string][]byte{frameA: frame, frameB: pngOf(t, 64, 64), broken: []byte("not an image")})
+
+	messages := f.chat.requests[1].Messages
+	failed, attached := messages[len(messages)-3], messages[len(messages)-1]
+	if !strings.Contains(failed.Content, `"error"`) || !strings.Contains(failed.Content, broken) {
+		t.Errorf("first result = %s, want an error naming %s", failed.Content, broken)
+	}
+	if len(attached.Images) != 1 || !bytes.Equal(attached.Images[0], frame) {
+		t.Fatalf("attached images = %d, want only the image of the successful call", len(attached.Images))
+	}
+	if !strings.Contains(attached.Content, frameA) || strings.Contains(attached.Content, frameB) {
+		t.Errorf("attached message = %q, want only %s named", attached.Content, frameA)
+	}
+}
+
 // Some models write nested arguments as JSON strings; clef reads them as the values they hold.
 func TestClefReadsArgumentsWrittenAsJSONStrings(t *testing.T) {
 	args := `{"images":"[\"` + frameA + `\"]","questions":"{\"cat\":{\"type\":\"noul\",\"instructions\":\"Cat?\"}}","state":"{}"}`
