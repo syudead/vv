@@ -145,7 +145,7 @@ function ExchangeReply({
       {card !== undefined && exchange.reply?.kind !== "expired" && (
         <ProposalCard
           card={card}
-          onExecute={() => store.execute(exchange.id)}
+          onExecute={(steps) => store.execute(exchange.id, steps)}
           onDismiss={() => store.dismiss(exchange.id)}
         />
       )}

@@ -8,9 +8,16 @@ import type {
 import type { OperationInput } from "../i18n/en";
 import { errorText, formatNumber, t, type UiText } from "../i18n";
 import { RequestFailed } from "../api/client";
+import { formatDuration } from "../lib/format";
 
-type Change = AssistantProposalStep["change"][number];
+export type Change = AssistantProposalStep["change"][number];
 type Counts = AssistantProposalStep["counts"];
+
+/** What the card draws for one step; the one-step card's merged proposal has the same fields. */
+export type StepFields = Pick<
+  AssistantProposalStep,
+  "operation" | "targets" | "change" | "created" | "impact" | "counts"
+> & { createdBy?: AssistantProposalStep["createdBy"] };
 
 /**
  * The one-operation card's view of a proposal: its first step, with the counts summed over the
@@ -61,7 +68,7 @@ export function cardProposal(proposal: AssistantProposal): CardProposal {
   };
 }
 
-function changeOf(proposal: CardProposal, argument: string): Change | undefined {
+function changeOf(proposal: StepFields, argument: string): Change | undefined {
   return proposal.change.find((change) => change.argument === argument);
 }
 
@@ -76,15 +83,19 @@ function changeName(change: Change | undefined): string | undefined {
  * The name an operation sentence quotes: the new name of a rename, the collection or name the
  * change names, or the one target the row acts on.
  */
-function sentenceName(proposal: CardProposal): string | undefined {
+function sentenceName(proposal: StepFields): string | undefined {
   return (
     changeName(changeOf(proposal, "newName")) ??
     changeName(changeOf(proposal, "name")) ??
+    // A move names the person the faces go to, which the body's targetId carries.
+    (proposal.operation === "moveFaceAppearances"
+      ? changeName(changeOf(proposal, "targetId"))
+      : undefined) ??
     proposal.targets.labels[0]?.name
   );
 }
 
-function switchValue(proposal: CardProposal): boolean | undefined {
+function switchValue(proposal: StepFields): boolean | undefined {
   const value = (changeOf(proposal, "public") ?? changeOf(proposal, "enabled"))?.value;
   return typeof value === "boolean" ? value : undefined;
 }
@@ -97,7 +108,7 @@ export function operationSentence(operation: string, input: OperationInput = {})
   return sentence === undefined ? t.assistant.otherOperation : sentence(input);
 }
 
-export function proposalSentence(proposal: CardProposal): UiText {
+export function proposalSentence(proposal: StepFields): UiText {
   return operationSentence(proposal.operation, {
     name: sentenceName(proposal),
     on: switchValue(proposal),
@@ -113,7 +124,7 @@ const videoTargets: ReadonlySet<string> = new Set([
 ]);
 
 /** Batched runs count videos; every other run is one call whose counts are 0 or 1. */
-export function countsVideos(proposal: CardProposal): boolean {
+export function countsVideos(proposal: StepFields): boolean {
   return (
     videoTargets.has(proposal.targets.kind) &&
     proposal.targets.labels.every((label) => label.kind === "video") &&
@@ -148,7 +159,7 @@ function unitText(kind: AssistantLabelKind | "items", count: number): string {
  * its targets count is the one destination. Undefined for a row that names no target but
  * creates something: its title already says what.
  */
-export function impactText(proposal: CardProposal): string | undefined {
+export function impactText(proposal: StepFields): string | undefined {
   if (proposal.impact !== undefined) return unitText("video", proposal.impact.videos);
   const { kind, count, labels } = proposal.targets;
   const kinds = new Set(labels.map((label) => label.kind));
@@ -162,30 +173,101 @@ export function impactText(proposal: CardProposal): string | undefined {
 }
 
 /** The destination a merge moves videos to, for the irreversible line. */
-export function mergeDestination(proposal: CardProposal): string | undefined {
+export function mergeDestination(proposal: StepFields): string | undefined {
   return proposal.impact === undefined ? undefined : proposal.targets.labels[0]?.name;
 }
 
 /** The labels past the first 10 that the card does not name. */
-export function moreTargets(proposal: CardProposal): number {
+export function moreTargets(proposal: StepFields): number {
   return Math.max(0, proposal.targets.count - proposal.targets.labels.length);
 }
 
-export function argumentName(proposal: CardProposal, argument: string): string {
-  const words = t.assistant.card;
-  if (argument === "names" && proposal.impact !== undefined) return words.mergeFrom;
-  return words.argument[argument] ?? argument;
+/** The field names the work-information and person editors give the fields a fetch applies. */
+function fetchFieldName(operation: string, argument: string): string | undefined {
+  const work: Readonly<Record<string, string>> = t.player.workInfoFetch.fields;
+  const person: Readonly<Record<string, string>> = t.credits.personPage.pluginFetch.items;
+  if (operation === "applyWorkInfoFetch") return work[argument];
+  if (operation === "applyPersonPluginFetch") return person[argument] ?? person[`profile.${argument}`];
+  return undefined;
 }
 
-/** A value the change line writes as text; labels and strings are drawn as badges instead. */
-export function valueText(argument: string, value: unknown): string | undefined {
+export function argumentName(proposal: StepFields, argument: string): string {
   const words = t.assistant.card;
-  if (typeof value === "boolean") {
-    if (argument === "public") return value ? words.public : words.private;
-    return value ? words.on : words.off;
-  }
+  if (argument === "names" && proposal.impact !== undefined) return words.mergeFrom;
+  return (
+    fetchFieldName(proposal.operation, argument) ?? words.argument[argument] ?? argument
+  );
+}
+
+/**
+ * One piece of a change line after the argument's name: a name, drawn as a badge that can carry
+ * New; one item of a list, drawn as a badge; or text.
+ */
+export type ValuePart =
+  | { kind: "name"; name: string }
+  | { kind: "item"; text: string }
+  | { kind: "text"; text: string; long?: boolean };
+
+/** Rows whose strings are fetched or typed text rather than names. */
+const textRows: ReadonlySet<string> = new Set([
+  "applyWorkInfoFetch",
+  "applyPersonPluginFetch",
+  "editVideoThumbnail",
+]);
+
+function switchText(argument: string, value: boolean): string {
+  const words = t.assistant.card;
+  if (argument === "public") return value ? words.public : words.private;
+  return value ? words.on : words.off;
+}
+
+/** Any JSON value as one line, so a body field the card cannot name is still shown in full. */
+function itemText(value: unknown): string {
+  if (value === null || value === undefined) return t.assistant.card.none;
+  if (typeof value === "string") return value;
   if (typeof value === "number") return formatNumber(value);
-  return undefined;
+  if (typeof value === "boolean") return switchText("", value);
+  if (Array.isArray(value)) return value.map(itemText).join(", ");
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${itemText(item)}`)
+      .join(", ");
+  }
+  return JSON.stringify(value) ?? "";
+}
+
+/** An id list's count, which the change line writes before the first labels. */
+export function idCount(change: Change): string | undefined {
+  const first = change.labels?.[0];
+  if (first === undefined || typeof change.value !== "number") return undefined;
+  return unitText(first.kind, change.value);
+}
+
+/** What a change line shows of its value; labels are drawn before it. */
+export function valueParts(step: StepFields, change: Change): ValuePart[] {
+  const { argument, value } = change;
+  if (value === undefined || idCount(change) !== undefined) return [];
+  const textRow = textRows.has(step.operation);
+  // A fetch applies an image as its index in the result; the card names it, since it shows no image.
+  if (textRow && (argument === "cover" || argument === "image")) {
+    return [{ kind: "text", text: t.assistant.card.newImage }];
+  }
+  if (argument === "atMs" && typeof value === "number") {
+    return [{ kind: "text", text: formatDuration(value) }];
+  }
+  if (typeof value === "boolean") return [{ kind: "text", text: switchText(argument, value) }];
+  if (typeof value === "string") {
+    if (value === "") return [];
+    return textRow ? [{ kind: "text", text: value, long: true }] : [{ kind: "name", name: value }];
+  }
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) =>
+      typeof item === "string" && !textRow
+        ? { kind: "name", name: item }
+        : { kind: "item", text: itemText(item) },
+    );
+  }
+  return [{ kind: "text", text: itemText(value) }];
 }
 
 /** Strings a change names: one, or each of a list such as aliases. */
@@ -195,12 +277,17 @@ export function valueStrings(value: unknown): string[] {
   return [];
 }
 
-export function isCreated(proposal: CardProposal, name: string): boolean {
-  return proposal.created.includes(name);
+/** The step, from 0, that creates a name this step uses. */
+export function creatingStep(step: StepFields, name: string): number | undefined {
+  return step.createdBy?.find((by) => by.name === name)?.step;
+}
+
+export function isCreated(proposal: StepFields, name: string): boolean {
+  return proposal.created.includes(name) || creatingStep(proposal, name) !== undefined;
 }
 
 /** Created names no change line shows, listed on a line of their own. */
-export function createdElsewhere(proposal: CardProposal): string[] {
+export function createdElsewhere(proposal: StepFields): string[] {
   const shown = new Set<string>();
   for (const change of proposal.change) {
     for (const label of change.labels ?? []) shown.add(label.name);
@@ -254,8 +341,7 @@ export interface RunLine {
   spinner?: boolean;
 }
 
-function reasonText(proposal: CardProposal): string {
-  const error = proposal.error;
+export function reasonText(error: AssistantProposalStep["error"]): string {
   if (error === undefined) return "";
   return String(
     errorText(new RequestFailed(0, error.code, error.code, { reason: error.reason })),
@@ -282,15 +368,15 @@ export function runLine(proposal: CardProposal): RunLine | undefined {
       return { text: batched ? words.done(applied) : words.doneOnce, tone: "success" };
     case "partial":
       return {
-        text: words.partial(applied, failed, reasonText(proposal)),
+        text: words.partial(applied, failed, reasonText(proposal.error)),
         tone: "warning",
       };
     case "stale":
-      return { text: words.stale, tone: "warning" };
+      return { text: words.steps.stale, tone: "warning" };
     case "failed":
       return proposal.error?.code === "interrupted"
         ? { text: words.interrupted(applied), tone: "warning" }
-        : { text: words.failed(reasonText(proposal)), tone: "destructive" };
+        : { text: words.failed(reasonText(proposal.error)), tone: "destructive" };
     default:
       return undefined;
   }

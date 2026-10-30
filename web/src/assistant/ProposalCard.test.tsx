@@ -1,9 +1,10 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { AssistantProposal } from "../api/assistant";
-import { oneStepProposal } from "../testing/assistantProposal";
+import { createAndAttachProposal, oneStepProposal } from "../testing/assistantProposal";
 import type { CardProposal } from "./proposal";
 import ProposalCard from "./ProposalCard";
 
@@ -30,12 +31,15 @@ function proposal(extra: Partial<CardProposal> = {}): AssistantProposal {
   });
 }
 
-function renderCard(value: AssistantProposal) {
+function renderCard(
+  value: AssistantProposal,
+  onExecute: (steps: number[]) => void = () => undefined,
+) {
   return render(
     <MemoryRouter>
       <ProposalCard
         card={{ proposal: value, view: "live", executing: false }}
-        onExecute={() => undefined}
+        onExecute={onExecute}
         onDismiss={() => undefined}
       />
     </MemoryRouter>,
@@ -115,6 +119,54 @@ describe("ProposalCard", () => {
     expect(screen.queryByText("New tag 旅行")).toBeNull();
   });
 
+  it("取得の適用は項目ごとに編集画面の項目名と取得した値を出す", () => {
+    renderCard(
+      proposal({
+        operation: "applyWorkInfoFetch",
+        targets: { kind: "video", count: 1, labels: [{ kind: "video", id: 1, name: "a" }] },
+        change: [
+          { argument: "title", value: "取得した題名" },
+          { argument: "dates.release", value: "2024-05-01" },
+          { argument: "tags", value: ["夏", "海"] },
+          { argument: "cover", value: 1 },
+        ],
+        counts: { total: 1, applied: 0, failed: 0 },
+      }),
+    );
+
+    expect(screen.getByText("Apply fetched work information")).toBeDefined();
+    expect(screen.getByText("Title").nextSibling?.textContent).toBe("取得した題名");
+    expect(screen.getByText("Released").nextSibling?.textContent).toBe("2024-05-01");
+    expect(screen.getByText("夏")).toBeDefined();
+    expect(screen.getByText("Cover").nextSibling?.textContent).toBe("New image");
+  });
+
+  it("スキーマ行は id の配列を件数と最初のラベルで、ほかの本文の欄を値で出す", () => {
+    renderCard(
+      proposal({
+        operation: "moveFaceAppearances",
+        targets: { kind: "", count: 0, labels: [{ kind: "person", id: 2, name: "甲" }] },
+        change: [
+          {
+            argument: "appearanceIds",
+            labels: [{ kind: "faceAppearance", id: 30, name: "動画 a" }],
+            value: 12,
+          },
+          { argument: "targetId", labels: [{ kind: "person", id: 3, name: "乙" }] },
+          { argument: "restoreCredits", value: [{ videoId: 5, role: "performer" }] },
+        ],
+        counts: { total: 1, applied: 0, failed: 0 },
+      }),
+    );
+
+    expect(screen.getByText("Move faces to “乙”")).toBeDefined();
+    expect(screen.getByText("12 face appearances")).toBeDefined();
+    expect(screen.getByRole("img", { name: "動画 a" }).getAttribute("src")).toBe(
+      "/api/face-appearances/30/crop",
+    );
+    expect(screen.getByText("videoId: 5, role: performer")).toBeDefined();
+  });
+
   it("11 件目からは名前の代わりに残りの数を出す", () => {
     const labels = Array.from({ length: 10 }, (_, index) => ({
       kind: "video" as const,
@@ -130,5 +182,65 @@ describe("ProposalCard", () => {
 
     expect(screen.getByText("25 videos")).toBeDefined();
     expect(screen.getByText("+15 more")).toBeDefined();
+  });
+});
+
+describe("ProposalCard with steps", () => {
+  it("手順を順に件数つきで並べ、後の手順の名前に Created by step 1 を付け、Execute だけを塗る", () => {
+    renderCard(createAndAttachProposal());
+
+    expect(screen.getByText("2 steps · 2 selected")).toBeDefined();
+    const first = screen.getByText("Create tag “ライブ録画”");
+    const second = screen.getByText("Add tags");
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(screen.getByText("3 videos").className).toContain("text-lg");
+    expect(screen.getByText("Created by step 1")).toBeDefined();
+    expect(filledButtons()).toEqual(["Execute 2 steps"]);
+  });
+
+  it("手順 1 を外すと手順 2 は Needs step 1 になり、Execute は押せない", async () => {
+    const executed: number[][] = [];
+    const user = userEvent.setup();
+    renderCard(createAndAttachProposal(), (steps) => executed.push(steps));
+
+    await user.click(screen.getByRole("checkbox", { name: "Include step 1" }));
+
+    expect(screen.getByText("2 steps · 1 selected")).toBeDefined();
+    expect(screen.getByText("Won’t run")).toBeDefined();
+    expect(screen.getByText("Needs step 1")).toBeDefined();
+    expect(
+      screen.getByText("Step 2 needs step 1. Tick step 1, or untick step 2."),
+    ).toBeDefined();
+    const execute = screen.getByRole("button", { name: "Execute" });
+    expect(execute.getAttribute("aria-disabled")).toBe("true");
+    await user.click(execute);
+    expect(executed).toEqual([]);
+  });
+
+  it("戻せない手順に印を付け、それがチェックされているあいだだけ Execute を destructive にする", async () => {
+    const user = userEvent.setup();
+    renderCard(
+      createAndAttachProposal("proposed", [
+        {},
+        {
+          operation: "mergeTag",
+          irreversible: true,
+          targets: { kind: "tag", count: 1, labels: [{ kind: "tag", id: 9, name: "旅行" }] },
+          change: [{ argument: "names", labels: [{ kind: "tag", id: 8, name: "旅" }] }],
+          impact: { videos: 4 },
+          createdBy: [],
+        },
+      ]),
+    );
+
+    expect(screen.getByText("Can’t be undone")).toBeDefined();
+    const execute = () => screen.getByRole("button", { name: /^Execute/ });
+    expect(execute().getAttribute("data-variant")).toBe("destructive");
+
+    await user.click(screen.getByRole("checkbox", { name: "Include step 2" }));
+
+    expect(execute().getAttribute("data-variant")).toBe("default");
   });
 });

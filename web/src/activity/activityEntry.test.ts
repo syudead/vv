@@ -164,7 +164,7 @@ describe("entryResult", () => {
         }),
       ),
     ).toBe(
-      "Merge tags · Something changed since this was proposed, so nothing was done. Ask again.",
+      "Merge tags · Changed since it was proposed, so it didn’t run. Ask again.",
     );
   });
 });
