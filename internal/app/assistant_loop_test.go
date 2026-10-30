@@ -209,6 +209,20 @@ func TestTurnLoopNamesTheShownVideoAndItsIDInTheSystemMessage(t *testing.T) {
 	}
 }
 
+func TestFindToolsLoadsOnlyItsFirstMatches(t *testing.T) {
+	registry := []domain.AssistantTool{}
+	for _, name := range []string{"frameA", "frameB", "frameC", "frameD"} {
+		registry = append(registry, domain.AssistantTool{Name: name, Kind: domain.AssistantToolRead, Summary: "video frame"})
+	}
+	tools := newTurnTools(registry)
+
+	found, _ := tools.find("video frame")
+
+	if len(found) != 4 || !slices.Equal(tools.offered, []string{"frameA", "frameB", "frameC"}) {
+		t.Fatalf("found %d, offered %v; want 4 answered and the first 3 loaded", len(found), tools.offered)
+	}
+}
+
 func TestTurnLoopOffersWhatFindToolsLoads(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("find_tools", `{"query":"playlists"}`)), text("No playlists."))
 

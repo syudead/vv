@@ -38,8 +38,10 @@ always sees `find_tools` and the core reads (`listVideos`, `getVideo`,
 `listTags`, `listPeople`, `listOrganizations`). `find_tools` searches every
 other tool of [the registry](#the-tool-registry-classifies-every-operation)
 by words over its name, summary and description, answers up to 15 with their
-kind and, for an excluded one, the reason and page, and adds the read and
-write tools it found to the later calls of the same turn. A call to a read or
+kind and, for an excluded one, the reason and page, and adds the first 3 read
+and write tools it found to the later calls of the same turn, since every
+loaded schema is sent again on each call and 15 of them fill much of the
+context. A call to a read or
 write tool of the registry that is not offered yet runs and loads it as well,
 since models often call a tool they know by name without searching first. The
 system message names the screen's route and, for a page that shows one item,
@@ -77,7 +79,7 @@ flowchart LR
 | --- | --- |
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
 | A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 8 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
-| Before each model call, the oldest tool results are replaced by a note to call the tool again until the messages, tools and images fit the context less 4,096 tokens, counting three bytes a token and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking |
+| Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the context less 4,096 tokens, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
 | A tool reaches the model under a name with each `.` written `__` (`updateVideoTags__add`), and a call's name is turned back before anything runs; progress items, steps and excluded operations keep the tool's own name | Providers accept only function names matching `^[a-zA-Z0-9_-]{1,64}$`, and Workers AI's Mistral refuses the whole request over one dotted name |
 | A reply with neither text nor tool calls gets one correction round that asks for text or a tool call; a second one stops the turn as `model` | Some models leave the call in their reasoning, and an empty reply is no answer |
