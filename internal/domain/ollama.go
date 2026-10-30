@@ -30,6 +30,8 @@ var (
 	ErrGenerationUnreadable = errors.New("the model's answer is not JSON")
 	// ErrGenerationModelMissing means the check found the decision model but not the generation model.
 	ErrGenerationModelMissing = errors.New("the generation model is not at the Ollama endpoint")
+	// ErrGenerationModelWithoutTools means the generation model is there but cannot call tools.
+	ErrGenerationModelWithoutTools = errors.New("the generation model cannot call tools")
 )
 
 type OllamaSettings struct {
@@ -72,7 +74,23 @@ const (
 	AssistantReady                AssistantNotReady = ""
 	AssistantOllamaNotSaved       AssistantNotReady = "ollama_not_saved"
 	AssistantGenerationModelUnset AssistantNotReady = "generation_model_unset"
+	// AssistantGenerationModelWithoutTools means Ollama reports no tools capability for the generation model.
+	AssistantGenerationModelWithoutTools AssistantNotReady = "generation_model_without_tools"
 )
+
+// AssistantStatus is the readiness the panel reads; Vision tells whether the generation model sees images.
+type AssistantStatus struct {
+	NotReady AssistantNotReady
+	Vision   bool
+}
+
+// AssistantStatusOf decides from the generation model's capabilities once the saved connection is ready.
+func AssistantStatusOf(capabilities ModelCapabilities) AssistantStatus {
+	if !capabilities.Tools {
+		return AssistantStatus{NotReady: AssistantGenerationModelWithoutTools, Vision: capabilities.Vision}
+	}
+	return AssistantStatus{Vision: capabilities.Vision}
+}
 
 // AssistantReadiness decides from the saved connection alone, without asking Ollama.
 func AssistantReadiness(settings OllamaSettings, saved bool) AssistantNotReady {

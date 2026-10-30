@@ -441,6 +441,8 @@ const errorReasons = {
     "Save the Ollama URL in Settings, Connections, then choose a generation model.",
   generation_model_unset:
     "Pick a generation model in Settings, Connections. The decision model used for tagging can't chat.",
+  generation_model_without_tools:
+    "The generation model can't call tools, which the assistant needs. Choose another generation model in Settings, Connections.",
   peer_unknown: "The other VVMDM no longer knows this one.",
   peer_not_allowed: "The other VVMDM can't use this operation.",
   invalid_address:
@@ -4625,6 +4627,12 @@ export const en = {
       checkOkBoth: "Ollama is running and has both models.",
       generationModelMissing: (model: string) =>
         `Ollama is running but doesn’t have the generation model “${model}”.`,
+      checkWithoutTools: (model: string) =>
+        `Ollama has “${model}”, but it can’t call tools. The assistant needs a model that can.`,
+      withoutToolsOption: (model: string) => `${model} · can’t call tools`,
+      visionOption: (model: string) => `${model} · sees images`,
+      savedWithoutTools: (model: string) =>
+        `“${model}” can’t call tools, so the assistant won’t take requests.`,
       checkFailed: (reason: string) => `The connection test failed: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loading: "Loading the Ollama settings",

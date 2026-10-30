@@ -26,7 +26,8 @@ func (autoTagClassifier) Classify(_ context.Context, req domain.ClassifierReques
 type ollamaProbe struct {
 	err    error
 	checks *int
-	models []string
+	models []domain.OllamaModel
+	caps   domain.ModelCapabilities
 }
 
 func (p ollamaProbe) Check(context.Context) error {
@@ -36,8 +37,12 @@ func (p ollamaProbe) Check(context.Context) error {
 	return p.err
 }
 
-func (p ollamaProbe) Models(context.Context) ([]string, error) {
+func (p ollamaProbe) Models(context.Context) ([]domain.OllamaModel, error) {
 	return p.models, p.err
+}
+
+func (p ollamaProbe) Capabilities(context.Context, string, string) (domain.ModelCapabilities, error) {
+	return p.caps, nil
 }
 
 type autoTaggingFixture struct {

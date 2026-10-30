@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -38,16 +39,30 @@ func TestCheckOllamaNamesMissingGenerationModel(t *testing.T) {
 	f := newAutoTaggingFixture(t, ollamaProbe{err: fmt.Errorf("no qwen3: %w", domain.ErrGenerationModelMissing)})
 	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check", cookies: []*http.Cookie{f.owner}})
 	got := decode[gen.CheckResult](t, rec)
-	if rec.Code != http.StatusOK || got.Available || got.Reason == nil || *got.Reason != gen.GenerationModelMissing {
+	if rec.Code != http.StatusOK || got.Available || got.Reason == nil || *got.Reason != gen.CheckResultReasonGenerationModelMissing {
+		t.Fatalf("check = %d %+v", rec.Code, got)
+	}
+}
+
+func TestCheckOllamaNamesGenerationModelWithoutTools(t *testing.T) {
+	f := newAutoTaggingFixture(t, ollamaProbe{caps: domain.ModelCapabilities{Vision: true}})
+	f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","generationModel":"llava:7b"}`)
+	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check", cookies: []*http.Cookie{f.owner}})
+	got := decode[gen.CheckResult](t, rec)
+	if rec.Code != http.StatusOK || got.Available || got.Reason == nil || *got.Reason != gen.CheckResultReasonGenerationModelWithoutTools {
 		t.Fatalf("check = %d %+v", rec.Code, got)
 	}
 }
 
 func TestListOllamaModels(t *testing.T) {
-	f := newAutoTaggingFixture(t, ollamaProbe{models: []string{"qwen3:8b", "clef-flash:latest"}})
+	f := newAutoTaggingFixture(t, ollamaProbe{models: []domain.OllamaModel{
+		{Name: "qwen3:8b", Capabilities: domain.ModelCapabilities{Tools: true}},
+		{Name: "clef-flash:latest", Capabilities: domain.ModelCapabilities{Vision: true}},
+	}})
 	rec := f.env.get("/api/settings/ollama/models", f.owner)
 	got := decode[gen.OllamaModelList](t, rec)
-	if rec.Code != http.StatusOK || len(got.Items) != 2 || got.Items[0].Name != "qwen3:8b" || got.Items[1].Name != "clef-flash:latest" {
+	want := []gen.OllamaModel{{Name: "qwen3:8b", Tools: true}, {Name: "clef-flash:latest", Vision: true}}
+	if rec.Code != http.StatusOK || !slices.Equal(got.Items, want) {
 		t.Fatalf("models = %d %+v", rec.Code, got)
 	}
 
@@ -64,8 +79,17 @@ func TestListOllamaModels(t *testing.T) {
 	}
 }
 
+func TestAssistantReadinessNamesModelWithoutTools(t *testing.T) {
+	f := newAutoTaggingFixture(t, ollamaProbe{caps: domain.ModelCapabilities{Vision: true}})
+	f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","generationModel":"llava:7b"}`)
+	got := decode[gen.AssistantReadiness](t, f.env.get("/api/assistant/readiness", f.owner))
+	if got.Ready || got.Reason == nil || *got.Reason != gen.AssistantReadinessReasonGenerationModelWithoutTools || !got.Vision {
+		t.Fatalf("readiness = %+v", got)
+	}
+}
+
 func TestAssistantReadiness(t *testing.T) {
-	f := newAutoTaggingFixture(t, ollamaProbe{})
+	f := newAutoTaggingFixture(t, ollamaProbe{caps: domain.ModelCapabilities{Tools: true}})
 	readiness := func() gen.AssistantReadiness {
 		t.Helper()
 		rec := f.env.get("/api/assistant/readiness", f.owner)
