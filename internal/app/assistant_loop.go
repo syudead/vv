@@ -154,6 +154,8 @@ type turnLoop struct {
 	modelCalls int
 	toolCalls  int
 	corrected  bool
+	// prompted marks a turn whose empty reply already received its correction round.
+	prompted bool
 	// clef and vision say which image tools the turn offers; judged marks a turn that received Clef's answers.
 	clef, vision, judged bool
 	// attached and attachedNames hold the images view_images read this round, for the message after the results.
@@ -270,6 +272,9 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 		l.turn.Stop.Excluded = l.excluded
 		return true, nil
 	}
+	if strings.TrimSpace(text) == "" {
+		return l.emptyReply(), nil
+	}
 	names, err := l.a.vocabulary.NamesIn(ctx, text)
 	if err != nil {
 		return true, err
@@ -291,4 +296,20 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 				"and answer again.", strings.Join(ungrounded, ", "))},
 	)
 	return false, nil
+}
+
+// emptyAnswerCorrection asks again after a reply with neither text nor tool calls, which some models send when the
+// call stays in their reasoning.
+const emptyAnswerCorrection = "Your reply was empty. Answer the request in text, or call a tool."
+
+// emptyReply gives a reply with neither text nor tool calls one correction round, and stops the turn as model on the
+// second; it reports whether the turn ended.
+func (l *turnLoop) emptyReply() bool {
+	if l.prompted {
+		l.stop(domain.AssistantStopModel)
+		return true
+	}
+	l.prompted = true
+	l.messages = append(l.messages, domain.ChatMessage{Role: domain.ChatRoleUser, Content: emptyAnswerCorrection})
+	return false
 }

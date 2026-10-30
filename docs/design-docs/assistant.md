@@ -56,7 +56,10 @@ The diagram shows one round.
 ```mermaid
 flowchart LR
   call[Model call] --> reply{Tool calls?}
-  reply -->|no| ground[Grounding check]
+  reply -->|no| empty{Text?}
+  empty -->|empty once| call
+  empty -->|empty twice| model[Stopped: model]
+  empty -->|yes| ground[Grounding check]
   ground -->|pass| done[Turn done with the answer]
   ground -->|fail once| call
   ground -->|fail twice| ungrounded[Stopped: ungrounded]
@@ -71,6 +74,8 @@ flowchart LR
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
 | A read runs at once through the owner's handler; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
+| A tool reaches the model under a name with each `.` written `__` (`updateVideoTags__add`), and a call's name is turned back before anything runs; progress items, steps and excluded operations keep the tool's own name | Providers accept only function names matching `^[a-zA-Z0-9_-]{1,64}$`, and Workers AI's Mistral refuses the whole request over one dotted name |
+| A reply with neither text nor tool calls gets one correction round that asks for text or a tool call; a second one stops the turn as `model` | Some models leave the call in their reasoning, and an empty reply is no answer |
 | A write call becomes one step of the turn's proposal and runs nothing ([Write calls become steps](#write-calls-become-steps)) | A write never runs before the owner approves it |
 | The turn carries the last `show_in_library` or `open_page` as its directive, which the panel applies without confirmation | Showing and moving change nothing (requirement 13) |
 | A name a directive tool cannot settle comes back to the model as an error result with the candidates, not as the turn's clarification | The model can call again with a candidate's name or ask the owner; a turn's clarification belongs to the write steps it would drop |
@@ -104,6 +109,7 @@ answer text.
 | 10 minutes passed, or the model call timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
 | The model is missing or answers an `error` | `stopped`, `model` | The progress |
+| Two replies with neither text nor tool calls | `stopped`, `model` | The progress |
 | A write call whose name needs the owner's choice | `clarify` with the name and its candidates | The progress; no proposal |
 | Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress and the proposal |
 | An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |

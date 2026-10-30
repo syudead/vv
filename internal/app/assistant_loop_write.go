@@ -101,7 +101,8 @@ func proposable(tool domain.AssistantTool) bool {
 // the owner's choice ends the turn as clarify; it returns an error only for a storage failure.
 func (l *turnLoop) write(ctx context.Context, call domain.ToolCall, tool domain.AssistantTool) (string, string, error) {
 	if !proposable(tool) {
-		return "", fmt.Sprintf("%s cannot be proposed by the assistant; tell the owner to do it on its page", tool.Name), nil
+		return "", fmt.Sprintf("%s cannot be proposed by the assistant; tell the owner to do it on its page",
+			domain.AssistantModelToolName(tool.Name)), nil
 	}
 	if len(l.writes.plans) >= domain.AssistantProposalStepMax {
 		return "", fmt.Sprintf("a proposal holds at most %d steps", domain.AssistantProposalStepMax), nil
@@ -231,7 +232,8 @@ func rowRequest(row domain.AssistantAction, raw json.RawMessage) (*domain.Assist
 			continue
 		}
 		if !slices.Contains(allowed, key) {
-			return nil, nil, fmt.Sprintf("%s takes no argument %s; it takes %s", row.ID, key, strings.Join(allowed, ", "))
+			return nil, nil, fmt.Sprintf("%s takes no argument %s; it takes %s", domain.AssistantModelToolName(row.ID), key,
+				strings.Join(allowed, ", "))
 		}
 		value = unquoted(key, value)
 		if slices.Contains(nameArguments, key) {
@@ -326,7 +328,7 @@ func bindCreated(plan domain.AssistantPlan) (domain.AssistantPlan, string, error
 			delete(plan.Call.Body, field)
 		case hasPlaceholder(rest):
 			return plan, fmt.Sprintf("%s cannot use what an earlier step creates in %s; propose it in a later "+
-				"request, after the owner approves this one", plan.ActionID, field), nil
+				"request, after the owner approves this one", domain.AssistantModelToolName(plan.ActionID), field), nil
 		default:
 			plan.Call.Body[field] = rest
 		}

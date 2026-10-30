@@ -85,7 +85,7 @@ func (t *turnTools) definitions() []domain.ToolDefinition {
 		if len(parameters) == 0 {
 			parameters = emptyParameters
 		}
-		out = append(out, domain.ToolDefinition{Name: tool.Name, Description: description, Parameters: parameters})
+		out = append(out, domain.ToolDefinition{Name: domain.AssistantModelToolName(tool.Name), Description: description, Parameters: parameters})
 	}
 	return out
 }
@@ -112,7 +112,7 @@ func (t *turnTools) find(query string) ([]foundTool, bool) {
 	matches := ranked(candidates, searchWords(query), toolSearchText, findToolsLimit)
 	for _, match := range matches {
 		tool := match.item
-		item := foundTool{Name: tool.Name, Kind: tool.Kind, Summary: tool.Summary}
+		item := foundTool{Name: domain.AssistantModelToolName(tool.Name), Kind: tool.Kind, Summary: tool.Summary}
 		if tool.Exclusion != nil {
 			item.Reason, item.Page = tool.Exclusion.Reason, tool.Exclusion.Page
 		} else {
@@ -132,6 +132,7 @@ func toolError(message string) string {
 // call runs one tool call, records its progress item, and answers the tool message's content. It returns an error
 // only for a storage failure.
 func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, error) {
+	call.Name = domain.AssistantToolNameFromModel(call.Name)
 	item := domain.AssistantProgressItem{Tool: call.Name, Kind: domain.AssistantProgressBuiltin, At: l.a.now()}
 	tool, known := l.tools.byName[call.Name]
 	if known {
@@ -236,19 +237,20 @@ func (l *turnLoop) runTool(
 		found, clear := l.tools.find(args.Query)
 		if clear && found[0].Kind == domain.AssistantToolExcluded {
 			// A clear best match is what the request asked for.
-			l.askedExcluded(l.tools.byName[found[0].Name])
+			l.askedExcluded(l.tools.byName[domain.AssistantToolNameFromModel(found[0].Name)])
 		}
 		return encodeResult(map[string]any{"tools": found}), "", nil
 	case l.isImageTool(call.Name):
 		result, failure := l.runImageTool(ctx, call)
 		return result, failure, nil
 	case !known:
-		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name), nil
+		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one",
+			domain.AssistantModelToolName(call.Name)), nil
 	case tool.Kind == domain.AssistantToolExcluded:
-		return "", fmt.Sprintf("%s is excluded: %s; the owner does it on the page %s", tool.Name,
+		return "", fmt.Sprintf("%s is excluded: %s; the owner does it on the page %s", domain.AssistantModelToolName(tool.Name),
 			tool.Exclusion.Reason, tool.Exclusion.Page), nil
 	case !l.tools.isOffered(call.Name):
-		return "", fmt.Sprintf("%s is not loaded; call find_tools first", call.Name), nil
+		return "", fmt.Sprintf("%s is not loaded; call find_tools first", domain.AssistantModelToolName(call.Name)), nil
 	case tool.Kind == domain.AssistantToolWrite:
 		return l.write(ctx, call, tool)
 	}

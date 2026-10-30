@@ -121,8 +121,9 @@ type workersChatResponse struct {
 		Response json.RawMessage `json:"response"`
 		Choices  []struct {
 			Message struct {
-				Content   *string           `json:"content"`
-				ToolCalls []workersToolCall `json:"tool_calls"`
+				Content          *string           `json:"content"`
+				ReasoningContent string            `json:"reasoning_content"`
+				ToolCalls        []workersToolCall `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
 		ToolCalls []struct {
@@ -210,7 +211,8 @@ func visionModelNames() []string {
 	return slices.DeleteFunc(chatModelNames(), func(name string) bool { return !chatModels[name].vision })
 }
 
-// chatAnswer prefers tool calls over text, since the loop runs the calls before the model answers.
+// chatAnswer prefers tool calls over text, since the loop runs the calls before the model answers. An empty answer
+// takes the Gemma calls that Workers AI left in the reasoning, when that is all the reasoning holds.
 func chatAnswer(out workersChatResponse) ollamaChatMessage {
 	message := ollamaChatMessage{Role: "assistant"}
 	if len(out.Result.Choices) > 0 {
@@ -225,6 +227,9 @@ func chatAnswer(out workersChatResponse) ollamaChatMessage {
 	}
 	if len(message.ToolCalls) == 0 {
 		message.Content = chatContent(out)
+	}
+	if len(message.ToolCalls) == 0 && message.Content == "" && len(out.Result.Choices) > 0 {
+		message.ToolCalls = gemmaCalls(out.Result.Choices[0].Message.ReasoningContent)
 	}
 	return message
 }

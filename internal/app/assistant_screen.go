@@ -187,7 +187,7 @@ func (l *turnLoop) appHelp(_ context.Context, raw json.RawMessage) (builtinOutco
 	}
 	for _, match := range ranked(l.tools.all, words, toolSearchText, helpOperationLimit) {
 		tool := match.item
-		op := helpOperation{Name: tool.Name, Kind: tool.Kind, Summary: tool.Summary}
+		op := helpOperation{Name: domain.AssistantModelToolName(tool.Name), Kind: tool.Kind, Summary: tool.Summary}
 		if tool.Exclusion != nil {
 			op.Reason = tool.Exclusion.Reason
 			op.Page = &helpPage{Route: tool.Exclusion.Page, Title: domain.AssistantPageTitle(tool.Exclusion.Page)}
