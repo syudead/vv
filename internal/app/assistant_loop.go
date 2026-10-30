@@ -154,6 +154,11 @@ type turnLoop struct {
 	modelCalls int
 	toolCalls  int
 	corrected  bool
+	// clef and vision say which image tools the turn offers; judged marks a turn that received Clef's answers.
+	clef, vision, judged bool
+	// attached and attachedNames hold the images view_images read this round, for the message after the results.
+	attached      [][]byte
+	attachedNames []string
 	// excluded is the first excluded operation the model asked for, and acted whether any other tool ran.
 	excluded *domain.AssistantExcludedRef
 	acted    bool
@@ -177,6 +182,7 @@ func (l *turnLoop) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	l.imageTools(ctx)
 	l.messages = []domain.ChatMessage{
 		{Role: domain.ChatRoleSystem, Content: system},
 		{Role: domain.ChatRoleUser, Content: "<request>" + dataText.Replace(l.turn.Request) + "</request>"},
@@ -191,7 +197,7 @@ func (l *turnLoop) run(ctx context.Context) error {
 			return nil
 		}
 		l.modelCalls++
-		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: l.tools.definitions()})
+		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: append(l.tools.definitions(), l.imageDefinitions()...)})
 		if err != nil {
 			l.stop(l.chatStop(ctx, err))
 			return nil
@@ -252,6 +258,7 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 		l.evidence.WriteString(content + "\n")
 		l.messages = append(l.messages, domain.ChatMessage{Role: domain.ChatRoleTool, ToolName: call.Name, Content: content})
 	}
+	l.attachImages()
 	return false, nil
 }
 
@@ -269,7 +276,7 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 	}
 	ungrounded := domain.AssistantUngrounded(text, l.evidence.String(), names)
 	if len(ungrounded) == 0 {
-		l.turn.Status, l.turn.Answer = domain.AssistantTurnDone, text
+		l.turn.Status, l.turn.Answer, l.turn.Judged = domain.AssistantTurnDone, text, l.judged
 		return true, nil
 	}
 	if l.corrected {

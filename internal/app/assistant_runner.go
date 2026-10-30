@@ -16,6 +16,8 @@ type ActionRunner interface {
 	// refuses them, a *domain.AssistantExcludedError an excluded operation, and domain.ErrAssistantNotReadTool any
 	// other operation that is not a read tool. A non-2xx response is a *domain.AssistantCallError.
 	Read(ctx context.Context, read domain.AssistantRead) (domain.AssistantReadResult, error)
+	// Image reads the image a reference from an image read names, with the errors of Read.
+	Image(ctx context.Context, reference string) (domain.AssistantImage, error)
 	// WriteCall validates a schema row's tool arguments against its operation's schema, before any call, and splits
 	// them into the request of the row's step; domain.ErrAssistantInvalidArguments refuses them.
 	WriteCall(actionID string, arguments json.RawMessage) (domain.AssistantCall, error)

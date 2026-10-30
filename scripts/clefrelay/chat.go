@@ -215,12 +215,12 @@ func chatAnswer(out workersChatResponse) ollamaChatMessage {
 	message := ollamaChatMessage{Role: "assistant"}
 	if len(out.Result.Choices) > 0 {
 		for _, call := range out.Result.Choices[0].Message.ToolCalls {
-			message.ToolCalls = append(message.ToolCalls, ollamaCall(call.Function.Name, call.Function.Arguments))
+			message.ToolCalls = append(message.ToolCalls, ollamaCalls(call.Function.Name, call.Function.Arguments)...)
 		}
 	}
 	if len(message.ToolCalls) == 0 {
 		for _, call := range out.Result.ToolCalls {
-			message.ToolCalls = append(message.ToolCalls, ollamaCall(call.Name, call.Arguments))
+			message.ToolCalls = append(message.ToolCalls, ollamaCalls(call.Name, call.Arguments)...)
 		}
 	}
 	if len(message.ToolCalls) == 0 {
@@ -229,11 +229,38 @@ func chatAnswer(out workersChatResponse) ollamaChatMessage {
 	return message
 }
 
-func ollamaCall(name string, arguments json.RawMessage) ollamaToolCall {
-	var call ollamaToolCall
-	call.Function.Name = name
-	call.Function.Arguments = argumentObject(arguments)
-	return call
+// ollamaCalls splits arguments that hold several objects one after another into one call each, the form Gemma
+// writes for parallel calls of one tool.
+func ollamaCalls(name string, arguments json.RawMessage) []ollamaToolCall {
+	object := argumentObject(arguments)
+	parts := []json.RawMessage{object}
+	var text string
+	if json.Unmarshal(object, &text) == nil {
+		if split := concatenatedObjects(text); len(split) > 1 {
+			parts = split
+		}
+	}
+	calls := make([]ollamaToolCall, len(parts))
+	for i, part := range parts {
+		calls[i].Function.Name = name
+		calls[i].Function.Arguments = part
+	}
+	return calls
+}
+
+// concatenatedObjects answers the objects text holds one after another, or nil when it holds anything else.
+func concatenatedObjects(text string) []json.RawMessage {
+	decoder := json.NewDecoder(strings.NewReader(text))
+	var objects []json.RawMessage
+	for decoder.More() {
+		var object map[string]json.RawMessage
+		if decoder.Decode(&object) != nil || object == nil {
+			return nil
+		}
+		encoded, _ := json.Marshal(object) // Decoded JSON always encodes.
+		objects = append(objects, encoded)
+	}
+	return objects
 }
 
 // argumentObject turns OpenAI's JSON-encoded argument string, which some models encode twice, into the object

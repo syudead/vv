@@ -138,6 +138,7 @@ func (l *turnLoop) call(ctx context.Context, call domain.ToolCall) (string, erro
 		item.Kind = progressKind(tool)
 		item.Labels = l.labels(ctx, tool, call.Arguments)
 	}
+	item.Images = l.imageCount(call)
 	if err := l.record(ctx, item); err != nil {
 		return "", err
 	}
@@ -238,6 +239,9 @@ func (l *turnLoop) runTool(
 			l.askedExcluded(l.tools.byName[found[0].Name])
 		}
 		return encodeResult(map[string]any{"tools": found}), "", nil
+	case l.isImageTool(call.Name):
+		result, failure := l.runImageTool(ctx, call)
+		return result, failure, nil
 	case !known:
 		return "", fmt.Sprintf("there is no tool named %s; call find_tools to look for one", call.Name), nil
 	case tool.Kind == domain.AssistantToolExcluded:
