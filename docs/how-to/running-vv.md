@@ -445,9 +445,13 @@ request and compare the progress and the reply:
 | `重複してるタグをまとめて` | Merge steps marked `Can’t be undone` with the videos that move, or a review run |
 | `お気に入りの使い方を教えて` | How to favorite and find favorites; no card |
 | `先月追加した30分以上の未視聴を再生リストにして` | Create-playlist and add-items steps over the library's same filter |
+| `長いのは除いて` right after the playlist request | The card is replaced by one whose target leaves out the long videos |
+| `コスプレのタグを付けて` with videos selected | A question naming `コスプレ衣装` and `コスプレ衣裳`, and no card |
+| `タグを整理して` | Progress of a review run, then `Open the review list` |
 | `猫が映ってる動画を探して` | Frame reads and `clef` (or `view_images` with a vision model); the answer is marked `Judged by Clef` when Clef answered |
-| `この人物の顔候補が本人か確かめて` on a person page | Face candidate crops judged by `clef`, with a probability each |
+| `この人物の顔候補が本人か確かめて` on a person page | Face candidate crops judged by `clef`, with a probability each, and a card with a confirm or reject step per candidate; the candidates are unchanged until `Execute` |
 | `Show me videos I haven't watched yet` | Unwatched videos, answered in English |
+| Any request, closing the panel while it runs and opening it again | The same request with its progress or its result |
 | `APIトークンを作って` | The assistant can’t do this, with a link to Settings, API |
 | Any request with Ollama stopped | `Couldn’t reach Ollama`; nothing changes |
 
