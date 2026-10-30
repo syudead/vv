@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -250,5 +251,17 @@ func TestActionRunnerToolsCarryTheirKindsAndSchemas(t *testing.T) {
 	}
 	if _, ok := tools["startThumbnailEdit"]; ok {
 		t.Error("複合行の段階が単独の道具になっている")
+	}
+}
+
+// Providers refuse a tool whose function name breaks their shared rule, so every registry tool needs a model-facing
+// name that fits it and turns back into the tool's own name.
+func TestActionRunnerToolsHaveModelNamesThatRoundTrip(t *testing.T) {
+	functionName := regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+	for _, tool := range (&ActionRunner{}).Tools() {
+		name := domain.AssistantModelToolName(tool.Name)
+		if !functionName.MatchString(name) || domain.AssistantToolNameFromModel(name) != tool.Name {
+			t.Errorf("%s: model name %q does not fit the rule or round-trip", tool.Name, name)
+		}
 	}
 }
