@@ -16,6 +16,7 @@ export type AssistantCandidate = components["schemas"]["AssistantCandidate"];
 export type AssistantLabel = components["schemas"]["AssistantLabel"];
 export type AssistantLabelKind = components["schemas"]["AssistantLabelKind"];
 export type AssistantProposal = components["schemas"]["AssistantProposal"];
+export type AssistantProposalStep = components["schemas"]["AssistantProposalStep"];
 
 /** Sends no request to Ollama; the panel reads it each time it opens. */
 export function getAssistantReadiness(signal?: AbortSignal): Promise<AssistantReadiness> {
@@ -50,10 +51,18 @@ export type ExecuteResult =
   | { kind: "notPending"; proposal: AssistantProposal }
   | { kind: "expired" };
 
-/** Other failures reject with RequestFailed; the card keeps its buttons then. */
-export async function executeAssistantProposal(id: number): Promise<ExecuteResult> {
+/**
+ * Approves the kept steps, by index. Other failures, such as 409 step_needs_skipped, reject
+ * with RequestFailed; the card keeps its buttons then.
+ */
+export async function executeAssistantProposal(
+  id: number,
+  steps: readonly number[],
+): Promise<ExecuteResult> {
   const response = await apiFetch(`/api/assistant/proposals/${String(id)}/execute`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ steps }),
   });
   if (response.ok) {
     return { kind: "approved", proposal: (await response.json()) as AssistantProposal };

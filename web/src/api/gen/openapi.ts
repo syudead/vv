@@ -1213,7 +1213,7 @@ export interface paths {
         put?: never;
         /**
          * Approve an assistant proposal for execution
-         * @description Owner-only; no body. Moves a proposed proposal to approved and returns it with 202; the assistant worker then executes exactly its stored plan in the background, in batches of 500 videos, and the progress follows assistant events. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field.
+         * @description Owner-only. Moves a proposed proposal to approved with the steps the owner kept, marks the others skipped and returns it with 202; the assistant worker then runs exactly the kept steps' stored plans in card order in the background, each in batches of 500 videos, stops at the first step that ends stale or with a failed batch, and the progress follows assistant events. No index, or an index the proposal does not have, returns 400 invalid_request. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field; a kept step that uses what an unticked step creates returns 409 step_needs_skipped with that kept step's index in the error's step field.
          */
         post: operations["executeAssistantProposal"];
         delete?: never;
@@ -4426,25 +4426,23 @@ export interface components {
         AssistantProposalList: {
             items: components["schemas"]["AssistantProposal"][];
         };
-        /** @description A write the assistant proposed, with what the confirmation card shows and the run's progress. */
+        AssistantExecution: {
+            /** @description The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped. */
+            steps: number[];
+        };
+        /** @description The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress. */
         AssistantProposal: {
             /** Format: int64 */
             id: number;
             status: components["schemas"]["AssistantProposalStatus"];
             /** @description The owner's text, as untranslated user data. */
             request: string;
-            /** @description The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add. */
-            operation: string;
-            /** @description From the catalog row; the card marks the change as one that cannot be undone. */
-            irreversible: boolean;
-            targets: components["schemas"]["AssistantProposalTargets"];
-            /** @description The arguments after resolution, one per argument, in the order the card shows them. */
-            change: components["schemas"]["AssistantChange"][];
-            /** @description Names the operation creates, such as a tag to attach that does not exist yet. */
-            created: string[];
-            impact?: components["schemas"]["AssistantImpact"];
-            counts: components["schemas"]["AssistantProposalCounts"];
-            error?: components["schemas"]["AssistantProposalError"];
+            /**
+             * Format: int64
+             * @description The turn that built the proposal; absent for an adoption from a review list.
+             */
+            turnId?: number;
+            steps: components["schemas"]["AssistantProposalStep"][];
             /**
              * Format: int64
              * @description The assistant_run activity entry, present once the proposal is approved.
@@ -4455,8 +4453,39 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string;
         };
+        /** @description One write of a proposal: what the card shows for it and its progress. */
+        AssistantProposalStep: {
+            /** @description Position in the card, from 0. */
+            index: number;
+            /** @description The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add. */
+            operation: string;
+            /** @description From the catalog row; the card marks the change as one that cannot be undone. */
+            irreversible: boolean;
+            targets: components["schemas"]["AssistantProposalTargets"];
+            /** @description The arguments after resolution, one per argument, in the order the card shows them. */
+            change: components["schemas"]["AssistantChange"][];
+            /** @description Names the operation creates, such as a tag to attach that does not exist yet. */
+            created: string[];
+            /** @description Names this step uses that an earlier step of the same proposal creates. */
+            createdBy: components["schemas"]["AssistantCreatedBy"][];
+            impact?: components["schemas"]["AssistantImpact"];
+            status: components["schemas"]["AssistantStepStatus"];
+            counts: components["schemas"]["AssistantProposalCounts"];
+            error?: components["schemas"]["AssistantProposalError"];
+        };
+        AssistantCreatedBy: {
+            /** @description The name as the card shows it, as untranslated user data. */
+            name: string;
+            /** @description The index of the step that creates it. */
+            step: number;
+        };
         /**
-         * @description proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.
+         * @description pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+         * @enum {string}
+         */
+        AssistantStepStatus: "pending" | "skipped" | "running" | "done" | "partial" | "stale" | "failed" | "notRun";
+        /**
+         * @description proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
          * @enum {string}
          */
         AssistantProposalStatus: "proposed" | "approved" | "running" | "done" | "partial" | "stale" | "failed" | "discarded";
@@ -4496,10 +4525,11 @@ export interface components {
             applied: number;
             failed: number;
         };
-        /** @description The first failed call's screen API code and reason, or the code interrupted after a restart. */
+        /** @description The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart. */
         AssistantProposalError: {
             code: string;
             reason?: string;
+            message?: string;
         };
         /** @description Whether a turn can run; reason is present only when ready is false. */
         AssistantReadiness: {
@@ -8167,7 +8197,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "assistant_not_ready" | "assistant_unavailable" | "service_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "person_link_ambiguous" | "person_link_unsupported" | "work_info_link_unsupported" | "plugin_builtin" | "link_order_changed" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable" | "ollama_unreachable" | "proposal_not_pending" | "step_needs_skipped" | "assistant_not_ready" | "assistant_unavailable" | "service_unavailable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -8188,6 +8218,8 @@ export interface components {
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
             proposal?: components["schemas"]["AssistantProposal"];
+            /** @description The index of the kept step that uses what an unticked step creates; only for step_needs_skipped. */
+            step?: number;
         };
         /**
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
@@ -10549,7 +10581,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantExecution"];
+            };
+        };
         responses: {
             /** @description The approved proposal */
             202: {
@@ -10563,7 +10599,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description The proposal is not pending (`proposal_not_pending`); proposal carries it */
+            /** @description The proposal is not pending (`proposal_not_pending`), and proposal carries it; or a kept step needs an unticked one (`step_needs_skipped`), and step is its index */
             409: {
                 headers: {
                     [name: string]: unknown;

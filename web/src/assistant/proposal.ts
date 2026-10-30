@@ -3,14 +3,65 @@ import type {
   AssistantLabelKind,
   AssistantProposal,
   AssistantProposalStatus,
+  AssistantProposalStep,
 } from "../api/assistant";
 import type { OperationInput } from "../i18n/en";
 import { errorText, formatNumber, t, type UiText } from "../i18n";
 import { RequestFailed } from "../api/client";
 
-type Change = AssistantProposal["change"][number];
+type Change = AssistantProposalStep["change"][number];
+type Counts = AssistantProposalStep["counts"];
 
-function changeOf(proposal: AssistantProposal, argument: string): Change | undefined {
+/**
+ * The one-operation card's view of a proposal: its first step, with the counts summed over the
+ * kept steps and the error of the last step that ran. Every proposal a turn stores has one step
+ * until turns build several.
+ */
+export type CardProposal = Omit<AssistantProposal, "steps"> &
+  Omit<AssistantProposalStep, "index" | "status" | "createdBy" | "error"> & {
+    error?: AssistantProposalStep["error"];
+  };
+
+function keptCounts(proposal: AssistantProposal): Counts {
+  const counts: Counts = { total: 0, applied: 0, failed: 0 };
+  for (const step of proposal.steps) {
+    if (step.status === "skipped") continue;
+    counts.total += step.counts.total;
+    counts.applied += step.counts.applied;
+    counts.failed += step.counts.failed;
+  }
+  return counts;
+}
+
+function lastError(proposal: AssistantProposal): AssistantProposalStep["error"] {
+  let error: AssistantProposalStep["error"];
+  for (const step of proposal.steps) error = step.error ?? error;
+  return error;
+}
+
+export function cardProposal(proposal: AssistantProposal): CardProposal {
+  const first = proposal.steps[0];
+  const error = lastError(proposal);
+  return {
+    id: proposal.id,
+    status: proposal.status,
+    request: proposal.request,
+    ...(proposal.turnId === undefined ? {} : { turnId: proposal.turnId }),
+    ...(proposal.activityId === undefined ? {} : { activityId: proposal.activityId }),
+    ...(proposal.startedAt === undefined ? {} : { startedAt: proposal.startedAt }),
+    ...(proposal.finishedAt === undefined ? {} : { finishedAt: proposal.finishedAt }),
+    operation: first?.operation ?? "",
+    irreversible: proposal.steps.some((step) => step.irreversible),
+    targets: first?.targets ?? { kind: "", count: 0, labels: [] },
+    change: first?.change ?? [],
+    created: first?.created ?? [],
+    ...(first?.impact === undefined ? {} : { impact: first.impact }),
+    counts: keptCounts(proposal),
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+function changeOf(proposal: CardProposal, argument: string): Change | undefined {
   return proposal.change.find((change) => change.argument === argument);
 }
 
@@ -25,7 +76,7 @@ function changeName(change: Change | undefined): string | undefined {
  * The name an operation sentence quotes: the new name of a rename, the collection or name the
  * change names, or the one target the row acts on.
  */
-function sentenceName(proposal: AssistantProposal): string | undefined {
+function sentenceName(proposal: CardProposal): string | undefined {
   return (
     changeName(changeOf(proposal, "newName")) ??
     changeName(changeOf(proposal, "name")) ??
@@ -33,7 +84,7 @@ function sentenceName(proposal: AssistantProposal): string | undefined {
   );
 }
 
-function switchValue(proposal: AssistantProposal): boolean | undefined {
+function switchValue(proposal: CardProposal): boolean | undefined {
   const value = (changeOf(proposal, "public") ?? changeOf(proposal, "enabled"))?.value;
   return typeof value === "boolean" ? value : undefined;
 }
@@ -46,7 +97,7 @@ export function operationSentence(operation: string, input: OperationInput = {})
   return sentence === undefined ? t.assistant.otherOperation : sentence(input);
 }
 
-export function proposalSentence(proposal: AssistantProposal): UiText {
+export function proposalSentence(proposal: CardProposal): UiText {
   return operationSentence(proposal.operation, {
     name: sentenceName(proposal),
     on: switchValue(proposal),
@@ -62,7 +113,7 @@ const videoTargets: ReadonlySet<string> = new Set([
 ]);
 
 /** Batched runs count videos; every other run is one call whose counts are 0 or 1. */
-export function countsVideos(proposal: AssistantProposal): boolean {
+export function countsVideos(proposal: CardProposal): boolean {
   return (
     videoTargets.has(proposal.targets.kind) &&
     proposal.targets.labels.every((label) => label.kind === "video") &&
@@ -97,7 +148,7 @@ function unitText(kind: AssistantLabelKind | "items", count: number): string {
  * its targets count is the one destination. Undefined for a row that names no target but
  * creates something: its title already says what.
  */
-export function impactText(proposal: AssistantProposal): string | undefined {
+export function impactText(proposal: CardProposal): string | undefined {
   if (proposal.impact !== undefined) return unitText("video", proposal.impact.videos);
   const { kind, count, labels } = proposal.targets;
   const kinds = new Set(labels.map((label) => label.kind));
@@ -111,16 +162,16 @@ export function impactText(proposal: AssistantProposal): string | undefined {
 }
 
 /** The destination a merge moves videos to, for the irreversible line. */
-export function mergeDestination(proposal: AssistantProposal): string | undefined {
+export function mergeDestination(proposal: CardProposal): string | undefined {
   return proposal.impact === undefined ? undefined : proposal.targets.labels[0]?.name;
 }
 
 /** The labels past the first 10 that the card does not name. */
-export function moreTargets(proposal: AssistantProposal): number {
+export function moreTargets(proposal: CardProposal): number {
   return Math.max(0, proposal.targets.count - proposal.targets.labels.length);
 }
 
-export function argumentName(proposal: AssistantProposal, argument: string): string {
+export function argumentName(proposal: CardProposal, argument: string): string {
   const words = t.assistant.card;
   if (argument === "names" && proposal.impact !== undefined) return words.mergeFrom;
   return words.argument[argument] ?? argument;
@@ -144,12 +195,12 @@ export function valueStrings(value: unknown): string[] {
   return [];
 }
 
-export function isCreated(proposal: AssistantProposal, name: string): boolean {
+export function isCreated(proposal: CardProposal, name: string): boolean {
   return proposal.created.includes(name);
 }
 
 /** Created names no change line shows, listed on a line of their own. */
-export function createdElsewhere(proposal: AssistantProposal): string[] {
+export function createdElsewhere(proposal: CardProposal): string[] {
   const shown = new Set<string>();
   for (const change of proposal.change) {
     for (const label of change.labels ?? []) shown.add(label.name);
@@ -177,9 +228,10 @@ const order: Readonly<Record<AssistantProposalStatus, number>> = {
 export function isNewer(next: AssistantProposal, current: AssistantProposal): boolean {
   const step = order[next.status] - order[current.status];
   if (step !== 0) return step > 0;
+  const nextCounts = keptCounts(next);
+  const currentCounts = keptCounts(current);
   return (
-    next.counts.applied + next.counts.failed >=
-    current.counts.applied + current.counts.failed
+    nextCounts.applied + nextCounts.failed >= currentCounts.applied + currentCounts.failed
   );
 }
 
@@ -202,7 +254,7 @@ export interface RunLine {
   spinner?: boolean;
 }
 
-function reasonText(proposal: AssistantProposal): string {
+function reasonText(proposal: CardProposal): string {
   const error = proposal.error;
   if (error === undefined) return "";
   return String(
@@ -211,7 +263,7 @@ function reasonText(proposal: AssistantProposal): string {
 }
 
 /** The state line under the card's rows, and the one line of a run in Recent runs. */
-export function runLine(proposal: AssistantProposal): RunLine | undefined {
+export function runLine(proposal: CardProposal): RunLine | undefined {
   const words = t.assistant.card;
   const { applied, failed, total } = proposal.counts;
   const batched = countsVideos(proposal);

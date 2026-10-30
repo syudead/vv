@@ -37,7 +37,7 @@ func (t *assistantTurn) action(ctx context.Context, req *domain.AssistantActionR
 		return domain.AssistantTurnResult{}, err
 	}
 	d.plan.Created = t.created
-	proposal, err := t.a.Propose(ctx, t.input.Text, d.plan)
+	proposal, err := t.a.Propose(ctx, 0, t.input.Text, []domain.AssistantPlan{d.plan})
 	if err != nil {
 		return domain.AssistantTurnResult{}, err
 	}

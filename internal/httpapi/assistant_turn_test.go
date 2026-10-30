@@ -56,10 +56,10 @@ func TestCreateAssistantTurnAnswersTheOutcomeShapes(t *testing.T) {
 			Rule: domain.SmartRule{Tags: []int64{3}}, Sort: domain.SortAddedDesc, Labels: []domain.AssistantLabel{tag},
 		}},
 		gen.AssistantTurnOutcomeKindProposal: {Kind: domain.AssistantTurnProposal, Proposal: &domain.AssistantProposal{
-			ID: 9, Status: domain.AssistantProposed, Request: "tag", Plan: domain.AssistantPlan{
+			ID: 9, Status: domain.AssistantProposed, Request: "tag", Steps: domain.NewAssistantSteps([]domain.AssistantPlan{{
 				ActionID: "updateVideoTags.add", Created: []string{"Sunset"},
 				Targets: domain.AssistantPlanTargets{Kind: domain.AssistantTargetVideos, VideoKeys: []string{"k1", "k2"}},
-			},
+			}}),
 		}},
 		gen.AssistantTurnOutcomeKindClarify: {Kind: domain.AssistantTurnClarify, Clarify: &domain.AssistantClarification{
 			About: "value", Candidates: []domain.AssistantCandidate{{Kind: domain.AssistantLabelTag, ID: 3, Name: "Cat", Count: 4}},
@@ -70,9 +70,9 @@ func TestCreateAssistantTurnAnswersTheOutcomeShapes(t *testing.T) {
 		send := turnEnv(t, turns, domain.AssistantReady)
 		res := send(`{"text":"これに猫のタグを付けて","context":{"route":{"kind":"library"},"selectedVideoIds":[7,8],` +
 			`"filter":{"favorite":true}},"previous":{"kind":"proposal","proposal":{"id":5,"status":"proposed",` +
-			`"request":"x","operation":"updateVideoTags.add","irreversible":false,` +
-			`"targets":{"kind":"videos","count":1,"labels":[]},"change":[],"created":[],` +
-			`"counts":{"total":1,"applied":0,"failed":0}}}}`)
+			`"request":"x","steps":[{"index":0,"operation":"updateVideoTags.add","irreversible":false,` +
+			`"targets":{"kind":"videos","count":1,"labels":[]},"change":[],"created":[],"createdBy":[],` +
+			`"status":"pending","counts":{"total":1,"applied":0,"failed":0}}]}}}`)
 		if res.Code != http.StatusOK {
 			t.Fatalf("%s: status = %d: %s", kind, res.Code, res.Body)
 		}
@@ -92,8 +92,8 @@ func TestCreateAssistantTurnAnswersTheOutcomeShapes(t *testing.T) {
 				t.Errorf("filter = %+v", got.Criteria)
 			}
 		case gen.AssistantTurnOutcomeKindProposal:
-			if got.Proposal == nil || got.Proposal.Id != 9 || got.Proposal.Targets.Count != 2 ||
-				!slices.Equal(got.Proposal.Created, []string{"Sunset"}) {
+			if got.Proposal == nil || got.Proposal.Id != 9 || len(got.Proposal.Steps) != 1 ||
+				got.Proposal.Steps[0].Targets.Count != 2 || !slices.Equal(got.Proposal.Steps[0].Created, []string{"Sunset"}) {
 				t.Errorf("proposal = %+v", got.Proposal)
 			}
 		case gen.AssistantTurnOutcomeKindClarify:

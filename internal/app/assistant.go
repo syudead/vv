@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -14,19 +16,22 @@ import (
 // AssistantStore persists the assistant's proposals; each transition is guarded by the previous status and writes
 // the proposal's assistant_run entry in the same transaction.
 type AssistantStore interface {
-	CreateProposal(ctx context.Context, request string, plan domain.AssistantPlan, now time.Time) (domain.AssistantProposal, error)
+	// CreateProposal stores the plans as the proposal's pending steps, in card order; turnID is 0 without a turn.
+	CreateProposal(ctx context.Context, turnID int64, request string, plans []domain.AssistantPlan, now time.Time) (domain.AssistantProposal, error)
 	// Proposal returns domain.ErrNotFound for a missing proposal.
 	Proposal(ctx context.Context, id int64) (domain.AssistantProposal, error)
 	ActiveProposals(ctx context.Context, since time.Time) ([]domain.AssistantProposal, error)
 	// DiscardProposal returns domain.ErrNotFound for a missing proposal and domain.ErrAssistantProposalNotPending
 	// for any other status than proposed.
 	DiscardProposal(ctx context.Context, id int64, now time.Time) error
-	// ApproveProposal returns domain.ErrNotFound for a missing or discarded proposal, and the proposal with
-	// domain.ErrAssistantProposalNotPending for any other status than proposed.
-	ApproveProposal(ctx context.Context, id int64, now time.Time) (domain.AssistantProposal, error)
+	// ApproveProposal keeps the steps at the given indexes and skips the others. It returns domain.ErrNotFound for
+	// a missing or discarded proposal, the proposal with domain.ErrAssistantProposalNotPending for any other status
+	// than proposed, and the errors of domain.AssistantProposal.Select.
+	ApproveProposal(ctx context.Context, id int64, kept []int, now time.Time) (domain.AssistantProposal, error)
 	// ClaimProposal returns domain.ErrNoJob when no approved proposal waits.
 	ClaimProposal(ctx context.Context, now time.Time) (domain.AssistantProposal, error)
-	RecordProgress(ctx context.Context, id int64, counts domain.AssistantCounts, now time.Time) error
+	// RecordProgress writes a running proposal's steps as they stand.
+	RecordProgress(ctx context.Context, id int64, steps []domain.AssistantStep, now time.Time) error
 	FinishProposal(ctx context.Context, id int64, result domain.AssistantRunResult, now time.Time) error
 	ExpireProposals(ctx context.Context, before time.Time) (int, error)
 	RecoverProposals(ctx context.Context, now time.Time) (int, error)
@@ -116,14 +121,19 @@ func (a *Assistant) Wake() {
 	}
 }
 
-// Propose stores a resolved plan for the card. A merge also stores the number of videos it moves; no other
-// operation carries an impact.
-func (a *Assistant) Propose(ctx context.Context, request string, plan domain.AssistantPlan) (domain.AssistantProposal, error) {
-	plan, err := a.withImpact(ctx, plan)
-	if err != nil {
-		return domain.AssistantProposal{}, err
+// Propose stores resolved plans as the steps of one card, in order. A merge also stores the number of videos it
+// moves; no other operation carries an impact.
+func (a *Assistant) Propose(
+	ctx context.Context, turnID int64, request string, plans []domain.AssistantPlan,
+) (domain.AssistantProposal, error) {
+	steps := make([]domain.AssistantPlan, len(plans))
+	for i, plan := range plans {
+		var err error
+		if steps[i], err = a.withImpact(ctx, plan); err != nil {
+			return domain.AssistantProposal{}, err
+		}
 	}
-	return a.store.CreateProposal(ctx, request, plan, a.now())
+	return a.store.CreateProposal(ctx, turnID, request, steps, a.now())
 }
 
 // withImpact checks the plan's operation and sets the number of videos a merge moves.
@@ -142,9 +152,10 @@ func (a *Assistant) withImpact(ctx context.Context, plan domain.AssistantPlan) (
 	return plan, nil
 }
 
-// Approve moves the proposal to approved and wakes the worker; see AssistantStore.ApproveProposal for the errors.
-func (a *Assistant) Approve(ctx context.Context, id int64) (domain.AssistantProposal, error) {
-	p, err := a.store.ApproveProposal(ctx, id, a.now())
+// Approve moves the proposal to approved with the kept steps and wakes the worker; see
+// AssistantStore.ApproveProposal for the errors.
+func (a *Assistant) Approve(ctx context.Context, id int64, kept []int) (domain.AssistantProposal, error) {
+	p, err := a.store.ApproveProposal(ctx, id, kept, a.now())
 	if err != nil {
 		return p, err
 	}
@@ -218,68 +229,140 @@ func (a *Assistant) wait(ctx context.Context, timer <-chan time.Time) {
 	}
 }
 
-// execute re-reads the targets before the first call, then runs the batches in order and stops at the first
-// failed one; a video gone between batches counts as failed.
+// execute runs the kept steps in card order and stops at the first step that ends stale or with a failed batch;
+// the kept steps after it do not run.
 func (a *Assistant) execute(ctx context.Context, runner ActionRunner, p domain.AssistantProposal) {
-	result, err := a.run(ctx, runner, p)
+	steps, err := a.run(ctx, runner, p)
 	if ctx.Err() != nil {
 		return
 	}
 	if err != nil {
 		a.logger.Error("the assistant proposal failed", slog.Int64("proposal", p.ID), slog.Any("error", err))
-		result.Status = domain.AssistantFailed
-		if result.Counts.Applied > 0 {
-			result.Status = domain.AssistantPartial
-		}
-		result.Error = &domain.AssistantProposalError{Code: "internal"}
+		steps = failRunning(steps, &domain.AssistantProposalError{Code: "internal"})
 	}
+	result := domain.NewAssistantRunResult(steps)
 	if err := a.store.FinishProposal(ctx, p.ID, result, a.now()); err != nil && ctx.Err() == nil {
 		a.logger.Error("cannot finish the assistant proposal", slog.Int64("proposal", p.ID), slog.Any("error", err))
 	}
 }
 
-// run returns an error only for a storage failure; a failed operation call is part of the result.
-func (a *Assistant) run(ctx context.Context, runner ActionRunner, p domain.AssistantProposal) (domain.AssistantRunResult, error) {
-	plan := p.Plan
-	result := domain.AssistantRunResult{Counts: domain.AssistantCounts{Total: plan.Total()}}
+// failRunning ends the running step with the error after a storage failure; a step that applied part of its
+// batches is partial.
+func failRunning(steps []domain.AssistantStep, failure *domain.AssistantProposalError) []domain.AssistantStep {
+	for i := range steps {
+		if steps[i].Status != domain.AssistantStepRunning {
+			continue
+		}
+		steps[i].Status, steps[i].Error = domain.AssistantStepFailed, failure
+		if steps[i].Applied > 0 {
+			steps[i].Status = domain.AssistantStepPartial
+		}
+		domain.SkipAfter(steps, i)
+	}
+	return steps
+}
+
+// run returns an error only for a storage failure; a failed operation call is part of the steps. The ids that
+// steps create are kept for the later steps that name them.
+func (a *Assistant) run(ctx context.Context, runner ActionRunner, p domain.AssistantProposal) ([]domain.AssistantStep, error) {
+	steps := slices.Clone(p.Steps)
+	created := map[int]int64{}
+	for i := range steps {
+		if steps[i].Status != domain.AssistantStepPending {
+			continue
+		}
+		if err := steps[i].Move(domain.AssistantStepRunning); err != nil {
+			return steps, err
+		}
+		if err := a.store.RecordProgress(ctx, p.ID, steps, a.now()); err != nil {
+			return steps, err
+		}
+		id, err := a.runStep(ctx, runner, p.ID, steps, i, created)
+		if err != nil {
+			return steps, err
+		}
+		if id != 0 {
+			created[i] = id
+		}
+		if steps[i].Stops() {
+			domain.SkipAfter(steps, i)
+			break
+		}
+	}
+	return steps, nil
+}
+
+// runStep re-reads step i's labels before its first call, except those an earlier kept step acts on, then runs
+// its batches in order and stops at the first failed one; a video gone between batches counts as failed. It
+// returns the id the step's response carries, for a step that creates something.
+func (a *Assistant) runStep(
+	ctx context.Context, runner ActionRunner, proposalID int64, steps []domain.AssistantStep, i int,
+	created map[int]int64,
+) (int64, error) {
+	step := &steps[i]
+	plan := step.Plan
 	current, err := a.store.CurrentLabels(ctx, plan)
 	if err != nil {
-		return result, err
+		return 0, err
 	}
-	if plan.Stale(current) {
-		result.Status = domain.AssistantStale
-		return result, nil
+	if plan.Stale(current, domain.TouchedBefore(steps, i)) {
+		step.Status = domain.AssistantStepStale
+		return 0, nil
 	}
-	for i, keys := range plan.Batches() {
-		ids, missing, err := a.batchVideos(ctx, i, keys, current)
+	var id int64
+	for batch, keys := range plan.Batches() {
+		ids, missing, err := a.batchVideos(ctx, batch, keys, current)
 		if err != nil {
-			return result, err
+			return 0, err
 		}
-		result.Counts.Failed += missing
+		step.Failed += missing
 		if len(keys) == 0 || len(ids) > 0 {
-			if _, err := runner.Run(ctx, plan.CallFor(ids)); err != nil {
-				if ctx.Err() != nil {
-					return result, ctx.Err()
-				}
-				result.Counts.Failed += batchCount(plan, ids)
-				result.Error = callFailure(err)
-				result.Status = domain.AssistantPartial
-				if i == 0 && result.Counts.Applied == 0 {
-					result.Status = domain.AssistantFailed
-				}
-				return result, nil
+			call, ok := plan.WithStepIDs(plan.CallFor(ids), created)
+			if !ok {
+				endStep(step, batch, batchCount(plan, ids), &domain.AssistantProposalError{Code: "internal"})
+				return 0, nil
 			}
-			result.Counts.Applied += batchCount(plan, ids)
+			response, err := runner.Run(ctx, call)
+			if err != nil {
+				if ctx.Err() != nil {
+					return 0, ctx.Err()
+				}
+				endStep(step, batch, batchCount(plan, ids), callFailure(err))
+				return 0, nil
+			}
+			step.Applied += batchCount(plan, ids)
+			id = createdID(response.Body)
 		}
-		if err := a.store.RecordProgress(ctx, p.ID, result.Counts, a.now()); err != nil {
-			return result, err
+		if err := a.store.RecordProgress(ctx, proposalID, steps, a.now()); err != nil {
+			return 0, err
 		}
 	}
-	result.Status = domain.AssistantDone
-	if result.Counts.Failed > 0 {
-		result.Status = domain.AssistantPartial
+	step.Status = domain.AssistantStepDone
+	if step.Failed > 0 {
+		step.Status = domain.AssistantStepPartial
 	}
-	return result, nil
+	return id, nil
+}
+
+// endStep ends a step at a failed batch: partial when an earlier batch applied, otherwise failed.
+func endStep(step *domain.AssistantStep, batch, count int, failure *domain.AssistantProposalError) {
+	step.Failed += count
+	step.Error = failure
+	step.Status = domain.AssistantStepPartial
+	if batch == 0 && step.Applied == 0 {
+		step.Status = domain.AssistantStepFailed
+	}
+}
+
+// createdID reads the id of what a call created from its response body; 0 when the body carries none.
+func createdID(body []byte) int64 {
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal(body, &created) != nil {
+		return 0
+	}
+	return created.ID
 }
 
 // batchVideos maps a batch's user keys to current video ids in plan order; the first batch uses the stale check's
@@ -314,7 +397,7 @@ func batchCount(plan domain.AssistantPlan, ids []int64) int {
 func callFailure(err error) *domain.AssistantProposalError {
 	var failure *domain.AssistantCallError
 	if errors.As(err, &failure) {
-		return &domain.AssistantProposalError{Code: failure.Code, Reason: failure.Reason}
+		return &domain.AssistantProposalError{Code: failure.Code, Reason: failure.Reason, Message: failure.Message}
 	}
 	if errors.Is(err, domain.ErrAssistantActionUnknown) {
 		return &domain.AssistantProposalError{Code: "operation_unsupported"}

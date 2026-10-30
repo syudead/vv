@@ -14,40 +14,49 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-func TestExecuteAssistantProposalApprovesOnce(t *testing.T) {
+func TestExecuteAssistantProposalApprovesTheKeptStepsOnce(t *testing.T) {
 	var db *store.DB
 	env := newAuthEnvWith(t, t.TempDir(), func(opened *store.DB) Options {
 		db = opened
 		return Options{Assistant: app.NewAssistant(app.AssistantOptions{Store: opened.Assistant(), Logger: discardLogger()})}
 	})
 	owner := env.setup()
-	p, err := db.Assistant().CreateProposal(context.Background(), "アニメのタグをまとめて", domain.AssistantPlan{
+	merge := domain.AssistantPlan{
 		ActionID: "mergeTag",
 		Targets: domain.AssistantPlanTargets{Kind: domain.AssistantTargetTag, Labels: []domain.AssistantLabel{
 			{Kind: domain.AssistantLabelTag, ID: 1, Name: "Anime"},
 		}},
-	}, time.Now())
+	}
+	p, err := db.Assistant().CreateProposal(context.Background(), 0, "アニメのタグをまとめて",
+		[]domain.AssistantPlan{merge, {ActionID: "deleteTag"}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	execute := func() *httptest.ResponseRecorder {
+	execute := func(body string) *httptest.ResponseRecorder {
 		return env.serve(authRequest{
 			method: http.MethodPost, target: "/api/assistant/proposals/" + strconv.FormatInt(p.ID, 10) + "/execute",
-			cookies: []*http.Cookie{owner},
+			body: body, cookies: []*http.Cookie{owner},
 		})
 	}
 
-	first := execute()
+	if res := execute(`{"steps":[2]}`); res.Code != http.StatusBadRequest {
+		t.Fatalf("out of range: status = %d, want 400", res.Code)
+	}
+	first := execute(`{"steps":[0]}`)
 	if first.Code != http.StatusAccepted {
-		t.Fatalf("first status = %d", first.Code)
+		t.Fatalf("first status = %d: %s", first.Code, first.Body)
 	}
 	approved := decode[gen.AssistantProposal](t, first)
-	if approved.Id != p.ID || approved.Status != gen.AssistantProposalStatusApproved || !approved.Irreversible ||
-		approved.Operation != "mergeTag" || approved.Targets.Count != 1 || approved.ActivityId == nil {
-		t.Errorf("approved = %+v", approved)
+	if approved.Id != p.ID || approved.Status != gen.AssistantProposalStatusApproved || approved.ActivityId == nil ||
+		len(approved.Steps) != 2 {
+		t.Fatalf("approved = %+v", approved)
+	}
+	if step := approved.Steps[0]; !step.Irreversible || step.Operation != "mergeTag" || step.Targets.Count != 1 ||
+		step.Status != gen.AssistantStepStatusPending || approved.Steps[1].Status != gen.AssistantStepStatusSkipped {
+		t.Errorf("steps = %+v", approved.Steps)
 	}
 
-	second := execute()
+	second := execute(`{"steps":[0]}`)
 	if second.Code != http.StatusConflict {
 		t.Fatalf("second status = %d", second.Code)
 	}

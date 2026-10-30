@@ -2929,113 +2929,12 @@
                   },
                   "proposal": {
                     "additionalProperties": false,
-                    "description": "A write the assistant proposed, with what the confirmation card shows and the run's progress.",
+                    "description": "The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.",
                     "properties": {
                       "activityId": {
                         "description": "The assistant_run activity entry, present once the proposal is approved.",
                         "format": "int64",
                         "type": "integer"
-                      },
-                      "change": {
-                        "description": "The arguments after resolution, one per argument, in the order the card shows them.",
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "argument": {
-                              "description": "The argument name of the action outcome, such as tagNames or enabled.",
-                              "type": "string"
-                            },
-                            "labels": {
-                              "description": "The entities the argument names after resolution.",
-                              "items": {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "id": {
-                                    "description": "The entity's id when the card showed it; absent when unknown.",
-                                    "format": "int64",
-                                    "type": "integer"
-                                  },
-                                  "kind": {
-                                    "enum": [
-                                      "video",
-                                      "tag",
-                                      "tagKind",
-                                      "person",
-                                      "organization",
-                                      "playlist",
-                                      "group",
-                                      "smartFolder",
-                                      "folderRoot"
-                                    ],
-                                    "type": "string"
-                                  },
-                                  "name": {
-                                    "description": "The name the card showed, as untranslated user data.",
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "name"
-                                ],
-                                "type": "object"
-                              },
-                              "type": "array"
-                            },
-                            "value": {
-                              "description": "A literal value, such as a boolean, a number or a date."
-                            }
-                          },
-                          "required": [
-                            "argument"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "counts": {
-                        "additionalProperties": false,
-                        "description": "In videos for a batched operation, otherwise 0 or 1 for the one call.",
-                        "properties": {
-                          "applied": {
-                            "type": "integer"
-                          },
-                          "failed": {
-                            "type": "integer"
-                          },
-                          "total": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "total",
-                          "applied",
-                          "failed"
-                        ],
-                        "type": "object"
-                      },
-                      "created": {
-                        "description": "Names the operation creates, such as a tag to attach that does not exist yet.",
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      },
-                      "error": {
-                        "additionalProperties": false,
-                        "description": "The first failed call's screen API code and reason, or the code interrupted after a restart.",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "reason": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "code"
-                        ],
-                        "type": "object"
                       },
                       "finishedAt": {
                         "format": "date-time",
@@ -3044,27 +2943,6 @@
                       "id": {
                         "format": "int64",
                         "type": "integer"
-                      },
-                      "impact": {
-                        "additionalProperties": false,
-                        "description": "Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.",
-                        "properties": {
-                          "videos": {
-                            "type": "integer"
-                          }
-                        },
-                        "required": [
-                          "videos"
-                        ],
-                        "type": "object"
-                      },
-                      "irreversible": {
-                        "description": "From the catalog row; the card marks the change as one that cannot be undone.",
-                        "type": "boolean"
-                      },
-                      "operation": {
-                        "description": "The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.",
-                        "type": "string"
                       },
                       "request": {
                         "description": "The owner's text, as untranslated user data.",
@@ -3075,7 +2953,7 @@
                         "type": "string"
                       },
                       "status": {
-                        "description": "proposed waits for Execute; approved waits for the worker; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before the first call; failed changed nothing, or was stopped by a restart (error code interrupted); discarded was replaced by a follow-up.",
+                        "description": "proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.",
                         "enum": [
                           "proposed",
                           "approved",
@@ -3088,74 +2966,260 @@
                         ],
                         "type": "string"
                       },
-                      "targets": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "count": {
-                            "description": "Videos for a video target, otherwise the named entities.",
-                            "type": "integer"
-                          },
-                          "kind": {
-                            "description": "The catalog row's target kind; empty for a row that acts on its arguments alone.",
-                            "type": "string"
-                          },
-                          "labels": {
-                            "description": "The first 10 targets the card names.",
-                            "items": {
+                      "steps": {
+                        "items": {
+                          "additionalProperties": false,
+                          "description": "One write of a proposal: what the card shows for it and its progress.",
+                          "properties": {
+                            "change": {
+                              "description": "The arguments after resolution, one per argument, in the order the card shows them.",
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "argument": {
+                                    "description": "The argument name of the action outcome, such as tagNames or enabled.",
+                                    "type": "string"
+                                  },
+                                  "labels": {
+                                    "description": "The entities the argument names after resolution.",
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "id": {
+                                          "description": "The entity's id when the card showed it; absent when unknown.",
+                                          "format": "int64",
+                                          "type": "integer"
+                                        },
+                                        "kind": {
+                                          "enum": [
+                                            "video",
+                                            "tag",
+                                            "tagKind",
+                                            "person",
+                                            "organization",
+                                            "playlist",
+                                            "group",
+                                            "smartFolder",
+                                            "folderRoot"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "description": "The name the card showed, as untranslated user data.",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "name"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "value": {
+                                    "description": "A literal value, such as a boolean, a number or a date."
+                                  }
+                                },
+                                "required": [
+                                  "argument"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "counts": {
                               "additionalProperties": false,
+                              "description": "In videos for a batched operation, otherwise 0 or 1 for the one call.",
                               "properties": {
-                                "id": {
-                                  "description": "The entity's id when the card showed it; absent when unknown.",
-                                  "format": "int64",
+                                "applied": {
                                   "type": "integer"
                                 },
-                                "kind": {
-                                  "enum": [
-                                    "video",
-                                    "tag",
-                                    "tagKind",
-                                    "person",
-                                    "organization",
-                                    "playlist",
-                                    "group",
-                                    "smartFolder",
-                                    "folderRoot"
-                                  ],
+                                "failed": {
+                                  "type": "integer"
+                                },
+                                "total": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "total",
+                                "applied",
+                                "failed"
+                              ],
+                              "type": "object"
+                            },
+                            "created": {
+                              "description": "Names the operation creates, such as a tag to attach that does not exist yet.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "createdBy": {
+                              "description": "Names this step uses that an earlier step of the same proposal creates.",
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "name": {
+                                    "description": "The name as the card shows it, as untranslated user data.",
+                                    "type": "string"
+                                  },
+                                  "step": {
+                                    "description": "The index of the step that creates it.",
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "step"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "error": {
+                              "additionalProperties": false,
+                              "description": "The step's first failed call's screen API code, reason and English message, or the code interrupted after a restart.",
+                              "properties": {
+                                "code": {
                                   "type": "string"
                                 },
-                                "name": {
-                                  "description": "The name the card showed, as untranslated user data.",
+                                "message": {
+                                  "type": "string"
+                                },
+                                "reason": {
                                   "type": "string"
                                 }
                               },
                               "required": [
-                                "kind",
-                                "name"
+                                "code"
                               ],
                               "type": "object"
                             },
-                            "maxItems": 10,
-                            "type": "array"
-                          }
+                            "impact": {
+                              "additionalProperties": false,
+                              "description": "Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.",
+                              "properties": {
+                                "videos": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "videos"
+                              ],
+                              "type": "object"
+                            },
+                            "index": {
+                              "description": "Position in the card, from 0.",
+                              "type": "integer"
+                            },
+                            "irreversible": {
+                              "description": "From the catalog row; the card marks the change as one that cannot be undone.",
+                              "type": "boolean"
+                            },
+                            "operation": {
+                              "description": "The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.",
+                              "type": "string"
+                            },
+                            "status": {
+                              "description": "pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.",
+                              "enum": [
+                                "pending",
+                                "skipped",
+                                "running",
+                                "done",
+                                "partial",
+                                "stale",
+                                "failed",
+                                "notRun"
+                              ],
+                              "type": "string"
+                            },
+                            "targets": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "count": {
+                                  "description": "Videos for a video target, otherwise the named entities.",
+                                  "type": "integer"
+                                },
+                                "kind": {
+                                  "description": "The catalog row's target kind; empty for a row that acts on its arguments alone.",
+                                  "type": "string"
+                                },
+                                "labels": {
+                                  "description": "The first 10 targets the card names.",
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "id": {
+                                        "description": "The entity's id when the card showed it; absent when unknown.",
+                                        "format": "int64",
+                                        "type": "integer"
+                                      },
+                                      "kind": {
+                                        "enum": [
+                                          "video",
+                                          "tag",
+                                          "tagKind",
+                                          "person",
+                                          "organization",
+                                          "playlist",
+                                          "group",
+                                          "smartFolder",
+                                          "folderRoot"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "description": "The name the card showed, as untranslated user data.",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 10,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "count",
+                                "labels"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "index",
+                            "operation",
+                            "irreversible",
+                            "targets",
+                            "change",
+                            "created",
+                            "createdBy",
+                            "status",
+                            "counts"
+                          ],
+                          "type": "object"
                         },
-                        "required": [
-                          "kind",
-                          "count",
-                          "labels"
-                        ],
-                        "type": "object"
+                        "type": "array"
+                      },
+                      "turnId": {
+                        "description": "The turn that built the proposal; absent for an adoption from a review list.",
+                        "format": "int64",
+                        "type": "integer"
                       }
                     },
                     "required": [
                       "id",
                       "status",
                       "request",
-                      "operation",
-                      "irreversible",
-                      "targets",
-                      "change",
-                      "created",
-                      "counts"
+                      "steps"
                     ],
                     "type": "object"
                   },
@@ -3310,17 +3374,22 @@
         },
         {
           "in": "body",
-          "field": "/previous/proposal/change/*/labels/*/id",
-          "kind": ""
-        },
-        {
-          "in": "body",
           "field": "/previous/proposal/id",
           "kind": ""
         },
         {
           "in": "body",
-          "field": "/previous/proposal/targets/labels/*/id",
+          "field": "/previous/proposal/steps/*/change/*/labels/*/id",
+          "kind": ""
+        },
+        {
+          "in": "body",
+          "field": "/previous/proposal/steps/*/targets/labels/*/id",
+          "kind": ""
+        },
+        {
+          "in": "body",
+          "field": "/previous/proposal/turnId",
           "kind": ""
         },
         {
@@ -4658,7 +4727,7 @@
       "method": "POST",
       "path": "/api/assistant/proposals/{id}/execute",
       "summary": "Approve an assistant proposal for execution",
-      "description": "Owner-only; no body. Moves a proposed proposal to approved and returns it with 202; the assistant worker then executes exactly its stored plan in the background, in batches of 500 videos, and the progress follows assistant events. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field.",
+      "description": "Owner-only. Moves a proposed proposal to approved with the steps the owner kept, marks the others skipped and returns it with 202; the assistant worker then runs exactly the kept steps' stored plans in card order in the background, each in batches of 500 videos, stops at the first step that ends stale or with a failed batch, and the progress follows assistant events. No index, or an index the proposal does not have, returns 400 invalid_request. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field; a kept step that uses what an unticked step creates returns 409 step_needs_skipped with that kept step's index in the error's step field.",
       "owner": true,
       "response": "json",
       "pathParams": [
@@ -4666,6 +4735,23 @@
       ],
       "parameters": {
         "properties": {
+          "body": {
+            "additionalProperties": false,
+            "properties": {
+              "steps": {
+                "description": "The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped.",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "steps"
+            ],
+            "type": "object"
+          },
           "id": {
             "description": "Assistant proposal ID",
             "format": "int64",
@@ -4673,10 +4759,13 @@
           }
         },
         "required": [
-          "id"
+          "id",
+          "body"
         ],
         "type": "object"
       },
+      "body": true,
+      "bodyType": "application/json",
       "ids": [
         {
           "in": "path",

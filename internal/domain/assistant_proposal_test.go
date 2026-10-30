@@ -63,7 +63,7 @@ func TestAssistantPlanStale(t *testing.T) {
 			Videos: map[string]int64{"k1": 1, "k2": 2},
 		}
 	}
-	if plan.Stale(current()) {
+	if plan.Stale(current(), nil) {
 		t.Fatal("an unchanged plan is stale")
 	}
 
@@ -73,7 +73,7 @@ func TestAssistantPlanStale(t *testing.T) {
 		{Kind: AssistantLabelTag, Name: "Rewatch"},
 	}}}
 	creates.Created = []string{"Rewatch"}
-	if creates.Stale(current()) {
+	if creates.Stale(current(), nil) {
 		t.Error("a plan that creates its tag is stale")
 	}
 
@@ -84,17 +84,17 @@ func TestAssistantPlanStale(t *testing.T) {
 	gone := current()
 	delete(gone.Videos, "k2")
 	for name, c := range map[string]AssistantCurrent{"renamed tag": renamed, "deleted tag": deleted, "gone video": gone} {
-		if !plan.Stale(c) {
+		if !plan.Stale(c, nil) {
 			t.Errorf("%s: the plan is not stale", name)
 		}
 	}
 }
 
-func TestAssistantProposalIrreversibleFollowsCatalog(t *testing.T) {
+func TestAssistantStepIrreversibleFollowsCatalog(t *testing.T) {
 	for id, want := range map[string]bool{
 		"mergeTag": true, "batchTags.reject": true, "batchTags.confirm": false, "updateVideoTags.add": false,
 	} {
-		p := AssistantProposal{Plan: AssistantPlan{ActionID: id}}
+		p := AssistantStep{Plan: AssistantPlan{ActionID: id}}
 		if got := p.Irreversible(); got != want {
 			t.Errorf("%s: Irreversible = %v, want %v", id, got, want)
 		}

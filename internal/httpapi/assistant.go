@@ -16,9 +16,11 @@ type AssistantProposals interface {
 	// Turn returns domain.ErrAssistantTooManyVideos for a target over the selection limit, and the generator's
 	// domain.ErrOllama* causes when the model cannot answer.
 	Turn(ctx context.Context, in domain.AssistantTurnInput) (domain.AssistantTurnResult, error)
-	// Approve returns domain.ErrNotFound for a missing, discarded or expired proposal, and the proposal with
-	// domain.ErrAssistantProposalNotPending when it is no longer proposed.
-	Approve(ctx context.Context, id int64) (domain.AssistantProposal, error)
+	// Approve keeps the steps at the given indexes. It returns domain.ErrNotFound for a missing, discarded or
+	// expired proposal, the proposal with domain.ErrAssistantProposalNotPending when it is no longer proposed,
+	// domain.ErrAssistantStepsInvalid for an index it does not have, and *domain.AssistantStepNeedsSkippedError for
+	// a kept step that uses what an unticked one creates.
+	Approve(ctx context.Context, id int64, kept []int) (domain.AssistantProposal, error)
 	Proposal(ctx context.Context, id int64) (domain.AssistantProposal, error)
 	ActiveProposals(ctx context.Context) ([]domain.AssistantProposal, error)
 	// ReviewPage returns domain.ErrNotFound for a missing run and domain.ErrInvalidCursor for a cursor it did not
@@ -48,10 +50,25 @@ func (s *server) ExecuteAssistantProposal(w http.ResponseWriter, r *http.Request
 	if !s.assistantConfigured(w, id) {
 		return
 	}
-	p, err := s.assistant.Approve(r.Context(), id)
+	var body gen.AssistantExecution
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if len(body.Steps) == 0 {
+		s.invalidRequest(w, "Keep at least one step.")
+		return
+	}
+	p, err := s.assistant.Approve(r.Context(), id, body.Steps)
+	var needs *domain.AssistantStepNeedsSkippedError
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "The proposal does not exist or has expired.")
+	case errors.Is(err, domain.ErrAssistantStepsInvalid):
+		s.invalidRequest(w, "Keep only steps the proposal has.")
+	case errors.As(err, &needs):
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code: gen.ErrorCodeStepNeedsSkipped, Message: "A kept step uses what an unticked step creates.", Step: &needs.Step,
+		})
 	case errors.Is(err, domain.ErrAssistantProposalNotPending):
 		body := toAPIAssistantProposal(p)
 		s.writeErrorBody(w, http.StatusConflict, gen.Error{
@@ -103,23 +120,45 @@ func (s *server) ListAssistantProposals(w http.ResponseWriter, r *http.Request, 
 }
 
 func toAPIAssistantProposal(p domain.AssistantProposal) gen.AssistantProposal {
-	plan := p.Plan
+	body := gen.AssistantProposal{
+		Id: p.ID, Status: gen.AssistantProposalStatus(p.Status), Request: p.Request,
+		Steps: make([]gen.AssistantProposalStep, len(p.Steps)),
+	}
+	for i, step := range p.Steps {
+		body.Steps[i] = toAPIAssistantStep(i, step)
+	}
+	if p.TurnID != 0 {
+		body.TurnId = &p.TurnID
+	}
+	if p.ActivityID != 0 {
+		body.ActivityId = &p.ActivityID
+	}
+	if !p.StartedAt.IsZero() {
+		body.StartedAt = &p.StartedAt
+	}
+	if !p.FinishedAt.IsZero() {
+		body.FinishedAt = &p.FinishedAt
+	}
+	return body
+}
+
+func toAPIAssistantStep(index int, step domain.AssistantStep) gen.AssistantProposalStep {
+	plan := step.Plan
 	count := len(plan.Targets.Labels)
 	if len(plan.Targets.VideoKeys) > 0 {
 		count = len(plan.Targets.VideoKeys)
 	}
-	body := gen.AssistantProposal{
-		Id: p.ID, Status: gen.AssistantProposalStatus(p.Status), Request: p.Request, Operation: plan.ActionID,
-		Irreversible: p.Irreversible(),
+	body := gen.AssistantProposalStep{
+		Index: index, Operation: plan.ActionID, Irreversible: step.Irreversible(),
 		Targets: gen.AssistantProposalTargets{
 			Kind: string(plan.Targets.Kind), Count: count,
 			Labels: toAPIAssistantLabels(plan.Targets.Labels[:min(len(plan.Targets.Labels), assistantCardLabels)]),
 		},
-		Change:  make([]gen.AssistantChange, len(plan.Change)),
-		Created: append([]string{}, plan.Created...),
-		Counts: gen.AssistantProposalCounts{
-			Total: p.Counts.Total, Applied: p.Counts.Applied, Failed: p.Counts.Failed,
-		},
+		Change:    make([]gen.AssistantChange, len(plan.Change)),
+		Created:   append([]string{}, plan.Created...),
+		CreatedBy: make([]gen.AssistantCreatedBy, len(plan.CreatedBy)),
+		Status:    gen.AssistantStepStatus(step.Status),
+		Counts:    gen.AssistantProposalCounts{Total: step.Total, Applied: step.Applied, Failed: step.Failed},
 	}
 	for i, change := range plan.Change {
 		body.Change[i] = gen.AssistantChange{Argument: string(change.Argument)}
@@ -134,23 +173,20 @@ func toAPIAssistantProposal(p domain.AssistantProposal) gen.AssistantProposal {
 			body.Change[i].Value = value
 		}
 	}
+	for i, created := range plan.CreatedBy {
+		body.CreatedBy[i] = gen.AssistantCreatedBy{Name: created.Name, Step: created.Step}
+	}
 	if plan.Impact != nil {
 		body.Impact = &gen.AssistantImpact{Videos: plan.Impact.Videos}
 	}
-	if p.Error != nil {
-		body.Error = &gen.AssistantProposalError{Code: p.Error.Code}
-		if p.Error.Reason != "" {
-			body.Error.Reason = &p.Error.Reason
+	if step.Error != nil {
+		body.Error = &gen.AssistantProposalError{Code: step.Error.Code}
+		if step.Error.Reason != "" {
+			body.Error.Reason = &step.Error.Reason
 		}
-	}
-	if p.ActivityID != 0 {
-		body.ActivityId = &p.ActivityID
-	}
-	if !p.StartedAt.IsZero() {
-		body.StartedAt = &p.StartedAt
-	}
-	if !p.FinishedAt.IsZero() {
-		body.FinishedAt = &p.FinishedAt
+		if step.Error.Message != "" {
+			body.Error.Message = &step.Error.Message
+		}
 	}
 	return body
 }

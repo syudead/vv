@@ -38,7 +38,7 @@ func (f *fakeReviews) ReviewPage(_ context.Context, runID int64, _ string, limit
 
 func (f *fakeReviews) AdoptReviewCandidates(_ context.Context, _ int64, ids []int64) ([]domain.AssistantProposal, []int64, error) {
 	f.adopted = ids
-	return []domain.AssistantProposal{{ID: 30, Status: domain.AssistantApproved, Plan: domain.AssistantPlan{ActionID: "mergeTag"}}},
+	return []domain.AssistantProposal{{ID: 30, Status: domain.AssistantApproved, Steps: domain.NewAssistantSteps([]domain.AssistantPlan{{ActionID: "mergeTag"}})}},
 		[]int64{8}, nil
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,9 +20,9 @@ func batchedPlan(keys ...string) domain.AssistantPlan {
 	}
 }
 
-func createProposal(t *testing.T, db *DB, plan domain.AssistantPlan, at time.Time) domain.AssistantProposal {
+func createProposal(t *testing.T, db *DB, at time.Time, plans ...domain.AssistantPlan) domain.AssistantProposal {
 	t.Helper()
-	p, err := db.Assistant().CreateProposal(context.Background(), "タグを付けて", plan, at)
+	p, err := db.Assistant().CreateProposal(context.Background(), 0, "タグを付けて", plans, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,20 +41,20 @@ func assistantEntry(t *testing.T, db *DB, id int64) domain.ActivityEntry {
 func TestApproveAssistantProposalOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	p := createProposal(t, db, batchedPlan("k1"), assistantNow)
+	p := createProposal(t, db, assistantNow, batchedPlan("k1"))
 
-	approved, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow)
+	approved, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0}, assistantNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if approved.Status != domain.AssistantApproved || approved.ActivityID == 0 {
 		t.Fatalf("approved = %+v", approved)
 	}
-	again, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow)
+	again, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0}, assistantNow)
 	if !errors.Is(err, domain.ErrAssistantProposalNotPending) || again.ID != p.ID || again.Status != domain.AssistantApproved {
 		t.Fatalf("second approval = %+v, %v; want the approved row with not pending", again, err)
 	}
-	if _, err := db.Assistant().ApproveProposal(ctx, p.ID+1, assistantNow); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID+1, []int{0}, assistantNow); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing proposal: err = %v, want not found", err)
 	}
 	entry := assistantEntry(t, db, approved.ActivityID)
@@ -66,9 +68,9 @@ func TestApproveAssistantProposalOnce(t *testing.T) {
 func TestApproveExpiredAssistantProposalIsNotFound(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	p := createProposal(t, db, batchedPlan("k1"), assistantNow.Add(-domain.AssistantProposalTTL-time.Millisecond))
+	p := createProposal(t, db, assistantNow.Add(-domain.AssistantProposalTTL-time.Millisecond), batchedPlan("k1"))
 
-	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0}, assistantNow); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("approval after the TTL: err = %v, want not found", err)
 	}
 	stored, err := db.Assistant().Proposal(ctx, p.ID)
@@ -83,8 +85,8 @@ func TestApproveExpiredAssistantProposalIsNotFound(t *testing.T) {
 func TestAssistantRunEntryFollowsTheRun(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	p := createProposal(t, db, batchedPlan("k1", "k2", "k3"), assistantNow)
-	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow); err != nil {
+	p := createProposal(t, db, assistantNow, domain.AssistantPlan{ActionID: "createTag"}, batchedPlan("k1", "k2", "k3"))
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0, 1}, assistantNow); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,19 +104,22 @@ func TestAssistantRunEntryFollowsTheRun(t *testing.T) {
 		t.Fatalf("second claim: err = %v, want no job", err)
 	}
 
-	counts := domain.AssistantCounts{Total: 3, Applied: 2, Failed: 1}
-	if err := db.Assistant().FinishProposal(ctx, p.ID, domain.AssistantRunResult{
-		Status: domain.AssistantPartial, Counts: counts,
-		Error: &domain.AssistantProposalError{Code: "not_found", Reason: "video_not_found"},
-	}, assistantNow); err != nil {
+	steps := slices.Clone(claimed.Steps)
+	failure := &domain.AssistantProposalError{Code: "not_found", Reason: "video_not_found"}
+	steps[0].AssistantStepState = domain.AssistantStepState{Status: domain.AssistantStepDone, Total: 1, Applied: 1}
+	steps[1].AssistantStepState = domain.AssistantStepState{
+		Status: domain.AssistantStepPartial, Total: 3, Applied: 2, Failed: 1, Error: failure,
+	}
+	if err := db.Assistant().FinishProposal(ctx, p.ID, domain.NewAssistantRunResult(steps), assistantNow); err != nil {
 		t.Fatal(err)
 	}
 	finished, err := db.Assistant().Proposal(ctx, p.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finished.Status != domain.AssistantPartial || finished.Counts != counts || finished.Error == nil ||
-		finished.Error.Reason != "video_not_found" || finished.FinishedAt.IsZero() {
+	if finished.Status != domain.AssistantPartial || finished.Counts != (domain.AssistantCounts{Total: 4, Applied: 3, Failed: 1}) ||
+		finished.Error == nil || finished.Error.Reason != "video_not_found" || finished.FinishedAt.IsZero() ||
+		len(finished.Steps) != 2 || finished.Steps[1].Status != domain.AssistantStepPartial {
 		t.Errorf("finished = %+v", finished)
 	}
 	entry := assistantEntry(t, db, finished.ActivityID)
@@ -122,9 +127,70 @@ func TestAssistantRunEntryFollowsTheRun(t *testing.T) {
 	if err := json.Unmarshal([]byte(entry.Detail), &detail); err != nil {
 		t.Fatalf("detail %q: %v", entry.Detail, err)
 	}
-	if entry.Status != domain.ActivityDone || entry.Outcome != domain.ActivityPartial ||
-		detail != (domain.AssistantRunDetail{Operation: "updateVideoTags.add", Total: 3, Applied: 2, Failed: 1}) {
-		t.Errorf("entry = %s/%s %+v", entry.Status, entry.Outcome, detail)
+	want := domain.AssistantRunDetail{Total: 4, Applied: 3, Failed: 1, Steps: []domain.AssistantRunStep{
+		{Operation: "createTag", Status: domain.AssistantStepDone, Total: 1, Applied: 1},
+		{Operation: "updateVideoTags.add", Status: domain.AssistantStepPartial, Total: 3, Applied: 2, Failed: 1},
+	}}
+	if entry.Status != domain.ActivityDone || entry.Outcome != domain.ActivityPartial || !reflect.DeepEqual(detail, want) {
+		t.Errorf("entry = %s/%s %+v, want %+v", entry.Status, entry.Outcome, detail, want)
+	}
+}
+
+func TestApproveAssistantProposalSkipsUntickedSteps(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	needsFirst := batchedPlan("k1")
+	needsFirst.CreatedBy = []domain.AssistantCreatedBy{{Name: "Rewatch", Step: 0}}
+	p := createProposal(t, db, assistantNow, domain.AssistantPlan{ActionID: "createTag"}, needsFirst, batchedPlan("k2"))
+
+	var needs *domain.AssistantStepNeedsSkippedError
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{1, 2}, assistantNow); !errors.As(err, &needs) || needs.Step != 1 {
+		t.Fatalf("approval without the creating step: err = %v, want step 1 needs a skipped step", err)
+	}
+	approved, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0, 1}, assistantNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := db.Assistant().Proposal(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range []domain.AssistantProposal{approved, stored} {
+		if len(got.Steps) != 3 || got.Steps[0].Status != domain.AssistantStepPending ||
+			got.Steps[2].Status != domain.AssistantStepSkipped || got.Counts.Total != 2 {
+			t.Errorf("proposal = %+v, want the third step skipped and a total of 2", got)
+		}
+	}
+}
+
+// The step migration deletes the proposals the one-shot build stored, whose plan column holds a single plan, and
+// interrupts the unfinished run entry of an approved one, which no recovery reaches once its proposal is gone.
+func TestAssistantStepsMigrationDeletesOneShotProposals(t *testing.T) {
+	db, provider := migrateTo(t, 88)
+	execSQL(t, db, `insert into activity_entries (id, kind, feature, subject_kind, subject_key, subject_label, status,
+		reason, decider, created_at, updated_at) values
+		(7, 'assistant_run', 'assistant', 'proposal', '2', 'y', 'running', 'waiting', 'owner', 1, 1),
+		(8, 'assistant_run', 'assistant', 'proposal', '3', 'z', 'attention', 'failed', 'owner', 1, 1),
+		(9, 'import', 'import', 'video', 'k', 'v', 'running', 'waiting', 'rule', 1, 1)`)
+	execSQL(t, db, `insert into assistant_proposals (status, request, plan, created_at, activity_id)
+		values ('proposed', 'x', '{"actionId":"mergeTag"}', 1, null), ('approved', 'y', '{"actionId":"deleteTag"}', 2, 7),
+		('failed', 'z', '{"actionId":"deleteTag"}', 3, 8)`)
+
+	if _, err := provider.UpTo(context.Background(), 89); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]any{{int64(7), "attention", "interrupted", int64(1)}, {int64(8), "attention", "failed", int64(0)},
+		{int64(9), "running", "waiting", int64(0)}}
+	if got := queryRows(t, db.sql, `select id, status, reason, updated_at > 1 from activity_entries order by id`,
+		4); !reflect.DeepEqual(got, want) {
+		t.Errorf("activity entries after the migration = %v, want %v", got, want)
+	}
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from assistant_proposals`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("proposals after the migration = %d, want none", count)
 	}
 }
 
@@ -132,12 +198,12 @@ func TestExpireAssistantProposalsDeletesOldProposedOnly(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	cutoff := assistantNow.Add(-domain.AssistantProposalTTL)
-	old := createProposal(t, db, batchedPlan("k1"), cutoff.Add(-time.Minute))
-	oldApproved := createProposal(t, db, batchedPlan("k1"), cutoff.Add(-time.Minute))
-	if _, err := db.Assistant().ApproveProposal(ctx, oldApproved.ID, oldApproved.CreatedAt); err != nil {
+	old := createProposal(t, db, cutoff.Add(-time.Minute), batchedPlan("k1"))
+	oldApproved := createProposal(t, db, cutoff.Add(-time.Minute), batchedPlan("k1"))
+	if _, err := db.Assistant().ApproveProposal(ctx, oldApproved.ID, []int{0}, oldApproved.CreatedAt); err != nil {
 		t.Fatal(err)
 	}
-	recent := createProposal(t, db, batchedPlan("k1"), cutoff.Add(time.Minute))
+	recent := createProposal(t, db, cutoff.Add(time.Minute), batchedPlan("k1"))
 
 	deleted, err := db.Assistant().ExpireProposals(ctx, cutoff)
 	if err != nil {
@@ -162,7 +228,7 @@ func TestAssistantChangedIsPublishedAfterCommit(t *testing.T) {
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
-	p := createProposal(t, db, batchedPlan("k1"), assistantNow)
+	p := createProposal(t, db, assistantNow, batchedPlan("k1"))
 	if len(recorder.events) != 1 || recorder.events[0] != (domain.AssistantChanged{}) {
 		t.Fatalf("events after storing = %v", recorder.events)
 	}
@@ -171,7 +237,7 @@ func TestAssistantChangedIsPublishedAfterCommit(t *testing.T) {
 	}
 
 	recorder.events = nil
-	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow); err != nil {
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0}, assistantNow); err != nil {
 		t.Fatal(err)
 	}
 	want := map[domain.Event]bool{domain.AssistantChanged{}: false, domain.ActivityChanged{}: false}
@@ -186,7 +252,7 @@ func TestAssistantChangedIsPublishedAfterCommit(t *testing.T) {
 
 	// A refused approval changes nothing and publishes nothing.
 	recorder.events = nil
-	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, assistantNow); !errors.Is(err, domain.ErrAssistantProposalNotPending) {
+	if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0}, assistantNow); !errors.Is(err, domain.ErrAssistantProposalNotPending) {
 		t.Fatal(err)
 	}
 	if len(recorder.events) != 0 {
@@ -197,15 +263,20 @@ func TestAssistantChangedIsPublishedAfterCommit(t *testing.T) {
 func TestRecoverAssistantProposals(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	proposed := createProposal(t, db, batchedPlan("k1"), assistantNow)
-	running := createProposal(t, db, batchedPlan("k1"), assistantNow)
-	waiting := createProposal(t, db, batchedPlan("k1"), assistantNow)
-	for _, id := range []int64{running.ID, waiting.ID} {
-		if _, err := db.Assistant().ApproveProposal(ctx, id, assistantNow); err != nil {
+	proposed := createProposal(t, db, assistantNow, batchedPlan("k1"))
+	running := createProposal(t, db, assistantNow, batchedPlan("k1"), batchedPlan("k2"))
+	waiting := createProposal(t, db, assistantNow, batchedPlan("k1"))
+	for _, p := range []domain.AssistantProposal{running, waiting} {
+		if _, err := db.Assistant().ApproveProposal(ctx, p.ID, []int{0, len(p.Steps) - 1}, assistantNow); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Assistant().ClaimProposal(ctx, assistantNow); err != nil {
+	claimed, err := db.Assistant().ClaimProposal(ctx, assistantNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed.Steps[0].Status = domain.AssistantStepRunning
+	if err := db.Assistant().RecordProgress(ctx, claimed.ID, claimed.Steps, assistantNow); err != nil {
 		t.Fatal(err)
 	}
 
@@ -221,6 +292,10 @@ func TestRecoverAssistantProposals(t *testing.T) {
 	}
 	if failed.Status != domain.AssistantFailed || failed.Error == nil || failed.Error.Code != domain.AssistantInterrupted {
 		t.Errorf("running after recovery = %+v", failed)
+	}
+	if steps := failed.Steps; len(steps) != 2 || steps[0].Status != domain.AssistantStepFailed || steps[0].Error == nil ||
+		steps[0].Error.Code != domain.AssistantInterrupted || steps[1].Status != domain.AssistantStepNotRun {
+		t.Errorf("steps after recovery = %+v, want the running step interrupted and the next not run", steps)
 	}
 	if entry := assistantEntry(t, db, failed.ActivityID); entry.Status != domain.ActivityAttention ||
 		entry.Reason != domain.ActivityInterrupted {
@@ -387,7 +462,7 @@ func TestAssistantFindSimilarNamesMatchesPartOfAName(t *testing.T) {
 func TestAssistantDiscardProposalOnlyWhileProposed(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	p := createProposal(t, db, batchedPlan("k1"), assistantNow)
+	p := createProposal(t, db, assistantNow, batchedPlan("k1"))
 	if err := db.Assistant().DiscardProposal(ctx, p.ID, assistantNow); err != nil {
 		t.Fatal(err)
 	}

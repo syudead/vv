@@ -265,6 +265,7 @@ const errorCodes = {
     "A smart folder can't be put inside itself or inside one of its children.",
   ollama_unreachable: "Ollama can't be reached at the saved URL",
   proposal_not_pending: "This proposal was already handled",
+  step_needs_skipped: "A kept step needs a step that is not ticked",
   assistant_not_ready: "Choose a model for the assistant in Settings, Connections.",
   assistant_unavailable: "The generation model couldn't answer. Nothing was changed.",
   service_unavailable: "This isn't available right now. Try again later.",

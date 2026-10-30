@@ -681,6 +681,7 @@ var idActionBodyPaths = []struct{ prefix, action string }{
 	{"/api/peer/videos/", "fetched-work-info"},
 	{"/api/peer/people/", "fetched-person"},
 	{"/api/virtual-videos/", "merge"},
+	{"/api/assistant/proposals/", "execute"},
 }
 
 func requiresPostJSONBody(path string) bool {

@@ -136,7 +136,7 @@ describe("entryResult", () => {
     ).toBe("− cat · by you");
   });
 
-  it("reads an assistant run's operation and counts from its detail", () => {
+  it("reads an assistant run's operations and counts from its detail", () => {
     const run: Partial<ActivityEntry> = {
       kind: "assistant_run",
       feature: "assistant",
@@ -149,10 +149,12 @@ describe("entryResult", () => {
           ...run,
           outcome: "partial",
           detail:
-            '{"operation":"updateVideoTags.add","total":1200,"applied":1000,"failed":200}',
+            '{"total":1201,"applied":1001,"failed":200,"steps":[' +
+            '{"operation":"createTag","status":"done","total":1,"applied":1,"failed":0},' +
+            '{"operation":"updateVideoTags.add","status":"partial","total":1200,"applied":1000,"failed":200}]}',
         }),
       ),
-    ).toBe("Add tags · 1,000 changed · 200 failed");
+    ).toBe("Create tag · Add tags · 1,001 changed · 200 failed");
     expect(
       resultText(
         entry({

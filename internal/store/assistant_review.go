@@ -344,12 +344,12 @@ func currentReviewMembers(ctx context.Context, tx *sql.Tx, c *domain.AssistantRe
 	return nil
 }
 
-// AdoptReviewCandidate marks a listed candidate adopted and stores its plan as one approved proposal with its
+// AdoptReviewCandidate marks a listed candidate adopted and stores its plan as one approved proposal of one step with its
 // assistant_run entry, in one transaction; a candidate that is not listed is domain.ErrAssistantCandidateNotListed.
 func (s *AssistantStore) AdoptReviewCandidate(
 	ctx context.Context, candidateID int64, request string, plan domain.AssistantPlan, now time.Time,
 ) (domain.AssistantProposal, error) {
-	return s.storeProposal(ctx, request, plan, now, func(tx *sql.Tx, c *changes, p domain.AssistantProposal) (domain.AssistantProposal, error) {
+	return s.storeProposal(ctx, 0, request, []domain.AssistantPlan{plan}, now, func(tx *sql.Tx, c *changes, p domain.AssistantProposal) (domain.AssistantProposal, error) {
 		result, err := tx.ExecContext(ctx, `update assistant_review_candidates set state = ?, proposal_id = ?
 			where id = ? and state = ?`, string(domain.AssistantCandidateAdopted), p.ID, candidateID,
 			string(domain.AssistantCandidateListed))
@@ -363,7 +363,7 @@ func (s *AssistantStore) AdoptReviewCandidate(
 		if affected != 1 {
 			return domain.AssistantProposal{}, domain.ErrAssistantCandidateNotListed
 		}
-		return approveAssistantProposal(ctx, tx, c, p.ID, now)
+		return approveAssistantProposal(ctx, tx, c, p.ID, []int{0}, now)
 	})
 }
 
