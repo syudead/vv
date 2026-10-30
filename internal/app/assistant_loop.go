@@ -118,15 +118,42 @@ func (a *Assistant) waitTurns(ctx context.Context, timer <-chan time.Time) {
 	}
 }
 
+// StopTurn cancels the running turn with the id, which then ends as cancelled; any other turn answers
+// domain.ErrAssistantTurnNotRunning.
+func (a *Assistant) StopTurn(id int64) error {
+	a.runningMu.Lock()
+	defer a.runningMu.Unlock()
+	if a.runningID != id || a.cancelRunning == nil {
+		return domain.ErrAssistantTurnNotRunning
+	}
+	a.cancelRunning()
+	return nil
+}
+
 // runTurn runs the loop and stores how the turn ended; a storage failure inside the loop ends it interrupted.
 func (a *Assistant) runTurn(ctx context.Context, runner ActionRunner, turn domain.AssistantTurn) {
+	turnCtx, cancel := context.WithCancel(ctx)
+	a.runningMu.Lock()
+	a.runningID, a.cancelRunning = turn.ID, cancel
+	a.runningMu.Unlock()
+	defer cancel()
 	loop := newTurnLoop(a, runner, turn)
-	err := loop.run(ctx)
-	if err == nil {
+	err := loop.run(turnCtx)
+	// From here a Stop is refused: the turn either ended cancelled or builds its proposal whole.
+	a.runningMu.Lock()
+	cancelled := turnCtx.Err() != nil
+	a.runningID, a.cancelRunning = 0, nil
+	a.runningMu.Unlock()
+	if err == nil && !cancelled {
 		err = loop.propose(ctx)
 	}
 	if ctx.Err() != nil {
 		return
+	}
+	if cancelled {
+		// The owner stopped it; what the loop held is dropped, the progress so far is kept.
+		err = nil
+		loop.stop(domain.AssistantStopCancelled)
 	}
 	if err != nil {
 		a.logger.Error("the assistant turn failed", slog.Int64("turn", turn.ID), slog.Any("error", err))
@@ -146,14 +173,13 @@ type turnLoop struct {
 	a        *Assistant
 	runner   ActionRunner
 	turn     domain.AssistantTurn
-	deadline time.Time
 	messages []domain.ChatMessage
 	tools    *turnTools
 	// evidence holds what the grounding check accepts: the request, the screen, today's date and every tool result.
-	evidence   strings.Builder
-	modelCalls int
-	toolCalls  int
-	corrected  bool
+	evidence  strings.Builder
+	corrected bool
+	// lastRoundKey is the previous reply's calls, for telling a loop.
+	lastRoundKey string
 	// prompted marks a turn whose empty reply already received its correction round.
 	prompted bool
 	// viewed marks a turn whose model looked at images with view_images.
@@ -173,8 +199,7 @@ type turnLoop struct {
 
 func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *turnLoop {
 	l := &turnLoop{
-		a: a, runner: runner, turn: turn, deadline: turn.StartedAt.Add(domain.AssistantTurnBudget),
-		tools: newTurnTools(runner.Tools()),
+		a: a, runner: runner, turn: turn, tools: newTurnTools(runner.Tools()),
 	}
 	l.tools.builtins = a.builtinDefinitions()
 	return l
@@ -182,8 +207,6 @@ func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *
 
 // run returns an error only for a storage failure; every other ending is the turn's status.
 func (l *turnLoop) run(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, l.deadline.Sub(l.a.now()))
-	defer cancel()
 	system, err := l.systemMessage(ctx)
 	if err != nil {
 		return err
@@ -194,15 +217,10 @@ func (l *turnLoop) run(ctx context.Context) error {
 		{Role: domain.ChatRoleUser, Content: "<request>" + dataText.Replace(l.turn.Request) + "</request>"},
 	}
 	for {
-		if l.modelCalls >= domain.AssistantModelCallMax {
-			l.stop(domain.AssistantStopStepLimit)
+		if ctx.Err() != nil {
+			l.stop(domain.AssistantStopCancelled)
 			return nil
 		}
-		if l.expired(ctx) {
-			l.stop(domain.AssistantStopTimeout)
-			return nil
-		}
-		l.modelCalls++
 		tools := append(l.tools.definitions(), l.imageDefinitions()...)
 		l.fitContext(tools)
 		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: tools})
@@ -226,11 +244,6 @@ func (l *turnLoop) run(ctx context.Context) error {
 	}
 }
 
-// expired reports whether the budget is spent, by the context or by the assistant's clock.
-func (l *turnLoop) expired(ctx context.Context) bool {
-	return ctx.Err() != nil || !l.a.now().Before(l.deadline)
-}
-
 func (l *turnLoop) stop(reason domain.AssistantStopReason) {
 	l.turn.Status, l.turn.Stop = domain.AssistantTurnStopped, &domain.AssistantTurnStop{Reason: reason}
 	l.turn.Answer = ""
@@ -239,7 +252,9 @@ func (l *turnLoop) stop(reason domain.AssistantStopReason) {
 // chatStop maps a model call failure to the reason the panel shows.
 func (l *turnLoop) chatStop(ctx context.Context, err error) domain.AssistantStopReason {
 	switch {
-	case l.expired(ctx), errors.Is(err, domain.ErrOllamaTimeout), errors.Is(err, context.DeadlineExceeded):
+	case ctx.Err() != nil:
+		return domain.AssistantStopCancelled
+	case errors.Is(err, domain.ErrOllamaTimeout), errors.Is(err, context.DeadlineExceeded):
 		return domain.AssistantStopTimeout
 	case errors.Is(err, domain.ErrOllamaUnreachable), errors.Is(err, domain.ErrNotOllama):
 		return domain.AssistantStopConnection
@@ -248,23 +263,25 @@ func (l *turnLoop) chatStop(ctx context.Context, err error) domain.AssistantStop
 	return domain.AssistantStopModel
 }
 
-// callTools runs the reply's calls in order and reports whether the turn ended.
+// callTools runs the reply's calls in order and reports whether the turn ended. A reply that repeats the previous
+// reply's calls exactly, whose results the model still holds, is a loop and ends the turn as step_limit.
 func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool, error) {
+	round := callsKey(reply.ToolCalls)
+	if round == l.lastRoundKey {
+		l.stop(domain.AssistantStopStepLimit)
+		return true, nil
+	}
+	l.lastRoundKey = round
 	l.messages = append(l.messages, domain.ChatMessage{
 		Role: domain.ChatRoleAssistant, Content: reply.Text, ToolCalls: reply.ToolCalls,
 	})
 	for _, call := range reply.ToolCalls {
-		if l.toolCalls >= domain.AssistantToolCallMax {
-			l.stop(domain.AssistantStopStepLimit)
-			return true, nil
-		}
-		l.toolCalls++
 		content, err := l.call(ctx, call)
 		if err != nil || l.turn.Status == domain.AssistantTurnClarify {
 			return true, err
 		}
-		if l.expired(ctx) {
-			l.stop(domain.AssistantStopTimeout)
+		if ctx.Err() != nil {
+			l.stop(domain.AssistantStopCancelled)
 			return true, nil
 		}
 		l.evidence.WriteString(content + "\n")
@@ -296,8 +313,8 @@ func (l *turnLoop) answer(ctx context.Context, text string) (bool, error) {
 		return true, nil
 	}
 	if l.corrected {
-		l.stop(domain.AssistantStopUngrounded)
-		l.turn.Stop.Detail = strings.Join(ungrounded, ", ")
+		// The answer is shown with the items the check did not find, for the owner to judge.
+		l.turn.Status, l.turn.Answer, l.turn.Judged, l.turn.Unchecked = domain.AssistantTurnDone, text, l.judged, ungrounded
 		return true, nil
 	}
 	l.corrected = true
@@ -335,4 +352,13 @@ func emptyReplyDetail(u domain.ChatUsage) string {
 	}
 	return fmt.Sprintf("done_reason %q, prompt %d tokens, output %d tokens, reasoning %d characters, context %d tokens",
 		u.DoneReason, u.PromptTokens, u.OutputTokens, u.ThinkingChars, u.ContextTokens)
+}
+
+// callsKey is the calls' names and arguments in order, which tells a repeated reply apart.
+func callsKey(calls []domain.ToolCall) string {
+	var b strings.Builder
+	for _, call := range calls {
+		b.WriteString(domain.AssistantToolNameFromModel(call.Name) + "\x00" + string(call.Arguments) + "\x00")
+	}
+	return b.String()
 }

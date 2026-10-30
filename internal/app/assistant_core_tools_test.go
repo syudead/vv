@@ -69,9 +69,10 @@ func TestScreenContextAnswersTheSelectedVideosAndTheFilter(t *testing.T) {
 	}
 }
 
-func TestScreenContextBoundsALargeSelectionAndKeepsItsCount(t *testing.T) {
+func TestScreenContextNamesTheWholeSelection(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("screen_context", `{}`)), text("60 個のグループを選んでいます。"))
-	names := map[int64]string{1: strings.Repeat("a", domain.AssistantResultTextMax+100)}
+	long := strings.Repeat("a", 600)
+	names := map[int64]string{1: long}
 	ids := []int64{1}
 	for id := int64(2); id <= 60; id++ {
 		names[id] = "Group"
@@ -88,12 +89,8 @@ func TestScreenContextBoundsALargeSelectionAndKeepsItsCount(t *testing.T) {
 
 	var got screenResult
 	toolResult(t, f.chat, 0, &got)
-	if len(got.SelectedGroups) != domain.AssistantResultItemMax || got.SelectedGroupCount != 60 {
-		t.Errorf("selected groups = %d of %d, want %d of 60", len(got.SelectedGroups), got.SelectedGroupCount,
-			domain.AssistantResultItemMax)
-	}
-	if name := got.SelectedGroups[0].Name; !strings.HasSuffix(name, "…[cut: 600 characters in all]") {
-		t.Errorf("long name = %q, want it cut with its length", name)
+	if len(got.SelectedGroups) != 60 || got.SelectedGroupCount != 60 || got.SelectedGroups[0].Name != long {
+		t.Errorf("selected groups = %d of %d, want all 60 with their names", len(got.SelectedGroups), got.SelectedGroupCount)
 	}
 }
 

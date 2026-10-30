@@ -209,17 +209,24 @@ func TestTurnLoopNamesTheShownVideoAndItsIDInTheSystemMessage(t *testing.T) {
 	}
 }
 
-func TestFindToolsLoadsOnlyItsFirstMatches(t *testing.T) {
+func TestFindToolsLoadsTheSchemasThatFitItsBudget(t *testing.T) {
 	registry := []domain.AssistantTool{}
 	for _, name := range []string{"frameA", "frameB", "frameC", "frameD"} {
-		registry = append(registry, domain.AssistantTool{Name: name, Kind: domain.AssistantToolRead, Summary: "video frame"})
+		registry = append(registry, domain.AssistantTool{
+			Name: name, Kind: domain.AssistantToolRead, Summary: "video frame", Description: strings.Repeat("d", 100),
+		})
 	}
 	tools := newTurnTools(registry)
 
-	found, _ := tools.find("video frame")
+	found, _ := tools.find("video frame", 250)
 
-	if len(found) != 4 || !slices.Equal(tools.offered, []string{"frameA", "frameB", "frameC"}) {
-		t.Fatalf("found %d, offered %v; want 4 answered and the first 3 loaded", len(found), tools.offered)
+	if len(found) != 4 || !slices.Equal(tools.offered, []string{"frameA", "frameB"}) {
+		t.Fatalf("found %d, offered %v; want all 4 answered and the 2 that fit loaded", len(found), tools.offered)
+	}
+	tools = newTurnTools(registry)
+	tools.find("video frame", 0)
+	if len(tools.offered) != 4 {
+		t.Fatalf("offered %v, want every match loaded without a reported context", tools.offered)
 	}
 }
 
@@ -267,34 +274,37 @@ func TestTurnLoopAnswersBadCallsAsErrorResults(t *testing.T) {
 	}
 }
 
-func TestTurnLoopStopsBeforeAThirteenthModelCall(t *testing.T) {
-	var replies []domain.ChatReply
-	for range domain.AssistantModelCallMax {
-		replies = append(replies, calls(toolCall("listTags", `{}`)))
-	}
-	f := newLoopFixture(t, replies...)
+func TestTurnLoopStopsWhenAReplyRepeatsTheLastCalls(t *testing.T) {
+	f := newLoopFixture(t, calls(toolCall("listTags", `{}`)), calls(toolCall("listTags", `{}`)))
 
 	turn := f.run(t, request)
 
-	if len(f.chat.requests) != domain.AssistantModelCallMax {
-		t.Fatalf("model calls = %d, want %d", len(f.chat.requests), domain.AssistantModelCallMax)
-	}
 	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopStepLimit {
-		t.Fatalf("turn = %+v", turn)
+		t.Fatalf("turn = %+v, want step_limit", turn)
+	}
+	if len(f.runner.reads) != 1 || len(f.chat.requests) != 2 {
+		t.Fatalf("reads = %d, model calls = %d; want the repeat not run", len(f.runner.reads), len(f.chat.requests))
 	}
 }
 
-func TestTurnLoopStopsWhenTheBudgetPassesDuringATool(t *testing.T) {
+func TestStopTurnCancelsTheRunningTurn(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("listTags", `{}`), toolCall("listPeople", `{}`)))
-	f.runner.during = func() { f.now = f.now.Add(domain.AssistantTurnBudget) }
+	f.runner.during = func() {
+		if err := f.a.StopTurn(1); err != nil {
+			t.Errorf("StopTurn: %v", err)
+		}
+	}
 
 	turn := f.run(t, request)
 
-	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopTimeout {
-		t.Fatalf("turn = %+v", turn)
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopCancelled {
+		t.Fatalf("turn = %+v, want cancelled", turn)
 	}
 	if len(f.runner.reads) != 1 || len(f.chat.requests) != 1 {
-		t.Fatalf("reads = %d, model calls = %d; want nothing after the budget", len(f.runner.reads), len(f.chat.requests))
+		t.Fatalf("reads = %d, model calls = %d; want nothing after the stop", len(f.runner.reads), len(f.chat.requests))
+	}
+	if err := f.a.StopTurn(1); !errors.Is(err, domain.ErrAssistantTurnNotRunning) {
+		t.Fatalf("StopTurn after the end = %v, want ErrAssistantTurnNotRunning", err)
 	}
 }
 
@@ -309,9 +319,9 @@ func TestTurnLoopCorrectsAnUngroundedAnswerOnce(t *testing.T) {
 	if last := correction[len(correction)-1]; last.Role != domain.ChatRoleUser || !strings.Contains(last.Content, "42") {
 		t.Fatalf("correction = %+v", last)
 	}
-	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopUngrounded || turn.Answer != "" ||
-		turn.Stop.Detail != "43" {
-		t.Fatalf("turn = %+v, want ungrounded with no answer and 43 as the detail", turn)
+	if turn.Status != domain.AssistantTurnDone || turn.Answer != "There are 43 videos." ||
+		!slices.Equal(turn.Unchecked, []string{"43"}) {
+		t.Fatalf("turn = %+v, want the answer shown with 43 unchecked", turn)
 	}
 }
 

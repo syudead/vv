@@ -104,7 +104,7 @@ const scripts: Record<string, Reply[]> = {
   ],
   [excludedText]: [call("createApiToken"), { text: "ここではできません。" }],
   [loopText]: [call("listTags")],
-  // 99 is in no tool result, so the grounding check refuses the answer twice.
+  // 99 is in no tool result, so the answer is shown with 99 as unchecked.
   [ungroundedText]: [call("listVideos"), { text: "再生回数は99回です。" }],
 };
 
@@ -543,22 +543,22 @@ test.describe.serial("assistant", () => {
     );
   });
 
-  test("a request stops at the step limit and at an answer no tool supports", async ({
+  test("a request stops when the model repeats its calls, and an unchecked answer is marked", async ({
     page,
   }) => {
     await page.goto("/");
     await openPanel(page);
     await ask(page, loopText);
     await expect(
-      panel(page).getByText(/^Stopped: the request needed more steps/),
+      panel(page).getByText(/^Stopped: the model repeated the same tool calls/),
     ).toBeVisible();
 
     await ask(page, ungroundedText);
+    await expect(panel(page).getByText("再生回数は99回です。")).toBeVisible();
     await expect(
-      panel(page).getByText("The answer named facts the assistant hadn’t checked", {
+      panel(page).getByText("Not found in what the assistant read: 99.", {
         exact: false,
       }),
     ).toBeVisible();
-    await expect(panel(page).getByText("再生回数は99回です。")).toHaveCount(0);
   });
 });

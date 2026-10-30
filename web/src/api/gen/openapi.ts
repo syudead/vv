@@ -1157,7 +1157,7 @@ export interface paths {
         put?: never;
         /**
          * Start one request as a server-side turn
-         * @description Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers or a limit stops it: at most 12 model calls and 40 tool calls, and 10 minutes from the start. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. text over 500 characters, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.
+         * @description Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers, repeats its previous tool calls exactly, or the owner stops it with stopAssistantTurn. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. Empty text, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId.
          */
         post: operations["createAssistantTurn"];
         delete?: never;
@@ -1180,6 +1180,26 @@ export interface paths {
         get: operations["getAssistantTurn"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turns/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop the running assistant turn
+         * @description Owner-only. Cancels the running turn with this id; it then ends stopped with reason cancelled, keeping its progress and building no proposal. A turn that is not running returns 409 conflict.
+         */
+        post: operations["stopAssistantTurn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4342,8 +4362,10 @@ export interface components {
             /** Format: date-time */
             finishedAt?: string;
             progress: components["schemas"]["AssistantProgressItem"][];
-            /** @description The model's final text in the request's language, after every number and library name in it was found in this turn's tool results, the request, the screen or today's date. It is model text: show it as plain text. */
+            /** @description The model's final text in the request's language. It is model text: show it as plain text. */
             answer?: string;
+            /** @description Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images. */
+            unchecked?: string[];
             /** @description The answer used the classifier's answers, which are estimates. */
             judged: boolean;
             directive?: components["schemas"]["AssistantDirective"];
@@ -4394,10 +4416,10 @@ export interface components {
             kind: components["schemas"]["AssistantLabelKind"];
             candidates: components["schemas"]["AssistantCandidate"][];
         };
-        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
+        /** @description Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal. */
         AssistantTurnStop: {
             /** @enum {string} */
-            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "ungrounded";
+            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "ungrounded" | "cancelled";
             /** @description For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis. */
             detail?: string;
             excluded?: components["schemas"]["AssistantExcludedOperation"];
@@ -10645,6 +10667,30 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    stopAssistantTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Assistant turn ID */
+                id: components["parameters"]["AssistantTurnId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The turn is stopping */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listAssistantProposals: {

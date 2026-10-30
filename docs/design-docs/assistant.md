@@ -38,10 +38,10 @@ always sees `find_tools` and the core reads (`listVideos`, `getVideo`,
 `listTags`, `listPeople`, `listOrganizations`). `find_tools` searches every
 other tool of [the registry](#the-tool-registry-classifies-every-operation)
 by words over its name, summary and description, answers up to 15 with their
-kind and, for an excluded one, the reason and page, and adds the first 3 read
-and write tools it found to the later calls of the same turn, since every
-loaded schema is sent again on each call and 15 of them fill much of the
-context. A call to a read or
+kind and, for an excluded one, the reason and page, for every match, and adds
+the best read and write tools to the later calls of the same turn while their
+schemas fit a quarter of the prompt, since every loaded schema is sent again
+on each call. A call to a read or
 write tool of the registry that is not offered yet runs and loads it as well,
 since models often call a tool they know by name without searching first. The
 system message names the screen's route and, for a page that shows one item,
@@ -51,7 +51,7 @@ are also always offered
 
 | Tool | What it does |
 | --- | --- |
-| `screen_context` | Answers the route and the entity it shows, the selected videos (id and title, the first 50, with the count), the selected groups and smart folders (the first 50 of each, with the count), and the library filter with the names its ids point at |
+| `screen_context` | Answers the route and the entity it shows, the selected videos (id and title, with the count), the selected groups and smart folders (each with the count), and the library filter with the names its ids point at |
 | `app_help` | Searches the page table in `internal/domain` (route, title and what the page is for, in the screens' own labels) and the operations' summaries by the query's English words, and answers the pages and operations that match; an excluded operation carries its reason and page. A query that matches nothing answers every page title, so the model can search again |
 | `show_in_library` | Resolves the shipped filter fields as a filter that only reads, answers the conditions with the names and the number of matching videos, and sets the turn's `filter` directive |
 | `open_page` | Resolves the shipped navigation fields and sets the turn's `navigate` directive |
@@ -68,18 +68,18 @@ flowchart LR
   empty -->|yes| ground[Grounding check]
   ground -->|pass| done[Turn done with the answer]
   ground -->|fail once| call
-  ground -->|fail twice| ungrounded[Stopped: ungrounded]
-  reply -->|yes| each[Run each call, record progress]
-  each --> limit{Limits left?}
-  limit -->|yes| call
-  limit -->|no| stop[Stopped: step_limit or timeout]
+  ground -->|fail twice| unchecked[Turn done with the answer and its unchecked items]
+  reply -->|yes| repeat{Same calls as the last reply?}
+  repeat -->|yes| stop[Stopped: step_limit]
+  repeat -->|no| each[Run each call, record progress]
+  each --> call
 ```
 
 | Rule | Why |
 | --- | --- |
-| A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
-| A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 8 KB, each cut marked with the original length | The context also holds the tools and earlier results; `total` fields keep the counts |
-| Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the model's context, as the last reply reported it, less 4,096 tokens, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
+| A turn has no count or time limit: it ends when the model answers, when a reply repeats the previous reply's calls exactly, or when the owner presses `Stop` (`stopAssistantTurn`), which cancels its context; once the model has answered, `Stop` is refused while the proposal is stored, so a stopped turn never leaves a proposal | A fixed budget cut off requests a model could finish; an exact repeat, whose results the model still holds, is the loop a limit was meant to catch |
+| A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as the whole JSON | Only the context fitting below cuts it, by the model's own context |
+| Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the model's context, as the last reply reported it, less a quarter for the reply; past that whole earlier rounds give way, oldest first, to one note, and then the latest round's longest results are cut, each with a note of its full size, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
 | A tool reaches the model under a name with each `.` written `__` (`updateVideoTags__add`), and a call's name is turned back before anything runs; progress items, steps and excluded operations keep the tool's own name | Providers accept only function names matching `^[a-zA-Z0-9_-]{1,64}$`, and Workers AI's Mistral refuses the whole request over one dotted name |
 | A reply with neither text nor tool calls gets one correction round that asks for text or a tool call; a second one stops the turn as `model` | Some models leave the call in their reasoning, and an empty reply is no answer |
@@ -106,20 +106,22 @@ and letters and digits together, so the tag `ライブ` is not mentioned in
 "lively". A name written in hiragana and followed by a particle therefore goes
 unchecked; the rule prefers that to stopping ordinary answers. The first
 failure goes back to the model as one correction round that lists the
-unsupported items; a second failure stops the turn as `ungrounded` with no
-answer text and the unsupported items as `detail`. A turn whose model looked at
+unsupported items; after a second failure the turn ends `done` with the answer
+and the unsupported items as `unchecked`, which the panel shows under it for
+the owner to judge. A turn whose model looked at
 images with `view_images` skips the check: what it saw is in no text result.
 
 | Ending | Turn | Kept |
 | --- | --- | --- |
 | Text that passes the grounding check | `done` with the answer | The progress and the proposal |
-| 12 model calls or 40 tool calls used | `stopped`, `step_limit` | The progress |
-| 10 minutes passed, or the model call timed out | `stopped`, `timeout` | The progress |
+| A reply repeats the previous reply's calls exactly | `stopped`, `step_limit` | The progress |
+| The owner pressed `Stop` | `stopped`, `cancelled` | The progress; no proposal |
+| The model's request timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
 | The model is missing or answers an `error` | `stopped`, `model`, with Ollama's error as `detail` | The progress |
 | Two replies with neither text nor tool calls | `stopped`, `no_answer`, with the last reply's `done_reason`, token counts and reasoning length as `detail` | The progress |
 | A write call whose name needs the owner's choice | `clarify` with the name and its candidates | The progress; no proposal |
-| Two answers that fail the grounding check, in a turn that did not look at images | `stopped`, `ungrounded`, with the unsupported items as `detail` | The progress and the proposal |
+| Two answers that fail the grounding check, in a turn that did not look at images | `done` with the answer and its `unchecked` items | The progress and the proposal |
 | An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |
 | The server stopped during the turn | `interrupted` at the next start | The progress |
 
@@ -290,7 +292,7 @@ change.
 ## Write calls become steps
 
 Each write call of a turn is resolved into one step, and the turn's steps
-become one proposal when the turn ends `done`, or `stopped` as `ungrounded`
+become one proposal when the turn ends `done`
 ([`assistant_loop_write.go`](../../internal/app/assistant_loop_write.go)). The
 tool result tells the model the step's number and what it proposes, and that
 nothing has changed. A follow-up turn that builds a proposal discards the
@@ -309,7 +311,6 @@ pending proposal of the turn it follows.
 | A name that an earlier create step of the turn makes resolves to that step: the step carries `createdBy`, a tag input goes by name, and an id in a path parameter or a top-level body field is filled from that step's response (`stepIds`); a nested id is refused | The entity has no id when the card is shown |
 | A fetch-apply row (`applyWorkInfoFetch`, `applyPersonPluginFetch`) takes the `fetchId` of a fetch read in the same turn and the field names; the card lists each field with its fetched value | The owner approves the values, not a fetch id |
 | A call identical to an earlier step of the turn is answered as that step | Models repeat a call after its result |
-| At most 30 steps per proposal | One card stays reviewable |
 
 | Rejected | Why |
 | --- | --- |
@@ -451,13 +452,13 @@ not rebuilt; active proposals no turn in the thread holds are listed under
 
 | Part of an exchange | What the panel shows |
 | --- | --- |
-| Tool calls | One `text-xs` muted line per progress item, the labels' names in `foreground`, `n of m` with a `Progress` on the running item, a failed item's `error` (the tool, its arguments and the reason) on a muted line under it, and a running line with the elapsed time; folded to `Show n tool calls` once the turn answers or asks, open when it stopped |
-| Answer | The model's text as plain text: line breaks kept, `- ` and `1. ` lines as lists, `**` dropped; `Judged by Clef` above it when `judged`; under it the progress labels the answer names as a token (the grounding check's rule), as links, at most 20. The panel draws no count of its own |
+| Tool calls | One `text-xs` muted line per progress item, the labels' names in `foreground`, `n of m` with a `Progress` on the running item, a failed item's `error` (the tool, its arguments and the reason) on a muted line under it, and a running line with the elapsed time and `Stop`; folded to `Show n tool calls` once the turn answers or asks, open when it stopped |
+| Answer | The model's text as plain text: line breaks kept, `- ` and `1. ` lines as lists, `**` dropped; `Judged by Clef` above it when `judged`; the `unchecked` items in a `warning` line under it; under it the progress labels the answer names as a token (the grounding check's rule), as links, at most 20. The panel draws no count of its own |
 | Directive | Applied without confirmation only when the turn ends in the tab that sent it while that tab is on the same path; otherwise `Show in the library` or `Open` |
 | `start_review` | The run's progress and `Open the review list` |
 | Proposal | The card under the reply; a turn that ends replaces a pending card. A card of two or more steps draws one block per step with a checkbox, marks a name an earlier step creates with `Created by step n` (`Needs step n` while that step is unticked, which keeps `Execute` disabled), edges an irreversible step in `warning` and turns `Execute` `destructive` while one is ticked, and sends the ticked indexes. After `Execute` each checkbox gives way to the step's state, and the card ends with `Done · k steps` or `Stopped at step n`. Every change field is shown, an object or a list of objects as text, so the card covers the exact body |
 | `clarify` | The question and one button per candidate |
-| Stop | A `warning` line for the limits, `no_answer`, `ungrounded` and `interrupted`; the `destructive` alert with `Open Connections` for `connection` and `model`; a stop's `detail` under its text; for an excluded operation, the sentence and a link to its page |
+| Stop | A `warning` line for `step_limit`, `timeout`, `cancelled`, `no_answer`, `ungrounded` (turns stored before) and `interrupted`; the `destructive` alert with `Open Connections` for `connection` and `model`; a stop's `detail` under its text; for an excluded operation, the sentence and a link to its page |
 | `409 assistant_busy` | A warning under the request, and the running turn the body names joins the thread |
 | `404` on a read | `This request is no longer kept.` in place of the reply |
 

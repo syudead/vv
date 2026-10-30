@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -348,5 +349,23 @@ func TestVideoDetailsStepShowsTheWholeObjectANestedIDSitsIn(t *testing.T) {
 	var shown map[string]any
 	if err := json.Unmarshal(byArgument["workInfo"].Value, &shown); err != nil || shown["description"] != "rewritten" {
 		t.Fatalf("workInfo on the card = %s, want the whole object with its description", byArgument["workInfo"].Value)
+	}
+}
+
+// A Stop that arrives while the proposal is stored is refused, so the turn ends done with the whole proposal.
+func TestStopTurnIsRefusedOnceTheProposalIsBeingStored(t *testing.T) {
+	f := newWriteFixture(t,
+		calls(toolCall("createTag", `{"name":"新曲"}`)),
+		text("提案しました。"))
+	var stopErr error
+	f.store.creating = func() { stopErr = f.a.StopTurn(1) }
+
+	turn := f.run(t, 0)
+
+	if !errors.Is(stopErr, domain.ErrAssistantTurnNotRunning) {
+		t.Fatalf("StopTurn while storing = %v, want ErrAssistantTurnNotRunning", stopErr)
+	}
+	if turn.Status != domain.AssistantTurnDone || turn.ProposalID != 1 {
+		t.Fatalf("turn = %+v, want done with its proposal", turn)
 	}
 }

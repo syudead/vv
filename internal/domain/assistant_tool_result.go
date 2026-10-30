@@ -3,73 +3,22 @@ package domain
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"unicode/utf8"
 )
 
-// Bounds of a read result as the model sees it: the context also holds the tools and earlier results, so one result
-// stays near 3,000 tokens; total fields keep the counts.
-const (
-	AssistantResultItemMax  = 50
-	AssistantResultTextMax  = 500
-	AssistantResultBytesMax = 8 * 1024
-)
-
-// TrimAssistantToolResult cuts arrays to 50 items and strings to 500 characters, marking each cut with the
-// original length, and then the whole result to 8 KB. A body that is not JSON is cut as text.
-func TrimAssistantToolResult(body []byte) string {
+// AssistantToolResultText is a JSON result as the model reads it, re-encoded so <, > and & stay as written; a body
+// that is not JSON is kept as text. Nothing is cut here: the turn fits its prompt to the model's context.
+func AssistantToolResultText(body []byte) string {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var value any
-	if err := decoder.Decode(&value); err == nil {
-		if encoded, err := marshalResult(trimResultValue(value)); err == nil {
-			body = encoded
-		}
-	}
-	if len(body) <= AssistantResultBytesMax {
+	if err := decoder.Decode(&value); err != nil {
 		return string(body)
 	}
-	cut := AssistantResultBytesMax
-	for cut > 0 && !utf8.RuneStart(body[cut]) {
-		cut--
-	}
-	return fmt.Sprintf("%s…[cut: %d bytes in all]", body[:cut], len(body))
-}
-
-func trimResultValue(value any) any {
-	switch v := value.(type) {
-	case map[string]any:
-		for key, item := range v {
-			v[key] = trimResultValue(item)
-		}
-		return v
-	case []any:
-		kept := v
-		if len(v) > AssistantResultItemMax {
-			kept = append(v[:AssistantResultItemMax:AssistantResultItemMax],
-				fmt.Sprintf("[cut: %d items in all]", len(v)))
-		}
-		for i, item := range kept[:min(len(kept), AssistantResultItemMax)] {
-			kept[i] = trimResultValue(item)
-		}
-		return kept
-	case string:
-		if utf8.RuneCountInString(v) <= AssistantResultTextMax {
-			return v
-		}
-		runes := []rune(v)
-		return fmt.Sprintf("%s…[cut: %d characters in all]", string(runes[:AssistantResultTextMax]), len(runes))
-	}
-	return value
-}
-
-// marshalResult keeps <, > and & as they are, so the model reads titles as written.
-func marshalResult(value any) ([]byte, error) {
 	var b bytes.Buffer
 	encoder := json.NewEncoder(&b)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(value); err != nil {
-		return nil, err
+		return string(body)
 	}
-	return bytes.TrimRight(b.Bytes(), "\n"), nil
+	return string(bytes.TrimRight(b.Bytes(), "\n"))
 }

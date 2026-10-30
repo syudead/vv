@@ -1,9 +1,7 @@
 package domain
 
 import (
-	"encoding/json"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -38,35 +36,12 @@ func TestAssistantUngroundedCountsANameOnlyAsItsOwnToken(t *testing.T) {
 	}
 }
 
-func TestTrimAssistantToolResultMarksEachCut(t *testing.T) {
-	items := make([]int, AssistantResultItemMax+5)
-	body, err := json.Marshal(map[string]any{"items": items, "title": strings.Repeat("あ", AssistantResultTextMax+1)})
-	if err != nil {
-		t.Fatal(err)
+// A result keeps <, > and & as written; a body that is not JSON stays as it is.
+func TestAssistantToolResultTextKeepsTheText(t *testing.T) {
+	if got := AssistantToolResultText([]byte(`{"title":"A <B> & C"}`)); got != `{"title":"A <B> & C"}` {
+		t.Fatalf("result = %s", got)
 	}
-	var got struct {
-		Items []any  `json:"items"`
-		Title string `json:"title"`
-	}
-	if err := json.Unmarshal([]byte(TrimAssistantToolResult(body)), &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Items) != AssistantResultItemMax+1 || got.Items[AssistantResultItemMax] != "[cut: 55 items in all]" {
-		t.Fatalf("items = %d, last = %v", len(got.Items), got.Items[len(got.Items)-1])
-	}
-	if !strings.HasSuffix(got.Title, "…[cut: 501 characters in all]") {
-		t.Fatalf("title ends %q", got.Title[len(got.Title)-40:])
-	}
-}
-
-func TestTrimAssistantToolResultCutsTheWholeResult(t *testing.T) {
-	items := slices.Repeat([]string{strings.Repeat("x", 480)}, 50)
-	body, err := json.Marshal(map[string]any{"a": items, "b": items})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := TrimAssistantToolResult(body)
-	if !strings.HasSuffix(got, "bytes in all]") || len(got) > AssistantResultBytesMax+40 {
-		t.Fatalf("result of %d bytes ends %q", len(got), got[len(got)-30:])
+	if got := AssistantToolResultText([]byte("not json")); got != "not json" {
+		t.Fatalf("result = %s", got)
 	}
 }

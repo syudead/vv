@@ -14,18 +14,19 @@ import (
 // Every transaction that changes a turn publishes AssistantChanged after commit, so the panel re-reads it.
 
 const assistantTurnColumns = `id, status, request, context, coalesce(previous_turn_id, 0), progress,
-	coalesce(answer, ''), judged, directive, clarify, coalesce(proposal_id, 0), stop, started_at, finished_at`
+	coalesce(answer, ''), judged, directive, clarify, coalesce(proposal_id, 0), stop, unchecked, started_at, finished_at`
 
 func scanAssistantTurn(row rowScanner) (domain.AssistantTurn, error) {
 	var (
 		t                         domain.AssistantTurn
 		status, context, progress string
 		directive, clarify, stop  sql.NullString
+		unchecked                 sql.NullString
 		startedAt                 int64
 		finishedAt                sql.NullInt64
 	)
 	if err := row.Scan(&t.ID, &status, &t.Request, &context, &t.PreviousTurnID, &progress, &t.Answer, &t.Judged,
-		&directive, &clarify, &t.ProposalID, &stop, &startedAt, &finishedAt); err != nil {
+		&directive, &clarify, &t.ProposalID, &stop, &unchecked, &startedAt, &finishedAt); err != nil {
 		return domain.AssistantTurn{}, err
 	}
 	t.Status = domain.AssistantTurnStatus(status)
@@ -39,6 +40,7 @@ func scanAssistantTurn(row rowScanner) (domain.AssistantTurn, error) {
 		{directive, &t.Directive},
 		{clarify, &t.Clarify},
 		{stop, &t.Stop},
+		{unchecked, &t.Unchecked},
 	} {
 		if !part.raw.Valid {
 			continue
@@ -153,8 +155,8 @@ func (s *AssistantStore) FinishTurn(ctx context.Context, t domain.AssistantTurn,
 	if t.Status == domain.AssistantTurnRunning {
 		return errors.New("cannot finish an assistant turn as running")
 	}
-	values := make([]any, 0, 4)
-	for _, part := range []any{t.Progress, t.Directive, t.Clarify, t.Stop} {
+	values := make([]any, 0, 5)
+	for _, part := range []any{t.Progress, t.Directive, t.Clarify, t.Stop, t.Unchecked} {
 		encoded, err := encodeOptionalJSON(part)
 		if err != nil {
 			return fmt.Errorf("cannot encode the assistant turn: %w", err)
@@ -172,8 +174,8 @@ func (s *AssistantStore) FinishTurn(ctx context.Context, t domain.AssistantTurn,
 		values[0] = "[]"
 	}
 	return s.updateRunningTurn(ctx, `update assistant_turns set status = ?, progress = ?, directive = ?,
-		clarify = ?, stop = ?, answer = ?, judged = ?, proposal_id = ?, finished_at = ?
-		where id = ? and status = ?`, string(t.Status), values[0], values[1], values[2], values[3], answer,
+		clarify = ?, stop = ?, unchecked = ?, answer = ?, judged = ?, proposal_id = ?, finished_at = ?
+		where id = ? and status = ?`, string(t.Status), values[0], values[1], values[2], values[3], values[4], answer,
 		t.Judged, proposal, now.UnixMilli(), t.ID, string(domain.AssistantTurnRunning))
 }
 

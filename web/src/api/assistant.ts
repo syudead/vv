@@ -78,6 +78,14 @@ export function getAssistantTurn(
   return request<AssistantTurn>(`/api/assistant/turns/${String(id)}`, { signal });
 }
 
+/** Stops the running turn; 409 once it already ended, which the next read shows. */
+export async function stopAssistantTurn(id: number): Promise<void> {
+  const response = await apiFetch(`/api/assistant/turns/${String(id)}/stop`, {
+    method: "POST",
+  });
+  if (!response.ok && response.status !== 409) throw await toRequestFailed(response);
+}
+
 export type AssistantProposalStatus = AssistantProposal["status"];
 
 /** What Execute led to: approved now, already past proposed (the 409 body), or gone (404). */
