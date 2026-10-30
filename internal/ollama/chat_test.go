@@ -101,6 +101,18 @@ func TestChatReturnsTextWithoutThinking(t *testing.T) {
 	}
 }
 
+func TestChatReportsHowAnEmptyReplyEnded(t *testing.T) {
+	url := chatServer(t, http.StatusOK, `{"message":{"role":"assistant","content":"","thinking":"let me look"},`+
+		`"done":true,"done_reason":"length","prompt_eval_count":16000,"eval_count":384}`, nil)
+	reply, err := NewChat(generating(url)).Chat(context.Background(), domain.ChatRequest{
+		Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "何人？"}},
+	})
+	want := domain.ChatUsage{DoneReason: "length", PromptTokens: 16000, OutputTokens: 384, ThinkingChars: 11}
+	if err != nil || reply.Text != "" || reply.Usage != want {
+		t.Fatalf("reply = %+v, %v, want usage %+v", reply, err, want)
+	}
+}
+
 func TestChatTellsFailuresApart(t *testing.T) {
 	expired := func() (context.Context, context.CancelFunc) {
 		return context.WithDeadline(context.Background(), time.Unix(0, 0))

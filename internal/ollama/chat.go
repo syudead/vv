@@ -74,8 +74,18 @@ type chatRequest struct {
 }
 
 type chatResponse struct {
-	Message *chatMessage `json:"message"`
-	Error   string       `json:"error"`
+	Message         *chatMessage `json:"message"`
+	Error           string       `json:"error"`
+	DoneReason      string       `json:"done_reason"`
+	PromptEvalCount int          `json:"prompt_eval_count"`
+	EvalCount       int          `json:"eval_count"`
+}
+
+// chatThinking reads only the length of the reasoning, which explains a reply that has no content.
+type chatThinking struct {
+	Message struct {
+		Thinking string `json:"thinking"`
+	} `json:"message"`
 }
 
 // Chat reads the saved endpoint and generation model on every call. A reply with tool calls is returned
@@ -92,7 +102,7 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
-	message, err := postChat(ctx, c.http, settings, chatRequest{
+	decoded, usage, err := postChat(ctx, c.http, settings, chatRequest{
 		Model:     settings.GenerationModel,
 		Messages:  messages,
 		Tools:     wireTools(req.Tools),
@@ -103,34 +113,42 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
+	message := decoded.Message
 	if len(message.ToolCalls) == 0 {
-		return domain.ChatReply{Text: strings.TrimSpace(message.Content)}, nil
+		return domain.ChatReply{Text: strings.TrimSpace(message.Content), Usage: usage}, nil
 	}
 	calls := make([]domain.ToolCall, len(message.ToolCalls))
 	for i, call := range message.ToolCalls {
 		calls[i] = domain.ToolCall{Name: call.Function.Name, Arguments: objectOrEmpty(call.Function.Arguments)}
 	}
-	return domain.ChatReply{ToolCalls: calls}, nil
+	return domain.ChatReply{ToolCalls: calls, Usage: usage}, nil
 }
 
 // postChat keeps only Ollama's own error text, and names the endpoint when the reply is not Ollama's.
-func postChat(ctx context.Context, client *http.Client, settings domain.OllamaSettings, body chatRequest) (*chatMessage, error) {
+func postChat(
+	ctx context.Context, client *http.Client, settings domain.OllamaSettings, body chatRequest,
+) (chatResponse, domain.ChatUsage, error) {
 	status, raw, err := postJSON(ctx, client, settings.Endpoint, "/api/chat", body)
 	if err != nil {
-		return nil, err
+		return chatResponse{}, domain.ChatUsage{}, err
 	}
 	var decoded chatResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil, notOllama(settings.Endpoint, status)
+		return chatResponse{}, domain.ChatUsage{}, notOllama(settings.Endpoint, status)
 	}
 	if decoded.Error != "" {
-		return nil, kindErrorf(domain.ErrOllamaModel, nil, "model %q: %s", settings.GenerationModel,
-			statusMessage(status, decoded.Error))
+		return chatResponse{}, domain.ChatUsage{}, kindErrorf(domain.ErrOllamaModel, nil, "model %q: %s",
+			settings.GenerationModel, statusMessage(status, decoded.Error))
 	}
 	if status != http.StatusOK || decoded.Message == nil {
-		return nil, notOllama(settings.Endpoint, status)
+		return chatResponse{}, domain.ChatUsage{}, notOllama(settings.Endpoint, status)
 	}
-	return decoded.Message, nil
+	var thinking chatThinking
+	_ = json.Unmarshal(raw, &thinking) // The response decoded above, so this decodes too.
+	return decoded, domain.ChatUsage{
+		DoneReason: decoded.DoneReason, PromptTokens: decoded.PromptEvalCount, OutputTokens: decoded.EvalCount,
+		ThinkingChars: len(thinking.Message.Thinking),
+	}, nil
 }
 
 func notOllama(endpoint string, status int) error {

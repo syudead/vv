@@ -10,7 +10,7 @@ import type {
 import { getOllamaSettings } from "../api/client";
 import { errorText, formatNumber, t } from "../i18n";
 import { settingsPagePath } from "../settings/settingsPages";
-import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import AnswerReply from "./AnswerReply";
 import { routePageName, useDestinationName } from "./destinationName";
@@ -57,7 +57,13 @@ export function useGenerationModel(wanted: boolean): string {
   return model;
 }
 
-function UnavailableReply({ reason }: { reason: "connection" | "model" }) {
+function UnavailableReply({
+  reason,
+  detail,
+}: {
+  reason: "connection" | "model";
+  detail?: string;
+}) {
   const model = useGenerationModel(reason === "model");
   const words = t.assistant.unavailable;
   return (
@@ -66,6 +72,9 @@ function UnavailableReply({ reason }: { reason: "connection" | "model" }) {
       <AlertTitle className="font-normal">
         {reason === "model" ? words.model(model) : words.connection}
       </AlertTitle>
+      {detail !== undefined && (
+        <AlertDescription className="wrap-anywhere">{detail}</AlertDescription>
+      )}
       <ConnectionsLink />
     </Alert>
   );
@@ -182,9 +191,19 @@ function StopReply({ turn }: { turn: AssistantTurn }) {
     turn.status === "interrupted" ? "interrupted" : turn.stop?.reason;
   if (reason === undefined) return null;
   if (reason === "connection" || reason === "model") {
-    return <UnavailableReply reason={reason} />;
+    return <UnavailableReply reason={reason} detail={turn.stop?.detail} />;
   }
-  return <WarningLine>{t.assistant.stopped[reason]}</WarningLine>;
+  const detail = reason === "no_answer" ? turn.stop?.detail : undefined;
+  return (
+    <WarningLine>
+      <span className="flex flex-col gap-1">
+        {t.assistant.stopped[reason]}
+        {detail !== undefined && (
+          <span className="wrap-anywhere text-muted-foreground">{detail}</span>
+        )}
+      </span>
+    </WarningLine>
+  );
 }
 
 /** The rows a finished turn shows above its card, in the order the design gives them. */

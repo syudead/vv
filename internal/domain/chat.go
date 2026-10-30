@@ -46,6 +46,16 @@ type ChatRequest struct {
 type ChatReply struct {
 	ToolCalls []ToolCall
 	Text      string
+	Usage     ChatUsage
+}
+
+// ChatUsage is how the provider ended a reply, which explains an empty one; zero values mean it did not say.
+type ChatUsage struct {
+	// DoneReason is the provider's word for why the reply ended, such as "stop" or "length".
+	DoneReason    string
+	PromptTokens  int
+	OutputTokens  int
+	ThinkingChars int
 }
 
 // ModelCapabilities is what a model can do beyond text, as the provider reports it.

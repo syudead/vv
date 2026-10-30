@@ -7223,6 +7223,9 @@ components:
         reason:
           type: string
           enum: [step_limit, timeout, connection, model, no_answer, ungrounded]
+        detail:
+          type: string
+          description: "For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length). English, for diagnosis."
         excluded:
           $ref: "#/components/schemas/AssistantExcludedOperation"
 

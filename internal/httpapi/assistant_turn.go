@@ -161,6 +161,9 @@ func (s *server) toAPIAssistantTurn(ctx context.Context, t domain.AssistantTurn)
 	}
 	if t.Stop != nil {
 		out.Stop = &gen.AssistantTurnStop{Reason: gen.AssistantTurnStopReason(t.Stop.Reason)}
+		if t.Stop.Detail != "" {
+			out.Stop.Detail = &t.Stop.Detail
+		}
 		if e := t.Stop.Excluded; e != nil {
 			out.Stop.Excluded = &gen.AssistantExcludedOperation{Operation: e.Operation, Reason: e.Reason, Page: e.Page}
 		}

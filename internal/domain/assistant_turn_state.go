@@ -99,6 +99,8 @@ type AssistantExcludedRef struct {
 type AssistantTurnStop struct {
 	Reason   AssistantStopReason   `json:"reason"`
 	Excluded *AssistantExcludedRef `json:"excluded,omitempty"`
+	// Detail is the provider's error, or how it ended an empty reply, for model and no_answer.
+	Detail string `json:"detail,omitempty"`
 }
 
 // AssistantTurn is one request run as a server-side job; the transcript stays in memory while it runs.

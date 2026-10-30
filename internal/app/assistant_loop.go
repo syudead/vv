@@ -156,6 +156,8 @@ type turnLoop struct {
 	corrected  bool
 	// prompted marks a turn whose empty reply already received its correction round.
 	prompted bool
+	// usage is how the provider ended the last reply.
+	usage domain.ChatUsage
 	// clef and vision say which image tools the turn offers; judged marks a turn that received Clef's answers.
 	clef, vision, judged bool
 	// attached and attachedNames hold the images view_images read this round, for the message after the results.
@@ -202,8 +204,12 @@ func (l *turnLoop) run(ctx context.Context) error {
 		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: append(l.tools.definitions(), l.imageDefinitions()...)})
 		if err != nil {
 			l.stop(l.chatStop(ctx, err))
+			if l.turn.Stop.Reason == domain.AssistantStopModel {
+				l.turn.Stop.Detail = err.Error()
+			}
 			return nil
 		}
+		l.usage = reply.Usage
 		if len(reply.ToolCalls) == 0 {
 			if done, err := l.answer(ctx, reply.Text); done || err != nil {
 				return err
@@ -307,9 +313,20 @@ const emptyAnswerCorrection = "Your reply was empty. Answer the request in text,
 func (l *turnLoop) emptyReply() bool {
 	if l.prompted {
 		l.stop(domain.AssistantStopNoAnswer)
+		l.turn.Stop.Detail = emptyReplyDetail(l.usage)
 		return true
 	}
 	l.prompted = true
 	l.messages = append(l.messages, domain.ChatMessage{Role: domain.ChatRoleUser, Content: emptyAnswerCorrection})
 	return false
+}
+
+// emptyReplyDetail says how the provider ended the last empty reply; "length" means the context or the output limit
+// filled up, often with reasoning.
+func emptyReplyDetail(u domain.ChatUsage) string {
+	if u == (domain.ChatUsage{}) {
+		return ""
+	}
+	return fmt.Sprintf("done_reason %q, prompt %d tokens, output %d tokens, reasoning %d characters",
+		u.DoneReason, u.PromptTokens, u.OutputTokens, u.ThinkingChars)
 }

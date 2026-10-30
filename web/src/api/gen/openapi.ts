@@ -4398,6 +4398,8 @@ export interface components {
         AssistantTurnStop: {
             /** @enum {string} */
             reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "ungrounded";
+            /** @description For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length). English, for diagnosis. */
+            detail?: string;
             excluded?: components["schemas"]["AssistantExcludedOperation"];
         };
         /** @description An operation the assistant leaves to its page, which the model asked for. */
