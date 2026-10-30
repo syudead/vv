@@ -65,6 +65,8 @@ type AssistantProgressItem struct {
 	Images int                   `json:"images,omitempty"`
 	N      int                   `json:"n,omitempty"`
 	M      int                   `json:"m,omitempty"`
+	// ReviewRunID is the review run a start_review call started or found running.
+	ReviewRunID int64 `json:"reviewRunId,omitempty"`
 	// Error is set when the call came back as an error result.
 	Error string    `json:"error,omitempty"`
 	At    time.Time `json:"at"`

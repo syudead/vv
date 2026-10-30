@@ -4370,6 +4370,11 @@ export interface components {
             n?: number;
             /** @description With n, how far a call over m items has come. */
             m?: number;
+            /**
+             * Format: int64
+             * @description For start_review, the review run it started or found running; the panel links its review list.
+             */
+            reviewRunId?: number;
             /** @description Why the call came back as an error result, in English; the model may recover. */
             error?: string;
             /** Format: date-time */
@@ -4389,7 +4394,7 @@ export interface components {
             kind: components["schemas"]["AssistantLabelKind"];
             candidates: components["schemas"]["AssistantCandidate"][];
         };
-        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
+        /** @description Why a stopped turn ended. step_limit: 12 model calls or 40 tool calls; timeout: 10 minutes, or the model's own timeout; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; ungrounded: the answer named numbers or names no tool result holds, twice. Only ungrounded keeps a built proposal. */
         AssistantTurnStop: {
             /** @enum {string} */
             reason: "step_limit" | "timeout" | "connection" | "model" | "ungrounded";

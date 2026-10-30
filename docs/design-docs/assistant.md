@@ -39,8 +39,19 @@ always sees `find_tools` and the core reads (`listVideos`, `getVideo`,
 other tool of [the registry](#the-tool-registry-classifies-every-operation)
 by words over its name, summary and description, answers up to 15 with their
 kind and, for an excluded one, the reason and page, and adds the read and
-write tools it found to the later calls of the same turn. The diagram shows
-one round.
+write tools it found to the later calls of the same turn. The built-in tools
+are also always offered
+([`assistant_core_tools.go`](../../internal/app/assistant_core_tools.go)):
+
+| Tool | What it does |
+| --- | --- |
+| `screen_context` | Answers the route and the entity it shows, the selected videos (id and title, the first 50, with the count), the selected groups and smart folders (the first 50 of each, with the count), and the library filter with the names its ids point at |
+| `app_help` | Searches the page table in `internal/domain` (route, title and what the page is for, in the screens' own labels) and the operations' summaries by the query's English words, and answers the pages and operations that match; an excluded operation carries its reason and page. A query that matches nothing answers every page title, so the model can search again |
+| `show_in_library` | Resolves the shipped filter fields as a filter that only reads, answers the conditions with the names and the number of matching videos, and sets the turn's `filter` directive |
+| `open_page` | Resolves the shipped navigation fields and sets the turn's `navigate` directive |
+| `start_review` | Starts a review run of `tags`, `people` or `works`, or finds the one running, and puts its id on the progress item for the panel's review row |
+
+The diagram shows one round.
 
 ```mermaid
 flowchart LR
@@ -58,9 +69,13 @@ flowchart LR
 | Rule | Why |
 | --- | --- |
 | A turn makes at most 12 model calls and 40 tool calls, within 10 minutes from its start; each model call and tool runs with the remaining time as its deadline | On a CPU host 12 calls fill the time budget, and one slow call cannot hold a request for an hour |
-| A read runs at once through the owner's handler and comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
+| A read runs at once through the owner's handler; its result, like a built-in tool's, comes back as JSON with arrays cut to 50 items, strings to 500 characters and the whole result to 24 KB, each cut marked with the original length | The chat context is 16,384 tokens; `total` fields keep the counts |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
 | A write tool found by `find_tools` answers an error result for now; turning it into a proposal step is the next part of the loop | A write never runs before the owner approves it |
+| The turn carries the last `show_in_library` or `open_page` as its directive, which the panel applies without confirmation | Showing and moving change nothing (requirement 13) |
+| A name a directive tool cannot settle comes back to the model as an error result with the candidates, not as the turn's clarification | The model can call again with a candidate's name or ask the owner; a turn's clarification belongs to the write steps it would drop |
+| Built-in arguments that are `null` or an empty string are dropped, and `"true"`, `"false"` and numbers written as strings are read as the boolean or integer the schema asks for, before the schema check | Chat models write them for an argument they mean to leave out, or quote scalars |
+| A directive's or review run's result ends with a note to answer now | Small models otherwise call the same directive again until the step limit |
 | Each tool call adds a progress item (`tool`, `kind`, the names its id arguments point at, `error`) composed by the server, committed as the call starts | The panel shows what is running from facts only, never from model text |
 | The system message carries the rules, today's date, the screen as names and counts, and on a follow-up the previous request and its proposal's steps; the request, the screen and the tool results are marked as data | A follow-up needs only the previous request and proposal, and titles from files or plugins can carry instructions |
 | The model answers in the request's language | The panel's own labels follow the app's language |
@@ -90,6 +105,7 @@ answer text.
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
 | The model is missing or answers an `error` | `stopped`, `model` | The progress |
 | Two answers that fail the grounding check | `stopped`, `ungrounded` | The progress |
+| An answer after the model asked for an excluded operation and ran nothing but `find_tools`, `app_help` and `screen_context` | `stopped`, `model`, with `excluded` (operation, reason, page) in place of the answer | The progress |
 | The server stopped during the turn | `interrupted` at the next start | The progress |
 
 | Rejected | Why |
@@ -98,6 +114,7 @@ answer text.
 | Every tool on every call | About 240 schemas need far more than the context holds |
 | A citation format the model fills | Small models do not fill citation fields reliably; the check needs only data the server already has |
 | Proposing the steps gathered before a limit | A stopped request proposes nothing |
+| Any excluded tool among `find_tools`' answers as the request's operation | A search for `playlists` also finds `createApiToken`; only a call by name, or a `find_tools` whose first match outscores the rest, asks for it |
 
 ## Turns are server-side jobs
 

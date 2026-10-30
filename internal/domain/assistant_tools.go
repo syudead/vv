@@ -45,9 +45,13 @@ const (
 )
 
 var assistantPages = []AssistantPage{
-	{pageLibrary, "Library", "Browse, search and filter every video; select videos to tag, favorite or group them; save a filter as a smart folder"},
+	{pageLibrary, "Library", "Browse and search every video. Filter narrows it by watch status, Favorites only, tags, " +
+		"people, organizations, length and the date added, and Sort by orders it (Date favorited among others); the " +
+		"filter can be saved as a smart folder. Select videos to add or remove tags, Add to favorites, add them to a " +
+		"playlist or make a New group"},
 	{"/folders", "Folders", "Browse videos by the folders of the media folders"},
-	{pageVideo, "Video", "Play a video and edit its tags, people, organizations, work information and thumbnail"},
+	{pageVideo, "Video", "Play a video, Add to favorites, and edit its tags, people, organizations, work " +
+		"information and thumbnail"},
 	{"/videos/:id/edit", "Video details editor", "Edit a video's display name and work information at once"},
 	{"/tags", "Tags", "Create, rename, merge, confirm or reject tags, and manage tag kinds and synonyms"},
 	{"/people", "People", "List people, with their face recognition candidates"},
@@ -81,6 +85,14 @@ var assistantPages = []AssistantPage{
 
 // AssistantPages returns the app's pages in navigation order.
 func AssistantPages() []AssistantPage { return slices.Clone(assistantPages) }
+
+// AssistantPageTitle answers the title of the page at the route, or the route itself for a route the table lacks.
+func AssistantPageTitle(route string) string {
+	if i := slices.IndexFunc(assistantPages, func(p AssistantPage) bool { return p.Route == route }); i >= 0 {
+		return assistantPages[i].Title
+	}
+	return route
+}
 
 // AssistantExclusion is a screen operation the assistant never offers, with why and the page to use instead.
 type AssistantExclusion struct {
