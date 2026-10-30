@@ -257,10 +257,22 @@ func (l *turnLoop) runTool(
 	}
 	result, err := l.runner.Read(ctx, domain.AssistantRead{Operation: tool.Operation, Arguments: call.Arguments})
 	if err != nil {
-		return "", readFailure(err), nil
+		return "", fmt.Sprintf("%s with %s: %s", domain.AssistantModelToolName(call.Name),
+			trimArguments(call.Arguments), readFailure(err)), nil
 	}
 	l.writes.remember(tool.Operation, result.Body)
 	return domain.TrimAssistantToolResult(result.Body), "", nil
+}
+
+// failedArgumentsMax bounds the arguments a failure repeats, so the model and the owner see what was sent.
+const failedArgumentsMax = 200
+
+func trimArguments(raw json.RawMessage) string {
+	text := string(raw)
+	if len(text) > failedArgumentsMax {
+		text = strings.ToValidUTF8(text[:failedArgumentsMax], "") + "…"
+	}
+	return text
 }
 
 // readFailure says why a read did not answer, in words the model can act on.

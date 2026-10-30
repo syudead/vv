@@ -241,7 +241,7 @@ func TestTurnLoopAnswersBadCallsAsErrorResults(t *testing.T) {
 	turn := f.run(t, request)
 
 	messages := f.chat.requests[1].Messages
-	for i, want := range []string{"there is no tool named searchEverything", "q must be a string"} {
+	for i, want := range []string{"there is no tool named searchEverything", `listVideos with {\"q\":\"bad\"}: `} {
 		got := messages[len(messages)-2+i]
 		if got.Role != domain.ChatRoleTool || !strings.Contains(got.Content, want) || !strings.Contains(got.Content, `"error"`) {
 			t.Errorf("result %d = %+v, want an error with %q", i, got, want)
@@ -316,12 +316,18 @@ func TestTurnLoopAsksAgainAfterAnEmptyReply(t *testing.T) {
 }
 
 func TestTurnLoopStopsAfterASecondEmptyReply(t *testing.T) {
-	f := newLoopFixture(t, text(""), text(" \n"))
+	second := text(" \n")
+	second.Usage = domain.ChatUsage{DoneReason: "length", PromptTokens: 16000, OutputTokens: 384, ThinkingChars: 900}
+	f := newLoopFixture(t, text(""), second)
 
 	turn := f.run(t, request)
 
 	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopNoAnswer || turn.Answer != "" {
 		t.Fatalf("turn = %+v, want stopped as no_answer", turn)
+	}
+	want := `done_reason "length", prompt 16000 tokens, output 384 tokens, reasoning 900 characters`
+	if turn.Stop.Detail != want {
+		t.Fatalf("detail = %q, want %q", turn.Stop.Detail, want)
 	}
 }
 
@@ -379,8 +385,12 @@ func TestTurnLoopStopsWithTheModelFailure(t *testing.T) {
 	for cause, reason := range cases {
 		f := newLoopFixture(t)
 		f.chat.err = fmt.Errorf("chat: %w", cause)
-		if turn := f.run(t, request); turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != reason {
+		turn := f.run(t, request)
+		if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != reason {
 			t.Errorf("%v: turn = %+v, want stopped with %s", cause, turn, reason)
+		}
+		if wantDetail := reason == domain.AssistantStopModel; (turn.Stop.Detail != "") != wantDetail {
+			t.Errorf("%v: detail = %q, want the error only for model", cause, turn.Stop.Detail)
 		}
 	}
 }

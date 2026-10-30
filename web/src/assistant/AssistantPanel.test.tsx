@@ -441,7 +441,14 @@ describe("AssistantPanel", () => {
       error: "the operation answered 404 not_found: video not found",
     };
     server.turn = () =>
-      finished({ status: "stopped", stop: { reason: "no_answer" }, progress: [failed] });
+      finished({
+        status: "stopped",
+        stop: {
+          reason: "no_answer",
+          detail: 'done_reason "length", prompt 16000 tokens',
+        },
+        progress: [failed],
+      });
     const user = userEvent.setup();
     renderApp();
 
@@ -454,6 +461,9 @@ describe("AssistantPanel", () => {
     ).toBeDefined();
     expect(
       within(panel()).getByText("the operation answered 404 not_found: video not found"),
+    ).toBeDefined();
+    expect(
+      within(panel()).getByText('done_reason "length", prompt 16000 tokens'),
     ).toBeDefined();
   });
 
