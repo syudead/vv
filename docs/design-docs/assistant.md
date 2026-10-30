@@ -67,12 +67,20 @@ flowchart LR
 
 The grounding check reads the answer before the turn ends
 ([`assistant_grounding.go`](../../internal/domain/assistant_grounding.go)):
-every number of two or more digits, and every tag, person or organization name
-of 3 or more characters that the answer contains (by the stored folded search
-keys), must appear in this turn's tool results, the request, the screen or
-today's date. The first failure goes back to the model as one correction
-round that lists the unsupported items; a second failure stops the turn as
-`ungrounded` with no answer text.
+every number of two or more digits (after width folding), and every tag,
+person or organization name of 3 or more characters that the answer mentions,
+must appear in this turn's tool results, the request, the screen or today's
+date. The answer mentions a name when its folded search key occurs as a token:
+the character just before the match is not of the same script as the match's
+first character, and the character just after is not of the same script as its
+last. The scripts are katakana (with the long-vowel mark ー), hiragana, kanji,
+and letters and digits together, so the tag `ライブ` is not mentioned in
+`ライブラリ` but is in `ライブの動画`, and "live" is not mentioned in
+"lively". A name written in hiragana and followed by a particle therefore goes
+unchecked; the rule prefers that to stopping ordinary answers. The first
+failure goes back to the model as one correction round that lists the
+unsupported items; a second failure stops the turn as `ungrounded` with no
+answer text.
 
 | Ending | Turn | Kept |
 | --- | --- | --- |

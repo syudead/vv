@@ -16,6 +16,28 @@ func TestAssistantUngroundedListsNumbersAndNamesWithoutEvidence(t *testing.T) {
 	}
 }
 
+func TestAssistantUngroundedCountsANameOnlyAsItsOwnToken(t *testing.T) {
+	tests := []struct {
+		name, answer string
+		names, want  []string
+	}{
+		{"katakana inside a longer katakana word", "ライブラリにメディアフォルダーを追加します。", []string{"ライブ"}, nil},
+		{"katakana before kanji", "ライブの動画はありません。", []string{"ライブ"}, []string{"ライブ"}},
+		{"half-width katakana before the long-vowel mark", "ﾗｲﾌﾞｰﾙを開きます。", []string{"ライブ"}, nil},
+		{"kanji inside a longer kanji word", "東京都庁の動画です。", []string{"東京都"}, nil},
+		{"latin inside longer words", "Open the Library for lively clips.", []string{"lib", "live"}, nil},
+		{"latin words", "Lib and LIVE clips.", []string{"lib", "live"}, []string{"lib", "live"}},
+		{"invented full-width count", "ライブラリには５６本あります。", []string{"ライブ"}, []string{"56"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := AssistantUngrounded(tt.answer, "request 2026-10-30", tt.names); !slices.Equal(got, tt.want) {
+				t.Fatalf("ungrounded = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTrimAssistantToolResultMarksEachCut(t *testing.T) {
 	items := make([]int, AssistantResultItemMax+5)
 	body, err := json.Marshal(map[string]any{"items": items, "title": strings.Repeat("あ", AssistantResultTextMax+1)})
