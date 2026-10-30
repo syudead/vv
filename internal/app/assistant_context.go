@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// The chat context is the model's own length, which the provider reports with each reply. A prompt past it makes
+// The chat context is the one the provider ran the model with, which it reports with each reply. A prompt past it makes
 // Ollama drop the oldest messages, the request among them, so the turn keeps its estimate under the context less a
 // quarter of it, the room for the reply and a reasoning model's thinking.
 const (
