@@ -53,7 +53,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		}
 		query.Kind = domain.VideoKind(*params.Kind)
 	}
-	if s.mergesLists(r.Context(), query) {
+	if s.readsPeer(r.Context()) {
 		s.listMergedVideos(w, r, query)
 		return
 	}

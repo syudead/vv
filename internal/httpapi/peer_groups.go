@@ -29,41 +29,11 @@ var (
 	remoteOrganizeAnswer = remoteOperation{rewrite: rewriteAs(rewriteRemoteOrganizeResult)}
 )
 
-// peerGroupQuery turns a trail into the peer's groups and keeps favorites and play history out of a read of the
-// peer's group.
-func peerGroupQuery(pattern string, query url.Values, op *remoteOperation) {
+// peerGroupQuery turns a trail into the peer's groups; sorts and the favorite filter reach the peer as they are.
+func peerGroupQuery(_ string, query url.Values, _ *remoteOperation) {
 	if query.Has("trail") {
 		query.Set("trail", peerTrail(query.Get("trail")))
 	}
-	if favoriteRead, read := remoteFavoriteReads[pattern]; read && peerGroupRead(query) {
-		op.rewrite = favoriteRead
-	}
-}
-
-// remoteFavoriteReads answer a favorites-only read of the peer's group: favorites stay with each node, so
-// none of the peer's items is this node's favorite.
-var remoteFavoriteReads = map[string]remoteRewrite{
-	"GET /api/groups/{id}": rewriteAs(func(detail *gen.GroupDetail, join domain.VocabularyJoin) {
-		rewriteRemoteGroupDetail(detail, join)
-		detail.Items, detail.NextCursor = []gen.GroupItem{}, nil
-	}),
-	"GET /api/groups/{id}/items": rewriteAs(func(page *gen.GroupItemPage, _ domain.VocabularyJoin) {
-		page.Items, page.NextCursor = []gen.GroupItem{}, nil
-	}),
-}
-
-// peerGroupRead keeps favorites and play history out of a read the peer answers, as a merged list does: the
-// peer lists in domain.PeerSort's order without the favorite filter. It reports a favorites-only read.
-func peerGroupRead(query url.Values) bool {
-	if sort := query.Get("sort"); sort != "" {
-		query.Set("sort", string(domain.PeerSort(domain.VideoSort(sort))))
-	}
-	favoriteOnly, err := strconv.ParseBool(query.Get("favorite"))
-	if err != nil {
-		return false
-	}
-	query.Del("favorite")
-	return favoriteOnly
 }
 
 // peerTrail keeps the peer's groups of a trail; the trail of a remote group is the peer's own.

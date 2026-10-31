@@ -18,12 +18,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// mergesLists reports whether a list answers with both nodes' items: the node reads a peer, and it is not a
-// favorites list, whose favorites stay with each node.
-func (s *server) mergesLists(ctx context.Context, q domain.VideoQuery) bool {
-	return !q.FavoriteOnly && s.readsPeer(ctx)
-}
-
 // readsPeer reports whether a request reaches both nodes: this node is paired and the request is not the peer's
 // own, which names this node's entities only.
 func (s *server) readsPeer(ctx context.Context) bool {
@@ -116,7 +110,7 @@ func (s *server) splitPeerFilters(ctx context.Context, q domain.VideoQuery) (pee
 	return out, nil
 }
 
-// peerQuery is the request's query for the peer: its own filters and the order the peer lists remote items in.
+// peerQuery is the request's query for the peer: its own filters and the request's order.
 func peerQuery(original url.Values, sort domain.VideoSort, filters url.Values) url.Values {
 	out := maps.Clone(original)
 	for _, name := range peerFilterParams {
@@ -124,7 +118,7 @@ func peerQuery(original url.Values, sort domain.VideoSort, filters url.Values) u
 	}
 	maps.Copy(out, filters)
 	if sort != "" {
-		out.Set("sort", string(domain.PeerSort(sort)))
+		out.Set("sort", string(sort))
 	}
 	return out
 }

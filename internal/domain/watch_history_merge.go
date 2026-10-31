@@ -19,9 +19,7 @@ func WatchHistoryItemCursor(entry WatchHistoryEntry) ItemCursor {
 // MergeWatchHistoryPages takes up to limit entries of both nodes' history pages, newest first and the local entry
 // first on equal times, with the cursor that continues both; more is false once both are done.
 func MergeWatchHistoryPages[T any](cursor MergedCursor, local, peer MergeSide[T], limit int) ([]T, MergedCursor, bool) {
-	return mergePages(cursor, local, peer, limit, func(a, b *string) bool {
-		return compareSortValues(SortPlayedDesc, a, b) <= 0
-	})
+	return MergePages(SortPlayedDesc, cursor, local, peer, limit)
 }
 
 // MergeWatchHistoryDays is the union of two nodes' YYYY-MM-DD days, newest first.

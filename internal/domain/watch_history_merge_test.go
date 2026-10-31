@@ -7,7 +7,7 @@ import (
 )
 
 // Both nodes' entries interleave by playedAt, newest first, whichever node runs out first; on equal times the
-// local entry comes first. A played sort of a video list keeps remote items last, which history must not do.
+// local entry comes first.
 func TestMergeWatchHistoryPagesListsBothNodesNewestFirst(t *testing.T) {
 	for _, tc := range []struct {
 		label       string

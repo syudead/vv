@@ -117,3 +117,12 @@ func RecordActivityForTest(ctx context.Context, db *DB, entry domain.ActivityEnt
 	}
 	return id, nil
 }
+
+// SetPlayedAtForTest saves a position for contentKey last updated at playedAt, the value the played sorts order by.
+func SetPlayedAtForTest(ctx context.Context, db *DB, contentKey string, playedAt time.Time) error {
+	_, err := db.sql.ExecContext(ctx, `
+		insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
+		values (?, 1000, 60000, 0, ?)
+		on conflict (content_key) do update set updated_at = excluded.updated_at`, contentKey, playedAt.Unix())
+	return err
+}
