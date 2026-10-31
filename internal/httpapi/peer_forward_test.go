@@ -354,3 +354,20 @@ func TestPeerContentCannotRunAsAPageOfThisNode(t *testing.T) {
 		}
 	}
 }
+
+// The assistant's read of a remote video reaches the peer as the screens' request does.
+func TestAssistantReadsARemoteVideoFromThePeer(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	remote := domain.ToRemoteID(f.ids["a"])
+
+	result, err := b.env.runner.Read(context.Background(), domain.AssistantRead{
+		Operation: "getVideo", Arguments: json.RawMessage(fmt.Sprintf(`{"id":%d}`, remote)),
+	})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	var video gen.Video
+	if err := json.Unmarshal(result.Body, &video); err != nil || video.Id != remote || video.Title != "a" {
+		t.Errorf("video = %s (%v), want id %d の a", result.Body, err, remote)
+	}
+}

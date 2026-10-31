@@ -18,6 +18,8 @@ import {
   type SubtitleTrack,
 } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
+import AssistantPanel from "../assistant/AssistantPanel";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { parsePlaylistQuery } from "../playlists/playlistPlayback";
@@ -201,6 +203,7 @@ export default function VideoPage() {
   const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
 
   const title = video?.title;
+  useAssistantScreen({ name: title });
   useEffect(() => {
     const previous = document.title;
     if (title !== undefined) document.title = t.player.documentTitle(title);
@@ -393,6 +396,7 @@ export default function VideoPage() {
     <div className={cn("min-h-dvh bg-background", pageClass(theater))}>
       <DetailPage
         theater={theater}
+        panel={<AssistantPanel />}
         // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="split:max-w-player-width-lg"

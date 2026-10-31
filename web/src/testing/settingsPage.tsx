@@ -55,7 +55,12 @@ function sectionResponses(): Record<string, () => Response> {
     "/api/peer": () => json({ state: "unpaired" }),
     "/api/settings/auto-import": () => json({ enabled: false, watch: { state: "off" } }),
     "/api/settings/ollama": () =>
-      json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved: false }),
+      json({
+        endpoint: "http://127.0.0.1:11434",
+        model: "clef-flash",
+        generationModel: "",
+        saved: false,
+      }),
     "/api/settings/auto-tagging": () =>
       json({
         enabled: false,

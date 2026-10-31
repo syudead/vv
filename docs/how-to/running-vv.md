@@ -378,6 +378,89 @@ uses software. The startup log shows each test's result
 (`transcode video encoder checks finished`), and a failed test is logged with
 the end of FFmpeg's error output.
 
+## Assistant
+
+The assistant answers requests typed in its panel with a chat model on the
+owner's own Ollama. It needs Ollama 0.5.0 or later, reachable from the server,
+with a chat model pulled; the decision model used for tagging cannot chat. On
+a CPU-only host, a model over 8B makes each request wait minutes. The design
+is in [assistant.md](../design-docs/assistant.md).
+
+1. Pull a chat model on the Ollama host with `ollama pull <model>`.
+2. In Settings, Connections, Ollama, save the Ollama URL.
+3. Choose the model under `Generation model`; the list comes from the saved
+   URL, and a typed name is kept. Choose one that can call tools: the list
+   marks the others `can’t call tools`, and a warning stays under the field
+   while the saved model is one of them.
+4. Press `Save and test connection` and wait for
+   `Ollama is running and has both models.`
+
+Ollama decides the chat context, the text one model call holds, and vv fits
+each request to it. A small context makes the assistant drop earlier tool
+results sooner; a context past the GPU's memory makes every call slow. Set it on
+the Ollama host with `OLLAMA_CONTEXT_LENGTH`, for example `32768`, and restart
+Ollama.
+
+Until a generation model is saved, the panel shows
+`Choose a model for the assistant` with a link to Connections instead of the
+request field. Clearing the field (`None`) turns the assistant off again and
+keeps the connection.
+
+Without a local Ollama, `scripts/clefrelay` stands in for it during
+development: run `CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay`
+(with `CLOUDFLARE_API_TOKEN` unless a proxy adds the credentials), save
+`http://127.0.0.1:11434` as the Ollama URL, and choose one of the chat models
+it lists as the generation model. The relay maps only Workers AI models whose
+catalog entry lists function calling, and answers `/api/show` with `tools` for
+each of them and `vision` for those that also take images:
+
+| Model | Workers AI model | Images |
+| --- | --- | --- |
+| `llama3.3:70b` | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | No |
+| `qwen3:30b` | `@cf/qwen/qwen3-30b-a3b-fp8` | No |
+| `granite4:micro` | `@cf/ibm-granite/granite-4.0-h-micro` | No |
+| `gemma4:26b` | `@cf/google/gemma-4-26b-a4b-it` | Yes |
+| `mistral-small3.1:24b` | `@cf/mistralai/mistral-small-3.1-24b-instruct` | Yes |
+| `llama4:scout` | `@cf/meta/llama-4-scout-17b-16e-instruct` | Yes |
+
+The relay sends the request's tools to Workers AI as OpenAI-style functions,
+returns the model's calls as Ollama `tool_calls` with object arguments, and
+sends a message's images as data URLs, tiling more than four into one. It
+refuses images for a model without `vision`. Every answer and tool call is
+logged, so the raw output behind a turn is in its log. `llama3.3:70b`,
+`gemma4:26b` and `mistral-small3.1:24b` follow tool results most reliably;
+`granite4:micro` sometimes garbles its arguments. Vision models without
+function calling, such as `@cf/meta/llama-3.2-11b-vision-instruct`, are not
+mapped, because the assistant needs tools.
+
+The browser e2e test scripts the model's tool calls with a stub, so how a
+real model chooses tools for Japanese requests is checked by hand after a
+change to the rules in the system message, the tools or the loop. Use a
+library with at least 30 videos, among them videos with cats in their frames,
+the tags `コスプレ衣装` and `コスプレ衣裳`, a person with face candidates,
+watched and unwatched videos, and an approved work-info plugin. Send each
+request and compare the progress and the reply:
+
+| Request | Expected |
+| --- | --- |
+| `この動画の情報を取得して` on a video page | Progress shows the plugin search and fetch; a card lists the fields to apply, and nothing changes until `Execute` |
+| `カラオケ関連の動画` | The number of videos the library shows for `カラオケ` |
+| `この動画に合いそうなタグを付けて` on a video page | A card that attaches existing tags; progress may show frame reads and `clef` or `view_images` |
+| `選択した動画の共通点は？` with three videos selected | Only names that all three videos carry |
+| `ライブ録画タグを作って選択中の動画に付けて` with videos selected | One card of two steps, the second marked `Created by step 1` |
+| `重複してるタグをまとめて` | Merge steps marked `Can’t be undone` with the videos that move, or a review run |
+| `お気に入りの使い方を教えて` | How to favorite and find favorites; no card |
+| `先月追加した30分以上の未視聴を再生リストにして` | Create-playlist and add-items steps over the library's same filter |
+| `長いのは除いて` right after the playlist request | The card is replaced by one whose target leaves out the long videos |
+| `コスプレのタグを付けて` with videos selected | A question naming `コスプレ衣装` and `コスプレ衣裳`, and no card |
+| `タグを整理して` | Progress of a review run, then `Open the review list` |
+| `猫が映ってる動画を探して` | Frame reads and `clef` (or `view_images` with a vision model); the answer is marked `Judged by Clef` when Clef answered |
+| `この人物の顔候補が本人か確かめて` on a person page | Face candidate crops judged by `clef`, with a probability each, and a card with a confirm or reject step per candidate; the candidates are unchanged until `Execute` |
+| `Show me videos I haven't watched yet` | Unwatched videos, answered in English |
+| Any request, closing the panel while it runs and opening it again | The same request with its progress or its result |
+| `APIトークンを作って` | The assistant can’t do this, with a link to Settings, API |
+| Any request with Ollama stopped | `Couldn’t reach Ollama`; nothing changes |
+
 ## Face recognition downloads
 
 VVMDM downloads nothing for face recognition until the owner turns it on

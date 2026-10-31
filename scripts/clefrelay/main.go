@@ -1,8 +1,12 @@
-// clefrelay adapts Ollama judging requests to Workers AI for development without a local Ollama server.
+// clefrelay adapts Ollama judging and chat requests to Workers AI for development without a local Ollama server.
 // Run CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay, then select http://127.0.0.1:11434 and clef or clef-flash.
+// The assistant's generation model is one of the function calling chat models in chat.go, such as llama3.3:70b;
+// /api/show reports which of them take tools and images.
 //
 // Set CLOUDFLARE_API_TOKEN unless the proxy supplies authentication. Connection checks stay local; use "Test judging" to verify Workers AI.
-// The adapter tiles more than four images, drops keep_alive, and converts Workers AI responses and errors to Ollama format.
+// The adapter tiles more than four images, drops keep_alive, relays tools and tool calls as OpenAI-style function
+// calling (reading the Gemma calls Workers AI leaves in the reasoning), logs every chat answer, and converts Workers AI
+// responses and errors to Ollama format.
 package main
 
 import (
@@ -13,12 +17,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"image"
-	"image/color"
-	"image/jpeg"
 	"io"
 	"log"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -27,22 +27,17 @@ import (
 	"syscall"
 	"time"
 
-	_ "image/png" // Decode PNG fixtures and manually submitted images.
+	"github.com/syudead/vv/internal/ollama"
 )
 
 // Workers AI accepts at most four images per request.
 const maxImages = 4
-
-// Nine cells produce about 1,900 x 1,100 pixels, within the 16-megapixel and 4 MiB limits.
-const maxCellWidth = 640
 
 // Workers AI normally responds in seconds, well below the product Ollama timeout.
 const requestTimeout = 2 * time.Minute
 
 // Limit both request and response bodies.
 const maxBodyBytes = 64 << 20
-
-const tileQuality = 85
 
 type config struct {
 	addr    string
@@ -110,9 +105,7 @@ type workersResponse struct {
 			InputTokens int `json:"input_tokens"`
 		} `json:"usage"`
 	} `json:"result"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
+	Errors []workersError `json:"errors"`
 }
 
 // The product recognizes any nonempty /api/version response as Ollama.
@@ -126,14 +119,35 @@ func newRelay(cfg config, client *http.Client) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"version": relayVersion})
 	})
 	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {
-		list := make([]map[string]string, len(models))
-		for i, m := range models {
-			list[i] = map[string]string{"name": m + ":latest", "model": m + ":latest"}
+		var list []map[string]string
+		for _, m := range models {
+			list = append(list, map[string]string{"name": m + ":latest", "model": m + ":latest"})
+		}
+		for _, m := range chatModelNames() {
+			list = append(list, map[string]string{"name": m, "model": m})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"models": list})
 	})
+	mux.HandleFunc("POST /api/show", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "cannot read the request: "+err.Error())
+			return
+		}
+		capabilities, ok := showCapabilities(in.Model)
+		if !ok {
+			writeError(w, http.StatusNotFound, fmt.Sprintf("model '%s' not found", in.Model))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"capabilities": capabilities})
+	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		relay(w, r, cfg, client)
+	})
+	mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
+		relayChat(w, r, cfg, client)
 	})
 	return mux
 }
@@ -162,10 +176,31 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 	}
 
 	url := fmt.Sprintf("%s/accounts/%s/ai/run/@cf/cloudflare/%s", strings.TrimRight(cfg.baseURL, "/"), cfg.account, model)
+	status, raw, err := postWorkers(r, cfg, client, url, body)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	var out workersResponse
+	decodeErr := json.Unmarshal(raw, &out)
+
+	if status == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
+		log.Printf("clefrelay: %s %d questions, %d→%d images, %d tokens, %s",
+			model, countKeys(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
+			time.Since(started).Round(time.Millisecond))
+		writeJSON(w, http.StatusOK, map[string]any{"model": model, "answers": out.Result.Answers})
+		return
+	}
+	message := errorMessage(status, out.Errors)
+	log.Printf("clefrelay: %s failed (%d): %s", model, status, message)
+	writeError(w, errorStatus(status), message)
+}
+
+// postWorkers sends one Workers AI request with the relay's credentials and reads its whole answer.
+func postWorkers(r *http.Request, cfg config, client *http.Client, url string, body []byte) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.token != "" {
@@ -173,39 +208,37 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot reach Workers AI: "+err.Error())
-		return
+		return 0, nil, fmt.Errorf("cannot reach Workers AI: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot read the Workers AI response: "+err.Error())
-		return
+		return 0, nil, fmt.Errorf("cannot read the Workers AI response: %w", err)
 	}
-	var out workersResponse
-	decodeErr := json.Unmarshal(raw, &out)
+	return resp.StatusCode, raw, nil
+}
 
-	if resp.StatusCode == http.StatusOK && decodeErr == nil && out.Success && out.Result != nil {
-		log.Printf("clefrelay: %s %d questions, %d→%d images, %d tokens, %s",
-			model, countKeys(in.Questions), len(in.Images), len(images), out.Result.Usage.InputTokens,
-			time.Since(started).Round(time.Millisecond))
-		writeJSON(w, http.StatusOK, map[string]any{"model": model, "answers": out.Result.Answers})
-		return
-	}
-	messages := make([]string, 0, len(out.Errors))
-	for _, e := range out.Errors {
+type workersError struct {
+	Message string `json:"message"`
+}
+
+func errorMessage(status int, errs []workersError) string {
+	messages := make([]string, 0, len(errs))
+	for _, e := range errs {
 		messages = append(messages, e.Message)
 	}
-	message := strings.Join(messages, "; ")
-	if message == "" {
-		message = fmt.Sprintf("Workers AI answered %d", resp.StatusCode)
+	if message := strings.Join(messages, "; "); message != "" {
+		return message
 	}
-	status := resp.StatusCode
+	return fmt.Sprintf("Workers AI answered %d", status)
+}
+
+// errorStatus keeps a Workers AI error status and turns an unreadable success into a gateway error.
+func errorStatus(status int) int {
 	if status < 400 {
-		status = http.StatusBadGateway
+		return http.StatusBadGateway
 	}
-	log.Printf("clefrelay: %s failed (%d): %s", model, resp.StatusCode, message)
-	writeError(w, status, message)
+	return status
 }
 
 // Tile more than four images instead of discarding later scenes.
@@ -228,68 +261,11 @@ func workersImages(encoded []string) ([]workersImage, error) {
 		}
 		return images, nil
 	}
-	tiled, err := tile(decoded)
+	tiled, err := ollama.Tile(decoded)
 	if err != nil {
 		return nil, err
 	}
 	return []workersImage{{ContentType: "image/jpeg", Base64: base64.StdEncoding.EncodeToString(tiled)}}, nil
-}
-
-// tile uses a near-square grid with cells based on the first thumbnail, capped at maxCellWidth; differing aspect ratios get black padding.
-func tile(images [][]byte) ([]byte, error) {
-	decoded := make([]image.Image, len(images))
-	for i, b := range images {
-		img, _, err := image.Decode(bytes.NewReader(b))
-		if err != nil {
-			return nil, fmt.Errorf("cannot decode image %d: %w", i, err)
-		}
-		decoded[i] = img
-	}
-	first := decoded[0].Bounds()
-	cellW, cellH := first.Dx(), first.Dy()
-	if cellW > maxCellWidth {
-		cellH = cellH * maxCellWidth / cellW
-		cellW = maxCellWidth
-	}
-	cols := int(math.Ceil(math.Sqrt(float64(len(decoded)))))
-	rows := (len(decoded) + cols - 1) / cols
-	out := image.NewRGBA(image.Rect(0, 0, cols*cellW, rows*cellH))
-	for i, img := range decoded {
-		cell := image.Rect(0, 0, cellW, cellH).Add(image.Pt((i%cols)*cellW, (i/cols)*cellH))
-		drawFit(out, cell, img)
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, out, &jpeg.Options{Quality: tileQuality}); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// drawFit preserves aspect ratio and averages source pixels when downsampling.
-func drawFit(dst *image.RGBA, cell image.Rectangle, src image.Image) {
-	sb := src.Bounds()
-	scale := math.Min(float64(cell.Dx())/float64(sb.Dx()), float64(cell.Dy())/float64(sb.Dy()))
-	w := max(1, int(float64(sb.Dx())*scale))
-	h := max(1, int(float64(sb.Dy())*scale))
-	origin := cell.Min.Add(image.Pt((cell.Dx()-w)/2, (cell.Dy()-h)/2))
-	for y := range h {
-		y0 := sb.Min.Y + y*sb.Dy()/h
-		y1 := max(y0+1, sb.Min.Y+(y+1)*sb.Dy()/h)
-		for x := range w {
-			x0 := sb.Min.X + x*sb.Dx()/w
-			x1 := max(x0+1, sb.Min.X+(x+1)*sb.Dx()/w)
-			var r, g, b, n uint64
-			for sy := y0; sy < y1; sy++ {
-				for sx := x0; sx < x1; sx++ {
-					cr, cg, cb, _ := src.At(sx, sy).RGBA()
-					r, g, b, n = r+uint64(cr), g+uint64(cg), b+uint64(cb), n+1
-				}
-			}
-			dst.SetRGBA(origin.X+x, origin.Y+y, color.RGBA{
-				R: uint8(r / n >> 8), G: uint8(g / n >> 8), B: uint8(b / n >> 8), A: 0xff,
-			})
-		}
-	}
 }
 
 func countKeys(raw json.RawMessage) int {

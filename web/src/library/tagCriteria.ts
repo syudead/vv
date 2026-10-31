@@ -5,6 +5,7 @@ import {
   type ListCriteria,
 } from "../videoList/listCriteria";
 import { type CreditFilter, hasCreditFilter } from "./creditCriteria";
+import { hasVideoConditions, type VideoConditions } from "./videoConditions";
 
 /** Keep library-only tag filters out of shared ListCriteria and folder URLs. */
 
@@ -49,8 +50,14 @@ export function hasConditions(
   criteria: ListCriteria,
   tag: readonly number[],
   credits: CreditFilter = {},
+  conditions: VideoConditions = {},
 ): boolean {
-  return tag.length > 0 || hasCreditFilter(credits) || hasBaseConditions(criteria);
+  return (
+    tag.length > 0 ||
+    hasCreditFilter(credits) ||
+    hasVideoConditions(conditions) ||
+    hasBaseConditions(criteria)
+  );
 }
 
 /** Clear tag filters while preserving sort and shuffle seed. */

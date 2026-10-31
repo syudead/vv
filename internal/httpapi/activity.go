@@ -235,6 +235,7 @@ func toAPIActivityFeatureCounts(counts map[domain.ActivityFeature]int) gen.Activ
 		MediaFolders:    counts[domain.ActivityFeatureMediaFolders],
 		Organize:        counts[domain.ActivityFeatureOrganize],
 		FaceRecognition: counts[domain.ActivityFeatureFaceRecognition],
+		Assistant:       counts[domain.ActivityFeatureAssistant],
 	}
 }
 

@@ -92,6 +92,8 @@ export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type UpdateOllamaSettings = components["schemas"]["UpdateOllamaSettingsRequest"];
+export type OllamaModelList = components["schemas"]["OllamaModelList"];
+export type OllamaModel = components["schemas"]["OllamaModel"];
 export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];
@@ -312,7 +314,8 @@ export interface ListFilterParams {
 
 export const MAX_TAG_FILTER_COUNT = 16;
 
-export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
+export interface ListVideosParams
+  extends ListFilterParams, CreditFilterParams, VideoConditionParams {
   /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
   /** Omitted lists every video; file leaves out virtual videos. */
@@ -327,6 +330,31 @@ export interface CreditFilterParams {
   organization?: number;
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
+}
+
+/** Duration, added-day and watch-state filters; the library URL and smart-folder rules use the same names. */
+export interface VideoConditionParams {
+  minDurationMs?: number;
+  maxDurationMs?: number;
+  /** YYYY-MM-DD in the server's local time zone. */
+  addedFrom?: string;
+  addedTo?: string;
+  watchState?: components["schemas"]["WatchState"];
+}
+
+export const videoConditionNames = [
+  "minDurationMs",
+  "maxDurationMs",
+  "addedFrom",
+  "addedTo",
+  "watchState",
+] as const satisfies readonly (keyof VideoConditionParams)[];
+
+function setVideoConditions(query: URLSearchParams, params: VideoConditionParams): void {
+  for (const name of videoConditionNames) {
+    const value = params[name];
+    if (value !== undefined) query.set(name, String(value));
+  }
 }
 
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
@@ -364,6 +392,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setVideoConditions(query, params);
   if (params.kind !== undefined) query.set("kind", params.kind);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
@@ -409,6 +438,7 @@ export async function listLibrary(
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setVideoConditions(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
@@ -909,7 +939,7 @@ export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings>
   return request<OllamaSettings>("/api/settings/ollama", { signal });
 }
 
-/** Send only endpoint and model; the server rejects response-only fields. */
+/** Send only the request fields; the server rejects response-only fields. */
 export function updateOllamaSettings(
   settings: UpdateOllamaSettings,
   signal?: AbortSignal,
@@ -917,6 +947,9 @@ export function updateOllamaSettings(
   const body: UpdateOllamaSettings = {
     endpoint: settings.endpoint,
     model: settings.model,
+    ...(settings.generationModel === undefined
+      ? {}
+      : { generationModel: settings.generationModel }),
   };
   return request<OllamaSettings>("/api/settings/ollama", {
     method: "PUT",
@@ -924,6 +957,11 @@ export function updateOllamaSettings(
     body: JSON.stringify(body),
     signal,
   });
+}
+
+/** Model names at the saved endpoint, in Ollama's order; 409 ollama_unreachable when it can't be listed. */
+export function listOllamaModels(signal?: AbortSignal): Promise<OllamaModelList> {
+  return request<OllamaModelList>("/api/settings/ollama/models", { signal });
 }
 
 /** Check the saved endpoint/model without running classification. */

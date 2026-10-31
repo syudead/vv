@@ -259,6 +259,11 @@ paths:
         - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/AddedFromFilter"
+        - $ref: "#/components/parameters/AddedToFilter"
+        - $ref: "#/components/parameters/WatchStateFilter"
         - $ref: "#/components/parameters/TagNameFilter"
         - $ref: "#/components/parameters/TagKindNameFilter"
         - $ref: "#/components/parameters/PersonNameFilter"
@@ -340,6 +345,11 @@ paths:
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/AddedFromFilter"
+        - $ref: "#/components/parameters/AddedToFilter"
+        - $ref: "#/components/parameters/WatchStateFilter"
         - $ref: "#/components/parameters/TagNameFilter"
         - $ref: "#/components/parameters/TagKindNameFilter"
         - $ref: "#/components/parameters/PersonNameFilter"
@@ -1777,7 +1787,7 @@ paths:
     post:
       operationId: checkOllama
       summary: "Check the saved Ollama connection and model availability"
-      description: "Uses only GET /api/version and GET /api/tags, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md."
+      description: "Uses only GET /api/version, GET /api/tags and, for a saved generation model, POST /api/show, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md."
       responses:
         "200":
           description: "Check result"
@@ -1787,6 +1797,297 @@ paths:
                 $ref: "#/components/schemas/CheckResult"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/settings/ollama/models:
+    get:
+      operationId: listOllamaModels
+      summary: "List the models at the saved Ollama endpoint"
+      description: "Uses only GET /api/version, GET /api/tags and POST /api/show for each model at the saved URL, never a request-supplied URL, without loading a model. Models come in the order Ollama lists them, with whether each can call tools and see images, for the decision and generation model pickers; see docs/design-docs/ai-layer.md."
+      responses:
+        "200":
+          description: "Models and their capabilities"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaModelList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "ollama_unreachable: the saved endpoint cannot be reached (reason connection) or does not answer as Ollama (reason not_ollama)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/assistant/readiness:
+    get:
+      operationId: getAssistantReadiness
+      summary: "Say whether the assistant can take a request"
+      description: "Reads the saved Ollama connection and generation model. The model's capabilities come from POST /api/show on the first read for an endpoint and model pair and are kept after that; when Ollama cannot be reached then, ready is true and the turn reports the failure."
+      responses:
+        "200":
+          description: "Readiness"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReadiness"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/assistant/turns:
+    post:
+      operationId: createAssistantTurn
+      summary: "Start one request as a server-side turn"
+      description: "Owner-only. Stores the request as a running turn and answers it with 202; the server then runs a tool loop over the saved generation model until the model answers, repeats its previous tool calls exactly, or the owner stops it with stopAssistantTurn. Each tool call adds a progress item, and every change to the turn sends an assistant event; read the turn again with getAssistantTurn. Closing the panel or leaving the page does not stop it. previousTurnId makes the request a follow-up: the previous request and its proposal's steps go to the model. Empty text, or more than 20,000 selected videos, returns 400 invalid_request (reason too_many_videos for the videos). Readiness false returns 409 assistant_not_ready with the readiness reason. Another running turn returns 409 assistant_busy with its id in turnId."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantTurnRequest"
+      responses:
+        "202":
+          description: "The running turn"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantTurn"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "The assistant is not ready (`assistant_not_ready`, reason ollama_not_saved, generation_model_unset or generation_model_without_tools), or another turn is running (`assistant_busy`, its id in turnId)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: listAssistantTurns
+      summary: "List the assistant's active turns"
+      description: "Owner-only. Lists, newest first, the running turn and the turns finished within the last hour, so the panel rebuilds its thread after a reload. active=true is the only filter and is required."
+      parameters:
+        - name: active
+          in: query
+          required: true
+          description: "Must be true."
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: "Active turns"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantTurnList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/assistant/turns/{id}:
+    get:
+      operationId: getAssistantTurn
+      summary: "Read one assistant turn"
+      description: "Owner-only. The panel reads it again on each assistant event. A turn is kept for 24 hours after it finished; a missing or expired turn returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantTurnId"
+      responses:
+        "200":
+          description: "The turn"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantTurn"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/turns/{id}/stop:
+    post:
+      operationId: stopAssistantTurn
+      summary: "Stop the running assistant turn"
+      description: "Owner-only. Cancels the running turn with this id; it then ends stopped with reason cancelled, keeping its progress and building no proposal. A turn that is not running returns 409 conflict."
+      parameters:
+        - $ref: "#/components/parameters/AssistantTurnId"
+      responses:
+        "204":
+          description: "The turn is stopping"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/assistant/proposals:
+    get:
+      operationId: listAssistantProposals
+      summary: "List the assistant's active proposals"
+      description: "Owner-only. Lists, newest first, the proposals that are approved or running and those finished within the last hour, so the panel shows them when it opens. active=true is the only filter and is required."
+      parameters:
+        - name: active
+          in: query
+          required: true
+          description: "Must be true."
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: "Active proposals"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantProposalList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/assistant/proposals/{id}:
+    get:
+      operationId: getAssistantProposal
+      summary: "Read one assistant proposal"
+      description: "Owner-only. The panel reads it again on each assistant event. A missing or expired proposal returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantProposalId"
+      responses:
+        "200":
+          description: "The proposal"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantProposal"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/proposals/{id}/execute:
+    post:
+      operationId: executeAssistantProposal
+      summary: "Approve an assistant proposal for execution"
+      description: "Owner-only. Moves a proposed proposal to approved with the steps the owner kept, marks the others skipped and returns it with 202; the assistant worker then runs exactly the kept steps' stored plans in card order in the background, each in batches of 500 videos, stops at the first step that ends stale or with a failed batch, and the progress follows assistant events. No index, or an index the proposal does not have, returns 400 invalid_request. A missing, discarded or expired proposal returns 404 not_found; any other status returns 409 proposal_not_pending with the proposal in the error's proposal field; a kept step that uses what an unticked step creates returns 409 step_needs_skipped with that kept step's index in the error's step field."
+      parameters:
+        - $ref: "#/components/parameters/AssistantProposalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantExecution"
+      responses:
+        "202":
+          description: "The approved proposal"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantProposal"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "The proposal is not pending (`proposal_not_pending`), and proposal carries it; or a kept step needs an unticked one (`step_needs_skipped`), and step is its index"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/assistant/review-runs/{id}:
+    get:
+      operationId: getAssistantReviewRun
+      summary: "Read a review run and a page of its candidates"
+      description: "Owner-only. Returns the run with its progress and its listed, adopted and rejected candidate sets, most probable first, each member with its current name and count. A candidate whose member no longer exists, such as the source of a merged tag, is left out, so a page may hold fewer than limit items. A missing run returns 404 not_found; an unknown cursor 400 invalid_request."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: "Candidates per page; 50 when omitted."
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: "The run and one page of candidates"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewRunPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/review-runs/{id}/candidates/adopt:
+    post:
+      operationId: adoptAssistantReviewCandidates
+      summary: "Adopt review candidates"
+      description: "Owner-only. Stores one approved proposal per chosen candidate, in the order of ids, each running the set's one operation: mergeTag or mergePeople into the member with more videos, or createGroup of the videos named by their common title. The assistant worker executes them like any approved proposal. skippedIds lists the ids that are not listed in the run or whose member no longer exists. A missing run returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantReviewCandidateIds"
+      responses:
+        "202":
+          description: "The approved proposals"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewAdoption"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/assistant/review-runs/{id}/candidates/reject:
+    post:
+      operationId: rejectAssistantReviewCandidates
+      summary: "Reject review candidates"
+      description: "Owner-only. Marks the listed candidates among ids rejected and remembers their sets, which later runs of the kind do not judge again. skippedIds lists the ids that are not listed in the run. A missing run returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/AssistantReviewRunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantReviewCandidateIds"
+      responses:
+        "200":
+          description: "The rejected and skipped ids"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantReviewRejection"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/settings/comfyui:
     get:
@@ -4794,7 +5095,7 @@ paths:
           explode: true
           schema:
             type: array
-            maxItems: 10
+            maxItems: 11
             items:
               $ref: "#/components/schemas/ActivityFeature"
         - name: decider
@@ -5863,7 +6164,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates and activity are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates, activity and assistant are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -5886,6 +6187,30 @@ components:
         type: string
 
   parameters:
+    AssistantReviewRunId:
+      name: id
+      in: path
+      required: true
+      description: "Assistant review run ID"
+      schema:
+        type: integer
+        format: int64
+    AssistantTurnId:
+      name: id
+      in: path
+      required: true
+      description: "Assistant turn ID"
+      schema:
+        type: integer
+        format: int64
+    AssistantProposalId:
+      name: id
+      in: path
+      required: true
+      description: "Assistant proposal ID"
+      schema:
+        type: integer
+        format: int64
     ActivityId:
       name: id
       in: path
@@ -5956,6 +6281,40 @@ components:
         type: integer
         format: int64
         minimum: 1
+    MinDurationFilter:
+      name: minDurationMs
+      in: query
+      description: "Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request."
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    MaxDurationFilter:
+      name: maxDurationMs
+      in: query
+      description: "Videos at most this long, in milliseconds; a video of unknown duration never matches."
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    AddedFromFilter:
+      name: addedFrom
+      in: query
+      description: "Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request."
+      schema:
+        type: string
+    AddedToFilter:
+      name: addedTo
+      in: query
+      description: "Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone."
+      schema:
+        type: string
+    WatchStateFilter:
+      name: watchState
+      in: query
+      description: "Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed."
+      schema:
+        $ref: "#/components/schemas/WatchState"
     TagNameFilter:
       name: tagName
       in: query
@@ -6118,6 +6477,7 @@ components:
       in: path
       required: true
       description: "ID of the other person of the pair"
+      x-vv-entity: person
       schema:
         type: integer
         format: int64
@@ -6514,6 +6874,7 @@ components:
         url:
           type: string
           maxLength: 2048
+          x-vv-secret: true
           description: "Saved URL with http, https or socks5 scheme, host, optional port/userinfo, and no path/query. Empty string disables the proxy."
     UpdatePluginProxySettingsRequest:
       type: object
@@ -6605,7 +6966,7 @@ components:
 
     OllamaSettings:
       type: object
-      required: [endpoint, model, saved]
+      required: [endpoint, model, generationModel, saved]
       additionalProperties: false
       description: "Ollama connection; see docs/design-docs/ai-layer.md"
       properties:
@@ -6614,7 +6975,10 @@ components:
           description: "HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434"
         model:
           type: string
-          description: "Ollama model name; defaults to clef-flash"
+          description: "Decision model name for the Clef classifier; defaults to clef-flash"
+        generationModel:
+          type: string
+          description: "Chat model name the assistant generates with; empty until the owner saves one, and empty turns the assistant off"
         saved:
           type: boolean
           description: "Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true."
@@ -6629,7 +6993,678 @@ components:
           description: "Ollama base URL using HTTP or HTTPS."
         model:
           type: string
-          description: "Ollama model name."
+          description: "Decision model name."
+        generationModel:
+          type: string
+          description: "Generation model name; an empty string clears it and keeps the connection saved. Omitted keeps the saved value."
+    OllamaModelList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      description: "Models at the saved Ollama endpoint, in Ollama's order."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OllamaModel"
+    OllamaModel:
+      type: object
+      required: [name, tools, vision]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "Model name as Ollama lists it, such as qwen3:8b."
+        tools:
+          type: boolean
+          description: "The model can call tools, from capabilities of POST /api/show; false when Ollama reports none."
+        vision:
+          type: boolean
+          description: "The model can see images, from capabilities of POST /api/show; false when Ollama reports none."
+    AssistantTurnRequest:
+      type: object
+      required: [text, context]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: "The owner's request, as untranslated user data; at most 500 characters."
+        context:
+          $ref: "#/components/schemas/AssistantTurnContext"
+        previousTurnId:
+          type: integer
+          format: int64
+          description: "The turn a follow-up continues; its request and its proposal's steps go to the model."
+
+    AssistantTurnContext:
+      type: object
+      required: [route]
+      additionalProperties: false
+      description: "The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it."
+      properties:
+        route:
+          $ref: "#/components/schemas/AssistantRoute"
+        selectedVideoIds:
+          type: array
+          maxItems: 20000
+          description: "The list selection; over 20,000 returns 400 too_many_videos."
+          items:
+            type: integer
+            format: int64
+        selectedCollectionIds:
+          $ref: "#/components/schemas/AssistantSelectedCollections"
+        filter:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        pinned:
+          type: array
+          maxItems: 50
+          description: "Ids chosen in a clarification, used before resolving the same name again."
+          items:
+            $ref: "#/components/schemas/AssistantPin"
+
+    AssistantRoute:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [library, folder, video, person, organization, playlist, group, smartFolder, tag, tags, people, duplicates, settings, other]
+        id:
+          type: integer
+          format: int64
+          description: "The entity the screen shows, for the kinds that show one."
+
+    AssistantSelectedCollections:
+      type: object
+      additionalProperties: false
+      properties:
+        groups:
+          type: array
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolders:
+          type: array
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    AssistantPin:
+      type: object
+      required: [kind, name, id]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        name:
+          type: string
+          description: "The name the clarification asked about, as untranslated user data."
+        id:
+          type: integer
+          format: int64
+
+    AssistantTurn:
+      type: object
+      required: [id, status, request, startedAt, progress, judged]
+      additionalProperties: false
+      description: "One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason."
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [running, done, clarify, stopped, interrupted]
+          description: "interrupted was running when the server stopped."
+        request:
+          type: string
+          description: "The owner's request, as untranslated user data."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        progress:
+          type: array
+          maxItems: 40
+          items:
+            $ref: "#/components/schemas/AssistantProgressItem"
+        answer:
+          type: string
+          description: "The model's final text in the request's language. It is model text: show it as plain text."
+        unchecked:
+          type: array
+          items:
+            type: string
+          description: "Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images."
+        judged:
+          type: boolean
+          description: "The answer used the classifier's answers, which are estimates."
+        directive:
+          $ref: "#/components/schemas/AssistantDirective"
+        clarify:
+          $ref: "#/components/schemas/AssistantTurnClarification"
+        proposal:
+          $ref: "#/components/schemas/AssistantProposal"
+        stop:
+          $ref: "#/components/schemas/AssistantTurnStop"
+
+    AssistantTurnList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantTurn"
+
+    AssistantProgressItem:
+      type: object
+      required: [tool, kind, labels, at]
+      additionalProperties: false
+      description: "One tool call, composed by the server from the tool and its arguments, never from the model's text."
+      properties:
+        tool:
+          type: string
+          description: "The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools."
+        kind:
+          type: string
+          enum: [builtin, read, image, write, excluded]
+          description: "image is a read that answers an image."
+        labels:
+          type: array
+          maxItems: 20
+          description: "The entities the call's id arguments name."
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+        images:
+          type: integer
+          description: "Images the call sends."
+        "n":
+          type: integer
+        m:
+          type: integer
+          description: "With n, how far a call over m items has come."
+        reviewRunId:
+          type: integer
+          format: int64
+          description: "For start_review, the review run it started or found running; the panel links its review list."
+        error:
+          type: string
+          description: "Why the call came back as an error result, in English; the model may recover."
+        at:
+          type: string
+          format: date-time
+
+    AssistantDirective:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      description: "The turn's last library filter or navigation, which the panel applies without confirmation."
+      properties:
+        kind:
+          type: string
+          enum: [filter, navigate]
+        criteria:
+          $ref: "#/components/schemas/AssistantCriteria"
+        destination:
+          $ref: "#/components/schemas/AssistantDestination"
+
+    AssistantTurnClarification:
+      type: object
+      required: [name, kind, candidates]
+      additionalProperties: false
+      description: "The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal."
+      properties:
+        name:
+          type: string
+          description: "As untranslated user data."
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        candidates:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/AssistantCandidate"
+
+    AssistantTurnStop:
+      type: object
+      required: [reason]
+      additionalProperties: false
+      description: "Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal."
+      properties:
+        reason:
+          type: string
+          enum: [step_limit, timeout, connection, model, no_answer, ungrounded, cancelled]
+        detail:
+          type: string
+          description: "For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis."
+        excluded:
+          $ref: "#/components/schemas/AssistantExcludedOperation"
+
+    AssistantExcludedOperation:
+      type: object
+      required: [operation, reason, page]
+      additionalProperties: false
+      description: "An operation the assistant leaves to its page, which the model asked for."
+      properties:
+        operation:
+          type: string
+        reason:
+          type: string
+        page:
+          type: string
+          description: "The route of the page that does it."
+
+    AssistantCriteria:
+      type: object
+      required: [rule, labels]
+      additionalProperties: false
+      description: "Library conditions with ids, in the names the library URL uses, and the labels of the entities they name."
+      properties:
+        rule:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+
+    AssistantDestination:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [video, person, organization, playlist, group, smartFolder, tag, library, folders, tags, people, organizations, playlists, history, duplicates, activity, settings]
+        id:
+          type: integer
+          format: int64
+        settingsPage:
+          type: string
+          enum: [scan, library, auto-tagging, face-recognition, connections, plugins, conversion, network, account, api, danger-zone]
+
+    AssistantCandidate:
+      type: object
+      required: [kind, id, name, count]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: "The entity's name, as untranslated user data."
+        count:
+          type: integer
+          description: "Videos the tag is on or the person or organization is credited on; 0 for other kinds."
+
+    AssistantLabelKind:
+      type: string
+      description: "activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title."
+      enum: [video, tag, tagKind, person, organization, playlist, group, smartFolder, folderRoot, activity, faceAppearance]
+
+    AssistantReviewRun:
+      type: object
+      required: [id, kind, status, total, judged, listed, startedAt]
+      additionalProperties: false
+      description: "A search for candidate sets of one kind and their judging by the classifier, one question per set."
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum: [tags, people, works]
+        status:
+          type: string
+          enum: [running, done, failed, interrupted]
+          description: "interrupted was stopped by a restart."
+        total:
+          type: integer
+          description: "Candidate sets found."
+        judged:
+          type: integer
+          description: "Sets judged so far."
+        listed:
+          type: integer
+          description: "Sets judged at 0.5 or more and listed."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    AssistantReviewRunPage:
+      type: object
+      required: [run, items]
+      additionalProperties: false
+      properties:
+        run:
+          $ref: "#/components/schemas/AssistantReviewRun"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantReviewCandidate"
+        nextCursor:
+          type: string
+
+    AssistantReviewCandidate:
+      type: object
+      required: [id, probability, members, state]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        probability:
+          type: number
+          format: double
+          description: "The classifier's probability that the set is one entity or one work, 0.5 or more."
+        members:
+          type: array
+          minItems: 2
+          description: "Two tags or two people, or two or more videos."
+          items:
+            $ref: "#/components/schemas/AssistantReviewMember"
+        state:
+          type: string
+          enum: [listed, adopted, rejected]
+
+    AssistantReviewMember:
+      type: object
+      required: [kind, id, name, count]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        id:
+          type: integer
+          format: int64
+          description: "The tag or person, or a current library video of the member."
+        name:
+          type: string
+          description: "The current name, or the video's title when the set was judged, as untranslated user data."
+        count:
+          type: integer
+          description: "Videos the tag is on or the person is credited on; 0 for a video."
+
+    AssistantReviewCandidateIds:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: integer
+            format: int64
+
+    AssistantReviewAdoption:
+      type: object
+      required: [proposals, skippedIds]
+      additionalProperties: false
+      properties:
+        proposals:
+          type: array
+          description: "The approved proposals, in the order of ids."
+          items:
+            $ref: "#/components/schemas/AssistantProposal"
+        skippedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    AssistantReviewRejection:
+      type: object
+      required: [rejectedIds, skippedIds]
+      additionalProperties: false
+      properties:
+        rejectedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        skippedIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+
+    AssistantProposalList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantProposal"
+
+    AssistantExecution:
+      type: object
+      required: [steps]
+      additionalProperties: false
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          description: "The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped."
+          items:
+            type: integer
+
+    AssistantProposal:
+      type: object
+      required: [id, status, request, steps]
+      additionalProperties: false
+      description: "The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress."
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          $ref: "#/components/schemas/AssistantProposalStatus"
+        request:
+          type: string
+          description: "The owner's text, as untranslated user data."
+        turnId:
+          type: integer
+          format: int64
+          description: "The turn that built the proposal; absent for an adoption from a review list."
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantProposalStep"
+        activityId:
+          type: integer
+          format: int64
+          description: "The assistant_run activity entry, present once the proposal is approved."
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    AssistantProposalStep:
+      type: object
+      required: [index, operation, irreversible, targets, change, created, createdBy, status, counts]
+      additionalProperties: false
+      description: "One write of a proposal: what the card shows for it and its progress."
+      properties:
+        index:
+          type: integer
+          description: "Position in the card, from 0."
+        operation:
+          type: string
+          description: "The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add."
+        irreversible:
+          type: boolean
+          description: "From the catalog row; the card marks the change as one that cannot be undone."
+        targets:
+          $ref: "#/components/schemas/AssistantProposalTargets"
+        change:
+          type: array
+          description: "The arguments after resolution, one per argument, in the order the card shows them."
+          items:
+            $ref: "#/components/schemas/AssistantChange"
+        created:
+          type: array
+          description: "Names the operation creates, such as a tag to attach that does not exist yet."
+          items:
+            type: string
+        createdBy:
+          type: array
+          description: "Names this step uses that an earlier step of the same proposal creates."
+          items:
+            $ref: "#/components/schemas/AssistantCreatedBy"
+        impact:
+          $ref: "#/components/schemas/AssistantImpact"
+        status:
+          $ref: "#/components/schemas/AssistantStepStatus"
+        counts:
+          $ref: "#/components/schemas/AssistantProposalCounts"
+        error:
+          $ref: "#/components/schemas/AssistantProposalError"
+
+    AssistantCreatedBy:
+      type: object
+      required: [name, step]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: "The name as the card shows it, as untranslated user data."
+        step:
+          type: integer
+          description: "The index of the step that creates it."
+
+    AssistantStepStatus:
+      type: string
+      enum: [pending, skipped, running, done, partial, stale, failed, notRun]
+      description: "pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run."
+
+    AssistantProposalStatus:
+      type: string
+      enum: [proposed, approved, running, done, partial, stale, failed, discarded]
+      description: "proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up."
+
+    AssistantProposalTargets:
+      type: object
+      required: [kind, count, labels]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          description: "The catalog row's target kind; empty for a row that acts on its arguments alone."
+        count:
+          type: integer
+          description: "Videos for a video target, otherwise the named entities."
+        labels:
+          type: array
+          maxItems: 10
+          description: "The first 10 targets the card names."
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+
+    AssistantLabel:
+      type: object
+      required: [kind, name]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/AssistantLabelKind"
+        id:
+          type: integer
+          format: int64
+          description: "The entity's id when the card showed it; absent when unknown."
+        name:
+          type: string
+          description: "The name the card showed, as untranslated user data."
+
+    AssistantChange:
+      type: object
+      required: [argument]
+      additionalProperties: false
+      properties:
+        argument:
+          type: string
+          description: "The argument name of the action outcome, such as tagNames or enabled."
+        labels:
+          type: array
+          description: "The entities the argument names after resolution."
+          items:
+            $ref: "#/components/schemas/AssistantLabel"
+        value:
+          description: "A literal value, such as a boolean, a number or a date."
+
+    AssistantImpact:
+      type: object
+      required: [videos]
+      additionalProperties: false
+      description: "Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored."
+      properties:
+        videos:
+          type: integer
+
+    AssistantProposalCounts:
+      type: object
+      required: [total, applied, failed]
+      additionalProperties: false
+      description: "In videos for a batched operation, otherwise 0 or 1 for the one call."
+      properties:
+        total:
+          type: integer
+        applied:
+          type: integer
+        failed:
+          type: integer
+
+    AssistantProposalError:
+      type: object
+      required: [code]
+      additionalProperties: false
+      description: "The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart."
+      properties:
+        code:
+          type: string
+        reason:
+          type: string
+        message:
+          type: string
+
+    AssistantReadiness:
+      type: object
+      required: [ready, vision]
+      additionalProperties: false
+      description: "Whether a turn can run; reason is present only when ready is false."
+      properties:
+        ready:
+          type: boolean
+        reason:
+          type: string
+          enum: [ollama_not_saved, generation_model_unset, generation_model_without_tools]
+          description: "ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools."
+        vision:
+          type: boolean
+          description: "The generation model can see images; false when it is unknown."
 
     ComfyUIProvider:
       type: string
@@ -6719,6 +7754,10 @@ components:
         message:
           type: string
           description: "Unavailability reason in English, possibly including the provider's JSON error message."
+        reason:
+          type: string
+          enum: [generation_model_missing, generation_model_without_tools]
+          description: "Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools."
         missing:
           type: array
           description: "ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows."
@@ -8418,6 +9457,7 @@ components:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditIdRef"
+          x-vv-entity: person
 
     WorkOrganizationInput:
       type: object
@@ -8428,6 +9468,7 @@ components:
           $ref: "#/components/schemas/WorkOrganizationRole"
         organization:
           $ref: "#/components/schemas/CreditIdRef"
+          x-vv-entity: organization
 
     WorkInfoInput:
       type: object
@@ -8927,10 +9968,12 @@ components:
             type: integer
             format: int64
             minimum: 1
+            x-vv-entity: faceAppearance
         targetId:
           type: integer
           format: int64
           minimum: 1
+          x-vv-entity: person
         restoreCredits:
           type: array
           maxItems: 200
@@ -8977,6 +10020,7 @@ components:
           items:
             type: integer
             format: int64
+            x-vv-entity: faceAppearance
             minimum: 1
 
     FaceFocus:
@@ -10282,6 +11326,29 @@ components:
           type: integer
           format: int64
           description: "Organization IDs linked in any role."
+        minDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`."
+        maxDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: "Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule."
+        addedFrom:
+          type: string
+          description: "First `YYYY-MM-DD` day added, in the server's local time zone."
+        addedTo:
+          type: string
+          description: "Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule."
+        watchState:
+          $ref: "#/components/schemas/WatchState"
+
+    WatchState:
+      type: string
+      enum: [unwatched, inProgress, watched]
+      description: "unwatched without a started position, watched when complete, otherwise inProgress."
 
     SmartRuleRef:
       type: object
@@ -10384,8 +11451,32 @@ components:
         favorite:
           type: boolean
           description: "Whether the owner favorited the folder; owner responses only."
+        conditions:
+          $ref: "#/components/schemas/SmartFolderConditions"
         peerRule:
           $ref: "#/components/schemas/PeerSmartRule"
+
+    SmartFolderConditions:
+      type: object
+      additionalProperties: false
+      description: "The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them."
+      properties:
+        minDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        maxDurationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        addedFrom:
+          type: string
+          description: "`YYYY-MM-DD` day in the server's local time zone."
+        addedTo:
+          type: string
+          description: "`YYYY-MM-DD` day in the server's local time zone."
+        watchState:
+          $ref: "#/components/schemas/WatchState"
 
     SmartFolderCards:
       type: object
@@ -12198,6 +13289,7 @@ components:
         - organize_undo
         - face_analysis
         - face_merge
+        - assistant_run
         - pipeline
         - undo
 
@@ -12215,6 +13307,7 @@ components:
         - media_folders
         - organize
         - face_recognition
+        - assistant
       # Explicit names prevent colliding enum values from renaming existing constants.
       x-enum-varnames:
         - ActivityFeatureImport
@@ -12227,6 +13320,7 @@ components:
         - ActivityFeatureMediaFolders
         - ActivityFeatureOrganize
         - ActivityFeatureFaceRecognition
+        - ActivityFeatureAssistant
 
     ActivityStatus:
       type: string
@@ -12259,6 +13353,8 @@ components:
         - decided_by_owner
         - gone
         - already_reverted
+        - partial
+        - stale
 
     ActivityDecider:
       type: string
@@ -12327,6 +13423,7 @@ components:
           media_folders,
           organize,
           face_recognition,
+          assistant,
         ]
       additionalProperties: false
       properties:
@@ -12349,6 +13446,8 @@ components:
         organize:
           type: integer
         face_recognition:
+          type: integer
+        assistant:
           type: integer
 
     ActivityEntry:
@@ -12598,7 +13697,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [video, pair, scan, folder, person]
+          enum: [video, pair, scan, folder, person, proposal]
         items:
           type: array
           items:
@@ -12694,10 +13793,12 @@ components:
           type: integer
           format: int64
           description: "Tag to undo on an auto_tag record; unused for other kinds."
+          x-vv-entity: tag
         appearanceId:
           type: integer
           format: int64
           minimum: 1
+          x-vv-entity: faceAppearance
           description: "Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds."
 
     VideoChanged:
@@ -13272,6 +14373,12 @@ components:
             - smart_folder_cycle
             - activity_not_retryable
             - activity_not_undoable
+            - ollama_unreachable
+            - proposal_not_pending
+            - step_needs_skipped
+            - assistant_not_ready
+            - assistant_unavailable
+            - assistant_busy
             - service_unavailable
         message:
           type: string
@@ -13306,6 +14413,15 @@ components:
           description: "The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous."
           items:
             type: string
+        proposal:
+          $ref: "#/components/schemas/AssistantProposal"
+        step:
+          type: integer
+          description: "The index of the kept step that uses what an unticked step creates; only for step_needs_skipped."
+        turnId:
+          type: integer
+          format: int64
+          description: "The running turn; only for assistant_busy."
     ErrorReason:
       type: string
       description: "Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants."
@@ -13410,6 +14526,13 @@ components:
         - virtual_video
         - description_too_long
         - too_many_urls
+        - connection
+        - not_ollama
+        - model
+        - timeout
+        - ollama_not_saved
+        - generation_model_unset
+        - generation_model_without_tools
         - peer_unknown
         - peer_not_allowed
         - invalid_address

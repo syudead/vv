@@ -1,11 +1,12 @@
 import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { t } from "../i18n";
+import { videoConditionChips } from "../library/videoConditions";
 
 export type RefKind = SmartRuleRef["kind"];
 
 /** Literal conditions use text; named references use ref, with missing marking deleted targets. */
 export type ConditionChip =
-  | { kind: "text"; key: string; text: string }
+  | { kind: "text"; key: string; text: string; uncapped?: boolean }
   | { kind: "ref"; key: string; ref: RefKind; id: number; missing: boolean };
 
 function refChip(
@@ -27,7 +28,7 @@ function textChip(key: string, text: string): ConditionChip {
 }
 
 /**
- * Preserve editor field order, omit empty conditions and mark missing references from both folder
+ * Preserve editor field order with the video conditions last, omit empty conditions and mark missing references from both folder
  * and ancestor settings.
  */
 export function conditionChips(
@@ -47,6 +48,9 @@ export function conditionChips(
   if (rule.organization !== undefined) {
     chips.push(refChip("organization", rule.organization, missing));
   }
+  // Duration, day and watch texts are short and built here, so they are not cut like names.
+  for (const chip of videoConditionChips(rule))
+    chips.push({ kind: "text", key: chip.kind, text: chip.text, uncapped: true });
   return chips;
 }
 

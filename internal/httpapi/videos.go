@@ -38,6 +38,10 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		tagKind: params.TagKind, personRole: params.PersonRole, tagName: params.TagName,
 		tagKindName: params.TagKindName, personName: params.PersonName, organizationName: params.OrganizationName,
+		conditions: conditionParams{
+			minDurationMs: params.MinDurationMs, maxDurationMs: params.MaxDurationMs,
+			addedFrom: params.AddedFrom, addedTo: params.AddedTo, watchState: params.WatchState,
+		},
 	})
 	if !ok {
 		return
@@ -94,6 +98,28 @@ type videoQueryParams struct {
 	tagKindName      *string
 	personName       *string
 	organizationName *string
+	conditions       conditionParams
+}
+
+// conditionParams carries the duration, added-day and watch-state filters.
+type conditionParams struct {
+	minDurationMs, maxDurationMs *int64
+	addedFrom, addedTo           *string
+	watchState                   *gen.WatchState
+}
+
+func (p conditionParams) conditions() domain.VideoConditions {
+	c := domain.VideoConditions{MinDurationMs: p.minDurationMs, MaxDurationMs: p.maxDurationMs}
+	if p.addedFrom != nil {
+		c.AddedFrom = domain.CalendarDay(*p.addedFrom)
+	}
+	if p.addedTo != nil {
+		c.AddedTo = domain.CalendarDay(*p.addedTo)
+	}
+	if p.watchState != nil {
+		c.WatchState = domain.WatchState(*p.watchState)
+	}
+	return c
 }
 
 // parseVideoQuery writes 400 and returns false for invalid or audience-restricted filters.
@@ -134,6 +160,12 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
+	conditions := params.conditions.conditions()
+	if err := conditions.Validate(); err != nil {
+		s.invalidRequest(w, "Duration, added-date or watch filters are out of range or out of order.")
+		return domain.VideoQuery{}, false
+	}
+	query.VideoConditions = conditions
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}

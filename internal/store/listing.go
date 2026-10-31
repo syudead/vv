@@ -107,6 +107,8 @@ type listSpec struct {
 	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
+	// Duration, added-day and watch-state filters; zero values do not filter.
+	conditions domain.VideoConditions
 	// tagKindNameID is the kind a kind name resolved to, ANDed with tagKindID; zero disables it.
 	tagKindNameID int64
 	// personName and organizationName match every entity with that canonical name; personRole applies to both
@@ -171,7 +173,8 @@ func filteredListSpec(scope locationScope, q domain.VideoQuery, tagIDs []int64) 
 		tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
 		personName: q.PersonName, organizationName: q.OrganizationName,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+		conditions: q.VideoConditions,
+		sort:       q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
 

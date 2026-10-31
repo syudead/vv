@@ -27,7 +27,9 @@ import { RefusingDropCard } from "../videoList/cardDrag";
 import { ItemRemoteMark } from "../videoList/RemoteItemMark";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
+import { videoConditionChips } from "../library/videoConditions";
 import { useSmartFolderCardValue } from "./cardValues";
+import { NamedChip } from "./ConditionLines";
 import { smartFolderPagePath, videoInSmartFolderPath } from "./smartFolderPaths";
 
 /**
@@ -122,6 +124,23 @@ function SmartFolderAddToPlaylist({
   );
 }
 
+/** The rule's duration, added-day and watch-state conditions, after the tags. */
+function RuleConditionChips({
+  conditions,
+}: {
+  conditions: LibrarySmartFolder["conditions"];
+}) {
+  const chips = conditions === undefined ? [] : videoConditionChips(conditions);
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1">
+      {chips.map((chip) => (
+        <NamedChip key={chip.kind} text={chip.text} uncapped />
+      ))}
+    </div>
+  );
+}
+
 /** Smart folders cannot be dragged or added to groups; omitted value responses hide the card. */
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
@@ -207,6 +226,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}
+      <RuleConditionChips conditions={values?.conditions} />
     </article>
   );
   return refusesDrop ? (

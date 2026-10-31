@@ -41,6 +41,7 @@ type eventSubscriber struct {
 	groups       map[int64]struct{}
 	smartFolders map[int64]struct{}
 	onboarding   bool
+	assistant    bool
 	peer         bool
 	ready        chan struct{}
 }
@@ -63,6 +64,7 @@ type pendingEvents struct {
 	groups       []int64
 	smartFolders []int64
 	onboarding   bool
+	assistant    bool
 	peer         bool
 }
 
@@ -72,13 +74,14 @@ func (s *eventSubscriber) take() pendingEvents {
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
 		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
-		peer: s.peer,
+		assistant: s.assistant, peer: s.peer,
 	}
 	s.peer = false
 	s.scan = false
 	s.candidates = false
 	s.activity = false
 	s.onboarding = false
+	s.assistant = false
 	clear(s.videos)
 	clear(s.groups)
 	clear(s.smartFolders)
@@ -180,6 +183,11 @@ func (e *Events) OnboardingChanged() {
 	e.publish(func(s *eventSubscriber) { s.onboarding = true })
 }
 
+// Assistant notifications have no payload; the panel rereads the proposals it shows.
+func (e *Events) AssistantChanged() {
+	e.publish(func(s *eventSubscriber) { s.assistant = true })
+}
+
 // PeerStateChanged has no payload; delivery reads the pairing state for each audience.
 func (e *Events) PeerStateChanged() {
 	e.publish(func(s *eventSubscriber) { s.peer = true })
@@ -229,6 +237,8 @@ func (e *Events) Handle(event domain.Event) {
 	case domain.OnboardingChanged:
 		// ホームの変化は onboarding の知らせにする。所有者にもゲストにも送る（docs/design-docs/onboarding.md）。
 		e.OnboardingChanged()
+	case domain.AssistantChanged:
+		e.AssistantChanged()
 	case domain.PeerStateChanged:
 		e.PeerStateChanged()
 	case domain.PeerChanged:
@@ -302,6 +312,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		pending.scan = false
 		pending.candidates = false
 		pending.activity = false
+		pending.assistant = false
 		pending.videos = nil
 	}
 	if pending.scan && s.scans != nil {
@@ -341,6 +352,11 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 	if len(pending.smartFolders) > 0 {
 		// As with groups, coalesce IDs without names.
 		if err := writeEvent(w, "smartFolder", gen.SmartFolderChanged{Ids: pending.smartFolders}); err != nil {
+			return err
+		}
+	}
+	if pending.assistant {
+		if err := writeEvent(w, "assistant", struct{}{}); err != nil {
 			return err
 		}
 	}

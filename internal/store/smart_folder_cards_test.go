@@ -182,6 +182,25 @@ func TestSmartFolderCardTagsOfABundleMatchTheLibraryItem(t *testing.T) {
 	}
 }
 
+// A card carries only its own rule's conditions, also when it shares another folder's match.
+func TestSmartFolderCardsCarryTheirOwnRuleConditions(t *testing.T) {
+	db := migratedDB(t)
+	own := domain.VideoConditions{MaxDurationMs: new(int64(0)), WatchState: domain.WatchStateWatched}
+	parent := newSmartFolder(t, db, "parent", domain.SmartRule{VideoConditions: own}, domain.SortAddedDesc, 0)
+	child := newSmartFolder(t, db, "child", domain.SmartRule{}, domain.SortAddedDesc, parent)
+
+	cards := smartFolderCards(t, db, domain.AudienceOwner, parent, child)
+	if len(cards) != 2 {
+		t.Fatalf("cards = %+v, want parent and child", cards)
+	}
+	if !reflect.DeepEqual(cards[0].Conditions, own) {
+		t.Errorf("parent conditions = %+v, want %+v", cards[0].Conditions, own)
+	}
+	if cards[1].Conditions.HasCondition() {
+		t.Errorf("child conditions = %+v, want none", cards[1].Conditions)
+	}
+}
+
 // Many search folders on one screen must not exceed SQLite's limits on one statement.
 func TestSmartFolderCardsOfManySearchFolders(t *testing.T) {
 	db, _ := itemsFixture(t)

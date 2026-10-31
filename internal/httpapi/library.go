@@ -29,6 +29,10 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		tagKind: params.TagKind, tagName: params.TagName, tagKindName: params.TagKindName,
 		personName: params.PersonName, organizationName: params.OrganizationName,
+		conditions: conditionParams{
+			minDurationMs: params.MinDurationMs, maxDurationMs: params.MaxDurationMs,
+			addedFrom: params.AddedFrom, addedTo: params.AddedTo, watchState: params.WatchState,
+		},
 	})
 	if !ok {
 		return

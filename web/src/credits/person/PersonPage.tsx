@@ -2,6 +2,7 @@ import { ScanFace } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
+import { useAssistantScreen } from "../../assistant/AssistantProvider";
 import { getFaceRecognitionSettings } from "../../api/client";
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
 import { errorText, t, type UiText } from "../../i18n";
@@ -40,6 +41,9 @@ function PersonScreen({ id }: { id: number | null }) {
     id,
     creditDisplayName,
   );
+  useAssistantScreen({
+    name: person === undefined ? undefined : creditDisplayName(person),
+  });
 
   if (state.kind === "gone") {
     return (

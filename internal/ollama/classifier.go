@@ -1,15 +1,12 @@
 package ollama
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -113,42 +110,15 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 	for _, q := range questions {
 		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Text}
 	}
-	encoded, err := json.Marshal(body)
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
+		return nil, err
 	}
-
-	url := strings.TrimRight(settings.Endpoint, "/") + "/v1/systemone"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(encoded))
-	if err != nil {
-		return nil, fmt.Errorf("cannot build the classifier request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("cannot reach Ollama at %s: %w", settings.Endpoint, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the classifier response: %w", err)
+	if status != http.StatusOK {
+		return nil, answerError(status, raw)
 	}
 	var decoded responseBody
-	decodeErr := json.Unmarshal(raw, &decoded)
-	if resp.StatusCode != http.StatusOK {
-		// Expose only Ollama's structured error message; raw responses could reveal content from an
-		// unrelated service.
-		message := strings.TrimSpace(decoded.Error)
-		if decodeErr != nil || message == "" {
-			return nil, fmt.Errorf("ollama answered %d", resp.StatusCode)
-		}
-		if len(message) > 300 {
-			message = message[:300]
-		}
-		return nil, fmt.Errorf("ollama answered %d: %s", resp.StatusCode, message)
-	}
-	if decodeErr != nil {
+	if decodeErr := json.Unmarshal(raw, &decoded); decodeErr != nil {
 		return nil, fmt.Errorf("cannot read the classifier response: %w", decodeErr)
 	}
 	if decoded.Answers == nil {
@@ -161,4 +131,47 @@ func (c *Classifier) post(ctx context.Context, settings domain.OllamaSettings, f
 		}
 	}
 	return probabilities, nil
+}
+
+// answerError passes on only the error text of an Ollama JSON answer.
+func answerError(status int, raw []byte) error {
+	var decoded responseBody
+	if json.Unmarshal(raw, &decoded) != nil {
+		decoded.Error = ""
+	}
+	return errors.New(statusMessage(status, decoded.Error))
+}
+
+// SystemOne sends Clef's own request with the saved decision model and keep-alive, and answers the endpoint's JSON
+// as it is. More images than Ollama takes are tiled into one, since splitting would change what Clef judges together.
+func (c *Classifier) SystemOne(ctx context.Context, req domain.ClefRequest) (json.RawMessage, error) {
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the Ollama settings: %w", err)
+	}
+	images, err := encodeImages(req.Images, maxImages)
+	if err != nil {
+		return nil, fmt.Errorf("cannot tile the images: %w", err)
+	}
+	body := requestBody{
+		Model: settings.Model, State: req.State, Images: images,
+		Questions: make(map[string]question, len(req.Questions)), KeepAlive: keepAlive,
+	}
+	if body.State == nil {
+		body.State = map[string]string{}
+	}
+	for key, q := range req.Questions {
+		body.Questions[key] = question(q)
+	}
+	status, raw, err := postJSON(ctx, c.http, settings.Endpoint, "/v1/systemone", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, answerError(status, raw)
+	}
+	if !json.Valid(raw) {
+		return nil, errors.New("the classifier response is not JSON")
+	}
+	return raw, nil
 }

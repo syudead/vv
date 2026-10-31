@@ -32,6 +32,7 @@ type SmartRule struct {
 	TagKind      int64   `json:"tagKind,omitempty"`
 	Person       int64   `json:"person,omitempty"`
 	Organization int64   `json:"organization,omitempty"`
+	VideoConditions
 }
 
 // Pointer IDs distinguish omitted fields from explicit zero or negative values.
@@ -42,6 +43,12 @@ type smartRuleInput struct {
 	TagKind      *int64   `json:"tagKind"`
 	Person       *int64   `json:"person"`
 	Organization *int64   `json:"organization"`
+	// Explicit nulls are rejected before decoding; the pointers keep an explicit 0 duration bound.
+	MinDurationMs *int64      `json:"minDurationMs"`
+	MaxDurationMs *int64      `json:"maxDurationMs"`
+	AddedFrom     CalendarDay `json:"addedFrom"`
+	AddedTo       CalendarDay `json:"addedTo"`
+	WatchState    WatchState  `json:"watchState"`
 }
 
 // ParseSmartRule rejects nonobjects, unknown fields, wrong types, and out-of-range values with ErrInvalidSmartRule.
@@ -67,7 +74,10 @@ func ParseSmartRule(raw []byte) (SmartRule, error) {
 	if err := decoder.Decode(&input); err != nil {
 		return SmartRule{}, fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
 	}
-	rule := SmartRule{Q: input.Q, Favorite: input.Favorite}
+	rule := SmartRule{Q: input.Q, Favorite: input.Favorite, VideoConditions: VideoConditions{
+		MinDurationMs: input.MinDurationMs, MaxDurationMs: input.MaxDurationMs,
+		AddedFrom: input.AddedFrom, AddedTo: input.AddedTo, WatchState: input.WatchState,
+	}}
 	if input.Tags != nil {
 		if len(*input.Tags) == 0 {
 			return SmartRule{}, fmt.Errorf("%w: tags is empty", ErrInvalidSmartRule)
@@ -109,6 +119,9 @@ func (r SmartRule) Validate() error {
 			return fmt.Errorf("%w: an id is negative", ErrInvalidSmartRule)
 		}
 	}
+	if err := r.VideoConditions.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
+	}
 	return nil
 }
 
@@ -146,12 +159,13 @@ func (r SmartRule) Encode() (string, error) {
 // Query leaves sorting, cursor, and limit to the caller.
 func (r SmartRule) Query() VideoQuery {
 	return VideoQuery{
-		Query:        r.Q,
-		FavoriteOnly: r.Favorite,
-		TagIDs:       slices.Clone(r.Tags),
-		TagKindID:    r.TagKind,
-		Person:       r.Person,
-		Organization: r.Organization,
+		Query:           r.Q,
+		FavoriteOnly:    r.Favorite,
+		TagIDs:          slices.Clone(r.Tags),
+		TagKindID:       r.TagKind,
+		Person:          r.Person,
+		Organization:    r.Organization,
+		VideoConditions: r.VideoConditions,
 	}
 }
 
@@ -311,6 +325,8 @@ type SmartFolderCard struct {
 	Previews []Video
 	// Tags is the union of matching-video tags, empty for guests.
 	Tags []VideoTag
+	// Conditions are the folder's own rule's video conditions, which the card shows as chips.
+	Conditions VideoConditions
 	// PathRules are the folder's rule and its ancestors', outermost first, for the paired node to match.
 	PathRules []SmartRule
 }

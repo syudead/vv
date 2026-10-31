@@ -135,6 +135,36 @@ describe("entryResult", () => {
       ),
     ).toBe("− cat · by you");
   });
+
+  it("reads an assistant run's operations and counts from its detail", () => {
+    const run: Partial<ActivityEntry> = {
+      kind: "assistant_run",
+      feature: "assistant",
+      decider: "owner",
+      subject: { kind: "proposal", items: [{ label: "これにタグを付けて" }] },
+    };
+    expect(
+      resultText(
+        entry({
+          ...run,
+          outcome: "partial",
+          detail:
+            '{"total":1201,"applied":1001,"failed":200,"steps":[' +
+            '{"operation":"createTag","status":"done","total":1,"applied":1,"failed":0},' +
+            '{"operation":"updateVideoTags.add","status":"partial","total":1200,"applied":1000,"failed":200}]}',
+        }),
+      ),
+    ).toBe("Create tag · Add tags · 1,001 changed · 200 failed");
+    expect(
+      resultText(
+        entry({
+          ...run,
+          outcome: "stale",
+          detail: '{"operation":"mergeTag","total":1,"applied":0,"failed":0}',
+        }),
+      ),
+    ).toBe("Merge tags · Changed since it was proposed, so it didn’t run. Ask again.");
+  });
 });
 
 describe("openActions", () => {

@@ -1,10 +1,13 @@
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getAssistantReadiness } from "../api/assistant";
 import {
   checkOllama,
   getOllamaSettings,
   isAborted,
+  listOllamaModels,
+  type OllamaModel,
   type OllamaSettings,
   updateOllamaSettings,
 } from "../api/client";
@@ -14,15 +17,130 @@ import { FormRow } from "../ui/patterns/form-row";
 import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
+import { Combobox, type ComboboxOption } from "../ui/shadcn/combobox";
 import { Input } from "../ui/shadcn/input";
 import { Skeleton } from "../ui/shadcn/skeleton";
+import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 
 type CheckState =
   | { kind: "idle" }
   | { kind: "checking" }
-  | { kind: "ok" }
+  | { kind: "ok"; both: boolean }
   | { kind: "failed"; message: UiText };
+
+type ModelList =
+  | { status: "loading" }
+  | { status: "ready"; items: OllamaModel[] }
+  | { status: "failed"; reason: UiText };
+
+/** Combobox values cannot be empty, so None needs a sentinel; a model name never has a space. */
+const noModel = " none";
+
+/** Reread the names each time a picker opens, since models are pulled outside VVMDM. */
+function useOllamaModels(): { models: ModelList; reload: (open: boolean) => void } {
+  const [models, setModels] = useState<ModelList>({ status: "loading" });
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+
+  const reload = useCallback((open: boolean) => {
+    if (!open) return;
+    controller.current?.abort();
+    const abort = new AbortController();
+    controller.current = abort;
+    setModels({ status: "loading" });
+    listOllamaModels(abort.signal).then(
+      (list) => {
+        if (!abort.signal.aborted) setModels({ status: "ready", items: list.items });
+      },
+      (failure: unknown) => {
+        if (!isAborted(failure))
+          setModels({ status: "failed", reason: errorText(failure) });
+      },
+    );
+  }, []);
+  return { models, reload };
+}
+
+function ModelPicker({
+  id,
+  label,
+  value,
+  onChange,
+  models,
+  onOpenChange,
+  generation,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  models: ModelList;
+  onOpenChange: (open: boolean) => void;
+  /** The generation model picker offers None and marks what each model can do. */
+  generation: boolean;
+}) {
+  const text = t.settings.ollama;
+  const items = models.status === "ready" ? models.items : [];
+  const options: ComboboxOption[] = [
+    ...(generation ? [{ value: noModel, label: text.none }] : []),
+    ...items.map((item) => ({
+      value: item.name,
+      label: generation ? generationOptionLabel(item) : item.name,
+    })),
+  ];
+  const status =
+    models.status === "loading" ? (
+      <>
+        <Spinner aria-hidden="true" role="presentation" />
+        {text.modelsLoading}
+      </>
+    ) : models.status === "failed" ? (
+      text.modelsFailed(models.reason)
+    ) : undefined;
+  return (
+    <Combobox
+      id={id}
+      aria-label={label}
+      className="sm:w-3xs lg:w-sm"
+      options={options}
+      value={value}
+      onValueChange={(next) => onChange(next === noModel ? "" : next)}
+      onOpenChange={onOpenChange}
+      placeholder={text.none}
+      searchPlaceholder={text.modelSearch}
+      emptyText={text.modelsEmpty}
+      status={status}
+      createLabel={text.useTyped}
+    />
+  );
+}
+
+/** Not calling tools outweighs seeing images, since the assistant cannot run without tools. */
+function generationOptionLabel(model: OllamaModel): string {
+  const text = t.settings.ollama;
+  if (!model.tools) return text.withoutToolsOption(model.name);
+  if (model.vision) return text.visionOption(model.name);
+  return model.name;
+}
+
+/** Readiness tells whether Ollama reports that the saved generation model cannot call tools. */
+async function savedModelWithoutTools(signal: AbortSignal): Promise<boolean> {
+  try {
+    const readiness = await getAssistantReadiness(signal);
+    return readiness.reason === "generation_model_without_tools";
+  } catch {
+    return false;
+  }
+}
+
+function sameSettings(a: OllamaSettings, b: OllamaSettings): boolean {
+  return (
+    a.endpoint === b.endpoint &&
+    a.model === b.model &&
+    a.generationModel === b.generationModel
+  );
+}
 
 export default function OllamaSection() {
   const text = t.settings.ollama;
@@ -33,7 +151,23 @@ export default function OllamaSection() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
   const [check, setCheck] = useState<CheckState>({ kind: "idle" });
+  const [withoutTools, setWithoutTools] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const toolsController = useRef<AbortController | null>(null);
+  const { models, reload } = useOllamaModels();
+
+  const readTools = useCallback((saved: OllamaSettings) => {
+    toolsController.current?.abort();
+    if (!saved.saved || saved.generationModel === "") {
+      setWithoutTools(false);
+      return;
+    }
+    const abort = new AbortController();
+    toolsController.current = abort;
+    void savedModelWithoutTools(abort.signal).then((without) => {
+      if (!abort.signal.aborted) setWithoutTools(without);
+    });
+  }, []);
 
   const load = useCallback(async () => {
     controller.current?.abort();
@@ -45,33 +179,35 @@ export default function OllamaSection() {
       setSettings(next);
       setDraft(next);
       setLoadError(null);
+      readTools(next);
     } catch (failure) {
       if (isAborted(failure)) return;
       setLoadError(errorText(failure));
     }
-  }, []);
+  }, [readTools]);
 
   useEffect(() => {
     void load();
-    return () => controller.current?.abort();
+    return () => {
+      controller.current?.abort();
+      toolsController.current?.abort();
+    };
   }, [load]);
 
-  const dirty =
-    draft !== null &&
-    settings !== null &&
-    (draft.endpoint !== settings.endpoint || draft.model !== settings.model);
+  const dirty = draft !== null && settings !== null && !sameSettings(draft, settings);
 
-  const persist = async (): Promise<boolean> => {
-    if (draft === null) return false;
+  const persist = async (): Promise<OllamaSettings | null> => {
+    if (draft === null) return null;
     setSaveError(null);
     try {
       const saved = await updateOllamaSettings(draft);
       setSettings(saved);
       setDraft(saved);
-      return true;
+      readTools(saved);
+      return saved;
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
-      return false;
+      return null;
     }
   };
 
@@ -79,7 +215,7 @@ export default function OllamaSection() {
     if (draft === null || saving) return;
     setSaving(true);
     try {
-      if (await persist()) toast(text.saved);
+      if ((await persist()) !== null) toast(text.saved);
     } finally {
       setSaving(false);
     }
@@ -87,20 +223,33 @@ export default function OllamaSection() {
 
   // Save draft changes first because the server tests only stored settings.
   const runCheck = async () => {
-    if (draft === null || check.kind === "checking" || saving) return;
+    if (draft === null || settings === null || check.kind === "checking" || saving)
+      return;
+    let tested = settings;
     if (dirty) {
       setSaving(true);
       const saved = await persist().finally(() => setSaving(false));
-      if (!saved) return;
+      if (saved === null) return;
+      tested = saved;
     }
     setCheck({ kind: "checking" });
     try {
       const result = await checkOllama();
-      setCheck(
-        result.available
-          ? { kind: "ok" }
-          : { kind: "failed", message: text.checkFailed(result.message ?? "") },
-      );
+      if (result.available) {
+        setCheck({ kind: "ok", both: tested.generationModel !== "" });
+      } else if (result.reason === "generation_model_missing") {
+        setCheck({
+          kind: "failed",
+          message: text.generationModelMissing(tested.generationModel),
+        });
+      } else if (result.reason === "generation_model_without_tools") {
+        setCheck({
+          kind: "failed",
+          message: text.checkWithoutTools(tested.generationModel),
+        });
+      } else {
+        setCheck({ kind: "failed", message: text.checkFailed(result.message ?? "") });
+      }
     } catch (failure) {
       setCheck({ kind: "failed", message: text.checkFailed(errorText(failure)) });
     }
@@ -126,6 +275,7 @@ export default function OllamaSection() {
           <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
             <Skeleton className="h-9" />
             <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
           </div>
         )}
       </PageSection>
@@ -148,13 +298,37 @@ export default function OllamaSection() {
         />
       </FormRow>
       <FormRow label={text.model} description={text.modelHint} htmlFor="ollama-model">
-        <Input
+        <ModelPicker
           id="ollama-model"
-          className="sm:w-3xs lg:w-sm"
+          label={text.model}
           value={draft.model}
-          onChange={(event) => update({ model: event.target.value })}
+          onChange={(model) => update({ model })}
+          models={models}
+          onOpenChange={reload}
+          generation={false}
         />
       </FormRow>
+      <FormRow
+        label={text.generationModel}
+        description={text.generationModelHint}
+        htmlFor="ollama-generation-model"
+      >
+        <ModelPicker
+          id="ollama-generation-model"
+          label={text.generationModel}
+          value={draft.generationModel}
+          onChange={(generationModel) => update({ generationModel })}
+          models={models}
+          onOpenChange={reload}
+          generation
+        />
+      </FormRow>
+      {withoutTools && settings !== null && (
+        <p className="flex items-center gap-2 text-xs text-warning">
+          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+          {text.savedWithoutTools(settings.generationModel)}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -197,7 +371,7 @@ export default function OllamaSection() {
             className="flex items-center gap-2 text-xs text-muted-foreground"
           >
             <CircleCheck aria-hidden="true" className="size-4" />
-            {text.checkOk}
+            {check.both ? text.checkOkBoth : text.checkOk}
           </p>
         )}
         {check.kind === "failed" && (

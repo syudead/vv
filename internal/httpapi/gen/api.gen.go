@@ -38,6 +38,7 @@ func (e ActivityDecider) Valid() bool {
 
 // Defines values for ActivityFeature.
 const (
+	ActivityFeatureAssistant       ActivityFeature = "assistant"
 	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
 	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
 	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
@@ -53,6 +54,8 @@ const (
 // Valid indicates whether the value is a known member of the ActivityFeature enum.
 func (e ActivityFeature) Valid() bool {
 	switch e {
+	case ActivityFeatureAssistant:
+		return true
 	case ActivityFeatureAutoTagging:
 		return true
 	case ActivityFeatureDuplicateCheck:
@@ -80,6 +83,7 @@ func (e ActivityFeature) Valid() bool {
 
 // Defines values for ActivityKind.
 const (
+	ActivityKindAssistantRun       ActivityKind = "assistant_run"
 	ActivityKindAutoTag            ActivityKind = "auto_tag"
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
@@ -105,6 +109,8 @@ const (
 // Valid indicates whether the value is a known member of the ActivityKind enum.
 func (e ActivityKind) Valid() bool {
 	switch e {
+	case ActivityKindAssistantRun:
+		return true
 	case ActivityKindAutoTag:
 		return true
 	case ActivityKindBundle:
@@ -158,7 +164,9 @@ const (
 	ActivityOutcomeDifferent       ActivityOutcome = "different"
 	ActivityOutcomeFailed          ActivityOutcome = "failed"
 	ActivityOutcomeGone            ActivityOutcome = "gone"
+	ActivityOutcomePartial         ActivityOutcome = "partial"
 	ActivityOutcomeSame            ActivityOutcome = "same"
+	ActivityOutcomeStale           ActivityOutcome = "stale"
 	ActivityOutcomeSuperseded      ActivityOutcome = "superseded"
 )
 
@@ -177,7 +185,11 @@ func (e ActivityOutcome) Valid() bool {
 		return true
 	case ActivityOutcomeGone:
 		return true
+	case ActivityOutcomePartial:
+		return true
 	case ActivityOutcomeSame:
+		return true
+	case ActivityOutcomeStale:
 		return true
 	case ActivityOutcomeSuperseded:
 		return true
@@ -293,11 +305,12 @@ func (e ActivityStatus) Valid() bool {
 
 // Defines values for ActivitySubjectKind.
 const (
-	ActivitySubjectKindFolder ActivitySubjectKind = "folder"
-	ActivitySubjectKindPair   ActivitySubjectKind = "pair"
-	ActivitySubjectKindPerson ActivitySubjectKind = "person"
-	ActivitySubjectKindScan   ActivitySubjectKind = "scan"
-	ActivitySubjectKindVideo  ActivitySubjectKind = "video"
+	ActivitySubjectKindFolder   ActivitySubjectKind = "folder"
+	ActivitySubjectKindPair     ActivitySubjectKind = "pair"
+	ActivitySubjectKindPerson   ActivitySubjectKind = "person"
+	ActivitySubjectKindProposal ActivitySubjectKind = "proposal"
+	ActivitySubjectKindScan     ActivitySubjectKind = "scan"
+	ActivitySubjectKindVideo    ActivitySubjectKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the ActivitySubjectKind enum.
@@ -309,9 +322,482 @@ func (e ActivitySubjectKind) Valid() bool {
 		return true
 	case ActivitySubjectKindPerson:
 		return true
+	case ActivitySubjectKindProposal:
+		return true
 	case ActivitySubjectKindScan:
 		return true
 	case ActivitySubjectKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantDestinationKind.
+const (
+	AssistantDestinationKindActivity      AssistantDestinationKind = "activity"
+	AssistantDestinationKindDuplicates    AssistantDestinationKind = "duplicates"
+	AssistantDestinationKindFolders       AssistantDestinationKind = "folders"
+	AssistantDestinationKindGroup         AssistantDestinationKind = "group"
+	AssistantDestinationKindHistory       AssistantDestinationKind = "history"
+	AssistantDestinationKindLibrary       AssistantDestinationKind = "library"
+	AssistantDestinationKindOrganization  AssistantDestinationKind = "organization"
+	AssistantDestinationKindOrganizations AssistantDestinationKind = "organizations"
+	AssistantDestinationKindPeople        AssistantDestinationKind = "people"
+	AssistantDestinationKindPerson        AssistantDestinationKind = "person"
+	AssistantDestinationKindPlaylist      AssistantDestinationKind = "playlist"
+	AssistantDestinationKindPlaylists     AssistantDestinationKind = "playlists"
+	AssistantDestinationKindSettings      AssistantDestinationKind = "settings"
+	AssistantDestinationKindSmartFolder   AssistantDestinationKind = "smartFolder"
+	AssistantDestinationKindTag           AssistantDestinationKind = "tag"
+	AssistantDestinationKindTags          AssistantDestinationKind = "tags"
+	AssistantDestinationKindVideo         AssistantDestinationKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDestinationKind enum.
+func (e AssistantDestinationKind) Valid() bool {
+	switch e {
+	case AssistantDestinationKindActivity:
+		return true
+	case AssistantDestinationKindDuplicates:
+		return true
+	case AssistantDestinationKindFolders:
+		return true
+	case AssistantDestinationKindGroup:
+		return true
+	case AssistantDestinationKindHistory:
+		return true
+	case AssistantDestinationKindLibrary:
+		return true
+	case AssistantDestinationKindOrganization:
+		return true
+	case AssistantDestinationKindOrganizations:
+		return true
+	case AssistantDestinationKindPeople:
+		return true
+	case AssistantDestinationKindPerson:
+		return true
+	case AssistantDestinationKindPlaylist:
+		return true
+	case AssistantDestinationKindPlaylists:
+		return true
+	case AssistantDestinationKindSettings:
+		return true
+	case AssistantDestinationKindSmartFolder:
+		return true
+	case AssistantDestinationKindTag:
+		return true
+	case AssistantDestinationKindTags:
+		return true
+	case AssistantDestinationKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantDestinationSettingsPage.
+const (
+	AssistantDestinationSettingsPageAccount         AssistantDestinationSettingsPage = "account"
+	AssistantDestinationSettingsPageApi             AssistantDestinationSettingsPage = "api"
+	AssistantDestinationSettingsPageAutoTagging     AssistantDestinationSettingsPage = "auto-tagging"
+	AssistantDestinationSettingsPageConnections     AssistantDestinationSettingsPage = "connections"
+	AssistantDestinationSettingsPageConversion      AssistantDestinationSettingsPage = "conversion"
+	AssistantDestinationSettingsPageDangerZone      AssistantDestinationSettingsPage = "danger-zone"
+	AssistantDestinationSettingsPageFaceRecognition AssistantDestinationSettingsPage = "face-recognition"
+	AssistantDestinationSettingsPageLibrary         AssistantDestinationSettingsPage = "library"
+	AssistantDestinationSettingsPageNetwork         AssistantDestinationSettingsPage = "network"
+	AssistantDestinationSettingsPagePlugins         AssistantDestinationSettingsPage = "plugins"
+	AssistantDestinationSettingsPageScan            AssistantDestinationSettingsPage = "scan"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDestinationSettingsPage enum.
+func (e AssistantDestinationSettingsPage) Valid() bool {
+	switch e {
+	case AssistantDestinationSettingsPageAccount:
+		return true
+	case AssistantDestinationSettingsPageApi:
+		return true
+	case AssistantDestinationSettingsPageAutoTagging:
+		return true
+	case AssistantDestinationSettingsPageConnections:
+		return true
+	case AssistantDestinationSettingsPageConversion:
+		return true
+	case AssistantDestinationSettingsPageDangerZone:
+		return true
+	case AssistantDestinationSettingsPageFaceRecognition:
+		return true
+	case AssistantDestinationSettingsPageLibrary:
+		return true
+	case AssistantDestinationSettingsPageNetwork:
+		return true
+	case AssistantDestinationSettingsPagePlugins:
+		return true
+	case AssistantDestinationSettingsPageScan:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantDirectiveKind.
+const (
+	Filter   AssistantDirectiveKind = "filter"
+	Navigate AssistantDirectiveKind = "navigate"
+)
+
+// Valid indicates whether the value is a known member of the AssistantDirectiveKind enum.
+func (e AssistantDirectiveKind) Valid() bool {
+	switch e {
+	case Filter:
+		return true
+	case Navigate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantLabelKind.
+const (
+	AssistantLabelKindActivity       AssistantLabelKind = "activity"
+	AssistantLabelKindFaceAppearance AssistantLabelKind = "faceAppearance"
+	AssistantLabelKindFolderRoot     AssistantLabelKind = "folderRoot"
+	AssistantLabelKindGroup          AssistantLabelKind = "group"
+	AssistantLabelKindOrganization   AssistantLabelKind = "organization"
+	AssistantLabelKindPerson         AssistantLabelKind = "person"
+	AssistantLabelKindPlaylist       AssistantLabelKind = "playlist"
+	AssistantLabelKindSmartFolder    AssistantLabelKind = "smartFolder"
+	AssistantLabelKindTag            AssistantLabelKind = "tag"
+	AssistantLabelKindTagKind        AssistantLabelKind = "tagKind"
+	AssistantLabelKindVideo          AssistantLabelKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantLabelKind enum.
+func (e AssistantLabelKind) Valid() bool {
+	switch e {
+	case AssistantLabelKindActivity:
+		return true
+	case AssistantLabelKindFaceAppearance:
+		return true
+	case AssistantLabelKindFolderRoot:
+		return true
+	case AssistantLabelKindGroup:
+		return true
+	case AssistantLabelKindOrganization:
+		return true
+	case AssistantLabelKindPerson:
+		return true
+	case AssistantLabelKindPlaylist:
+		return true
+	case AssistantLabelKindSmartFolder:
+		return true
+	case AssistantLabelKindTag:
+		return true
+	case AssistantLabelKindTagKind:
+		return true
+	case AssistantLabelKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantProgressItemKind.
+const (
+	AssistantProgressItemKindBuiltin  AssistantProgressItemKind = "builtin"
+	AssistantProgressItemKindExcluded AssistantProgressItemKind = "excluded"
+	AssistantProgressItemKindImage    AssistantProgressItemKind = "image"
+	AssistantProgressItemKindRead     AssistantProgressItemKind = "read"
+	AssistantProgressItemKindWrite    AssistantProgressItemKind = "write"
+)
+
+// Valid indicates whether the value is a known member of the AssistantProgressItemKind enum.
+func (e AssistantProgressItemKind) Valid() bool {
+	switch e {
+	case AssistantProgressItemKindBuiltin:
+		return true
+	case AssistantProgressItemKindExcluded:
+		return true
+	case AssistantProgressItemKindImage:
+		return true
+	case AssistantProgressItemKindRead:
+		return true
+	case AssistantProgressItemKindWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantProposalStatus.
+const (
+	AssistantProposalStatusApproved  AssistantProposalStatus = "approved"
+	AssistantProposalStatusDiscarded AssistantProposalStatus = "discarded"
+	AssistantProposalStatusDone      AssistantProposalStatus = "done"
+	AssistantProposalStatusFailed    AssistantProposalStatus = "failed"
+	AssistantProposalStatusPartial   AssistantProposalStatus = "partial"
+	AssistantProposalStatusProposed  AssistantProposalStatus = "proposed"
+	AssistantProposalStatusRunning   AssistantProposalStatus = "running"
+	AssistantProposalStatusStale     AssistantProposalStatus = "stale"
+)
+
+// Valid indicates whether the value is a known member of the AssistantProposalStatus enum.
+func (e AssistantProposalStatus) Valid() bool {
+	switch e {
+	case AssistantProposalStatusApproved:
+		return true
+	case AssistantProposalStatusDiscarded:
+		return true
+	case AssistantProposalStatusDone:
+		return true
+	case AssistantProposalStatusFailed:
+		return true
+	case AssistantProposalStatusPartial:
+		return true
+	case AssistantProposalStatusProposed:
+		return true
+	case AssistantProposalStatusRunning:
+		return true
+	case AssistantProposalStatusStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReadinessReason.
+const (
+	AssistantReadinessReasonGenerationModelUnset        AssistantReadinessReason = "generation_model_unset"
+	AssistantReadinessReasonGenerationModelWithoutTools AssistantReadinessReason = "generation_model_without_tools"
+	AssistantReadinessReasonOllamaNotSaved              AssistantReadinessReason = "ollama_not_saved"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReadinessReason enum.
+func (e AssistantReadinessReason) Valid() bool {
+	switch e {
+	case AssistantReadinessReasonGenerationModelUnset:
+		return true
+	case AssistantReadinessReasonGenerationModelWithoutTools:
+		return true
+	case AssistantReadinessReasonOllamaNotSaved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReviewCandidateState.
+const (
+	AssistantReviewCandidateStateAdopted  AssistantReviewCandidateState = "adopted"
+	AssistantReviewCandidateStateListed   AssistantReviewCandidateState = "listed"
+	AssistantReviewCandidateStateRejected AssistantReviewCandidateState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewCandidateState enum.
+func (e AssistantReviewCandidateState) Valid() bool {
+	switch e {
+	case AssistantReviewCandidateStateAdopted:
+		return true
+	case AssistantReviewCandidateStateListed:
+		return true
+	case AssistantReviewCandidateStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReviewRunKind.
+const (
+	AssistantReviewRunKindPeople AssistantReviewRunKind = "people"
+	AssistantReviewRunKindTags   AssistantReviewRunKind = "tags"
+	AssistantReviewRunKindWorks  AssistantReviewRunKind = "works"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewRunKind enum.
+func (e AssistantReviewRunKind) Valid() bool {
+	switch e {
+	case AssistantReviewRunKindPeople:
+		return true
+	case AssistantReviewRunKindTags:
+		return true
+	case AssistantReviewRunKindWorks:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantReviewRunStatus.
+const (
+	AssistantReviewRunStatusDone        AssistantReviewRunStatus = "done"
+	AssistantReviewRunStatusFailed      AssistantReviewRunStatus = "failed"
+	AssistantReviewRunStatusInterrupted AssistantReviewRunStatus = "interrupted"
+	AssistantReviewRunStatusRunning     AssistantReviewRunStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the AssistantReviewRunStatus enum.
+func (e AssistantReviewRunStatus) Valid() bool {
+	switch e {
+	case AssistantReviewRunStatusDone:
+		return true
+	case AssistantReviewRunStatusFailed:
+		return true
+	case AssistantReviewRunStatusInterrupted:
+		return true
+	case AssistantReviewRunStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantRouteKind.
+const (
+	AssistantRouteKindDuplicates   AssistantRouteKind = "duplicates"
+	AssistantRouteKindFolder       AssistantRouteKind = "folder"
+	AssistantRouteKindGroup        AssistantRouteKind = "group"
+	AssistantRouteKindLibrary      AssistantRouteKind = "library"
+	AssistantRouteKindOrganization AssistantRouteKind = "organization"
+	AssistantRouteKindOther        AssistantRouteKind = "other"
+	AssistantRouteKindPeople       AssistantRouteKind = "people"
+	AssistantRouteKindPerson       AssistantRouteKind = "person"
+	AssistantRouteKindPlaylist     AssistantRouteKind = "playlist"
+	AssistantRouteKindSettings     AssistantRouteKind = "settings"
+	AssistantRouteKindSmartFolder  AssistantRouteKind = "smartFolder"
+	AssistantRouteKindTag          AssistantRouteKind = "tag"
+	AssistantRouteKindTags         AssistantRouteKind = "tags"
+	AssistantRouteKindVideo        AssistantRouteKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssistantRouteKind enum.
+func (e AssistantRouteKind) Valid() bool {
+	switch e {
+	case AssistantRouteKindDuplicates:
+		return true
+	case AssistantRouteKindFolder:
+		return true
+	case AssistantRouteKindGroup:
+		return true
+	case AssistantRouteKindLibrary:
+		return true
+	case AssistantRouteKindOrganization:
+		return true
+	case AssistantRouteKindOther:
+		return true
+	case AssistantRouteKindPeople:
+		return true
+	case AssistantRouteKindPerson:
+		return true
+	case AssistantRouteKindPlaylist:
+		return true
+	case AssistantRouteKindSettings:
+		return true
+	case AssistantRouteKindSmartFolder:
+		return true
+	case AssistantRouteKindTag:
+		return true
+	case AssistantRouteKindTags:
+		return true
+	case AssistantRouteKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantStepStatus.
+const (
+	AssistantStepStatusDone    AssistantStepStatus = "done"
+	AssistantStepStatusFailed  AssistantStepStatus = "failed"
+	AssistantStepStatusNotRun  AssistantStepStatus = "notRun"
+	AssistantStepStatusPartial AssistantStepStatus = "partial"
+	AssistantStepStatusPending AssistantStepStatus = "pending"
+	AssistantStepStatusRunning AssistantStepStatus = "running"
+	AssistantStepStatusSkipped AssistantStepStatus = "skipped"
+	AssistantStepStatusStale   AssistantStepStatus = "stale"
+)
+
+// Valid indicates whether the value is a known member of the AssistantStepStatus enum.
+func (e AssistantStepStatus) Valid() bool {
+	switch e {
+	case AssistantStepStatusDone:
+		return true
+	case AssistantStepStatusFailed:
+		return true
+	case AssistantStepStatusNotRun:
+		return true
+	case AssistantStepStatusPartial:
+		return true
+	case AssistantStepStatusPending:
+		return true
+	case AssistantStepStatusRunning:
+		return true
+	case AssistantStepStatusSkipped:
+		return true
+	case AssistantStepStatusStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantTurnStatus.
+const (
+	AssistantTurnStatusClarify     AssistantTurnStatus = "clarify"
+	AssistantTurnStatusDone        AssistantTurnStatus = "done"
+	AssistantTurnStatusInterrupted AssistantTurnStatus = "interrupted"
+	AssistantTurnStatusRunning     AssistantTurnStatus = "running"
+	AssistantTurnStatusStopped     AssistantTurnStatus = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the AssistantTurnStatus enum.
+func (e AssistantTurnStatus) Valid() bool {
+	switch e {
+	case AssistantTurnStatusClarify:
+		return true
+	case AssistantTurnStatusDone:
+		return true
+	case AssistantTurnStatusInterrupted:
+		return true
+	case AssistantTurnStatusRunning:
+		return true
+	case AssistantTurnStatusStopped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssistantTurnStopReason.
+const (
+	AssistantTurnStopReasonCancelled  AssistantTurnStopReason = "cancelled"
+	AssistantTurnStopReasonConnection AssistantTurnStopReason = "connection"
+	AssistantTurnStopReasonModel      AssistantTurnStopReason = "model"
+	AssistantTurnStopReasonNoAnswer   AssistantTurnStopReason = "no_answer"
+	AssistantTurnStopReasonStepLimit  AssistantTurnStopReason = "step_limit"
+	AssistantTurnStopReasonTimeout    AssistantTurnStopReason = "timeout"
+	AssistantTurnStopReasonUngrounded AssistantTurnStopReason = "ungrounded"
+)
+
+// Valid indicates whether the value is a known member of the AssistantTurnStopReason enum.
+func (e AssistantTurnStopReason) Valid() bool {
+	switch e {
+	case AssistantTurnStopReasonCancelled:
+		return true
+	case AssistantTurnStopReasonConnection:
+		return true
+	case AssistantTurnStopReasonModel:
+		return true
+	case AssistantTurnStopReasonNoAnswer:
+		return true
+	case AssistantTurnStopReasonStepLimit:
+		return true
+	case AssistantTurnStopReasonTimeout:
+		return true
+	case AssistantTurnStopReasonUngrounded:
 		return true
 	default:
 		return false
@@ -339,18 +825,36 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for CheckResultReason.
+const (
+	CheckResultReasonGenerationModelMissing      CheckResultReason = "generation_model_missing"
+	CheckResultReasonGenerationModelWithoutTools CheckResultReason = "generation_model_without_tools"
+)
+
+// Valid indicates whether the value is a known member of the CheckResultReason enum.
+func (e CheckResultReason) Valid() bool {
+	switch e {
+	case CheckResultReasonGenerationModelMissing:
+		return true
+	case CheckResultReasonGenerationModelWithoutTools:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComfyUIMissingItemKind.
 const (
-	Model ComfyUIMissingItemKind = "model"
-	Node  ComfyUIMissingItemKind = "node"
+	ComfyUIMissingItemKindModel ComfyUIMissingItemKind = "model"
+	ComfyUIMissingItemKindNode  ComfyUIMissingItemKind = "node"
 )
 
 // Valid indicates whether the value is a known member of the ComfyUIMissingItemKind enum.
 func (e ComfyUIMissingItemKind) Valid() bool {
 	switch e {
-	case Model:
+	case ComfyUIMissingItemKindModel:
 		return true
-	case Node:
+	case ComfyUIMissingItemKindNode:
 		return true
 	default:
 		return false
@@ -494,6 +998,9 @@ const (
 	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
 	ErrorCodeActivityNotRetryable        ErrorCode = "activity_not_retryable"
 	ErrorCodeActivityNotUndoable         ErrorCode = "activity_not_undoable"
+	ErrorCodeAssistantBusy               ErrorCode = "assistant_busy"
+	ErrorCodeAssistantNotReady           ErrorCode = "assistant_not_ready"
+	ErrorCodeAssistantUnavailable        ErrorCode = "assistant_unavailable"
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
 	ErrorCodeFileMissing                 ErrorCode = "file_missing"
@@ -508,6 +1015,7 @@ const (
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
+	ErrorCodeOllamaUnreachable           ErrorCode = "ollama_unreachable"
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
@@ -525,11 +1033,13 @@ const (
 	ErrorCodePluginTooLarge              ErrorCode = "plugin_too_large"
 	ErrorCodePluginUnusable              ErrorCode = "plugin_unusable"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
+	ErrorCodeProposalNotPending          ErrorCode = "proposal_not_pending"
 	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
 	ErrorCodeServiceUnavailable          ErrorCode = "service_unavailable"
 	ErrorCodeSmartFolderCycle            ErrorCode = "smart_folder_cycle"
 	ErrorCodeSmartFolderNotFound         ErrorCode = "smart_folder_not_found"
+	ErrorCodeStepNeedsSkipped            ErrorCode = "step_needs_skipped"
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
@@ -548,6 +1058,12 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeActivityNotRetryable:
 		return true
 	case ErrorCodeActivityNotUndoable:
+		return true
+	case ErrorCodeAssistantBusy:
+		return true
+	case ErrorCodeAssistantNotReady:
+		return true
+	case ErrorCodeAssistantUnavailable:
 		return true
 	case ErrorCodeConflict:
 		return true
@@ -576,6 +1092,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeMediaFoldersNotConfigured:
 		return true
 	case ErrorCodeNotFound:
+		return true
+	case ErrorCodeOllamaUnreachable:
 		return true
 	case ErrorCodeOpenUnavailable:
 		return true
@@ -611,6 +1129,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeProbeNotFailed:
 		return true
+	case ErrorCodeProposalNotPending:
+		return true
 	case ErrorCodeProviderFailed:
 		return true
 	case ErrorCodeScanInProgress:
@@ -620,6 +1140,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeSmartFolderCycle:
 		return true
 	case ErrorCodeSmartFolderNotFound:
+		return true
+	case ErrorCodeStepNeedsSkipped:
 		return true
 	case ErrorCodeTagMergeRequired:
 		return true
@@ -653,6 +1175,7 @@ const (
 	ErrorReasonCertificateUntrusted          ErrorReason = "certificate_untrusted"
 	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
+	ErrorReasonConnection                    ErrorReason = "connection"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDescriptionTooLong            ErrorReason = "description_too_long"
@@ -669,6 +1192,8 @@ const (
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFingerprintChanged            ErrorReason = "fingerprint_changed"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
+	ErrorReasonGenerationModelUnset          ErrorReason = "generation_model_unset"
+	ErrorReasonGenerationModelWithoutTools   ErrorReason = "generation_model_without_tools"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
@@ -686,13 +1211,16 @@ const (
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
 	ErrorReasonMixedNodes                    ErrorReason = "mixed_nodes"
+	ErrorReasonModel                         ErrorReason = "model"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
 	ErrorReasonNetworkError                  ErrorReason = "network_error"
 	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
+	ErrorReasonNotOllama                     ErrorReason = "not_ollama"
 	ErrorReasonNotVirtual                    ErrorReason = "not_virtual"
+	ErrorReasonOllamaNotSaved                ErrorReason = "ollama_not_saved"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonOrganizationNameTaken         ErrorReason = "organization_name_taken"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
@@ -732,6 +1260,7 @@ const (
 	ErrorReasonThumbnailUploadInvalid        ErrorReason = "thumbnail_upload_invalid"
 	ErrorReasonThumbnailUploadTooLarge       ErrorReason = "thumbnail_upload_too_large"
 	ErrorReasonTimedOut                      ErrorReason = "timed_out"
+	ErrorReasonTimeout                       ErrorReason = "timeout"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
@@ -780,6 +1309,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonComfyuiUrlInvalid:
 		return true
+	case ErrorReasonConnection:
+		return true
 	case ErrorReasonContentChanged:
 		return true
 	case ErrorReasonCrossOrigin:
@@ -811,6 +1342,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonFingerprintChanged:
 		return true
 	case ErrorReasonFolderNotFound:
+		return true
+	case ErrorReasonGenerationModelUnset:
+		return true
+	case ErrorReasonGenerationModelWithoutTools:
 		return true
 	case ErrorReasonGroupCycle:
 		return true
@@ -846,6 +1381,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonMixedNodes:
 		return true
+	case ErrorReasonModel:
+		return true
 	case ErrorReasonNameIsSynonym:
 		return true
 	case ErrorReasonNameIsTag:
@@ -858,7 +1395,11 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonNotBundled:
 		return true
+	case ErrorReasonNotOllama:
+		return true
 	case ErrorReasonNotVirtual:
+		return true
+	case ErrorReasonOllamaNotSaved:
 		return true
 	case ErrorReasonOpenNotLocal:
 		return true
@@ -937,6 +1478,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonThumbnailUploadTooLarge:
 		return true
 	case ErrorReasonTimedOut:
+		return true
+	case ErrorReasonTimeout:
 		return true
 	case ErrorReasonTooFewVideos:
 		return true
@@ -1562,19 +2105,19 @@ func (e PersonProfileBloodType) Valid() bool {
 
 // Defines values for PersonProfileGender.
 const (
-	Female PersonProfileGender = "female"
-	Male   PersonProfileGender = "male"
-	Other  PersonProfileGender = "other"
+	PersonProfileGenderFemale PersonProfileGender = "female"
+	PersonProfileGenderMale   PersonProfileGender = "male"
+	PersonProfileGenderOther  PersonProfileGender = "other"
 )
 
 // Valid indicates whether the value is a known member of the PersonProfileGender enum.
 func (e PersonProfileGender) Valid() bool {
 	switch e {
-	case Female:
+	case PersonProfileGenderFemale:
 		return true
-	case Male:
+	case PersonProfileGenderMale:
 		return true
-	case Other:
+	case PersonProfileGenderOther:
 		return true
 	default:
 		return false
@@ -2604,6 +3147,27 @@ func (e WatchHistoryFilter) Valid() bool {
 	}
 }
 
+// Defines values for WatchState.
+const (
+	WatchStateInProgress WatchState = "inProgress"
+	WatchStateUnwatched  WatchState = "unwatched"
+	WatchStateWatched    WatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the WatchState enum.
+func (e WatchState) Valid() bool {
+	switch e {
+	case WatchStateInProgress:
+		return true
+	case WatchStateUnwatched:
+		return true
+	case WatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkDateKind.
 const (
 	Published WorkDateKind = "published"
@@ -3170,6 +3734,7 @@ type ActivityFeature string
 
 // ActivityFeatureCounts Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 type ActivityFeatureCounts struct {
+	Assistant       int `json:"assistant"`
 	AutoTagging     int `json:"auto_tagging"`
 	DuplicateCheck  int `json:"duplicate_check"`
 	FaceRecognition int `json:"face_recognition"`
@@ -3502,6 +4067,449 @@ type ApproveWorkInfoPluginRequest struct {
 	Digest string `json:"digest"`
 }
 
+// AssistantCandidate defines model for AssistantCandidate.
+type AssistantCandidate struct {
+	// Count Videos the tag is on or the person or organization is credited on; 0 for other kinds.
+	Count int   `json:"count"`
+	Id    int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The entity's name, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantChange defines model for AssistantChange.
+type AssistantChange struct {
+	// Argument The argument name of the action outcome, such as tagNames or enabled.
+	Argument string `json:"argument"`
+
+	// Labels The entities the argument names after resolution.
+	Labels *[]AssistantLabel `json:"labels,omitempty"`
+
+	// Value A literal value, such as a boolean, a number or a date.
+	Value interface{} `json:"value,omitempty"`
+}
+
+// AssistantCreatedBy defines model for AssistantCreatedBy.
+type AssistantCreatedBy struct {
+	// Name The name as the card shows it, as untranslated user data.
+	Name string `json:"name"`
+
+	// Step The index of the step that creates it.
+	Step int `json:"step"`
+}
+
+// AssistantCriteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+type AssistantCriteria struct {
+	Labels []AssistantLabel `json:"labels"`
+
+	// Rule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
+	Rule SmartRule `json:"rule"`
+
+	// Sort Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
+// AssistantDestination defines model for AssistantDestination.
+type AssistantDestination struct {
+	Id           *int64                            `json:"id,omitempty"`
+	Kind         AssistantDestinationKind          `json:"kind"`
+	SettingsPage *AssistantDestinationSettingsPage `json:"settingsPage,omitempty"`
+}
+
+// AssistantDestinationKind defines model for AssistantDestination.Kind.
+type AssistantDestinationKind string
+
+// AssistantDestinationSettingsPage defines model for AssistantDestination.SettingsPage.
+type AssistantDestinationSettingsPage string
+
+// AssistantDirective The turn's last library filter or navigation, which the panel applies without confirmation.
+type AssistantDirective struct {
+	// Criteria Library conditions with ids, in the names the library URL uses, and the labels of the entities they name.
+	Criteria    *AssistantCriteria     `json:"criteria,omitempty"`
+	Destination *AssistantDestination  `json:"destination,omitempty"`
+	Kind        AssistantDirectiveKind `json:"kind"`
+}
+
+// AssistantDirectiveKind defines model for AssistantDirective.Kind.
+type AssistantDirectiveKind string
+
+// AssistantExcludedOperation An operation the assistant leaves to its page, which the model asked for.
+type AssistantExcludedOperation struct {
+	Operation string `json:"operation"`
+
+	// Page The route of the page that does it.
+	Page   string `json:"page"`
+	Reason string `json:"reason"`
+}
+
+// AssistantExecution defines model for AssistantExecution.
+type AssistantExecution struct {
+	// Steps The indexes of the steps the owner kept, in any order; they run in card order and the others are skipped.
+	Steps []int `json:"steps"`
+}
+
+// AssistantImpact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
+type AssistantImpact struct {
+	Videos int `json:"videos"`
+}
+
+// AssistantLabel defines model for AssistantLabel.
+type AssistantLabel struct {
+	// Id The entity's id when the card showed it; absent when unknown.
+	Id *int64 `json:"id,omitempty"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The name the card showed, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantLabelKind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+type AssistantLabelKind string
+
+// AssistantPin defines model for AssistantPin.
+type AssistantPin struct {
+	Id int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The name the clarification asked about, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantProgressItem One tool call, composed by the server from the tool and its arguments, never from the model's text.
+type AssistantProgressItem struct {
+	At time.Time `json:"at"`
+
+	// Error Why the call came back as an error result, in English; the model may recover.
+	Error *string `json:"error,omitempty"`
+
+	// Images Images the call sends.
+	Images *int `json:"images,omitempty"`
+
+	// Kind image is a read that answers an image.
+	Kind AssistantProgressItemKind `json:"kind"`
+
+	// Labels The entities the call's id arguments name.
+	Labels []AssistantLabel `json:"labels"`
+
+	// M With n, how far a call over m items has come.
+	M *int `json:"m,omitempty"`
+	N *int `json:"n,omitempty"`
+
+	// ReviewRunId For start_review, the review run it started or found running; the panel links its review list.
+	ReviewRunId *int64 `json:"reviewRunId,omitempty"`
+
+	// Tool The tool's name: an operationId, a catalog row id or a built-in tool such as find_tools.
+	Tool string `json:"tool"`
+}
+
+// AssistantProgressItemKind image is a read that answers an image.
+type AssistantProgressItemKind string
+
+// AssistantProposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
+type AssistantProposal struct {
+	// ActivityId The assistant_run activity entry, present once the proposal is approved.
+	ActivityId *int64     `json:"activityId,omitempty"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Id         int64      `json:"id"`
+
+	// Request The owner's text, as untranslated user data.
+	Request   string     `json:"request"`
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+
+	// Status proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
+	Status AssistantProposalStatus `json:"status"`
+	Steps  []AssistantProposalStep `json:"steps"`
+
+	// TurnId The turn that built the proposal; absent for an adoption from a review list.
+	TurnId *int64 `json:"turnId,omitempty"`
+}
+
+// AssistantProposalCounts In videos for a batched operation, otherwise 0 or 1 for the one call.
+type AssistantProposalCounts struct {
+	Applied int `json:"applied"`
+	Failed  int `json:"failed"`
+	Total   int `json:"total"`
+}
+
+// AssistantProposalError The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart.
+type AssistantProposalError struct {
+	Code    string  `json:"code"`
+	Message *string `json:"message,omitempty"`
+	Reason  *string `json:"reason,omitempty"`
+}
+
+// AssistantProposalList defines model for AssistantProposalList.
+type AssistantProposalList struct {
+	Items []AssistantProposal `json:"items"`
+}
+
+// AssistantProposalStatus proposed waits for Execute; approved waits for the worker; a finished proposal (done, partial, stale or failed) takes the status of the last step that ran; discarded was replaced by a follow-up.
+type AssistantProposalStatus string
+
+// AssistantProposalStep One write of a proposal: what the card shows for it and its progress.
+type AssistantProposalStep struct {
+	// Change The arguments after resolution, one per argument, in the order the card shows them.
+	Change []AssistantChange `json:"change"`
+
+	// Counts In videos for a batched operation, otherwise 0 or 1 for the one call.
+	Counts AssistantProposalCounts `json:"counts"`
+
+	// Created Names the operation creates, such as a tag to attach that does not exist yet.
+	Created []string `json:"created"`
+
+	// CreatedBy Names this step uses that an earlier step of the same proposal creates.
+	CreatedBy []AssistantCreatedBy `json:"createdBy"`
+
+	// Error The step's first failed call's screen API code, reason and English message; the code remote_failed with the peer's reason when a bulk edit answered 2xx but its `remote` part failed; or the code interrupted after a restart.
+	Error *AssistantProposalError `json:"error,omitempty"`
+
+	// Impact Present on mergeTag, mergePeople and mergeOrganizations only: the distinct current-library videos carrying any source tag, or credited to any source person or organization, counted when the proposal was stored.
+	Impact *AssistantImpact `json:"impact,omitempty"`
+
+	// Index Position in the card, from 0.
+	Index int `json:"index"`
+
+	// Irreversible From the catalog row; the card marks the change as one that cannot be undone.
+	Irreversible bool `json:"irreversible"`
+
+	// Operation The catalog row id: the operationId, or operationId.action for a variant, such as updateVideoTags.add.
+	Operation string `json:"operation"`
+
+	// Status pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+	Status  AssistantStepStatus      `json:"status"`
+	Targets AssistantProposalTargets `json:"targets"`
+}
+
+// AssistantProposalTargets defines model for AssistantProposalTargets.
+type AssistantProposalTargets struct {
+	// Count Videos for a video target, otherwise the named entities.
+	Count int `json:"count"`
+
+	// Kind The catalog row's target kind; empty for a row that acts on its arguments alone.
+	Kind string `json:"kind"`
+
+	// Labels The first 10 targets the card names.
+	Labels []AssistantLabel `json:"labels"`
+}
+
+// AssistantReadiness Whether a turn can run; reason is present only when ready is false.
+type AssistantReadiness struct {
+	Ready bool `json:"ready"`
+
+	// Reason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
+	Reason *AssistantReadinessReason `json:"reason,omitempty"`
+
+	// Vision The generation model can see images; false when it is unknown.
+	Vision bool `json:"vision"`
+}
+
+// AssistantReadinessReason ollama_not_saved: no Ollama connection is saved; generation_model_unset: no generation model is saved; generation_model_without_tools: Ollama reports that the generation model cannot call tools.
+type AssistantReadinessReason string
+
+// AssistantReviewAdoption defines model for AssistantReviewAdoption.
+type AssistantReviewAdoption struct {
+	// Proposals The approved proposals, in the order of ids.
+	Proposals  []AssistantProposal `json:"proposals"`
+	SkippedIds []int64             `json:"skippedIds"`
+}
+
+// AssistantReviewCandidate defines model for AssistantReviewCandidate.
+type AssistantReviewCandidate struct {
+	Id int64 `json:"id"`
+
+	// Members Two tags or two people, or two or more videos.
+	Members []AssistantReviewMember `json:"members"`
+
+	// Probability The classifier's probability that the set is one entity or one work, 0.5 or more.
+	Probability float64                       `json:"probability"`
+	State       AssistantReviewCandidateState `json:"state"`
+}
+
+// AssistantReviewCandidateState defines model for AssistantReviewCandidate.State.
+type AssistantReviewCandidateState string
+
+// AssistantReviewCandidateIds defines model for AssistantReviewCandidateIds.
+type AssistantReviewCandidateIds struct {
+	Ids []int64 `json:"ids"`
+}
+
+// AssistantReviewMember defines model for AssistantReviewMember.
+type AssistantReviewMember struct {
+	// Count Videos the tag is on or the person is credited on; 0 for a video.
+	Count int `json:"count"`
+
+	// Id The tag or person, or a current library video of the member.
+	Id int64 `json:"id"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name The current name, or the video's title when the set was judged, as untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantReviewRejection defines model for AssistantReviewRejection.
+type AssistantReviewRejection struct {
+	RejectedIds []int64 `json:"rejectedIds"`
+	SkippedIds  []int64 `json:"skippedIds"`
+}
+
+// AssistantReviewRun A search for candidate sets of one kind and their judging by the classifier, one question per set.
+type AssistantReviewRun struct {
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Id         int64      `json:"id"`
+
+	// Judged Sets judged so far.
+	Judged int                    `json:"judged"`
+	Kind   AssistantReviewRunKind `json:"kind"`
+
+	// Listed Sets judged at 0.5 or more and listed.
+	Listed    int       `json:"listed"`
+	StartedAt time.Time `json:"startedAt"`
+
+	// Status interrupted was stopped by a restart.
+	Status AssistantReviewRunStatus `json:"status"`
+
+	// Total Candidate sets found.
+	Total int `json:"total"`
+}
+
+// AssistantReviewRunKind defines model for AssistantReviewRun.Kind.
+type AssistantReviewRunKind string
+
+// AssistantReviewRunStatus interrupted was stopped by a restart.
+type AssistantReviewRunStatus string
+
+// AssistantReviewRunPage defines model for AssistantReviewRunPage.
+type AssistantReviewRunPage struct {
+	Items      []AssistantReviewCandidate `json:"items"`
+	NextCursor *string                    `json:"nextCursor,omitempty"`
+
+	// Run A search for candidate sets of one kind and their judging by the classifier, one question per set.
+	Run AssistantReviewRun `json:"run"`
+}
+
+// AssistantRoute defines model for AssistantRoute.
+type AssistantRoute struct {
+	// Id The entity the screen shows, for the kinds that show one.
+	Id   *int64             `json:"id,omitempty"`
+	Kind AssistantRouteKind `json:"kind"`
+}
+
+// AssistantRouteKind defines model for AssistantRoute.Kind.
+type AssistantRouteKind string
+
+// AssistantSelectedCollections defines model for AssistantSelectedCollections.
+type AssistantSelectedCollections struct {
+	Groups       *[]int64 `json:"groups,omitempty"`
+	SmartFolders *[]int64 `json:"smartFolders,omitempty"`
+}
+
+// AssistantStepStatus pending waits for Execute or the worker; skipped was unticked; partial stopped at a failed batch after earlier ones applied, or lost videos between batches; stale changed nothing because a target changed before its first call; failed changed nothing, or was stopped by a restart (error code interrupted); notRun was kept, but an earlier step stopped the run.
+type AssistantStepStatus string
+
+// AssistantTurn One request run as a server-side tool loop. The panel shows the request, the progress items, then the answer, the clarification, the proposal or the stop reason.
+type AssistantTurn struct {
+	// Answer The model's final text in the request's language. It is model text: show it as plain text.
+	Answer *string `json:"answer,omitempty"`
+
+	// Clarify The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
+	Clarify *AssistantTurnClarification `json:"clarify,omitempty"`
+
+	// Directive The turn's last library filter or navigation, which the panel applies without confirmation.
+	Directive  *AssistantDirective `json:"directive,omitempty"`
+	FinishedAt *time.Time          `json:"finishedAt,omitempty"`
+	Id         int64               `json:"id"`
+
+	// Judged The answer used the classifier's answers, which are estimates.
+	Judged   bool                    `json:"judged"`
+	Progress []AssistantProgressItem `json:"progress"`
+
+	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
+	Proposal *AssistantProposal `json:"proposal,omitempty"`
+
+	// Request The owner's request, as untranslated user data.
+	Request   string    `json:"request"`
+	StartedAt time.Time `json:"startedAt"`
+
+	// Status interrupted was running when the server stopped.
+	Status AssistantTurnStatus `json:"status"`
+
+	// Stop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
+	Stop *AssistantTurnStop `json:"stop,omitempty"`
+
+	// Unchecked Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images.
+	Unchecked *[]string `json:"unchecked,omitempty"`
+}
+
+// AssistantTurnStatus interrupted was running when the server stopped.
+type AssistantTurnStatus string
+
+// AssistantTurnClarification The name that matched several entities, or none, and the candidates the owner chooses from; the turn then has no proposal.
+type AssistantTurnClarification struct {
+	Candidates []AssistantCandidate `json:"candidates"`
+
+	// Kind activity is an activity entry, named by its subject; faceAppearance is a face appearance, named by its video's title.
+	Kind AssistantLabelKind `json:"kind"`
+
+	// Name As untranslated user data.
+	Name string `json:"name"`
+}
+
+// AssistantTurnContext The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
+type AssistantTurnContext struct {
+	// Filter Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
+	Filter *SmartRule `json:"filter,omitempty"`
+
+	// Pinned Ids chosen in a clarification, used before resolving the same name again.
+	Pinned                *[]AssistantPin               `json:"pinned,omitempty"`
+	Route                 AssistantRoute                `json:"route"`
+	SelectedCollectionIds *AssistantSelectedCollections `json:"selectedCollectionIds,omitempty"`
+
+	// SelectedVideoIds The list selection; over 20,000 returns 400 too_many_videos.
+	SelectedVideoIds *[]int64 `json:"selectedVideoIds,omitempty"`
+
+	// Sort Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
+// AssistantTurnList defines model for AssistantTurnList.
+type AssistantTurnList struct {
+	Items []AssistantTurn `json:"items"`
+}
+
+// AssistantTurnRequest defines model for AssistantTurnRequest.
+type AssistantTurnRequest struct {
+	// Context The screen the request was sent from; the server resolves the words meaning this, the selected ones and here from it.
+	Context AssistantTurnContext `json:"context"`
+
+	// PreviousTurnId The turn a follow-up continues; its request and its proposal's steps go to the model.
+	PreviousTurnId *int64 `json:"previousTurnId,omitempty"`
+
+	// Text The owner's request, as untranslated user data; at most 500 characters.
+	Text string `json:"text"`
+}
+
+// AssistantTurnStop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
+type AssistantTurnStop struct {
+	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis.
+	Detail *string `json:"detail,omitempty"`
+
+	// Excluded An operation the assistant leaves to its page, which the model asked for.
+	Excluded *AssistantExcludedOperation `json:"excluded,omitempty"`
+	Reason   AssistantTurnStopReason     `json:"reason"`
+}
+
+// AssistantTurnStopReason defines model for AssistantTurnStop.Reason.
+type AssistantTurnStopReason string
+
 // AuthRedirect defines model for AuthRedirect.
 type AuthRedirect struct {
 	// RedirectTo Server-validated same-origin navigation path
@@ -3575,7 +4583,13 @@ type CheckResult struct {
 
 	// Missing ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows.
 	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
+
+	// Reason Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
+	Reason *CheckResultReason `json:"reason,omitempty"`
 }
+
+// CheckResultReason Ollama checks only: generation_model_missing when the decision model is listed but the saved generation model is not; generation_model_without_tools when the saved generation model is listed but cannot call tools.
+type CheckResultReason string
 
 // CollectionsDeleteRequest defines model for CollectionsDeleteRequest.
 type CollectionsDeleteRequest struct {
@@ -3786,14 +4800,23 @@ type Error struct {
 	// PluginMessage First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed.
 	PluginMessage *string `json:"pluginMessage,omitempty"`
 
+	// Proposal The writes the assistant proposed for one request, as ordered steps with what the confirmation card shows and each step's progress.
+	Proposal *AssistantProposal `json:"proposal,omitempty"`
+
 	// Reason Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
 	Reason *ErrorReason `json:"reason,omitempty"`
 
 	// SettingKeys Required setting keys without values, in declaration order; only for plugin_settings_missing.
 	SettingKeys *[]string `json:"settingKeys,omitempty"`
 
+	// Step The index of the kept step that uses what an unticked step creates; only for step_needs_skipped.
+	Step *int `json:"step,omitempty"`
+
 	// TagName Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required.
 	TagName *string `json:"tagName,omitempty"`
+
+	// TurnId The running turn; only for assistant_busy.
+	TurnId *int64 `json:"turnId,omitempty"`
 }
 
 // ErrorCode Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
@@ -4380,6 +5403,9 @@ type LibrarySmartFolder struct {
 	// AddedAt Latest addition timestamp; omitted if there are no videos.
 	AddedAt *time.Time `json:"addedAt,omitempty"`
 
+	// Conditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+	Conditions *SmartFolderConditions `json:"conditions,omitempty"`
+
 	// DurationMs Sum of known video durations; omitted if none are known.
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
@@ -4856,12 +5882,32 @@ type NetworkSettings struct {
 	Port int `json:"port"`
 }
 
+// OllamaModel defines model for OllamaModel.
+type OllamaModel struct {
+	// Name Model name as Ollama lists it, such as qwen3:8b.
+	Name string `json:"name"`
+
+	// Tools The model can call tools, from capabilities of POST /api/show; false when Ollama reports none.
+	Tools bool `json:"tools"`
+
+	// Vision The model can see images, from capabilities of POST /api/show; false when Ollama reports none.
+	Vision bool `json:"vision"`
+}
+
+// OllamaModelList Models at the saved Ollama endpoint, in Ollama's order.
+type OllamaModelList struct {
+	Items []OllamaModel `json:"items"`
+}
+
 // OllamaSettings Ollama connection; see docs/design-docs/ai-layer.md
 type OllamaSettings struct {
 	// Endpoint HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434
 	Endpoint string `json:"endpoint"`
 
-	// Model Ollama model name; defaults to clef-flash
+	// GenerationModel Chat model name the assistant generates with; empty until the owner saves one, and empty turns the assistant off
+	GenerationModel string `json:"generationModel"`
+
+	// Model Decision model name for the Clef classifier; defaults to clef-flash
 	Model string `json:"model"`
 
 	// Saved Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true.
@@ -6081,6 +7127,20 @@ type SmartFolderChanged struct {
 	Ids []int64 `json:"ids"`
 }
 
+// SmartFolderConditions The duration, added-day and watch-state fields of the folder's own rule, for the card's condition chips. listSmartFolderCards owner responses only; omitted when the rule sets none of them.
+type SmartFolderConditions struct {
+	// AddedFrom `YYYY-MM-DD` day in the server's local time zone.
+	AddedFrom *string `json:"addedFrom,omitempty"`
+
+	// AddedTo `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo       *string `json:"addedTo,omitempty"`
+	MaxDurationMs *int64  `json:"maxDurationMs,omitempty"`
+	MinDurationMs *int64  `json:"minDurationMs,omitempty"`
+
+	// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+	WatchState *WatchState `json:"watchState,omitempty"`
+}
+
 // SmartFolderCreate POST /api/smart-folders body.
 type SmartFolderCreate struct {
 	// Name 1-100 characters after trimming.
@@ -6175,8 +7235,20 @@ type SmartFolderSummary struct {
 
 // SmartRule Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission.
 type SmartRule struct {
+	// AddedFrom First `YYYY-MM-DD` day added, in the server's local time zone.
+	AddedFrom *string `json:"addedFrom,omitempty"`
+
+	// AddedTo Last `YYYY-MM-DD` day added, in the server's local time zone; before `addedFrom` returns 400 invalid_smart_rule.
+	AddedTo *string `json:"addedTo,omitempty"`
+
 	// Favorite Restrict to favorite videos.
 	Favorite *bool `json:"favorite,omitempty"`
+
+	// MaxDurationMs Longest duration in milliseconds, as `listLibrary`'s `maxDurationMs`; below `minDurationMs` returns 400 invalid_smart_rule.
+	MaxDurationMs *int64 `json:"maxDurationMs,omitempty"`
+
+	// MinDurationMs Shortest duration in milliseconds, as `listLibrary`'s `minDurationMs`.
+	MinDurationMs *int64 `json:"minDurationMs,omitempty"`
 
 	// Organization Organization IDs linked in any role.
 	Organization *int64 `json:"organization,omitempty"`
@@ -6192,6 +7264,9 @@ type SmartRule struct {
 
 	// Tags Distinct tag IDs that every matching video must carry.
 	Tags *[]int64 `json:"tags,omitempty"`
+
+	// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+	WatchState *WatchState `json:"watchState,omitempty"`
 }
 
 // SmartRuleByName A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.
@@ -6600,7 +7675,10 @@ type UpdateOllamaSettingsRequest struct {
 	// Endpoint Ollama base URL using HTTP or HTTPS.
 	Endpoint string `json:"endpoint"`
 
-	// Model Ollama model name.
+	// GenerationModel Generation model name; an empty string clears it and keeps the connection saved. Omitted keeps the saved value.
+	GenerationModel *string `json:"generationModel,omitempty"`
+
+	// Model Decision model name.
 	Model string `json:"model"`
 }
 
@@ -7418,6 +8496,9 @@ type WatchHistoryPage struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
+// WatchState unwatched without a started position, watched when complete, otherwise inProgress.
+type WatchState string
+
 // WorkDate defines model for WorkDate.
 type WorkDate struct {
 	// Date YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid.
@@ -7834,6 +8915,21 @@ type APITokenId = int64
 // ActivityId defines model for ActivityId.
 type ActivityId = int64
 
+// AddedFromFilter defines model for AddedFromFilter.
+type AddedFromFilter = string
+
+// AddedToFilter defines model for AddedToFilter.
+type AddedToFilter = string
+
+// AssistantProposalId defines model for AssistantProposalId.
+type AssistantProposalId = int64
+
+// AssistantReviewRunId defines model for AssistantReviewRunId.
+type AssistantReviewRunId = int64
+
+// AssistantTurnId defines model for AssistantTurnId.
+type AssistantTurnId = int64
+
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -7867,8 +8963,14 @@ type GroupId = int64
 // GroupItemId defines model for GroupItemId.
 type GroupItemId = int64
 
+// MaxDurationFilter defines model for MaxDurationFilter.
+type MaxDurationFilter = int64
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// MinDurationFilter defines model for MinDurationFilter.
+type MinDurationFilter = int64
 
 // OrganizationFilter defines model for OrganizationFilter.
 type OrganizationFilter = int64
@@ -7933,6 +9035,9 @@ type VideoTagId = int64
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
 
+// WatchStateFilter unwatched without a started position, watched when complete, otherwise inProgress.
+type WatchStateFilter = WatchState
+
 // WorkInfoFetchId defines model for WorkInfoFetchId.
 type WorkInfoFetchId = string
 
@@ -7991,6 +9096,26 @@ type ListActivityParams struct {
 
 	// Limit Page size
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAssistantProposalsParams defines parameters for ListAssistantProposals.
+type ListAssistantProposalsParams struct {
+	// Active Must be true.
+	Active bool `form:"active" json:"active"`
+}
+
+// GetAssistantReviewRunParams defines parameters for GetAssistantReviewRun.
+type GetAssistantReviewRunParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Candidates per page; 50 when omitted.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAssistantTurnsParams defines parameters for ListAssistantTurns.
+type ListAssistantTurnsParams struct {
+	// Active Must be true.
+	Active bool `form:"active" json:"active"`
 }
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
@@ -8159,6 +9284,21 @@ type ListLibraryParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// MinDurationMs Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request.
+	MinDurationMs *MinDurationFilter `form:"minDurationMs,omitempty" json:"minDurationMs,omitempty"`
+
+	// MaxDurationMs Videos at most this long, in milliseconds; a video of unknown duration never matches.
+	MaxDurationMs *MaxDurationFilter `form:"maxDurationMs,omitempty" json:"maxDurationMs,omitempty"`
+
+	// AddedFrom Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request.
+	AddedFrom *AddedFromFilter `form:"addedFrom,omitempty" json:"addedFrom,omitempty"`
+
+	// AddedTo Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo *AddedToFilter `form:"addedTo,omitempty" json:"addedTo,omitempty"`
+
+	// WatchState Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed.
+	WatchState *WatchStateFilter `form:"watchState,omitempty" json:"watchState,omitempty"`
 
 	// TagName One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed.
 	TagName *TagNameFilter `form:"tagName,omitempty" json:"tagName,omitempty"`
@@ -8405,6 +9545,21 @@ type ListVideosParams struct {
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 
+	// MinDurationMs Videos at least this long, in milliseconds; a video of unknown duration never matches. Above `maxDurationMs` returns 400 invalid_request.
+	MinDurationMs *MinDurationFilter `form:"minDurationMs,omitempty" json:"minDurationMs,omitempty"`
+
+	// MaxDurationMs Videos at most this long, in milliseconds; a video of unknown duration never matches.
+	MaxDurationMs *MaxDurationFilter `form:"maxDurationMs,omitempty" json:"maxDurationMs,omitempty"`
+
+	// AddedFrom Videos added on or after the start of this `YYYY-MM-DD` day in the server's local time zone. After `addedTo`, or a day that does not parse, returns 400 invalid_request.
+	AddedFrom *AddedFromFilter `form:"addedFrom,omitempty" json:"addedFrom,omitempty"`
+
+	// AddedTo Videos added before the start of the day after this `YYYY-MM-DD` day in the server's local time zone.
+	AddedTo *AddedToFilter `form:"addedTo,omitempty" json:"addedTo,omitempty"`
+
+	// WatchState Videos in this watch state, derived from playback positions as the cards' `watchState` is. Guests return 400 invalid_request/guest_filter_not_allowed.
+	WatchState *WatchStateFilter `form:"watchState,omitempty" json:"watchState,omitempty"`
+
 	// TagName One parameter per tag name (`tagName=a&tagName=b`), matching a tag by its name or a synonym, combined by AND with `tag`. At most 16 together with `tag`; more returns 400. A name no tag has matches no video. Guests return 400 invalid_request/guest_filter_not_allowed.
 	TagName *TagNameFilter `form:"tagName,omitempty" json:"tagName,omitempty"`
 
@@ -8571,6 +9726,18 @@ type UndoActivityJSONRequestBody = ActivityUndoRequest
 
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
+
+// ExecuteAssistantProposalJSONRequestBody defines body for ExecuteAssistantProposal for application/json ContentType.
+type ExecuteAssistantProposalJSONRequestBody = AssistantExecution
+
+// AdoptAssistantReviewCandidatesJSONRequestBody defines body for AdoptAssistantReviewCandidates for application/json ContentType.
+type AdoptAssistantReviewCandidatesJSONRequestBody = AssistantReviewCandidateIds
+
+// RejectAssistantReviewCandidatesJSONRequestBody defines body for RejectAssistantReviewCandidates for application/json ContentType.
+type RejectAssistantReviewCandidatesJSONRequestBody = AssistantReviewCandidateIds
+
+// CreateAssistantTurnJSONRequestBody defines body for CreateAssistantTurn for application/json ContentType.
+type CreateAssistantTurnJSONRequestBody = AssistantTurnRequest
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -8901,6 +10068,39 @@ type ServerInterface interface {
 	// DeleteApiToken Revoke an API token
 	// (DELETE /api/api-tokens/{id})
 	DeleteApiToken(w http.ResponseWriter, r *http.Request, id APITokenId)
+	// ListAssistantProposals List the assistant's active proposals
+	// (GET /api/assistant/proposals)
+	ListAssistantProposals(w http.ResponseWriter, r *http.Request, params ListAssistantProposalsParams)
+	// GetAssistantProposal Read one assistant proposal
+	// (GET /api/assistant/proposals/{id})
+	GetAssistantProposal(w http.ResponseWriter, r *http.Request, id AssistantProposalId)
+	// ExecuteAssistantProposal Approve an assistant proposal for execution
+	// (POST /api/assistant/proposals/{id}/execute)
+	ExecuteAssistantProposal(w http.ResponseWriter, r *http.Request, id AssistantProposalId)
+	// GetAssistantReadiness Say whether the assistant can take a request
+	// (GET /api/assistant/readiness)
+	GetAssistantReadiness(w http.ResponseWriter, r *http.Request)
+	// GetAssistantReviewRun Read a review run and a page of its candidates
+	// (GET /api/assistant/review-runs/{id})
+	GetAssistantReviewRun(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId, params GetAssistantReviewRunParams)
+	// AdoptAssistantReviewCandidates Adopt review candidates
+	// (POST /api/assistant/review-runs/{id}/candidates/adopt)
+	AdoptAssistantReviewCandidates(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId)
+	// RejectAssistantReviewCandidates Reject review candidates
+	// (POST /api/assistant/review-runs/{id}/candidates/reject)
+	RejectAssistantReviewCandidates(w http.ResponseWriter, r *http.Request, id AssistantReviewRunId)
+	// ListAssistantTurns List the assistant's active turns
+	// (GET /api/assistant/turns)
+	ListAssistantTurns(w http.ResponseWriter, r *http.Request, params ListAssistantTurnsParams)
+	// CreateAssistantTurn Start one request as a server-side turn
+	// (POST /api/assistant/turns)
+	CreateAssistantTurn(w http.ResponseWriter, r *http.Request)
+	// GetAssistantTurn Read one assistant turn
+	// (GET /api/assistant/turns/{id})
+	GetAssistantTurn(w http.ResponseWriter, r *http.Request, id AssistantTurnId)
+	// StopAssistantTurn Stop the running assistant turn
+	// (POST /api/assistant/turns/{id}/stop)
+	StopAssistantTurn(w http.ResponseWriter, r *http.Request, id AssistantTurnId)
 	// Login Sign in with a username and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -9249,6 +10449,9 @@ type ServerInterface interface {
 	// CheckOllama Check the saved Ollama connection and model availability
 	// (POST /api/settings/ollama/check)
 	CheckOllama(w http.ResponseWriter, r *http.Request)
+	// ListOllamaModels List the models at the saved Ollama endpoint
+	// (GET /api/settings/ollama/models)
+	ListOllamaModels(w http.ResponseWriter, r *http.Request)
 	// GetPluginProxySettings Return the work-info plugin proxy URL
 	// (GET /api/settings/plugin-proxy)
 	GetPluginProxySettings(w http.ResponseWriter, r *http.Request)
@@ -9869,6 +11072,311 @@ func (siw *ServerInterfaceWrapper) DeleteApiToken(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteApiToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssistantProposals operation middleware
+func (siw *ServerInterfaceWrapper) ListAssistantProposals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssistantProposalsParams
+
+	// ------------- Required query parameter "active" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "active", r.URL.Query(), &params.Active, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "active"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "active", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssistantProposals(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantProposal operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantProposal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantProposalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantProposal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExecuteAssistantProposal operation middleware
+func (siw *ServerInterfaceWrapper) ExecuteAssistantProposal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantProposalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExecuteAssistantProposal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantReadiness operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantReadiness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantReviewRun operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantReviewRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssistantReviewRunParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantReviewRun(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdoptAssistantReviewCandidates operation middleware
+func (siw *ServerInterfaceWrapper) AdoptAssistantReviewCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdoptAssistantReviewCandidates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectAssistantReviewCandidates operation middleware
+func (siw *ServerInterfaceWrapper) RejectAssistantReviewCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantReviewRunId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectAssistantReviewCandidates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAssistantTurns operation middleware
+func (siw *ServerInterfaceWrapper) ListAssistantTurns(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssistantTurnsParams
+
+	// ------------- Required query parameter "active" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "active", r.URL.Query(), &params.Active, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "active"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "active", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssistantTurns(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) CreateAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAssistantTurn(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) GetAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantTurnId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssistantTurn(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopAssistantTurn operation middleware
+func (siw *ServerInterfaceWrapper) StopAssistantTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssistantTurnId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopAssistantTurn(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11059,6 +12567,71 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDurationMs", r.URL.Query(), &params.MinDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDurationMs", r.URL.Query(), &params.MaxDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedFrom", r.URL.Query(), &params.AddedFrom, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedTo", r.URL.Query(), &params.AddedTo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watchState" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watchState", r.URL.Query(), &params.WatchState, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watchState"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watchState", Err: err})
 		}
 		return
 	}
@@ -13233,6 +14806,20 @@ func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListOllamaModels operation middleware
+func (siw *ServerInterfaceWrapper) ListOllamaModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOllamaModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPluginProxySettings operation middleware
 func (siw *ServerInterfaceWrapper) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) {
 
@@ -14665,6 +16252,71 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDurationMs", r.URL.Query(), &params.MinDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDurationMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDurationMs", r.URL.Query(), &params.MaxDurationMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDurationMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDurationMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedFrom", r.URL.Query(), &params.AddedFrom, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedTo", r.URL.Query(), &params.AddedTo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watchState" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watchState", r.URL.Query(), &params.WatchState, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watchState"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watchState", Err: err})
 		}
 		return
 	}
@@ -16744,6 +18396,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama/models", wrapper.ListOllamaModels)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/readiness", wrapper.GetAssistantReadiness)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns", wrapper.ListAssistantTurns)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns", wrapper.CreateAssistantTurn)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/turns/{id}", wrapper.GetAssistantTurn)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/turns/{id}/stop", wrapper.StopAssistantTurn)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals", wrapper.ListAssistantProposals)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/proposals/{id}", wrapper.GetAssistantProposal)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/proposals/{id}/execute", wrapper.ExecuteAssistantProposal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assistant/review-runs/{id}", wrapper.GetAssistantReviewRun)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/review-runs/{id}/candidates/adopt", wrapper.AdoptAssistantReviewCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assistant/review-runs/{id}/candidates/reject", wrapper.RejectAssistantReviewCandidates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)

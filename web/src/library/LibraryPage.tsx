@@ -68,6 +68,8 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
+import { useAssistantScreen } from "../assistant/AssistantProvider";
+import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
@@ -99,7 +101,7 @@ import { TagRowMeasureProvider } from "./TagRowMeasure";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import {
-  libraryFilterParams,
+  libraryPageParams,
   useLibraryFilters,
   useLibraryFilterValues,
 } from "./useLibraryFilters";
@@ -127,7 +129,12 @@ function drawsBoxes(owner: boolean, view: ViewPreferences["view"], loading: bool
 }
 
 function libraryConditioned(filter: LibraryFilter): boolean {
-  return hasTagConditions(filter.criteria, filter.tagIds, filter.credits);
+  return hasTagConditions(
+    filter.criteria,
+    filter.tagIds,
+    filter.credits,
+    filter.conditions,
+  );
 }
 
 function saveSmartFolderAction(
@@ -142,7 +149,7 @@ function saveSmartFolderAction(
 }
 
 /** Retired parameters (versions, addedWithin, minDuration, maxDuration) are dropped on the next write. */
-const libraryParams = libraryFilterParams;
+const libraryParams = libraryPageParams;
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -154,7 +161,7 @@ export default function LibraryPage() {
   // Pass library-specific filters through useListCriteria's extension so every URL update preserves them.
   const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
   const { query, favorite, sort } = criteria;
-  const { tagIds, credits } = useLibraryFilterValues(owner);
+  const { tagIds, credits, conditions } = useLibraryFilterValues(owner);
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
@@ -199,7 +206,7 @@ export default function LibraryPage() {
   );
 
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...credits, ...conditions }),
   );
   const {
     items,
@@ -215,13 +222,18 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
+  } = useVideos(
+    { ...criteria, tag: tagIds, ...credits, ...conditions },
+    restored,
+    "library",
+  );
   const filters = useLibraryFilters({
     owner,
     criteria,
     apply,
     tagIds,
     credits,
+    conditions,
     missingTagIds,
     restored: restored !== undefined,
     resetPreview,
@@ -237,6 +249,7 @@ export default function LibraryPage() {
   // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
+  useAssistantScreen(selectionScreen(selection));
   // Removing any member also removes the group's selected identity.
   const displayed = useRef<readonly LibraryItem[]>(items);
   const { select: selectRange, point: pointRange } = useRangeSelection(
@@ -406,7 +419,7 @@ export default function LibraryPage() {
     // Do not snapshot temporary drag overlays or restore stale order after successful mutations invalidated it.
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...credits },
+      { ...criteria, tags: tagIds, ...credits, ...conditions },
       {
         items,
         total,
@@ -417,7 +430,18 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
+  }, [
+    conditions,
+    credits,
+    criteria,
+    cursor,
+    hasMore,
+    items,
+    shown,
+    staleGroups,
+    tagIds,
+    total,
+  ]);
 
   const results = useRef<HTMLElement | null>(null);
   const marqueeBox = useRef<HTMLDivElement | null>(null);
@@ -456,7 +480,7 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const smartFolderFilter = { criteria, tagIds, credits };
+  const smartFolderFilter = { criteria, tagIds, credits, conditions };
   const conditioned = libraryConditioned(smartFolderFilter);
   const selectionMode = selectedCount(selection) > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);

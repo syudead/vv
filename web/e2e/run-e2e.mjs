@@ -13,6 +13,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  generateAssistantFixtures,
   generateDragOrganizeFixtures,
   generateFolderFixtures,
   generateHistoryFixtures,
@@ -45,6 +46,7 @@ function fixtureDirs(root) {
     onboardingMediaDir: path.join(root, "onboarding-media"),
     workInfoMediaDir: path.join(root, "work-info-media"),
     videoTabsMediaDir: path.join(root, "video-tabs-media"),
+    assistantMediaDir: path.join(root, "assistant-media"),
     peerMediaDir: path.join(root, "peer-media"),
   };
 }
@@ -60,6 +62,7 @@ function generateFixtures(dirs) {
   generateOnboardingFixtures(dirs.onboardingMediaDir);
   generateWorkInfoFixtures(dirs.workInfoMediaDir);
   generateVideoTabsFixtures(dirs.videoTabsMediaDir);
+  generateAssistantFixtures(dirs.assistantMediaDir);
   generatePeerFixtures(dirs.peerMediaDir);
 }
 
@@ -155,6 +158,7 @@ function run() {
           MDM_E2E_ONBOARDING_MEDIA_DIR: fixtures.onboardingMediaDir,
           MDM_E2E_WORK_INFO_MEDIA_DIR: fixtures.workInfoMediaDir,
           MDM_E2E_VIDEO_TABS_MEDIA_DIR: fixtures.videoTabsMediaDir,
+          MDM_E2E_ASSISTANT_MEDIA_DIR: fixtures.assistantMediaDir,
           MDM_E2E_PEER_MEDIA_DIR: fixtures.peerMediaDir,
         },
         stdio: "inherit",

@@ -159,6 +159,10 @@
   --spacing-settings-nav: 10rem;
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
   --spacing-related-thumb: 10rem;
+  /* The assistant's side column: at 1280px the library beside it keeps three card-0 columns. */
+  --spacing-assistant-panel: 24rem;
+  /* Four text-sm lines with py-2: the assistant composer grows to this height, then scrolls. */
+  --spacing-assistant-composer: 6rem;
   /* The right column of a two-column video page panel, and the preview of a Replace with row. */
   --spacing-facts-column: 15rem;
   --spacing-replace-preview: 6rem;

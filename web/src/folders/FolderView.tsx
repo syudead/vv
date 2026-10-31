@@ -63,6 +63,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   } = useConditions(libraryFilterParams);
   const scan = useScanControls();
   const owner = useAudience() === "owner";
+  // Folder listings take no video conditions, so the folder page ignores them.
   const { tagIds, credits } = useLibraryFilterValues(owner);
   const filterKey = useMemo(() => ({ tags: tagIds, ...credits }), [tagIds, credits]);
   const { refresh: refreshScan } = scan;

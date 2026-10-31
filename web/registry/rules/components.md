@@ -151,7 +151,12 @@ Items `combobox`, `command`. Pick one value from many by typing.
 
 - `Combobox` is a button showing the current value; it opens a `Command` in a
   popover with a search field and the matching options. Use it for a long
-  list (folders, tags) where typing is faster than scrolling.
+  list (folders, tags) where typing is faster than scrolling. `createLabel`
+  lets a typed value that no option has be kept, such as an Ollama model name
+  the list could not offer: the create row comes first and the trigger shows
+  the value. `status` replaces the empty text with one row while the list
+  loads or after it fails, and `onOpenChange` lets the caller read the list
+  when the popover opens.
 - `Command` is the filtered list on its own. Put it inside an existing
   popover when the popover itself is the picker, such as a selection bar's
   "Add tag" and "Remove tag"; pass `shouldFilter={false}` when the caller

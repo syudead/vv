@@ -332,6 +332,8 @@ type Options struct {
 	VersionReview  VersionJudgeReview
 
 	Ollama OllamaConnection
+	// Nil Assistant makes the assistant proposal routes fail with 500.
+	Assistant AssistantProposals
 
 	ComfyUI ComfyUIConnection
 
@@ -430,6 +432,7 @@ type server struct {
 	versionJudging    VersionJudging
 	versionReview     VersionJudgeReview
 	ollama            OllamaConnection
+	assistant         AssistantProposals
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
@@ -465,6 +468,12 @@ type server struct {
 // NewRouter registers generated UI/external APIs and Bearer-only MCP, returns JSON 404 for unknown
 // API paths, and falls back to the SPA elsewhere.
 func NewRouter(opts Options) http.Handler {
+	handler, _ := NewServer(opts)
+	return handler
+}
+
+// NewServer returns NewRouter's handler and the assistant's runner over the same handlers.
+func NewServer(opts Options) (http.Handler, *ActionRunner) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -520,6 +529,7 @@ func NewRouter(opts Options) http.Handler {
 		versionJudging:         opts.VersionJudging,
 		versionReview:          opts.VersionReview,
 		ollama:                 opts.Ollama,
+		assistant:              opts.Assistant,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
@@ -558,8 +568,15 @@ func NewRouter(opts Options) http.Handler {
 
 	registerExternalAPI(mux, srv)
 	mux.Handle(mcpPath, newMCPHandler(srv))
-	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
-		BaseRouter: mux,
+	generated := gen.HandlerWithOptions(srv, generatedOptions(mux, logger))
+	// The runner skips the auth and mutation boundaries but forwards a peer's entity like the screens do.
+	runner := &ActionRunner{api: srv.remoteBoundary(gen.HandlerWithOptions(srv, generatedOptions(http.NewServeMux(), logger)))}
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated))))), runner
+}
+
+func generatedOptions(base *http.ServeMux, logger *slog.Logger) gen.StdHTTPServerOptions {
+	return gen.StdHTTPServerOptions{
+		BaseRouter: base,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			w.Header().Set("Cache-Control", cacheNoStore)
 			writeJSON(w, http.StatusBadRequest, gen.Error{
@@ -567,8 +584,7 @@ func NewRouter(opts Options) http.Handler {
 				Message: err.Error(),
 			}, logger)
 		},
-	})
-	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(srv.remoteBoundary(generated)))))
+	}
 }
 
 // Set no-store at write time for all 4xx/5xx, including ServeContent Range errors that bypass
@@ -635,7 +651,17 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 
 func requiresJSONBody(r *http.Request) bool {
 	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
-		isActivityUndoPost(r) || requiresOtherJSONBody(r)
+		isActivityUndoPost(r) || isAssistantReviewDecision(r) || requiresOtherJSONBody(r)
+}
+
+// isAssistantReviewDecision matches adopting and rejecting a review run's candidates.
+func isAssistantReviewDecision(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/assistant/review-runs/")
+	if r.Method != http.MethodPost || !ok {
+		return false
+	}
+	id, rest, found := strings.Cut(suffix, "/")
+	return found && id != "" && (rest == "candidates/adopt" || rest == "candidates/reject")
 }
 
 func requiresOtherJSONBody(r *http.Request) bool {
@@ -656,6 +682,7 @@ var idActionBodyPaths = []struct{ prefix, action string }{
 	{"/api/peer/videos/", "fetched-work-info"},
 	{"/api/peer/people/", "fetched-person"},
 	{"/api/virtual-videos/", "merge"},
+	{"/api/assistant/proposals/", "execute"},
 }
 
 func requiresPostJSONBody(path string) bool {
@@ -667,6 +694,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
+		"/api/assistant/turns",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
@@ -950,6 +978,7 @@ const (
 	codeLinkOrderChanged            = gen.ErrorCodeLinkOrderChanged
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
+	codeOllamaUnreachable           = gen.ErrorCodeOllamaUnreachable
 )
 
 // Error reasons likewise come from the schema; aliases distinguish generated unprefixed constants.

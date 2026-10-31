@@ -147,15 +147,18 @@ func isSearchSpace(r rune) bool { return unicode.Is(unicode.White_Space, r) }
 
 // FoldForMatch applies NFKC, per-code-point lowercase, then hiragana-to-katakana conversion to both query terms and persisted search keys.
 func FoldForMatch(s string) string {
-	return strings.Map(func(r rune) rune {
-		r = unicode.ToLower(r)
-		switch {
-		case r >= 'ぁ' && r <= 'ゖ', r == 'ゝ', r == 'ゞ':
-			// Adding 0x60 maps U+3041–U+3096 and U+309D–U+309E to their katakana equivalents.
-			return r + 0x60
-		}
-		return r
-	}, norm.NFKC.String(s))
+	return strings.Map(foldRune, norm.NFKC.String(s))
+}
+
+// foldRune is FoldForMatch's per-code-point step after NFKC; it maps one rune to one rune.
+func foldRune(r rune) rune {
+	r = unicode.ToLower(r)
+	switch {
+	case r >= 'ぁ' && r <= 'ゖ', r == 'ゝ', r == 'ゞ':
+		// Adding 0x60 maps U+3041–U+3096 and U+309D–U+309E to their katakana equivalents.
+		return r + 0x60
+	}
+	return r
 }
 
 // NaturalSortKey encodes folded digit runs as a four-digit significant-length prefix plus digits, making byte order match natural order; callers break equal keys by ID, and runs beyond 9,999 significant digits are unsupported.

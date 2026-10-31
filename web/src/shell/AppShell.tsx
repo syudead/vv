@@ -9,14 +9,17 @@ const railOnly = () => undefined;
 
 /**
  * Desktop stays collapsed; SidebarProvider owns only the narrow-screen drawer state. `notice` is one
- * Alert at the top of the content column, above the page, with the page's side padding.
+ * Alert at the top of the content column, above the page, with the page's side padding. `panel` takes one
+ * SidePanel after the content, which narrows the content row from lg.
  */
 export default function AppShell({
   notice,
   children,
+  panel,
 }: {
   notice?: ReactNode;
   children: ReactNode;
+  panel?: ReactNode;
 }) {
   return (
     <SidebarProvider
@@ -36,6 +39,7 @@ export default function AppShell({
           )}
           {children}
         </SidebarInset>
+        {panel}
       </div>
     </SidebarProvider>
   );
