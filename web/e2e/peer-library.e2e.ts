@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   type APIRequestContext,
@@ -35,6 +36,14 @@ const query = "pairing";
 const localTitle = "pairing-local";
 const remoteTitle = "pairing-remote";
 const remoteOffset = 2 ** 40;
+// The person face recognition found in the second node's video, and the main node's person its face moves to.
+const faceName = "pairing-face";
+const targetName = "pairing-target";
+// A 16 x 16 grey JPEG standing in for the crop face recognition keeps.
+const faceCrop = Buffer.from(
+  "/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgUFBcUFxsbGxsbGyAeICEhISAgICAhISEkJCQqKiokJCQhISQkKCgqKi4vLisrKisvLzIyMjw8OTlGRkhWVmf/xABKAAEAAAAAAAAAAAAAAAAAAAAAAQEAAAAAAAAAAAAAAAAAAAAAEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAEAAQAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AAA//2Q==",
+  "base64",
+);
 
 let second: ChildProcess | undefined;
 let secondRequest: APIRequestContext | undefined;
@@ -42,6 +51,7 @@ let localFolder: MediaFolder | undefined;
 let peerName = "";
 let localVideo: Video | undefined;
 let remoteVideo: Video | undefined;
+let remoteFacePerson: number | undefined;
 
 function mediaRoot(): string {
   const root = process.env.MDM_E2E_PEER_MEDIA_DIR;
@@ -141,6 +151,59 @@ async function setUpSecondNode(request: APIRequestContext): Promise<Video> {
   return video;
 }
 
+async function createPerson(
+  request: APIRequestContext,
+  name: string,
+  headers?: Record<string, string>,
+): Promise<number> {
+  const created = await request.post("/api/people", { headers, data: { name } });
+  expect(created.status()).toBe(201);
+  return ((await created.json()) as { id: number }).id;
+}
+
+async function findPerson(
+  request: APIRequestContext,
+  name: string,
+): Promise<number | undefined> {
+  const found = await request.get(`/api/people?q=${encodeURIComponent(name)}`);
+  expect(found.status()).toBe(200);
+  const { items } = (await found.json()) as { items: { id: number; name: string }[] };
+  return items.find((item) => item.name === name)?.id;
+}
+
+/**
+ * Stores on the second node one appearance of a new performer faceName in its video, seen from 0:10 to 0:14, as a
+ * finished face analysis would; the e2e servers have no face runtime to find it. Returns the person's id there.
+ */
+async function seedRemoteFace(request: APIRequestContext, video: Video): Promise<number> {
+  const personId = await createPerson(request, faceName);
+  // The People tab lists credited people, as face analysis credits the person it links.
+  const credited = await request.put(
+    `/api/videos/${String(video.id - remoteOffset)}/work-info`,
+    { data: { people: [{ role: "performer", person: { id: personId } }] } },
+  );
+  expect(credited.ok()).toBe(true);
+  const db = new DatabaseSync(path.join(secondNode.dataDir, "mdm.db"));
+  try {
+    db.exec("pragma busy_timeout = 5000");
+    const row = db
+      .prepare("select content_key from videos where id = ?")
+      .get(video.id - remoteOffset) as { content_key: string } | undefined;
+    const contentKey = required(row, "content key").content_key;
+    db.prepare(
+      `insert into face_results (content_key, state, recognizer, updated_at)
+       values (?, 'done', 'sface_int8', ?)`,
+    ).run(contentKey, Date.now());
+    db.prepare(
+      `insert into face_appearances (content_key, recognizer, person_id, tracks, good_seconds, track_count, crop)
+       values (?, 'sface_int8', ?, ?, 4, 1, ?)`,
+    ).run(contentKey, personId, JSON.stringify([[10, 14, 0.5, 0.5, 0.2]]), faceCrop);
+  } finally {
+    db.close();
+  }
+  return personId;
+}
+
 function card(page: Page, video: Video) {
   return page.locator(`article[data-video-id="${String(video.id)}"]`);
 }
@@ -180,6 +243,7 @@ test.describe.serial("paired library", () => {
     secondRequest = await startSecondNode();
     remoteVideo = { ...(await setUpSecondNode(secondRequest)) };
     remoteVideo.id += remoteOffset;
+    remoteFacePerson = remoteOffset + (await seedRemoteFace(secondRequest, remoteVideo));
 
     const local = await indexFolder(request, path.join(mediaRoot(), "local"), localTitle);
     localFolder = local.folder;
@@ -301,6 +365,54 @@ test.describe.serial("paired library", () => {
       );
     });
     await expect(display).toContainText("Remote subtitle cue");
+  });
+
+  test("相手の動画の people タブに相手の台が見つけた顔の出現位置が出て、そこから再生する", async ({
+    page,
+  }) => {
+    const remote = required(remoteVideo, "remote video");
+    await page.goto(`/videos/${String(remote.id)}`);
+    await page
+      .getByRole("tablist", { name: "About this video" })
+      .getByRole("tab", { name: "People" })
+      .click();
+    const spans = page.getByRole("group", { name: `When ${faceName} is on screen` });
+    await spans.getByRole("button", { name: "0:10–0:14" }).click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && !element.paused && element.currentTime >= 10;
+    });
+  });
+
+  test("相手の人物の顔をこの台の人物へ移すと、相手の台でその名前の人物の顔になる", async ({
+    page,
+    request,
+  }) => {
+    const peer = required(secondRequest, "second node");
+    const person = required(remoteFacePerson, "remote face person");
+    // A retry finds the main node's target from the previous run.
+    if ((await findPerson(request, targetName)) === undefined) {
+      await createPerson(request, targetName, mutationHeaders);
+    }
+
+    await page.goto(`/people/${String(person)}/faces?tab=faces`);
+    await page.getByRole("button", { name: "Select" }).click();
+    await page.getByRole("checkbox", { name: `Select ${remoteTitle}` }).click();
+    await page.getByRole("button", { name: "Move to person…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Move 1 face to…" });
+    await dialog.getByRole("combobox", { name: "Search by name" }).fill(targetName);
+    await dialog.getByRole("option", { name: new RegExp(targetName) }).click();
+    await dialog.getByRole("button", { name: "Move", exact: true }).click();
+    await expect(page.getByText(`Moved to ${targetName}`)).toBeVisible();
+
+    // The move made the name on the second node, which now holds the face.
+    const target = required(
+      await findPerson(peer, targetName),
+      "the second node's target",
+    );
+    const moved = await peer.get(`/api/people/${String(target)}/appearances`);
+    const appearances = (await moved.json()) as { items: { title: string }[] };
+    expect(appearances.items.map((item) => item.title)).toEqual([remoteTitle]);
   });
 
   test("相手の台が止まると通知が出て、相手の動画が一覧から外れる", async ({ page }) => {

@@ -27,7 +27,7 @@ var remoteCollections = []remoteCollection{
 	{prefix: remoteGroupPrefix, noun: "group", query: peerGroupQuery},
 	{prefix: "/api/tags/", noun: "tag"},
 	{prefix: "/api/tag-kinds/", noun: "tag kind"},
-	{prefix: "/api/people/", noun: "person"},
+	{prefix: "/api/people/", noun: "person", query: peerPersonQuery},
 	{prefix: "/api/organizations/", noun: "organization"},
 	{prefix: "/api/face-appearances/", noun: "face appearance"},
 	{prefix: "/api/virtual-videos/", noun: "video"},
@@ -49,7 +49,6 @@ var (
 	keptAnalysis      = keptOperation{reason: "Starts an analysis on the peer from here."}
 	keptPlugin        = keptOperation{reason: "The plugin and its kept result are this node's.", here: true}
 	keptVocabulary    = keptOperation{reason: "Applied on both nodes by name, whichever node the id names.", here: true, peer: true}
-	keptFaces         = keptOperation{reason: "The people of a face edit are not translated to the peer's."}
 	keptThumbnailEdit = keptOperation{reason: "This node's ComfyUI edits a thumbnail; it does not read the peer's image."}
 )
 
@@ -72,22 +71,12 @@ var keptOperations = map[string]keptOperation{
 	"POST /api/people/{id}/plugin-fetches/{fetchId}/apply":                  keptPlugin,
 	"GET /api/people/{id}/plugin-fetches/{fetchId}/images/{index}":          keptPlugin,
 
-	"DELETE /api/tags/{id}":                   keptVocabulary,
-	"POST /api/tags/{id}/merge":               keptVocabulary,
-	"DELETE /api/people/{id}":                 keptVocabulary,
-	"POST /api/people/{id}/merge":             keptVocabulary,
-	"DELETE /api/organizations/{id}":          keptVocabulary,
-	"POST /api/organizations/{id}/merge":      keptVocabulary,
-	"GET /api/people/{id}/appearances":        keptFaces,
-	"POST /api/people/{id}/appearances/move":  keptFaces,
-	"POST /api/people/{id}/appearances/split": keptFaces,
-	"GET /api/people/{id}/face-candidates":    keptFaces,
-	"GET /api/people/{id}/similar-people":     keptFaces,
-
-	"POST /api/people/{id}/appearances/{appearanceId}/split":  keptFaces,
-	"POST /api/people/{id}/face-candidates/{otherId}/confirm": keptFaces,
-	"POST /api/people/{id}/face-candidates/{otherId}/dismiss": keptFaces,
-	"POST /api/people/{id}/face-candidates/{otherId}/reopen":  keptFaces,
+	"DELETE /api/tags/{id}":              keptVocabulary,
+	"POST /api/tags/{id}/merge":          keptVocabulary,
+	"DELETE /api/people/{id}":            keptVocabulary,
+	"POST /api/people/{id}/merge":        keptVocabulary,
+	"DELETE /api/organizations/{id}":     keptVocabulary,
+	"POST /api/organizations/{id}/merge": keptVocabulary,
 }
 
 // slowRemoteOperations wait on the peer extracting a frame or fitting an image, so they have no response timeout,
@@ -117,6 +106,12 @@ var remoteRewrites = map[string]remoteRewrite{
 	"TagKind":                 rewriteAs(rewriteRemoteTagKind),
 	"Person":                  rewriteAs(rewriteRemotePerson),
 	"Organization":            rewriteAs(rewriteRemoteOrganizationEntity),
+
+	"FaceAppearanceList":        rewriteAs(rewriteRemotePersonAppearances),
+	"FaceAppearanceMove":        rewriteAs(rewriteRemoteFaceMove),
+	"FaceCandidateList":         rewriteAs(rewriteRemoteFaceCandidates),
+	"FaceCandidateConfirmation": rewriteAs(rewriteRemoteFaceConfirmation),
+	"SimilarPersonList":         rewriteAs(rewriteRemoteSimilarPeople),
 }
 
 // remoteRequestTranslator turns a request body into the peer's ids: body from the body alone, request with this
@@ -140,6 +135,9 @@ var remoteRequests = map[string]remoteRequestTranslator{
 	"RenameTagRequest":     {request: (*server).checkRemoteTagRename},
 	"CreditPatch":          {request: (*server).checkRemoteCreditPatch},
 	"AddTagSynonymRequest": {request: (*server).peerTagSynonymBody},
+
+	"FaceAppearanceMoveRequest":  {request: (*server).peerFaceMoveBody},
+	"FaceAppearanceSplitRequest": {body: remoteBodyAs(peerFaceSplit)},
 }
 
 // remotePathParam turns one path segment after the entity id into the peer's, or answers r and reports false.
@@ -147,10 +145,12 @@ type remotePathParam func(s *server, w http.ResponseWriter, r *http.Request, seg
 
 // remotePathParams translate a path parameter after the entity id by its name; a nil entry names no entity.
 var remotePathParams = map[string]remotePathParam{
-	"tagId":  (*server).peerVideoTagSegment,
-	"itemId": (*server).peerGroupItemSegment,
-	"sheet":  nil,
-	"file":   nil,
+	"tagId":        (*server).peerVideoTagSegment,
+	"itemId":       (*server).peerOffsetSegment,
+	"appearanceId": (*server).peerOffsetSegment,
+	"otherId":      (*server).peerFaceCandidateSegment,
+	"sheet":        nil,
+	"file":         nil,
 }
 
 // remoteRoute is how one entity operation answers a remote id: op is set when it is forwarded, kept when it is not.
@@ -352,8 +352,8 @@ func (s *server) peerVideoTagSegment(w http.ResponseWriter, r *http.Request, seg
 	return strconv.FormatInt(peerID, 10), ok
 }
 
-// peerGroupItemSegment turns the item id of /items/{itemId}/move into the peer's; a local item is mixed_nodes.
-func (s *server) peerGroupItemSegment(w http.ResponseWriter, _ *http.Request, segment string) (string, bool) {
+// peerOffsetSegment turns a group item or face appearance id into the peer's; one of this node's is mixed_nodes.
+func (s *server) peerOffsetSegment(w http.ResponseWriter, _ *http.Request, segment string) (string, bool) {
 	id, err := strconv.ParseInt(segment, 10, 64)
 	if err != nil {
 		return segment, true

@@ -188,10 +188,11 @@ headers passed through, since the browser has no session on the peer.
 | Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
 | Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
 | A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
-| `open`, `progress`, `auto-tag`, `probe`, thumbnail edits, the person page's faces | Kept: `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
+| `open`, `progress`, `auto-tag`, `probe`, thumbnail edits | Kept: `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
 | Related videos, work-info and person plugin fetches, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
 | Favorites, playlists, history, activity | Not entity collections; they stay with each node |
-| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false |
+| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404` |
+| A face edit of a remote person naming this node's appearance | `400 invalid_request` with reason `mixed_nodes`; a similar-people read ignores this node's appearances |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
 

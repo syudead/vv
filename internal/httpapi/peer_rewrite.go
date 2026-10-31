@@ -141,17 +141,6 @@ func rewriteRemoteVersions(versions *gen.VideoVersions, join domain.VocabularyJo
 	versions.RepresentativeId = domain.ToRemoteID(versions.RepresentativeId)
 }
 
-// rewriteRemoteFaceAppearances joins the people by name and drops the crops, whose operation is not offered for the
-// peer's appearances.
-func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
-	for i := range list.Items {
-		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
-		item.Person.Id = join.Person(item.Person.Id, item.Person.Name)
-		item.HasCrop = false
-	}
-}
-
 func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoin) {
 	for i := range sprite.Sheets {
 		rewriteRemoteURL(&sprite.Sheets[i])
