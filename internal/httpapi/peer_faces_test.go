@@ -123,6 +123,39 @@ func TestRemotePersonFacesMoveToThePeersPersonOfTheTargetsName(t *testing.T) {
 	}
 }
 
+// Undoing a move of the peer's faces to a local person sends them back from the peer's person of its name, since
+// the move answered with the local id; this node's appearance cannot join it.
+func TestLocalPersonFacesMoveOfThePeersAppearancesGoesToThePeer(t *testing.T) {
+	credits := &faceAppearanceCredits{}
+	a, b := faceNodes(t, func(people Credits) Credits { credits.Credits = people; return credits })
+	createPerson(t, b, "Ken")
+	mioA, mioB := createPerson(t, a, "Mio"), createPerson(t, b, "Mio")
+	credits.person = domain.Credit{Kind: domain.CreditPerson, ID: 5, Name: "Ren"}
+	undo := `{"appearanceIds":[` + strconv.FormatInt(domain.ToRemoteID(7), 10) + `],"targetId":` +
+		strconv.FormatInt(domain.ToRemoteID(5), 10) + `,"restoreCredits":[{"workKey":"w","position":1}]}`
+
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", undo)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("move: status = %d: %s", rec.Code, rec.Body)
+	}
+	want := []appearanceCall{{personID: mioA, appearances: []int64{7}, target: 5, restore: []domain.FaceMoveCredit{{UserKey: "w", Position: 1}}}}
+	if !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("the peer's move = %+v, want %+v", credits.calls, want)
+	}
+	if got := decode[gen.FaceAppearanceMove](t, rec); got.Person.Id != domain.ToRemoteID(5) {
+		t.Errorf("moved person = %d, want the peer's Ren in the offset form", got.Person.Id)
+	}
+
+	credits.calls = nil
+	mixed := `{"appearanceIds":[3,` + strconv.FormatInt(domain.ToRemoteID(7), 10) + `],"targetId":` + strconv.FormatInt(domain.ToRemoteID(5), 10) + `}`
+	rec = b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(mioB, 10)+"/appearances/move", mixed)
+	assertErrorBody(t, "this node's appearance", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: gen.ErrorReasonMixedNodes})
+	if len(credits.calls) != 0 {
+		t.Errorf("the peer's calls = %+v, want none for a mixed move", credits.calls)
+	}
+}
+
 func TestRemoteFaceAppearanceCropStreamsThePeersJPEG(t *testing.T) {
 	credits := &faceAppearanceCredits{crop: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	_, b := faceNodes(t, func(people Credits) Credits { credits.Credits = people; return credits })

@@ -11,7 +11,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-const similarPeoplePattern = "GET /api/people/{id}/similar-people"
+const (
+	similarPeoplePattern = "GET /api/people/{id}/similar-people"
+	faceMovePattern      = "POST /api/people/{id}/appearances/move"
+)
 
 // rewriteRemoteFaceAppearances joins the people by name; the crops are the peer's, read through the forwarded crop.
 func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
@@ -135,6 +138,24 @@ func (s *server) peerFaceCandidateSegment(w http.ResponseWriter, r *http.Request
 		return "", false
 	}
 	return strconv.FormatInt(peerID, 10), true
+}
+
+// moveFacesOnPeer moves the peer's appearances away from the peer's person of local person id's name, as the undo
+// of a move to a local person sends them; a name the peer lacks holds none of them.
+func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int64) {
+	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyPerson, id, "id", false)
+	var missing *domain.CreditNotFoundError
+	switch {
+	case errors.As(err, &missing) || (err == nil && peerID == 0):
+		s.notFoundReason(w, gen.ErrorReasonFaceAppearanceNotFound, "The person has no such face appearance.")
+		return
+	case err != nil:
+		s.writeSplitEditError(w, err)
+		return
+	}
+	remote := domain.ToRemoteID(peerID)
+	s.forwardRemoteEntity(w, r, peopleCollection, faceMovePattern, *remoteRoutes.routes[faceMovePattern].op, remote,
+		"/api/people/"+strconv.FormatInt(remote, 10)+"/appearances/move")
 }
 
 func (s *server) mixedFaces(w http.ResponseWriter) {

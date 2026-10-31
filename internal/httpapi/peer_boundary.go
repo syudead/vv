@@ -22,12 +22,14 @@ type remoteCollection struct {
 	query func(pattern string, query url.Values, op *remoteOperation)
 }
 
+var peopleCollection = remoteCollection{prefix: "/api/people/", noun: "person", query: peerPersonQuery}
+
 var remoteCollections = []remoteCollection{
 	{prefix: remoteVideoPrefix, noun: "video"},
 	{prefix: remoteGroupPrefix, noun: "group", query: peerGroupQuery},
 	{prefix: "/api/tags/", noun: "tag"},
 	{prefix: "/api/tag-kinds/", noun: "tag kind"},
-	{prefix: "/api/people/", noun: "person", query: peerPersonQuery},
+	peopleCollection,
 	{prefix: "/api/organizations/", noun: "organization"},
 	{prefix: "/api/face-appearances/", noun: "face appearance"},
 	{prefix: "/api/virtual-videos/", noun: "video"},
