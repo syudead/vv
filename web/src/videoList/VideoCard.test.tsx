@@ -1229,9 +1229,9 @@ describe("VideoCard のリモートの印", () => {
     expect(link.getAttribute("aria-describedby")).toBe(text.id);
   });
 
-  it("行ではお気に入りとプレイリストを出さず、時間のセルに印を出す", () => {
+  it("行ではお気に入りを出してプレイリストを出さず、時間のセルに印を出す", () => {
     renderRemote(true);
-    expect(screen.queryByRole("button", { name: 'Favorite "動画 1"' })).toBeNull();
+    expect(screen.getByRole("button", { name: 'Favorite "動画 1"' })).toBeDefined();
     expect(
       screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' }),
     ).toBeNull();

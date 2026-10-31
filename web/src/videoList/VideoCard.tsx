@@ -459,7 +459,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
   const owner = useAudience() === "owner";
-  // Favorites and playlists stay on each node; a remote row keeps the cells empty so columns align.
+  // Playlists stay on each node; a remote row keeps that cell empty so columns align.
   const remote = isRemoteId(video.id);
 
   return (
@@ -529,7 +529,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && <VideoFavorite video={video} />}
+          <VideoFavorite video={video} />
         </TableCell>
       )}
       {owner && (

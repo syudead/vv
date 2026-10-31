@@ -208,6 +208,43 @@ function card(page: Page, video: Video) {
   return page.locator(`article[data-video-id="${String(video.id)}"]`);
 }
 
+/** The second node's own id of a video this node reads in the offset form. */
+function peerId(video: Video): string {
+  return String(video.id - remoteOffset);
+}
+
+async function peerHistoryCount(request: APIRequestContext): Promise<number> {
+  const response = await request.get("/api/watch-history?limit=50");
+  expect(response.status()).toBe(200);
+  const { items } = (await response.json()) as { items: { video?: { title: string } }[] };
+  return items.filter((item) => item.video?.title === remoteTitle).length;
+}
+
+/** Records the media time of the first `playing` event, where the player itself started. */
+async function recordFirstPlaying(page: Page) {
+  await page.evaluate(() => {
+    const record = window as unknown as { firstPlayingAt?: number };
+    delete record.firstPlayingAt;
+    document.addEventListener(
+      "playing",
+      (event) => {
+        if (
+          record.firstPlayingAt === undefined &&
+          event.target instanceof HTMLVideoElement
+        )
+          record.firstPlayingAt = event.target.currentTime;
+      },
+      { capture: true },
+    );
+  });
+}
+
+async function firstPlayingAt(page: Page): Promise<number | null> {
+  return page.evaluate(
+    () => (window as unknown as { firstPlayingAt?: number }).firstPlayingAt ?? null,
+  );
+}
+
 /** Starts playback and waits for the first frames, failing with the player's alert when it shows one. */
 async function play(page: Page, video: Video) {
   await page.goto(`/videos/${String(video.id)}`);
@@ -443,6 +480,92 @@ test.describe.serial("paired library", () => {
     const moved = await peer.get(`/api/people/${String(target)}/appearances`);
     const appearances = (await moved.json()) as { items: { title: string }[] };
     expect(appearances.items.map((item) => item.title)).toEqual([remoteTitle]);
+  });
+
+  test("この台で相手の動画を途中まで再生すると、相手の台に続きの位置と視聴履歴の項目が残る", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const peer = required(secondRequest, "second node");
+    const remote = required(remoteVideo, "remote video");
+    const before = await peerHistoryCount(peer);
+    await play(page, remote);
+    await page.evaluate(() => {
+      const element = document.querySelector("video");
+      if (element === null) throw new Error("video is missing");
+      element.currentTime = 12;
+    });
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && !element.seeking && element.currentTime > 12.5;
+    });
+    // A pause saves the position at once.
+    await page.evaluate(() => document.querySelector("video")?.pause());
+
+    await expect
+      .poll(async () => {
+        const response = await peer.get(`/api/videos/${peerId(remote)}`);
+        const video = (await response.json()) as { progress?: { positionMs: number } };
+        return video.progress?.positionMs ?? 0;
+      })
+      .toBeGreaterThanOrEqual(12_000);
+    await expect.poll(() => peerHistoryCount(peer)).toBeGreaterThan(before);
+  });
+
+  test("相手の台で途中まで再生した相手の動画は、この台の視聴履歴に出て、その位置から再生が始まる", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const peer = required(secondRequest, "second node");
+    const remote = required(remoteVideo, "remote video");
+    // The second node's own playback: an identified save creates its history entry there. The 30-second
+    // video counts as watched from 15 seconds on, which would start over instead of resuming.
+    const saved = await peer.put(`/api/videos/${peerId(remote)}/progress`, {
+      data: { positionMs: 10_000, playbackId: crypto.randomUUID() },
+    });
+    expect(saved.status()).toBe(200);
+
+    await page.goto("/history");
+    const resume = page
+      .getByRole("list", { name: "Watch history" })
+      .getByRole("link", { name: `Resume ${remoteTitle}` })
+      .first();
+    await expect(resume).toBeVisible();
+    await recordFirstPlaying(page);
+    await resume.click();
+    await expect(page).toHaveURL(`/videos/${String(remote.id)}`);
+    await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
+    const startedAt = (await firstPlayingAt(page)) ?? 0;
+    expect(startedAt).toBeGreaterThanOrEqual(10);
+    expect(startedAt).toBeLessThan(12);
+    await page.evaluate(() => document.querySelector("video")?.pause());
+  });
+
+  test("この台で相手の動画をお気に入りにすると、相手の台でもお気に入りになり、両方の台のお気に入りの絞り込みに出る", async ({
+    page,
+  }) => {
+    const peer = required(secondRequest, "second node");
+    const remote = required(remoteVideo, "remote video");
+    await page.goto(`/videos/${String(remote.id)}`);
+    const favorite = page.getByRole("button", { name: "Favorite", exact: true });
+    await expect(favorite).toHaveAttribute("aria-pressed", "false");
+    await favorite.click();
+    await expect(favorite).toHaveAttribute("aria-pressed", "true");
+
+    const own = (await (await peer.get(`/api/videos/${peerId(remote)}`)).json()) as {
+      favorite?: boolean;
+    };
+    expect(own.favorite).toBe(true);
+    const listed = await peer.get(
+      `/api/videos?limit=50&favorite=true&query=${encodeURIComponent(query)}`,
+    );
+    const { items } = (await listed.json()) as { items: Video[] };
+    expect(items.map((item) => item.title)).toEqual([remoteTitle]);
+
+    await page.goto(`/?q=${encodeURIComponent(query)}&fav=1`);
+    const results = page.getByRole("region", { name: "Search results", exact: true });
+    await expect(card(page, remote)).toBeVisible();
+    await expect(results.locator("article[data-video-id]")).toHaveCount(1);
   });
 
   test("相手の台が止まると通知が出て、相手の動画が一覧から外れる", async ({ page }) => {

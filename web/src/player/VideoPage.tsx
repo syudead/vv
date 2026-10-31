@@ -82,9 +82,8 @@ export default function VideoPage() {
   //
   const audience = useAudience();
   const owner = audience === "owner";
-  // The paired VVMDM's video: no progress, favorites, playlists or file actions.
+  // The paired VVMDM's video keeps progress and favorites; playlists and file actions stay here.
   const remote = isRemoteId(id);
-  const localOwner = ownsLocalVideo(owner, id);
   //
   const playlistQuery = parsePlaylistQuery(location.search);
   const itemId = playlistQuery?.itemId ?? 0;
@@ -237,7 +236,7 @@ export default function VideoPage() {
   // Wait for positioning before the first identified save; release the watch ID after ended.
   const { rememberProgress, savePlayerProgress, markPlayed } = useProgressSaving(
     id,
-    localOwner,
+    owner,
     {
       positioned: status.positioned,
       ended: status.ended,
@@ -346,7 +345,7 @@ export default function VideoPage() {
     detail,
     failure,
     onRetryLoad: refresh,
-    onReprobe: localOwner ? reprobe : undefined,
+    onReprobe: owner && !remote ? reprobe : undefined,
     onRetryPlayback: retryPlayback,
   });
   const showPlayer = isPlayable(video) && detail.kind === "ready";
@@ -552,9 +551,4 @@ function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSPro
   const style: Record<string, string> = { "--vv-video-aspect": String(aspect) };
   if (nativeWidth !== undefined) style["--vv-video-width"] = `${String(nativeWidth)}px`;
   return style as CSSProperties;
-}
-
-/** Only the owner saves progress and rescans, and only for a video on this VVMDM. */
-function ownsLocalVideo(owner: boolean, id: number): boolean {
-  return owner && !isRemoteId(id);
 }
