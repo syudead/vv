@@ -187,8 +187,8 @@ func TestSmartFolderCardsCountBothNodes(t *testing.T) {
 				card.DurationMs, 5*4096, 4*60_000)
 		}
 	}
-	if card := cards[remote]; card.WatchState != nil || card.Favorite != nil {
-		t.Errorf("remote card carries the peer's watch values: %+v", card)
+	if card := cards[remote]; card.WatchState == nil || card.Favorite == nil {
+		t.Errorf("remote card lacks the peer's watch values: %+v", card)
 	}
 
 	stopA()

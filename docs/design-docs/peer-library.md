@@ -63,7 +63,7 @@ drifts from the shapes the screens use. The credential reaches an allow-list
 (`internal/httpapi/peer_operations.go`): the entity operations the
 [remote boundary](#remote-ids) forwards or calls on the peer, which it derives
 from the same table, plus a short list of lists, creations, operations over a
-selection, `/api/events` and `/api/peer/*`. Anything else answers `403` with
+selection, favorites, watch history, `/api/events` and `/api/peer/*`. Anything else answers `403` with
 reason `peer_not_allowed`, so a compromised reader cannot reach media folders,
 scans, settings, the account, API tokens, playlists or activity; a test fails
 when the list reaches one of them. The request's audience is the owner unless
@@ -188,9 +188,10 @@ headers passed through, since the browser has no session on the peer.
 | Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
 | Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
 | A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
-| `open`, `progress`, `auto-tag`, `probe`, thumbnail edits, the person page's faces | Kept: `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
+| `open`, `auto-tag`, `probe`, thumbnail edits, the person page's faces | Kept: `404 not_found` |
 | Related videos, work-info and person plugin fetches, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
-| Favorites, playlists, history, activity | Not entity collections; they stay with each node |
+| A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
+| Playlists, activity | Not entity collections; they stay with each node |
 | A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
@@ -212,6 +213,39 @@ totals.
 | `favorite=true`, `played*` and `favorited*` sorts | Local favorites and history only; remote items follow the local ones |
 | Peer skipped while unreachable | That listing keeps skipping it to the end; a reload shows the peer again |
 | The same file on both nodes | Two items |
+
+## Progress, history and favorites
+
+A remote video's playback position, history and favorite live on the node
+holding the video, because they are keyed by its content key there
+([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)); the
+reading node forwards and merges them, and keeps no row of its own for them.
+
+| Operation | Behaviour |
+| --- | --- |
+| `PUT /api/videos/{remoteId}/progress` | Forwarded; the position and history entry are saved on the peer, whose `Progress` is answered as it is |
+| `PUT /api/favorites` | Ids split by node; the peer's part is sent first as one request in the peer's ids, then this node's part is applied in one transaction, and the `applied*` counts are summed |
+| `GET /api/watch-history` | Both nodes' pages merged by `playedAt`, newest first and this node's entry first on equal times, with one composite cursor; the peer's entry ids carry the offset |
+| `GET /api/watch-history/dates` | The union of both nodes' days |
+| `DELETE /api/watch-history` | The peer's history is cleared first, then this node's, since the screens show one history |
+| `DELETE /api/watch-history/{remoteId}` | Deleted on the peer |
+
+A peer answer to the history list carries `peerItems`, the cursor after each
+entry and its `playedAt` in Unix milliseconds, so the merge reuses the
+[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A peer
+that does not answer the list or the dates is left out, as in a merged list.
+
+Writing the peer first repeats the vocabulary rule: while the peer is not
+connected, or when it refuses, the write answers `503` with reason
+`peer_unreachable` or the peer's error, and neither node changes. When the
+peer gives no answer, this node is unchanged and the peer's write committed or
+did not. A change of a remote item never stays on this node alone, so the two
+nodes never need reconciling.
+
+| Rejected | Why |
+| --- | --- |
+| Storing a remote video's position or favorite on the node that played it | Each node would show its own; the screens show one library |
+| Storing on both nodes and reconciling | A replay queue needs its own conflict handling, as for vocabulary |
 
 ## Vocabulary by name
 

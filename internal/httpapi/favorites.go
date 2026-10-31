@@ -55,17 +55,33 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	applied, err := s.favorites.SetFavorites(r.Context(), domain.FavoriteChange{
+	change := domain.FavoriteChange{
 		VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs, PersonIDs: personIDs,
 		Favorite: *body.Favorite,
-	})
-	if err != nil {
-		s.internalError(w, "Could not change the favorites.", err)
+	}
+	// The peer's own request names this node's entities only; a remote id there is missing and ignored.
+	local, peer := change, domain.FavoriteChange{}
+	if !isPeerRequest(r.Context()) {
+		local, peer = splitFavoriteChange(change)
+	}
+	// The peer is written first, so the common failure, an unreachable peer, changes nothing here.
+	peerApplied, ok := s.setPeerFavorites(w, r, peer)
+	if !ok {
 		return
+	}
+	var applied domain.FavoriteApplied
+	if favoriteChangeNames(local) {
+		var err error
+		if applied, err = s.favorites.SetFavorites(r.Context(), local); err != nil {
+			s.internalError(w, "Could not change the favorites.", err)
+			return
+		}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FavoritesResponse{
-		AppliedVideos: applied.Videos, AppliedGroups: applied.Groups, AppliedSmartFolders: applied.SmartFolders,
+		AppliedVideos:       applied.Videos + peerApplied.AppliedVideos,
+		AppliedGroups:       applied.Groups + peerApplied.AppliedGroups,
+		AppliedSmartFolders: applied.SmartFolders + peerApplied.AppliedSmartFolders,
 	}, s.logger)
 }
 

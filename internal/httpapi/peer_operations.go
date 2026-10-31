@@ -8,7 +8,8 @@ import (
 )
 
 // peerNonEntityOperations are the operations outside the entity collections that the peer credential reaches: the
-// lists merging needs, creation, operations over a selection, events, health and the peer-to-peer operations.
+// lists merging needs, creation, operations over a selection, favorites and watch history, events, health and the
+// peer-to-peer operations.
 var peerNonEntityOperations = []string{
 	"GET /api/health",
 	"GET /api/events",
@@ -51,6 +52,12 @@ var peerNonEntityOperations = []string{
 	"POST /api/video-code-edits/summary",
 	"POST /api/work-info-fill-targets",
 	"POST /api/collections/delete",
+	"PUT /api/favorites",
+
+	"GET /api/watch-history",
+	"GET /api/watch-history/dates",
+	"DELETE /api/watch-history",
+	"DELETE /api/watch-history/{id}",
 
 	"POST /api/peer/pairings",
 	"GET /api/peer/handshake",
@@ -66,7 +73,7 @@ var peerNonEntityOperations = []string{
 
 // peerOperations are the only operations the peer credential reaches: the non-entity ones above and the entity
 // operations forwarded for a remote id or called on the peer by this node. Media folders, scans, settings, the
-// account, API tokens, activity, favorites, playlists and the pairing screens stay with each node's own owner.
+// account, API tokens, activity, playlists and the pairing screens stay with each node's own owner.
 var peerOperations = slices.Concat(peerNonEntityOperations, remoteRoutes.peer)
 
 // Match with ServeMux, as accessMux does, so wildcards and GET/HEAD agree with routing.
