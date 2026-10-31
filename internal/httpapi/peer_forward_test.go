@@ -385,6 +385,25 @@ func TestRemoteVideoMakeRepresentativeAnswersRemoteVersions(t *testing.T) {
 	}
 }
 
+// Taking a version out of the peer's bundle happens on the peer, and the removed video answers in its remote id.
+func TestRemoteVideoUnbundleTakesTheVersionOutOnThePeer(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	if rec := f.bundle(bundleBody([]int64{f.ids["a"], f.ids["b"]}, f.ids["a"]), f.owner); rec.Code != http.StatusOK {
+		t.Fatalf("precondition: bundle on the peer: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	rec := b.owner(http.MethodPost, f.remotePath("b", "/unbundle"), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unbundle: status = %d: %s", rec.Code, rec.Body)
+	}
+	if removed := decode[gen.Video](t, rec); removed.Id != domain.ToRemoteID(f.ids["b"]) || removed.Versions != nil {
+		t.Errorf("removed = id %d, versions %+v, want id %d without versions", removed.Id, removed.Versions, domain.ToRemoteID(f.ids["b"]))
+	}
+	if peer := decode[gen.Video](t, f.env.get(f.videoPath("b", ""), f.owner)); peer.Versions != nil {
+		t.Errorf("the peer's b still has versions %+v", peer.Versions)
+	}
+}
+
 func TestRemoteVideoIsDeletedOnThePeer(t *testing.T) {
 	virtual := &fakeVirtualVideos{}
 	f, _, b, _ := remoteVideoNodesWith(t, func(opts *Options) { opts.VirtualVideos = virtual })
