@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,9 +24,18 @@ import (
 // stopA stops a's server.
 func remoteVideoNodes(t *testing.T) (f *guestFixture, a, b *peerNode, stopA func()) {
 	t.Helper()
+	return remoteVideoNodesWith(t, nil)
+}
+
+// remoteVideoNodesWith is remoteVideoNodes with a's options extended.
+func remoteVideoNodesWith(t *testing.T, extend func(opts *Options)) (f *guestFixture, a, b *peerNode, stopA func()) {
+	t.Helper()
 	var pairing *app.Pairing
 	f = newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
 		pairing = withTestPairing(db, "node-a", nil, opts)
+		if extend != nil {
+			extend(opts)
+		}
 	})
 	server := httptest.NewServer(f.env.handler)
 	t.Cleanup(server.Close)
@@ -369,5 +379,41 @@ func TestAssistantReadsARemoteVideoFromThePeer(t *testing.T) {
 	var video gen.Video
 	if err := json.Unmarshal(result.Body, &video); err != nil || video.Id != remote || video.Title != "a" {
 		t.Errorf("video = %s (%v), want id %d の a", result.Body, err, remote)
+	}
+}
+
+// An operation no list names is forwarded by default and its answer rewritten by its type: switching the
+// representative of the peer's bundle answers the versions in remote ids.
+func TestRemoteVideoMakeRepresentativeAnswersRemoteVersions(t *testing.T) {
+	f, _, b, _ := remoteVideoNodes(t)
+	if rec := f.bundle(bundleBody([]int64{f.ids["a"], f.ids["b"]}, f.ids["a"]), f.owner); rec.Code != http.StatusOK {
+		t.Fatalf("precondition: bundle on the peer: status = %d: %s", rec.Code, rec.Body)
+	}
+
+	rec := b.owner(http.MethodPost, f.remotePath("b", "/make-representative"), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("make-representative: status = %d: %s", rec.Code, rec.Body)
+	}
+	versions := decode[gen.VideoVersions](t, rec)
+	remoteA, remoteB := domain.ToRemoteID(f.ids["a"]), domain.ToRemoteID(f.ids["b"])
+	if got := versionIDs(versions); versions.RepresentativeId != remoteB || !slices.Equal(slices.Sorted(slices.Values(got)), []int64{remoteA, remoteB}) {
+		t.Errorf("versions = representative %d, items %v, want %d and [%d %d]", versions.RepresentativeId, got, remoteB, remoteA, remoteB)
+	}
+	if local := decode[gen.VideoVersions](t, f.env.get(f.videoPath("a", "/versions"), f.owner)); local.RepresentativeId != f.ids["b"] {
+		t.Errorf("the peer's representative = %d, want %d", local.RepresentativeId, f.ids["b"])
+	}
+}
+
+func TestRemoteVideoIsDeletedOnThePeer(t *testing.T) {
+	virtual := &fakeVirtualVideos{}
+	f, _, b, _ := remoteVideoNodesWith(t, func(opts *Options) { opts.VirtualVideos = virtual })
+
+	rec := b.owner(http.MethodDelete, f.remotePath("a", "?contentVersion=v1"), "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: status = %d: %s", rec.Code, rec.Body)
+	}
+	want := []virtualCall{{op: "delete", videoID: f.ids["a"], contentVersion: "v1"}}
+	if !reflect.DeepEqual(virtual.calls, want) {
+		t.Errorf("the peer's deletes = %+v, want %+v", virtual.calls, want)
 	}
 }
