@@ -178,8 +178,9 @@ type turnLoop struct {
 	// evidence holds what the grounding check accepts: the request, the screen, today's date and every tool result.
 	evidence  strings.Builder
 	corrected bool
-	// lastRoundKey is the previous reply's calls, for telling a loop.
+	// lastRoundKey is the previous reply's calls, for telling a loop; stale tells rounds that learned nothing.
 	lastRoundKey string
+	stale        staleTracker
 	// prompted marks a turn whose empty reply already received its correction round.
 	prompted bool
 	// viewed marks a turn whose model looked at images with view_images.
@@ -264,7 +265,8 @@ func (l *turnLoop) chatStop(ctx context.Context, err error) domain.AssistantStop
 }
 
 // callTools runs the reply's calls in order and reports whether the turn ended. A reply that repeats the previous
-// reply's calls exactly, whose results the model still holds, is a loop and ends the turn as step_limit.
+// reply's calls exactly, whose results the model still holds, is a loop and ends the turn as step_limit, and so do
+// staleRoundLimit rounds in a row that learned nothing new.
 func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool, error) {
 	round := callsKey(reply.ToolCalls)
 	if round == l.lastRoundKey {
@@ -275,6 +277,7 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 	l.messages = append(l.messages, domain.ChatMessage{
 		Role: domain.ChatRoleAssistant, Content: reply.Text, ToolCalls: reply.ToolCalls,
 	})
+	l.stale.startRound()
 	for _, call := range reply.ToolCalls {
 		content, err := l.call(ctx, call)
 		if err != nil || l.turn.Status == domain.AssistantTurnClarify {
@@ -286,8 +289,13 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 		}
 		l.evidence.WriteString(content + "\n")
 		l.messages = append(l.messages, domain.ChatMessage{Role: domain.ChatRoleTool, ToolName: call.Name, Content: content})
+		l.stale.add(call, content, l.comparesResult(call))
 	}
 	l.attachImages()
+	if l.stale.endRound() {
+		l.stop(domain.AssistantStopStepLimit)
+		return true, nil
+	}
 	return false, nil
 }
 
