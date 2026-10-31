@@ -188,11 +188,13 @@ headers passed through, since the browser has no session on the peer.
 | Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
 | Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
 | A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
-| `open`, `auto-tag`, `probe`, the person page's faces | Kept: `404 not_found` |
+| `open`, `auto-tag`, `probe` | Kept: `404 not_found` |
 | Related videos, work-info and person plugin fetches, thumbnail edits, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
 | A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
 | Playlists, activity | Not entity collections; they stay with each node |
-| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false |
+| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404` |
+| A face move of the peer's appearances from a local person, as the undo of a move to that person sends | Forwarded from the peer's person of that name, `404` when the peer lacks the name |
+| A face edit of a remote person naming this node's appearance | `400 invalid_request` with reason `mixed_nodes`; a similar-people read ignores this node's appearances |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
 
@@ -257,7 +259,10 @@ A rename, merge or deletion of a tag, person or organization on the reader
 checks the conflict on both nodes, then writes the peer by name
 (`POST /api/peer/vocabulary`), then the local node; while the peer is not
 `connected` it answers `409` with reason `peer_unreachable`. Writing the peer
-first leaves nothing changed in the common failure. The read node never
+first leaves nothing changed in the common failure. A merge whose destination
+and sources are all in the offset form names no entry of the reader, so it
+goes to the peer's merge by id; that is how the undo of a face split merges
+back the peer's provisional person, which has no name to send. The read node never
 writes the reader: the same change made there changes that node alone.
 Synonyms, kinds of a tag, tentative state, rejected names, images and links
 stay per node.

@@ -407,6 +407,9 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 	case propagate && slices.Contains(body.SourceIds, id):
 		s.writeCreditError(w, api, domain.ErrMergeSameCredit)
 		return
+	case propagate && onlyRemote(append([]int64{id}, body.SourceIds...)):
+		s.mergeOnPeer(w, r, api, id, body.SourceIds)
+		return
 	case propagate:
 		s.mergeOnBothNodes(w, r, id, body.SourceIds, s.creditMergeSide(api))
 		return
