@@ -206,3 +206,60 @@ func TestThumbnailEditStartFromImage(t *testing.T) {
 		t.Fatalf("a refused start ended the session: %v", err)
 	}
 }
+
+// A session started from bytes the caller read hands its result to write and leaves this node's frames and
+// thumbnail store alone; a refused write keeps the result for another apply.
+func TestThumbnailEditStartFromHandsTheResultToWrite(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	var written [][]byte
+	var writeErr error
+	write := func(_ context.Context, image []byte) (domain.Video, error) {
+		written = append(written, image)
+		return domain.Video{ID: 7}, writeErr
+	}
+	start := frameStart(2_000)
+	start.Image = testPNG(t, 6, 5)
+	edit, err := f.edits.StartFrom(ctx, editVideo(7), start, write)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSource(t, edit, domain.ThumbnailEditFromFrame, ms(2_000))
+	if edit.VideoID != 7 || edit.FrameWidth != 6 || edit.FrameHeight != 5 || len(f.frames.extracted()) != 0 {
+		t.Fatalf("started = %+v, extracted %v, want video 7 with the given 6x5 image and no extraction", edit, f.frames.extracted())
+	}
+	f.run(t, edit.ID)
+	f.editor.set(domain.ThumbnailEditSucceeded, nil)
+	f.get(t, edit.ID)
+
+	writeErr = domain.ErrPeerUnreachable
+	if _, err := f.edits.Apply(ctx, edit.ID); !errors.Is(err, domain.ErrPeerUnreachable) {
+		t.Fatalf("Apply with a refused write = %v, want ErrPeerUnreachable", err)
+	}
+	wantState(t, f.get(t, edit.ID), domain.ThumbnailEditSucceeded)
+
+	writeErr = nil
+	video, err := f.edits.Apply(ctx, edit.ID)
+	if err != nil || video.ID != 7 || len(written) != 2 || !bytes.Equal(written[1], f.editor.output) {
+		t.Fatalf("Apply = %+v, %v, written %d images, want video 7 and the output written", video, err, len(written))
+	}
+	if len(f.applier.applied) != 0 {
+		t.Errorf("the local thumbnail store received %d images", len(f.applier.applied))
+	}
+	f.wantEnded(t, edit.ID)
+}
+
+// Bytes that do not decode start nothing: a read frame or thumbnail is unavailable, a sent image invalid.
+func TestThumbnailEditStartFromRefusesUnreadableBytes(t *testing.T) {
+	f := newEditsFixture(t)
+	for source, want := range map[domain.ThumbnailEditSource]error{
+		domain.ThumbnailEditFromFrame:     domain.ErrThumbnailFrameUnavailable,
+		domain.ThumbnailEditFromThumbnail: domain.ErrThumbnailFrameUnavailable,
+		domain.ThumbnailEditFromImage:     domain.ErrThumbnailUploadInvalid,
+	} {
+		start := domain.ThumbnailEditStart{Source: source, PositionMs: ms(0), Image: []byte("not an image")}
+		if _, err := f.edits.StartFrom(context.Background(), editVideo(1), start, nil); !errors.Is(err, want) {
+			t.Errorf("%s: StartFrom = %v, want %v", source, err, want)
+		}
+	}
+}
