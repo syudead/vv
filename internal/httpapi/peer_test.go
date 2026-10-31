@@ -398,16 +398,6 @@ func TestPairRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
-func TestPeerOperationsAreOpenAPIOperations(t *testing.T) {
-	declared := openAPISecurity(t)
-	for _, pattern := range peerOperations {
-		method, route, _ := strings.Cut(pattern, " ")
-		if _, ok := declared[operation{method: method, path: route}]; !ok {
-			t.Errorf("peerOperations の %q は openapi.yaml に無い", pattern)
-		}
-	}
-}
-
 // Unpairing on the reader tells the read node, which drops the grant; the reader's guests see the link go.
 func TestUnpairTellsTheReadNodeAndReachesGuests(t *testing.T) {
 	a, b := pairTestNodes(t)

@@ -115,7 +115,7 @@ func TestRemoteWorkInfoMissingARequiredFieldIsNotForwarded(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPut, "/api/videos/1", strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
-		forward := remoteVideoOperations[tc.operation].request(&server{logger: discardLogger()}, rec, req)
+		forward := remoteRoutes.routes[tc.operation].op.request(&server{logger: discardLogger()}, rec, req)
 		if forward || rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Message != tc.want {
 			t.Errorf("%s: forward = %v, status = %d, body = %s, want 400 and %q",
 				tc.operation, forward, rec.Code, rec.Body, tc.want)

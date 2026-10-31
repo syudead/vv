@@ -59,12 +59,14 @@ sequenceDiagram
 | Letting the read node show the reader's library through the grant | The grant is the reader's credential on the read node; the read node holds nothing it could present to the reader |
 
 The reader reads the read node's own `/api/*` operations, so no third contract
-drifts from the shapes the screens use. A table in
-`internal/httpapi/peer_operations.go` limits the credential to the reads,
-media, forwarded edits, operations over a selection, `/api/events` and
-`/api/peer/*`; anything else answers `403` with reason `peer_not_allowed`, so
-a compromised reader cannot reach media folders, scans, settings, the account
-or API tokens. The request's audience is the owner unless
+drifts from the shapes the screens use. The credential reaches an allow-list
+(`internal/httpapi/peer_operations.go`): the entity operations the
+[remote boundary](#remote-ids) forwards or calls on the peer, which it derives
+from the same table, plus a short list of lists, creations, operations over a
+selection, `/api/events` and `/api/peer/*`. Anything else answers `403` with
+reason `peer_not_allowed`, so a compromised reader cannot reach media folders,
+scans, settings, the account, API tokens, playlists or activity; a test fails
+when the list reaches one of them. The request's audience is the owner unless
 `X-VV-Peer-Audience: guest` lowers it, so the read node filters with the
 viewer's audience before paging ([authentication.md](authentication.md)).
 
@@ -149,26 +151,47 @@ ids of the answer rewritten.
 flowchart LR
   req[Request with id] --> off{At or above 2^40?}
   off -->|no| local[Local handler]
-  off -->|yes| offered{Offered for remote ids?}
-  offered -->|no| notfound[404 not_found]
-  offered -->|yes| fwd[Forward with id minus offset]
-  fwd --> rewrite[Rewrite ids and URLs]
+  off -->|yes| kept{Kept on each node?}
+  kept -->|answered here| here[Local handler, both nodes' data]
+  kept -->|not offered| notfound[404 not_found]
+  kept -->|no| fwd[Forward with id minus offset]
+  fwd --> rewrite[Rewrite ids and URLs by response type]
 ```
+
+Every operation whose path starts with an entity collection
+(`/api/videos/{id}`, `/api/groups/{id}`, `/api/tags/{id}`,
+`/api/tag-kinds/{id}`, `/api/people/{id}`, `/api/organizations/{id}`,
+`/api/face-appearances/{id}`, `/api/virtual-videos/{id}`) is offered for a
+remote id by default. The boundary
+(`internal/httpapi/peer_boundary.go`) is built at start from the operation
+table that `task generate` emits from `api/openapi.yaml`; one Go table names
+the operations kept on each node, with the reason, and whether this node
+answers them itself. A new operation under a collection is therefore forwarded
+with no change, and a peer on an older release answers one it does not know
+with its own `404`, which passes through ([Mixed versions](#mixed-versions)).
 
 Every path parameter and generated type is `int64`, and `2^40` stays below
 JavaScript's safe integer, so the screens change no route or type. Answers are
-decoded into the operation's generated type and rewritten by one table
-(`internal/httpapi/peer_rewrite.go`), because only the type says whether an
-`id` names a video or a tag. Media operations are proxied as byte streams
-with `Range` and the caching headers passed through, since the browser has no
-session on the peer.
+decoded into the generated type their response schema names and rewritten by
+the rewriter registered under that name, because only the type says whether an
+`id` names a video or a tag; a schema without ids is registered as kept as it
+is. Request bodies are translated by their request schema and path parameters
+after the entity id by their name. A test fails when an entity operation is
+neither forwarded nor kept, when a forwarded JSON answer has no rewriter, or
+when a body's id field or a path parameter has no translator; such an
+operation answers `404` until one is added, rather than forwarding wrong ids.
+Media operations are proxied as byte streams with `Range` and the caching
+headers passed through, since the browser has no session on the peer.
 
 | Case | Behaviour |
 | --- | --- |
-| Videos, groups, smart folders, media-folder roots | Always the offset form |
-| Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form |
-| `open`, `progress`, favorites, playlists, history, `auto-tag`, `probe`, activity | `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
-| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false since crops are not offered for remote ids |
+| Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
+| Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
+| A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
+| `open`, `progress`, `auto-tag`, `probe`, thumbnail edits, the person page's faces | Kept: `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
+| Related videos, work-info and person plugin fetches, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
+| Favorites, playlists, history, activity | Not entity collections; they stay with each node |
+| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
 
