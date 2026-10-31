@@ -102,7 +102,7 @@ dialogs, bulk results) stays as `en.ts` holds it.
 | Pane, organize | `Make a synonym of another tag…` | `outline` `sm`, the first button of the pane |
 | Pane, more | `More` menu: `Reject…` (tentative only), `Delete…` | `ghost` `sm` with `Ellipsis` at the pane header's right |
 | Make-a-synonym-of dialog | Title `Make "{name}" a synonym of another tag`; field `Tag to keep`; submit `Make synonym` | The existing merge warning text explains what moves |
-| Move dialog | Title `Move "{synonym}" to another tag`; field `Move to`; text `"{synonym}" becomes a synonym of "{target}". Videos tagged "{name}" keep that tag.`; submit `Move` | `FormDialog` with `TagCommand` `inline` |
+| Move dialog | Title `Move "{synonym}" to another tag`; field `Move to`; text `"{synonym}" becomes a synonym of "{target}". Videos you tagged "{name}" keep that tag; videos in a folder named "{synonym}" get "{target}" instead.`; submit `Move` | `FormDialog` with `TagCommand` `inline` |
 | Toast | `"{synonym}" is now the main name` | Promote |
 | Toast | `Moved "{synonym}" to "{target}"` | Move |
 | Toast | `"{synonym}" is now a separate tag` | Detach |
@@ -205,7 +205,10 @@ stateDiagram-v2
 `FormDialog` with `TagCommand` `layout="inline"` for the other tag, as the
 merge dialog does today, and the summary of what moves before the submit
 button. `Make main name`, `Make a separate tag` and `Remove synonym` act at
-once and report with a toast; they change no videos. Typing another tag's main
+once and report with a toast. None of them changes the videos tagged by hand;
+a video in a folder whose name is the synonym follows the name, as
+folder-derived tags always do, so after `Make a separate tag` it carries the
+new tag and after `Remove synonym` it loses the tag. Typing another tag's main
 name in `Add synonym` keeps today's merge confirmation.
 
 ## Change notice
