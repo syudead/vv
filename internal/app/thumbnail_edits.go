@@ -118,6 +118,8 @@ type thumbnailEditSession struct {
 	lastReadAt time.Time
 	run        *thumbnailEditRun
 	result     []byte
+	// write, when set, receives the applied result instead of this node's thumbnail store.
+	write domain.ThumbnailImageWrite
 }
 
 // A submission failure has no job and is already failed.
@@ -171,13 +173,45 @@ func (e *ThumbnailEdits) Start(
 	if err != nil {
 		return domain.ThumbnailEdit{}, err
 	}
+	return e.open(ctx, video, start.Source, image, nil)
+}
+
+// StartFrom starts a session for a video this node does not hold from start.Image, the frame at start.PositionMs
+// or the current thumbnail the caller read; Apply hands the result to write and never touches this node's
+// thumbnail store. An image that does not decode returns ErrThumbnailUploadInvalid for an image source and
+// ErrThumbnailFrameUnavailable otherwise.
+func (e *ThumbnailEdits) StartFrom(
+	ctx context.Context, video domain.Video, start domain.ThumbnailEditStart, write domain.ThumbnailImageWrite,
+) (domain.ThumbnailEdit, error) {
+	if video.ContentKey == "" {
+		return domain.ThumbnailEdit{}, domain.ErrNotFound
+	}
+	frame, err := thumbnailEditFrameFromImage(start.Image)
+	if err != nil {
+		unreadable := domain.ErrThumbnailFrameUnavailable
+		if start.Source == domain.ThumbnailEditFromImage {
+			unreadable = domain.ErrThumbnailUploadInvalid
+		}
+		return domain.ThumbnailEdit{}, errors.Join(unreadable, err)
+	}
+	image := thumbnailEditImage{frame: frame}
+	if start.Source == domain.ThumbnailEditFromFrame {
+		image.positionMs = start.PositionMs
+	}
+	return e.open(ctx, video, start.Source, image, write)
+}
+
+// open publishes a ready session for video, replacing its previous one.
+func (e *ThumbnailEdits) open(
+	ctx context.Context, video domain.Video, source domain.ThumbnailEditSource, image thumbnailEditImage, write domain.ThumbnailImageWrite,
+) (domain.ThumbnailEdit, error) {
 	id, err := newThumbnailEditID()
 	if err != nil {
 		return domain.ThumbnailEdit{}, err
 	}
 	session := &thumbnailEditSession{
 		id: id, videoID: video.ID, contentKey: video.ContentKey, frame: image.frame,
-		source: start.Source, positionMs: image.positionMs, lastReadAt: e.now(),
+		source: source, positionMs: image.positionMs, lastReadAt: e.now(), write: write,
 	}
 	view := e.view(session)
 	e.replace(ctx, session)
@@ -383,7 +417,7 @@ func (e *ThumbnailEdits) Cancel(ctx context.Context, id string) (domain.Thumbnai
 	return e.view(session), nil
 }
 
-// Apply installs successful output and ends the session; ErrThumbnailEditNoResult and ErrThumbnailImageInvalid leave it open. Missing or changed video content returns ErrContentChanged and ends the session.
+// Apply installs successful output, through the session's write when StartFrom gave one, and ends the session; ErrThumbnailEditNoResult and ErrThumbnailImageInvalid leave it open. Missing or changed video content returns ErrContentChanged and ends the session.
 func (e *ThumbnailEdits) Apply(ctx context.Context, id string) (domain.Video, error) {
 	session, err := e.acquire(ctx, id)
 	if err != nil {
@@ -393,8 +427,13 @@ func (e *ThumbnailEdits) Apply(ctx context.Context, id string) (domain.Video, er
 	if !hasResult(session) {
 		return domain.Video{}, domain.ErrThumbnailEditNoResult
 	}
-	video, err := e.applier.ApplyThumbnailImage(
-		ctx, session.videoID, session.contentKey, session.result, domain.ThumbnailImageGenerated)
+	var video domain.Video
+	if session.write != nil {
+		video, err = session.write(ctx, session.result)
+	} else {
+		video, err = e.applier.ApplyThumbnailImage(
+			ctx, session.videoID, session.contentKey, session.result, domain.ThumbnailImageGenerated)
+	}
 	if errors.Is(err, domain.ErrContentChanged) {
 		e.end(ctx, session)
 		return domain.Video{}, err

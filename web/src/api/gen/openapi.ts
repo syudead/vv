@@ -562,7 +562,7 @@ export interface paths {
         get?: never;
         /**
          * Save playback position
-         * @description The server determines watched state; clients send only the position. Records follow video content across moves and renames.
+         * @description The server determines watched state; clients send only the position. Records follow video content across moves and renames. For the peer's video (an id at or above 2^40) the position and history entry are saved on the peer, whose Progress is returned as it is.
          */
         put: operations["putVideoProgress"];
         post?: never;
@@ -3182,7 +3182,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name the peer's entities: the peer's part is sent first as one request in the peer's ids, then this node's part is applied, and the applied counts are the sums. While the peer is not connected, or when it refuses, nothing changes on either node and 503 service_unavailable with peer_unreachable, or the peer's error, is returned; when the peer gives no answer, this node is unchanged, 503 peer_unreachable is returned, and the peer's write committed or did not.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3313,14 +3313,14 @@ export interface paths {
         };
         /**
          * List watch history, newest first
-         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request.
+         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While paired, both nodes' entries are merged newest first by playedAt, this node's first on equal times, and nextCursor holds each node's cursor; the peer's entry ids and video ids carry 2^40, and its videos keep the peer's progress and favorite. A peer that does not answer is left out for the rest of the listing.
          */
         get: operations["listWatchHistory"];
         put?: never;
         post?: never;
         /**
          * Clear all watch history
-         * @description Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events.
+         * @description Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events. While paired, the peer's history is cleared first, then this node's: while the peer is not connected neither changes and 503 service_unavailable with peer_unreachable is returned; when the peer gives no answer, this node's history is unchanged, 503 peer_unreachable is returned, and the peer's clear committed or did not.
          */
         delete: operations["clearWatchHistory"];
         options?: never;
@@ -3337,7 +3337,7 @@ export interface paths {
         };
         /**
          * List days with watch history, newest first
-         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request.
+         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While paired, returns the union of both nodes' dates, leaving out a peer that does not answer.
          */
         get: operations["listWatchHistoryDates"];
         put?: never;
@@ -3360,7 +3360,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a watch-history entry
-         * @description Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events.
+         * @description Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events. An id at or above 2^40 deletes the peer's entry: while the peer is not connected nothing changes and 503 service_unavailable with peer_unreachable is returned.
          */
         delete: operations["deleteWatchHistoryEntry"];
         options?: never;
@@ -7701,6 +7701,8 @@ export interface components {
             items: components["schemas"]["WatchHistoryEntry"][];
             /** @description Included only when more results remain. */
             nextCursor?: string;
+            /** @description Per-item cursors, one per item in order, with playedAt in Unix milliseconds as the sort value; only in answers to the paired VVMDM's peer credential. */
+            peerItems?: components["schemas"]["PeerListItem"][];
         };
         /** @description One history entry per playback. video appears only when that content is currently in the library and openable, using list shape including progress, tags and favorite; otherwise the entry cannot be played. */
         WatchHistoryEntry: {
@@ -8257,6 +8259,8 @@ export interface components {
             tagKindName?: string;
             personName?: string;
             organizationName?: string;
+            /** @description Whether a matching video must be a favorite of the node that holds it. */
+            favorite?: boolean;
         };
         /** @description One entity a smart rule names, with its canonical name. */
         SmartRuleRefName: {
@@ -8268,7 +8272,7 @@ export interface components {
         };
         /** @description Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder. */
         PeerSmartRule: {
-            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos. */
+            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then matches its own favorites, as match.favorite also says. */
             favorite: boolean;
             match?: components["schemas"]["SmartRuleByName"];
             sort?: components["schemas"]["VideoSort"];
@@ -8416,6 +8420,15 @@ export interface components {
         };
         /** @description Image-edit provider (ComfyUI) rejected input upload or run submission */
         ProviderFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The paired VVMDM is not connected or gave no answer (code service_unavailable, reason peer_unreachable) */
+        PeerUnreachable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -13918,6 +13931,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     listPlaylists: {
@@ -14188,6 +14202,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     listWatchHistoryDates: {
@@ -14240,6 +14255,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["PeerUnreachable"];
         };
     };
     getPlaylistPlayback: {

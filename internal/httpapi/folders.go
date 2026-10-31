@@ -52,7 +52,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	folders := s.apiFolders(r.Context(), audience, summaries, groupings)
-	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+	if s.readsPeer(r.Context()) {
 		folders = s.withPeerRoots(r, folders)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

@@ -27,7 +27,7 @@ func (s *server) vocabularyJoin(ctx context.Context) (domain.VocabularyJoin, err
 
 // mergesVocabulary reports whether the tag, kind, person and organization lists answer with both nodes' entries.
 func (s *server) mergesVocabulary(ctx context.Context) bool {
-	return s.mergesLists(ctx, domain.VideoQuery{})
+	return s.readsPeer(ctx)
 }
 
 // peerVocabulary reads the peer's whole list at path into out and rewrites it into this node's id space; a peer

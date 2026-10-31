@@ -6277,7 +6277,7 @@ type PeerRuleCountsRequest struct {
 
 // PeerSmartRule Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder.
 type PeerSmartRule struct {
-	// Favorite Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos.
+	// Favorite Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then matches its own favorites, as match.favorite also says.
 	Favorite bool `json:"favorite"`
 
 	// Match A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.
@@ -7271,6 +7271,8 @@ type SmartRule struct {
 
 // SmartRuleByName A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.
 type SmartRuleByName struct {
+	// Favorite Whether a matching video must be a favorite of the node that holds it.
+	Favorite         *bool   `json:"favorite,omitempty"`
 	OrganizationName *string `json:"organizationName,omitempty"`
 	PersonName       *string `json:"personName,omitempty"`
 
@@ -8494,6 +8496,9 @@ type WatchHistoryPage struct {
 
 	// NextCursor Included only when more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PeerItems Per-item cursors, one per item in order, with playedAt in Unix milliseconds as the sort value; only in answers to the paired VVMDM's peer credential.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
 }
 
 // WatchState unwatched without a started position, watched when complete, otherwise inProgress.
@@ -9055,6 +9060,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PeerUnreachable defines model for PeerUnreachable.
+type PeerUnreachable = Error
 
 // PersonImageTooLarge defines model for PersonImageTooLarge.
 type PersonImageTooLarge = Error

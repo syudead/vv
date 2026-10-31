@@ -41,6 +41,15 @@ func pageOf(t *testing.T, rows []testRow, cursor string, limit int) MergeSide[st
 // readAll pages through both sides with limit as the merged handler does, reading a done side as empty.
 func readAll(t *testing.T, sort VideoSort, local, peer []testRow, limit int) []string {
 	t.Helper()
+	return readAllWith(t, string(sort), func(cursor MergedCursor, local, peer MergeSide[string], limit int) ([]string, MergedCursor, bool) {
+		return MergePages(sort, cursor, local, peer, limit)
+	}, local, peer, limit)
+}
+
+type mergeFunc func(cursor MergedCursor, local, peer MergeSide[string], limit int) ([]string, MergedCursor, bool)
+
+func readAllWith(t *testing.T, sort string, merge mergeFunc, local, peer []testRow, limit int) []string {
+	t.Helper()
 	var out []string
 	cursor := MergedCursor{}
 	for range len(local) + len(peer) + 2 {
@@ -51,7 +60,7 @@ func readAll(t *testing.T, sort VideoSort, local, peer []testRow, limit int) []s
 		if !cursor.PeerDone {
 			peerSide = pageOf(t, peer, cursor.Peer, limit)
 		}
-		items, next, more := MergePages(sort, cursor, localSide, peerSide, limit)
+		items, next, more := merge(cursor, localSide, peerSide, limit)
 		if len(items) > limit {
 			t.Fatalf("%s: a page of %d items over limit %d", sort, len(items), limit)
 		}
@@ -108,11 +117,11 @@ func TestMergePagesListsEveryItemOnceInOrder(t *testing.T) {
 			want:  []string{"P1", "L1", "L2", "P2", "P3"},
 		},
 		{
-			// The peer has no history here; its items follow every local one in its own order.
+			// Both nodes' play times interleave, and the never-played videos of both follow.
 			sort:  SortPlayedDesc,
 			local: []testRow{{"L1", value("5")}, {"L2", nil}, {"L3", nil}},
-			peer:  []testRow{{"P1", value("9")}, {"P2", value("1")}},
-			want:  []string{"L1", "L2", "L3", "P1", "P2"},
+			peer:  []testRow{{"P1", value("9")}, {"P2", value("1")}, {"P3", nil}},
+			want:  []string{"P1", "L1", "P2", "L2", "L3", "P3"},
 		},
 		{
 			sort:  SortAddedAsc,

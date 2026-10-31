@@ -13,6 +13,7 @@ require (
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/tetratelabs/wazero v1.12.0
 	github.com/wailsapp/go-webview2 v1.0.23
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.61.0

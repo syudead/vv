@@ -77,33 +77,56 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 		}
 	}
 
-	audience := audienceFrom(r.Context())
-	page, err := s.watchHistory.ListWatchHistory(r.Context(), audience, query, cursor, limit)
+	if s.readsPeer(r.Context()) {
+		s.listMergedWatchHistory(w, r, query, cursor, limit)
+		return
+	}
+	page, err := s.watchHistory.ListWatchHistory(r.Context(), audienceFrom(r.Context()), query, cursor, limit)
+	if !s.checkWatchHistoryRead(w, err) {
+		return
+	}
+	out := gen.WatchHistoryPage{Items: s.watchHistoryEntries(r.Context(), page.Items)}
+	if page.NextCursor != "" {
+		nextCursor := page.NextCursor
+		out.NextCursor = &nextCursor
+	}
+	out.PeerItems = peerItemsFor(r.Context(), watchHistoryCursors(page.Items))
+
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
+func (s *server) checkWatchHistoryRead(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
-		return
+		return false
 	case err != nil:
 		s.internalError(w, "Could not load the watch history.", err)
-		return
+		return false
 	}
+	return true
+}
 
-	videos := make([]domain.Video, 0, len(page.Items))
-	for _, entry := range page.Items {
+// watchHistoryEntries presents entries with each current video in the list shape for the viewer.
+func (s *server) watchHistoryEntries(ctx context.Context, entries []domain.WatchHistoryEntry) []gen.WatchHistoryEntry {
+	audience := audienceFrom(ctx)
+	videos := make([]domain.Video, 0, len(entries))
+	for _, entry := range entries {
 		if entry.Video != nil {
 			videos = append(videos, *entry.Video)
 		}
 	}
-	extras := s.extrasFor(r.Context(), videos)
-	views := s.presentVideos(r.Context(), videos)
+	extras := s.extrasFor(ctx, videos)
+	views := s.presentVideos(ctx, videos)
 	var roots []domain.MediaFolder
 	if len(videos) > 0 {
-		roots = s.registeredRoots(r.Context())
+		roots = s.registeredRoots(ctx)
 	}
 
-	out := gen.WatchHistoryPage{Items: make([]gen.WatchHistoryEntry, 0, len(page.Items))}
+	out := make([]gen.WatchHistoryEntry, 0, len(entries))
 	next := 0
-	for _, entry := range page.Items {
+	for _, entry := range entries {
 		item := gen.WatchHistoryEntry{Id: entry.ID, PlayedAt: entry.PlayedAt, Title: entry.Title}
 		if entry.Video != nil {
 			view := views[next]
@@ -115,15 +138,17 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 			video = forAudience(audience, video)
 			item.Video = &video
 		}
-		out.Items = append(out.Items, item)
+		out = append(out, item)
 	}
-	if page.NextCursor != "" {
-		nextCursor := page.NextCursor
-		out.NextCursor = &nextCursor
-	}
+	return out
+}
 
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, out, s.logger)
+func watchHistoryCursors(entries []domain.WatchHistoryEntry) []domain.ItemCursor {
+	cursors := make([]domain.ItemCursor, len(entries))
+	for i, entry := range entries {
+		cursors[i] = domain.WatchHistoryItemCursor(entry)
+	}
+	return cursors
 }
 
 // ListWatchHistoryDates returns dates in tz, newest first. Generated routing rejects a missing tz with 400.
@@ -144,6 +169,9 @@ func (s *server) ListWatchHistoryDates(w http.ResponseWriter, r *http.Request, p
 	if err != nil {
 		s.internalError(w, "Could not load the watch history dates.", err)
 		return
+	}
+	if s.readsPeer(r.Context()) {
+		days = s.withPeerWatchHistoryDays(r, days)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WatchHistoryDates{Days: days}, s.logger)
@@ -189,6 +217,10 @@ func (s *server) DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request,
 		s.invalidRequest(w, "Specify a valid watch history entry id.")
 		return
 	}
+	if domain.IsRemoteID(id) {
+		s.deletePeerWatchHistoryEntry(w, r, id)
+		return
+	}
 	if s.watchHistory == nil {
 		s.internalError(w, "Watch history storage is not configured.", nil)
 		return
@@ -211,6 +243,13 @@ func (s *server) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 	if s.watchHistory == nil {
 		s.internalError(w, "Watch history storage is not configured.", nil)
 		return
+	}
+	// The screens show one history, so both nodes' entries go, the peer's first.
+	if s.readsPeer(r.Context()) {
+		if err := s.peerCall(r, http.MethodDelete, watchHistoryPath, nil, nil, nil); err != nil {
+			s.writePeerWriteFailure(w, err)
+			return
+		}
 	}
 	if err := s.watchHistory.ClearWatchHistory(r.Context()); err != nil {
 		s.internalError(w, "Could not clear the watch history.", err)

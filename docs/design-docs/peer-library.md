@@ -59,12 +59,14 @@ sequenceDiagram
 | Letting the read node show the reader's library through the grant | The grant is the reader's credential on the read node; the read node holds nothing it could present to the reader |
 
 The reader reads the read node's own `/api/*` operations, so no third contract
-drifts from the shapes the screens use. A table in
-`internal/httpapi/peer_operations.go` limits the credential to the reads,
-media, forwarded edits, operations over a selection, `/api/events` and
-`/api/peer/*`; anything else answers `403` with reason `peer_not_allowed`, so
-a compromised reader cannot reach media folders, scans, settings, the account
-or API tokens. The request's audience is the owner unless
+drifts from the shapes the screens use. The credential reaches an allow-list
+(`internal/httpapi/peer_operations.go`): the entity operations the
+[remote boundary](#remote-ids) forwards or calls on the peer, which it derives
+from the same table, plus a short list of lists, creations, operations over a
+selection, favorites, watch history, `/api/events` and `/api/peer/*`. Anything else answers `403` with
+reason `peer_not_allowed`, so a compromised reader cannot reach media folders,
+scans, settings, the account, API tokens, playlists or activity; a test fails
+when the list reaches one of them. The request's audience is the owner unless
 `X-VV-Peer-Audience: guest` lowers it, so the read node filters with the
 viewer's audience before paging ([authentication.md](authentication.md)).
 
@@ -149,26 +151,50 @@ ids of the answer rewritten.
 flowchart LR
   req[Request with id] --> off{At or above 2^40?}
   off -->|no| local[Local handler]
-  off -->|yes| offered{Offered for remote ids?}
-  offered -->|no| notfound[404 not_found]
-  offered -->|yes| fwd[Forward with id minus offset]
-  fwd --> rewrite[Rewrite ids and URLs]
+  off -->|yes| kept{Kept on each node?}
+  kept -->|answered here| here[Local handler, both nodes' data]
+  kept -->|not offered| notfound[404 not_found]
+  kept -->|no| fwd[Forward with id minus offset]
+  fwd --> rewrite[Rewrite ids and URLs by response type]
 ```
+
+Every operation whose path starts with an entity collection
+(`/api/videos/{id}`, `/api/groups/{id}`, `/api/tags/{id}`,
+`/api/tag-kinds/{id}`, `/api/people/{id}`, `/api/organizations/{id}`,
+`/api/face-appearances/{id}`, `/api/virtual-videos/{id}`) is offered for a
+remote id by default. The boundary
+(`internal/httpapi/peer_boundary.go`) is built at start from the operation
+table that `task generate` emits from `api/openapi.yaml`; one Go table names
+the operations kept on each node, with the reason, and whether this node
+answers them itself. A new operation under a collection is therefore forwarded
+with no change, and a peer on an older release answers one it does not know
+with its own `404`, which passes through ([Mixed versions](#mixed-versions)).
 
 Every path parameter and generated type is `int64`, and `2^40` stays below
 JavaScript's safe integer, so the screens change no route or type. Answers are
-decoded into the operation's generated type and rewritten by one table
-(`internal/httpapi/peer_rewrite.go`), because only the type says whether an
-`id` names a video or a tag. Media operations are proxied as byte streams
-with `Range` and the caching headers passed through, since the browser has no
-session on the peer.
+decoded into the generated type their response schema names and rewritten by
+the rewriter registered under that name, because only the type says whether an
+`id` names a video or a tag; a schema without ids is registered as kept as it
+is. Request bodies are translated by their request schema and path parameters
+after the entity id by their name. A test fails when an entity operation is
+neither forwarded nor kept, when a forwarded JSON answer has no rewriter, or
+when a body's id field or a path parameter has no translator; such an
+operation answers `404` until one is added, rather than forwarding wrong ids.
+Media operations are proxied as byte streams with `Range` and the caching
+headers passed through, since the browser has no session on the peer.
 
 | Case | Behaviour |
 | --- | --- |
-| Videos, groups, smart folders, media-folder roots | Always the offset form |
-| Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form |
-| `open`, `progress`, favorites, playlists, history, `auto-tag`, `probe`, activity | `404 not_found`; a remote `Video` carries no `progress` or `favorite` |
-| A remote video's face appearances | Read on the peer; people join by name, and `hasCrop` is false since crops are not offered for remote ids |
+| Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
+| Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
+| A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
+| `open`, `auto-tag`, `probe` | Kept: `404 not_found` |
+| Related videos, work-info and person plugin fetches, thumbnail edits, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
+| A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
+| Playlists, activity | Not entity collections; they stay with each node |
+| A remote video's or person's faces | Read and edited on the peer, crops included; people join by name, a face move's target is created on the peer when it lacks the name, and a candidate it lacks is `404` |
+| A face move of the peer's appearances from a local person, as the undo of a move to that person sends | Forwarded from the peer's person of that name, `404` when the peer lacks the name |
+| A face edit of a remote person naming this node's appearance | `400 invalid_request` with reason `mixed_nodes`; a similar-people read ignores this node's appearances |
 | Forwarded write | The peer's status, `code` and `reason` |
 | Peer lost during a forwarded request | `503` with reason `peer_unreachable`; the peer's write committed or did not |
 
@@ -186,9 +212,41 @@ totals.
 | Case | Behaviour |
 | --- | --- |
 | Filter by a local tag, kind, person or organization | Sent to the peer by name; a name the peer lacks makes its part empty |
-| `favorite=true`, `played*` and `favorited*` sorts | Local favorites and history only; remote items follow the local ones |
 | Peer skipped while unreachable | That listing keeps skipping it to the end; a reload shows the peer again |
 | The same file on both nodes | Two items |
+
+## Progress, history and favorites
+
+A remote video's playback position, history and favorite live on the node
+holding the video, because they are keyed by its content key there
+([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)); the
+reading node forwards and merges them, and keeps no row of its own for them.
+
+| Operation | Behaviour |
+| --- | --- |
+| `PUT /api/videos/{remoteId}/progress` | Forwarded; the position and history entry are saved on the peer, whose `Progress` is answered as it is |
+| `PUT /api/favorites` | Ids split by node; the peer's part is sent first as one request in the peer's ids, then this node's part is applied in one transaction, and the `applied*` counts are summed |
+| `GET /api/watch-history` | Both nodes' pages merged by `playedAt`, newest first and this node's entry first on equal times, with one composite cursor; the peer's entry ids carry the offset |
+| `GET /api/watch-history/dates` | The union of both nodes' days |
+| `DELETE /api/watch-history` | The peer's history is cleared first, then this node's, since the screens show one history |
+| `DELETE /api/watch-history/{remoteId}` | Deleted on the peer |
+
+A peer answer to the history list carries `peerItems`, the cursor after each
+entry and its `playedAt` in Unix milliseconds, so the merge reuses the
+[Merged lists](#merged-lists) rule and never decodes the peer's cursor. A peer
+that does not answer the list or the dates is left out, as in a merged list.
+
+Writing the peer first repeats the vocabulary rule: while the peer is not
+connected, or when it refuses, the write answers `503` with reason
+`peer_unreachable` or the peer's error, and neither node changes. When the
+peer gives no answer, this node is unchanged and the peer's write committed or
+did not. A change of a remote item never stays on this node alone, so the two
+nodes never need reconciling.
+
+| Rejected | Why |
+| --- | --- |
+| Storing a remote video's position or favorite on the node that played it | Each node would show its own; the screens show one library |
+| Storing on both nodes and reconciling | A replay queue needs its own conflict handling, as for vocabulary |
 
 ## Vocabulary by name
 
@@ -200,7 +258,10 @@ A rename, merge or deletion of a tag, person or organization on the reader
 checks the conflict on both nodes, then writes the peer by name
 (`POST /api/peer/vocabulary`), then the local node; while the peer is not
 `connected` it answers `409` with reason `peer_unreachable`. Writing the peer
-first leaves nothing changed in the common failure. The read node never
+first leaves nothing changed in the common failure. A merge whose destination
+and sources are all in the offset form names no entry of the reader, so it
+goes to the peer's merge by id; that is how the undo of a face split merges
+back the peer's provisional person, which has no name to send. The read node never
 writes the reader: the same change made there changes that node alone.
 Synonyms, kinds of a tag, tentative state, rejected names, images and links
 stay per node.
@@ -217,8 +278,7 @@ offset, and a group, `organize` operation or bundle with videos of both nodes
 answers `400` with reason `mixed_nodes`. A smart folder of either node lists
 its own node's matches plus the other node's videos matching its rule, sent as
 name filters and merged by the folder's sort; its card adds the other node's
-counts from one `POST /api/peer/rule-counts`. A rule with `favorite` matches
-local favorites only. `POST /api/collections/delete` runs one transaction per
+counts from one `POST /api/peer/rule-counts`. `POST /api/collections/delete` runs one transaction per
 node and reports the peer's ids it could not delete.
 
 ## Related videos
@@ -249,8 +309,7 @@ by that name, so this node gains no row; a local video's save refuses a credit
 by name with `400`. Confirming or
 rejecting a tentative tag goes to the peer, which ran the auto-tagging, with
 the tag id turned into the peer's by name; a tag the peer lacks answers
-`404`. A favorites-only read of a remote media folder lists nothing, as a
-merged list does.
+`404`.
 
 ### Work information fetched for a remote video
 
@@ -285,6 +344,35 @@ sequenceDiagram
 | The cover goes to the peer as a thumbnail upload, which is forwarded like the other single edits | The page frames a cover and uploads it the same way for both nodes |
 | No person face is sent, and the apply reports no linked people | The people are registered on the peer, whose own face recognition finds their faces; no interface to write a face across nodes is needed |
 | The reading node keeps no activity entry for the fetch | Its activity log holds its own videos |
+
+### Thumbnail edits of a remote video
+
+A thumbnail edit of a remote video runs on the reading node's ComfyUI, from
+the frame or current thumbnail the peer gives, and its apply uploads the
+result to the peer.
+
+```mermaid
+sequenceDiagram
+  participant S as Screens
+  participant R as Reading node
+  participant P as Peer
+  S->>R: POST /api/videos/{remoteId}/thumbnail-edits
+  R->>P: GET /api/videos/{peerId} (contentVersion)
+  R->>P: GET /api/videos/{peerId}/frame or /thumbnail?size=large
+  R-->>S: the session, edit id and frameUrl of this node
+  S->>R: runs, cancel, result
+  S->>R: POST /api/thumbnail-edits/{editId}/apply
+  R->>P: POST /api/videos/{peerId}/thumbnail-image
+  R-->>S: the peer's video
+```
+
+| Decision | Reason |
+| --- | --- |
+| Both starts for a remote id are answered by the reading node; the session, its edit id and its images stay there | The ComfyUI connection is that node's setting, and the peer runs no analysis from here |
+| The session starts from the peer's frame or its large thumbnail; an image the page sends needs only the peer's video | Frame and thumbnail reads are already forwarded, so the peer learns no new operation |
+| The apply is the peer's thumbnail upload with the `contentVersion` read at the start; its `404` or `content_changed` ends the session as a changed local video does | A reused id must not receive another video's thumbnail |
+| A failed upload, such as an unreachable peer, keeps the session and its result | The owner can apply again once the peer answers |
+| The peer records the image as uploaded, not generated | The upload carries no origin |
 
 ### A person fetched for a remote person
 
@@ -332,9 +420,16 @@ connected; guests see the state without the name. The Pairing page has two
 sections that follow the same state: "Read another VVMDM" holds the pairing
 form until a link exists, then the link's state, address, certificate and
 removal; "VVMDMs that read this one" shows the pairing code until a grant
-exists, then the reader's name, pairing time and "Remove access". Favorite, playlist,
-open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them. The selection bar offers `Fill info…` for any
+exists, then the reader's name, pairing time and "Remove access". The video
+page and a list row offer a remote video's favorite, and the video page saves
+its progress, with the same controls and failure line as a local video's,
+since the peer stores both
+([Progress, history and favorites](#progress-history-and-favorites)).
+Playlist, open-in-app, rescan, reprobe, auto-tag and activity actions stay
+hidden for remote items, since the server does not offer them. Group and
+smart-folder rows and the selection bar offer favorites for remote items as
+for local ones, and a mixed selection sends one request that the server
+splits by node. The selection bar offers `Fill info…` for any
 selection, as
 [Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
 explains.

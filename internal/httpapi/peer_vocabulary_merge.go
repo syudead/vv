@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -96,6 +99,53 @@ func (s *server) mergeOnBothNodes(w http.ResponseWriter, r *http.Request, target
 		return
 	}
 	side.merge(w, r, plan.target, plan.sources, plan.notFound)
+}
+
+// mergeOnPeer merges the peer's sources into the peer's target by id. Ids in the offset form name no entry of this
+// node, so nothing merges here, and a provisional person, such as the one a face split makes, has no name to send.
+func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditKindAPI, target int64, sources []int64) {
+	peerSources := slices.Clone(sources)
+	toPeer(&peerSources)
+	collection := peopleMerge.path
+	if api.kind == domain.CreditOrganization {
+		collection = organizationsMerge.path
+	}
+	var answer struct {
+		NotFoundIds  []int64           `json:"notFoundIds"`
+		Person       *gen.Person       `json:"person,omitempty"`
+		Organization *gen.Organization `json:"organization,omitempty"`
+	}
+	err := s.peerCall(r, http.MethodPost, collection+"/"+strconv.FormatInt(domain.FromRemoteID(target), 10)+"/merge",
+		url.Values{}, gen.CreditMergeRequest{SourceIds: peerSources}, &answer)
+	var refusal *peerRefusal
+	switch {
+	case errors.As(err, &refusal) && refusal.problem != nil:
+		s.writeErrorBody(w, refusal.status, *refusal.problem)
+		return
+	case err != nil:
+		s.vocabularyFailure(w, err)
+		return
+	}
+	join, err := s.vocabularyJoin(r.Context())
+	if err != nil {
+		s.vocabularyFailure(w, err)
+		return
+	}
+	for i, id := range answer.NotFoundIds {
+		answer.NotFoundIds[i] = domain.ToRemoteID(id)
+	}
+	if answer.Person != nil {
+		rewriteRemotePerson(answer.Person, join)
+		s.writeCreditBody(w, http.StatusOK, gen.PersonMergeResponse{Person: *answer.Person, NotFoundIds: nonNilIDs(answer.NotFoundIds)})
+		return
+	}
+	if answer.Organization != nil {
+		rewriteRemoteOrganizationEntity(answer.Organization, join)
+		s.writeCreditBody(w, http.StatusOK,
+			gen.OrganizationMergeResponse{Organization: *answer.Organization, NotFoundIds: nonNilIDs(answer.NotFoundIds)})
+		return
+	}
+	s.internalError(w, "The other VVMDM answered the merge without the "+string(api.kind)+".", nil)
 }
 
 // peerEntryNamed is the peer's entry named name from its whole list at path, in this node's id space.

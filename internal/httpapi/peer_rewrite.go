@@ -11,71 +11,26 @@ import (
 // remoteOperation is how one operation for a remote id is forwarded. Media has no response timeout, nor has
 // an operation that extracts a frame on the peer; rewrite, when set, turns a 200 answer into this node's id
 // space, and without it the answer passes through. body, when set, turns the request body into the peer's ids;
-// request, when set, does so with this node's and the peer's data, or answers r and reports false. path, when
-// set, turns the rest of the path after the entity id into the peer's ids, or answers r and reports false.
+// request, when set, does so with this node's and the peer's data, or answers r and reports false. params turn
+// the path parameters after the entity id into the peer's ids.
 type remoteOperation struct {
 	media   bool
 	rewrite remoteRewrite
 	body    remoteBody
 	request func(s *server, w http.ResponseWriter, r *http.Request) bool
-	path    func(s *server, w http.ResponseWriter, r *http.Request, rest string) (string, bool)
+	params  []remoteParam
+}
+
+// remoteParam translates the path segment at index.
+type remoteParam struct {
+	index     int
+	translate remotePathParam
 }
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
 
 // remoteBody returns the body with the peer's own ids, or errMixedNodes when it names one of this node's.
 type remoteBody func(body []byte) ([]byte, error)
-
-// remoteVideoOperations are the operations under /api/videos/{id} offered for the peer's videos. Open,
-// progress, favorites, playlists, auto-tag runs, probing and activity stay with each node and are absent; a
-// tentative tag the peer's run attached is confirmed or rejected there.
-var remoteVideoOperations = map[string]remoteOperation{
-	"GET /api/videos/{id}":                        {rewrite: rewriteAs(rewriteRemoteVideo)},
-	"GET /api/videos/{id}/group-members":          {rewrite: rewriteAs(rewriteRemoteGroupMembers)},
-	"GET /api/videos/{id}/versions":               {rewrite: rewriteAs(rewriteRemoteVersions)},
-	"GET /api/videos/{id}/seek-thumbnail":         {rewrite: rewriteAs(rewriteRemoteSprite)},
-	"GET /api/videos/{id}/subtitles":              {},
-	"GET /api/videos/{id}/transcode-start":        {},
-	"PUT /api/videos/{id}/display-name":           {rewrite: rewriteAs(rewriteRemoteVideo)},
-	"PUT /api/videos/{id}/thumbnail-position":     {media: true, rewrite: rewriteAs(rewriteRemoteVideo)},
-	"POST /api/videos/{id}/thumbnail-image":       {media: true, rewrite: rewriteAs(rewriteRemoteVideo)},
-	"GET /api/videos/{id}/stream":                 {media: true},
-	"GET /api/videos/{id}/preview":                {media: true},
-	"GET /api/videos/{id}/transcode.mp4":          {media: true},
-	"GET /api/videos/{id}/subtitles/{file}":       {media: true},
-	"GET /api/videos/{id}/thumbnail":              {media: true},
-	"GET /api/videos/{id}/seek-thumbnail/{sheet}": {media: true},
-	"GET /api/videos/{id}/frame":                  {media: true},
-	"GET /api/videos/{id}/face-appearances":       {rewrite: rewriteAs(rewriteRemoteFaceAppearances)},
-	"POST /api/videos/{id}/tags/{tagId}/confirm":  {path: (*server).peerVideoTagPath},
-	"POST /api/videos/{id}/tags/{tagId}/reject":   {path: (*server).peerVideoTagPath},
-	"PUT /api/videos/{id}/work-info": {
-		rewrite: rewriteAs(rewriteRemoteVideo),
-		request: peerWorkInfoBody("", func(body **gen.WorkInfoInput) *gen.WorkInfoInput { return *body }),
-	},
-	"PUT /api/videos/{id}/details": {
-		rewrite: rewriteAs(rewriteRemoteVideo),
-		request: peerWorkInfoBody("workInfo", func(body *remoteDetailsInput) *gen.WorkInfoInput { return body.WorkInfo }),
-	},
-}
-
-// remoteVocabularyOperations are the reads and single edits offered for the peer's tags, people and
-// organizations.
-var remoteVocabularyOperations = map[string]remoteOperation{
-	"PATCH /api/tags/{id}": {rewrite: rewriteAs(rewriteRemoteTag), request: (*server).checkRemoteTagRename},
-	"GET /api/people/{id}": {rewrite: rewriteAs(rewriteRemotePerson)},
-	"PATCH /api/people/{id}": {
-		rewrite: rewriteAs(rewriteRemotePerson), request: checkRemoteCreditRename(domain.CreditPerson),
-	},
-	"GET /api/people/{id}/image":  {},
-	"GET /api/organizations/{id}": {rewrite: rewriteAs(rewriteRemoteOrganizationEntity)},
-	"PATCH /api/organizations/{id}": {
-		rewrite: rewriteAs(rewriteRemoteOrganizationEntity),
-		request: func(s *server, w http.ResponseWriter, r *http.Request) bool {
-			return checkRemoteCreditRename(domain.CreditOrganization)(s, w, r) && s.remoteOrganizationPatch(w, r)
-		},
-	},
-}
 
 // rewriteAs decodes the answer into the operation's generated type, so the type says which ids are videos and
 // which are tags.
@@ -90,11 +45,10 @@ func rewriteAs[T any](rewrite func(*T, domain.VocabularyJoin)) remoteRewrite {
 	}
 }
 
-// rewriteRemoteVideo leaves out the playback position and favorite, which stay with each node, and marks the
-// file not openable, since only the node holding it opens it.
+// rewriteRemoteVideo keeps the peer's playback position and favorite, which live on the node holding the video,
+// and marks the file not openable, since only the node holding it opens it.
 func rewriteRemoteVideo(v *gen.Video, join domain.VocabularyJoin) {
 	v.Id = domain.ToRemoteID(v.Id)
-	v.Progress, v.Favorite = nil, nil
 	for _, url := range []*string{v.ThumbnailUrl, v.PreviewUrl, v.SeekThumbnailUrl} {
 		rewriteRemoteURL(url)
 	}
@@ -186,34 +140,20 @@ func rewriteRemoteVersions(versions *gen.VideoVersions, join domain.VocabularyJo
 	versions.RepresentativeId = domain.ToRemoteID(versions.RepresentativeId)
 }
 
-// rewriteRemoteFaceAppearances joins the people by name and drops the crops, whose operation is not offered for the
-// peer's appearances.
-func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
-	for i := range list.Items {
-		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
-		item.Person.Id = join.Person(item.Person.Id, item.Person.Name)
-		item.HasCrop = false
-	}
-}
-
 func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoin) {
 	for i := range sprite.Sheets {
 		rewriteRemoteURL(&sprite.Sheets[i])
 	}
 }
 
-// rewriteRemoteLibraryItem leaves out the watch values and favorites of a group or smart folder, which stay
-// with each node like a video's.
+// rewriteRemoteLibraryItem keeps the peer's watch values and favorites of a group or smart folder, like a
+// video's.
 func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin) {
 	if item.Video != nil {
 		rewriteRemoteVideo(item.Video, join)
 	}
-	if folder := item.SmartFolder; folder != nil {
-		folder.Id, folder.Favorite = domain.ToRemoteID(folder.Id), nil
-		if folder.ParentId != nil {
-			*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
-		}
+	if item.SmartFolder != nil {
+		rewriteRemoteSmartFolderSummary(item.SmartFolder)
 	}
 	if item.Group != nil {
 		rewriteRemoteGroup(item.Group, join)
@@ -222,7 +162,6 @@ func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin)
 
 func rewriteRemoteGroup(group *gen.LibraryGroup, join domain.VocabularyJoin) {
 	group.Id, group.OpenVideoId = domain.ToRemoteID(group.Id), domain.ToRemoteID(group.OpenVideoId)
-	group.Favorite, group.WatchState, group.WatchedCount, group.LastPlayedAt = nil, nil, nil, nil
 	for i := range group.VideoIds {
 		group.VideoIds[i] = domain.ToRemoteID(group.VideoIds[i])
 	}
@@ -317,10 +256,9 @@ func rewriteRemoteTagKind(kind *gen.TagKind, join domain.VocabularyJoin) {
 	kind.Id = join.TagKind(kind.Id, kind.Name)
 }
 
-// rewriteRemotePerson leaves out the favorite mark, which stays with each node.
+// rewriteRemotePerson keeps the peer's favorite mark, which PUT /api/favorites sets on the peer for a remote id.
 func rewriteRemotePerson(person *gen.Person, join domain.VocabularyJoin) {
 	person.Id = join.Person(person.Id, person.Name)
-	person.Favorite = false
 }
 
 func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain.VocabularyJoin) {

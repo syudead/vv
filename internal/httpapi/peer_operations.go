@@ -4,39 +4,22 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 )
 
-// peerOperations are the only operations the peer credential reaches: the reads that merging and
-// forwarding need, media, forwarded edits, operations over a selection, events, health and the
-// peer-to-peer operations. Media folders, scans, settings, the account, API tokens, activity,
-// favorites, playlists and the pairing screens stay with each node's own owner.
-var peerOperations = []string{
+// peerNonEntityOperations are the operations outside the entity collections that the peer credential reaches: the
+// lists merging needs, creation, operations over a selection, favorites and watch history, events, health and the
+// peer-to-peer operations.
+var peerNonEntityOperations = []string{
 	"GET /api/health",
 	"GET /api/events",
 
 	"GET /api/videos",
 	"GET /api/library",
-	"GET /api/videos/{id}",
-	"GET /api/videos/{id}/related",
-	"GET /api/videos/{id}/group-members",
-	"GET /api/videos/{id}/versions",
-	"GET /api/videos/{id}/stream",
-	"GET /api/videos/{id}/preview",
-	"GET /api/videos/{id}/transcode.mp4",
-	"GET /api/videos/{id}/transcode-start",
-	"GET /api/videos/{id}/subtitles",
-	"GET /api/videos/{id}/subtitles/{file}",
-	"GET /api/videos/{id}/thumbnail",
-	"GET /api/videos/{id}/seek-thumbnail",
-	"GET /api/videos/{id}/seek-thumbnail/{sheet}",
-	"GET /api/videos/{id}/frame",
-	"GET /api/videos/{id}/face-appearances",
 	"GET /api/folders",
 	"GET /api/folders/{rootId}",
 	"GET /api/folders/{rootId}/videos",
 	"GET /api/groups",
-	"GET /api/groups/{id}",
-	"GET /api/groups/{id}/items",
 	"GET /api/smart-folders",
 	"GET /api/smart-folders/cards",
 	"GET /api/smart-folders/{id}",
@@ -44,25 +27,9 @@ var peerOperations = []string{
 	"GET /api/tags",
 	"GET /api/tag-kinds",
 	"GET /api/people",
-	"GET /api/people/{id}",
-	"GET /api/people/{id}/image",
 	"GET /api/organizations",
-	"GET /api/organizations/{id}",
 
-	"PUT /api/videos/{id}/display-name",
-	"PUT /api/videos/{id}/work-info",
-	"PUT /api/videos/{id}/details",
-	"PUT /api/videos/{id}/thumbnail-position",
-	"POST /api/videos/{id}/thumbnail-image",
-	"POST /api/videos/{id}/tags/{tagId}/confirm",
-	"POST /api/videos/{id}/tags/{tagId}/reject",
 	"POST /api/groups",
-	"PATCH /api/groups/{id}",
-	"DELETE /api/groups/{id}",
-	"POST /api/groups/{id}/items",
-	"POST /api/groups/{id}/items/remove",
-	"POST /api/groups/{id}/items/{itemId}/move",
-	"POST /api/groups/{id}/tag",
 	"POST /api/organize/reorder",
 	"POST /api/organize/group",
 	"POST /api/organize/move",
@@ -73,18 +40,8 @@ var peerOperations = []string{
 	"POST /api/smart-folders",
 	"PATCH /api/smart-folders/{id}",
 	"DELETE /api/smart-folders/{id}",
-	"PATCH /api/tags/{id}",
-	"DELETE /api/tags/{id}",
-	"POST /api/tags/{id}/merge",
 	"POST /api/people",
-	"PATCH /api/people/{id}",
-	"DELETE /api/people/{id}",
-	"POST /api/people/{id}/merge",
-	"PUT /api/people/{id}/image",
 	"POST /api/organizations",
-	"PATCH /api/organizations/{id}",
-	"DELETE /api/organizations/{id}",
-	"POST /api/organizations/{id}/merge",
 
 	"POST /api/video-tags",
 	"POST /api/video-tags/summary",
@@ -95,6 +52,12 @@ var peerOperations = []string{
 	"POST /api/video-code-edits/summary",
 	"POST /api/work-info-fill-targets",
 	"POST /api/collections/delete",
+	"PUT /api/favorites",
+
+	"GET /api/watch-history",
+	"GET /api/watch-history/dates",
+	"DELETE /api/watch-history",
+	"DELETE /api/watch-history/{id}",
 
 	"POST /api/peer/pairings",
 	"GET /api/peer/handshake",
@@ -107,6 +70,11 @@ var peerOperations = []string{
 	"POST /api/peer/videos/{id}/fetched-work-info",
 	"POST /api/peer/people/{id}/fetched-person",
 }
+
+// peerOperations are the only operations the peer credential reaches: the non-entity ones above and the entity
+// operations forwarded for a remote id or called on the peer by this node. Media folders, scans, settings, the
+// account, API tokens, activity, playlists and the pairing screens stay with each node's own owner.
+var peerOperations = slices.Concat(peerNonEntityOperations, remoteRoutes.peer)
 
 // Match with ServeMux, as accessMux does, so wildcards and GET/HEAD agree with routing.
 var peerOperationMux = func() *http.ServeMux {
