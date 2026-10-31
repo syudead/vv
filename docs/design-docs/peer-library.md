@@ -426,9 +426,10 @@ its progress, with the same controls and failure line as a local video's,
 since the peer stores both
 ([Progress, history and favorites](#progress-history-and-favorites)).
 Playlist, open-in-app, rescan, reprobe, auto-tag and activity actions stay
-hidden for remote items, since the server does not offer them; group and
-smart-folder cards and the selection bar still hide favorites for remote
-items. The selection bar offers `Fill info…` for any
+hidden for remote items, since the server does not offer them. Group and
+smart-folder rows and the selection bar offer favorites for remote items as
+for local ones, and a mixed selection sends one request that the server
+splits by node. The selection bar offers `Fill info…` for any
 selection, as
 [Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
 explains.

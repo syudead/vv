@@ -197,7 +197,7 @@ export default function SelectionBar({
     ...favoriteGroupIds,
     ...smartFolderIds,
   ]);
-  // Favorites and playlists stay on each node, so a selection with remote items offers neither.
+  // Playlists stay on each node, so a selection with remote items offers none; favorites reach both.
   const perNode = nodes === "remote" || nodes === "mixed";
   const reasons = selectionReasons({
     count,
@@ -297,16 +297,14 @@ export default function SelectionBar({
             disabledReason={reasons.tag}
           />
 
-          {!perNode && (
-            <FavoriteMenu
-              videoIds={favoriteVideoIds}
-              groupIds={favoriteGroupIds}
-              smartFolderIds={smartFolderIds}
-              overLimit={favoriteBlocked}
-              overLimitId={favoriteReasonId}
-            />
-          )}
-          {!perNode && <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />}
+          <FavoriteMenu
+            videoIds={favoriteVideoIds}
+            groupIds={favoriteGroupIds}
+            smartFolderIds={smartFolderIds}
+            overLimit={favoriteBlocked}
+            overLimitId={favoriteReasonId}
+          />
+          <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />
 
           {!perNode && (
             <PickerAction
