@@ -111,7 +111,7 @@ function VideoThumbnailLayer({ className, ...props }: React.ComponentProps<"div"
   );
 }
 
-/** Faint credit text and face marks on the image, without a backing panel; drop-shadow-mark keeps it legible. */
+/** Credit text and face marks on the image, without a backing panel; drop-shadow-mark keeps it legible. */
 function VideoThumbnailCredit({
   className,
   corner,
@@ -122,7 +122,7 @@ function VideoThumbnailCredit({
       data-slot="video-thumbnail-credit"
       data-corner={corner}
       className={cn(
-        "absolute left-2 flex max-w-2/3 min-w-0 items-center gap-1.5 text-2xs text-foreground/80 drop-shadow-mark",
+        "absolute left-2 flex max-w-2/3 min-w-0 items-center gap-1.5 text-2xs font-medium text-foreground drop-shadow-mark",
         "data-[corner=bottom-start]:bottom-2 data-[corner=top-start]:top-2",
         className,
       )}
