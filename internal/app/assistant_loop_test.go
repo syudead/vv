@@ -287,6 +287,32 @@ func TestTurnLoopStopsWhenAReplyRepeatsTheLastCalls(t *testing.T) {
 	}
 }
 
+func TestTurnLoopStopsAfterTwoRoundsThatLearnNothing(t *testing.T) {
+	cases := map[string][]domain.ChatReply{
+		// Rounds 3 and 4 repeat calls of rounds 1 and 2, though never the previous reply.
+		"calls in turn": {calls(toolCall("listVideos", `{}`)), calls(toolCall("listTags", `{}`)),
+			calls(toolCall("listVideos", `{}`)), calls(toolCall("listTags", `{}`))},
+		// Rounds 2 and 3 send new arguments but answer the result round 1 already gave.
+		"same result": {calls(toolCall("listVideos", `{"q":"a"}`)), calls(toolCall("listVideos", `{"q":"b"}`)),
+			calls(toolCall("listVideos", `{"q":"c"}`))},
+	}
+	for name, replies := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newLoopFixture(t, replies...)
+			f.runner.bodies = map[string]string{"listVideos": `{"items":[]}`, "listTags": `{"items":[{"id":1}]}`}
+
+			turn := f.run(t, request)
+
+			if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopStepLimit {
+				t.Fatalf("turn = %+v, want step_limit", turn)
+			}
+			if len(f.chat.requests) != len(replies) {
+				t.Fatalf("model calls = %d, want %d", len(f.chat.requests), len(replies))
+			}
+		})
+	}
+}
+
 func TestStopTurnCancelsTheRunningTurn(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("listTags", `{}`), toolCall("listPeople", `{}`)))
 	f.runner.during = func() {

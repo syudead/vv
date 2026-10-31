@@ -72,12 +72,15 @@ flowchart LR
   reply -->|yes| repeat{Same calls as the last reply?}
   repeat -->|yes| stop[Stopped: step_limit]
   repeat -->|no| each[Run each call, record progress]
-  each --> call
+  each --> stale{Second round in a row that learned nothing?}
+  stale -->|yes| stop
+  stale -->|no| call
 ```
 
 | Rule | Why |
 | --- | --- |
-| A turn has no count or time limit: it ends when the model answers, when a reply repeats the previous reply's calls exactly, or when the owner presses `Stop` (`stopAssistantTurn`), which cancels its context; once the model has answered, `Stop` is refused while the proposal is stored, so a stopped turn never leaves a proposal | A fixed budget cut off requests a model could finish; an exact repeat, whose results the model still holds, is the loop a limit was meant to catch |
+| A turn has no count or time limit: it ends when the model answers, when a reply repeats the previous reply's calls exactly, after two rounds in a row that learned nothing, or when the owner presses `Stop` (`stopAssistantTurn`), which cancels its context; once the model has answered, `Stop` is refused while the proposal is stored, so a stopped turn never leaves a proposal | A fixed budget cut off requests a model could finish; an exact repeat, whose results the model still holds, is the loop a limit was meant to catch |
+| A round learned nothing when each of its calls repeats an earlier call of the turn (name and arguments), or, except for image and write tools, answers a result equal to an earlier one ([`assistant_loop_stale.go`](../../internal/app/assistant_loop_stale.go)) | Small models cycle through reads, such as `listVideos` and `listTags` in turn or `listVideos` with arguments that change nothing, which never repeats the previous reply and kept the GPU busy until the owner pressed `Stop`; one such round is allowed because a call may rightly fetch a result the context fitting dropped |
 | A read runs at once through the owner's handler, behind the same peer forwarding as the screens, so a remote id reads the peer's entity; its result, like a built-in tool's, comes back as the whole JSON | Only the context fitting below cuts it, by the context the model runs with |
 | Before each model call, the oldest tool results before the latest round are replaced by a note to call the tool again until the messages, tools and images fit the context Ollama ran the model with, as the last reply reported it, less a quarter for the reply; past that whole earlier rounds give way, oldest first, to one note, and then the latest round's longest results are cut, each with a note of its full size, counting three bytes a token for messages, four for tool schemas and 1,500 tokens an image | Ollama drops the oldest messages of a prompt past the context, the request among them, and some chat templates then fail; the reserve leaves room for a reasoning model's thinking; the latest round stays because a model whose fresh results vanish calls the same tools again |
 | Arguments are checked against the tool's schema before anything runs; an invalid call, an unknown tool, an excluded operation and a failed read come back to the model as an error result and count as tool calls | The model can correct the call, and nothing runs from invalid input |
@@ -114,7 +117,7 @@ images with `view_images` skips the check: what it saw is in no text result.
 | Ending | Turn | Kept |
 | --- | --- | --- |
 | Text that passes the grounding check | `done` with the answer | The progress and the proposal |
-| A reply repeats the previous reply's calls exactly | `stopped`, `step_limit` | The progress |
+| A reply repeats the previous reply's calls exactly, or a second round in a row learned nothing | `stopped`, `step_limit` | The progress |
 | The owner pressed `Stop` | `stopped`, `cancelled` | The progress; no proposal |
 | The model's request timed out | `stopped`, `timeout` | The progress |
 | Ollama not reached, or not Ollama | `stopped`, `connection` | The progress |
@@ -350,7 +353,7 @@ sent on every model call: `clef` whenever the Clef wire is configured, and
 | Rule | Why |
 | --- | --- |
 | Every reference is read before anything is sent; one that cannot be read is the tool's error result, and nothing is sent | The model built the request and decides what to do without that image |
-| Neither tool has a limit of its own; the turn's call and time limits apply | The owner asked for no invented constraints |
+| Neither tool has a limit of its own; the turn's loop rules apply | The owner asked for no invented constraints |
 | An argument written as a JSON string of its object or array is read as that value | `llama3.3:70b` writes nested arguments that way |
 | More images than the endpoint takes are tiled into one grid by the adapter ([ai-layer.md](ai-layer.md#ollama-provider)) | One request answers one set of images; splitting it would change what Clef judges together |
 | The progress item of either tool carries the number of images it sends | Judging images takes minutes on a CPU |
