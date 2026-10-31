@@ -89,10 +89,15 @@ func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
 		calls = append(calls, name)
 		return nil
 	}
-	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", "shadcn", succeeding); err != nil {
+	root := t.TempDir()
+	writeFile(t, root, "api/openapi.yaml", "paths: {}\n")
+	if err := generate(root, "oapi-codegen", "openapi-typescript", "shadcn", succeeding); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(calls, []string{"oapi-codegen", "oapi-codegen", "openapi-typescript", "go", "shadcn"}) {
 		t.Errorf("生成器の呼び出しが揃っていない: %v", calls)
+	}
+	if _, err := os.Stat(filepath.Join(root, operationsOut)); err != nil {
+		t.Errorf("操作表を書いていない: %v", err)
 	}
 }
