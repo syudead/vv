@@ -117,11 +117,11 @@ func TestMergePagesListsEveryItemOnceInOrder(t *testing.T) {
 			want:  []string{"P1", "L1", "L2", "P2", "P3"},
 		},
 		{
-			// The peer has no history here; its items follow every local one in its own order.
+			// Both nodes' play times interleave, and the never-played videos of both follow.
 			sort:  SortPlayedDesc,
 			local: []testRow{{"L1", value("5")}, {"L2", nil}, {"L3", nil}},
-			peer:  []testRow{{"P1", value("9")}, {"P2", value("1")}},
-			want:  []string{"L1", "L2", "L3", "P1", "P2"},
+			peer:  []testRow{{"P1", value("9")}, {"P2", value("1")}, {"P3", nil}},
+			want:  []string{"P1", "L1", "P2", "L2", "L3", "P3"},
 		},
 		{
 			sort:  SortAddedAsc,

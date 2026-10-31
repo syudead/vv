@@ -24,11 +24,11 @@ import (
 const remoteSmartFolderPrefix = "/api/smart-folders/"
 
 // readsBothNodes answers a read of the peer's folder, or of this node's while paired, and reports false for a
-// read this node answers alone. A favorites-only read of this node's folder is one, as for a merged list.
+// read this node answers alone.
 func (s *server) readsBothNodes(w http.ResponseWriter, r *http.Request, id int64, cursor string, limit int, query domain.VideoQuery) bool {
 	ctx := r.Context()
 	remote := domain.IsRemoteID(id) && !isPeerRequest(ctx)
-	if !remote && !s.mergesLists(ctx, query) {
+	if !remote && !s.readsPeer(ctx) {
 		return false
 	}
 	read, ok := s.parseSmartFolderRead(w, id, cursor, limit, query)
@@ -56,6 +56,9 @@ func (s *server) smartRuleByName(ctx context.Context, q domain.VideoQuery) (*gen
 		Q: optionalString(named.Query), TagKindName: optionalString(named.TagKindName),
 		PersonName: optionalString(named.PersonName), OrganizationName: optionalString(named.OrganizationName),
 	}
+	if q.FavoriteOnly {
+		rule.Favorite = &q.FavoriteOnly
+	}
 	if len(named.TagNames) > 0 {
 		rule.TagNames = &named.TagNames
 	}
@@ -79,6 +82,7 @@ func queryByName(rule gen.SmartRuleByName) domain.VideoQuery {
 	if rule.TagNames != nil {
 		q.TagNames = *rule.TagNames
 	}
+	q.FavoriteOnly = rule.Favorite != nil && *rule.Favorite
 	return q
 }
 
@@ -287,7 +291,7 @@ func (s *server) addLocalCards(ctx context.Context, merged *mergedCards, cards [
 		out := s.toAPISmartFolderCard(ctx, audience, card)
 		merged.cards[card.ID] = &out
 		q, ok := domain.SmartPathQuery(card.PathRules)
-		if !ok || q.FavoriteOnly {
+		if !ok {
 			continue
 		}
 		rule, err := s.smartRuleByName(ctx, q)
@@ -321,15 +325,7 @@ func (s *server) addRemoteCards(r *http.Request, merged *mergedCards, ids []int6
 		rule := card.PeerRule
 		rewriteRemoteSmartFolderCard(card, join)
 		merged.cards[card.Id] = card
-		if rule == nil {
-			continue
-		}
-		if rule.Favorite {
-			// The peer's favorites stay there; this node's favorites matching the rule stand in for them.
-			setCardCount(card, domain.SmartRuleCount{})
-			card.Previews, card.Tags, card.OpenVideoId, card.AddedAt = []gen.FolderPreview{}, []gen.VideoTag{}, nil, nil
-		}
-		if rule.Match == nil {
+		if rule == nil || rule.Match == nil {
 			continue
 		}
 		q := queryByName(*rule.Match)
@@ -454,14 +450,14 @@ func (s *server) readMergedSmartFolder(w http.ResponseWriter, r *http.Request, r
 	s.writeSmartFolderPage(w, read, page)
 }
 
-// peerSmartFolderVideos reads the peer's videos matching this node's folder; a folder with favorite or a rule
-// the peer cannot match adds none, and a peer that fails is left out for the rest of the listing.
+// peerSmartFolderVideos reads the peer's videos matching this node's folder; a rule the peer cannot match adds
+// none, and a peer that fails is left out for the rest of the listing.
 func (s *server) peerSmartFolderVideos(r *http.Request, read *smartFolderRead, contents domain.SmartFolderPage, sort domain.VideoSort) domain.MergeSide[gen.SmartFolderItem] {
 	if read.cursor.PeerSkipped || read.cursor.PeerDone || len(contents.Missing) > 0 {
 		return domain.MergeSide[gen.SmartFolderItem]{}
 	}
 	q, ok := domain.SmartPathQuery(contents.PathRules)
-	if !ok || q.FavoriteOnly {
+	if !ok {
 		return domain.MergeSide[gen.SmartFolderItem]{}
 	}
 	rule, err := s.smartRuleByName(r.Context(), q)
@@ -480,7 +476,7 @@ func (s *server) peerSmartFolderVideos(r *http.Request, read *smartFolderRead, c
 // readPeerVideos reads the peer's videos matching rule after the read's peer cursor; a rule and search that do
 // not join into one search a list takes leave the peer's part empty.
 func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read *smartFolderRead, sort domain.VideoSort) (domain.MergeSide[gen.SmartFolderItem], error) {
-	values := url.Values{"limit": {strconv.Itoa(read.limit)}, "sort": {string(domain.PeerSort(sort))}}
+	values := url.Values{"limit": {strconv.Itoa(read.limit)}, "sort": {string(sort)}}
 	if read.cursor.Peer != "" {
 		values.Set("cursor", read.cursor.Peer)
 	}
@@ -492,7 +488,7 @@ func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read 
 	if !joins || utf8.RuneCountInString(search) > maxQueryLength {
 		return domain.MergeSide[gen.SmartFolderItem]{}, nil
 	}
-	q.Query = search
+	q.Query, q.FavoriteOnly = search, q.FavoriteOnly || read.query.FavoriteOnly
 	setNameFilters(values, q)
 	var answer gen.VideoPage
 	if err := s.peerGet(r, "/api/videos", values, &answer); err != nil {
@@ -523,7 +519,10 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 	path := remoteSmartFolderPrefix + strconv.FormatInt(domain.FromRemoteID(read.id), 10)
 	values := url.Values{"limit": {strconv.Itoa(read.limit)}}
 	if read.query.Sort != "" {
-		values.Set("sort", string(domain.PeerSort(read.query.Sort)))
+		values.Set("sort", string(read.query.Sort))
+	}
+	if read.query.FavoriteOnly {
+		values.Set("favorite", "true")
 	}
 	if read.query.Sort == domain.SortRandom {
 		values.Set("seed", strconv.FormatInt(read.query.Seed, 10))
@@ -547,7 +546,7 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	sort := cmp.Or(read.query.Sort, domain.VideoSort(*rule.Sort))
-	peer, ok := s.remoteFolderSide(w, r, read, path, values, detail, rule.Favorite || read.query.FavoriteOnly)
+	peer, ok := s.remoteFolderSide(w, r, read, path, values, detail)
 	if !ok {
 		return
 	}
@@ -591,11 +590,11 @@ func (s *server) remoteSmartFolderAnswer(w http.ResponseWriter, err error) bool 
 }
 
 // remoteFolderSide is the peer's own items of its folder: the detail's until a page has taken one of them, then
-// the items after the peer's cursor. A favorites read keeps the peer's part empty, since favorites stay with each node.
+// the items after the peer's cursor.
 func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read smartFolderRead, path string, values url.Values,
-	detail gen.SmartFolderDetail, favorites bool,
+	detail gen.SmartFolderDetail,
 ) (domain.MergeSide[gen.SmartFolderItem], bool) {
-	if favorites || read.cursor.PeerDone || read.cursor.PeerSkipped {
+	if read.cursor.PeerDone || read.cursor.PeerSkipped {
 		return domain.MergeSide[gen.SmartFolderItem]{}, true
 	}
 	items, peerItems, next := detail.Items, detail.PeerItems, detail.NextCursor

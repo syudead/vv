@@ -210,7 +210,6 @@ totals.
 | Case | Behaviour |
 | --- | --- |
 | Filter by a local tag, kind, person or organization | Sent to the peer by name; a name the peer lacks makes its part empty |
-| `favorite=true`, `played*` and `favorited*` sorts | Local favorites and history only; remote items follow the local ones |
 | Peer skipped while unreachable | That listing keeps skipping it to the end; a reload shows the peer again |
 | The same file on both nodes | Two items |
 
@@ -274,8 +273,7 @@ offset, and a group, `organize` operation or bundle with videos of both nodes
 answers `400` with reason `mixed_nodes`. A smart folder of either node lists
 its own node's matches plus the other node's videos matching its rule, sent as
 name filters and merged by the folder's sort; its card adds the other node's
-counts from one `POST /api/peer/rule-counts`. A rule with `favorite` matches
-local favorites only. `POST /api/collections/delete` runs one transaction per
+counts from one `POST /api/peer/rule-counts`. `POST /api/collections/delete` runs one transaction per
 node and reports the peer's ids it could not delete.
 
 ## Related videos
@@ -306,8 +304,7 @@ by that name, so this node gains no row; a local video's save refuses a credit
 by name with `400`. Confirming or
 rejecting a tentative tag goes to the peer, which ran the auto-tagging, with
 the tag id turned into the peer's by name; a tag the peer lacks answers
-`404`. A favorites-only read of a remote media folder lists nothing, as a
-merged list does.
+`404`.
 
 ### Work information fetched for a remote video
 

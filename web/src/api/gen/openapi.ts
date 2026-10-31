@@ -8259,6 +8259,8 @@ export interface components {
             tagKindName?: string;
             personName?: string;
             organizationName?: string;
+            /** @description Whether a matching video must be a favorite of the node that holds it. */
+            favorite?: boolean;
         };
         /** @description One entity a smart rule names, with its canonical name. */
         SmartRuleRefName: {
@@ -8270,7 +8272,7 @@ export interface components {
         };
         /** @description Requests with the paired VVMDM's credential only, whatever the audience: what the paired VVMDM needs to add its own videos to this folder. */
         PeerSmartRule: {
-            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then lists its own favorites matching the rule instead of this node's videos. */
+            /** @description Whether this folder's or an ancestor's rule has favorite; the paired VVMDM then matches its own favorites, as match.favorite also says. */
             favorite: boolean;
             match?: components["schemas"]["SmartRuleByName"];
             sort?: components["schemas"]["VideoSort"];

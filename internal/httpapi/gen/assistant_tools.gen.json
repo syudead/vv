@@ -2136,6 +2136,10 @@
                   "additionalProperties": false,
                   "description": "A smart folder's rule joined with its ancestors' rules into one, naming tags, kind, person and organization by canonical name, for the paired VVMDM to match its own videos. A name the node lacks matches no video; {} matches every video.",
                   "properties": {
+                    "favorite": {
+                      "description": "Whether a matching video must be a favorite of the node that holds it.",
+                      "type": "boolean"
+                    },
                     "organizationName": {
                       "minLength": 1,
                       "type": "string"

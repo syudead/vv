@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
@@ -247,18 +248,47 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 	}
 }
 
-// Favorites stay with each node, so a favorites-only read of the peer's folder lists none of the peer's favorites.
-func TestRemoteFolderFavoritesListNoneOfThePeersFavorites(t *testing.T) {
+// A favorites-only read of the peer's folder lists the peer's own favorites.
+func TestRemoteFolderFavoritesListThePeersFavorites(t *testing.T) {
 	fa, fb, b, _ := mergedNodes(t)
-	change := domain.FavoriteChange{VideoIDs: []int64{fa.ids["a"]}, Favorite: true}
-	if _, err := fa.env.db.Favorites().SetFavorites(context.Background(), change); err != nil {
-		t.Fatal(err)
-	}
+	favoriteOn(t, fa, "a")
 
 	got, totals := pageVideos(t, fa, fb, func(target string) *httptest.ResponseRecorder {
 		return b.owner(http.MethodGet, target, "")
 	}, fb.folderPath(domain.ToRemoteID(fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
-	if len(got) != 0 || !slices.Equal(totals, []int{0}) {
-		t.Errorf("favorites of the remote root = %v, totals %v, want none", got, totals)
+	if !slices.Equal(got, []string{"a:a"}) || !slices.Equal(totals, []int{1}) {
+		t.Errorf("favorites of the remote root = %v, totals %v, want a:a", got, totals)
+	}
+}
+
+// playedOn sets each video's last play on f to base plus its offset in seconds.
+func playedOn(t *testing.T, f *guestFixture, base time.Time, offsets map[string]int) {
+	t.Helper()
+	for video, offset := range offsets {
+		at := base.Add(time.Duration(offset) * time.Second)
+		if err := store.SetPlayedAtForTest(context.Background(), f.env.db, "content-key-"+video, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Played sorts and the favorite filter use each node's own history and favorites, so both nodes' videos
+// interleave by play time and the peer's favorites are listed.
+func TestMergedListSortsAndFiltersByEachNodesWatchValues(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	base := time.Now().Add(-time.Hour)
+	playedOn(t, fa, base, map[string]int{"a": 5, "b": 3, "c": 1})
+	playedOn(t, fb, base, map[string]int{"a": 4, "c": 2})
+	favoriteOn(t, fa, "a", "b")
+	favoriteOn(t, fb, "b", "c")
+	owner := func(target string) *httptest.ResponseRecorder { return b.owner(http.MethodGet, target, "") }
+
+	got, _ := pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"sort": {"playedDesc"}})
+	if played := []string{"a:a", "b:a", "a:b", "b:c", "a:c"}; len(got) != 10 || !slices.Equal(got[:5], played) {
+		t.Errorf("playedDesc = %v, want %v first, then the five unplayed videos", got, played)
+	}
+	got, totals := pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"sort": {"playedDesc"}, "favorite": {"true"}})
+	if want := []string{"a:a", "a:b", "b:c", "b:b"}; !slices.Equal(got, want) || totals[0] != 4 {
+		t.Errorf("favorites by playedDesc = %v, totals %v, want %v of 4", got, totals, want)
 	}
 }

@@ -63,8 +63,7 @@ func (s *server) listRemoteFolderVideos(w http.ResponseWriter, r *http.Request, 
 		s.internalError(w, "Could not load the folder's videos.", err)
 		return
 	}
-	// Favorites stay with each node, so none of the peer's videos is this node's favorite.
-	if (filters.peerEmpty || query.FavoriteOnly) && !isPeerRequest(r.Context()) {
+	if filters.peerEmpty && !isPeerRequest(r.Context()) {
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusOK, gen.VideoPage{Items: []gen.Video{}}, s.logger)
 		return

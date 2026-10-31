@@ -48,7 +48,7 @@ func (s *server) ListSmartFolders(w http.ResponseWriter, r *http.Request) {
 	for _, folder := range folders {
 		out.SmartFolders = append(out.SmartFolders, toAPISmartFolderSummary(audience, folder))
 	}
-	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+	if s.readsPeer(r.Context()) {
 		out.SmartFolders = s.withPeerSmartFolders(r, out.SmartFolders)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -244,7 +244,7 @@ func (s *server) ListSmartFolderCards(w http.ResponseWriter, r *http.Request, pa
 	if !s.smartFoldersConfigured(w) {
 		return
 	}
-	if s.mergesLists(r.Context(), domain.VideoQuery{}) {
+	if s.readsPeer(r.Context()) {
 		s.listMergedSmartFolderCards(w, r, params.Ids)
 		return
 	}

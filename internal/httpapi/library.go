@@ -37,7 +37,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	if !ok {
 		return
 	}
-	if s.mergesLists(r.Context(), query) {
+	if s.readsPeer(r.Context()) {
 		s.listMergedLibrary(w, r, query)
 		return
 	}

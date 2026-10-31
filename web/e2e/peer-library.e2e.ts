@@ -303,6 +303,36 @@ test.describe.serial("paired library", () => {
     await expect(display).toContainText("Remote subtitle cue");
   });
 
+  test("ライブラリを視聴日で並べると、台に関係なく両方の台の動画が視聴の新しい順に並ぶ", async ({
+    page,
+    request,
+  }) => {
+    const local = required(localVideo, "local video");
+    const remote = required(remoteVideo, "remote video");
+    const saveProgress = async (video: Video) => {
+      const response = await request.put(`/api/videos/${String(video.id)}/progress`, {
+        headers: mutationHeaders,
+        data: { positionMs: 1_000 },
+      });
+      expect(response.status()).toBe(200);
+      return Date.parse(((await response.json()) as { updatedAt: string }).updatedAt);
+    };
+    // The played order is kept to the second; the remote video is played in a later second than the local one.
+    const localPlayedAt = await saveProgress(local);
+    await expect.poll(() => saveProgress(remote)).toBeGreaterThan(localPlayedAt);
+
+    await page.goto(`/?q=${encodeURIComponent(query)}&sort=playedDesc`);
+    const results = page.getByRole("region", { name: "Search results", exact: true });
+    const cards = results.locator("article[data-video-id]");
+    await expect
+      .poll(() =>
+        cards.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-video-id")),
+        ),
+      )
+      .toEqual([String(remote.id), String(local.id)]);
+  });
+
   test("相手の台が止まると通知が出て、相手の動画が一覧から外れる", async ({ page }) => {
     const local = required(localVideo, "local video");
     const remote = required(remoteVideo, "remote video");
