@@ -116,7 +116,7 @@ The diagram shows what the open workbench does with the event.
 flowchart LR
   ev[tags event] --> busy{Own write in flight}
   busy -->|yes| wait[Check after it settles]
-  busy -->|no| check[Re-read the first page]
+  busy -->|no| check[Re-read the loaded rows]
   wait --> check
   check --> same{Differs from shown rows}
   same -->|no| keep[Nothing]
@@ -127,8 +127,9 @@ flowchart LR
 | Decision | Rejected | Why |
 | --- | --- | --- |
 | A dedicated `tags` event, coalesced per subscriber like `candidates` | Reusing the all-folders `smartFolder` event | That event also fires for people, favorites and watch state, and reaches guests |
-| The workbench re-reads the first page with its criteria and compares it and the totals with what it shows, and shows a notice to refresh | Reloading on the event | The Issue's edge case forbids moving the list on its own |
-| Same | A vocabulary revision returned by every write and carried by the event | Every write path, including scans that change folder-derived counts, would have to bump it in its transaction; comparing the first page needs no new state |
+| The workbench re-reads the rows it has loaded, with its criteria, in pages of 200 (`MaxTagPageLimit`), and compares them and the totals with what it shows, and shows a notice to refresh | Reloading on the event | The Issue's edge case forbids moving the list on its own |
+| Same | Re-reading the first page only | A synonym added elsewhere to a loaded tag past the first page changes neither the first page nor the totals, so the notice and the selected tag's pane would stay stale |
+| Same | A vocabulary revision returned by every write and carried by the event | Every write path, including scans that change folder-derived counts, would have to bump it in its transaction; comparing the loaded rows needs no new state, and 5,000 loaded rows are 25 reads after an event |
 | The check waits for the workbench's own writes to settle | Ignoring events for a fixed time after a write | Own writes are applied to the shown rows first, so a later check matches them; a timer either hides other writes or shows a notice for its own |
 | Folder-derived count changes from a scan send no `tags` event | Sending it on every video change | A scan changes thousands of videos; the existing continuation check (`totalAll`) still catches a list that changed under paging |
 
@@ -319,9 +320,10 @@ list pieces other screens use out of web/src/tags; Add the WorkbenchPage
 pattern to the design system
 
 **Acceptance**: Component tests: criteria round-trip through the URL and are
-restored on reload and Back (acceptance 5); an event whose re-read differs
-shows the notice and leaves the rows in place, one whose re-read matches shows
-nothing, and one during an own write is checked after it; the two empty
+restored on reload and Back (acceptance 5); an event whose re-read differs in
+a loaded row past the first page shows the notice and leaves the rows in
+place, one whose re-read matches shows nothing, and one during an own write is
+checked after it; the two empty
 states. A visual review at the `ui-design.md` widths.
 
 ### Organize a tag from the workbench detail pane
