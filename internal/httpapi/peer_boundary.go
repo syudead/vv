@@ -49,7 +49,9 @@ var (
 	keptAnalysis      = keptOperation{reason: "Starts an analysis on the peer from here."}
 	keptPlugin        = keptOperation{reason: "The plugin and its kept result are this node's.", here: true}
 	keptVocabulary    = keptOperation{reason: "Applied on both nodes by name, whichever node the id names.", here: true, peer: true}
-	keptThumbnailEdit = keptOperation{reason: "This node's ComfyUI edits a thumbnail; it does not read the peer's image."}
+	keptThumbnailEdit = keptOperation{
+		reason: "This node's ComfyUI edits the peer's frame or thumbnail; the apply uploads the result to the peer.", here: true,
+	}
 )
 
 // keptOperations name every entity operation that is not forwarded for a remote id; any other is forwarded.
@@ -57,7 +59,6 @@ var keptOperations = map[string]keptOperation{
 	"POST /api/videos/{id}/open":     {reason: "Opens the file in this node's default app."},
 	"POST /api/videos/{id}/probe":    keptAnalysis,
 	"POST /api/videos/{id}/auto-tag": keptAnalysis,
-	"PUT /api/videos/{id}/progress":  {reason: "A playback position stays with the node that played it."},
 	"GET /api/videos/{id}/related":   {reason: "Answered from both nodes' videos.", here: true, peer: true},
 
 	"POST /api/videos/{id}/thumbnail-edits":       keptThumbnailEdit,
@@ -97,6 +98,7 @@ var remoteRewrites = map[string]remoteRewrite{
 	"VideoFaceAppearanceList": rewriteAs(rewriteRemoteFaceAppearances),
 	"SeekThumbnailSprite":     rewriteAs(rewriteRemoteSprite),
 	"SubtitleTrackList":       nil,
+	"Progress":                nil,
 	"TranscodeStart":          nil,
 	"GroupDetail":             rewriteAs(rewriteRemoteGroupDetail),
 	"GroupItemPage":           rewriteAs(rewriteRemoteGroupItemPage),

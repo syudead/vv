@@ -156,14 +156,9 @@ func TestRemoteVideoIsForwardedWithRemoteIDsAndURLs(t *testing.T) {
 	if len(video.Tags) != 1 || video.Tags[0].Id != domain.ToRemoteID(f.tagID) || video.Tags[0].Name != guestSecretTag {
 		t.Errorf("tags = %+v, want id %d の %s", video.Tags, domain.ToRemoteID(f.tagID), guestSecretTag)
 	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{"progress", "favorite"} {
-		if value, ok := raw[field]; ok {
-			t.Errorf("リモートの動画に %s = %s", field, value)
-		}
+	// The position and favorite live on the peer, which holds the video.
+	if video.Progress == nil || video.Progress.PositionMs != 30_000 || video.Favorite == nil {
+		t.Errorf("progress = %+v, favorite = %v, want the peer's 30000 ms and its favorite", video.Progress, video.Favorite)
 	}
 }
 
@@ -236,22 +231,8 @@ func TestRemoteVideoFollowsTheViewersAudience(t *testing.T) {
 func TestRemoteVideoRefusesOperationsKeptOnEachNode(t *testing.T) {
 	f, a, b, _ := remoteVideoNodes(t)
 
-	for _, tc := range []struct {
-		label string
-		req   authRequest
-	}{
-		{"open", authRequest{method: http.MethodPost, target: f.remotePath("a", "/open")}},
-		{"progress", authRequest{
-			method: http.MethodPut, target: f.remotePath("a", "/progress"), body: `{"positionMs":1000,"durationMs":60000}`,
-		}},
-	} {
-		rec := b.send(tc.req)
-		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
-	}
-	if local := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner)); local.Progress == nil ||
-		local.Progress.PositionMs != 30_000 {
-		t.Errorf("持ち主の再生位置が変わった: %+v", local.Progress)
-	}
+	rec := b.send(authRequest{method: http.MethodPost, target: f.remotePath("a", "/open")})
+	assertErrorBody(t, "open", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 
 	// With A reading B as well (a second pairing), a remote id in A's own request names A's video on B; it is
 	// not sent back.

@@ -18,10 +18,16 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// mergesLists reports whether a list answers with both nodes' items: the node is paired, the request is not
-// the peer's own, and it is not a favorites list, whose favorites stay with each node.
+// mergesLists reports whether a list answers with both nodes' items: the node reads a peer, and it is not a
+// favorites list, whose favorites stay with each node.
 func (s *server) mergesLists(ctx context.Context, q domain.VideoQuery) bool {
-	if s.pairing == nil || isPeerRequest(ctx) || q.FavoriteOnly {
+	return !q.FavoriteOnly && s.readsPeer(ctx)
+}
+
+// readsPeer reports whether a request reaches both nodes: this node is paired and the request is not the peer's
+// own, which names this node's entities only.
+func (s *server) readsPeer(ctx context.Context) bool {
+	if s.pairing == nil || isPeerRequest(ctx) {
 		return false
 	}
 	state, err := s.pairing.State(ctx)
@@ -142,7 +148,7 @@ func (s *server) peerGet(r *http.Request, path string, query url.Values, out any
 }
 
 // peerCall sends body, when set, as JSON to path on the peer as the viewer and decodes a 200 or 201 answer into
-// out; any other answer is a *peerRefusal.
+// out, when set; a 204 answers nothing, and any other answer is a *peerRefusal.
 func (s *server) peerCall(r *http.Request, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
@@ -163,14 +169,31 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := s.peerLink.Forward(req, audienceFrom(r.Context()) != domain.AudienceOwner, false)
-	if err != nil {
+	answer, err := s.peerSend(req, audienceFrom(r.Context()) != domain.AudienceOwner, false)
+	if err != nil || out == nil || answer == nil {
 		return err
 	}
+	return json.Unmarshal(answer, out)
+}
+
+// peerSend sends req to the peer, as the guest when guest is set and without a response timeout when media is,
+// and reads a 200 or 201 answer of at most maxForwardedJSON bytes; a 204 reads as a nil answer, and any other
+// answer is a *peerRefusal.
+func (s *server) peerSend(req *http.Request, guest, media bool) ([]byte, error) {
+	if s.peerLink == nil {
+		return nil, domain.ErrPeerUnreachable
+	}
+	resp, err := s.peerLink.Forward(req, guest, media)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated) || len(answer) > maxForwardedJSON {
 		refusal := &peerRefusal{status: resp.StatusCode}
@@ -178,9 +201,9 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 		if json.Unmarshal(answer, &problem) == nil && problem.Code != "" {
 			refusal.reason, refusal.problem = problem.Reason, &problem
 		}
-		return refusal
+		return nil, refusal
 	}
-	return json.Unmarshal(answer, out)
+	return answer, nil
 }
 
 // mergedRead is one merged list: how each node reads its part, and the request's filters split between them.

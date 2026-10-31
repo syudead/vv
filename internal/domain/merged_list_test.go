@@ -41,6 +41,15 @@ func pageOf(t *testing.T, rows []testRow, cursor string, limit int) MergeSide[st
 // readAll pages through both sides with limit as the merged handler does, reading a done side as empty.
 func readAll(t *testing.T, sort VideoSort, local, peer []testRow, limit int) []string {
 	t.Helper()
+	return readAllWith(t, string(sort), func(cursor MergedCursor, local, peer MergeSide[string], limit int) ([]string, MergedCursor, bool) {
+		return MergePages(sort, cursor, local, peer, limit)
+	}, local, peer, limit)
+}
+
+type mergeFunc func(cursor MergedCursor, local, peer MergeSide[string], limit int) ([]string, MergedCursor, bool)
+
+func readAllWith(t *testing.T, sort string, merge mergeFunc, local, peer []testRow, limit int) []string {
+	t.Helper()
 	var out []string
 	cursor := MergedCursor{}
 	for range len(local) + len(peer) + 2 {
@@ -51,7 +60,7 @@ func readAll(t *testing.T, sort VideoSort, local, peer []testRow, limit int) []s
 		if !cursor.PeerDone {
 			peerSide = pageOf(t, peer, cursor.Peer, limit)
 		}
-		items, next, more := MergePages(sort, cursor, localSide, peerSide, limit)
+		items, next, more := merge(cursor, localSide, peerSide, limit)
 		if len(items) > limit {
 			t.Fatalf("%s: a page of %d items over limit %d", sort, len(items), limit)
 		}
