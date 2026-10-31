@@ -420,9 +420,15 @@ connected; guests see the state without the name. The Pairing page has two
 sections that follow the same state: "Read another VVMDM" holds the pairing
 form until a link exists, then the link's state, address, certificate and
 removal; "VVMDMs that read this one" shows the pairing code until a grant
-exists, then the reader's name, pairing time and "Remove access". Favorite, playlist,
-open-in-app, progress and activity actions are hidden for remote items, since
-the server does not offer them. The selection bar offers `Fill info…` for any
+exists, then the reader's name, pairing time and "Remove access". The video
+page and a list row offer a remote video's favorite, and the video page saves
+its progress, with the same controls and failure line as a local video's,
+since the peer stores both
+([Progress, history and favorites](#progress-history-and-favorites)).
+Playlist, open-in-app, rescan, reprobe, auto-tag and activity actions stay
+hidden for remote items, since the server does not offer them; group and
+smart-folder cards and the selection bar still hide favorites for remote
+items. The selection bar offers `Fill info…` for any
 selection, as
 [Work information fetched for a remote video](#work-information-fetched-for-a-remote-video)
 explains.

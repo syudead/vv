@@ -28,26 +28,24 @@ export default function TitleRow({
   const [failure, setFailure] = useState<UiText | null>(null);
   if (onFavorite === undefined) return title;
   const favorite = video.favorite === true;
-  // Favorites and playlists stay on each node, so the paired VVMDM's video offers neither.
+  // Playlists stay on each node; the paired VVMDM's video keeps its favorite there.
   const remote = isRemoteId(video.id);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-col gap-3">
         {title}
         <div className="flex flex-wrap items-center gap-2">
-          {!remote && (
-            <FavoriteToggle
-              variant="page"
-              favorite={favorite}
-              label={t.player.facts.favorite}
-              onToggle={async () => {
-                setFailure(null);
-                // Confirm the state from refreshed data; the toggle blocks presses until then.
-                await onFavorite(!favorite);
-              }}
-              onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
-            />
-          )}
+          <FavoriteToggle
+            variant="page"
+            favorite={favorite}
+            label={t.player.facts.favorite}
+            onToggle={async () => {
+              setFailure(null);
+              // Confirm the state from refreshed data; the toggle blocks presses until then.
+              await onFavorite(!favorite);
+            }}
+            onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
+          />
           {!remote && (
             <AddToPlaylistButton
               variant="page"
