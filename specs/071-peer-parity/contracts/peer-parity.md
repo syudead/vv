@@ -30,7 +30,7 @@ offset form is deleted on the peer.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| `503` | `service_unavailable`, reason `peer_unreachable` | The peer is not connected or gave no answer; this node's history is unchanged |
+| `503` | `service_unavailable`, reason `peer_unreachable` | The peer is not connected, and neither node's history changed; or the peer gave no answer, this node's history is unchanged and the peer's clear committed or did not |
 
 ## `PUT /api/favorites` (`updateFavorites`)
 
@@ -41,7 +41,7 @@ the sums.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| `503` | `service_unavailable`, reason `peer_unreachable` | The peer is not connected or gave no answer; nothing is changed on either node |
+| `503` | `service_unavailable`, reason `peer_unreachable` | The peer is not connected, and nothing is changed on either node; or the peer gave no answer, nothing is changed on this node and the peer's write committed or did not |
 
 ## `PUT /api/videos/{id}/progress` (`updateProgress`)
 

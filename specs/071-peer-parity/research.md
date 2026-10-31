@@ -115,7 +115,9 @@ sequenceDiagram
   S->>R: PUT /api/favorites (both nodes' ids)
   R->>P: PUT /api/favorites (peer's ids)
   alt peer not connected or refuses
-    R-->>S: 503 peer_unreachable, nothing changed
+    R-->>S: 503 peer_unreachable or the peer's error, nothing changed
+  else peer lost before answering
+    R-->>S: 503 peer_unreachable, local part not applied, peer's write unknown
   else
     R->>R: local part in one transaction
     R-->>S: summed applied counts
