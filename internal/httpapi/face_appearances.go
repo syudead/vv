@@ -86,7 +86,13 @@ func (s *server) acceptAppearanceIDs(w http.ResponseWriter, ids []int64) bool {
 
 func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id gen.PersonId) {
 	var body gen.FaceAppearanceMoveRequest
-	if !s.readJSONBody(w, r, &body) || !s.acceptAppearanceIDs(w, body.AppearanceIds) || !s.creditsConfigured(w) {
+	raw, ok := s.readJSONBodyRaw(w, r, &body)
+	if !ok || !s.acceptAppearanceIDs(w, body.AppearanceIds) || !s.creditsConfigured(w) {
+		return
+	}
+	if _, remote := domain.IDNodes(body.AppearanceIds...); remote && !isPeerRequest(r.Context()) {
+		restoreBody(r, raw)
+		s.moveFacesOnPeer(w, r, id)
 		return
 	}
 	// The store reads a zero target as a new person, which only a split may ask for.
