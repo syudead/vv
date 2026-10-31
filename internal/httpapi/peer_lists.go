@@ -163,14 +163,27 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := s.peerLink.Forward(req, audienceFrom(r.Context()) != domain.AudienceOwner, false)
+	answer, err := s.peerSend(req, audienceFrom(r.Context()) != domain.AudienceOwner, false)
 	if err != nil {
 		return err
+	}
+	return json.Unmarshal(answer, out)
+}
+
+// peerSend sends req to the peer, as the guest when guest is set and without a response timeout when media is,
+// and reads a 200 or 201 answer of at most maxForwardedJSON bytes; any other answer is a *peerRefusal.
+func (s *server) peerSend(req *http.Request, guest, media bool) ([]byte, error) {
+	if s.peerLink == nil {
+		return nil, domain.ErrPeerUnreachable
+	}
+	resp, err := s.peerLink.Forward(req, guest, media)
+	if err != nil {
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated) || len(answer) > maxForwardedJSON {
 		refusal := &peerRefusal{status: resp.StatusCode}
@@ -178,9 +191,9 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 		if json.Unmarshal(answer, &problem) == nil && problem.Code != "" {
 			refusal.reason, refusal.problem = problem.Reason, &problem
 		}
-		return refusal
+		return nil, refusal
 	}
-	return json.Unmarshal(answer, out)
+	return answer, nil
 }
 
 // mergedRead is one merged list: how each node reads its part, and the request's filters split between them.

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -43,12 +44,17 @@ func (s ThumbnailEditSource) Valid() bool {
 	return s == ThumbnailEditFromFrame || s == ThumbnailEditFromThumbnail
 }
 
-// PositionMs applies only to ThumbnailEditFromFrame, Image only to ThumbnailEditFromImage.
+// PositionMs applies only to ThumbnailEditFromFrame; Image is the starting image for ThumbnailEditFromImage, and for
+// any source of a session started from an image the caller read.
 type ThumbnailEditStart struct {
 	Source     ThumbnailEditSource
 	PositionMs *int64
 	Image      []byte
 }
+
+// ThumbnailImageWrite stores an applied result for a video this node does not hold; it answers ErrContentChanged
+// when the video is gone or holds other content.
+type ThumbnailImageWrite func(ctx context.Context, image []byte) (Video, error)
 
 type ThumbnailEditRunInput struct {
 	Instruction string

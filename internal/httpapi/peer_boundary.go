@@ -50,7 +50,9 @@ var (
 	keptPlugin        = keptOperation{reason: "The plugin and its kept result are this node's.", here: true}
 	keptVocabulary    = keptOperation{reason: "Applied on both nodes by name, whichever node the id names.", here: true, peer: true}
 	keptFaces         = keptOperation{reason: "The people of a face edit are not translated to the peer's."}
-	keptThumbnailEdit = keptOperation{reason: "This node's ComfyUI edits a thumbnail; it does not read the peer's image."}
+	keptThumbnailEdit = keptOperation{
+		reason: "This node's ComfyUI edits the peer's frame or thumbnail; the apply uploads the result to the peer.", here: true,
+	}
 )
 
 // keptOperations name every entity operation that is not forwarded for a remote id; any other is forwarded.

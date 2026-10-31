@@ -258,7 +258,7 @@ var assistantRemoteVideoRows = map[string]bool{
 	"applyVideoEdits.remove": true, "applyVideoCodeEdits": true, "updateVideoVisibility": true,
 	"setVideoDisplayName": true, "setVideoWorkInfo": true, "setVideoDetails": true, "setVideoThumbnailPosition": true,
 	"confirmVideoTag": true, "rejectVideoTag": true, "applyWorkInfoFetch": true, "makeRepresentativeVersion": true,
-	"unbundleVideo": true, "revertThumbnailImage": true,
+	"unbundleVideo": true, "revertThumbnailImage": true, "editVideoThumbnail": true,
 }
 
 // RemoteVideos reports whether the row also acts on the peer's videos.
