@@ -193,19 +193,18 @@ func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSu
 	return merged
 }
 
-// rewriteRemoteSmartFolderSummary leaves out the favorite, which stays with each node.
+// rewriteRemoteSmartFolderSummary keeps the peer's favorite, which lives on the node holding the folder.
 func rewriteRemoteSmartFolderSummary(folder *gen.SmartFolderSummary) {
-	folder.Id, folder.Favorite = domain.ToRemoteID(folder.Id), nil
+	folder.Id = domain.ToRemoteID(folder.Id)
 	if folder.ParentId != nil {
 		*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
 	}
 }
 
-// rewriteRemoteSmartFolderCard leaves out the watch values and favorite, as a remote group does, and the rule
-// only this node reads.
+// rewriteRemoteSmartFolderCard keeps the peer's watch values and favorite, as a remote group does, and leaves out
+// the rule only this node reads.
 func rewriteRemoteSmartFolderCard(card *gen.LibrarySmartFolder, join domain.VocabularyJoin) {
 	card.Id, card.PeerRule = domain.ToRemoteID(card.Id), nil
-	card.Favorite, card.WatchState, card.WatchedCount, card.LastPlayedAt = nil, nil, nil, nil
 	if card.ParentId != nil {
 		*card.ParentId = domain.ToRemoteID(*card.ParentId)
 	}

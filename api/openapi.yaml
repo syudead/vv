@@ -5,7 +5,7 @@ info:
   title: MDM API
   version: 0.3.0
   summary: "Self-hosted video management API"
-  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, without `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
+  description: "Provides import, listing, playback and title search. Operation security classifies requests as public (`[]`), guest-accessible (`[{sessionCookie: []}, {}]`) or owner-only (the global default). Owner-only requests without a valid session, and non-public requests before account setup, return `401 unauthenticated`. Every `/api/*` response identifies the effective audience in `X-VV-Audience: owner` or `guest`. Guest-accessible requests without a session use guest visibility: only public videos are returned, `Video.location`, `Video.progress`, `Video.probeError` and `FolderSummary.rootPath` are omitted, and `Video.tags` is empty. Private videos and folders without public videos return the same `404` as missing resources. The paired node (the peer) calls `/api/*` with `Authorization: VV-Peer <secret>` instead of a session: the audience is the owner, or the guest with `X-VV-Peer-Audience: guest` (any other value returns `400 invalid_request`); such a request sets no cookie and skips the same-origin check. An unknown or revoked secret returns `401 unauthenticated` with `peer_unknown`, and an operation outside the peer's allowed set returns `403 forbidden` with `peer_not_allowed`. A video id at or above 2^40 (1099511627776) names the peer's video, whose own id is the value minus 2^40: reads, media, the playback position and the display-name, thumbnail-position and thumbnail-image edits under `/api/videos/{id}` are forwarded to the peer for the request's audience, with the ids and URLs of the answer in the same form, the peer's `progress` and `favorite`, and with the peer's error status, `code` and `reason`; a work-info fetch and its apply run on this node with its plugin and write on the peer (docs/design-docs/peer-library.md); the other operations under that path return `404 not_found`. A group id at or above 2^40 names the peer's group in the same way: its page, items and edits under `/api/groups/{id}` are forwarded, with item ids, `trail` ids and the ids of the answer in that form; favorites and play history stay with each node, so its page and items list nothing with `favorite=true` and list in `addedDesc` order for a played or favorited sort. A forwarded request while the peer is not connected, or whose connection fails, returns `503 service_unavailable` with `peer_unreachable`. While paired, renaming, merging or deleting a tag, person or organization (`renameTag`, `deleteTag`, `mergeTag`, `batchTags` with delete, and the name in `updatePerson` and `updateOrganization`, their deletes and merges) is applied on the peer by name first and then here: a new name either node holds returns `409` with `tag_name_taken` (code `tag_name_taken` as without a peer), or code `conflict` with `person_name_taken` or `organization_name_taken`; while the peer is not connected, or when its connection fails, the change returns `409 conflict` with `peer_unreachable` and changes nothing. A failure here after the peer applied the change is returned as is, and repeating the request completes it. Synonyms, aliases, tag kinds, the tentative state, rejected names, images and links stay with each node."
 servers:
   - url: /
     description: "Served by the application"
@@ -998,7 +998,7 @@ paths:
     put:
       operationId: putVideoProgress
       summary: "Save playback position"
-      description: "The server determines watched state; clients send only the position. Records follow video content across moves and renames."
+      description: "The server determines watched state; clients send only the position. Records follow video content across moves and renames. For the peer's video (an id at or above 2^40) the position and history entry are saved on the peer, whose Progress is returned as it is."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -4652,7 +4652,7 @@ paths:
     put:
       operationId: updateFavorites
       summary: "Set or clear favorites on videos and groups"
-      description: "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events."
+      description: "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name the peer's entities: the peer's part is sent first as one request in the peer's ids, then this node's part is applied, and the applied counts are the sums. While the peer is not connected, or when it refuses, nothing changes on either node and 503 service_unavailable with peer_unreachable, or the peer's error, is returned; when the peer gives no answer, this node is unchanged, 503 peer_unreachable is returned, and the peer's write committed or did not."
       requestBody:
         required: true
         content:
@@ -4668,6 +4668,8 @@ paths:
                 $ref: "#/components/schemas/FavoritesResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "503":
+          $ref: "#/components/responses/PeerUnreachable"
 
   /api/playlists:
     get:
@@ -4851,7 +4853,7 @@ paths:
     get:
       operationId: listWatchHistory
       summary: "List watch history, newest first"
-      description: "Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request."
+      description: "Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While paired, both nodes' entries are merged newest first by playedAt, this node's first on equal times, and nextCursor holds each node's cursor; the peer's entry ids and video ids carry 2^40, and its videos keep the peer's progress and favorite. A peer that does not answer is left out for the rest of the listing."
       parameters:
         - name: cursor
           in: query
@@ -4899,18 +4901,20 @@ paths:
     delete:
       operationId: clearWatchHistory
       summary: "Clear all watch history"
-      description: "Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events."
+      description: "Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events. While paired, the peer's history is cleared first, then this node's: while the peer is not connected neither changes and 503 service_unavailable with peer_unreachable is returned; when the peer gives no answer, this node's history is unchanged, 503 peer_unreachable is returned, and the peer's clear committed or did not."
       responses:
         "204":
           description: "Deleted"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/PeerUnreachable"
 
   /api/watch-history/dates:
     get:
       operationId: listWatchHistoryDates
       summary: "List days with watch history, newest first"
-      description: "Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request."
+      description: "Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While paired, returns the union of both nodes' dates, leaving out a peer that does not answer."
       parameters:
         - name: tz
           in: query
@@ -4943,7 +4947,7 @@ paths:
     delete:
       operationId: deleteWatchHistoryEntry
       summary: "Delete a watch-history entry"
-      description: "Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events."
+      description: "Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events. An id at or above 2^40 deletes the peer's entry: while the peer is not connected nothing changes and 503 service_unavailable with peer_unreachable is returned."
       parameters:
         - $ref: "#/components/parameters/WatchHistoryEntryId"
       responses:
@@ -4955,6 +4959,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/PeerUnreachable"
 
   /api/playlists/{id}/playback:
     get:
@@ -6613,6 +6619,12 @@ components:
             $ref: "#/components/schemas/Error"
     ProviderFailed:
       description: "Image-edit provider (ComfyUI) rejected input upload or run submission"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PeerUnreachable:
+      description: "The paired VVMDM is not connected or gave no answer (code service_unavailable, reason peer_unreachable)"
       content:
         application/json:
           schema:
@@ -13124,6 +13136,11 @@ components:
         nextCursor:
           type: string
           description: "Included only when more results remain."
+        peerItems:
+          type: array
+          description: "Per-item cursors, one per item in order, with playedAt in Unix milliseconds as the sort value; only in answers to the paired VVMDM's peer credential."
+          items:
+            $ref: "#/components/schemas/PeerListItem"
 
     WatchHistoryEntry:
       type: object

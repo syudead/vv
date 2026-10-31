@@ -86,6 +86,16 @@ func peerItemsLast(sort VideoSort) bool {
 // on equal values the local item comes first. A side whose page is used up but continues stops the merge,
 // since its next item is unknown; each side reads limit items, so that happens only on a full page.
 func MergePages[T any](sort VideoSort, cursor MergedCursor, local, peer MergeSide[T], limit int) ([]T, MergedCursor, bool) {
+	return mergePages(cursor, local, peer, limit, func(a, b *string) bool {
+		return peerItemsLast(sort) || compareSortValues(sort, a, b) <= 0
+	})
+}
+
+// mergePages is MergePages with localFirst telling whether the local item with sort value a precedes the peer's
+// item with sort value b.
+func mergePages[T any](
+	cursor MergedCursor, local, peer MergeSide[T], limit int, localFirst func(a, b *string) bool,
+) ([]T, MergedCursor, bool) {
 	out := make([]T, 0, min(limit, len(local.Items)+len(peer.Items)))
 	i, j := 0, 0
 	for len(out) < limit {
@@ -93,8 +103,7 @@ func MergePages[T any](sort VideoSort, cursor MergedCursor, local, peer MergeSid
 		if (!localLeft && local.Next != "") || (!peerLeft && peer.Next != "") || (!localLeft && !peerLeft) {
 			break
 		}
-		takeLocal := localLeft && (!peerLeft || peerItemsLast(sort) ||
-			compareSortValues(sort, local.Cursors[i].SortValue, peer.Cursors[j].SortValue) <= 0)
+		takeLocal := localLeft && (!peerLeft || localFirst(local.Cursors[i].SortValue, peer.Cursors[j].SortValue))
 		if takeLocal {
 			out, i = append(out, local.Items[i]), i+1
 		} else {
