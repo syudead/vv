@@ -58,7 +58,6 @@ var keptOperations = map[string]keptOperation{
 	"POST /api/videos/{id}/open":     {reason: "Opens the file in this node's default app."},
 	"POST /api/videos/{id}/probe":    keptAnalysis,
 	"POST /api/videos/{id}/auto-tag": keptAnalysis,
-	"PUT /api/videos/{id}/progress":  {reason: "A playback position stays with the node that played it."},
 	"GET /api/videos/{id}/related":   {reason: "Answered from both nodes' videos.", here: true, peer: true},
 
 	"POST /api/videos/{id}/thumbnail-edits":       keptThumbnailEdit,
@@ -108,6 +107,7 @@ var remoteRewrites = map[string]remoteRewrite{
 	"VideoFaceAppearanceList": rewriteAs(rewriteRemoteFaceAppearances),
 	"SeekThumbnailSprite":     rewriteAs(rewriteRemoteSprite),
 	"SubtitleTrackList":       nil,
+	"Progress":                nil,
 	"TranscodeStart":          nil,
 	"GroupDetail":             rewriteAs(rewriteRemoteGroupDetail),
 	"GroupItemPage":           rewriteAs(rewriteRemoteGroupItemPage),

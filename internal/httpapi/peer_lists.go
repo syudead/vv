@@ -18,10 +18,16 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// mergesLists reports whether a list answers with both nodes' items: the node is paired, the request is not
-// the peer's own, and it is not a favorites list, whose favorites stay with each node.
+// mergesLists reports whether a list answers with both nodes' items: the node reads a peer, and it is not a
+// favorites list, whose favorites stay with each node.
 func (s *server) mergesLists(ctx context.Context, q domain.VideoQuery) bool {
-	if s.pairing == nil || isPeerRequest(ctx) || q.FavoriteOnly {
+	return !q.FavoriteOnly && s.readsPeer(ctx)
+}
+
+// readsPeer reports whether a request reaches both nodes: this node is paired and the request is not the peer's
+// own, which names this node's entities only.
+func (s *server) readsPeer(ctx context.Context) bool {
+	if s.pairing == nil || isPeerRequest(ctx) {
 		return false
 	}
 	state, err := s.pairing.State(ctx)
@@ -142,7 +148,7 @@ func (s *server) peerGet(r *http.Request, path string, query url.Values, out any
 }
 
 // peerCall sends body, when set, as JSON to path on the peer as the viewer and decodes a 200 or 201 answer into
-// out; any other answer is a *peerRefusal.
+// out, when set; a 204 answers nothing, and any other answer is a *peerRefusal.
 func (s *server) peerCall(r *http.Request, method, path string, query url.Values, body, out any) error {
 	if s.peerLink == nil {
 		return domain.ErrPeerUnreachable
@@ -168,6 +174,9 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON+1))
 	if err != nil {
 		return err
@@ -179,6 +188,9 @@ func (s *server) peerCall(r *http.Request, method, path string, query url.Values
 			refusal.reason, refusal.problem = problem.Reason, &problem
 		}
 		return refusal
+	}
+	if out == nil {
+		return nil
 	}
 	return json.Unmarshal(answer, out)
 }

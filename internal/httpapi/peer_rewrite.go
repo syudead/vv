@@ -45,11 +45,10 @@ func rewriteAs[T any](rewrite func(*T, domain.VocabularyJoin)) remoteRewrite {
 	}
 }
 
-// rewriteRemoteVideo leaves out the playback position and favorite, which stay with each node, and marks the
-// file not openable, since only the node holding it opens it.
+// rewriteRemoteVideo keeps the peer's playback position and favorite, which live on the node holding the video,
+// and marks the file not openable, since only the node holding it opens it.
 func rewriteRemoteVideo(v *gen.Video, join domain.VocabularyJoin) {
 	v.Id = domain.ToRemoteID(v.Id)
-	v.Progress, v.Favorite = nil, nil
 	for _, url := range []*string{v.ThumbnailUrl, v.PreviewUrl, v.SeekThumbnailUrl} {
 		rewriteRemoteURL(url)
 	}
@@ -158,17 +157,14 @@ func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoi
 	}
 }
 
-// rewriteRemoteLibraryItem leaves out the watch values and favorites of a group or smart folder, which stay
-// with each node like a video's.
+// rewriteRemoteLibraryItem keeps the peer's watch values and favorites of a group or smart folder, like a
+// video's.
 func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin) {
 	if item.Video != nil {
 		rewriteRemoteVideo(item.Video, join)
 	}
-	if folder := item.SmartFolder; folder != nil {
-		folder.Id, folder.Favorite = domain.ToRemoteID(folder.Id), nil
-		if folder.ParentId != nil {
-			*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
-		}
+	if item.SmartFolder != nil {
+		rewriteRemoteSmartFolderSummary(item.SmartFolder)
 	}
 	if item.Group != nil {
 		rewriteRemoteGroup(item.Group, join)
@@ -177,7 +173,6 @@ func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin)
 
 func rewriteRemoteGroup(group *gen.LibraryGroup, join domain.VocabularyJoin) {
 	group.Id, group.OpenVideoId = domain.ToRemoteID(group.Id), domain.ToRemoteID(group.OpenVideoId)
-	group.Favorite, group.WatchState, group.WatchedCount, group.LastPlayedAt = nil, nil, nil, nil
 	for i := range group.VideoIds {
 		group.VideoIds[i] = domain.ToRemoteID(group.VideoIds[i])
 	}
@@ -272,10 +267,9 @@ func rewriteRemoteTagKind(kind *gen.TagKind, join domain.VocabularyJoin) {
 	kind.Id = join.TagKind(kind.Id, kind.Name)
 }
 
-// rewriteRemotePerson leaves out the favorite mark, which stays with each node.
+// rewriteRemotePerson keeps the peer's favorite mark, which PUT /api/favorites sets on the peer for a remote id.
 func rewriteRemotePerson(person *gen.Person, join domain.VocabularyJoin) {
 	person.Id = join.Person(person.Id, person.Name)
-	person.Favorite = false
 }
 
 func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain.VocabularyJoin) {

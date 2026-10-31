@@ -8494,6 +8494,9 @@ type WatchHistoryPage struct {
 
 	// NextCursor Included only when more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PeerItems Per-item cursors, one per item in order, with playedAt in Unix milliseconds as the sort value; only in answers to the paired VVMDM's peer credential.
+	PeerItems *[]PeerListItem `json:"peerItems,omitempty"`
 }
 
 // WatchState unwatched without a started position, watched when complete, otherwise inProgress.
@@ -9055,6 +9058,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PeerUnreachable defines model for PeerUnreachable.
+type PeerUnreachable = Error
 
 // PersonImageTooLarge defines model for PersonImageTooLarge.
 type PersonImageTooLarge = Error
