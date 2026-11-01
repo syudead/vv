@@ -114,8 +114,15 @@ func (m *memberProgress) progress() *domain.Progress {
 	}
 }
 
-// Load only groups with visible descendants, in playback order; omit playback records for guests.
+// Load only groups with listed descendants, in playback order; omit playback records for guests.
 func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, groupIDs []int64) (map[int64]domain.LibraryGroup, error) {
+	return loadGroupsWith(ctx, q, audience, groupIDs, groupDescendantsCTE)
+}
+
+// loadGroupsWith takes the descendants CTE, so reads by id such as a playlist's items keep a switched-off folder's
+// members.
+func loadGroupsWith(ctx context.Context, q queryExecer, audience domain.Audience, groupIDs []int64,
+	descendants func(roots string, audience domain.Audience) string) (map[int64]domain.LibraryGroup, error) {
 	out := map[int64]domain.LibraryGroup{}
 	if len(groupIDs) == 0 {
 		return out, nil
@@ -125,7 +132,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		return nil, fmt.Errorf("cannot build group ids: %w", err)
 	}
 	progressColumns, progressJoin := memberProgressSelect(audience)
-	rows, err := q.QueryContext(ctx, `with `+groupDescendantsCTE(`select distinct value as id from json_each(?)`, audience)+`
+	rows, err := q.QueryContext(ctx, `with `+descendants(`select distinct value as id from json_each(?)`, audience)+`
 		select `+videoColumns(audience)+`, g.id, coalesce(g.origin_folder, ''), g.name, `+
 		groupFavoritedAtExpr("g")+` is not null, `+progressColumns+`
 		from gdesc d join groups g on g.id = d.root_id

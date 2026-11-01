@@ -101,7 +101,8 @@ func scanRelatedCandidates(rows *sql.Rows) ([]domain.RelatedCandidate, map[int64
 	return candidates, byID, nil
 }
 
-// VideosByIDs preserves input order while omitting hidden videos and nonrepresentative versions.
+// VideosByIDs preserves input order while omitting hidden videos and nonrepresentative versions; a bundle's listed
+// representative, chosen under the folder scope as related candidates are, counts as representative too.
 func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error) {
 	if len(ids) == 0 {
 		return []domain.Video{}, nil
@@ -113,7 +114,8 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 	}
 
 	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+` where videos.id in (`+
-		placeholders+`) and `+visibleVideoCondition("videos", audience)+` and `+shownVideoCondition("videos", audience), args...)
+		placeholders+`) and `+visibleVideoCondition("videos", audience)+` and (`+shownVideoCondition("videos", audience)+
+		` or `+listedShownVideoCondition("videos", audience)+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read related videos: %w", err)
 	}

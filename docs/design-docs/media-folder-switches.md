@@ -38,9 +38,10 @@ kept as a canonical string so `Audience` stays comparable.
 
 `listedLocationCondition` adds the scope to `visibleLocationCondition`; every
 list, search, count and folder read uses it, including the bundle
-representative and group membership. A read by id (`getVideo`, a playlist's
-items) keeps `visibleLocationCondition` and sets `Video.FolderOff` when no
-location of the video is under the scope.
+representative and group membership. A bundle searched by name matches only
+its versions under the scope. A read by id (`getVideo`, a playlist's items,
+including a playlist group's members) keeps `visibleLocationCondition` and sets
+`Video.FolderOff` when no location of the video is under the scope.
 
 An open video or a playlist entry is not an error when its folder is switched
 off, and the store sites that re-read a video after a write go through
@@ -63,8 +64,9 @@ registered location; only its reads apply the scope.
 `group_members` and `group_values` are computed with the listed condition for
 the owner and guest roles with this node's switches. A switch updates
 `media_folders`, whose update trigger marks every group for refresh, so the
-next list or group read recomputes them. A library read whose scope is an
-explicit list computes its groups instead of reading the stored values.
+next list or group read recomputes them. A library or group-items read whose
+scope is an explicit list computes its groups instead of reading the stored
+values.
 
 ## The watch history leaves out switched-off videos
 

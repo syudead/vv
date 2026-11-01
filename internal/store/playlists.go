@@ -600,8 +600,11 @@ func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Pla
 	if err != nil {
 		return nil, err
 	}
-	groups, err := loadGroups(ctx, tx, domain.AudienceOwner, groupIDs)
+	groups, err := loadGroupsWith(ctx, tx, domain.AudienceOwner, groupIDs, visibleGroupDescendantsCTE)
 	if err != nil {
+		return nil, err
+	}
+	if err := markMembersFolderOff(ctx, tx, domain.AudienceOwner, groups); err != nil {
 		return nil, err
 	}
 	items := make([]domain.PlaylistItem, 0, len(entries))

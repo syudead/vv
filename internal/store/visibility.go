@@ -32,16 +32,21 @@ func visibleLocationCondition(alias string, audience domain.Audience) string {
 // keep visibleLocationCondition so an open video and writes to it still find it
 // (docs/design-docs/media-folder-switches.md).
 func listedLocationCondition(alias string, audience domain.Audience) string {
-	scope := `mf.enabled = 1`
-	if ids, explicit := audience.ExcludedFolders(); explicit {
-		scope = `mf.id not in (` + joinInt64s(ids) + `)`
-	}
-	// Folders never overlap, so the scoped folder replaces registeredLocationCondition's.
-	listed := `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + ` and ` + scope + `)`
+	listed := scopedLocationCondition(alias, audience)
 	if audience.IsOwner() {
 		return listed
 	}
 	return listed + ` and ` + publicVideoCondition(alias)
+}
+
+// scopedLocationCondition is registeredLocationCondition under the audience's folder scope, without the role's
+// public rule; folders never overlap, so the scoped folder replaces the registered one.
+func scopedLocationCondition(alias string, audience domain.Audience) string {
+	scope := `mf.enabled = 1`
+	if ids, explicit := audience.ExcludedFolders(); explicit {
+		scope = `mf.id not in (` + joinInt64s(ids) + `)`
+	}
+	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + ` and ` + scope + `)`
 }
 
 func joinInt64s(ids []int64) string {

@@ -268,3 +268,65 @@ func TestMediaFolderSwitchesMigrationTurnsExistingFoldersOn(t *testing.T) {
 		t.Errorf("オンのフォルダ = %d, want 2", on)
 	}
 }
+
+// A playlist's group item is a read by id: its switched-off members stay, marked, and the count agrees.
+func TestPlaylistGroupKeepsSwitchedOffMembers(t *testing.T) {
+	f := switchedOffFolderFixture(t)
+	group := createGroup(t, f.db, "off", domain.GroupAdd{VideoIDs: []int64{f.outID}})
+	playlist := createPlaylist(t, f.db, "p")
+	addToPlaylist(t, f.db, playlist, domain.PlaylistAdd{GroupIDs: []int64{group}})
+	_, items := readPlaylist(t, f.db, playlist)
+	if len(items) != 1 || items[0].Group == nil || len(items[0].Group.Members) != 1 {
+		t.Fatalf("プレイリストの項目 = %+v, want オフのメンバーを持つグループ1件", items)
+	}
+	if member := items[0].Group.Members[0]; member.ID != f.outID || !member.FolderOff {
+		t.Errorf("グループのメンバー = id %d FolderOff %v, want id %d FolderOff true", member.ID, member.FolderOff, f.outID)
+	}
+}
+
+// Stored group members follow this node's switches; an explicit scope computes a group's items under its own list.
+func TestExplicitExcludedFoldersReadGroupItems(t *testing.T) {
+	f := switchedOffFolderFixture(t)
+	child := createGroup(t, f.db, "child", domain.GroupAdd{VideoIDs: []int64{f.outID}})
+	parent := createGroup(t, f.db, "parent", domain.GroupAdd{VideoIDs: []int64{f.shown, f.outID}, GroupIDs: []int64{child}})
+	scoped := owner.WithExcludedFolders([]int64{f.onID})
+	page, err := f.db.Library().GroupItems(context.Background(), scoped, parent, "", 10, domain.VideoQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var videos, groups []int64
+	for _, item := range page.Items {
+		if item.Video != nil {
+			videos = append(videos, item.Video.ID)
+		} else if item.Group != nil {
+			groups = append(groups, item.Group.ID)
+		}
+	}
+	if !slices.Equal(videos, []int64{f.outID}) || !slices.Equal(groups, []int64{child}) {
+		t.Errorf("除外リストのグループ項目 = 動画 %v グループ %v, want 動画 [%d] グループ [%d]", videos, groups, f.outID, child)
+	}
+}
+
+// A bundle whose representative's folder is off is listed through its on version, by its on version's names only.
+func TestBundleWithSwitchedOffRepresentative(t *testing.T) {
+	f := switchedOffFolderFixture(t)
+	ctx := context.Background()
+	self := upsertAll(t, f.db, listingFile(fixturePath("/media/on/self.mp4"), "self", "key-self", 3))[fixturePath("/media/on/self.mp4")]
+	if _, err := f.db.Versions().Bundle(ctx, []int64{f.outID, f.shown}, f.outID); err != nil {
+		t.Fatal(err)
+	}
+	if titles, _ := listTitles(t, f.db, owner, domain.VideoQuery{Query: "off"}); len(titles) != 0 {
+		t.Errorf("オフの版の名前での検索 = %v, want 空", titles)
+	}
+	candidates, err := f.db.Library().RelatedCandidates(ctx, owner, self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(candidates, func(c domain.RelatedCandidate) bool { return c.VideoID == f.shown }) {
+		t.Fatalf("関連動画の候補 = %+v, want オンの版 %d を含む", candidates, f.shown)
+	}
+	videos, err := f.db.Library().VideosByIDs(ctx, owner, []int64{f.shown})
+	if err != nil || len(videos) != 1 || videos[0].ID != f.shown {
+		t.Errorf("候補の読み出し = %+v, %v, want オンの版 %d", videos, err, f.shown)
+	}
+}

@@ -27,7 +27,9 @@ const (
 // Every scope is restricted to audience-visible locations.
 type locationScope struct {
 	// Restrict collection reads before selecting representative locations.
-	withinGroup  int64
+	withinGroup int64
+	// groupMembers names the group_id and video_id rows withinGroup reads; empty reads the stored group_members.
+	groupMembers string
 	withinVideos string
 	kind         locationScopeKind
 	// Absolute folder path; unused for the library scope.
@@ -64,7 +66,10 @@ func (s locationScope) choosesAllKinds() bool {
 func (s locationScope) membership(alias string) (string, []any) {
 	var clause string
 	var args []any
-	if s.withinGroup != 0 {
+	if s.withinGroup != 0 && s.groupMembers != "" {
+		clause += ` and ` + alias + `.video_id in (select video_id from ` + s.groupMembers + ` where group_id = ?)`
+		args = append(args, s.withinGroup)
+	} else if s.withinGroup != 0 {
 		clause += ` and ` + alias + `.video_id in (select video_id from group_members where group_id = ? and audience = ?)`
 		args = append(args, s.withinGroup, audienceValue(s.audience))
 	}
@@ -255,7 +260,7 @@ func chosenFilesSelect(scope locationScope, searchAudience domain.Audience, expr
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
+			where bm.bundle_id = sbm.bundle_id and `+scopedLocationCondition("bl", scope.audience)+` and `+strings.Join(bundleClauses, " and ")+`)))`)
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}
