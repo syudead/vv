@@ -78,3 +78,15 @@ func TestBackfillReadSavesARefusedLocationAsUnavailable(t *testing.T) {
 		t.Errorf("read = %v, saved %v, want %v", err, store.probes, want)
 	}
 }
+
+// A failed read of the media folders is retried, never saved as an unreadable file.
+func TestBackfillReadReturnsAFailedFolderList(t *testing.T) {
+	store := &keyframeTestStore{}
+	folders := &fakeMediaFolders{}
+	folders.setErr(errors.New("database is locked"))
+	err := KeyframeBackfill(store, MediaFiles{Folders: folders, Resolver: fakeMediaFiles{}}, nil).
+		Read(context.Background(), domain.Job{LocationPath: "/media/old.mkv"})
+	if err == nil || len(store.saved) != 0 {
+		t.Errorf("read = %v, saved %v, want the error and nothing saved", err, store.saved)
+	}
+}

@@ -62,6 +62,22 @@ func (g *sourceRecordingGenerator) Preview(ctx context.Context, path, output str
 	return g.fakeGenerator.Preview(ctx, path, output, durationMs)
 }
 
+// A failed read of the media folders is not reported as an unavailable file, which the probe would persist.
+func TestIngestProbeReturnsAFailedFolderList(t *testing.T) {
+	video := probedVideo(1, "a")
+	folders := &fakeMediaFolders{}
+	folders.setErr(errors.New("database is locked"))
+	generator := &fakeGenerator{}
+	ingest := NewIngest(IngestOptions{
+		Store: newFakeIngestStore(video), Generator: generator, Artifacts: fakeArtifactStore{generator},
+		Sources: MediaFiles{Folders: folders, Resolver: fakeMediaFiles{}}, Logger: discardLogger(),
+	})
+	err := ingest.Handler(domain.JobProbe)(context.Background(), jobFor(domain.JobProbe, video))
+	if err == nil || domain.ProbeErrorCodeOf(err) == domain.ProbeErrorFileUnavailable {
+		t.Errorf("err = %v, want the folder error without an unavailable-file code", err)
+	}
+}
+
 // Every stage that reads the file reads it only through the media folders' access rules.
 func TestIngestStagesReadTheResolvedSource(t *testing.T) {
 	for _, kind := range []domain.JobKind{
