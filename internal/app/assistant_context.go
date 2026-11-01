@@ -151,6 +151,7 @@ func (l *turnLoop) contextShortfall(tools []domain.ToolDefinition) string {
 	}
 	encoded, _ := json.Marshal(tools) // Tool definitions are plain data and always encode.
 	fixed := len(encoded)/schemaBytesPerToken + messageTokens(l.messages[0]) + messageTokens(l.messages[1])
+	l.fixedTokens = fixed
 	if fixed+minResultTokens <= budget {
 		return ""
 	}

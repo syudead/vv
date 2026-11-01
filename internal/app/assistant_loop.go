@@ -195,6 +195,11 @@ type turnLoop struct {
 	excluded *domain.AssistantExcludedRef
 	acted    bool
 	writes   turnWrites
+	// fixedTokens is what the instructions, the request and the tools took of the last prompt; roundCalls counts the
+	// running round's calls, which share the room left; itemBytes is the mean list item size per operation.
+	fixedTokens int
+	roundCalls  int
+	itemBytes   map[string]int
 }
 
 func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *turnLoop {
@@ -277,6 +282,7 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 		return true, nil
 	}
 	l.lastRoundKey = round
+	l.roundCalls = len(reply.ToolCalls)
 	l.messages = append(l.messages, domain.ChatMessage{
 		Role: domain.ChatRoleAssistant, Content: reply.Text, ToolCalls: reply.ToolCalls,
 	})

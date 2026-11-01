@@ -261,13 +261,16 @@ func (l *turnLoop) runTool(
 	if tool.Kind == domain.AssistantToolWrite {
 		return l.write(ctx, call, tool)
 	}
-	result, err := l.runner.Read(ctx, domain.AssistantRead{Operation: tool.Operation, Arguments: call.Arguments})
+	args := l.fitPageLimit(tool, call.Arguments)
+	result, err := l.runner.Read(ctx, domain.AssistantRead{Operation: tool.Operation, Arguments: args})
 	if err != nil {
 		return "", fmt.Sprintf("%s with %s: %s", domain.AssistantModelToolName(call.Name),
-			trimArguments(call.Arguments), readFailure(err)), nil
+			trimArguments(args), readFailure(err)), nil
 	}
 	l.writes.remember(tool.Operation, result.Body)
-	return domain.AssistantToolResultText(result.Body), "", nil
+	body := domain.AssistantCompactResult(tool.Operation, result.Body)
+	l.learnItemBytes(tool.Operation, body)
+	return domain.AssistantToolResultText(body), "", nil
 }
 
 // failedArgumentsMax bounds the arguments a failure repeats, so the model and the owner see what was sent.

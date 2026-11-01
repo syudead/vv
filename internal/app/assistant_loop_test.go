@@ -78,7 +78,8 @@ var loopRegistry = []domain.AssistantTool{
 		Parameters: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
 	{Name: "getVideo", Kind: domain.AssistantToolRead, Operation: "getVideo", Summary: "Read a video",
 		IDs: []domain.AssistantIDField{{In: "path", Field: "id", Kind: "video"}}},
-	{Name: "listTags", Kind: domain.AssistantToolRead, Operation: "listTags", Summary: "List tags"},
+	{Name: "listTags", Kind: domain.AssistantToolRead, Operation: "listTags", Summary: "List tags",
+		Parameters: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","maximum":200}}}`)},
 	{Name: "listPeople", Kind: domain.AssistantToolRead, Operation: "listPeople", Summary: "List people"},
 	{Name: "listOrganizations", Kind: domain.AssistantToolRead, Operation: "listOrganizations", Summary: "List organizations"},
 	{Name: "listPlaylists", Kind: domain.AssistantToolRead, Operation: "listPlaylists", Summary: "List playlists"},
@@ -302,6 +303,35 @@ func TestTurnLoopStopsWhenTheContextLeavesNoRoomForResults(t *testing.T) {
 	}
 	if len(f.chat.requests) != 1 {
 		t.Fatalf("model calls = %d, want none after the context was known", len(f.chat.requests))
+	}
+}
+
+// A list read gets a limit that fits the prompt, and the model receives its items without the fields it does not use.
+func TestTurnLoopFitsAListReadToThePrompt(t *testing.T) {
+	f := newLoopFixture(t, calls(toolCall("listTags", `{}`)), text("タグは1件です。"))
+	f.runner.bodies["listTags"] = `{"total":1,"items":[{"id":3,"name":"カラオケ","createdAt":"2026-10-01T00:00:00Z"}]}`
+
+	f.run(t, request)
+
+	if len(f.runner.reads) != 1 || string(f.runner.reads[0].Arguments) != `{"limit":50}` {
+		t.Fatalf("reads = %+v, want the page an unknown context gets", f.runner.reads)
+	}
+	messages := f.chat.requests[1].Messages
+	if got := messages[len(messages)-1].Content; got != `{"items":[{"id":3,"name":"カラオケ"}],"total":1}` {
+		t.Fatalf("result = %s, want the compact items", got)
+	}
+}
+
+func TestFitPageLimitSharesTheRoomTheFixedPartLeaves(t *testing.T) {
+	tool := domain.AssistantTool{Operation: "listVideos",
+		Parameters: json.RawMessage(`{"properties":{"limit":{"type":"integer","maximum":200}}}`)}
+	// 8,000 tokens of prompt less 4,000 fixed, shared by two calls: 2,000 tokens, 6,000 bytes, 15 items of 400 bytes.
+	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 10668}, fixedTokens: 4000, roundCalls: 2}
+	cases := map[string]string{`{}`: `{"limit":15}`, `{"limit":100}`: `{"limit":15}`, `{"limit":5}`: `{"limit":5}`}
+	for args, want := range cases {
+		if got := string(l.fitPageLimit(tool, json.RawMessage(args))); got != want {
+			t.Errorf("fitPageLimit(%s) = %s, want %s", args, got, want)
+		}
 	}
 }
 
