@@ -609,7 +609,7 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 		return parseCandidates(raw)
 	case op == WorkInfoFetch && raw.WorkInfo != nil:
 		info := FetchedWorkInfo{
-			Title: raw.WorkInfo.Title,
+			Title: fetchedControls(raw.WorkInfo.Title),
 			Tags:  firstUniqueTags(raw.WorkInfo.Tags),
 		}
 		parseWorkDetails(raw.WorkInfo.workDetailsJSON, &info)
@@ -638,6 +638,7 @@ func firstUniqueTags(tags []string) []string {
 		if len(out) == WorkInfoPluginMaxTags {
 			break
 		}
+		t = fetchedControls(t)
 		if !seen[t] {
 			seen[t] = true
 			out = append(out, t)

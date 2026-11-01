@@ -178,7 +178,7 @@ func parsePersonCandidates(raw personResponseJSON, sources []string) (WorkInfoRu
 	candidates := make([]PersonCandidate, 0, len(kept))
 	for _, c := range kept {
 		id, err := NormalizeWorkInfoSearchQuery(c.ID)
-		name := trimWorkInfoText(c.Name)
+		name := fetchedText(c.Name)
 		if !slices.Contains(sources, c.Source) || err != nil || name == "" || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
@@ -194,7 +194,7 @@ func parseFetchedImageURLs(raw json.RawMessage, limit int) []string {
 		if len(out) == limit {
 			break
 		}
-		if url := fetchedImageURL(trimWorkInfoText(item)); url != "" && !slices.Contains(out, url) {
+		if url := fetchedImageURL(fetchedText(item)); url != "" && !slices.Contains(out, url) {
 			out = append(out, url)
 		}
 	}
@@ -209,11 +209,11 @@ func parseFetchedAliases(raw json.RawMessage) []Alias {
 		if len(out) == CreditAliasesMaxCount {
 			break
 		}
-		name := trimWorkInfoText(a.Name)
+		name := fetchedText(a.Name)
 		if name == "" || slices.ContainsFunc(out, func(kept Alias) bool { return kept.Name == name }) {
 			continue
 		}
-		out = append(out, Alias{Name: name, Language: trimWorkInfoText(a.Language)})
+		out = append(out, Alias{Name: name, Language: fetchedText(a.Language)})
 	}
 	return out
 }

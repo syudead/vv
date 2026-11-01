@@ -40,6 +40,7 @@ func parseFetchedProfile(raw json.RawMessage) PersonProfile {
 	for field, at := range fetchedProfileTexts {
 		*at(&out) = lenientString(properties[string(field)])
 	}
+	out.Bio = fetchedMultiline(rawString(properties[string(ProfileBio)]), PersonBioMaxLength)
 	for field, at := range fetchedProfileInts {
 		var n int
 		if value, ok := properties[string(field)]; ok && json.Unmarshal(value, &n) == nil {
@@ -47,7 +48,7 @@ func parseFetchedProfile(raw json.RawMessage) PersonProfile {
 		}
 	}
 	for _, link := range lenientList[string](properties[string(ProfileLinks)]) {
-		if link = trimWorkInfoText(link); link != "" {
+		if link = fetchedText(link); link != "" {
 			out.Links = append(out.Links, link)
 		}
 	}
