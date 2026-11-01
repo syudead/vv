@@ -58,6 +58,8 @@ type ChatUsage struct {
 	ThinkingChars int
 	// ContextTokens is the context the provider ran the call with; 0 when it did not say.
 	ContextTokens int
+	// CPU reports that part of the model ran outside the GPU's memory.
+	CPU bool
 }
 
 // ModelCapabilities is what a model can do beyond text, as the provider reports it.

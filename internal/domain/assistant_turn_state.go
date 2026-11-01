@@ -38,6 +38,8 @@ const (
 	AssistantStopUngrounded AssistantStopReason = "ungrounded"
 	// AssistantStopNoAnswer: the model replied with neither text nor a tool call, twice; the model itself answered.
 	AssistantStopNoAnswer AssistantStopReason = "no_answer"
+	// AssistantStopContext: the instructions and tools leave the model's context too little room for tool results.
+	AssistantStopContext AssistantStopReason = "context_too_small"
 )
 
 // ErrAssistantBusy refuses a turn while another one runs; one local model serves one request at a time.
@@ -120,6 +122,18 @@ type AssistantTurn struct {
 	Clarify    *AssistantTurnClarification
 	ProposalID int64
 	Stop       *AssistantTurnStop
+	// Usage is how the turn used the generation model so far; nil before the first reply.
+	Usage      *AssistantTurnUsage
 	StartedAt  time.Time
 	FinishedAt time.Time
+}
+
+// AssistantTurnUsage shows the owner what a turn costs: every model call reads the whole prompt again.
+type AssistantTurnUsage struct {
+	ModelCalls int `json:"modelCalls"`
+	// PromptTokens is the last call's prompt and ContextTokens the context the model ran with.
+	PromptTokens  int `json:"promptTokens"`
+	ContextTokens int `json:"contextTokens"`
+	// CPU reports that part of the model ran outside the GPU's memory in some call.
+	CPU bool `json:"cpu,omitempty"`
 }

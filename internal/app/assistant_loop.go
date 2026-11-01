@@ -22,6 +22,7 @@ type AssistantTurnStore interface {
 	RunningTurn(ctx context.Context) (domain.AssistantTurn, error)
 	ActiveTurns(ctx context.Context, since time.Time) ([]domain.AssistantTurn, error)
 	RecordTurnProgress(ctx context.Context, id int64, progress []domain.AssistantProgressItem) error
+	RecordTurnUsage(ctx context.Context, id int64, usage domain.AssistantTurnUsage) error
 	// FinishTurn returns domain.ErrAssistantTurnNotRunning for a turn that already finished.
 	FinishTurn(ctx context.Context, turn domain.AssistantTurn, now time.Time) error
 	RecoverTurns(ctx context.Context, now time.Time) (int, error)
@@ -195,6 +196,11 @@ type turnLoop struct {
 	excluded *domain.AssistantExcludedRef
 	acted    bool
 	writes   turnWrites
+	// fixedTokens is what the instructions, the request and the tools took of the last prompt; roundCalls counts the
+	// running round's calls, which share the room left; itemBytes is the mean list item size per operation.
+	fixedTokens int
+	roundCalls  int
+	itemBytes   map[string]int
 }
 
 func newTurnLoop(a *Assistant, runner ActionRunner, turn domain.AssistantTurn) *turnLoop {
@@ -212,6 +218,9 @@ func (l *turnLoop) run(ctx context.Context) error {
 		return err
 	}
 	l.imageTools(ctx)
+	if reporter, ok := l.a.chat.(ContextReporter); ok {
+		l.usage.ContextTokens = reporter.LoadedContext(ctx)
+	}
 	l.messages = []domain.ChatMessage{
 		{Role: domain.ChatRoleSystem, Content: system},
 		{Role: domain.ChatRoleUser, Content: "<request>" + dataText.Replace(l.turn.Request) + "</request>"},
@@ -223,6 +232,11 @@ func (l *turnLoop) run(ctx context.Context) error {
 		}
 		tools := append(l.tools.definitions(), l.imageDefinitions()...)
 		l.fitContext(tools)
+		if detail := l.contextShortfall(tools); detail != "" {
+			l.stop(domain.AssistantStopContext)
+			l.turn.Stop.Detail = detail
+			return nil
+		}
 		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: tools})
 		if err != nil {
 			l.stop(l.chatStop(ctx, err))
@@ -232,6 +246,9 @@ func (l *turnLoop) run(ctx context.Context) error {
 			return nil
 		}
 		l.usage = reply.Usage
+		if err := l.recordUsage(ctx); err != nil {
+			return err
+		}
 		if len(reply.ToolCalls) == 0 {
 			if done, err := l.answer(ctx, reply.Text); done || err != nil {
 				return err
@@ -242,6 +259,21 @@ func (l *turnLoop) run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+// recordUsage counts the model call and keeps its prompt and context for the panel.
+func (l *turnLoop) recordUsage(ctx context.Context) error {
+	u := domain.AssistantTurnUsage{ModelCalls: 1}
+	if l.turn.Usage != nil {
+		u = *l.turn.Usage
+		u.ModelCalls++
+	}
+	u.PromptTokens, u.ContextTokens, u.CPU = l.usage.PromptTokens, l.usage.ContextTokens, u.CPU || l.usage.CPU
+	l.turn.Usage = &u
+	if err := l.a.turns.RecordTurnUsage(ctx, l.turn.ID, u); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
 }
 
 func (l *turnLoop) stop(reason domain.AssistantStopReason) {
@@ -272,6 +304,7 @@ func (l *turnLoop) callTools(ctx context.Context, reply domain.ChatReply) (bool,
 		return true, nil
 	}
 	l.lastRoundKey = round
+	l.roundCalls = len(reply.ToolCalls)
 	l.messages = append(l.messages, domain.ChatMessage{
 		Role: domain.ChatRoleAssistant, Content: reply.Text, ToolCalls: reply.ToolCalls,
 	})

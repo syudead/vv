@@ -3,6 +3,7 @@ import {
   Ban,
   ChevronRight,
   CircleHelp,
+  Cpu,
   Eye,
   FileSearch,
   Image,
@@ -12,6 +13,8 @@ import {
   type LucideIcon,
   Scale,
   ScanEye,
+  Sigma,
+  TriangleAlert,
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -58,6 +61,7 @@ const builtinLines: Record<string, LineText> = {
     text: t.assistant.tools.show_in_library,
     names: true,
   },
+  video_stats: { icon: Sigma, text: t.assistant.tools.video_stats, names: true },
 };
 
 /** The line's icon and words, chosen by the item's tool and kind. */
@@ -194,6 +198,27 @@ function RunningLine({ turn }: { turn: AssistantTurn }) {
   );
 }
 
+/** What the turn cost: every model call reads the whole prompt again, and a model partly on the CPU is slow. */
+function UsageLine({ turn }: { turn: AssistantTurn }) {
+  const usage = turn.usage;
+  if (usage === undefined) return null;
+  const words = t.assistant.tools;
+  return (
+    <>
+      <li className="flex items-start gap-1.5 tabular-nums">
+        <Cpu aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+        {words.usage(usage.modelCalls, usage.promptTokens, usage.contextTokens)}
+      </li>
+      {usage.cpu && (
+        <li className="flex items-start gap-1.5 text-warning">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+          {words.cpu}
+        </li>
+      )}
+    </>
+  );
+}
+
 function Lines({ turn }: { turn: AssistantTurn }) {
   const running = turn.status === "running";
   const last = turn.progress.length - 1;
@@ -211,6 +236,7 @@ function Lines({ turn }: { turn: AssistantTurn }) {
           current={running && index === last}
         />
       ))}
+      <UsageLine turn={turn} />
       {running && <RunningLine turn={turn} />}
     </ul>
   );

@@ -122,6 +122,11 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 			"works videos of the same work. The owner adopts or rejects its candidates on the review list. Use it " +
 			"for library-wide tidying, not for a few named items."},
 			run: (*turnLoop).startReview},
+		{definition: domain.ToolDefinition{Name: toolVideoStats, Description: "Count and measure videos in one " +
+			"call: every call answers how many, how many favorites, the total length, the longest and the shortest, " +
+			"and with groupBy the count per tag, performer or organization; the conditions only narrow the videos. Use it for how many, how long and which most questions " +
+			"instead of reading pages of listVideos. Names are matched by the server."},
+			run: (*turnLoop).videoStats},
 	}
 	schemas := map[string]*jsonschema.Schema{
 		toolScreenContext: object(nil, map[string]*jsonschema.Schema{}),
@@ -134,6 +139,7 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 			"name":         stringSchema("The entity's name or the video's title; leave it out for the one on screen."),
 			"settingsPage": oneOf("For to settings, the settings page.", enumOf(settingsPages...)),
 		}),
+		toolVideoStats: statsSchema(),
 		toolStartReview: object([]string{"kind"}, map[string]*jsonschema.Schema{
 			"kind": oneOf("What to review.", enumOf(domain.AssistantReviewTags, domain.AssistantReviewPeople,
 				domain.AssistantReviewWorks)),
@@ -156,7 +162,9 @@ var builtinTools = sync.OnceValue(func() map[string]*builtinTool {
 })
 
 // builtinOrder is the order the built-in tools are offered in.
-var builtinOrder = []string{toolScreenContext, toolAppHelp, toolShowInLibrary, toolOpenPage, toolStartReview}
+var builtinOrder = []string{
+	toolScreenContext, toolAppHelp, toolVideoStats, toolShowInLibrary, toolOpenPage, toolStartReview,
+}
 
 // builtinDefinitions are the built-in tools this assistant can run; start_review needs the review store.
 func (a *Assistant) builtinDefinitions() []domain.ToolDefinition {

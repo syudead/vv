@@ -8,9 +8,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Old tool results give way, oldest first, until the estimate fits; the request and the newest result stay.
+// Old tool results give way, oldest first, until the estimate fits; a dropped result keeps its short top-level values
+// and asks for no new call. The request and the newest result stay.
 func TestFitContextDropsTheOldestResultsFirst(t *testing.T) {
-	big := strings.Repeat("あ", 6000) // 18,000 bytes, about 6,000 tokens.
+	big := `{"total":305,"nextCursor":"c2","items":["` + strings.Repeat("あ", 6000) + `"]}` // About 6,000 tokens.
 	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 16384}, messages: []domain.ChatMessage{
 		{Role: domain.ChatRoleSystem, Content: "rules"},
 		{Role: domain.ChatRoleUser, Content: "<request>この動画は?</request>"},
@@ -24,8 +25,9 @@ func TestFitContextDropsTheOldestResultsFirst(t *testing.T) {
 	l.fitContext(nil)
 
 	got := []string{l.messages[3].Content, l.messages[4].Content, l.messages[6].Content}
-	if got[0] != droppedResult || got[1] != big || got[2] != big {
-		t.Fatalf("results = %.20q, want only the oldest dropped", got)
+	want := `{"nextCursor":"c2","note":"this earlier result was removed to fit the context","total":305}`
+	if got[0] != want || got[1] != big || got[2] != big {
+		t.Fatalf("results = %.100q, want only the oldest dropped to %s", got, want)
 	}
 	if l.messages[1].Content != "<request>この動画は?</request>" {
 		t.Fatalf("request = %q, want it kept", l.messages[1].Content)
@@ -58,7 +60,7 @@ func TestFitContextDropsWholeEarlierRounds(t *testing.T) {
 	round := func() []domain.ChatMessage {
 		return []domain.ChatMessage{
 			{Role: domain.ChatRoleAssistant, ToolCalls: []domain.ToolCall{{Name: "listVideos", Arguments: args}}},
-			{Role: domain.ChatRoleTool, Content: droppedResult},
+			{Role: domain.ChatRoleTool, Content: droppedResult("")},
 		}
 	}
 	messages := []domain.ChatMessage{

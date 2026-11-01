@@ -45,6 +45,7 @@ type fakeTurnStore struct {
 	AssistantTurnStore
 	turns    map[int64]domain.AssistantTurn
 	commits  [][]domain.AssistantProgressItem
+	usage    []domain.AssistantTurnUsage
 	finished *domain.AssistantTurn
 }
 
@@ -60,6 +61,11 @@ func (s *fakeTurnStore) RecordTurnProgress(_ context.Context, _ int64, progress 
 	return nil
 }
 
+func (s *fakeTurnStore) RecordTurnUsage(_ context.Context, _ int64, usage domain.AssistantTurnUsage) error {
+	s.usage = append(s.usage, usage)
+	return nil
+}
+
 func (s *fakeTurnStore) FinishTurn(_ context.Context, turn domain.AssistantTurn, _ time.Time) error {
 	s.finished = &turn
 	return nil
@@ -69,6 +75,8 @@ func (s *fakeTurnStore) FinishTurn(_ context.Context, turn domain.AssistantTurn,
 type fakeToolRunner struct {
 	ActionRunner
 	bodies map[string]string
+	// pages answers listVideos by the cursor of its arguments when set.
+	pages  map[string]string
 	reads  []domain.AssistantRead
 	during func()
 }
@@ -78,7 +86,8 @@ var loopRegistry = []domain.AssistantTool{
 		Parameters: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
 	{Name: "getVideo", Kind: domain.AssistantToolRead, Operation: "getVideo", Summary: "Read a video",
 		IDs: []domain.AssistantIDField{{In: "path", Field: "id", Kind: "video"}}},
-	{Name: "listTags", Kind: domain.AssistantToolRead, Operation: "listTags", Summary: "List tags"},
+	{Name: "listTags", Kind: domain.AssistantToolRead, Operation: "listTags", Summary: "List tags",
+		Parameters: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","maximum":200}}}`)},
 	{Name: "listPeople", Kind: domain.AssistantToolRead, Operation: "listPeople", Summary: "List people"},
 	{Name: "listOrganizations", Kind: domain.AssistantToolRead, Operation: "listOrganizations", Summary: "List organizations"},
 	{Name: "listPlaylists", Kind: domain.AssistantToolRead, Operation: "listPlaylists", Summary: "List playlists"},
@@ -95,6 +104,13 @@ func (r *fakeToolRunner) Read(_ context.Context, read domain.AssistantRead) (dom
 	}
 	if strings.Contains(string(read.Arguments), "bad") {
 		return domain.AssistantReadResult{}, fmt.Errorf("%w: q must be a string", domain.ErrAssistantInvalidArguments)
+	}
+	if r.pages != nil && read.Operation == "listVideos" {
+		var args struct {
+			Cursor string `json:"cursor"`
+		}
+		_ = json.Unmarshal(read.Arguments, &args)
+		return domain.AssistantReadResult{Body: json.RawMessage(r.pages[args.Cursor])}, nil
 	}
 	return domain.AssistantReadResult{Body: json.RawMessage(r.bodies[read.Operation])}, nil
 }
@@ -284,6 +300,114 @@ func TestTurnLoopStopsWhenAReplyRepeatsTheLastCalls(t *testing.T) {
 	}
 	if len(f.runner.reads) != 1 || len(f.chat.requests) != 2 {
 		t.Fatalf("reads = %d, model calls = %d; want the repeat not run", len(f.runner.reads), len(f.chat.requests))
+	}
+}
+
+// A context whose fixed part leaves too little room for results stops the turn before the next model call: every
+// result would be cut away and the model would call the same reads without seeing them.
+func TestTurnLoopStopsWhenTheContextLeavesNoRoomForResults(t *testing.T) {
+	small := calls(toolCall("listTags", `{}`))
+	small.Usage = domain.ChatUsage{ContextTokens: 2048}
+	f := newLoopFixture(t, small)
+
+	turn := f.run(t, request)
+
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopContext ||
+		!strings.Contains(turn.Stop.Detail, "a context of 2048 tokens") {
+		t.Fatalf("turn = %+v, want context_too_small naming the context", turn)
+	}
+	if len(f.chat.requests) != 1 {
+		t.Fatalf("model calls = %d, want none after the context was known", len(f.chat.requests))
+	}
+}
+
+// A list read gets a limit that fits the prompt, and the model receives its items without the fields it does not use.
+func TestTurnLoopFitsAListReadToThePrompt(t *testing.T) {
+	f := newLoopFixture(t, calls(toolCall("listTags", `{}`)), text("タグは1件です。"))
+	f.runner.bodies["listTags"] = `{"total":1,"items":[{"id":3,"name":"カラオケ","createdAt":"2026-10-01T00:00:00Z"}]}`
+
+	f.run(t, request)
+
+	if len(f.runner.reads) != 1 || string(f.runner.reads[0].Arguments) != `{"limit":50}` {
+		t.Fatalf("reads = %+v, want the page an unknown context gets", f.runner.reads)
+	}
+	messages := f.chat.requests[1].Messages
+	if got := messages[len(messages)-1].Content; got != `{"items":[{"id":3,"name":"カラオケ"}],"total":1}` {
+		t.Fatalf("result = %s, want the compact items", got)
+	}
+}
+
+func TestFitPageLimitSharesTheRoomTheFixedPartLeaves(t *testing.T) {
+	tool := domain.AssistantTool{Operation: "listVideos",
+		Parameters: json.RawMessage(`{"properties":{"limit":{"type":"integer","maximum":200}}}`)}
+	// 8,000 tokens of prompt less 4,000 fixed, shared by two calls: 2,000 tokens, 6,000 bytes, 15 items of 400 bytes.
+	l := &turnLoop{usage: domain.ChatUsage{ContextTokens: 10668}, fixedTokens: 4000, roundCalls: 2}
+	cases := map[string]string{`{}`: `{"limit":15}`, `{"limit":100}`: `{"limit":15}`, `{"limit":5}`: `{"limit":5}`}
+	for args, want := range cases {
+		if got := string(l.fitPageLimit(tool, json.RawMessage(args))); got != want {
+			t.Errorf("fitPageLimit(%s) = %s, want %s", args, got, want)
+		}
+	}
+}
+
+// loadedChat is a scripted chat that also tells the loaded model's context before the first call.
+type loadedChat struct {
+	*scriptedChat
+	context int
+}
+
+func (c loadedChat) LoadedContext(context.Context) int { return c.context }
+
+// A model already loaded with too small a context stops the turn before any model call.
+func TestTurnLoopChecksTheLoadedContextBeforeTheFirstCall(t *testing.T) {
+	f := newLoopFixture(t)
+	f.a.chat = loadedChat{scriptedChat: f.chat, context: 2048}
+
+	turn := f.run(t, request)
+
+	if turn.Stop == nil || turn.Stop.Reason != domain.AssistantStopContext || len(f.chat.requests) != 0 {
+		t.Fatalf("turn = %+v after %d model calls, want context_too_small before any", turn, len(f.chat.requests))
+	}
+}
+
+// Each model reply counts a call and keeps its prompt, context and CPU flag on the turn.
+func TestTurnLoopRecordsTheModelUsage(t *testing.T) {
+	first := calls(toolCall("listTags", `{}`))
+	first.Usage = domain.ChatUsage{PromptTokens: 3000, ContextTokens: 40960, CPU: true}
+	answer := text("タグはありません。")
+	answer.Usage = domain.ChatUsage{PromptTokens: 3200, ContextTokens: 40960}
+	f := newLoopFixture(t, first, answer)
+
+	turn := f.run(t, request)
+
+	want := domain.AssistantTurnUsage{ModelCalls: 2, PromptTokens: 3200, ContextTokens: 40960, CPU: true}
+	if turn.Usage == nil || *turn.Usage != want || len(f.turns.usage) != 2 || f.turns.usage[1] != want {
+		t.Fatalf("usage = %+v, records = %+v; want %+v recorded per call", turn.Usage, f.turns.usage, want)
+	}
+}
+
+// The core tools, sent with every call, keep the first sentence of each description; a loaded tool keeps all of it.
+func TestCoreToolDefinitionsKeepFirstSentences(t *testing.T) {
+	long := "Lists videos. Rules the server enforces."
+	params := json.RawMessage(`{"type":"object","properties":{"q":{"type":"string","description":"Search terms. Quotes form phrases."}}}`)
+	tools := newTurnTools([]domain.AssistantTool{
+		{Name: "listVideos", Kind: domain.AssistantToolRead, Summary: "List", Description: long, Parameters: params},
+		{Name: "listPlaylists", Kind: domain.AssistantToolRead, Summary: "List", Description: long, Parameters: params},
+	})
+	tools.load("listPlaylists")
+
+	got := map[string]domain.ToolDefinition{}
+	for _, d := range tools.definitions() {
+		got[d.Name] = d
+	}
+
+	core, loaded := got["listVideos"], got["listPlaylists"]
+	if core.Description != "List\nLists videos." ||
+		string(core.Parameters) != `{"properties":{"q":{"description":"Search terms.","type":"string"}},"type":"object"}` {
+		t.Errorf("core = %s %s, want first sentences", core.Description, core.Parameters)
+	}
+	if loaded.Description != "List\n"+long || string(loaded.Parameters) != string(params) {
+		t.Errorf("loaded = %s %s, want it whole", loaded.Description, loaded.Parameters)
 	}
 }
 

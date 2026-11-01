@@ -4069,6 +4069,13 @@ export const en = {
         }),
       write: (sentence: string) => `Proposing: ${sentence}`,
       show_in_library: "Filtering the library",
+      video_stats: "Counting videos",
+      usage: (calls: number, prompt: number, context: number) =>
+        selectPlural(calls, {
+          one: `${formatNumber(calls)} model call · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+          other: `${formatNumber(calls)} model calls · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+        }),
+      cpu: "Part of the model runs on the CPU, which is many times slower. Give Ollama a smaller context, or choose a smaller model.",
       open_page: (page: string) => (page === "" ? "Opening a page" : `Opening ${page}`),
       start_review: (kind: string) =>
         kind === "" ? "Starting a review" : `Starting a review of ${kind}`,
@@ -4202,6 +4209,8 @@ export const en = {
         "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
       no_answer:
         "Stopped: the model ended without an answer. Nothing was changed. Ask again, or try another model.",
+      context_too_small:
+        "Stopped: the model’s context is too small for the assistant’s tools. Nothing was changed. Run the model with a larger context in Ollama (OLLAMA_CONTEXT_LENGTH), or choose another model.",
       interrupted:
         "Stopped by a restart before it finished. Nothing was changed. Ask again.",
     },
