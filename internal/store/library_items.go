@@ -148,7 +148,7 @@ func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 // Join the representative location once instead of repeating the same lookup for every selected column.
 func representativeLocationJoin(alias string, audience domain.Audience) string {
 	return ` left join video_locations rl on rl.id = (select l.id from video_locations l where l.video_id = ` +
-		alias + `.video_id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
+		alias + `.video_id and ` + listedLocationCondition("l", audience) + ` order by l.path limit 1)`
 }
 
 const topGroupsSelect = `select g.id from groups g where not exists (select 1 from group_items c where c.child_id = g.id)`
@@ -259,7 +259,9 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 		return domain.LibraryPage{}, err
 	}
 	spec := filters.narrow(libraryListSpec(audience, q, filters.tagIDs))
-	spec.storedCollections = true
+	// Stored group values follow this node's switches, so an explicit folder scope computes its groups.
+	_, explicit := audience.ExcludedFolders()
+	spec.storedCollections = !explicit
 	list := listLibraryPageTx
 	// Guests do not see smart folders.
 	if audience.IsOwner() && q.ListsSmartFolders() {
@@ -278,6 +280,9 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	page.MissingTagIDs = filters.missingTagIDs
 	page.Roots = roots
+	if !explicit {
+		page.EmptyReason = domain.LibraryEmptyReason(len(page.Items), roots)
+	}
 	return page, nil
 }
 

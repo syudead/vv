@@ -26,7 +26,7 @@ func playlistItemVideoExpr(alias string) string {
 
 // Share the group descendant CTE so playlist visibility and playback order match library groups.
 func playlistGroupVideos(alias string) string {
-	return `with ` + groupDescendantsCTE(`select `+alias+`.group_id as id`, domain.AudienceOwner)
+	return `with ` + visibleGroupDescendantsCTE(`select `+alias+`.group_id as id`, domain.AudienceOwner)
 }
 
 // Counts and item reads share visibility; existing smart folders remain visible even when empty.
@@ -656,8 +656,13 @@ func shownPlaylistEntries(ctx context.Context, tx *sql.Tx, id int64) ([]playlist
 	return entries, nil
 }
 
+// ownerVideosByID keeps a switched-off folder's videos, marked FolderOff, so a playlist entry stays.
 func ownerVideosByID(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]domain.Video, error) {
-	return videosByID(ctx, tx, domain.AudienceOwner, ids)
+	videos, err := videosByID(ctx, tx, domain.AudienceOwner, ids)
+	if err != nil {
+		return nil, err
+	}
+	return videos, markFolderOff(ctx, tx, domain.AudienceOwner, videos)
 }
 
 func videosByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64) (map[int64]domain.Video, error) {

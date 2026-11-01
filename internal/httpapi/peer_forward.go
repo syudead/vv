@@ -48,7 +48,7 @@ func (s *server) forward(w http.ResponseWriter, r *http.Request, out *http.Reque
 		s.peerUnreachable(w)
 		return
 	}
-	guest := audienceFrom(r.Context()) != domain.AudienceOwner
+	guest := !audienceFrom(r.Context()).IsOwner()
 	resp, err := s.peerLink.Forward(out, guest, op.media)
 	switch {
 	case errors.Is(err, domain.ErrPeerUnreachable):

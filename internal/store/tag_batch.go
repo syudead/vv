@@ -153,7 +153,7 @@ func tagImpact(ctx context.Context, tx *sql.Tx, action domain.TagImpactAction, i
 		return domain.TagImpact{}, fmt.Errorf("cannot build tag ids: %w", err)
 	}
 	query := `select count(distinct video_id) from (` +
-		taggedVideosSQL(` and tag_id in (select value from json_each(?))`) + `)`
+		taggedVideosSQL(domain.AudienceOwner, ` and tag_id in (select value from json_each(?))`) + `)`
 	var videoCount int
 	if err := tx.QueryRowContext(ctx, query, string(encoded), string(encoded)).Scan(&videoCount); err != nil {
 		return domain.TagImpact{}, fmt.Errorf("cannot count videos with the tags: %w", err)

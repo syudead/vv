@@ -122,7 +122,7 @@ func (s *server) peerBoundary(
 			"The paired VVMDM cannot use this operation.")
 		return
 	}
-	if audience == domain.AudienceGuest && class == accessOwner {
+	if !audience.IsOwner() && class == accessOwner {
 		s.unauthenticated(w)
 		return
 	}
@@ -164,7 +164,7 @@ func peerStateBody(state domain.PeerState, audience domain.Audience) gen.PeerSta
 		reason := gen.PeerStateReason(state.Reason)
 		body.Reason = &reason
 	}
-	if audience != domain.AudienceOwner {
+	if !audience.IsOwner() {
 		return body
 	}
 	node := peerNodeBody(state.Node)

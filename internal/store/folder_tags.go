@@ -24,14 +24,14 @@ func videoTagSourcesCondition(alias, userKey string, tagMatch func(tagIDColumn s
 		`where ` + tagMatch("tn.tag_id") + `)))`
 }
 
-// Return distinct visible representative/tag pairs from both sources; append extra predicates and their arguments twice.
-func taggedVideosSQL(extra string) string {
+// Return distinct listed representative/tag pairs from both sources; append extra predicates and their arguments twice.
+func taggedVideosSQL(audience domain.Audience, extra string) string {
 	return `select vt.tag_id as tag_id, v.id as video_id from videos v
 		join video_tags vt on vt.content_key = ` + userKeyExpr("v") + `
-		where v.content_key <> '' and ` + registeredVideoCondition("v") + ` and ` + shownVideoCondition("v", domain.AudienceOwner) + extra + `
+		where v.content_key <> '' and ` + listedFileVideoCondition("v", audience) + ` and ` + listedShownVideoCondition("v", audience) + extra + `
 		union
 		select tn.tag_id as tag_id, v.id as video_id from video_folder_names vfn
 		join tag_names tn on tn.name = vfn.name
 		join videos v on v.id = vfn.video_id and v.content_key <> ''
-		where ` + registeredVideoCondition("v") + ` and ` + shownVideoCondition("v", domain.AudienceOwner) + extra
+		where ` + listedFileVideoCondition("v", audience) + ` and ` + listedShownVideoCondition("v", audience) + extra
 }

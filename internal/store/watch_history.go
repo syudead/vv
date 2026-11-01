@@ -125,18 +125,19 @@ func watchHistoryStateCondition(filter domain.WatchHistoryFilter) string {
 	}
 }
 
-// Join videos only when filtering; shared bundle progress determines member watch-state classification.
+// Every view joins the visible video to leave out an entry whose video is visible but has no location under the
+// folder scope; an entry without a visible video stays. Shared bundle progress determines member watch-state
+// classification.
 func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery) (string, []string, []any) {
-	from := ` from watch_history h`
+	from := ` from watch_history h left join videos hv on hv.content_key = h.content_key and hv.content_key <> '' and ` +
+		visibleVideoCondition("hv", audience)
+	conditions := []string{`(hv.id is null or ` + listedVideoCondition("hv", audience) + `)`}
 	watch := watchHistoryStateCondition(query.Filter)
 	if watch == "" && query.Search.Empty() {
-		return from, nil, nil
+		return from, conditions, nil
 	}
-	from += ` left join videos hv on hv.content_key = h.content_key and hv.content_key <> '' and ` +
-		visibleVideoCondition("hv", audience) +
-		` left join playback_progress p on p.content_key = ` + userKeyExpr("hv") + ` and hv.id is not null`
+	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("hv") + ` and hv.id is not null`
 
-	var conditions []string
 	var args []any
 	if watch != "" {
 		// Entries without a current video appear only in the unfiltered view.
@@ -152,7 +153,7 @@ func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery
 			return `instr(coalesce(h.title_key, ''), ?) > 0`, []any{text}
 		})
 		conditions = append(conditions, `((hv.id is not null and exists (select 1 from video_locations sl where sl.video_id = hv.id and `+
-			visibleLocationCondition("sl", audience)+` and `+locationExpr+`)) or (hv.id is null and `+snapshotExpr+`))`)
+			listedLocationCondition("sl", audience)+` and `+locationExpr+`)) or (hv.id is null and `+snapshotExpr+`))`)
 		args = append(args, locationArgs...)
 		args = append(args, snapshotArgs...)
 	}

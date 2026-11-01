@@ -32,7 +32,7 @@ func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.Video
 	a := strconv.Itoa(audienceValue(audience))
 	cte += `, matched as (select videos.id from chosen join videos on videos.id = chosen.video_id where 1=1` + where + `),
  entries as (select gi.id, gi.position, gi.child_id,
-  case when gi.content_key is not null then ` + shownVideoForKeyExpr("gi.content_key", audience) + ` end as video_id
+  case when gi.content_key is not null then ` + listedVideoForKeyExpr("gi.content_key", audience) + ` end as video_id
   from group_items gi where gi.group_id = ?),
  items as (
   select e.*, v.added_at, ` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at, ` +

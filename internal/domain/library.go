@@ -129,6 +129,27 @@ type VideoPage struct {
 	MissingTagIDs []int64
 	// ItemCursors holds each item's place in order, for merging with the paired node's list.
 	ItemCursors []ItemCursor
+	// EmptyReason is set only on an empty page whose emptiness has a cause the screens name.
+	EmptyReason EmptyReason
+}
+
+// EmptyReason names why a list has no item.
+type EmptyReason string
+
+// EmptyAllFoldersOff marks a library left empty because every folder this node shows is switched off.
+const EmptyAllFoldersOff EmptyReason = "all_folders_off"
+
+// LibraryEmptyReason answers EmptyAllFoldersOff for an empty page while folders exist and none is on.
+func LibraryEmptyReason(items int, folders []MediaFolder) EmptyReason {
+	if items > 0 || len(folders) == 0 {
+		return ""
+	}
+	for _, folder := range folders {
+		if folder.Enabled {
+			return ""
+		}
+	}
+	return EmptyAllFoldersOff
 }
 
 type ScanState string

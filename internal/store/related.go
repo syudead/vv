@@ -26,7 +26,7 @@ func (s *LibraryStore) RelatedCandidates(ctx context.Context, audience domain.Au
 		from videos`+representativeJoin(audience)+`
 		left join video_fingerprints f on f.content_key = videos.content_key and videos.content_key <> ''
 		where `+visibleVideoCondition("videos", audience)+`
-		  and (videos.id = ?1 or (`+shownVideoCondition("videos", audience)+`
+		  and (videos.id = ?1 or (`+listedVideoCondition("videos", audience)+` and `+listedShownVideoCondition("videos", audience)+`
 		  and not exists (select 1 from videos self
 		       join video_bundle_members sm on sm.content_key = self.content_key and self.content_key <> ''
 		       join video_bundle_members om on om.bundle_id = sm.bundle_id
@@ -207,7 +207,7 @@ func firstGroupOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, id 
 	var groupID sql.NullInt64
 	err := tx.QueryRowContext(ctx, `select min(gi.group_id) from group_items gi
 		where gi.content_key = (select `+userKeyExpr("videos")+` from videos where videos.id = ?1 and videos.content_key <> '')
-		and `+shownVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
+		and `+listedVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
 	if err != nil {
 		return 0, false, fmt.Errorf("cannot read the video's group: %w", err)
 	}

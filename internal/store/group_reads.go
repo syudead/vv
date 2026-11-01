@@ -16,19 +16,38 @@ import (
 
 // Resolve bundle keys to the audience's effective representative; inaccessible keys yield NULL.
 func shownVideoForKeyExpr(key string, audience domain.Audience) string {
+	return shownVideoForKeyWith(key, audience, visibleVideoCondition)
+}
+
+// listedVideoForKeyExpr is shownVideoForKeyExpr under the folder scope, for group lists and counts.
+func listedVideoForKeyExpr(key string, audience domain.Audience) string {
+	return shownVideoForKeyWith(key, audience, listedVideoCondition)
+}
+
+func shownVideoForKeyWith(key string, audience domain.Audience, condition videoCondition) string {
 	bundleID := `(select sb.id from video_bundles sb where sb.user_key = ` + key + `)`
 	return `(case when exists (select 1 from video_bundles sb where sb.user_key = ` + key + `) then ` +
-		effectiveRepresentativeExpr(bundleID, audience) + `
+		representativeWith(bundleID, audience, condition) + `
 		else (select sv.id from videos sv where sv.content_key = ` + key + ` and sv.content_key <> ''
 			and not exists (select 1 from video_bundle_members sm where sm.content_key = sv.content_key)
-			and ` + visibleVideoCondition("sv", audience) + ` order by sv.id limit 1) end)`
+			and ` + condition("sv", audience) + ` order by sv.id limit 1) end)`
 }
 
 // Fixed-width zero-padded positions make byte ordering match depth-first playback ordering.
 const groupSortWidth = 10
 
-// Build one earliest depth-first path per root/descendant pair to avoid exponential expansion of diamond hierarchies.
+// Build one earliest depth-first path per root/descendant pair to avoid exponential expansion of diamond hierarchies;
+// members are the listed videos, under the folder scope.
 func groupDescendantsCTE(roots string, audience domain.Audience) string {
+	return groupDescendantsCTEWith(roots, audience, listedVideoCondition)
+}
+
+// visibleGroupDescendantsCTE keeps a switched-off folder's videos, for reads by id such as a playlist's items.
+func visibleGroupDescendantsCTE(roots string, audience domain.Audience) string {
+	return groupDescendantsCTEWith(roots, audience, visibleVideoCondition)
+}
+
+func groupDescendantsCTEWith(roots string, audience domain.Audience, condition videoCondition) string {
 	width := strconv.Itoa(groupSortWidth)
 	return `groots(id) as (select distinct id from (` + roots + `)),
 	gnodes(id) as (
@@ -55,7 +74,7 @@ func groupDescendantsCTE(roots string, audience domain.Audience) string {
 				where n.group_id = p.group_id)),
 	gdesc(root_id, video_id, sort_key) as materialized (
 		select root_id, video_id, min(sort_key) from (
-			select t.root_id, ` + shownVideoForKeyExpr("gi.content_key", audience) + ` as video_id,
+			select t.root_id, ` + shownVideoForKeyWith("gi.content_key", audience, condition) + ` as video_id,
 				t.sort_path || printf('%0` + width + `d', gi.position) as sort_key
 			from gpath t join group_items gi on gi.group_id = t.target
 			where t.group_id = t.target and gi.content_key is not null)
