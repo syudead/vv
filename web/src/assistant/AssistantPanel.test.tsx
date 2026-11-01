@@ -502,6 +502,22 @@ describe("AssistantPanel", () => {
     ).toBeDefined();
   });
 
+  it("文脈が足りずに止まった turn は context_too_small の理由と必要な文脈長を出す", async () => {
+    const detail = "the model runs with a context of 4096 tokens; it needs a context of at least 8200 tokens";
+    server.turn = () => finished({ status: "stopped", stop: { reason: "context_too_small", detail } });
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "この動画は何？");
+
+    expect(
+      await within(panel()).findByText(
+        "Stopped: the model’s context is too small for the assistant’s tools. Nothing was changed. Run the model with a larger context in Ollama (OLLAMA_CONTEXT_LENGTH), or choose another model.",
+      ),
+    ).toBeDefined();
+    expect(within(panel()).getByText(detail)).toBeDefined();
+  });
+
   it("turn の途中でパネルを閉じて開き直すと、同じ turn にその間の行が足されている", async () => {
     server.turn = () =>
       json(turn({ id: 3, request: "何かして", status: "running" }), 202);

@@ -4202,6 +4202,8 @@ export const en = {
         "The answer named facts the assistant hadn’t checked, so it isn’t shown.",
       no_answer:
         "Stopped: the model ended without an answer. Nothing was changed. Ask again, or try another model.",
+      context_too_small:
+        "Stopped: the model’s context is too small for the assistant’s tools. Nothing was changed. Run the model with a larger context in Ollama (OLLAMA_CONTEXT_LENGTH), or choose another model.",
       interrupted:
         "Stopped by a restart before it finished. Nothing was changed. Ask again.",
     },

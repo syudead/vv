@@ -38,6 +38,8 @@ const (
 	AssistantStopUngrounded AssistantStopReason = "ungrounded"
 	// AssistantStopNoAnswer: the model replied with neither text nor a tool call, twice; the model itself answered.
 	AssistantStopNoAnswer AssistantStopReason = "no_answer"
+	// AssistantStopContext: the instructions and tools leave the model's context too little room for tool results.
+	AssistantStopContext AssistantStopReason = "context_too_small"
 )
 
 // ErrAssistantBusy refuses a turn while another one runs; one local model serves one request at a time.

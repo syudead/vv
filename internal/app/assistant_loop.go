@@ -223,6 +223,11 @@ func (l *turnLoop) run(ctx context.Context) error {
 		}
 		tools := append(l.tools.definitions(), l.imageDefinitions()...)
 		l.fitContext(tools)
+		if detail := l.contextShortfall(tools); detail != "" {
+			l.stop(domain.AssistantStopContext)
+			l.turn.Stop.Detail = detail
+			return nil
+		}
 		reply, err := l.a.chat.Chat(ctx, domain.ChatRequest{Messages: l.messages, Tools: tools})
 		if err != nil {
 			l.stop(l.chatStop(ctx, err))

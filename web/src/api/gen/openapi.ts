@@ -4416,11 +4416,11 @@ export interface components {
             kind: components["schemas"]["AssistantLabelKind"];
             candidates: components["schemas"]["AssistantCandidate"][];
         };
-        /** @description Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal. */
+        /** @description Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; context_too_small: the instructions, the request and the tools leave the model's context too little room for tool results; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal. */
         AssistantTurnStop: {
             /** @enum {string} */
-            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "ungrounded" | "cancelled";
-            /** @description For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis. */
+            reason: "step_limit" | "timeout" | "connection" | "model" | "no_answer" | "context_too_small" | "ungrounded" | "cancelled";
+            /** @description For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for context_too_small, the context, the tokens the fixed part takes and the context it needs; for ungrounded, the unchecked numbers and names. English, for diagnosis. */
             detail?: string;
             excluded?: components["schemas"]["AssistantExcludedOperation"];
         };

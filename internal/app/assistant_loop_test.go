@@ -287,6 +287,24 @@ func TestTurnLoopStopsWhenAReplyRepeatsTheLastCalls(t *testing.T) {
 	}
 }
 
+// A context whose fixed part leaves too little room for results stops the turn before the next model call: every
+// result would be cut away and the model would call the same reads without seeing them.
+func TestTurnLoopStopsWhenTheContextLeavesNoRoomForResults(t *testing.T) {
+	small := calls(toolCall("listTags", `{}`))
+	small.Usage = domain.ChatUsage{ContextTokens: 2048}
+	f := newLoopFixture(t, small)
+
+	turn := f.run(t, request)
+
+	if turn.Status != domain.AssistantTurnStopped || turn.Stop.Reason != domain.AssistantStopContext ||
+		!strings.Contains(turn.Stop.Detail, "a context of 2048 tokens") {
+		t.Fatalf("turn = %+v, want context_too_small naming the context", turn)
+	}
+	if len(f.chat.requests) != 1 {
+		t.Fatalf("model calls = %d, want none after the context was known", len(f.chat.requests))
+	}
+}
+
 func TestStopTurnCancelsTheRunningTurn(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("listTags", `{}`), toolCall("listPeople", `{}`)))
 	f.runner.during = func() {

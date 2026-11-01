@@ -773,13 +773,14 @@ func (e AssistantTurnStatus) Valid() bool {
 
 // Defines values for AssistantTurnStopReason.
 const (
-	AssistantTurnStopReasonCancelled  AssistantTurnStopReason = "cancelled"
-	AssistantTurnStopReasonConnection AssistantTurnStopReason = "connection"
-	AssistantTurnStopReasonModel      AssistantTurnStopReason = "model"
-	AssistantTurnStopReasonNoAnswer   AssistantTurnStopReason = "no_answer"
-	AssistantTurnStopReasonStepLimit  AssistantTurnStopReason = "step_limit"
-	AssistantTurnStopReasonTimeout    AssistantTurnStopReason = "timeout"
-	AssistantTurnStopReasonUngrounded AssistantTurnStopReason = "ungrounded"
+	AssistantTurnStopReasonCancelled       AssistantTurnStopReason = "cancelled"
+	AssistantTurnStopReasonConnection      AssistantTurnStopReason = "connection"
+	AssistantTurnStopReasonContextTooSmall AssistantTurnStopReason = "context_too_small"
+	AssistantTurnStopReasonModel           AssistantTurnStopReason = "model"
+	AssistantTurnStopReasonNoAnswer        AssistantTurnStopReason = "no_answer"
+	AssistantTurnStopReasonStepLimit       AssistantTurnStopReason = "step_limit"
+	AssistantTurnStopReasonTimeout         AssistantTurnStopReason = "timeout"
+	AssistantTurnStopReasonUngrounded      AssistantTurnStopReason = "ungrounded"
 )
 
 // Valid indicates whether the value is a known member of the AssistantTurnStopReason enum.
@@ -788,6 +789,8 @@ func (e AssistantTurnStopReason) Valid() bool {
 	case AssistantTurnStopReasonCancelled:
 		return true
 	case AssistantTurnStopReasonConnection:
+		return true
+	case AssistantTurnStopReasonContextTooSmall:
 		return true
 	case AssistantTurnStopReasonModel:
 		return true
@@ -4442,7 +4445,7 @@ type AssistantTurn struct {
 	// Status interrupted was running when the server stopped.
 	Status AssistantTurnStatus `json:"status"`
 
-	// Stop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
+	// Stop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; context_too_small: the instructions, the request and the tools leave the model's context too little room for tool results; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
 	Stop *AssistantTurnStop `json:"stop,omitempty"`
 
 	// Unchecked Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images.
@@ -4497,9 +4500,9 @@ type AssistantTurnRequest struct {
 	Text string `json:"text"`
 }
 
-// AssistantTurnStop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
+// AssistantTurnStop Why a stopped turn ended. step_limit: the model repeated its previous tool calls exactly; timeout: the model's own request timed out; cancelled: the owner stopped it; connection: Ollama could not be reached; model: the model is missing or failed, or, with excluded, it asked for an excluded operation and did nothing else; no_answer: the model replied with neither text nor a tool call, twice; context_too_small: the instructions, the request and the tools leave the model's context too little room for tool results; ungrounded: kept for turns stored before answers with unchecked items were shown. Only ungrounded keeps a built proposal.
 type AssistantTurnStop struct {
-	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for ungrounded, the unchecked numbers and names. English, for diagnosis.
+	// Detail For model, the provider's error; for no_answer, how the provider ended the last empty reply (done_reason, token counts, reasoning length, context); for context_too_small, the context, the tokens the fixed part takes and the context it needs; for ungrounded, the unchecked numbers and names. English, for diagnosis.
 	Detail *string `json:"detail,omitempty"`
 
 	// Excluded An operation the assistant leaves to its page, which the model asked for.

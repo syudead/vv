@@ -21,8 +21,29 @@ const (
 	imageTokens = 1500
 )
 
-// droppedResult replaces an old tool result that no longer fits; the grounding evidence keeps the original.
-const droppedResult = `{"note":"this earlier result was dropped to fit the context; call the tool again if you need it"}`
+// droppedNote marks an old tool result that no longer fits. It asks for nothing: a note that asked the model to call
+// again made a model whose results never fit call the same reads without end.
+const droppedNote = "this earlier result was removed to fit the context"
+
+// droppedScalarMax bounds a top-level value droppedResult keeps.
+const droppedScalarMax = 100
+
+// droppedResult replaces an old tool result that no longer fits, keeping its short top-level values such as total and
+// error so the model keeps the counts it read; the grounding evidence keeps the original.
+func droppedResult(content string) string {
+	out := map[string]json.RawMessage{}
+	var object map[string]json.RawMessage
+	if json.Unmarshal([]byte(content), &object) == nil {
+		for key, value := range object {
+			if len(value) > 0 && value[0] != '{' && value[0] != '[' && len(value) <= droppedScalarMax {
+				out[key] = value
+			}
+		}
+	}
+	out["note"], _ = json.Marshal(droppedNote) // A string always encodes.
+	encoded, _ := json.Marshal(out)            // Raw JSON values from a decoded object always encode.
+	return string(encoded)
+}
 
 // promptBudget is the tokens the prompt may take, or 0 when the provider has not reported the context.
 func (l *turnLoop) promptBudget() int {
@@ -49,11 +70,15 @@ func (l *turnLoop) fitContext(tools []domain.ToolDefinition) {
 			return
 		}
 		m := &l.messages[i]
-		if m.Role != domain.ChatRoleTool || len(m.Content) <= len(droppedResult) {
+		if m.Role != domain.ChatRoleTool {
+			continue
+		}
+		dropped := droppedResult(m.Content)
+		if len(dropped) >= len(m.Content) {
 			continue
 		}
 		used -= messageTokens(*m)
-		m.Content = droppedResult
+		m.Content = dropped
 		used += messageTokens(*m)
 	}
 	used, round = l.dropRounds(used, budget, round)
@@ -61,7 +86,7 @@ func (l *turnLoop) fitContext(tools []domain.ToolDefinition) {
 }
 
 // droppedRounds stands for the earlier rounds dropRounds removed.
-const droppedRounds = "Earlier tool calls and their results were dropped to fit the context; call a tool again if you need it."
+const droppedRounds = "Earlier tool calls and their results were removed to fit the context."
 
 // dropRounds removes whole earlier rounds after the request, oldest first, until the prompt fits, and puts one
 // note in their place; the system message, the request and the latest round stay. It answers the tokens used and
@@ -108,9 +133,31 @@ func (l *turnLoop) cutLatest(round, over int) {
 			keep--
 		}
 		over -= (len(m.Content) - keep) / bytesPerToken
-		m.Content = fmt.Sprintf("%s…[cut to fit the context: %d bytes in all; narrow the call to read the rest]",
+		m.Content = fmt.Sprintf("%s…[cut to fit the context: %d bytes in all; the rest is not shown]",
 			m.Content[:keep], len(m.Content))
 	}
+}
+
+// minResultTokens is the least room the prompt must leave for tool results. Below it every result is cut away, and a
+// model that never sees its results calls the same reads without end.
+const minResultTokens = 1024
+
+// contextShortfall says, when the instructions, the request and the tools leave the prompt less than minResultTokens,
+// why the turn cannot run in the model's context; it answers "" when they fit or the context is not known yet.
+func (l *turnLoop) contextShortfall(tools []domain.ToolDefinition) string {
+	budget := l.promptBudget()
+	if budget <= 0 || len(l.messages) < 2 {
+		return ""
+	}
+	encoded, _ := json.Marshal(tools) // Tool definitions are plain data and always encode.
+	fixed := len(encoded)/schemaBytesPerToken + messageTokens(l.messages[0]) + messageTokens(l.messages[1])
+	if fixed+minResultTokens <= budget {
+		return ""
+	}
+	need := (fixed + minResultTokens) * 4 / 3
+	return fmt.Sprintf("the model runs with a context of %d tokens; the instructions, the request and the tools take "+
+		"about %d of the %d tokens the prompt may use, which leaves too little room for tool results; it needs a "+
+		"context of at least %d tokens", l.usage.ContextTokens, fixed, budget, need)
 }
 
 func messageTokens(m domain.ChatMessage) int {
