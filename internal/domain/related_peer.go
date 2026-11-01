@@ -168,7 +168,7 @@ func MergeRelated(local, peer RelatedSidePage, at MergedRelatedCursor, limit int
 			i++
 			continue
 		}
-		ids = append(ids, ToRemoteID(peer.Items[j].VideoID))
+		ids = append(ids, RemoteID(LinkSlot, peer.Items[j].VideoID))
 		j++
 	}
 	next := MergedRelatedCursor{Local: at.Local.advance(local, i), Peer: at.Peer.advance(peer, j)}
@@ -179,7 +179,7 @@ func MergeRelated(local, peer RelatedSidePage, at MergedRelatedCursor, limit int
 }
 
 func asRemote(item RankedRelated) RankedRelated {
-	item.VideoID = ToRemoteID(item.VideoID)
+	item.VideoID = RemoteID(LinkSlot, item.VideoID)
 	return item
 }
 

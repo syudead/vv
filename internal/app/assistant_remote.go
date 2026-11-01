@@ -10,8 +10,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// videosByIDs reads the videos that ids name: this node's from the library, and the peer's, which carry
-// domain.PeerIDOffset, through the runner, which forwards the read as the screens do. A missing local id is left
+// videosByIDs reads the videos that ids name: this node's from the library, and the peer's, whose ids carry
+// the link's slot, through the runner, which forwards the read as the screens do. A missing local id is left
 // out; a peer's video the runner cannot read is the failure the model receives.
 func (a *Assistant) videosByIDs(ctx context.Context, runner ActionRunner, ids []int64) ([]domain.Video, string, error) {
 	local := slices.DeleteFunc(slices.Clone(ids), domain.IsRemoteID)

@@ -132,7 +132,7 @@ func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditK
 		return
 	}
 	for i, id := range answer.NotFoundIds {
-		answer.NotFoundIds[i] = domain.ToRemoteID(id)
+		answer.NotFoundIds[i] = domain.RemoteID(domain.LinkSlot, id)
 	}
 	if answer.Person != nil {
 		rewriteRemotePerson(answer.Person, join)

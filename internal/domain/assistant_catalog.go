@@ -250,7 +250,7 @@ var assistantCatalog = []AssistantAction{
 	schemaRow("retryActivity", canUndo),
 }
 
-// assistantRemoteVideoRows also act on the peer's videos, which carry PeerIDOffset, wherever the screens edit them:
+// assistantRemoteVideoRows also act on the peer's videos, whose ids carry a slot, wherever the screens edit them:
 // the bulk edits split their selection between the nodes, and the single-video rows call the operations
 // remoteBoundary forwards or answers for a remote video. Every other video row refuses a remote video.
 var assistantRemoteVideoRows = map[string]bool{

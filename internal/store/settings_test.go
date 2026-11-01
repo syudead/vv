@@ -44,7 +44,8 @@ func TestTranscodeEncoderChoiceRoundTrip(t *testing.T) {
 	}
 
 	var rows int
-	if err := db.sql.QueryRowContext(ctx, `select count(*) from settings`).Scan(&rows); err != nil {
+	if err := db.sql.QueryRowContext(ctx, `select count(*) from settings where key = ?`,
+		transcodeVideoEncoderKey).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	if rows != 1 {

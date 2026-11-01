@@ -70,7 +70,7 @@ func TestMergedTagListJoinsByNameAndForwardsARemoteOnlyTag(t *testing.T) {
 	for _, tag := range list.Items {
 		got = append(got, entry{tag.Id, tag.Name, tag.VideoCount})
 	}
-	remoteDog := domain.ToRemoteID(dog.ID)
+	remoteDog := domain.RemoteID(1, dog.ID)
 	want := []entry{{fb.tagID, guestSecretTag, 4}, {cat.ID, "猫", 3}, {remoteDog, "犬", 1}}
 	if !slices.Equal(got, want) || list.Total != 3 || list.TotalAll != 3 {
 		t.Errorf("tags = %v, total %d/%d, want %v and 3/3", got, list.Total, list.TotalAll, want)
@@ -85,7 +85,7 @@ func TestMergedTagListJoinsByNameAndForwardsARemoteOnlyTag(t *testing.T) {
 	for _, kind := range kinds.Items {
 		kindIDs = append(kindIDs, kind.Id)
 	}
-	if want := []int64{localKind.ID, domain.ToRemoteID(remoteKind.ID)}; len(kindIDs) < 2 ||
+	if want := []int64{localKind.ID, domain.RemoteID(1, remoteKind.ID)}; len(kindIDs) < 2 ||
 		!slices.Equal(kindIDs[len(kindIDs)-2:], want) || slices.ContainsFunc(kindIDs[:len(kindIDs)-2], domain.IsRemoteID) ||
 		kinds.Items[len(kindIDs)-2].TagCount != 2 {
 		t.Errorf("kinds = %+v, want the seeded kinds, then ids %v with 動物 counting both nodes' tags", kinds.Items, want)
@@ -136,7 +136,7 @@ func TestMergedPeopleListAndARemotePersonsPageAndImage(t *testing.T) {
 	studio := person(fa, domain.CreditOrganization, "スタジオ")
 
 	people := decode[gen.PersonList](t, b.owner(http.MethodGet, "/api/people", ""))
-	remoteYamada := domain.ToRemoteID(yamada.ID)
+	remoteYamada := domain.RemoteID(1, yamada.ID)
 	var ids []int64
 	for _, item := range people.Items {
 		ids = append(ids, item.Id)
@@ -159,7 +159,7 @@ func TestMergedPeopleListAndARemotePersonsPageAndImage(t *testing.T) {
 		t.Errorf("forwarded image: status = %d, headers = %v, %d bytes", got.Code, got.Header(), got.Body.Len())
 	}
 
-	remoteStudio := domain.ToRemoteID(studio.ID)
+	remoteStudio := domain.RemoteID(1, studio.ID)
 	organizations := decode[gen.OrganizationList](t, b.owner(http.MethodGet, "/api/organizations?q=すたじお", ""))
 	if len(organizations.Items) != 1 || organizations.Items[0].Id != remoteStudio {
 		t.Errorf("organizations = %+v, want スタジオ as %d", organizations.Items, remoteStudio)
@@ -189,7 +189,7 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 	if peerLabel == localLabel {
 		t.Fatalf("レーベルの ID が両方の台で %d; 書き換えを確かめられない", peerLabel)
 	}
-	path := "/api/organizations/" + strconv.FormatInt(domain.ToRemoteID(studio), 10)
+	path := "/api/organizations/" + strconv.FormatInt(domain.RemoteID(1, studio), 10)
 	parentOnA := func() int64 {
 		credit, err := fa.env.db.Credits().Get(ctx, domain.CreditOrganization, studio)
 		if err != nil {
@@ -206,7 +206,7 @@ func TestForwardedOrganizationEditSendsTheParentInThePeersIDs(t *testing.T) {
 		parentID int64
 		want     int64
 	}{
-		{"相手だけの親", domain.ToRemoteID(series), series},
+		{"相手だけの親", domain.RemoteID(1, series), series},
 		{"同じ名前の手元の親", localLabel, peerLabel},
 	} {
 		rec := b.owner(http.MethodPatch, path, fmt.Sprintf(`{"parentId":%d}`, tc.parentID))

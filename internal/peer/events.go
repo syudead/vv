@@ -136,8 +136,8 @@ func forwardedEvent(name string, data []byte) (domain.PeerChanged, bool) {
 func remoteIDs(ids []int64) []int64 {
 	var remote []int64
 	for _, id := range ids {
-		if id < domain.PeerIDOffset {
-			remote = append(remote, domain.ToRemoteID(id))
+		if !domain.IsRemoteID(id) {
+			remote = append(remote, domain.RemoteID(domain.LinkSlot, id))
 		}
 	}
 	return remote
