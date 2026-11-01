@@ -159,7 +159,10 @@ async function scriptedReply(body: ChatBody): Promise<unknown> {
   };
 }
 
-/** The chat API, and /api/show, which lists tools for every model but the text-only one. */
+/**
+ * The chat API, /api/show, which lists tools for every model but the text-only one, and /api/ps, which
+ * reports the tool model loaded on the GPU with a context large enough for the assistant's tools.
+ */
 async function startStubOllama(): Promise<Server> {
   const server = createServer((req, res) => {
     void (async () => {
@@ -171,6 +174,20 @@ async function startStubOllama(): Promise<Server> {
         const { model } = JSON.parse(await readBody(req)) as { model: string };
         send(200, {
           capabilities: model === textModel ? ["completion"] : ["completion", "tools"],
+        });
+        return;
+      }
+      if (req.method === "GET" && req.url === "/api/ps") {
+        send(200, {
+          models: [
+            {
+              name: toolModel,
+              model: toolModel,
+              context_length: 131_072,
+              size: 1,
+              size_vram: 1,
+            },
+          ],
         });
         return;
       }

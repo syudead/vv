@@ -502,7 +502,7 @@ the loop does with a given reply rather than what a model replies.
 | Level | Model | What it shows |
 | --- | --- | --- |
 | Application tests in `internal/app` | A scripted fake `app.ToolChat` that lists the replies (tool calls, then text) and checks the messages and tools it receives | The loop's limits, grounding, write steps and stop reasons |
-| Browser e2e ([`assistant.e2e.ts`](../../web/e2e/assistant.e2e.ts)) | A stub Ollama that answers `/api/show` with `tools` and, for each fixed request, a scripted sequence of tool calls and a final text | The turn job, progress, the step card, Execute and the activity entry through the real server |
+| Browser e2e ([`assistant.e2e.ts`](../../web/e2e/assistant.e2e.ts)) | A stub Ollama that answers `/api/show` with `tools`, `/api/ps` with the tool model loaded at a context large enough for the tools, and, for each fixed request, a scripted sequence of tool calls and a final text | The turn job, progress, the step card, Execute and the activity entry through the real server |
 | By hand ([running-vv.md](../how-to/running-vv.md#assistant)) | A tool-calling model on Ollama or through `scripts/clefrelay` | That a real model combines the tools for the owner's requests |
 
 | Rejected | Why |
