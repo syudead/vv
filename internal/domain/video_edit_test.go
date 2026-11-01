@@ -70,3 +70,44 @@ func TestVideoEditApplyToWorkInfoSetsAndClearsDates(t *testing.T) {
 		t.Errorf("got %+v, want dates %+v and the code kept", got, want)
 	}
 }
+
+func TestValidatePersonMergesNamesEachIDOnce(t *testing.T) {
+	cases := []struct {
+		name   string
+		merges []PersonMerge
+		field  string
+	}{
+		{"valid", []PersonMerge{{Into: 1, SourceIDs: []int64{2, 3}}, {Into: 4, SourceIDs: []int64{5}}}, ""},
+		{"no sources", []PersonMerge{{Into: 1}}, "merges[0].sourceIds"},
+		{"a source twice", []PersonMerge{{Into: 1, SourceIDs: []int64{2}}, {Into: 4, SourceIDs: []int64{2}}}, "merges[1].sourceIds[0]"},
+		{"a source that is an into", []PersonMerge{{Into: 1, SourceIDs: []int64{4}}, {Into: 4, SourceIDs: []int64{5}}}, "merges[0].sourceIds[0]"},
+		{"an into twice", []PersonMerge{{Into: 1, SourceIDs: []int64{2}}, {Into: 1, SourceIDs: []int64{3}}}, "merges[1].into"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidatePersonMerges(tc.merges)
+			var invalid *InvalidWorkInfoError
+			if tc.field == "" {
+				if err != nil {
+					t.Errorf("err = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.As(err, &invalid) || invalid.Field != tc.field {
+				t.Errorf("err = %v, want invalid at %s", err, tc.field)
+			}
+		})
+	}
+}
+
+func TestProvisionalPerformersGroupsEachVideosPerformers(t *testing.T) {
+	got := ProvisionalPerformers([][]int64{{1}, {1, 2}, {2, 3}})
+	want := []ProvisionalMatch{
+		{PersonID: 1, Alone: true, CoPerformers: []int64{2}, SimilarTo: []int64{}},
+		{PersonID: 2, CoPerformers: []int64{1, 3}, SimilarTo: []int64{}},
+		{PersonID: 3, CoPerformers: []int64{2}, SimilarTo: []int64{}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("matches = %+v, want %+v", got, want)
+	}
+}

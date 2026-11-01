@@ -1230,6 +1230,45 @@ export const en = {
       apply: (count: number) => `Apply to ${videos(count)}`,
       applying: "Applying…",
       applied: (count: number) => `Updated ${videos(count)}`,
+      unnamedPerformers: "Unnamed performers",
+      mergeHint:
+        "Press a face to merge that person into a performer you add. A merged person becomes that performer in every video, including videos outside the selection.",
+      keepApart: "Keep apart",
+      mergeTileLabel: (label: string, count: number, total: number, target?: string) =>
+        target === undefined
+          ? `${label}, on ${formatNumber(count)} of ${videos(total)}, kept apart`
+          : `${label}, on ${formatNumber(count)} of ${videos(total)}, will be merged into ${target}`,
+      changeMerge: (label: string, target: string, count: number) =>
+        `Performers: merge ${label} into ${target}, on ${videos(count)} here`,
+      appliedWithMerges: (
+        count: number,
+        merged: number,
+        skipped: number,
+        notUndoable: number,
+      ) =>
+        [
+          merged === 0
+            ? `Updated ${videos(count)}.`
+            : selectPlural(merged, {
+                one: `Updated ${videos(count)} and merged 1 unnamed person.`,
+                other: `Updated ${videos(count)} and merged ${formatNumber(merged)} unnamed people.`,
+              }),
+          skipped === 0
+            ? ""
+            : selectPlural(skipped, {
+                one: "1 unnamed person was skipped because it was merged, named or deleted meanwhile.",
+                other: `${formatNumber(skipped)} unnamed people were skipped because they were merged, named or deleted meanwhile.`,
+              }),
+          notUndoable === 0
+            ? ""
+            : selectPlural(notUndoable, {
+                one: "1 merge can't be undone because the person had an external ID.",
+                other: `${formatNumber(notUndoable)} merges can't be undone because the people had external IDs.`,
+              }),
+        ]
+          .filter((part) => part !== "")
+          .join(" "),
+      undoMerges: "Undo merges",
       failed: (reason: string) => `Couldn't apply the changes: ${reason}`,
       discardTitle: "Discard these changes?",
       discardText: "The changes in the editor aren't applied yet.",

@@ -6764,6 +6764,36 @@ type ProgressUpdate struct {
 	PositionMs int64   `json:"positionMs"`
 }
 
+// ProvisionalMatch defines model for ProvisionalMatch.
+type ProvisionalMatch struct {
+	// Alone The person is the only provisional performer of at least one resolved video.
+	Alone bool `json:"alone"`
+
+	// CoPerformers Other provisional performers sharing a resolved video with the person, in ID order.
+	CoPerformers []int64 `json:"coPerformers"`
+	PersonId     int64   `json:"personId"`
+
+	// SimilarTo personIds whose faces reach the merge threshold, most similar first.
+	SimilarTo []int64 `json:"similarTo"`
+}
+
+// ProvisionalMatchRequest defines model for ProvisionalMatchRequest.
+type ProvisionalMatchRequest struct {
+	// PersonIds The people being added, whose faces similarTo compares.
+	PersonIds []int64 `json:"personIds"`
+
+	// SmartFolderIds Smart-folder IDs resolved to their current member videos, as in VideoEditRequest.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to read. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// ProvisionalMatches defines model for ProvisionalMatches.
+type ProvisionalMatches struct {
+	Items []ProvisionalMatch `json:"items"`
+}
+
 // RejectedTagNameList defines model for RejectedTagNameList.
 type RejectedTagNameList struct {
 	// Items Rejected names in natural-name order.
@@ -8151,6 +8181,26 @@ type VideoEditDateCount struct {
 	Kind WorkDateKind `json:"kind"`
 }
 
+// VideoEditMerge defines model for VideoEditMerge.
+type VideoEditMerge struct {
+	// Into The person the sources are merged into.
+	Into int64 `json:"into"`
+
+	// SourceIds Provisional people to merge into into.
+	SourceIds []int64 `json:"sourceIds"`
+}
+
+// VideoEditMerged defines model for VideoEditMerged.
+type VideoEditMerged struct {
+	Into int64 `json:"into"`
+
+	// PersonId The merged provisional person, which no longer exists.
+	PersonId int64 `json:"personId"`
+
+	// UndoActivityId The face_merge entry undoActivity takes back; absent when the person held an external ID, which the undo cannot restore.
+	UndoActivityId *int64 `json:"undoActivityId,omitempty"`
+}
+
 // VideoEditOrganizationCount defines model for VideoEditOrganizationCount.
 type VideoEditOrganizationCount struct {
 	Count int `json:"count"`
@@ -8184,6 +8234,9 @@ type VideoEditRequest struct {
 	// Dates At most one entry per kind.
 	Dates *[]VideoDateEdit `json:"dates,omitempty"`
 
+	// Merges Provisional people to merge into a person, at most one entry per into person; a source listed twice, or equal to an into, returns 400 work_info_duplicate at its field.
+	Merges *[]VideoEditMerge `json:"merges,omitempty"`
+
 	// Public True makes the videos public, false private; omit to keep each video's visibility.
 	Public *bool `json:"public,omitempty"`
 
@@ -8200,8 +8253,14 @@ type VideoEditResponse struct {
 	// Applied Number of resolved videos currently in the library that any part changed.
 	Applied int `json:"applied"`
 
+	// Merged The merges applied, in request order; absent without merges.
+	Merged *[]VideoEditMerged `json:"merged,omitempty"`
+
 	// Remote The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails.
 	Remote *RemoteSelectionResult `json:"remote,omitempty"`
+
+	// SkippedPersonIds Merge sources that no longer existed or had been named, in request order; absent when none.
+	SkippedPersonIds *[]int64 `json:"skippedPersonIds,omitempty"`
 
 	// Tags The tags of tags.add as resolved, in request order without repeats.
 	Tags []TagRef `json:"tags"`
@@ -9994,6 +10053,9 @@ type SummarizeVideoCodeEditsJSONRequestBody = VideoTagsSummaryRequest
 // ApplyVideoEditsJSONRequestBody defines body for ApplyVideoEdits for application/json ContentType.
 type ApplyVideoEditsJSONRequestBody = VideoEditRequest
 
+// MatchProvisionalPeopleJSONRequestBody defines body for MatchProvisionalPeople for application/json ContentType.
+type MatchProvisionalPeopleJSONRequestBody = ProvisionalMatchRequest
+
 // SummarizeVideoEditsJSONRequestBody defines body for SummarizeVideoEdits for application/json ContentType.
 type SummarizeVideoEditsJSONRequestBody = VideoTagsSummaryRequest
 
@@ -10617,6 +10679,9 @@ type ServerInterface interface {
 	// ApplyVideoEdits Apply one bulk edit to selected videos
 	// (POST /api/video-edits)
 	ApplyVideoEdits(w http.ResponseWriter, r *http.Request)
+	// MatchProvisionalPeople Tell which provisional performers of selected videos are which added people
+	// (POST /api/video-edits/provisional-matches)
+	MatchProvisionalPeople(w http.ResponseWriter, r *http.Request)
 	// SummarizeVideoEdits Summarize the editable values of selected videos
 	// (POST /api/video-edits/summary)
 	SummarizeVideoEdits(w http.ResponseWriter, r *http.Request)
@@ -16075,6 +16140,20 @@ func (siw *ServerInterfaceWrapper) ApplyVideoEdits(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// MatchProvisionalPeople operation middleware
+func (siw *ServerInterfaceWrapper) MatchProvisionalPeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MatchProvisionalPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SummarizeVideoEdits operation middleware
 func (siw *ServerInterfaceWrapper) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 
@@ -18543,6 +18622,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits/summary", wrapper.SummarizeVideoEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits", wrapper.ApplyVideoEdits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits/provisional-matches", wrapper.MatchProvisionalPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-code-edits/summary", wrapper.SummarizeVideoCodeEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-code-edits", wrapper.ApplyVideoCodeEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/collections/delete", wrapper.DeleteCollections)

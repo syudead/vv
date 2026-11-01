@@ -11,6 +11,8 @@ export type VideoEditRequest = components["schemas"]["VideoEditRequest"];
 export type VideoEditResponse = components["schemas"]["VideoEditResponse"];
 export type VideoCreditEdit = components["schemas"]["VideoCreditEdit"];
 export type VideoDateEdit = components["schemas"]["VideoDateEdit"];
+export type VideoEditMerge = components["schemas"]["VideoEditMerge"];
+export type ProvisionalMatch = components["schemas"]["ProvisionalMatch"];
 
 /** The selection a bulk edit reads and writes; the server adds each smart folder's current members. */
 export interface VideoEditTargets {
@@ -36,6 +38,27 @@ export function summarizeVideoEdits(
     body: JSON.stringify(editTargetFields(targets)),
     signal,
   });
+}
+
+/** How the selection's unnamed performers relate to the people being added; reads this VVMDM's videos only. */
+export async function matchProvisionalPeople(
+  targets: VideoEditTargets,
+  personIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<ProvisionalMatch[]> {
+  const result = await request<components["schemas"]["ProvisionalMatches"]>(
+    "/api/video-edits/provisional-matches",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...editTargetFields(targets),
+        personIds: Array.from(personIds),
+      }),
+      signal,
+    },
+  );
+  return result.items;
 }
 
 export type VideoEditChanges = Omit<VideoEditRequest, "videoIds" | "smartFolderIds">;

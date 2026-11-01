@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -27,7 +28,7 @@ func (s *CreditStore) SimilarPeople(ctx context.Context, personID int64, appeara
 	if err := requirePerson(ctx, tx, personID); err != nil {
 		return nil, err
 	}
-	centroids, err := centroidsByPerson(ctx, tx)
+	centroids, err := centroidsByPerson(ctx, tx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -58,10 +59,16 @@ func (s *CreditStore) SimilarPeople(ctx context.Context, personID int64, appeara
 	return out, nil
 }
 
-// centroidsByPerson reads every centroid of an appearance not dropped, by person and appearance.
-func centroidsByPerson(ctx context.Context, tx *sql.Tx) (map[int64]map[int64][]float32, error) {
+// centroidsByPerson reads every centroid of an appearance not dropped, by person and appearance, of the listed people
+// or, with nil, of everyone.
+func centroidsByPerson(ctx context.Context, tx *sql.Tx, personIDs []int64) (map[int64]map[int64][]float32, error) {
+	only, err := json.Marshal(personIDs)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build person ids: %w", err)
+	}
 	rows, err := tx.QueryContext(ctx, `select id, person_id, centroid from face_appearances
-		 where dropped = 0 and person_id is not null and centroid is not null`)
+		 where dropped = 0 and person_id is not null and centroid is not null
+		   and (?1 = 'null' or person_id in (select value from json_each(?1)))`, string(only))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the face centroids: %w", err)
 	}

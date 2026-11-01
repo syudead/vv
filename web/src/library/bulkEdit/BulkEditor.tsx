@@ -1,9 +1,14 @@
 import { FolderSearch, Layers, Plus } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
+import { undoActivity } from "../../api/activity";
 import { createCredit } from "../../api/credits";
 import { currentTags, revalidateTags, subscribeTags, type Tag } from "../../api/tags";
-import { applyVideoEdits, type VideoEditSummary } from "../../api/videoEdits";
+import {
+  applyVideoEdits,
+  type VideoEditResponse,
+  type VideoEditSummary,
+} from "../../api/videoEdits";
 import {
   type WorkDateKind,
   workOrganizationRoles,
@@ -48,7 +53,21 @@ import {
   tagKey,
   unpickValue,
 } from "./draft";
+import MergeField from "./MergeField";
+import {
+  buildMerges,
+  cycleMerge,
+  effectiveMerges,
+  type MergeCandidate,
+  mergeCandidates,
+  type MergeTarget,
+  mergeTargets,
+  performerField,
+  suggestMerges,
+  targetIds,
+} from "./merges";
 import { useEditSummary } from "./useEditSummary";
+import { useProvisionalMatches } from "./useProvisionalMatches";
 import ValueField from "./ValueField";
 import VisibilityField from "./VisibilityField";
 
@@ -134,8 +153,34 @@ export default function BulkEditor({
       summary === undefined ? new Map<FieldId, PresentValue[]>() : presentMap(summary),
     [summary],
   );
-  const lines = summary === undefined ? [] : changeLines(draft, summary, present);
-  const ready = state.kind === "ready" && included.length > 0;
+  const targetsToMerge = summary === undefined ? [] : mergeTargets(draft, summary);
+  const candidates = summary === undefined ? [] : mergeCandidates(draft, summary);
+  const matches = useProvisionalMatches(
+    editTargets,
+    includedKey,
+    targetIds(targetsToMerge),
+    targetsToMerge.length > 0 && candidates.length > 0,
+  );
+  const merges =
+    matches === undefined
+      ? new Map<number, string>()
+      : effectiveMerges(
+          draft,
+          candidates,
+          suggestMerges(candidates, matches, targetsToMerge),
+          targetsToMerge,
+        );
+  const lines =
+    summary === undefined
+      ? []
+      : [
+          ...changeLines(draft, summary, present),
+          ...mergeLines(candidates, targetsToMerge, merges),
+        ];
+  // Apply waits for the suggestions, so the merges it sends are the ones on screen.
+  const matching =
+    targetsToMerge.length > 0 && candidates.length > 0 && matches === undefined;
+  const ready = state.kind === "ready" && included.length > 0 && !matching;
 
   function requestClose() {
     if (pending) return;
@@ -155,8 +200,11 @@ export default function BulkEditor({
       present,
       created.current,
     );
+    const mergeParts = buildMerges(merges, targetsToMerge, created.current);
+    if (mergeParts.length > 0) changes.merges = mergeParts;
     const result = await applyVideoEdits(editTargets, changes, removedTags);
     return {
+      result,
       applied: result.applied,
       removedTagIds: removedTags.map((tag) => tag.id),
       partial: remotePartial(result.remote, videoTitleIn(included), "changed"),
@@ -168,9 +216,10 @@ export default function BulkEditor({
     setPending(true);
     setFailure(null);
     send(state.summary).then(
-      ({ applied, removedTagIds, partial }) => {
+      ({ result, applied, removedTagIds, partial }) => {
         // A partial answer names the peer's failures in a dialog instead of a toast.
-        if (partial === null) toast(b.applied(applied));
+        if (partial === null || result.merged !== undefined)
+          showAppliedToast(toast, result, applied);
         onApplied(removedTagIds, partial);
         onClose();
       },
@@ -185,7 +234,33 @@ export default function BulkEditor({
   const panels =
     summary === undefined || included.length === 0
       ? loadingPanels(included.length === 0 && summary !== undefined)
-      : fieldPanels({ summary, present, draft, disabled: pending, onChange: setDraft });
+      : fieldPanels({
+          summary,
+          present,
+          draft,
+          disabled: pending,
+          onChange: setDraft,
+          mergeField: targetsToMerge.length > 0 && candidates.length > 0 && (
+            <MergeField
+              candidates={candidates}
+              targets={targetsToMerge}
+              merges={merges}
+              total={summary.total}
+              loading={matches === undefined}
+              disabled={pending}
+              onCycle={(candidate) =>
+                setDraft((current) =>
+                  cycleMerge(
+                    current,
+                    candidate.id,
+                    merges.get(candidate.id),
+                    targetsToMerge,
+                  ),
+                )
+              }
+            />
+          ),
+        });
   return (
     <>
       <FormPageDialog
@@ -416,6 +491,8 @@ interface FieldProps {
   draft: BulkDraft;
   disabled: boolean;
   onChange: (change: (draft: BulkDraft) => BulkDraft) => void;
+  /** Drawn right after the Performers field. */
+  mergeField: ReactNode;
 }
 
 /** Tags and people fill the first panel, organizations, dates and visibility the second. */
@@ -425,6 +502,7 @@ function fieldPanels({
   draft,
   disabled,
   onChange,
+  mergeField,
 }: FieldProps): FormPagePanel[] {
   const b = t.library.bulkEdit;
   const valueField = (id: FieldId, legend: UiText, picker: ReactNode) => (
@@ -479,7 +557,18 @@ function fieldPanels({
               }
             />,
           )}
-          {roleEntries.filter((entry) => entry.kind === "person").map(creditField)}
+          {roleEntries
+            .filter((entry) => entry.kind === "person")
+            .map((entry) =>
+              entry.id === performerField ? (
+                <Fragment key={entry.id}>
+                  {creditField(entry)}
+                  {mergeField}
+                </Fragment>
+              ) : (
+                creditField(entry)
+              ),
+            )}
         </>
       ),
     },
@@ -520,6 +609,7 @@ function pickedCredit(chip: Chip) {
         key: creditKey(chip.id),
         label: creditDisplayName(chip),
         id: chip.id,
+        ...(chip.provisional === true && { provisional: true as const }),
       };
 }
 
@@ -593,6 +683,64 @@ function TagPicker({
   );
 }
 
+/** One change line per unnamed performer Apply merges, in candidate order. */
+function mergeLines(
+  candidates: readonly MergeCandidate[],
+  targets: readonly MergeTarget[],
+  merges: ReadonlyMap<number, string>,
+): ChangeLine[] {
+  return candidates.flatMap((candidate): ChangeLine[] => {
+    const target = targets.find((item) => item.key === merges.get(candidate.id));
+    return target === undefined
+      ? []
+      : [
+          {
+            field: performerField,
+            label: candidate.label,
+            target: target.label,
+            action: "merge",
+            videos: candidate.count,
+          },
+        ];
+  });
+}
+
+/** The applied toast says what the merges did and offers to undo the ones that can be. */
+function showAppliedToast(
+  toast: ReturnType<typeof useToast>,
+  result: VideoEditResponse,
+  applied: number,
+) {
+  const b = t.library.bulkEdit;
+  const merged = result.merged ?? [];
+  if (merged.length === 0 && result.skippedPersonIds === undefined) {
+    toast(b.applied(applied));
+    return;
+  }
+  const undoIds = merged.flatMap((item) =>
+    item.undoActivityId === undefined ? [] : [item.undoActivityId],
+  );
+  toast(
+    b.appliedWithMerges(
+      applied,
+      merged.length,
+      result.skippedPersonIds?.length ?? 0,
+      merged.length - undoIds.length,
+    ),
+    undoIds.length === 0
+      ? undefined
+      : {
+          action: {
+            label: b.undoMerges,
+            run: async () => {
+              // Newest first, so each undo finds the state its merge left.
+              for (const id of [...undoIds].reverse()) await undoActivity(id);
+            },
+          },
+        },
+  );
+}
+
 function fieldLabel(field: ChangeLine["field"]): UiText {
   const b = t.library.bulkEdit;
   if (field === "tags") return b.tags;
@@ -618,5 +766,7 @@ function changeText(line: ChangeLine): UiText {
       return b.changePublic(line.videos);
     case "private":
       return b.changePrivate(line.videos);
+    case "merge":
+      return b.changeMerge(line.label, line.target ?? "", line.videos);
   }
 }

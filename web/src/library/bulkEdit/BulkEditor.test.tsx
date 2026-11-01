@@ -36,6 +36,8 @@ const fullSummary: VideoEditSummary = {
 const server = {
   summary: vi.fn<(body: unknown) => Response>(),
   apply: vi.fn<(body: unknown) => Response>(),
+  matches: vi.fn<(body: unknown) => Response>(),
+  undo: vi.fn<(url: string) => Response>(),
 };
 
 beforeEach(() => {
@@ -43,8 +45,11 @@ beforeEach(() => {
   // A Response body is read once, so build one per call.
   server.summary.mockReset().mockImplementation(() => json(fullSummary));
   server.apply.mockReset().mockImplementation(() => json({ applied: 3, tags: [] }));
+  server.matches.mockReset().mockImplementation(() => json({ items: [] }));
+  server.undo.mockReset().mockImplementation(() => json({}));
   // jsdom lacks the pointer capture API that Radix calls.
   Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -55,6 +60,9 @@ beforeEach(() => {
       if (url === "/api/video-edits/summary")
         return Promise.resolve(server.summary(body));
       if (url === "/api/video-edits") return Promise.resolve(server.apply(body));
+      if (url === "/api/video-edits/provisional-matches")
+        return Promise.resolve(server.matches(body));
+      if (url.startsWith("/api/activity/")) return Promise.resolve(server.undo(url));
       return Promise.resolve(json({ code: "not_found", message: "not found" }, 404));
     }),
   );
@@ -211,5 +219,84 @@ describe("BulkEditor", () => {
     expect(onClose).not.toHaveBeenCalled();
     await user.click(within(confirm).getByRole("button", { name: "Discard" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("suggests merging an unnamed performer into the added one, sends the merge and offers its undo", async () => {
+    server.summary.mockImplementation(() =>
+      json({
+        ...fullSummary,
+        people: [
+          {
+            role: "performer",
+            person: { id: 7, name: "Alice", provisional: false },
+            count: 1,
+          },
+          {
+            role: "performer",
+            person: { id: 21, name: "", provisional: true },
+            count: 2,
+          },
+          {
+            role: "performer",
+            person: { id: 22, name: "", provisional: true },
+            count: 1,
+          },
+        ],
+      }),
+    );
+    server.matches.mockImplementation(() =>
+      json({
+        items: [
+          { personId: 21, alone: true, coPerformers: [], similarTo: [] },
+          { personId: 22, alone: false, coPerformers: [], similarTo: [] },
+        ],
+      }),
+    );
+    server.apply.mockImplementation(() =>
+      json({
+        applied: 3,
+        tags: [],
+        merged: [{ personId: 21, into: 7, undoActivityId: 40 }],
+      }),
+    );
+    // The mock onClose keeps the modal editor mounted, which blocks pointer events on the toast.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderEditor();
+
+    const performers = await screen.findByRole("list", { name: "Performers" });
+    await user.click(
+      within(performers).getByRole("button", { name: /^Alice, on 1 of 3/ }),
+    );
+    const unnamed = await screen.findByRole("list", { name: "Unnamed performers" });
+    expect(
+      within(unnamed)
+        .getAllByRole("button")
+        .map((tile) => tile.getAttribute("aria-label")),
+    ).toEqual([
+      "#21, on 2 of 3 videos, will be merged into Alice",
+      "#22, on 1 of 3 videos, kept apart",
+    ]);
+    expect(server.matches).toHaveBeenCalledWith({
+      videoIds: [1, 2, 3],
+      smartFolderIds: [9],
+      personIds: [7],
+    });
+    expect(
+      screen.getByText("Performers: merge #21 into Alice, on 2 videos here"),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Apply to 3 videos" }));
+    await waitFor(() => expect(server.apply).toHaveBeenCalled());
+    expect(server.apply.mock.calls[0]?.[0]).toMatchObject({
+      credits: [{ kind: "person", role: "performer", add: [7] }],
+      merges: [{ into: 7, sourceIds: [21] }],
+    });
+    expect(
+      await screen.findByText("Updated 3 videos and merged 1 unnamed person."),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Undo merges" }));
+    await waitFor(() =>
+      expect(server.undo).toHaveBeenCalledWith("/api/activity/40/undo"),
+    );
   });
 });

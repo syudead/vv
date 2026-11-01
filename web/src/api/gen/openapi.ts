@@ -3103,9 +3103,29 @@ export interface paths {
         put?: never;
         /**
          * Apply one bulk edit to selected videos
-         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
+         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags, people and organizations go to the other node by name, created there when missing; a provisional person, which has no name, with a target on the other node returns 400 invalid_request with provisional_person_remote at its field. applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed. merges run after the other parts in the same local transaction and only on this node: each source still provisional is merged into its into person as confirmFaceCandidate does, with undoActivityId when the merge can be undone; a source that no longer exists or has been named since is skipped and listed in skippedPersonIds. A missing into returns 404 person_not_found and a merge id at or above 2^40 returns 400 invalid_request with provisional_person_remote, both at merges[i]. See docs/design-docs/bulk-editing.md.
          */
         post: operations["applyVideoEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-edits/provisional-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell which provisional performers of selected videos are which added people
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds as summarizeVideoEdits does, reading this node's videos only. Lists each provisional person credited as a performer of a resolved video: alone is true when the person is the only provisional performer of at least one of those videos, coPerformers lists the other provisional performers they share a video with, and similarTo lists the personIds whose face, or the mean of whose faces in videos, reaches the recognizer's merge threshold against the mean of the provisional person's faces, most similar first, leaving out a pair the owner dismissed. Items are in ID order. Missing personIds are ignored. Uses `Cache-Control: no-store`. See docs/design-docs/bulk-editing.md.
+         */
+        post: operations["matchProvisionalPeople"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6095,6 +6115,52 @@ export interface components {
             dates?: components["schemas"]["VideoDateEdit"][];
             /** @description True makes the videos public, false private; omit to keep each video's visibility. */
             public?: boolean;
+            /** @description Provisional people to merge into a person, at most one entry per into person; a source listed twice, or equal to an into, returns 400 work_info_duplicate at its field. */
+            merges?: components["schemas"]["VideoEditMerge"][];
+        };
+        VideoEditMerge: {
+            /**
+             * Format: int64
+             * @description The person the sources are merged into.
+             */
+            into: number;
+            /** @description Provisional people to merge into into. */
+            sourceIds: number[];
+        };
+        VideoEditMerged: {
+            /**
+             * Format: int64
+             * @description The merged provisional person, which no longer exists.
+             */
+            personId: number;
+            /** Format: int64 */
+            into: number;
+            /**
+             * Format: int64
+             * @description The face_merge entry undoActivity takes back; absent when the person held an external ID, which the undo cannot restore.
+             */
+            undoActivityId?: number;
+        };
+        ProvisionalMatchRequest: {
+            /** @description Video IDs to read. May be empty when smartFolderIds is not. */
+            videoIds: number[];
+            /** @description Smart-folder IDs resolved to their current member videos, as in VideoEditRequest. */
+            smartFolderIds?: number[];
+            /** @description The people being added, whose faces similarTo compares. */
+            personIds: number[];
+        };
+        ProvisionalMatches: {
+            items: components["schemas"]["ProvisionalMatch"][];
+        };
+        ProvisionalMatch: {
+            /** Format: int64 */
+            personId: number;
+            /** @description The person is the only provisional performer of at least one resolved video. */
+            alone: boolean;
+            /** @description Other provisional performers sharing a resolved video with the person, in ID order. */
+            coPerformers: number[];
+            /** @description personIds whose faces reach the merge threshold, most similar first. */
+            similarTo: number[];
         };
         VideoTagEdit: {
             /** @description Up to 100 tags to attach; a tag named twice, or by a name and its ID, is attached once. */
@@ -6112,6 +6178,10 @@ export interface components {
             applied: number;
             /** @description The tags of tags.add as resolved, in request order without repeats. */
             tags: components["schemas"]["TagRef"][];
+            /** @description The merges applied, in request order; absent without merges. */
+            merged?: components["schemas"]["VideoEditMerged"][];
+            /** @description Merge sources that no longer existed or had been named, in request order; absent when none. */
+            skippedPersonIds?: number[];
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
         VideoCodeEditSummary: {
@@ -13822,6 +13892,32 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    matchProvisionalPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProvisionalMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Provisional performers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvisionalMatches"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     summarizeVideoCodeEdits: {
