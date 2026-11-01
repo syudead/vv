@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -110,8 +109,13 @@ func (p peerWorkInfo) ApplyFetchedWorkInfo(
 func (p peerWorkInfo) UploadThumbnailImage(
 	ctx context.Context, id int64, contentVersion string, image []byte,
 ) (domain.Video, error) {
+	return p.s.uploadPeerThumbnail(ctx, id, contentVersion, image)
+}
+
+// uploadPeerThumbnail sends image as the thumbnail of the peer's video id, as the screens upload one.
+func (s *server) uploadPeerThumbnail(ctx context.Context, id int64, contentVersion string, image []byte) (domain.Video, error) {
 	path := peerVideoPath(domain.FromRemoteID(id), "/thumbnail-image", nil)
-	err := p.s.peerUpload(ctx, http.MethodPost, path, func(form *multipart.Writer) error {
+	err := s.peerUpload(ctx, http.MethodPost, path, func(form *multipart.Writer) error {
 		return writeThumbnailForm(form, contentVersion, image)
 	}, nil)
 	if err != nil {
@@ -120,14 +124,11 @@ func (p peerWorkInfo) UploadThumbnailImage(
 	return domain.Video{ID: id}, nil
 }
 
-// peerUpload sends the multipart form write fills to path on the peer as the owner and decodes a 200 answer into
-// out, when set; any other answer is a *peerRefusal.
+// peerUpload sends the multipart form write fills to path on the peer as the owner and decodes the answer into
+// out, when set; an answer other than 200 or 201 is a *peerRefusal.
 func (s *server) peerUpload(
 	ctx context.Context, method, path string, write func(*multipart.Writer) error, out any,
 ) error {
-	if s.peerLink == nil {
-		return domain.ErrPeerUnreachable
-	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	if err := write(form); err != nil {
@@ -139,18 +140,8 @@ func (s *server) peerUpload(
 	}
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	// The peer may wait to decode and fit the image, as a forwarded thumbnail upload does.
-	resp, err := s.peerLink.Forward(req, false, true)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxForwardedJSON))
-	switch {
-	case resp.StatusCode != http.StatusOK:
-		return &peerRefusal{status: resp.StatusCode}
-	case out == nil:
-		return nil
-	case err != nil:
+	answer, err := s.peerSend(req, false, true)
+	if err != nil || out == nil {
 		return err
 	}
 	return json.Unmarshal(answer, out)

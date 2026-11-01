@@ -248,7 +248,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
-  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
   const remote = isRemoteId(folder.id);
   return (
     <TableRow
@@ -302,9 +302,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && (
-            <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
-          )}
+          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
         </TableCell>
       )}
       {owner && (

@@ -362,7 +362,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   const cover = group.previews[0];
-  // Favorites and playlists stay on each node; the empty cells keep the columns aligned.
+  // Playlists stay on each node; the empty cell keeps the columns aligned.
   const remote = isRemoteId(group.id);
 
   return (
@@ -420,7 +420,7 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          {!remote && <GroupFavorite group={group} variant="row" />}
+          <GroupFavorite group={group} variant="row" />
         </TableCell>
       )}
       {owner && (

@@ -70,6 +70,7 @@ const server = {
   libraryReads: 0,
   codeAnswer: { applied: 1 } as unknown,
   groupRequests: [] as string[],
+  favoriteBodies: [] as unknown[],
 };
 
 function install() {
@@ -97,6 +98,12 @@ function install() {
     }
     if (url.pathname === "/api/video-code-edits/summary" && method === "POST") {
       return Promise.resolve(json({ rows: [{ video: local }, { video: remote }] }));
+    }
+    if (url.pathname === "/api/favorites" && method === "PUT") {
+      server.favoriteBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(
+        json({ appliedVideos: 2, appliedGroups: 0, appliedSmartFolders: 0 }),
+      );
     }
     if (url.pathname === "/api/video-code-edits" && method === "POST") {
       return Promise.resolve(json(server.codeAnswer));
@@ -151,6 +158,7 @@ beforeEach(() => {
   server.libraryReads = 0;
   server.codeAnswer = { applied: 1 };
   server.groupRequests = [];
+  server.favoriteBodies = [];
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -194,14 +202,21 @@ describe("The library of two paired VVMDMs", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("offers fill but no favorite, playlist or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
+  it("offers fill and favorites but no playlist or group picker for a mixed selection, and the peer's groups for a remote one", async () => {
     install();
     const user = userEvent.setup();
     renderLibrary();
     await selectBoth(user);
     const bar = screen.getByRole("region", { name: "Selection actions" });
-    expect(within(bar).queryByRole("button", { name: /Favorite/ })).toBeNull();
     expect(within(bar).queryByRole("button", { name: "Add to playlist" })).toBeNull();
+    // The server splits the ids by node, so one request favorites both videos.
+    await user.click(within(bar).getByRole("button", { name: /Favorite/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add to favorites" }));
+    await waitFor(() =>
+      expect(server.favoriteBodies).toEqual([
+        expect.objectContaining({ favorite: true, videoIds: [1, remoteId] }),
+      ]),
+    );
     expect(within(bar).getByRole("button", { name: "Fill info…" })).toBeDefined();
     const add = within(bar).getByRole("button", { name: "Add to group" });
     expect(add.hasAttribute("disabled")).toBe(true);

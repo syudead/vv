@@ -52,7 +52,7 @@ func (s *server) resolveSelection(
 	ctx := r.Context()
 	folders := deref(smartFolderIDs)
 	if isPeerRequest(ctx) ||
-		(!slices.ContainsFunc(slices.Concat(videoIDs, folders), domain.IsRemoteID) && !s.mergesLists(ctx, domain.VideoQuery{})) {
+		(!slices.ContainsFunc(slices.Concat(videoIDs, folders), domain.IsRemoteID) && !s.readsPeer(ctx)) {
 		ids, ok := s.resolveVideoTargets(w, r, videoIDs, smartFolderIDs, limit)
 		return selection{local: ids}, ok
 	}
@@ -91,7 +91,7 @@ func (s *server) expandLocalFolders(w http.ResponseWriter, r *http.Request, sel 
 		return false
 	}
 	sel.local = append(sel.local, members...)
-	if !s.mergesLists(ctx, domain.VideoQuery{}) {
+	if !s.readsPeer(ctx) {
 		return true
 	}
 	for _, id := range folders {
@@ -114,7 +114,7 @@ func (s *server) expandLocalFolders(w http.ResponseWriter, r *http.Request, sel 
 }
 
 // localFolderRuleByName is this node's folder's rule with its ancestors' in names, or nil when the peer matches
-// nothing for it: a missing folder or entity, a favorite rule, or a rule with no form by name.
+// nothing for it: a missing folder or entity, or a rule with no form by name.
 func (s *server) localFolderRuleByName(ctx context.Context, id int64) (*gen.SmartRuleByName, error) {
 	contents, err := s.smartFolders.SmartFolderContents(ctx, domain.AudienceOwner, id, "", 1, domain.VideoQuery{})
 	if errors.Is(err, domain.ErrNotFound) || (err == nil && len(contents.Missing) > 0) {
@@ -124,14 +124,14 @@ func (s *server) localFolderRuleByName(ctx context.Context, id int64) (*gen.Smar
 		return nil, err
 	}
 	q, ok := domain.SmartPathQuery(contents.PathRules)
-	if !ok || q.FavoriteOnly {
+	if !ok {
 		return nil, nil
 	}
 	return s.smartRuleByName(ctx, q)
 }
 
-// expandPeerFolders adds the peer's folders' matches on both nodes from the rule the peer gives. A folder with
-// favorite matches this node's favorites only, and a rule with no form by name is left to the peer.
+// expandPeerFolders adds the peer's folders' matches on both nodes from the rule the peer gives, each node
+// matching a favorite rule by its own favorites; a rule with no form by name is left to the peer.
 func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *selection, folders []int64, limit int) bool {
 	for _, id := range folders {
 		var detail gen.SmartFolderDetail
@@ -147,22 +147,18 @@ func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *
 			return false
 		}
 		if rule.Match == nil {
-			if !rule.Favorite {
-				sel.peerFolders = append(sel.peerFolders, id)
-			}
+			sel.peerFolders = append(sel.peerFolders, id)
 			continue
 		}
-		if !rule.Favorite {
-			ids, err := s.peerMatchIDs(r, *rule.Match, sel.peer, limit)
-			if err != nil {
-				s.peerUnreachable(w)
-				return false
-			}
-			sel.peer = append(sel.peer, ids...)
+		ids, err := s.peerMatchIDs(r, *rule.Match, sel.peer, limit)
+		if err != nil {
+			s.peerUnreachable(w)
+			return false
 		}
+		sel.peer = append(sel.peer, ids...)
 		q := queryByName(*rule.Match)
-		q.FavoriteOnly = rule.Favorite
-		ids, err := s.localMatchIDs(r.Context(), q, sel.local, limit)
+		q.FavoriteOnly = q.FavoriteOnly || rule.Favorite
+		ids, err = s.localMatchIDs(r.Context(), q, sel.local, limit)
 		if err != nil {
 			s.internalError(w, "Could not read the smart folder videos.", err)
 			return false
@@ -237,10 +233,13 @@ func (s *server) localMatchIDs(ctx context.Context, q domain.VideoQuery, held []
 	}
 }
 
-// setNameFilters sets q's search and its filters by name as list parameters.
+// setNameFilters sets q's search, its filters by name and its favorite filter as list parameters.
 func setNameFilters(values url.Values, q domain.VideoQuery) {
 	if q.Query != "" {
 		values.Set("query", q.Query)
+	}
+	if q.FavoriteOnly {
+		values.Set("favorite", "true")
 	}
 	for _, name := range q.TagNames {
 		values.Add("tagName", name)

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import { remoteIdOffset } from "../lib/remoteId";
 import {
   folderCard,
   revealCards,
@@ -327,6 +328,37 @@ describe("スマートフォルダのカード", () => {
       expect(
         screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
       ).toBeDefined();
+    });
+
+    it("相手の台のフォルダの行もハートを出し、プレイリストへの追加は出さない", () => {
+      const remote = remoteIdOffset + 4;
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <ToastProvider>
+              <AudienceProvider audience="owner">
+                <SmartFolderCardsProvider>
+                  <table>
+                    <tbody>
+                      <SmartFolderRow
+                        folder={{ id: remote, name: "鳥" }}
+                        backTo="/"
+                        owner
+                      />
+                    </tbody>
+                  </table>
+                </SmartFolderCardsProvider>
+              </AudienceProvider>
+            </ToastProvider>
+          </TooltipProvider>
+        </MemoryRouter>,
+      );
+      expect(
+        screen.getByRole("button", { name: 'Favorite smart folder "鳥"' }),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: 'Add smart folder "鳥" to a playlist' }),
+      ).toBeNull();
     });
 
     it("ハートはフォルダの id を smartFolderIds で送り、成功したら塗りを変える", async () => {

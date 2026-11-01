@@ -229,7 +229,6 @@ func TestActionRunnerSendsAMultipartStageAsFormFields(t *testing.T) {
 // The rows that take a single peer's video by its path are exactly those whose operations remoteBoundary forwards
 // or answers for a remote video, so the assistant proposes on the peer's videos what the screens edit.
 func TestAssistantRemoteVideoRowsMatchTheRemoteBoundary(t *testing.T) {
-	videos := remoteCollections[0]
 	for _, row := range domain.AssistantCatalog() {
 		pathed, offered := false, true
 		for _, operation := range row.Operations() {
@@ -238,8 +237,8 @@ func TestAssistantRemoteVideoRowsMatchTheRemoteBoundary(t *testing.T) {
 				continue
 			}
 			pattern := op.Method + " " + op.Path
-			_, forwarded := videos.operations[pattern]
-			pathed, offered = true, offered && (forwarded || videos.merged[pattern])
+			route := remoteRoutes.routes[pattern]
+			pathed, offered = true, offered && (route.op != nil || (route.kept != nil && route.kept.here))
 		}
 		if pathed && row.RemoteVideos() != offered {
 			t.Errorf("%s: RemoteVideos = %v, remoteBoundary offers it: %v", row.ID, row.RemoteVideos(), offered)

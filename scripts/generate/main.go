@@ -19,6 +19,7 @@ import (
 var generated = []string{
 	"internal/httpapi/gen/api.gen.go",
 	"internal/httpapi/extgen/api.gen.go",
+	operationsOut,
 	"web/src/api/gen/openapi.ts",
 	assistantToolsOut,
 	registryOut,
@@ -104,6 +105,9 @@ func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) e
 
 	if err := run(root, oapiCodegen,
 		"-config", "api/oapi-codegen-external.yaml", "api/external-v1.yaml"); err != nil {
+		return err
+	}
+	if err := writeOperations(root); err != nil {
 		return err
 	}
 	if err := run(root, openapiTypescript,

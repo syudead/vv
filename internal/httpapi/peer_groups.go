@@ -24,101 +24,16 @@ const (
 // errMixedNodes is a write that names entities of both nodes; a group never holds both nodes' videos.
 var errMixedNodes = errors.New("the request names entities of both nodes")
 
-// remoteGroupOperations are the operations under /api/groups/{id} offered for the peer's groups.
-var remoteGroupOperations = map[string]remoteOperation{
-	"GET /api/groups/{id}":       {rewrite: rewriteAs(rewriteRemoteGroupDetail)},
-	"GET /api/groups/{id}/items": {rewrite: rewriteAs(rewriteRemoteGroupItemPage)},
-	"PATCH /api/groups/{id}":     {rewrite: rewriteAs(rewriteRemoteGroup), body: remoteBodyAs(peerGroupRename)},
-	"DELETE /api/groups/{id}":    {},
-	"POST /api/groups/{id}/items": {
-		rewrite: rewriteAs(rewriteRemoteGroup), body: remoteBodyAs(peerGroupMembers),
-	},
-	"POST /api/groups/{id}/items/remove": {
-		rewrite: rewriteAs(rewriteRemoteGroup), body: remoteBodyAs(peerGroupItemRemove),
-	},
-	"POST /api/groups/{id}/items/{itemId}/move": {body: remoteBodyAs(peerGroupItemMove)},
-	"POST /api/groups/{id}/tag":                 {rewrite: rewriteAs(rewriteRemoteGroupTag)},
-}
-
-var remoteGroupMux = operationMux(remoteGroupOperations, nil)
-
 var (
 	remoteGroupAnswer    = remoteOperation{rewrite: rewriteAs(rewriteRemoteGroup)}
 	remoteOrganizeAnswer = remoteOperation{rewrite: rewriteAs(rewriteRemoteOrganizeResult)}
 )
 
-func (s *server) forwardRemoteGroup(w http.ResponseWriter, r *http.Request, id int64, rest string) {
-	pattern := routePattern(remoteGroupMux, r)
-	op, offered := remoteGroupOperations[pattern]
-	// The peer's own request with a remote id names this node's group; forwarding it back would bounce.
-	if !offered || isPeerRequest(r.Context()) {
-		s.notFound(w, "The group does not exist.")
-		return
-	}
-	rest, ok := peerGroupItemPath(rest)
-	if !ok {
-		s.mixedNodes(w)
-		return
-	}
-	query := r.URL.Query()
+// peerGroupQuery turns a trail into the peer's groups; sorts and the favorite filter reach the peer as they are.
+func peerGroupQuery(_ string, query url.Values, _ *remoteOperation) {
 	if query.Has("trail") {
 		query.Set("trail", peerTrail(query.Get("trail")))
 	}
-	if favoriteRead, read := remoteFavoriteReads[pattern]; read && peerGroupRead(query) {
-		op = favoriteRead
-	}
-	out, err := remoteRequest(r, remoteGroupPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10)+rest, query)
-	if err != nil {
-		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
-		return
-	}
-	if op.body != nil && !s.forwardedBody(w, r, out, op.body) {
-		return
-	}
-	s.forward(w, r, out, op)
-}
-
-// remoteFavoriteReads answer a favorites-only read of the peer's group: favorites stay with each node, so
-// none of the peer's items is this node's favorite.
-var remoteFavoriteReads = map[string]remoteOperation{
-	"GET /api/groups/{id}": {rewrite: rewriteAs(func(detail *gen.GroupDetail, join domain.VocabularyJoin) {
-		rewriteRemoteGroupDetail(detail, join)
-		detail.Items, detail.NextCursor = []gen.GroupItem{}, nil
-	})},
-	"GET /api/groups/{id}/items": {rewrite: rewriteAs(func(page *gen.GroupItemPage, _ domain.VocabularyJoin) {
-		page.Items, page.NextCursor = []gen.GroupItem{}, nil
-	})},
-}
-
-// peerGroupRead keeps favorites and play history out of a read the peer answers, as a merged list does: the
-// peer lists in domain.PeerSort's order without the favorite filter. It reports a favorites-only read.
-func peerGroupRead(query url.Values) bool {
-	if sort := query.Get("sort"); sort != "" {
-		query.Set("sort", string(domain.PeerSort(domain.VideoSort(sort))))
-	}
-	favoriteOnly, err := strconv.ParseBool(query.Get("favorite"))
-	if err != nil {
-		return false
-	}
-	query.Del("favorite")
-	return favoriteOnly
-}
-
-// peerGroupItemPath turns the item id of /items/{itemId}/move into the peer's; false when it names a local item.
-func peerGroupItemPath(rest string) (string, bool) {
-	parts := strings.Split(rest, "/")
-	if len(parts) != 4 || parts[1] != "items" || parts[3] != "move" {
-		return rest, true
-	}
-	id, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return rest, true
-	}
-	if local, _ := domain.IDNodes(id); local {
-		return "", false
-	}
-	parts[2] = strconv.FormatInt(peerID(id), 10)
-	return strings.Join(parts, "/"), true
 }
 
 // peerTrail keeps the peer's groups of a trail; the trail of a remote group is the peer's own.

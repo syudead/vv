@@ -322,3 +322,25 @@ func TestMergeAProvisionalPersonMergesItHere(t *testing.T) {
 		t.Errorf("a's people = %v, want none", got)
 	}
 }
+
+// Undoing a face split of the peer's person merges the peer's provisional person back on the peer by id.
+func TestMergeThePeersProvisionalPersonMergesItOnThePeer(t *testing.T) {
+	fa, fb, b, _ := mergedNodes(t)
+	sato := fa.createWorkInfoPerson(t, "佐藤")
+	provisional := provisionalPersonOn(t, fa)
+
+	body := `{"sourceIds":[` + strconv.FormatInt(domain.ToRemoteID(provisional), 10) + `]}`
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(domain.ToRemoteID(sato), 10)+"/merge", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
+	}
+	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != domain.ToRemoteID(sato) || len(merged.NotFoundIds) != 0 {
+		t.Errorf("merge = %+v, want a's 佐藤 in the offset form and no missing sources", merged)
+	}
+	if got, want := personNamesOn(t, fa), []string{"佐藤"}; !slices.Equal(got, want) {
+		t.Errorf("a's people = %v, want %v with the provisional person merged", got, want)
+	}
+	if got := personNamesOn(t, fb); len(got) != 0 {
+		t.Errorf("b's people = %v, want none", got)
+	}
+}

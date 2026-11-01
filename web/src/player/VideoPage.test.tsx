@@ -1948,12 +1948,12 @@ describe("VideoPage", () => {
   describe("ペアの台の動画", () => {
     const remoteId = remoteIdOffset + 7;
 
-    it("台の名前を帯に出し、お気に入り・プレイリスト・ファイル操作を出さず、再生位置を送らない", async () => {
+    it("台の名前を帯に出し、お気に入りを出してプレイリストとファイル操作を出さず、再生位置を送る", async () => {
       server.videos.set(remoteId, [{ ...video, id: remoteId }]);
       renderPage(String(remoteId));
       await ready();
       expect(screen.getByRole("banner").textContent).toContain("Other VVMDM");
-      expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Favorite" })).toBeDefined();
       expect(screen.queryByRole("button", { name: "Playlist" })).toBeNull();
       expect(screen.getByRole("button", { name: "Group" })).toBeDefined();
       openTab("File & media");
@@ -1961,13 +1961,17 @@ describe("VideoPage", () => {
       expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Rescan" })).toBeNull();
 
-      await act(async () => {
-        player().onProgress(12_345, true);
-        await Promise.resolve();
+      player().onProgress(12_345, true);
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              String(input) === `/api/videos/${String(remoteId)}/progress` &&
+              init?.method === "PUT" &&
+              init.body === JSON.stringify({ positionMs: 12_345 }),
+          ),
+        ).toBe(true);
       });
-      expect(
-        fetchMock.mock.calls.some(([input]) => String(input).endsWith("/progress")),
-      ).toBe(false);
     });
   });
 

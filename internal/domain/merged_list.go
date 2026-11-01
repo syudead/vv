@@ -63,24 +63,6 @@ type MergeSide[T any] struct {
 	Next    string
 }
 
-// PeerSort is the order the peer lists in for a merged list in sort: played and favorited values stay with
-// each node, so the peer's items follow in its addedDesc order.
-func PeerSort(sort VideoSort) VideoSort {
-	if peerItemsLast(sort) {
-		return SortAddedDesc
-	}
-	return sort
-}
-
-func peerItemsLast(sort VideoSort) bool {
-	switch sort {
-	case SortPlayedAsc, SortPlayedDesc, SortFavoritedAsc, SortFavoritedDesc:
-		return true
-	default:
-		return false
-	}
-}
-
 // MergePages takes up to limit items from the two sides in sort's order and returns them with the cursor that
 // continues both sides; more is false once both are done. Items compare by sort value, missing values last;
 // on equal values the local item comes first. A side whose page is used up but continues stops the merge,
@@ -93,8 +75,7 @@ func MergePages[T any](sort VideoSort, cursor MergedCursor, local, peer MergeSid
 		if (!localLeft && local.Next != "") || (!peerLeft && peer.Next != "") || (!localLeft && !peerLeft) {
 			break
 		}
-		takeLocal := localLeft && (!peerLeft || peerItemsLast(sort) ||
-			compareSortValues(sort, local.Cursors[i].SortValue, peer.Cursors[j].SortValue) <= 0)
+		takeLocal := localLeft && (!peerLeft || compareSortValues(sort, local.Cursors[i].SortValue, peer.Cursors[j].SortValue) <= 0)
 		if takeLocal {
 			out, i = append(out, local.Items[i]), i+1
 		} else {
