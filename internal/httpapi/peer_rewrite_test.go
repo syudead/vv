@@ -9,7 +9,7 @@ import (
 
 // The two-node tests cover the fields a scanned video carries; this covers the references they lack.
 func TestRewriteRemoteVideoMapsEveryReference(t *testing.T) {
-	r := domain.ToRemoteID
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
 	video := gen.Video{
 		Id:          5,
 		Group:       &gen.VideoGroupRef{Id: 6, Folder: &gen.VideoFolder{RootId: 2}},
@@ -64,7 +64,7 @@ func TestRewriteRemoteFaceAppearancesJoinsPeopleAndKeepsCrops(t *testing.T) {
 
 	rewriteRemoteFaceAppearances(&list, domain.VocabularyJoin{People: map[string]int64{"山田": 4}})
 
-	r := domain.ToRemoteID
+	r := func(id int64) int64 { return domain.RemoteID(1, id) }
 	for i, want := range []struct {
 		appearance, person int64
 		crop               bool

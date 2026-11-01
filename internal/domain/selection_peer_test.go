@@ -7,7 +7,7 @@ import (
 
 func TestMergeVideoEditSummariesJoinsEntriesAndKeepsSharedDates(t *testing.T) {
 	alice := CreditRef{ID: 1, Name: "Alice"}
-	provisional := CreditRef{ID: ToRemoteID(9), Provisional: true}
+	provisional := CreditRef{ID: RemoteID(1, 9), Provisional: true}
 	local := VideoEditSummary{
 		Total: 2, Public: 1,
 		People: []VideoEditPersonCount{{Role: PersonRoles[0], Person: alice, Count: 1}},

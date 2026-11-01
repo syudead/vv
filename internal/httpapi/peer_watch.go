@@ -125,7 +125,7 @@ func (s *server) peerWatchHistory(
 	}
 	for i := range answer.Items {
 		entry := &answer.Items[i]
-		entry.Id = domain.ToRemoteID(entry.Id)
+		entry.Id = domain.RemoteID(domain.LinkSlot, entry.Id)
 		if entry.Video != nil {
 			rewriteRemoteVideo(entry.Video, join)
 		}

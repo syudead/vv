@@ -20,7 +20,7 @@ const (
 func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
 	for i := range list.Items {
 		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
+		item.AppearanceId = domain.RemoteID(domain.LinkSlot, item.AppearanceId)
 		item.Person.Id = join.Person(item.Person.Id, item.Person.Name)
 	}
 }
@@ -28,9 +28,9 @@ func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain
 func rewriteRemotePersonAppearances(list *gen.FaceAppearanceList, _ domain.VocabularyJoin) {
 	for i := range list.Items {
 		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
+		item.AppearanceId = domain.RemoteID(domain.LinkSlot, item.AppearanceId)
 		if item.VideoId != nil {
-			*item.VideoId = domain.ToRemoteID(*item.VideoId)
+			*item.VideoId = domain.RemoteID(domain.LinkSlot, *item.VideoId)
 		}
 	}
 }
@@ -57,7 +57,7 @@ func rewriteRemoteSimilarPeople(list *gen.SimilarPersonList, join domain.Vocabul
 		item := &list.Items[i]
 		rewriteRemotePerson(&item.Person, join)
 		for j := range item.SampleAppearanceIds {
-			item.SampleAppearanceIds[j] = domain.ToRemoteID(item.SampleAppearanceIds[j])
+			item.SampleAppearanceIds[j] = domain.RemoteID(domain.LinkSlot, item.SampleAppearanceIds[j])
 		}
 	}
 }
@@ -153,7 +153,7 @@ func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int6
 		s.writeSplitEditError(w, err)
 		return
 	}
-	remote := domain.ToRemoteID(peerID)
+	remote := domain.RemoteID(domain.LinkSlot, peerID)
 	s.forwardRemoteEntity(w, r, peopleCollection, faceMovePattern, *remoteRoutes.routes[faceMovePattern].op, remote,
 		"/api/people/"+strconv.FormatInt(remote, 10)+"/appearances/move")
 }

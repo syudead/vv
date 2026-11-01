@@ -66,9 +66,9 @@ func TestWatchForwardsEventsWithRemoteIDs(t *testing.T) {
 		t.Fatalf("opened = %v, err = %v", opened, err)
 	}
 	want := []domain.PeerChanged{
-		{VideoIDs: []int64{domain.PeerIDOffset + 7}},
-		{GroupIDs: []int64{domain.PeerIDOffset + 3}},
-		{SmartFolderIDs: []int64{domain.PeerIDOffset + 4}},
+		{VideoIDs: []int64{domain.RemoteID(1, 7)}},
+		{GroupIDs: []int64{domain.RemoteID(1, 3)}},
+		{SmartFolderIDs: []int64{domain.RemoteID(1, 4)}},
 	}
 	if !slices.EqualFunc(got, want, func(a, b domain.PeerChanged) bool {
 		return slices.Equal(a.VideoIDs, b.VideoIDs) && slices.Equal(a.GroupIDs, b.GroupIDs) &&

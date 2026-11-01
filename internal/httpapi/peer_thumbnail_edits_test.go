@@ -34,7 +34,7 @@ func TestRemoteThumbnailEditRunsHereAndUploadsToThePeer(t *testing.T) {
 	// The peer's frames are larger than this node's, so the session's frame shows which node extracted it.
 	fa.edits.set(func(e *editFakes) { e.frameSize = 6 })
 	fb.saveConnection(t)
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 
 	rec := b.owner(http.MethodPost, fmt.Sprintf("/api/videos/%d/thumbnail-edits", remote), `{"source":"frame","positionMs":1000}`)
 	if rec.Code != http.StatusCreated {

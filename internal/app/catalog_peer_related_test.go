@@ -80,7 +80,7 @@ func TestMergedRelatedVideosPagesBothNodesInOrder(t *testing.T) {
 		page.Cursor = next
 	}
 
-	remote := domain.ToRemoteID
+	remote := func(id int64) int64 { return domain.RemoteID(1, id) }
 	want := []int64{remote(10), remote(11), 3, 2, remote(12), 5, remote(13)}
 	if !slices.Equal(got, want) {
 		t.Fatalf("順 = %v, want %v", got, want)

@@ -5,21 +5,34 @@ import (
 	"strings"
 )
 
-// PeerIDOffset is added to the peer's ids in the screen API; local ids stay below it, and 2^40 stays below
-// JavaScript's safe integer.
-const PeerIDOffset int64 = 1 << 40
+// slotBits is the width of a link's own ids in the screen API: a remote id is the link's id plus its slot
+// times 2^40, and local ids stay below 2^40.
+const slotBits = 40
 
-// ToRemoteID is the id under which this node addresses the peer's entity with peerID.
-func ToRemoteID(peerID int64) int64 { return peerID + PeerIDOffset }
+const slotSize int64 = 1 << slotBits
 
-// IsRemoteID reports whether id names an entity of the peer.
-func IsRemoteID(id int64) bool { return id >= PeerIDOffset }
+// MaxRemoteSlot keeps every remote id below 2^53, JavaScript's largest safe integer.
+const MaxRemoteSlot int64 = 1<<(53-slotBits) - 1
 
-// FromRemoteID is the peer's own id of the entity this node addresses as remoteID.
-func FromRemoteID(remoteID int64) int64 { return remoteID - PeerIDOffset }
+// LinkSlot is the slot the remote ids carry while every remote id reaches the one link, whatever slot the
+// store gave it; the migration gives the existing link slot 1, so its ids keep their offset.
+const LinkSlot int64 = 1
+
+// RemoteID is the id under which this node addresses the entity with id on the link of slot.
+func RemoteID(slot, id int64) int64 { return id + slot<<slotBits }
+
+// RemoteSlot is the slot of the link whose entity id names, or 0 for this node's own entity.
+func RemoteSlot(id int64) int64 { return id >> slotBits }
+
+// IsRemoteID reports whether id names an entity of a link.
+func IsRemoteID(id int64) bool { return id >= slotSize }
+
+// FromRemoteID is the link's own id of the entity this node addresses as remoteID.
+func FromRemoteID(remoteID int64) int64 { return remoteID & (slotSize - 1) }
 
 // VocabularyJoin holds this node's tags, tag kinds, people and organizations by name. A peer entity whose
-// name this node holds takes the local id; any other takes the offset. The zero value joins nothing.
+// name this node holds takes the local id; any other takes its remote id in LinkSlot. The zero value joins
+// nothing.
 type VocabularyJoin struct {
 	Tags          map[string]int64
 	TagKinds      map[string]int64
@@ -46,14 +59,14 @@ func joinByName(local map[string]int64, peerID int64, name string) int64 {
 	if id, ok := local[name]; ok && name != "" {
 		return id
 	}
-	return ToRemoteID(peerID)
+	return RemoteID(LinkSlot, peerID)
 }
 
 const videoPathPrefix = "/api/videos/"
 
-// RemoteVideoURL rewrites the video id of the peer's /api/videos/{id}... URL, such as a thumbnail URL, into
-// the remote form; any other URL is returned unchanged.
-func RemoteVideoURL(raw string) string {
+// RemoteVideoURL rewrites the video id of the link's /api/videos/{id}... URL, such as a thumbnail URL, into
+// the remote form of slot; any other URL is returned unchanged.
+func RemoteVideoURL(slot int64, raw string) string {
 	rest, ok := strings.CutPrefix(raw, videoPathPrefix)
 	if !ok {
 		return raw
@@ -66,7 +79,7 @@ func RemoteVideoURL(raw string) string {
 	if err != nil || id <= 0 || IsRemoteID(id) {
 		return raw
 	}
-	return videoPathPrefix + strconv.FormatInt(ToRemoteID(id), 10) + rest[end:]
+	return videoPathPrefix + strconv.FormatInt(RemoteID(slot, id), 10) + rest[end:]
 }
 
 // IDNodes reports whether the positive ids name entities of this node, of the peer, or of both; a group never

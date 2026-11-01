@@ -259,7 +259,7 @@ func readMerged[T any](s *server, r *http.Request, q domain.VideoQuery, read mer
 	items, next, more := domain.MergePages(q.Sort, cursor, local.side, peer.side, limit)
 	page := mergedPage[T]{items: items, total: local.total + peer.total, missing: local.missing}
 	for _, id := range peer.missing {
-		if remote := domain.ToRemoteID(id); !slices.Contains(page.missing, remote) {
+		if remote := domain.RemoteID(domain.LinkSlot, id); !slices.Contains(page.missing, remote) {
 			page.missing = append(page.missing, remote)
 		}
 	}

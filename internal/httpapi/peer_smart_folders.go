@@ -199,21 +199,21 @@ func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSu
 
 // rewriteRemoteSmartFolderSummary keeps the peer's favorite, which lives on the node holding the folder.
 func rewriteRemoteSmartFolderSummary(folder *gen.SmartFolderSummary) {
-	folder.Id = domain.ToRemoteID(folder.Id)
+	folder.Id = domain.RemoteID(domain.LinkSlot, folder.Id)
 	if folder.ParentId != nil {
-		*folder.ParentId = domain.ToRemoteID(*folder.ParentId)
+		*folder.ParentId = domain.RemoteID(domain.LinkSlot, *folder.ParentId)
 	}
 }
 
 // rewriteRemoteSmartFolderCard keeps the peer's watch values and favorite, as a remote group does, and leaves out
 // the rule only this node reads.
 func rewriteRemoteSmartFolderCard(card *gen.LibrarySmartFolder, join domain.VocabularyJoin) {
-	card.Id, card.PeerRule = domain.ToRemoteID(card.Id), nil
+	card.Id, card.PeerRule = domain.RemoteID(domain.LinkSlot, card.Id), nil
 	if card.ParentId != nil {
-		*card.ParentId = domain.ToRemoteID(*card.ParentId)
+		*card.ParentId = domain.RemoteID(domain.LinkSlot, *card.ParentId)
 	}
 	if card.OpenVideoId != nil {
-		*card.OpenVideoId = domain.ToRemoteID(*card.OpenVideoId)
+		*card.OpenVideoId = domain.RemoteID(domain.LinkSlot, *card.OpenVideoId)
 	}
 	rewriteRemotePreviews(card.Previews)
 	rewriteRemoteTags(card.Tags, join)
@@ -655,12 +655,12 @@ func (s *server) remoteFolderDetail(page *smartFolderPage, detail gen.SmartFolde
 	page.folder = detail.SmartFolder
 	page.trail = detail.Trail
 	for i := range page.trail {
-		page.trail[i].Id = domain.ToRemoteID(page.trail[i].Id)
+		page.trail[i].Id = domain.RemoteID(domain.LinkSlot, page.trail[i].Id)
 	}
 	if settings := detail.Settings; settings != nil {
 		rewriteRemoteSmartRule(&settings.Rule, names, join)
 		for i := range settings.Missing {
-			settings.Missing[i].Id = domain.ToRemoteID(settings.Missing[i].Id)
+			settings.Missing[i].Id = domain.RemoteID(domain.LinkSlot, settings.Missing[i].Id)
 		}
 		page.settings = settings
 	}

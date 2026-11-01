@@ -42,7 +42,7 @@ func TestTaggingAMixedSelectionTagsThePeersVideosByName(t *testing.T) {
 	star := tagOn(t, fb, "星")
 
 	got := updateVideoTags(t, b, fmt.Sprintf(`{"action":"add","tag":{"id":%d},"videoIds":[%d,%d]}`,
-		star.ID, fb.ids["a"], domain.ToRemoteID(fa.ids["a"])))
+		star.ID, fb.ids["a"], domain.RemoteID(1, fa.ids["a"])))
 	if got.Applied != 2 || got.Tag.Id != star.ID || got.Remote == nil || got.Remote.Applied != 1 || len(got.Remote.FailedVideoIds) != 0 {
 		t.Errorf("response = %+v, remote %+v; want 2 applied, tag %d, 1 applied on the peer", got, got.Remote, star.ID)
 	}
@@ -57,7 +57,7 @@ func TestTaggingAMixedSelectionTagsThePeersVideosByName(t *testing.T) {
 
 	// The fixture tags every video of both nodes with 秘密の名前, which joins by name like 星 now does.
 	rec := b.owner(http.MethodPost, "/api/video-tags/summary", fmt.Sprintf(`{"videoIds":[%d,%d,%d]}`,
-		fb.ids["a"], fb.ids["b"], domain.ToRemoteID(fa.ids["a"])))
+		fb.ids["a"], fb.ids["b"], domain.RemoteID(1, fa.ids["a"])))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("summary: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -81,7 +81,7 @@ func TestSelectionKeepsTheLocalPartWhenThePeerStops(t *testing.T) {
 	fa, fb, _, b, stopA := mergedNodesWith(t, nil)
 	stopA()
 
-	remote := domain.ToRemoteID(fa.ids["a"])
+	remote := domain.RemoteID(1, fa.ids["a"])
 	got := updateVideoTags(t, b, fmt.Sprintf(`{"action":"add","tag":{"name":"星"},"videoIds":[%d,%d]}`, fb.ids["a"], remote))
 	if got.Applied != 1 || got.Remote == nil || got.Remote.Applied != 0 || !slices.Equal(got.Remote.FailedVideoIds, []int64{remote}) ||
 		got.Remote.Reason == nil || *got.Remote.Reason != gen.ErrorReasonPeerUnreachable {
@@ -97,7 +97,7 @@ func TestSmartFolderTargetExpandsToBothNodesMatches(t *testing.T) {
 	cat := tagOn(t, fb, "猫", "b")
 	peerCat := tagOn(t, fa, "猫", "c")
 	local := createSmartFolder(t, b, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, cat.ID))
-	remote := domain.ToRemoteID(createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, peerCat.ID)))
+	remote := domain.RemoteID(1, createSmartFolder(t, a, fmt.Sprintf(`{"name":"猫","rule":{"tags":[%d]}}`, peerCat.ID)))
 
 	for _, tc := range []struct {
 		name   string
@@ -120,7 +120,7 @@ func TestCreditEditRefusesAProvisionalPersonForThePeersVideos(t *testing.T) {
 
 	rec := b.owner(http.MethodPost, "/api/video-edits", fmt.Sprintf(
 		`{"videoIds":[%d,%d],"credits":[{"kind":"person","role":"performer","add":[%d]}]}`,
-		fb.ids["a"], domain.ToRemoteID(fa.ids["a"]), person))
+		fb.ids["a"], domain.RemoteID(1, fa.ids["a"]), person))
 	problem := decode[gen.Error](t, rec)
 	if rec.Code != http.StatusBadRequest || problem.Code != codeInvalidRequest || problem.Reason == nil ||
 		*problem.Reason != gen.ErrorReasonProvisionalPersonRemote || problem.Field == nil || *problem.Field != "credits[0].add[0]" {

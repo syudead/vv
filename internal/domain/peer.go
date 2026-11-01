@@ -25,6 +25,8 @@ type PeerLink struct {
 	// PinnedSPKI is empty when the system roots verify the peer or the address is http://.
 	PinnedSPKI string
 	PairedAt   time.Time
+	// Slot is given by the store when the link is added and fixes the offset of the link's ids (RemoteID).
+	Slot int64
 }
 
 // PeerGrant is the one VVMDM that reads this node: the incoming direction of a pairing. The secret it

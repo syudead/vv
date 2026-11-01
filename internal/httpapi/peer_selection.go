@@ -262,7 +262,7 @@ func (s *server) remoteSelectionResult(applied int, peerIDs []int64, err error) 
 	s.logger.Info("the other VVMDM did not apply its part of the selection", slog.Any("error", err))
 	failed := make([]int64, len(peerIDs))
 	for i, id := range peerIDs {
-		failed[i] = domain.ToRemoteID(id)
+		failed[i] = domain.RemoteID(domain.LinkSlot, id)
 	}
 	reason := remoteFailureReason(err)
 	return &gen.RemoteSelectionResult{FailedVideoIds: failed, Reason: &reason}
