@@ -96,6 +96,7 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	c.jobsQueued(domain.JobKinds...)
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -163,6 +164,7 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	c.jobsQueued(domain.JobKinds...)
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -253,6 +255,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.processingChanged()
 	c.issuesChanged()
 	c.matchesChanged()
+	c.mediaFoldersChanged()
 	// Removing thumbnail work can unblock seek jobs; surviving videos emit no ingest event, so wake workers explicitly.
 	c.jobsQueued(domain.JobSeekThumbnail)
 	if err := recordMediaFolderRemoval(ctx, tx, &c, path, removed, time.Now()); err != nil {

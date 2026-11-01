@@ -1041,6 +1041,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail}},
 		domain.ProcessingChanged{},
 		domain.ActivityChanged{},
+		domain.MediaFoldersChanged{},
 	}
 	if !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("発行 = %v, want %v", recorder.events, want)

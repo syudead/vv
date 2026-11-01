@@ -87,4 +87,33 @@ to it.
 `SettingsStore.SetMediaFolderEnabled` changes `enabled` and leaves `path`,
 `version` and `updated_at`, so no rescan, ingest or sweep follows and a switch
 is allowed during a scan. `domain.MediaFoldersChanged{Switch: true}` is
-published after the commit.
+published after the commit. The owner reaches it through
+`PUT /api/media-folders/{id}/enabled`, which answers `404 not_found` for a
+missing folder.
+
+## The `mediaFolders` event follows its cause
+
+Every switch and every added, replaced or deleted folder sends `mediaFolders`,
+an empty object, to this node's session and token viewers, guests included,
+because their lists change too. A peer-credential stream receives it only for
+an added, replaced or deleted folder
+([`internal/httpapi/events.go`](../../internal/httpapi/events.go)).
+
+| Rejected | Why |
+| --- | --- |
+| Sending a switch to the peer credential | A switch never changes what this node answers a peer, so the event would only make the reading node reread |
+| A `video` event per video in the folder | A folder holds thousands of videos; lists already reload on one all-folders notice |
+
+## The screens name a switched-off folder
+
+The switch is the last control of each row in Settings, `Media folders`, and
+stays usable during a scan. Open lists, the watch history and its dates
+included, reload on `mediaFolders`, and the event discards the saved list a
+return to the library or a folder would restore
+([`web/src/api/serverEvents.ts`](../../web/src/api/serverEvents.ts)). A guest's
+Folders roots page opens no stream, so its roots wait for the next visit. An empty
+library with `all_folders_off` and no search or filter tells the owner every
+folder is off and links to that page; a guest keeps the sign-in state. A video
+with `folderOff` plays as before, with a band before its breadcrumb, whose
+crumbs are plain text because the Folders page leaves the folder out. A
+playlist row with `folderOff` carries a `Folder off` mark under its title.

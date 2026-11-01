@@ -251,16 +251,13 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
     [],
   );
 
-  // Names held only by the peer enter or leave the list when it connects or drops.
-  useEffect(
-    () =>
-      subscribeServerEvents({
-        peerItems: () => {
-          if (pageRef.current !== undefined) void reload();
-        },
-      }),
-    [reload],
-  );
+  // Names held only by the peer enter or leave the list when it connects or drops; counts follow the switches.
+  useEffect(() => {
+    const reloadShown = () => {
+      if (pageRef.current !== undefined) void reload();
+    };
+    return subscribeServerEvents({ peerItems: reloadShown, mediaFolders: reloadShown });
+  }, [reload]);
 
   return {
     page,

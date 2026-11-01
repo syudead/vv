@@ -72,7 +72,7 @@ import { useAssistantScreen } from "../assistant/AssistantProvider";
 import { selectionScreen } from "../assistant/screenContext";
 import type { LibraryFilter } from "../smartFolders/smartRule";
 import CardTagRow from "./CardTagRow";
-import EmptyLibrary from "./EmptyLibrary";
+import EmptyLibrary, { AllFoldersOff } from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
 import {
   DraggableGroupRow,
@@ -217,6 +217,7 @@ export default function LibraryPage() {
     loadingMore,
     error,
     missingTagIds,
+    emptyReason,
     loadMore,
     retryLoadMore,
     reload,
@@ -617,6 +618,7 @@ export default function LibraryPage() {
     <LibraryEmpty
       conditioned={conditioned}
       owner={owner}
+      allFoldersOff={emptyReason === "all_folders_off"}
       onSearch={() => searchField.current?.focus()}
     />
   ) : loading ? (
@@ -740,14 +742,18 @@ export default function LibraryPage() {
 function LibraryEmpty({
   conditioned,
   owner,
+  allFoldersOff,
   onSearch,
 }: {
   conditioned: boolean;
   owner: boolean;
+  allFoldersOff: boolean;
   onSearch: () => void;
 }) {
   if (conditioned) return <NoMatches onSearch={onSearch} />;
-  return owner ? <EmptyLibrary /> : <GuestEmpty />;
+  // A guest signs in to reach the switches, so the guest state stays.
+  if (!owner) return <GuestEmpty />;
+  return allFoldersOff ? <AllFoldersOff /> : <EmptyLibrary />;
 }
 
 export function LibraryTableHeader({ owner }: { owner: boolean }) {

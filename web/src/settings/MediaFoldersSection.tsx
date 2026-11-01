@@ -14,10 +14,13 @@ import {
   deleteMediaFolder,
   listMediaFolders,
   RequestFailed,
+  setMediaFolderEnabled,
   updateMediaFolder,
   type MediaFolder,
 } from "../api/client";
+import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { useScan } from "../shell/ScanProvider";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -34,11 +37,14 @@ import {
   AlertDialogTitle,
 } from "../ui/shadcn/alert-dialog";
 import { Button } from "../ui/shadcn/button";
+import { Label } from "../ui/shadcn/label";
 import { Skeleton } from "../ui/shadcn/skeleton";
+import { Switch } from "../ui/shadcn/switch";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
 import MediaFolderUsage from "./MediaFolderUsage";
 import RescanDialog from "./RescanDialog";
+import { useSwitchSave } from "./useSwitchSave";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
 
@@ -103,6 +109,123 @@ function DeleteDialog({
   );
 }
 
+/**
+ * The switch stays usable while a scan locks the three buttons, since a switch changes no registered folder.
+ * Its failure takes the row's failure line, where a change made elsewhere is reported.
+ */
+function LocalFolderRow({
+  folder,
+  pending,
+  locked,
+  error,
+  rowRef,
+  onChange,
+  onRescan,
+  onRemove,
+  onSwitched,
+}: {
+  folder: MediaFolder;
+  pending: NonNullable<Pending>["kind"] | null;
+  locked: boolean;
+  error: UiText | null;
+  rowRef: (element: HTMLDivElement | null) => void;
+  onChange: () => void;
+  onRescan: () => void;
+  onRemove: () => void;
+  onSwitched: (folder: MediaFolder) => void;
+}) {
+  const text = t.settings.mediaFolders;
+  const { saving, saveError, toggle } = useSwitchSave({
+    settings: folder,
+    current: (saved) => saved.enabled,
+    save: (next) => setMediaFolderEnabled(folder.id, next),
+    saved: onSwitched,
+    saveFailed: text.switchFailed,
+  });
+  const enabled = saving ?? folder.enabled;
+  const disabled = pending !== null || locked;
+  const failure = saveError ?? error;
+  return (
+    <div
+      ref={rowRef}
+      className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center"
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <Folder
+          className={cn(
+            "mt-0.5 size-4 shrink-0 text-muted-foreground",
+            !enabled && "opacity-50",
+          )}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-xs text-muted-foreground">{text.current}</span>
+          <code
+            className={cn("block break-all", !enabled && "text-muted-foreground")}
+            title={folder.path}
+          >
+            {folder.path}
+          </code>
+          <MediaFolderUsage folder={folder} />
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {pending !== null && (
+          <span role="status" className="text-xs text-muted-foreground">
+            {pending === "delete" ? text.removing : text.changing}
+          </span>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={text.change}
+          onClick={onChange}
+          disabled={disabled}
+        >
+          <Pencil />
+          {text.changeShort}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={text.forceRescan}
+          aria-describedby={locked ? "media-folders-locked" : undefined}
+          onClick={onRescan}
+          disabled={disabled}
+        >
+          <RotateCcw />
+          {text.forceRescanShort}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={text.remove}
+          onClick={onRemove}
+          disabled={disabled}
+          className="text-destructive"
+        >
+          <Trash2 />
+          {text.removeShort}
+        </Button>
+        {/* The word and the track are one control in a fixed column, so every switch of the page lines up. */}
+        <Label className="h-8 w-16 shrink-0 cursor-pointer justify-end text-xs font-normal text-muted-foreground">
+          {enabled ? text.on : text.off}
+          <Switch
+            checked={enabled}
+            aria-label={text.switchLabel(folder.path)}
+            aria-disabled={saving !== null || undefined}
+            onCheckedChange={() => void toggle()}
+          />
+        </Label>
+      </div>
+      {failure !== null && (
+        <p role="alert" className="text-destructive sm:basis-full">
+          {failure}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Report media-folder counts to ScanProvider so newly added folders enable Scan library. */
 export default function MediaFoldersSection() {
   const scan = useScan();
@@ -145,6 +268,25 @@ export default function MediaFoldersSection() {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  // A change made elsewhere replaces the rows in place: no skeleton, and a failed read keeps the rows shown.
+  useEffect(() => {
+    const controller = new AbortController();
+    const reread = async () => {
+      try {
+        const result = await listMediaFolders(controller.signal);
+        setFolders([...result].sort((a, b) => a.id - b.id));
+        setFolderCount(result.length);
+      } catch {
+        // The next event or a reload reads again.
+      }
+    };
+    const unsubscribe = subscribeServerEvents({ mediaFolders: () => void reread() });
+    return () => {
+      unsubscribe();
+      controller.abort();
+    };
+  }, [setFolderCount]);
 
   const focusFolderAction = (folder?: MediaFolder) => {
     setTimeout(() => {
@@ -298,84 +440,33 @@ export default function MediaFoldersSection() {
           )}
           {!loading &&
             loadError === null &&
-            folders.map((folder) => {
-              const rowPending = pending?.id === folder.id;
-              return (
-                <div
-                  key={folder.id}
-                  ref={(element) => {
-                    if (element === null) rowRefs.current.delete(folder.id);
-                    else rowRefs.current.set(folder.id, element);
-                  }}
-                  className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center"
-                >
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Folder className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-xs text-muted-foreground">
-                        {text.current}
-                      </span>
-                      <code className="block break-all" title={folder.path}>
-                        {folder.path}
-                      </code>
-                      <MediaFolderUsage folder={folder} />
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {rowPending && (
-                      <span role="status" className="text-xs text-muted-foreground">
-                        {pending.kind === "delete" ? text.removing : text.changing}
-                      </span>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      aria-label={text.change}
-                      onClick={() => {
-                        setOperationError(null);
-                        setPicker(folder);
-                      }}
-                      disabled={rowPending || mutationsDisabled}
-                    >
-                      <Pencil />
-                      {text.changeShort}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={text.forceRescan}
-                      aria-describedby={
-                        mutationsDisabled ? "media-folders-locked" : undefined
-                      }
-                      onClick={() => setRescanning(folder)}
-                      disabled={rowPending || mutationsDisabled}
-                    >
-                      <RotateCcw />
-                      {text.forceRescanShort}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={text.remove}
-                      onClick={() => {
-                        setOperationError(null);
-                        setDeleting(folder);
-                      }}
-                      disabled={rowPending || mutationsDisabled}
-                      className="text-destructive"
-                    >
-                      <Trash2 />
-                      {text.removeShort}
-                    </Button>
-                  </div>
-                  {rowError?.id === folder.id && (
-                    <p role="alert" className="text-destructive sm:basis-full">
-                      {rowError.message}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+            folders.map((folder) => (
+              <LocalFolderRow
+                key={folder.id}
+                folder={folder}
+                pending={pending?.id === folder.id ? pending.kind : null}
+                locked={mutationsDisabled}
+                error={rowError?.id === folder.id ? rowError.message : null}
+                rowRef={(element) => {
+                  if (element === null) rowRefs.current.delete(folder.id);
+                  else rowRefs.current.set(folder.id, element);
+                }}
+                onChange={() => {
+                  setOperationError(null);
+                  setPicker(folder);
+                }}
+                onRescan={() => setRescanning(folder)}
+                onRemove={() => {
+                  setOperationError(null);
+                  setDeleting(folder);
+                }}
+                onSwitched={(switched) =>
+                  setFolders((current) =>
+                    current.map((item) => (item.id === switched.id ? switched : item)),
+                  )
+                }
+              />
+            ))}
         </div>
       </PageSection>
       {picker !== null && (

@@ -66,6 +66,12 @@ type changes struct {
 	matches      bool
 	smartFolders []int64
 	activity     bool
+	// A local media folder was added, replaced or deleted.
+	mediaFolders bool
+}
+
+func (c *changes) mediaFoldersChanged() {
+	c.mediaFolders = true
 }
 
 func (c *changes) activityChanged() {
@@ -145,6 +151,9 @@ func (c *changes) events() []domain.Event {
 	}
 	if c.activity {
 		events = append(events, domain.ActivityChanged{})
+	}
+	if c.mediaFolders {
+		events = append(events, domain.MediaFoldersChanged{})
 	}
 	events = append(events, groupsChangedEvents(c.groups)...)
 	return append(events, smartFoldersChangedEvents(c.smartFolders)...)

@@ -28,6 +28,7 @@ function useFolderData<T>(
   load: (signal: AbortSignal) => Promise<T>,
   key: string,
   seed?: T,
+  guestStream = false,
 ): FolderListingState<T> {
   const [data, setData] = useState<T | null>(seed ?? null);
   const [loading, setLoading] = useState(seed === undefined);
@@ -112,12 +113,14 @@ function useFolderData<T>(
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
   const refresh = useCallback(() => setQuietGeneration((value) => value + 1), []);
-  // The peer's roots and folders enter or leave when it connects or drops; guests open no stream here.
+  // The peer's roots and folders enter or leave when it connects or drops, and a folder's when it is switched.
+  // A guest listens only where the page's video list already streams, so the guest roots page opens no stream.
   const owner = useAudience() === "owner";
-  useEffect(
-    () => (owner ? subscribeServerEvents({ peerItems: refresh }) : undefined),
-    [owner, refresh],
-  );
+  useEffect(() => {
+    if (owner)
+      return subscribeServerEvents({ peerItems: refresh, mediaFolders: refresh });
+    return guestStream ? subscribeServerEvents({ mediaFolders: refresh }) : undefined;
+  }, [owner, guestStream, refresh]);
   const update = useCallback(
     (change: (data: T) => T) =>
       setData((current) => (current === null ? current : change(current))),
@@ -138,6 +141,7 @@ export function useFolderListing(
     (signal) => getFolder(folder, signal),
     `${String(folder.rootId)}\0${folder.path}`,
     seed,
+    true,
   );
 }
 

@@ -70,6 +70,8 @@ type MediaFolders interface {
 	AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error)
 	ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error)
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
+	// SetMediaFolderEnabled returns ErrNotFound for a missing folder and is allowed during a scan.
+	SetMediaFolderEnabled(ctx context.Context, id int64, enabled bool) (domain.MediaFolder, error)
 }
 
 type MediaFolderUsage interface {
@@ -764,8 +766,9 @@ func requiresPutJSONBody(path string) bool {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "card-first"
 	}
-	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
-		return id != "" && !strings.Contains(id, "/")
+	if suffix, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return id != "" && (!found || rest == "enabled")
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")

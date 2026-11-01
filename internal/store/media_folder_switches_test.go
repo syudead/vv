@@ -330,3 +330,46 @@ func TestBundleWithSwitchedOffRepresentative(t *testing.T) {
 		t.Errorf("候補の読み出し = %+v, %v, want オンの版 %d", videos, err, f.shown)
 	}
 }
+
+// Adding, replacing and deleting a folder publish the folder change that peer-credential streams also receive.
+func TestFolderChangesPublishMediaFoldersChanged(t *testing.T) {
+	db, err := OpenMigratedForTest(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	folderChanges := func() int {
+		count := 0
+		for _, event := range recorder.events {
+			if event == domain.Event(domain.MediaFoldersChanged{}) {
+				count++
+			}
+		}
+		recorder.events = nil
+		return count
+	}
+
+	folder, err := db.Settings().AddMediaFolder(ctx, fixturePath("/media/a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := folderChanges(); got != 1 {
+		t.Errorf("add: %d MediaFoldersChanged, want 1", got)
+	}
+	folder, err = db.Settings().ReplaceMediaFolder(ctx, folder.ID, folder.Version, fixturePath("/media/b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := folderChanges(); got != 1 {
+		t.Errorf("replace: %d MediaFoldersChanged, want 1", got)
+	}
+	if err := db.Settings().DeleteMediaFolder(ctx, folder.ID, folder.Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := folderChanges(); got != 1 {
+		t.Errorf("delete: %d MediaFoldersChanged, want 1", got)
+	}
+}

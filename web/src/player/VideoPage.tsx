@@ -404,6 +404,7 @@ export default function VideoPage() {
             folder={video?.folder}
             virtual={thumbnail.video !== undefined}
             remote={remote}
+            folderOff={video?.folderOff === true}
             onClose={close}
           />
         }

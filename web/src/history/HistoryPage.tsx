@@ -29,6 +29,7 @@ import {
   type WatchHistoryEntry,
   type WatchHistoryFilter,
 } from "../api/history";
+import { subscribeServerEvents } from "../api/serverEvents";
 import { useLoadMoreWhenNear } from "../hooks/useLoadMoreWhenNear";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -138,6 +139,19 @@ export default function HistoryPage() {
   const history = useWatchHistory(criteria, (error) => toast(errorText(error)));
   const dates = useHistoryDates(criteria.watch, criteria.query);
   const { state, loadMore } = history;
+  // A switched folder's entries leave or rejoin the history, so keep the rows shown and reread both reads.
+  const { reload: reloadHistory } = history;
+  const { refresh: refreshDates } = dates;
+  useEffect(
+    () =>
+      subscribeServerEvents({
+        mediaFolders: () => {
+          reloadHistory();
+          refreshDates();
+        },
+      }),
+    [reloadHistory, refreshDates],
+  );
   const now = useNow();
   const heading = useRef<HTMLHeadingElement>(null);
   const searchField = useRef<HTMLInputElement | null>(null);

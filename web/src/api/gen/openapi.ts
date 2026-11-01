@@ -892,6 +892,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media-folders/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a media folder on or off
+         * @description Owner-only. A switched-off folder's videos leave this node's lists, searches, counts and folder reads; scans, watching, ingest and jobs go on, and a read by id answers them with folderOff. Writes only the switch, so path and version stay and it is allowed during a scan. Sends mediaFolders on /api/events after commit when the value changes.
+         */
+        put: operations["setMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media-folders/{id}/usage": {
         parameters: {
             query?: never;
@@ -4062,7 +4082,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. A peer-credential stream receives it only for an added, replaced or deleted folder, never for a switch. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4138,10 +4158,15 @@ export interface components {
             path: string;
             /** Format: int64 */
             version: number;
+            /** @description False while the folder is switched off: its videos are left out of this node's lists, searches and counts. */
+            enabled: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        SetMediaFolderEnabledRequest: {
+            enabled: boolean;
         };
         MediaFolderUsage: {
             /** Format: int64 */
@@ -6252,6 +6277,7 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
@@ -6263,7 +6289,13 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
+        /**
+         * @description Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+         * @enum {string}
+         */
+        EmptyReason: "all_folders_off";
         /** @description One listed item's place for merging lists of two paired VVMDMs. */
         PeerListItem: {
             /** @description Cursor that continues the list after this item. */
@@ -6781,6 +6813,8 @@ export interface components {
             id: number;
             /** @description True for a virtual video, which has no file and is never playable. */
             virtual: boolean;
+            /** @description True on a read by id (the video, a playlist's items) while every media folder holding the video is switched off; omitted otherwise. Lists leave such a video out. */
+            folderOff?: boolean;
             linkFetch?: components["schemas"]["VirtualLinkFetch"];
             /** @description Effective title: display name when set, otherwise filename without extension; a virtual video's own title. */
             title: string;
@@ -10173,6 +10207,36 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    setMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media folder ID */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The media folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getMediaFolderUsage: {
