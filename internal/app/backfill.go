@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -17,9 +18,10 @@ type Backfill struct {
 	Read func(ctx context.Context, job domain.Job) error
 }
 
+// unavailable is the result read gives for a missing file, which the save records so the file is not read again.
 func newBackfill[T any](
-	queue func(context.Context, domain.JobPriority) (int, error),
-	read func(context.Context, string) T, save func(context.Context, domain.Job, T) error,
+	queue func(context.Context, domain.JobPriority) (int, error), sources MediaFiles,
+	read func(context.Context, string) T, unavailable T, save func(context.Context, domain.Job, T) error,
 ) Backfill {
 	return Backfill{
 		QueueAll: func(ctx context.Context, job domain.Job) error {
@@ -27,7 +29,15 @@ func newBackfill[T any](
 			return err
 		},
 		Read: func(ctx context.Context, job domain.Job) error {
-			result := read(ctx, job.LocationPath)
+			result := unavailable
+			path, err := sources.Resolve(ctx, job.LocationPath)
+			switch {
+			case errors.Is(err, domain.ErrMediaFileUnavailable):
+			case err != nil:
+				return err
+			default:
+				result = read(ctx, path)
+			}
 			// A read cut short by shutdown is not a result.
 			if err := ctx.Err(); err != nil {
 				return err

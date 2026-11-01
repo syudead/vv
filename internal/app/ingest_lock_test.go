@@ -82,7 +82,8 @@ func TestIngestGenerationHoldsLocksThroughRecording(t *testing.T) {
 			store := &artifactContractStore{IngestStore: newFakeIngestStore(video)}
 			generator := &fakeGenerator{}
 			ingest := NewIngest(IngestOptions{
-				Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Logger: discardLogger(),
+				Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Sources: openableSources(),
+				Logger: discardLogger(),
 			})
 			var observed []string
 			generator.gate = func(call string) {

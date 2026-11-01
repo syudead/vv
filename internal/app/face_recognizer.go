@@ -383,13 +383,9 @@ func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob, path s
 
 // resolve returns the path the media folders' access rules let another process open.
 func (f *FaceRecognizer) resolve(ctx context.Context, path string) (string, error) {
-	folders, err := f.mediaFolders.ListMediaFolders(ctx)
+	roots, err := mediaRoots(ctx, f.mediaFolders)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errFaceDatabase, err)
-	}
-	roots := make([]string, len(folders))
-	for i, folder := range folders {
-		roots[i] = folder.Path
 	}
 	resolved, err := f.mediaFiles.ResolveMediaFile(roots, path)
 	if err != nil {

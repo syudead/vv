@@ -140,8 +140,9 @@ worker or a scan.
 **One owner for opening files.** `internal/mediafs` alone decides whether a
 file may be opened: inside a registered media folder, after resolving symbolic
 links, and a regular file. Streaming, live transcoding, subtitles, opening in
-the default app and the directory picker all go through it, and a location
-that fails the check is answered like a missing file.
+the default app, the directory picker, the import stages, the backfills and
+face analysis all go through it, and a location that fails the check is
+answered like a missing file.
 
 **One owner for generated files.** `internal/artifacts` alone places, publishes,
 opens and removes thumbnails, seek sprites and hover previews. A file becomes
@@ -182,8 +183,9 @@ table stores a remote entity, so pairing and unpairing change no user data.
 **Only a scan walks the media folders.** Only a scan reads the media folders'
 trees and identifies their files, and only a user-started scan walks them
 whole. Outside a scan a file is opened only for one known video, through
-`internal/mediafs`: playback, live transcoding and face analysis, which needs
-full frames. The folder watcher (`internal/watcher`) reads directory entries
+`internal/mediafs`: playback, live transcoding, the import stages that read
+the file (probe, thumbnail, seek sprites, preview), the backfills that re-read
+it and face analysis, which needs full frames. The folder watcher (`internal/watcher`) reads directory entries
 only, to place a watch on each directory, and never opens a file. The folder index (the
 folder names above each video), the folder members of automatic groups, folder
 browsing and the import status are derived from SQLite, never from the
