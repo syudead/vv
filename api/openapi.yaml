@@ -7168,6 +7168,26 @@ components:
           $ref: "#/components/schemas/AssistantProposal"
         stop:
           $ref: "#/components/schemas/AssistantTurnStop"
+        usage:
+          $ref: "#/components/schemas/AssistantTurnUsage"
+
+    AssistantTurnUsage:
+      type: object
+      required: [modelCalls, promptTokens, contextTokens, cpu]
+      additionalProperties: false
+      description: "How the turn used the generation model so far; absent before the first model reply. Every model call reads the whole prompt again."
+      properties:
+        modelCalls:
+          type: integer
+        promptTokens:
+          type: integer
+          description: "The last call's prompt, as the provider counted it."
+        contextTokens:
+          type: integer
+          description: "The context the model ran with."
+        cpu:
+          type: boolean
+          description: "Part of the model ran outside the GPU's memory in some call, which is many times slower."
 
     AssistantTurnList:
       type: object

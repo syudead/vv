@@ -45,6 +45,7 @@ type fakeTurnStore struct {
 	AssistantTurnStore
 	turns    map[int64]domain.AssistantTurn
 	commits  [][]domain.AssistantProgressItem
+	usage    []domain.AssistantTurnUsage
 	finished *domain.AssistantTurn
 }
 
@@ -57,6 +58,11 @@ func (s *fakeTurnStore) Turn(_ context.Context, id int64) (domain.AssistantTurn,
 
 func (s *fakeTurnStore) RecordTurnProgress(_ context.Context, _ int64, progress []domain.AssistantProgressItem) error {
 	s.commits = append(s.commits, slices.Clone(progress))
+	return nil
+}
+
+func (s *fakeTurnStore) RecordTurnUsage(_ context.Context, _ int64, usage domain.AssistantTurnUsage) error {
+	s.usage = append(s.usage, usage)
 	return nil
 }
 
@@ -341,6 +347,42 @@ func TestFitPageLimitSharesTheRoomTheFixedPartLeaves(t *testing.T) {
 		if got := string(l.fitPageLimit(tool, json.RawMessage(args))); got != want {
 			t.Errorf("fitPageLimit(%s) = %s, want %s", args, got, want)
 		}
+	}
+}
+
+// loadedChat is a scripted chat that also tells the loaded model's context before the first call.
+type loadedChat struct {
+	*scriptedChat
+	context int
+}
+
+func (c loadedChat) LoadedContext(context.Context) int { return c.context }
+
+// A model already loaded with too small a context stops the turn before any model call.
+func TestTurnLoopChecksTheLoadedContextBeforeTheFirstCall(t *testing.T) {
+	f := newLoopFixture(t)
+	f.a.chat = loadedChat{scriptedChat: f.chat, context: 2048}
+
+	turn := f.run(t, request)
+
+	if turn.Stop == nil || turn.Stop.Reason != domain.AssistantStopContext || len(f.chat.requests) != 0 {
+		t.Fatalf("turn = %+v after %d model calls, want context_too_small before any", turn, len(f.chat.requests))
+	}
+}
+
+// Each model reply counts a call and keeps its prompt, context and CPU flag on the turn.
+func TestTurnLoopRecordsTheModelUsage(t *testing.T) {
+	first := calls(toolCall("listTags", `{}`))
+	first.Usage = domain.ChatUsage{PromptTokens: 3000, ContextTokens: 40960, CPU: true}
+	answer := text("タグはありません。")
+	answer.Usage = domain.ChatUsage{PromptTokens: 3200, ContextTokens: 40960}
+	f := newLoopFixture(t, first, answer)
+
+	turn := f.run(t, request)
+
+	want := domain.AssistantTurnUsage{ModelCalls: 2, PromptTokens: 3200, ContextTokens: 40960, CPU: true}
+	if turn.Usage == nil || *turn.Usage != want || len(f.turns.usage) != 2 || f.turns.usage[1] != want {
+		t.Fatalf("usage = %+v, records = %+v; want %+v recorded per call", turn.Usage, f.turns.usage, want)
 	}
 }
 

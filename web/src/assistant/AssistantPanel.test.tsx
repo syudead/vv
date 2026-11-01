@@ -518,6 +518,30 @@ describe("AssistantPanel", () => {
     expect(within(panel()).getByText(detail)).toBeDefined();
   });
 
+  it("止まった turn はモデルの呼び出し回数と、CPU で動いた警告を道具の行の下に出す", async () => {
+    server.turn = () =>
+      finished({
+        status: "stopped",
+        stop: { reason: "cancelled" },
+        progress: [{ tool: "video_stats", kind: "builtin", labels: [], at: "2026-10-30T00:00:01Z" }],
+        usage: { modelCalls: 12, promptTokens: 5100, contextTokens: 8192, cpu: true },
+      });
+    const user = userEvent.setup();
+    renderApp();
+
+    await ask(user, "何本ある？");
+
+    expect(await within(panel()).findByText("Counting videos")).toBeDefined();
+    expect(
+      within(panel()).getByText("12 model calls · last prompt 5,100 of 8,192 tokens"),
+    ).toBeDefined();
+    expect(
+      within(panel()).getByText(
+        "Part of the model runs on the CPU, which is many times slower. Give Ollama a smaller context, or choose a smaller model.",
+      ),
+    ).toBeDefined();
+  });
+
   it("turn の途中でパネルを閉じて開き直すと、同じ turn にその間の行が足されている", async () => {
     server.turn = () =>
       json(turn({ id: 3, request: "何かして", status: "running" }), 202);

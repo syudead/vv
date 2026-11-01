@@ -4070,6 +4070,12 @@ export const en = {
       write: (sentence: string) => `Proposing: ${sentence}`,
       show_in_library: "Filtering the library",
       video_stats: "Counting videos",
+      usage: (calls: number, prompt: number, context: number) =>
+        selectPlural(calls, {
+          one: `${formatNumber(calls)} model call · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+          other: `${formatNumber(calls)} model calls · last prompt ${formatNumber(prompt)} of ${formatNumber(context)} tokens`,
+        }),
+      cpu: "Part of the model runs on the CPU, which is many times slower. Give Ollama a smaller context, or choose a smaller model.",
       open_page: (page: string) => (page === "" ? "Opening a page" : `Opening ${page}`),
       start_review: (kind: string) =>
         kind === "" ? "Starting a review" : `Starting a review of ${kind}`,

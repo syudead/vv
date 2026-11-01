@@ -36,33 +36,60 @@ type psResponse struct {
 		Name          string `json:"name"`
 		Model         string `json:"model"`
 		ContextLength int    `json:"context_length"`
+		Size          int64  `json:"size"`
+		SizeVRAM      int64  `json:"size_vram"`
 	} `json:"models"`
+}
+
+// loadedModel is what /api/ps says of the loaded generation model.
+type loadedModel struct {
+	context int
+	// cpu reports that part of the model sits outside the GPU's memory, where it runs many times slower.
+	cpu bool
 }
 
 // loadedContext is the context Ollama loaded the model with, as /api/ps reports it after a call. vv sends no
 // num_ctx: Ollama sizes the context for the host (OLLAMA_CONTEXT_LENGTH or its own default), and a context past
 // the GPU's memory runs on the CPU, many times slower; see docs/design-docs/ai-layer.md.
-func (c *Chat) loadedContext(ctx context.Context, settings domain.OllamaSettings) int {
+func (c *Chat) loadedContext(ctx context.Context, settings domain.OllamaSettings) loadedModel {
+	if loaded, ok := c.loaded(ctx, settings); ok {
+		return loaded
+	}
+	return loadedModel{context: ollamaDefaultContext}
+}
+
+// LoadedContext is the context of the generation model while Ollama has it loaded, and 0 when it does not, so a
+// turn fits its first prompt when the model is already running.
+func (c *Chat) LoadedContext(ctx context.Context) int {
+	settings, err := c.settings.OllamaSettings(ctx)
+	if err != nil || settings.GenerationModel == "" {
+		return 0
+	}
+	loaded, _ := c.loaded(ctx, settings)
+	return loaded.context
+}
+
+func (c *Chat) loaded(ctx context.Context, settings domain.OllamaSettings) (loadedModel, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(settings.Endpoint, "/")+"/api/ps", nil)
 	if err != nil {
-		return ollamaDefaultContext
+		return loadedModel{}, false
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return ollamaDefaultContext
+		return loadedModel{}, false
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var ps psResponse
 	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&ps) != nil {
-		return ollamaDefaultContext
+		return loadedModel{}, false
 	}
 	for _, m := range ps.Models {
 		if (sameModel(m.Name, settings.GenerationModel) || sameModel(m.Model, settings.GenerationModel)) &&
 			m.ContextLength > 0 {
-			return m.ContextLength
+			return loadedModel{context: m.ContextLength, cpu: m.Size > 0 && m.SizeVRAM < m.Size}, true
 		}
 	}
-	return ollamaDefaultContext
+	return loadedModel{}, false
 }
 
 // chatMessage omits Ollama's thinking field, so the model's reasoning never leaves the adapter.
@@ -139,7 +166,8 @@ func (c *Chat) Chat(ctx context.Context, req domain.ChatRequest) (domain.ChatRep
 	if err != nil {
 		return domain.ChatReply{}, err
 	}
-	usage.ContextTokens = c.loadedContext(ctx, settings)
+	loaded := c.loadedContext(ctx, settings)
+	usage.ContextTokens, usage.CPU = loaded.context, loaded.cpu
 	message := decoded.Message
 	if len(message.ToolCalls) == 0 {
 		return domain.ChatReply{Text: strings.TrimSpace(message.Content), Usage: usage}, nil

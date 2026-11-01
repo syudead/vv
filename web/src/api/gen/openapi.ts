@@ -4372,6 +4372,17 @@ export interface components {
             clarify?: components["schemas"]["AssistantTurnClarification"];
             proposal?: components["schemas"]["AssistantProposal"];
             stop?: components["schemas"]["AssistantTurnStop"];
+            usage?: components["schemas"]["AssistantTurnUsage"];
+        };
+        /** @description How the turn used the generation model so far; absent before the first model reply. Every model call reads the whole prompt again. */
+        AssistantTurnUsage: {
+            modelCalls: number;
+            /** @description The last call's prompt, as the provider counted it. */
+            promptTokens: number;
+            /** @description The context the model ran with. */
+            contextTokens: number;
+            /** @description Part of the model ran outside the GPU's memory in some call, which is many times slower. */
+            cpu: boolean;
         };
         AssistantTurnList: {
             items: components["schemas"]["AssistantTurn"][];

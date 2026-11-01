@@ -4450,6 +4450,9 @@ type AssistantTurn struct {
 
 	// Unchecked Numbers and library names in the answer that no tool result, the request, the screen or today's date holds, after one correction round; absent when every item was found, or when the model looked at images.
 	Unchecked *[]string `json:"unchecked,omitempty"`
+
+	// Usage How the turn used the generation model so far; absent before the first model reply. Every model call reads the whole prompt again.
+	Usage *AssistantTurnUsage `json:"usage,omitempty"`
 }
 
 // AssistantTurnStatus interrupted was running when the server stopped.
@@ -4512,6 +4515,19 @@ type AssistantTurnStop struct {
 
 // AssistantTurnStopReason defines model for AssistantTurnStop.Reason.
 type AssistantTurnStopReason string
+
+// AssistantTurnUsage How the turn used the generation model so far; absent before the first model reply. Every model call reads the whole prompt again.
+type AssistantTurnUsage struct {
+	// ContextTokens The context the model ran with.
+	ContextTokens int `json:"contextTokens"`
+
+	// Cpu Part of the model ran outside the GPU's memory in some call, which is many times slower.
+	Cpu        bool `json:"cpu"`
+	ModelCalls int  `json:"modelCalls"`
+
+	// PromptTokens The last call's prompt, as the provider counted it.
+	PromptTokens int `json:"promptTokens"`
+}
 
 // AuthRedirect defines model for AuthRedirect.
 type AuthRedirect struct {

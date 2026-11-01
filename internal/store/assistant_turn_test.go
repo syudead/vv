@@ -69,6 +69,23 @@ func TestAssistantTurnProgressPublishesEachCommit(t *testing.T) {
 	}
 }
 
+// A running turn's usage is stored as it changes and read back with the turn.
+func TestAssistantTurnUsageIsStoredWhileItRuns(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	turn := startTurn(t, db, "猫の動画は何本?")
+	usage := domain.AssistantTurnUsage{ModelCalls: 3, PromptTokens: 5100, ContextTokens: 8192, CPU: true}
+
+	if err := db.Assistant().RecordTurnUsage(ctx, turn.ID, usage); err != nil {
+		t.Fatal(err)
+	}
+
+	stored, err := db.Assistant().Turn(ctx, turn.ID)
+	if err != nil || stored.Usage == nil || *stored.Usage != usage {
+		t.Fatalf("stored usage = %+v, %v; want %+v", stored.Usage, err, usage)
+	}
+}
+
 func TestRecoverAssistantTurnsInterruptsTheRunningTurn(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

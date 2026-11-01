@@ -14,19 +14,20 @@ import (
 // Every transaction that changes a turn publishes AssistantChanged after commit, so the panel re-reads it.
 
 const assistantTurnColumns = `id, status, request, context, coalesce(previous_turn_id, 0), progress,
-	coalesce(answer, ''), judged, directive, clarify, coalesce(proposal_id, 0), stop, unchecked, started_at, finished_at`
+	coalesce(answer, ''), judged, directive, clarify, coalesce(proposal_id, 0), stop, unchecked, usage, started_at,
+	finished_at`
 
 func scanAssistantTurn(row rowScanner) (domain.AssistantTurn, error) {
 	var (
 		t                         domain.AssistantTurn
 		status, context, progress string
 		directive, clarify, stop  sql.NullString
-		unchecked                 sql.NullString
+		unchecked, usage          sql.NullString
 		startedAt                 int64
 		finishedAt                sql.NullInt64
 	)
 	if err := row.Scan(&t.ID, &status, &t.Request, &context, &t.PreviousTurnID, &progress, &t.Answer, &t.Judged,
-		&directive, &clarify, &t.ProposalID, &stop, &unchecked, &startedAt, &finishedAt); err != nil {
+		&directive, &clarify, &t.ProposalID, &stop, &unchecked, &usage, &startedAt, &finishedAt); err != nil {
 		return domain.AssistantTurn{}, err
 	}
 	t.Status = domain.AssistantTurnStatus(status)
@@ -41,6 +42,7 @@ func scanAssistantTurn(row rowScanner) (domain.AssistantTurn, error) {
 		{clarify, &t.Clarify},
 		{stop, &t.Stop},
 		{unchecked, &t.Unchecked},
+		{usage, &t.Usage},
 	} {
 		if !part.raw.Valid {
 			continue
@@ -150,13 +152,23 @@ func (s *AssistantStore) RecordTurnProgress(ctx context.Context, id int64, progr
 		string(encoded), id, string(domain.AssistantTurnRunning))
 }
 
+// RecordTurnUsage replaces the model usage of a running turn.
+func (s *AssistantStore) RecordTurnUsage(ctx context.Context, id int64, usage domain.AssistantTurnUsage) error {
+	encoded, err := json.Marshal(usage)
+	if err != nil {
+		return fmt.Errorf("cannot encode the assistant turn usage: %w", err)
+	}
+	return s.updateRunningTurn(ctx, `update assistant_turns set usage = ? where id = ? and status = ?`,
+		string(encoded), id, string(domain.AssistantTurnRunning))
+}
+
 // FinishTurn moves a running turn once to its finished status with its result and progress.
 func (s *AssistantStore) FinishTurn(ctx context.Context, t domain.AssistantTurn, now time.Time) error {
 	if t.Status == domain.AssistantTurnRunning {
 		return errors.New("cannot finish an assistant turn as running")
 	}
-	values := make([]any, 0, 5)
-	for _, part := range []any{t.Progress, t.Directive, t.Clarify, t.Stop, t.Unchecked} {
+	values := make([]any, 0, 6)
+	for _, part := range []any{t.Progress, t.Directive, t.Clarify, t.Stop, t.Unchecked, t.Usage} {
 		encoded, err := encodeOptionalJSON(part)
 		if err != nil {
 			return fmt.Errorf("cannot encode the assistant turn: %w", err)
@@ -174,8 +186,9 @@ func (s *AssistantStore) FinishTurn(ctx context.Context, t domain.AssistantTurn,
 		values[0] = "[]"
 	}
 	return s.updateRunningTurn(ctx, `update assistant_turns set status = ?, progress = ?, directive = ?,
-		clarify = ?, stop = ?, unchecked = ?, answer = ?, judged = ?, proposal_id = ?, finished_at = ?
-		where id = ? and status = ?`, string(t.Status), values[0], values[1], values[2], values[3], values[4], answer,
+		clarify = ?, stop = ?, unchecked = ?, usage = ?, answer = ?, judged = ?, proposal_id = ?, finished_at = ?
+		where id = ? and status = ?`, string(t.Status), values[0], values[1], values[2], values[3], values[4], values[5],
+		answer,
 		t.Judged, proposal, now.UnixMilli(), t.ID, string(domain.AssistantTurnRunning))
 }
 

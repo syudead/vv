@@ -187,3 +187,30 @@ func TestChatReportsOllamasDefaultContextWhenPsDoesNotSay(t *testing.T) {
 		t.Fatalf("reply = %+v, %v; want the context %d", reply, err, ollamaDefaultContext)
 	}
 }
+
+// /api/ps tells the loaded model's context before a call, and a model larger than its GPU memory as run on the CPU.
+func TestChatReadsTheLoadedModelFromPs(t *testing.T) {
+	loaded := `{"models":[{"name":"qwen3:8b","context_length":8192,"size":9000,"size_vram":6000}]}`
+	ps := loaded
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/ps" {
+			_, _ = w.Write([]byte(ps))
+			return
+		}
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"ok"},"done":true}`))
+	}))
+	t.Cleanup(server.Close)
+	chat := NewChat(generating(server.URL))
+
+	if got := chat.LoadedContext(t.Context()); got != 8192 {
+		t.Fatalf("LoadedContext = %d, want the loaded model's 8192", got)
+	}
+	reply, err := chat.Chat(t.Context(), domain.ChatRequest{Messages: []domain.ChatMessage{{Role: domain.ChatRoleUser, Content: "?"}}})
+	if err != nil || !reply.Usage.CPU || reply.Usage.ContextTokens != 8192 {
+		t.Fatalf("reply = %+v, %v; want the context and the CPU flag", reply, err)
+	}
+	ps = `{"models":[]}`
+	if got := chat.LoadedContext(t.Context()); got != 0 {
+		t.Fatalf("LoadedContext = %d, want 0 while the model is not loaded", got)
+	}
+}

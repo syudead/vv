@@ -185,6 +185,11 @@ func (s *server) toAPIAssistantTurn(ctx context.Context, t domain.AssistantTurn)
 			out.Stop.Excluded = &gen.AssistantExcludedOperation{Operation: e.Operation, Reason: e.Reason, Page: e.Page}
 		}
 	}
+	if u := t.Usage; u != nil {
+		out.Usage = &gen.AssistantTurnUsage{
+			ModelCalls: u.ModelCalls, PromptTokens: u.PromptTokens, ContextTokens: u.ContextTokens, Cpu: u.CPU,
+		}
+	}
 	if t.ProposalID > 0 {
 		p, err := s.assistant.Proposal(ctx, t.ProposalID)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
