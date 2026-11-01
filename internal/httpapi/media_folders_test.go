@@ -149,7 +149,6 @@ func TestSetMediaFolderEnabledDuringAScanSendsOneEvent(t *testing.T) {
 	db.PublishTo(storePublisher{events: events})
 	handler := newTestServer(t, Options{MediaFolders: db.Settings(), Events: events})
 	stream, _ := openEvents(t, handler)
-	expectNoEvent(t, stream)
 
 	rec := jsonRequest(t, handler, http.MethodPut, fmt.Sprintf("/api/media-folders/%d/enabled", folder.ID), `{"enabled":false}`)
 	if rec.Code != http.StatusOK {
@@ -162,7 +161,12 @@ func TestSetMediaFolderEnabledDuringAScanSendsOneEvent(t *testing.T) {
 	if event := nextEvent(t, stream); event.name != "mediaFolders" || event.data != "{}" {
 		t.Fatalf("event = %+v, want mediaFolders {}", event)
 	}
-	expectNoEvent(t, stream)
+	// The store publishes before the handler answers, and a stream writes onboarding after mediaFolders, so a
+	// second mediaFolders would arrive before this marker.
+	events.OnboardingChanged()
+	if event := nextEvent(t, stream); event.name != "onboarding" {
+		t.Fatalf("event after the switch = %+v, want only the onboarding marker", event)
+	}
 }
 
 func TestSetMediaFolderEnabledAnswersNotFound(t *testing.T) {
@@ -228,5 +232,17 @@ func TestGetMediaFolderUsage(t *testing.T) {
 	rec := do(t, newTestServer(t, Options{FolderUsage: missing}), http.MethodGet, "/api/media-folders/4/usage")
 	if rec.Code != http.StatusNotFound || decode[gen.Error](t, rec).Code != gen.ErrorCodeMediaFolderNotFound {
 		t.Fatalf("missing folder = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Decoding into a plain bool would read a missing enabled as false and switch the folder off.
+func TestSetMediaFolderEnabledRejectsAMissingValue(t *testing.T) {
+	for _, body := range []string{`{}`, `{"enabled":null}`} {
+		folders := &fakeMediaFolders{}
+		rec := jsonRequest(t, newTestServer(t, Options{MediaFolders: folders}), http.MethodPut, "/api/media-folders/1/enabled", body)
+		assertErrorBody(t, body, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: codeInvalidRequest})
+		if folders.operation != "" {
+			t.Fatalf("%s switched the folder", body)
+		}
 	}
 }

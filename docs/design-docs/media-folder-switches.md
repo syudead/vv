@@ -107,7 +107,11 @@ an added, replaced or deleted folder
 ## The screens name a switched-off folder
 
 The switch is the last control of each row in Settings, `Media folders`, and
-stays usable during a scan. Open lists reload on `mediaFolders`. An empty
+stays usable during a scan. Open lists, the watch history and its dates
+included, reload on `mediaFolders`, and the event discards the saved list a
+return to the library or a folder would restore
+([`web/src/api/serverEvents.ts`](../../web/src/api/serverEvents.ts)). A guest's
+Folders roots page opens no stream, so its roots wait for the next visit. An empty
 library with `all_folders_off` and no search or filter tells the owner every
 folder is off and links to that page; a guest keeps the sign-in state. A video
 with `folderOff` plays as before, with a band before its breadcrumb, whose

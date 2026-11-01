@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import type { WatchHistoryEntry } from "../api/history";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
@@ -494,6 +495,32 @@ describe("HistoryPage", () => {
       ),
     );
     expect(toasts()).toEqual([]);
+  });
+
+  // The history read leaves a switched-off folder's videos out, so an open page must reread both reads.
+  it("mediaFolders で件と日付を、今の行を残したまま読み直す", async () => {
+    installFakeEventSource();
+    renderPage();
+    const jump = await screen.findByRole("radiogroup", { name: "Jump to date" });
+    expect(within(historyList()).getByText("Harbour lights")).toBeDefined();
+
+    server.entries = server.entries.filter((entry) => entry.id !== 4 && entry.id !== 3);
+    server.dates = ["2026-09-26"];
+    await emitServerEvent("mediaFolders", {});
+
+    await waitFor(() =>
+      expect(within(historyList()).queryByText("Harbour lights")).toBeNull(),
+    );
+    expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
+    await waitFor(() =>
+      expect(
+        within(jump)
+          .getAllByRole("radio")
+          .map((item) => item.textContent),
+      ).toEqual(["Sat, Sep 26"]),
+    );
+    expect(server.listUrls).toHaveLength(2);
+    expect(server.datesUrls).toHaveLength(2);
   });
 
   it("削除の 404 では知らせずに最初のページから読み直す", async () => {

@@ -6,6 +6,7 @@ import {
   type VideoChanged,
 } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
 
 type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
 type PeerState = components["schemas"]["PeerState"];
@@ -103,7 +104,11 @@ function connect(): void {
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("onboarding", () => dispatch("onboarding"));
   current.addEventListener("assistant", () => dispatch("assistant"));
-  current.addEventListener("mediaFolders", () => dispatch("mediaFolders"));
+  current.addEventListener("mediaFolders", () => {
+    // A saved list may hold a switched-off folder's videos, and no open screen reloads it.
+    clearListSnapshot();
+    dispatch("mediaFolders");
+  });
   current.addEventListener("error", () => {
     // CLOSED means browser retries stopped; check audience explicitly because EventSource hides HTTP status.
     // Reload once after owner access expires; otherwise reconnect after a delay.

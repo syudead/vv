@@ -95,8 +95,15 @@ func (s *server) DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 
 // SetMediaFolderEnabled answers not_found for a missing folder, as the contract of the switch names it.
 func (s *server) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
-	var body gen.SetMediaFolderEnabledRequest
+	// A pointer tells a missing enabled from false, which would switch the folder off.
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
 	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.Enabled == nil {
+		s.invalidRequest(w, "enabled must be true or false.")
 		return
 	}
 	if id < 1 {
@@ -107,7 +114,7 @@ func (s *server) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, i
 		s.internalError(w, "Media folder storage is not configured.", nil)
 		return
 	}
-	folder, err := s.mediaFolders.SetMediaFolderEnabled(r.Context(), id, body.Enabled)
+	folder, err := s.mediaFolders.SetMediaFolderEnabled(r.Context(), id, *body.Enabled)
 	if errors.Is(err, domain.ErrNotFound) {
 		s.notFound(w, "Media folder not found.")
 		return
