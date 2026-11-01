@@ -104,6 +104,8 @@ type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
 	Artifacts ArtifactStore
+	// Sources resolves each job's location before the generator reads it.
+	Sources MediaFiles
 	// Nil disables events.
 	Publisher Publisher
 	// Nil uses slog.Default.
@@ -115,6 +117,7 @@ type IngestOptions struct {
 type Ingest struct {
 	store     IngestStore
 	generator Generator
+	sources   MediaFiles
 	files     ArtifactStore
 	publisher Publisher
 	artifacts *artifacts
@@ -132,6 +135,7 @@ func NewIngest(opts IngestOptions) *Ingest {
 	return &Ingest{
 		store:       opts.Store,
 		generator:   opts.Generator,
+		sources:     opts.Sources,
 		files:       opts.Artifacts,
 		publisher:   opts.Publisher,
 		artifacts:   newArtifacts(opts.Store, opts.Artifacts, logger),
@@ -188,12 +192,13 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 	if !current {
 		return nil
 	}
-	if err := i.generator.CheckSource(job.LocationPath); err != nil {
+	source, err := i.source(ctx, job.LocationPath)
+	if err != nil {
 		return err
 	}
 
 	// FailClaimedJob atomically records exhausted failures on jobs and videos, retaining library rows.
-	probe, err := i.generator.Probe(ctx, job.LocationPath)
+	probe, err := i.generator.Probe(ctx, source)
 	if err != nil {
 		return err
 	}
@@ -201,6 +206,19 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 	playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
 	_, err = i.store.ApplyProbeForJob(ctx, job, probe, playability)
 	return err
+}
+
+// source resolves a job's location through the media folders' access rules and checks that it can be read; a refused
+// location fails like a missing file.
+func (i *Ingest) source(ctx context.Context, location string) (string, error) {
+	resolved, err := i.sources.Resolve(ctx, location)
+	if errors.Is(err, domain.ErrMediaFileUnavailable) {
+		return "", domain.NewProbeFailure(domain.ProbeErrorFileUnavailable, err)
+	}
+	if err != nil {
+		return "", err
+	}
+	return resolved, i.generator.CheckSource(resolved)
 }
 
 // Reread applied image, position, and state under the generation lock so a queued job cannot
@@ -220,7 +238,7 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	}
 	// Applied images can be republished even when source media is unreadable; defer that error until
 	// the locked read confirms no image exists.
-	sourceErr := i.generator.CheckSource(job.LocationPath)
+	sourcePath, sourceErr := i.source(ctx, job.LocationPath)
 	if sourceErr != nil {
 		image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
 		if err != nil {
@@ -243,7 +261,7 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 		// Exhausted failure is recorded with the job transaction; a missing selected frame must not
 		// delete the video. A forced job rebuilds a done thumbnail, replacing the file in one rename.
 		if video.ThumbnailState != domain.ThumbnailStateDone || job.Force {
-			if err := i.publishJobThumbnail(ctx, job, video, sourceErr); err != nil {
+			if err := i.publishJobThumbnail(ctx, job, video, sourcePath, sourceErr); err != nil {
 				return false, err
 			}
 		}
@@ -254,7 +272,9 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 
 // publishJobThumbnail publishes the applied image, else the chosen position, else the automatic frame, and records
 // done with the first-frame substitution; explicit positions never substitute.
-func (i *Ingest) publishJobThumbnail(ctx context.Context, job domain.Job, video domain.Video, sourceErr error) error {
+func (i *Ingest) publishJobThumbnail(
+	ctx context.Context, job domain.Job, video domain.Video, sourcePath string, sourceErr error,
+) error {
 	substitution := domain.SubstitutionUnknown
 	image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
 	if err != nil {
@@ -275,9 +295,9 @@ func (i *Ingest) publishJobThumbnail(ctx context.Context, job domain.Job, video 
 		}
 		if video.ThumbnailPositionMs != nil {
 			substitution = domain.SubstitutionNone
-			return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output, poster)
+			return i.generator.ThumbnailAt(ctx, sourcePath, *video.ThumbnailPositionMs, output, poster)
 		}
-		firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationOf(video), output, poster)
+		firstFrame, err := i.generator.Thumbnail(ctx, sourcePath, durationOf(video), output, poster)
 		substitution = domain.SubstitutionOf(firstFrame)
 		return err
 	}); err != nil {
@@ -542,7 +562,8 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	if !current {
 		return nil
 	}
-	if err := i.generator.CheckSource(job.LocationPath); err != nil {
+	source, err := i.source(ctx, job.LocationPath)
+	if err != nil {
 		return err
 	}
 	var durationMs int64
@@ -555,7 +576,7 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 		// Reuse persisted substitution provenance after restart or across duplicate content; unknown
 		// legacy provenance must not alter existing issue rows.
 		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, job.Force, func(outputDir string) error {
-			return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+			return i.generator.SeekSprite(ctx, source, outputDir, layout)
 		})
 		if err != nil {
 			return false, err
@@ -585,7 +606,8 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	if err != nil || !current {
 		return err
 	}
-	if err := i.generator.CheckSource(job.LocationPath); err != nil {
+	source, err := i.source(ctx, job.LocationPath)
+	if err != nil {
 		return err
 	}
 	validateContent := func(validateCtx context.Context) (bool, error) {
@@ -595,7 +617,7 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	// Serialize generation and completion with deletion, allowing other artifact kinds concurrently.
 	return i.artifacts.generate(ctx, job.ContentKey, artifactPreview, func() (bool, error) {
 		if err := i.files.PublishPreview(ctx, job.ContentKey, job.Force, func(output string) error {
-			return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
+			return i.generator.Preview(ctx, source, output, durationMs)
 		}, validateContent); err != nil {
 			return false, err
 		}

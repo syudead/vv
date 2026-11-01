@@ -180,8 +180,10 @@ func run(opts runOptions) error {
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
+	sources := app.MediaFiles{Folders: settingsStore, Resolver: mediafs.New()}
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Sources: sources, Publisher: bus,
+		Logger: logger,
 	})
 	// Provider adapters own connection settings and expose app.Classifier; see
 	// docs/design-docs/ai-layer.md.
@@ -222,7 +224,7 @@ func run(opts runOptions) error {
 		handlers[kind] = faces.analysis.HandleJob
 	}
 	handlers[domain.JobVersionJudge] = versionJudge.HandleJob
-	addBackfillHandlers(handlers, ingestStore, ingest)
+	addBackfillHandlers(handlers, ingestStore, sources, ingest)
 	scheduler = jobs.NewScheduler(jobs.Options{
 		Queue:    ingestStore,
 		Folders:  scanIndexStore,
@@ -484,9 +486,11 @@ func run(opts runOptions) error {
 }
 
 // addBackfillHandlers handles the jobs every start queues and the per-video jobs they queue.
-func addBackfillHandlers(handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, ingest *app.Ingest) {
-	keyframes := app.KeyframeBackfill(ingestStore, media.ProbeKeyframes)
-	mediaInfo := app.MediaInfoBackfill(ingestStore, media.ProbeMediaInfo)
+func addBackfillHandlers(
+	handlers map[domain.JobKind]jobs.Handler, ingestStore *store.IngestStore, sources app.MediaFiles, ingest *app.Ingest,
+) {
+	keyframes := app.KeyframeBackfill(ingestStore, sources, media.ProbeKeyframes)
+	mediaInfo := app.MediaInfoBackfill(ingestStore, sources, media.ProbeMediaInfo)
 	handlers[domain.JobQueueKeyframes] = keyframes.QueueAll
 	handlers[domain.JobKeyframes] = keyframes.Read
 	handlers[domain.JobQueueMediaInfo] = mediaInfo.QueueAll

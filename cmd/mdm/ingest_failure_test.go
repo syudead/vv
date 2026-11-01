@@ -12,6 +12,7 @@ import (
 	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/media"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -21,6 +22,7 @@ func newTestIngest(db *store.DB, dataDir string) *app.Ingest {
 		Store:     db.Ingest(),
 		Generator: media.NewAssets(),
 		Artifacts: artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir()),
+		Sources:   app.MediaFiles{Folders: db.Settings(), Resolver: mediafs.New()},
 		Logger:    slog.New(slog.DiscardHandler),
 	})
 }
