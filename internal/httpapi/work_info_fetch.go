@@ -157,7 +157,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		for _, target := range answer.Targets {
-			target.VideoId = domain.ToRemoteID(target.VideoId)
+			target.VideoId = domain.RemoteID(domain.LinkSlot, target.VideoId)
 			targets = append(targets, target)
 		}
 	}

@@ -52,7 +52,7 @@ func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 	t.Helper()
 	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
 		for name, own := range f.ids {
-			if (node == "b" && id == own) || (node == "a" && id == domain.ToRemoteID(own)) {
+			if (node == "b" && id == own) || (node == "a" && id == domain.RemoteID(1, own)) {
 				return node + ":" + name
 			}
 		}
@@ -188,7 +188,7 @@ func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
 		t.Errorf("tag filter = %v, totals %v, want %v and 2", got, totals, want)
 	}
 	// A filter by an entity only the peer has lists the peer's matches alone.
-	remoteTag := strconv.FormatInt(domain.ToRemoteID(fa.tagID), 10)
+	remoteTag := strconv.FormatInt(domain.RemoteID(1, fa.tagID), 10)
 	got, _ = pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"tag": {remoteTag}})
 	if want := []string{"a:b", "a:a"}; !slices.Equal(got, want) {
 		t.Errorf("remote tag filter = %v, want %v", got, want)
@@ -228,8 +228,8 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 			t.Errorf("remote root %d carries its grouping", root.RootId)
 		}
 	}
-	remoteRoot := domain.ToRemoteID(fa.rootID)
-	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.ToRemoteID(fa.otherID)} {
+	remoteRoot := domain.RemoteID(1, fa.rootID)
+	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.RemoteID(1, fa.otherID)} {
 		if !slices.Contains(ids, want) {
 			t.Errorf("roots = %v, want %d among them", ids, want)
 		}
@@ -255,7 +255,7 @@ func TestRemoteFolderFavoritesListThePeersFavorites(t *testing.T) {
 
 	got, totals := pageVideos(t, fa, fb, func(target string) *httptest.ResponseRecorder {
 		return b.owner(http.MethodGet, target, "")
-	}, fb.folderPath(domain.ToRemoteID(fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
+	}, fb.folderPath(domain.RemoteID(1, fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
 	if !slices.Equal(got, []string{"a:a"}) || !slices.Equal(totals, []int{1}) {
 		t.Errorf("favorites of the remote root = %v, totals %v, want a:a", got, totals)
 	}

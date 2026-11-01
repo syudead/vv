@@ -51,8 +51,10 @@ func TestPeerStoreKeepsOneLinkAndOneGrant(t *testing.T) {
 	if err := db.Peers().AddGrant(ctx, testGrant(otherNodeID), "vvp_other"); !errors.Is(err, domain.ErrAlreadyPaired) {
 		t.Errorf("2 つ目の AddGrant err = %v, want ErrAlreadyPaired", err)
 	}
-	if link, found, err := db.Peers().Link(ctx); err != nil || !found || link != testLink(testNodeID) {
-		t.Errorf("Link = %+v, %v, %v, want %+v", link, found, err, testLink(testNodeID))
+	wantLink := testLink(testNodeID)
+	wantLink.Slot = 1
+	if link, found, err := db.Peers().Link(ctx); err != nil || !found || link != wantLink {
+		t.Errorf("Link = %+v, %v, %v, want %+v", link, found, err, wantLink)
 	}
 	if grant, found, err := db.Peers().Grant(ctx); err != nil || !found || grant != testGrant(testNodeID) {
 		t.Errorf("Grant = %+v, %v, %v, want %+v", grant, found, err, testGrant(testNodeID))
@@ -70,6 +72,71 @@ func TestPeerStoreKeepsOneLinkAndOneGrant(t *testing.T) {
 	}
 	if _, found, _ := db.Peers().Link(ctx); !found {
 		t.Error("grant を消すと link も消えた")
+	}
+}
+
+// A refused pairing takes no slot, and a link added after an unpairing takes the next slot, never the freed one.
+func TestAddLinkNeverGivesASlotTwice(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	link := testLink(testNodeID)
+	link.Slot = 7 // The store gives the slot; the caller's value is ignored.
+	if err := db.Peers().AddLink(ctx, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Peers().AddLink(ctx, testLink(otherNodeID)); !errors.Is(err, domain.ErrAlreadyPaired) {
+		t.Fatalf("2 つ目の AddLink err = %v, want ErrAlreadyPaired", err)
+	}
+	if got, _, err := db.Peers().Link(ctx); err != nil || got.Slot != 1 {
+		t.Fatalf("最初のリンクのスロット = %d, %v, want 1", got.Slot, err)
+	}
+	if _, err := db.Peers().DeleteLink(ctx, testNodeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Peers().AddLink(ctx, testLink(otherNodeID)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := db.Peers().Link(ctx); err != nil || got.NodeID != otherNodeID || got.Slot != 2 {
+		t.Errorf("解除後のリンク = %s スロット %d, %v, want %s スロット 2", got.NodeID, got.Slot, err, otherNodeID)
+	}
+}
+
+const peerLinkSlotsVersion = 93
+
+// The existing link takes slot 1, keeping its ids' 2^40 offset, and the counter gives the next link slot 2.
+func TestPeerLinkSlotsMigrationGivesTheExistingLinkSlotOne(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		withLink bool
+		wantNext string
+	}{
+		{name: "リンクあり", withLink: true, wantNext: "2"},
+		{name: "リンクなし", withLink: false, wantNext: "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, provider := migrateTo(t, peerLinkSlotsVersion-1)
+			ctx := context.Background()
+			if tc.withLink {
+				execAll(t, db, `insert into peer_link (node_id, name, address, secret, paired_at)
+					values ('`+testNodeID+`', 'nas', 'http://nas.local', 'vvp_outgoing', 1)`)
+			}
+			if _, err := provider.UpTo(ctx, peerLinkSlotsVersion); err != nil {
+				t.Fatal(err)
+			}
+			link, found, err := db.Peers().Link(ctx)
+			if err != nil || found != tc.withLink || (found && link.Slot != 1) {
+				t.Errorf("Link = %+v, %v, %v, want found %v スロット 1", link, found, err, tc.withLink)
+			}
+			if next, found, err := readSetting(ctx, db.sql, nextSlotKey); err != nil || !found || next != tc.wantNext {
+				t.Errorf("peer.next_slot = %q, %v, %v, want %q", next, found, err, tc.wantNext)
+			}
+			if _, err := provider.DownTo(ctx, peerLinkSlotsVersion-1); err != nil {
+				t.Fatal(err)
+			}
+			if _, found, err := readSetting(ctx, db.sql, nextSlotKey); err != nil || found {
+				t.Errorf("down 後の peer.next_slot = %v, %v, want 無し", found, err)
+			}
+		})
 	}
 }
 
@@ -196,14 +263,14 @@ func TestPeerMigrationSplitsTheMutualRecord(t *testing.T) {
 				testNodeID, tc.incomingHash, authNow.Unix()); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := provider.UpTo(ctx, 83); err != nil {
+			if _, err := provider.UpTo(ctx, peerLinkSlotsVersion); err != nil {
 				t.Fatal(err)
 			}
 
 			link, found, err := db.Peers().Link(ctx)
 			want := domain.PeerLink{
 				NodeID: testNodeID, Name: "nas", Address: "https://nas.local", Secret: "vvp_outgoing",
-				Revoked: tc.wantRevoked, PinnedSPKI: "spki", PairedAt: authNow,
+				Revoked: tc.wantRevoked, PinnedSPKI: "spki", PairedAt: authNow, Slot: 1,
 			}
 			if err != nil || !found || link != want {
 				t.Errorf("Link = %+v, %v, %v, want %+v", link, found, err, want)

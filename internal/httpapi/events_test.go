@@ -347,11 +347,11 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if pending := sub.take(); !slices.Equal(pending.smartFolders, []int64{2, 4, 5}) || len(pending.groups) != 0 {
 		t.Fatalf("SmartFoldersChanged: %+v, want smartFolders [2 4 5]", pending)
 	}
-	events.Handle(domain.PeerChanged{VideoIDs: []int64{domain.ToRemoteID(1)}, GroupIDs: []int64{domain.ToRemoteID(2)},
-		SmartFolderIDs: []int64{domain.ToRemoteID(3)}})
-	if pending := sub.take(); !slices.Equal(pending.videos, []int64{domain.ToRemoteID(1)}) ||
-		!slices.Equal(pending.groups, []int64{domain.ToRemoteID(2)}) ||
-		!slices.Equal(pending.smartFolders, []int64{domain.ToRemoteID(3)}) || pending.peer {
+	events.Handle(domain.PeerChanged{VideoIDs: []int64{domain.RemoteID(1, 1)}, GroupIDs: []int64{domain.RemoteID(1, 2)},
+		SmartFolderIDs: []int64{domain.RemoteID(1, 3)}})
+	if pending := sub.take(); !slices.Equal(pending.videos, []int64{domain.RemoteID(1, 1)}) ||
+		!slices.Equal(pending.groups, []int64{domain.RemoteID(1, 2)}) ||
+		!slices.Equal(pending.smartFolders, []int64{domain.RemoteID(1, 3)}) || pending.peer {
 		t.Fatalf("PeerChanged: %+v, want 相手の video, group, smartFolder", pending)
 	}
 	events.Handle(domain.PeerStateChanged{})

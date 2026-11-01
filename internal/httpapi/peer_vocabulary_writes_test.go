@@ -101,7 +101,7 @@ func TestMergeTagsMergesTheSameNamesOnThePeerAndCreatesTheDestination(t *testing
 	// 仔猫 is a's alone, so b lists it with the offset.
 	peerOnly := tagOn(t, fa, "仔猫", "d")
 
-	body := `{"sourceIds":[` + strconv.FormatInt(kitten.ID, 10) + `,` + strconv.FormatInt(domain.ToRemoteID(peerOnly.ID), 10) + `]}`
+	body := `{"sourceIds":[` + strconv.FormatInt(kitten.ID, 10) + `,` + strconv.FormatInt(domain.RemoteID(1, peerOnly.ID), 10) + `]}`
 	rec := b.owner(http.MethodPost, tagPath(cat.ID, "/merge"), body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
@@ -154,7 +154,7 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 		}
 	}
 	dog := tagOn(t, fa, "犬")
-	if rec := b.owner(http.MethodDelete, tagPath(domain.ToRemoteID(dog.ID), ""), ""); rec.Code != http.StatusNoContent {
+	if rec := b.owner(http.MethodDelete, tagPath(domain.RemoteID(1, dog.ID), ""), ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete the remote tag: status = %d: %s", rec.Code, rec.Body)
 	}
 	if _, found := tagNamed(t, fa, "犬"); found {
@@ -174,7 +174,7 @@ func TestMergeARemoteOnlyPersonCreatesTheDestinationOnThePeer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := `{"sourceIds":[` + strconv.FormatInt(domain.ToRemoteID(suzuki.ID), 10) + `]}`
+	body := `{"sourceIds":[` + strconv.FormatInt(domain.RemoteID(1, suzuki.ID), 10) + `]}`
 	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(sato.ID, 10)+"/merge", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
@@ -329,12 +329,12 @@ func TestMergeThePeersProvisionalPersonMergesItOnThePeer(t *testing.T) {
 	sato := fa.createWorkInfoPerson(t, "佐藤")
 	provisional := provisionalPersonOn(t, fa)
 
-	body := `{"sourceIds":[` + strconv.FormatInt(domain.ToRemoteID(provisional), 10) + `]}`
-	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(domain.ToRemoteID(sato), 10)+"/merge", body)
+	body := `{"sourceIds":[` + strconv.FormatInt(domain.RemoteID(1, provisional), 10) + `]}`
+	rec := b.owner(http.MethodPost, "/api/people/"+strconv.FormatInt(domain.RemoteID(1, sato), 10)+"/merge", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("merge: status = %d: %s", rec.Code, rec.Body)
 	}
-	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != domain.ToRemoteID(sato) || len(merged.NotFoundIds) != 0 {
+	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != domain.RemoteID(1, sato) || len(merged.NotFoundIds) != 0 {
 		t.Errorf("merge = %+v, want a's 佐藤 in the offset form and no missing sources", merged)
 	}
 	if got, want := personNamesOn(t, fa), []string{"佐藤"}; !slices.Equal(got, want) {

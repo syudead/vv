@@ -258,7 +258,7 @@ func TestConnectionRetriesFromFiveToSixtySeconds(t *testing.T) {
 
 func TestConnectionStatesAndEvents(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		forwarded := domain.PeerChanged{VideoIDs: []int64{domain.ToRemoteID(7)}}
+		forwarded := domain.PeerChanged{VideoIDs: []int64{domain.RemoteID(1, 7)}}
 		node := startConnection(t, newStreamLink(
 			watchStep{open: true, changed: &forwarded},
 			watchStep{open: true},
@@ -268,7 +268,7 @@ func TestConnectionStatesAndEvents(t *testing.T) {
 		if version := states[0].PeerVersion; version != "1.2.0" {
 			t.Errorf("connected の PeerVersion = %q, want 1.2.0", version)
 		}
-		if len(changed) != 1 || changed[0].VideoIDs[0] != domain.ToRemoteID(7) {
+		if len(changed) != 1 || changed[0].VideoIDs[0] != domain.RemoteID(1, 7) {
 			t.Errorf("転送されたイベント = %+v, want %+v", changed, forwarded)
 		}
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -29,14 +30,15 @@ func (s *PeerStore) EnsureNodeID(ctx context.Context, candidate string) (string,
 	return id, nil
 }
 
-const linkColumns = `node_id, name, address, secret, revoked, coalesce(pinned_spki, ''), paired_at`
+const linkColumns = `node_id, name, address, secret, revoked, coalesce(pinned_spki, ''), paired_at, slot`
 
 func scanLink(row interface{ Scan(...any) error }) (domain.PeerLink, error) {
 	var (
 		link     domain.PeerLink
 		pairedAt int64
 	)
-	err := row.Scan(&link.NodeID, &link.Name, &link.Address, &link.Secret, &link.Revoked, &link.PinnedSPKI, &pairedAt)
+	err := row.Scan(&link.NodeID, &link.Name, &link.Address, &link.Secret, &link.Revoked, &link.PinnedSPKI, &pairedAt,
+		&link.Slot)
 	link.PairedAt = time.Unix(pairedAt, 0)
 	return link, err
 }
@@ -53,22 +55,63 @@ func (s *PeerStore) Link(ctx context.Context) (domain.PeerLink, bool, error) {
 	return link, true, nil
 }
 
-// AddLink stores the only link; an existing one answers domain.ErrAlreadyPaired. One statement checks and
-// inserts, so two pairings cannot both succeed.
+// AddLink stores the only link in the next slot, ignoring link.Slot; an existing one answers
+// domain.ErrAlreadyPaired. One transaction checks, inserts and advances the slot counter, so two pairings cannot
+// both succeed and no slot is given twice.
 func (s *PeerStore) AddLink(ctx context.Context, link domain.PeerLink) error {
 	var pinned any
 	if link.PinnedSPKI != "" {
 		pinned = link.PinnedSPKI
 	}
-	res, err := s.db.sql.ExecContext(ctx, `
-		insert into peer_link (node_id, name, address, secret, pinned_spki, paired_at)
-		select ?, ?, ?, ?, ?, ?
-		 where not exists (select 1 from peer_link)`,
-		link.NodeID, link.Name, link.Address, link.Secret, pinned, link.PairedAt.Unix())
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot save the peer link: %w", err)
 	}
-	return insertedOne(res, "cannot save the peer link")
+	defer func() { _ = tx.Rollback() }()
+	slot, err := nextLinkSlot(ctx, tx)
+	if err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `
+		insert into peer_link (node_id, name, address, secret, pinned_spki, paired_at, slot)
+		select ?, ?, ?, ?, ?, ?, ?
+		 where not exists (select 1 from peer_link)`,
+		link.NodeID, link.Name, link.Address, link.Secret, pinned, link.PairedAt.Unix(), slot)
+	if err != nil {
+		return fmt.Errorf("cannot save the peer link: %w", err)
+	}
+	if err := insertedOne(res, "cannot save the peer link"); err != nil {
+		return err
+	}
+	if err := writeSetting(ctx, tx, nextSlotKey, strconv.FormatInt(slot+1, 10)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cannot commit the peer link: %w", err)
+	}
+	return nil
+}
+
+const nextSlotKey = "peer.next_slot"
+
+// nextLinkSlot reads the slot the next link takes; a slot past domain.MaxRemoteSlot would put the link's ids
+// beyond JavaScript's safe integers.
+func nextLinkSlot(ctx context.Context, tx *sql.Tx) (int64, error) {
+	value, found, err := readSetting(ctx, tx, nextSlotKey)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, errors.New("the next peer link slot is not stored")
+	}
+	slot, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || slot < 1 {
+		return 0, fmt.Errorf("the next peer link slot %q is not valid", value)
+	}
+	if slot > domain.MaxRemoteSlot {
+		return 0, errors.New("every peer link slot was used")
+	}
+	return slot, nil
 }
 
 // insertedOne answers domain.ErrAlreadyPaired when the guarded insert of res stored nothing.

@@ -205,7 +205,7 @@ func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, id
 	}
 	for _, item := range items {
 		if item.Name != "" && slices.Contains(remote, item.ID) {
-			names[domain.ToRemoteID(item.ID)] = item.Name
+			names[domain.RemoteID(domain.LinkSlot, item.ID)] = item.Name
 		}
 	}
 	return names, nil
