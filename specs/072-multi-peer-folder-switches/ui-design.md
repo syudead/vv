@@ -17,6 +17,23 @@ usage line a local row keeps; the current screens in
 [web/src/i18n/en.ts](../../web/src/i18n/en.ts) (`settings.mediaFolders`,
 `settings.pairing`, `shell.peer`, `list.card.remote`, `errors`).
 
+The diagram shows the screens this design covers and what each one reads.
+
+```mermaid
+flowchart LR
+  links[Links] --> pairing[Pairing page]
+  links --> folders[Media folders page]
+  links --> notice[Shell notice]
+  links --> marks[Remote marks, errors]
+  folders --> switches[Folder switches]
+  switches --> lists[Library, Folders page]
+  switches --> byid[Video page, playlists]
+```
+
+A link's state reaches the Pairing page, the Media folders page and the shell
+notice; a folder switch leaves its videos out of the lists and marks them where
+they are opened by id.
+
 ## Why this shape
 
 Settings, `Library`, `Media folders` becomes one page of folder sections: the
@@ -63,7 +80,7 @@ code section) stays as `en.ts` holds it.
 | Library, every folder off | `Every media folder is off` / `Switch a folder on in Settings to see its videos.` / `Open Media folders` | `EmptyState`, owner; the action links to `/settings/library` |
 | Folders page, no roots | `No folders to show` / `Add a media folder in Settings, or switch one on, and scan to see it here.` / `Open Settings` | Replaces `noMediaFolders`, whose title is wrong once a folder exists but is off |
 | Video page, band | `Not shown in the library` | `FolderOff` icon; `title` and screen-reader text `Its media folder is switched off, so it isn't listed. Playing it is fine.` |
-| Playlist row, mark | `Folder off` | `FolderOff` icon, `text-xs` `muted-foreground`, after the title |
+| Playlist row, mark | `Folder off` / `Folder off on {name}` | `FolderOff` icon, `text-xs` `muted-foreground`, under the title; the second form for a link's video |
 | Pairing, limit | `This VVMDM reads 8 VVMDMs, the most it can. Unpair one to read another.` | Replaces the form at 8 links |
 | Pairing, `peer_limit` | `This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.` | `FailureAlert` under the form |
 | Pairing, `already_paired` | `This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.` | Replaces today's `alreadyPaired` and `errors.reason.already_paired` |
@@ -188,8 +205,8 @@ stateDiagram-v2
 | Library, every folder off (`emptyReason: all_folders_off`, no search or filter) | The owner sees `Every media folder is off` with `Open Media folders`, in the body slot where `No videos yet` stands today; a guest keeps `No videos are public` with `Sign in`, since signing in is their way to the place to switch a folder on |
 | Library, every folder off with a search or filter | `No matches`, as today |
 | Folders page, no roots | The owner sees `No folders to show` with `Open Settings`, whether no folder exists or every one is off; a guest keeps `No videos are public` |
-| Video page, `folderOff` | A band item before the breadcrumb, where `Virtual video` stands: `FolderOff` `size-4` and `Not shown in the library` in `text-sm` `muted-foreground`; for the owner it is a link to `/settings/library`, for a guest plain text. The page plays, saves progress and offers every action as before; no `Alert`, no overlay |
-| Playlist page row and the player's playlist panel, an item with `folderOff` | The row keeps its thumbnail, title and play; after the title, `FolderOff` `size-3` and `Folder off` in `text-xs` `muted-foreground`, in the place a remote item's mark takes. Pressing it plays as usual |
+| Video page, `folderOff` | A band item before the breadcrumb, where `Virtual video` stands: `FolderOff` `size-4` and `Not shown in the library` in `text-sm` `muted-foreground`; for the owner it is a link to `/settings/library`, for a guest plain text. The breadcrumb keeps the folder's path as plain text, not links, since the Folders page leaves a switched-off folder out and a link would open its not-found state. The page plays, saves progress and offers every action as before; no `Alert`, no overlay |
+| Playlist page row and the player's playlist panel, an item with `folderOff` | The row keeps its thumbnail, title and play; under the title, as the unplayable line is drawn (`ItemTitleExtras`), `FolderOff` `size-3` and `Folder off` in `text-xs` `muted-foreground`. A link's video reads `Folder off on {name}`, so the row still names the VVMDM that holds it. Pressing it plays as usual |
 | Group and smart-folder pages | Counts and members leave the off folders' videos out; nothing marks the absence, as a hidden video is unmarked today |
 
 ## Pairing page
@@ -310,4 +327,4 @@ the rows are what this feature adds.
    one `Open Media folders` button for the owner, in the place `No videos
    yet` takes, and the video page of one of those videos plays with the
    `Not shown in the library` band before its breadcrumb and no other
-   notice.
+   notice; the breadcrumb shows the folder's path without links.
