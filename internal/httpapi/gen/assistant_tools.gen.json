@@ -1262,7 +1262,7 @@
                         "format": "int64",
                         "type": "integer"
                       },
-                      "maxItems": 100,
+                      "maxItems": 20000,
                       "minItems": 1,
                       "type": "array"
                     }
@@ -1273,7 +1273,7 @@
                   ],
                   "type": "object"
                 },
-                "maxItems": 6,
+                "maxItems": 100,
                 "type": "array"
               },
               "public": {

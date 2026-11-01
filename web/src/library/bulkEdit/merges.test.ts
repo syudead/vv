@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProvisionalMatch } from "../../api/videoEdits";
-import { emptyDraft } from "./draft";
+import { remoteIdOffset } from "../../lib/remoteId";
+import { cycleValue, emptyDraft, pickValue } from "./draft";
 import {
   buildMerges,
   cycleMerge,
   effectiveMerges,
   type MergeCandidate,
   type MergeTarget,
+  mergeTargets,
   suggestMerges,
 } from "./merges";
 
@@ -93,5 +95,38 @@ describe("merge choices", () => {
       { into: 7, sourceIds: [2] },
       { into: 40, sourceIds: [1, 3] },
     ]);
+  });
+});
+
+describe("mergeTargets", () => {
+  it("leaves out the peer's performers, which a merge cannot reach", () => {
+    const remote = remoteIdOffset + 7;
+    const summary = {
+      total: 2,
+      public: 0,
+      tags: [],
+      organizations: [],
+      dates: [],
+      people: [
+        {
+          role: "performer" as const,
+          person: { id: remote, name: "Remote", provisional: false },
+          count: 1,
+        },
+      ],
+    };
+    let draft = cycleValue(
+      emptyDraft,
+      "person:performer",
+      { key: `c${String(remote)}`, label: "Remote", count: 1, removable: 1 },
+      2,
+    );
+    draft = pickValue(
+      draft,
+      "person:performer",
+      { key: "c8", label: "Local", id: 8 },
+      [],
+    );
+    expect(mergeTargets(draft, summary)).toEqual([{ key: "c8", label: "Local", id: 8 }]);
   });
 });

@@ -10495,7 +10495,7 @@ components:
         merges:
           type: array
           description: "Provisional people to merge into a person, at most one entry per into person; a source listed twice, or equal to an into, returns 400 work_info_duplicate at its field."
-          maxItems: 6
+          maxItems: 100
           items:
             $ref: "#/components/schemas/VideoEditMerge"
 
@@ -10512,7 +10512,7 @@ components:
           type: array
           description: "Provisional people to merge into into."
           minItems: 1
-          maxItems: 100
+          maxItems: 20000
           items:
             type: integer
             format: int64

@@ -57,17 +57,12 @@ import MergeField from "./MergeField";
 import {
   buildMerges,
   cycleMerge,
-  effectiveMerges,
   type MergeCandidate,
-  mergeCandidates,
   type MergeTarget,
-  mergeTargets,
   performerField,
-  suggestMerges,
-  targetIds,
 } from "./merges";
 import { useEditSummary } from "./useEditSummary";
-import { useProvisionalMatches } from "./useProvisionalMatches";
+import { useMergeState } from "./useMergeState";
 import ValueField from "./ValueField";
 import VisibilityField from "./VisibilityField";
 
@@ -153,23 +148,8 @@ export default function BulkEditor({
       summary === undefined ? new Map<FieldId, PresentValue[]>() : presentMap(summary),
     [summary],
   );
-  const targetsToMerge = summary === undefined ? [] : mergeTargets(draft, summary);
-  const candidates = summary === undefined ? [] : mergeCandidates(draft, summary);
-  const matches = useProvisionalMatches(
-    editTargets,
-    includedKey,
-    targetIds(targetsToMerge),
-    targetsToMerge.length > 0 && candidates.length > 0,
-  );
-  const merges =
-    matches === undefined
-      ? new Map<number, string>()
-      : effectiveMerges(
-          draft,
-          candidates,
-          suggestMerges(candidates, matches, targetsToMerge),
-          targetsToMerge,
-        );
+  const mergeState = useMergeState(draft, summary, editTargets, includedKey);
+  const { targets: targetsToMerge, candidates, merges } = mergeState;
   const lines =
     summary === undefined
       ? []
@@ -177,10 +157,7 @@ export default function BulkEditor({
           ...changeLines(draft, summary, present),
           ...mergeLines(candidates, targetsToMerge, merges),
         ];
-  // Apply waits for the suggestions, so the merges it sends are the ones on screen.
-  const matching =
-    targetsToMerge.length > 0 && candidates.length > 0 && matches === undefined;
-  const ready = state.kind === "ready" && included.length > 0 && !matching;
+  const ready = state.kind === "ready" && included.length > 0 && !mergeState.loading;
 
   function requestClose() {
     if (pending) return;
@@ -240,13 +217,13 @@ export default function BulkEditor({
           draft,
           disabled: pending,
           onChange: setDraft,
-          mergeField: targetsToMerge.length > 0 && candidates.length > 0 && (
+          mergeField: mergeState.shown && (
             <MergeField
               candidates={candidates}
               targets={targetsToMerge}
               merges={merges}
               total={summary.total}
-              loading={matches === undefined}
+              loading={mergeState.loading}
               disabled={pending}
               onCycle={(candidate) =>
                 setDraft((current) =>

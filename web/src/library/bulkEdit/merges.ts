@@ -26,19 +26,24 @@ export interface MergeCandidate {
   imageRevision?: number;
 }
 
-/** The named people the draft adds as performers, in field order. */
+/** The named people the draft adds as performers, in field order; merges never reach the peer's people. */
 export function mergeTargets(draft: BulkDraft, summary: VideoEditSummary): MergeTarget[] {
   const field = fieldOf(draft, performerField);
   const targets: MergeTarget[] = [];
   for (const item of summary.people) {
-    if (item.role !== "performer" || item.person.provisional) continue;
+    if (
+      item.role !== "performer" ||
+      item.person.provisional ||
+      isRemoteId(item.person.id)
+    )
+      continue;
     const key = creditKey(item.person.id);
     if (field.choices.get(key) === "add")
       targets.push({ key, label: item.person.name, id: item.person.id });
   }
   for (const value of field.picked) {
     if ("newName" in value) targets.push({ key: value.key, label: value.label });
-    else if (value.provisional !== true)
+    else if (value.provisional !== true && !isRemoteId(value.id))
       targets.push({ key: value.key, label: value.label, id: value.id });
   }
   return targets;

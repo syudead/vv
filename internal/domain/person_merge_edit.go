@@ -6,10 +6,11 @@ import (
 	"slices"
 )
 
-// Limits of the merges one bulk edit carries; see docs/design-docs/bulk-editing.md.
+// Limits of the merges one bulk edit carries: a target per performer the edit can add, and a source per video it
+// can select.
 const (
-	PersonMergesMaxCount       = 6
-	PersonMergeSourcesMaxCount = 100
+	PersonMergesMaxCount       = 100
+	PersonMergeSourcesMaxCount = 20000
 )
 
 // PersonMerge merges provisional people into one person.
