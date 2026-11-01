@@ -218,7 +218,7 @@ func TestOnboardingEventsAreOwnerOnly(t *testing.T) {
 	for _, guest := range []bool{false, true} {
 		events.Handle(domain.OnboardingChanged{})
 		response := httptest.NewRecorder()
-		if err := server.writePendingEvents(context.Background(), response, sub, guest); err != nil {
+		if err := server.writePendingEvents(context.Background(), response, sub, guest, false); err != nil {
 			t.Fatal(err)
 		}
 		want := "event: onboarding\ndata: {}\n\n"
@@ -357,6 +357,15 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	events.Handle(domain.PeerStateChanged{})
 	if pending := sub.take(); !pending.peer || pending.scan || len(pending.videos) != 0 {
 		t.Fatalf("PeerStateChanged: %+v, want peer only", pending)
+	}
+	events.Handle(domain.MediaFoldersChanged{Switch: true})
+	if pending := sub.take().mediaFolders; !pending.forViewer(false) || pending.forViewer(true) {
+		t.Fatalf("switch: %+v, want viewers only, not the peer credential", pending)
+	}
+	events.Handle(domain.MediaFoldersChanged{})
+	events.Handle(domain.MediaFoldersChanged{Switch: true})
+	if pending := sub.take().mediaFolders; !pending.forViewer(false) || !pending.forViewer(true) {
+		t.Fatalf("folder change: %+v, want viewers and the peer credential", pending)
 	}
 	// Drain prior readiness before asserting that empty-ID changes do not signal.
 	select {

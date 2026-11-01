@@ -15,6 +15,7 @@ type MediaFolderStore interface {
 	AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error)
 	ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error)
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
+	SetMediaFolderEnabled(ctx context.Context, id int64, enabled bool) (domain.MediaFolder, error)
 }
 
 type FolderChecker interface {
@@ -130,6 +131,11 @@ func (m *MediaFolders) ReplaceMediaFolder(ctx context.Context, id, expectedVersi
 func (m *MediaFolders) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
 	defer m.around(ctx)()
 	return m.store.DeleteMediaFolder(ctx, id, expectedVersion)
+}
+
+// SetMediaFolderEnabled skips the watcher hooks: a switch changes no registered folder, so watching goes on.
+func (m *MediaFolders) SetMediaFolderEnabled(ctx context.Context, id int64, enabled bool) (domain.MediaFolder, error) {
+	return m.store.SetMediaFolderEnabled(ctx, id, enabled)
 }
 
 // Stop watcher scans before persistence, which rejects active-scan folder changes; the returned

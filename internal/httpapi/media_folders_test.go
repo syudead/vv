@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
 type fakeMediaFolders struct {
@@ -42,6 +44,10 @@ func (f *fakeMediaFolders) ReplaceMediaFolder(_ context.Context, id, version int
 func (f *fakeMediaFolders) DeleteMediaFolder(_ context.Context, id, version int64) error {
 	f.operation, f.lastID, f.lastVer = "delete", id, version
 	return f.err
+}
+func (f *fakeMediaFolders) SetMediaFolderEnabled(_ context.Context, id int64, _ bool) (domain.MediaFolder, error) {
+	f.operation, f.lastID = "switch", id
+	return domain.MediaFolder{}, f.err
 }
 
 func TestListMediaFoldersReturnsEmptyArray(t *testing.T) {
@@ -121,6 +127,50 @@ func TestMediaFolderMutationRequiresJSONAndSameOrigin(t *testing.T) {
 	})
 	if rec.Code != http.StatusForbidden || folders.operation != "" {
 		t.Fatalf("untrusted forwarded proto response = %d operation=%s", rec.Code, folders.operation)
+	}
+}
+
+// The switch goes through the real store, so the answer, the event and the scan check are the ones a browser sees.
+func TestSetMediaFolderEnabledDuringAScanSendsOneEvent(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.OpenMigratedForTest(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	folder, err := db.Settings().AddMediaFolder(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, started, err := db.Scans().StartScan(ctx); err != nil || !started {
+		t.Fatalf("StartScan = %v, %v", started, err)
+	}
+	events := NewEvents()
+	db.PublishTo(storePublisher{events: events})
+	handler := newTestServer(t, Options{MediaFolders: db.Settings(), Events: events})
+	stream, _ := openEvents(t, handler)
+	expectNoEvent(t, stream)
+
+	rec := jsonRequest(t, handler, http.MethodPut, fmt.Sprintf("/api/media-folders/%d/enabled", folder.ID), `{"enabled":false}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("switch = %d %s", rec.Code, rec.Body)
+	}
+	got := decode[gen.MediaFolder](t, rec)
+	if got.Id != folder.ID || got.Enabled || got.Path != folder.Path || got.Version != folder.Version {
+		t.Fatalf("switched folder = %+v, want %d off at version %d", got, folder.ID, folder.Version)
+	}
+	if event := nextEvent(t, stream); event.name != "mediaFolders" || event.data != "{}" {
+		t.Fatalf("event = %+v, want mediaFolders {}", event)
+	}
+	expectNoEvent(t, stream)
+}
+
+func TestSetMediaFolderEnabledAnswersNotFound(t *testing.T) {
+	folders := &fakeMediaFolders{err: domain.ErrNotFound}
+	rec := jsonRequest(t, newTestServer(t, Options{MediaFolders: folders}), http.MethodPut, "/api/media-folders/9/enabled", `{"enabled":true}`)
+	assertErrorBody(t, "missing folder", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: codeNotFound})
+	if folders.lastID != 9 {
+		t.Fatalf("switched id = %d, want 9", folders.lastID)
 	}
 }
 

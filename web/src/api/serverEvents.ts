@@ -25,6 +25,8 @@ export interface ServerEventHandlers {
   peer?: (state: PeerState) => void;
   /** The peer's items entered or left the lists: the state moved to or from connected. */
   peerItems?: () => void;
+  /** A media folder was added, replaced, removed or switched; reread the folders and reload open lists. */
+  mediaFolders?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -101,6 +103,7 @@ function connect(): void {
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("onboarding", () => dispatch("onboarding"));
   current.addEventListener("assistant", () => dispatch("assistant"));
+  current.addEventListener("mediaFolders", () => dispatch("mediaFolders"));
   current.addEventListener("error", () => {
     // CLOSED means browser retries stopped; check audience explicitly because EventSource hides HTTP status.
     // Reload once after owner access expires; otherwise reconnect after a delay.

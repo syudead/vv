@@ -18,6 +18,7 @@ import {
   VideoThumbnailImage,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { FolderOffMark } from "./FolderOffMark";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 import { VirtualMark } from "./VirtualMark";
 
@@ -167,9 +168,11 @@ export function CollectionCountIcon({ smartFolder }: { smartFolder: boolean }) {
   return <Icon aria-hidden="true" className="size-3 shrink-0" />;
 }
 
-export function ItemTitleExtras({ facts }: { facts: RowFacts }) {
+/** Pass `video` where a row can hold a video whose media folder is switched off, as a playlist can. */
+export function ItemTitleExtras({ facts, video }: { facts: RowFacts; video?: Video }) {
   return (
     <>
+      <FolderOffMark video={video} className="mt-0.5" />
       {facts.groupCount !== null && (
         <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
           <CollectionCountIcon smartFolder={facts.smartFolder} />

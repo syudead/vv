@@ -112,10 +112,14 @@ function useFolderData<T>(
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
   const refresh = useCallback(() => setQuietGeneration((value) => value + 1), []);
-  // The peer's roots and folders enter or leave when it connects or drops; guests open no stream here.
+  // The peer's roots and folders enter or leave when it connects or drops, and a folder's when it is switched;
+  // guests open no stream here.
   const owner = useAudience() === "owner";
   useEffect(
-    () => (owner ? subscribeServerEvents({ peerItems: refresh }) : undefined),
+    () =>
+      owner
+        ? subscribeServerEvents({ peerItems: refresh, mediaFolders: refresh })
+        : undefined,
     [owner, refresh],
   );
   const update = useCallback(

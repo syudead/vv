@@ -131,11 +131,13 @@ export function useGroupPage(
   useEffect(() => {
     let videoTimer: ReturnType<typeof setTimeout> | undefined;
     // Subscribe before reading to avoid missing changes after the snapshot.
+    // A remote group's page fails while the peer is away and reads again when it returns; a switch changes members.
+    const refreshShown = () => {
+      if (stateRef.current.kind !== "gone") refresh();
+    };
     const unsubscribe = subscribeServerEvents({
-      // A remote group's page fails while the peer is away and reads again when it returns.
-      peerItems: () => {
-        if (stateRef.current.kind !== "gone") refresh();
-      },
+      peerItems: refreshShown,
+      mediaFolders: refreshShown,
       group: (ids) => {
         if (id !== null && ids.includes(id) && stateRef.current.kind !== "gone") {
           refresh();

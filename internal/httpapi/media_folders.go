@@ -93,6 +93,33 @@ func (s *server) DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SetMediaFolderEnabled answers not_found for a missing folder, as the contract of the switch names it.
+func (s *server) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
+	var body gen.SetMediaFolderEnabledRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if id < 1 {
+		s.invalidRequest(w, "Specify a valid id.")
+		return
+	}
+	if s.mediaFolders == nil {
+		s.internalError(w, "Media folder storage is not configured.", nil)
+		return
+	}
+	folder, err := s.mediaFolders.SetMediaFolderEnabled(r.Context(), id, body.Enabled)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFound(w, "Media folder not found.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not switch the media folder.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, toAPIMediaFolder(folder), s.logger)
+}
+
 func (s *server) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
 	if id < 1 {
 		s.invalidRequest(w, "Specify a valid id.")
@@ -121,7 +148,7 @@ func (s *server) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id 
 
 func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 	return gen.MediaFolder{
-		Id: folder.ID, Path: folder.Path, Version: folder.Version,
+		Id: folder.ID, Path: folder.Path, Version: folder.Version, Enabled: folder.Enabled,
 		CreatedAt: folder.CreatedAt, UpdatedAt: folder.UpdatedAt,
 	}
 }

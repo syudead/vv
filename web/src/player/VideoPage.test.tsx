@@ -394,6 +394,34 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
     });
 
+    it("folderOff: the band says it is left out and links the owner to the switches; the crumbs are plain text", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          folderOff: true,
+          folder: { rootId: 1, path: "movies", rootName: "media" },
+        },
+      ]);
+      renderPage("7", "/?q=abc");
+      await ready();
+      const band = screen.getByRole("link", { name: /Its media folder is switched off/ });
+      expect(band.textContent).toContain("Not shown in the library");
+      expect(band.getAttribute("href")).toBe("/settings/library");
+      const nav = screen.getByRole("navigation", { name: "Folder" });
+      expect(within(nav).getByText("movies")).toBeDefined();
+      expect(within(nav).queryAllByRole("link")).toHaveLength(0);
+    });
+
+    it("folderOff for a guest: the band is plain text", async () => {
+      server.videos.set(7, [{ ...video, folderOff: true }]);
+      renderPage("7", "/", "guest");
+      await ready();
+      expect(screen.getByText("Not shown in the library")).toBeDefined();
+      expect(
+        screen.queryByRole("link", { name: /Its media folder is switched off/ }),
+      ).toBeNull();
+    });
+
     it("ロゴからホームへ移る", async () => {
       renderPage("7", "/folders/1/movies");
       await ready();

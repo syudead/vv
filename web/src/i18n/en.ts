@@ -1034,6 +1034,8 @@ export const en = {
           name === undefined ? "On the other VVMDM" : `On ${name}`,
         name: (name: string | undefined) => name ?? "Other VVMDM",
       },
+      folderOff: (name: string | undefined) =>
+        name === undefined ? "Folder off" : `Folder off on ${name}`,
     },
   },
   library: {
@@ -1045,6 +1047,11 @@ export const en = {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
       setUp: "Set up library",
+    },
+    allFoldersOff: {
+      title: "Every media folder is off",
+      description: "Switch a folder on in Settings to see its videos.",
+      open: "Open Media folders",
     },
     newVirtualVideo: {
       action: "New virtual video",
@@ -1417,8 +1424,9 @@ export const en = {
       description: "No videos or subfolders were found. Put files there, then scan.",
     },
     noMediaFolders: {
-      title: "No media folders yet",
-      description: "Add a media folder in Settings and scan to see it here.",
+      title: "No folders to show",
+      description:
+        "Add a media folder in Settings, or switch one on, and scan to see it here.",
       openSettings: "Open Settings",
     },
     notFound: {
@@ -2315,6 +2323,10 @@ export const en = {
     missing: {
       title: "This video can't be opened",
       description: "It was removed from the library, or its file is gone.",
+    },
+    folderOff: {
+      band: "Not shown in the library",
+      detail: "Its media folder is switched off, so it isn't listed. Playing it is fine.",
     },
     virtual: {
       band: "Virtual video",
@@ -5135,7 +5147,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” on the Scan page. Auto-import doesn't start one.",
+        "Folders on the server where VVMDM looks for videos. Switch a folder off to leave its videos out of this library; scanning and auto-import go on. After adding or changing a folder, start a scan with “Scan library” on the Scan page.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       rowsLockedWhileScanning:
         "You can't change or force rescan media folders while a scan is running",
@@ -5158,6 +5170,10 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+      switchLabel: (path: string) => `Show videos from ${path}`,
+      on: "On",
+      off: "Off",
+      switchFailed: (reason: string) => `Couldn't switch the folder: ${reason}`,
       usage: {
         loading: "Checking disk space",
         free: (size: string) => `${size} free`,
