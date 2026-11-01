@@ -3,6 +3,8 @@ package domain
 import (
 	"encoding/json"
 	"slices"
+	"strings"
+	"unicode"
 )
 
 // Trim and drop empty/unknown detail entries before enforcing limits; malformed fields are ignored under contract 1, while semantic validation is deferred to apply.
@@ -57,7 +59,7 @@ type fetchedExternalIDJSON struct {
 func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	limits := WorkInfoLimits
 	out.Code = lenientString(raw.Code)
-	out.Description = trimWorkInfoText(DescriptionLineBreaks(lenientString(raw.Description)))
+	out.Description = fetchedDescription(lenientString(raw.Description))
 	out.Dates = parseFetchedDates(lenientList[fetchedDateJSON](raw.Dates))
 	out.People = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.People), PersonRoles,
 		limits.PeoplePerRoleMaxCount, func(role PersonRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedPerson {
@@ -74,6 +76,21 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
 	out.CoverURLs = parseFetchedImageURLs(raw.Covers, WorkInfoCoversMaxCount)
+}
+
+var fetchedLineEnd = strings.NewReplacer("\r\n", "\n", "\r", "\n", "\t", " ")
+
+// fetchedDescription makes a site's description savable: CR line ends become line feeds, tabs become spaces and
+// any other control character is dropped, since a description may hold no control character but the line feed.
+func fetchedDescription(input string) string {
+	text := fetchedLineEnd.Replace(DescriptionLineBreaks(input))
+	text = strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cc, r) && r != '\n' {
+			return -1
+		}
+		return r
+	}, text)
+	return trimWorkInfoText(text)
 }
 
 // Missing/nonstring values become empty strings.

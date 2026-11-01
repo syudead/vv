@@ -59,6 +59,17 @@ func TestParseWorkInfoResponseTurnsHTMLLineBreaksIntoLineFeeds(t *testing.T) {
 	}
 }
 
+func TestParseWorkInfoResponseMakesDescriptionControlCharactersSavable(t *testing.T) {
+	got := parseFetched(t, `{"description": "line 1\r\nline 2\rline 3\tcol\u0000\u0007end\r\n"}`)
+	want := "line 1\nline 2\nline 3 colend"
+	if got.Description != want {
+		t.Fatalf("description = %q, want %q", got.Description, want)
+	}
+	if _, _, err := NormalizeWorkInfo(WorkInfo{Description: got.Description}); err != nil {
+		t.Errorf("NormalizeWorkInfo(%q) = %v, want saved", got.Description, err)
+	}
+}
+
 func TestParseWorkInfoResponseDropsUnknownAndEmptyEntries(t *testing.T) {
 	got := parseFetched(t, `{
 		"code": "  ",

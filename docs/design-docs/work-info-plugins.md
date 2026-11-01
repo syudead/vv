@@ -270,8 +270,10 @@ result without people or organizations does not read the store.
 
 Sites hand descriptions over as HTML fragments, so the parse turns `<br>`,
 `<br/>` and `<br />` (any case) into line feeds and keeps any other markup as
-literal text; the page shows a description's line feeds as line breaks and
-never renders HTML. Every work-info save applies the same conversion, and the
+literal text; it also turns CR line ends into line feeds and tabs into spaces
+and drops any other control character, which a saved description cannot hold.
+The page shows a description's line feeds as line breaks and never renders
+HTML. Every work-info save applies the same conversion, and the
 page converts once more on display for descriptions saved before it.
 
 The matches are only shown: the screen marks each entry as linked, `New` or
