@@ -26,12 +26,16 @@ const (
 	statsTopMax     = 100
 )
 
-var statsGroups = []any{"tag", "person", "organization"}
+// statsGroups are the groupings; models write none for no grouping.
+var statsGroups = []any{"none", "tag", "person", "organization"}
 
 // statsSchema takes the library filter by names, without its order, and the scope and grouping.
 func statsSchema() *jsonschema.Schema {
 	schema := filterSchema()
 	delete(schema.Properties, "sort")
+	// Models wrote the measure they wanted, such as totalDuration, as the search text and counted nothing.
+	schema.Properties["q"] = stringSchema("Words searched in titles, tags, people and work information, only to " +
+		"narrow the videos; every measure is always answered, so never put what to measure here.")
 	schema.Properties["scope"] = oneOf("screen: the videos on the owner's screen (the selection, else the screen's "+
 		"filter or page), narrowed by the other conditions; library (default): the whole library.", []any{"screen", "library"})
 	schema.Properties["groupBy"] = oneOf("Also count the videos per tag, performer or organization, most first.", statsGroups)
@@ -53,6 +57,14 @@ type videoRef struct {
 	ID         int64  `json:"id"`
 	Title      string `json:"title"`
 	DurationMs int64  `json:"durationMs"`
+	Duration   string `json:"duration"`
+}
+
+// clock writes a length as h:mm:ss. The grounding check reads the numbers of an answer, and a model that answered
+// "29 minutes 54 seconds" from 1794000 ms failed it and called the tool again.
+func clock(ms int64) string {
+	seconds := ms / 1000
+	return fmt.Sprintf("%d:%02d:%02d", seconds/3600, seconds/60%60, seconds%60)
 }
 
 type statsGroup struct {
@@ -62,14 +74,17 @@ type statsGroup struct {
 
 // videoStats is the tool's answer; durations count only the videos whose length is known.
 type videoStats struct {
-	Count           int          `json:"count"`
-	Favorites       int          `json:"favorites"`
-	WithDuration    int          `json:"withDuration"`
-	TotalDurationMs int64        `json:"totalDurationMs"`
-	Longest         *videoRef    `json:"longest,omitempty"`
-	Shortest        *videoRef    `json:"shortest,omitempty"`
-	GroupCount      *int         `json:"groupCount,omitempty"`
-	Groups          []statsGroup `json:"groups,omitempty"`
+	// Conditions are the listVideos conditions the counts cover, so a misplaced condition shows in the result.
+	Conditions      map[string]any `json:"conditions,omitempty"`
+	Count           int            `json:"count"`
+	Favorites       int            `json:"favorites"`
+	WithDuration    int            `json:"withDuration"`
+	TotalDurationMs int64          `json:"totalDurationMs"`
+	TotalDuration   string         `json:"totalDuration"`
+	Longest         *videoRef      `json:"longest,omitempty"`
+	Shortest        *videoRef      `json:"shortest,omitempty"`
+	GroupCount      *int           `json:"groupCount,omitempty"`
+	Groups          []statsGroup   `json:"groups,omitempty"`
 	counts          map[string]int
 }
 
@@ -79,6 +94,7 @@ func (s *videoStats) add(v videoRef, favorite, hasDuration bool, groups []string
 		s.Favorites++
 	}
 	if hasDuration {
+		v.Duration = clock(v.DurationMs)
 		s.WithDuration++
 		s.TotalDurationMs += v.DurationMs
 		if s.Longest == nil || v.DurationMs > s.Longest.DurationMs {
@@ -93,8 +109,9 @@ func (s *videoStats) add(v videoRef, favorite, hasDuration bool, groups []string
 	}
 }
 
-// finish keeps the top groups, most first, ties by name.
+// finish writes the total as h:mm:ss and keeps the top groups, most first, ties by name.
 func (s *videoStats) finish(groupBy string, top int) {
+	s.TotalDuration = clock(s.TotalDurationMs)
 	if groupBy == "" {
 		return
 	}
@@ -112,6 +129,9 @@ func (l *turnLoop) videoStats(ctx context.Context, raw json.RawMessage) (builtin
 	var args statsArgs
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return builtinOutcome{failure: err.Error()}, nil
+	}
+	if args.GroupBy == "none" {
+		args.GroupBy = ""
 	}
 	top := statsTopDefault
 	if args.Top > 0 {
@@ -203,6 +223,7 @@ func (i statsItem) groups(groupBy string) []string {
 // pageStats reads every page of listVideos for the rule through the screen's own handler, which also lists the
 // paired node's videos, and measures them; a failed read is the tool's failure.
 func (l *turnLoop) pageStats(ctx context.Context, s *videoStats, rule domain.SmartRule, groupBy string) (string, error) {
+	s.Conditions = ruleArgs(rule)
 	args := ruleArgs(rule)
 	args["limit"] = statsPage
 	for {

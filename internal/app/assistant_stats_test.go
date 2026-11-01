@@ -38,9 +38,10 @@ func TestVideoStatsMeasuresEveryPageOfTheScreen(t *testing.T) {
 		}
 	}
 	messages := f.chat.requests[1].Messages
-	want := `{"count":3,"favorites":1,"groupCount":2,"groups":[{"count":3,"name":"歌"}],` +
-		`"longest":{"durationMs":20000,"id":1,"title":"A"},"shortest":{"durationMs":10000,"id":2,"title":"B"},` +
-		`"totalDurationMs":30000,"withDuration":2}`
+	want := `{"conditions":{"favorite":true,"minDurationMs":10000,"query":"動画"},"count":3,"favorites":1,"groupCount":2,"groups":[{"count":3,"name":"歌"}],` +
+		`"longest":{"duration":"0:00:20","durationMs":20000,"id":1,"title":"A"},` +
+		`"shortest":{"duration":"0:00:10","durationMs":10000,"id":2,"title":"B"},` +
+		`"totalDuration":"0:00:30","totalDurationMs":30000,"withDuration":2}`
 	if got := messages[len(messages)-1].Content; got != want {
 		t.Fatalf("result = %s\nwant     %s", got, want)
 	}
