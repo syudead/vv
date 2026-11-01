@@ -1,9 +1,10 @@
 # Paired library: reading another VVMDM
 
-A VVMDM paired with one other VVMDM on the LAN (the **peer**, the node it
-reads) answers its own screens with the videos, groups and smart folders of
-both, without copying anything: it calls the peer's screen API, merges the
-answer with its own and returns it in the shapes the screens already read. The
+A VVMDM paired with other VVMDMs on the LAN (each a **peer**, a node it
+reads through a **link**) answers its own screens with the videos, groups and
+smart folders of all of them, without copying anything: it calls each peer's
+screen API, merges the answers with its own and returns them in the shapes the
+screens already read. The
 pairing use case lives in `internal/app` (`Pairing`), the HTTP client to the
 peer in [`internal/peer`](../../internal/peer), the merge and forwarding in
 `internal/httpapi/peer*.go`, and their pure rules in `internal/domain`.
@@ -26,9 +27,9 @@ Pairing is one-directional: node B sends A's pairing code to A, A stores a
 grant that lets B read A and answers with the secret B presents from then on
 as `Authorization: VV-Peer <secret>`, and B stores the link. A never connects
 to B, so B needs no address of its own and no inbound reachability. Each node
-holds at most one **link** (the node it reads) and at most one **grant** (the
-node that reads it); the two are independent rows, created and removed on
-their own, and may name the same node.
+holds up to 8 **links** (the nodes it reads) and at most one **grant** (the
+node that reads it); links and the grant are independent rows, created and
+removed on their own, and may name the same node.
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +76,9 @@ viewer's audience before paging ([authentication.md](authentication.md)).
 | Versions are not compared; pairing, the handshake and every reconnection carry the release `version` only so the Pairing page shows the peer's | `version` is a build label (the commit SHA in the CI image, `dev` in a local or untagged build), so two builds of the same source differ in it, and a gate on it refused them |
 | The secret is per grant (`vvp_` plus 32 random bytes), hashed on the read node and kept in `peer_grant`, in plain text in the reader's `peer_link`, not tied to `account_version` | A password change keeps the pairing, while it signs out sessions |
 | The pairing code is 8 characters, one per node, valid 10 minutes, cleared by the pairing it completes and kept in memory | A restart ending the code is the wanted behaviour |
-| A node reads at most one node and is read by at most one; a second link or grant answers `409 already_paired`, and so does the code of a node that is already read | The owner removes the pairing or the access first |
+| A node reads up to 8 nodes and is read by at most one. A ninth link answers `409 peer_limit` before the other node is asked; a node already read, a second grant and the code of a node that is already read answer `409 already_paired` | Each merged page asks every link once within one response timeout; the owner removes a pairing or the access first |
+| `domain.CheckNewLink` holds the limit and the same-node refusal, and `PeerStore.AddLink` checks it again over the links its transaction reads | Two pairings at once cannot pass the limit or read one node twice |
+| A link refused after the other node answered asks that node to drop the grant it gave (`DELETE /api/peer/pairings/{nodeId}`) | The node id is known only from the answer, and a grant nobody holds would block that node's next pairing |
 | HTTPS verifies with the system roots; on failure the owner confirms the certificate's SPKI fingerprint, which pins it, and the Settings page calls an unpinned certificate untrusted rather than changed | A public certificate rotates every 90 days; a self-signed one is pinned once |
 | A forwarded answer keeps its type only for media, subtitles, images, JSON and plain text, and always carries `nosniff` and a sandbox CSP; any other type downloads | The answer is served from this node's origin, where a page from the peer would act with the owner's session |
 
@@ -100,27 +103,30 @@ same release; the Pairing page shows the peer's version next to its name.
 
 ## Connection state
 
-`app.Pairing` holds the link's state the Settings page and the notice show,
-and publishes a `peer` event on each change of the link's state or of the
-grant; one open `/api/events` stream to the peer is the liveness signal. The
-read node has no connection of its own: it serves the reader's requests and
-shows the grant.
+`app.Pairing` holds each link's state the Settings page and the notice show,
+and publishes a `peer` event, which carries the whole `PeerState`, on each
+change of any link's state or of the grant. Each link has its own connection
+loop, state, generation and stop function, and one open `/api/events` stream
+to its node is that link's liveness signal, so one link's failures and retry
+delays never reach another. The read node has no connection of its own: it
+serves the reader's requests and shows the grant.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> unpaired
-  unpaired --> connected: pairing succeeds
+  [*] --> connected: pairing succeeds
   connected --> unreachable: stream or request fails
   unreachable --> connected: stream opens again
   connected --> revoked: 401 peer_unknown
   unreachable --> revoked: 401 peer_unknown
-  revoked --> unpaired: owner removes the link
-  connected --> unpaired: owner unpairs
-  unreachable --> unpaired: owner unpairs
+  revoked --> [*]: owner removes the link
+  connected --> [*]: owner unpairs
+  unreachable --> [*]: owner unpairs
 ```
 
-The stream also carries the peer's `video`, `group` and `smartFolder` events,
-which arrive here with remote ids so open screens refresh remote items. A
+`GET /api/peer` lists the links in slot order; a link that is not there is not
+listed, so there is no `unpaired` state. The stream also carries the peer's
+`video`, `group` and `smartFolder` events, which arrive here with the ids of
+that link's slot so open screens refresh its items. A
 failed stream retries after 5 s, doubling to 60 s, or at once after pairing,
 an address change or a certificate confirmation. `unreachable` names a
 reason (`network` or `certificate`); an address that answers the handshake
@@ -134,29 +140,39 @@ alike, marks the link revoked in the store and moves to `revoked`. The state
 is in memory: a start begins `unreachable` until the stream opens, or
 `revoked` when the link is marked so.
 
-Unpairing on the reader stops the stream, tells the peer best effort
-(`DELETE /api/peer/pairings/{nodeId}` with the credential, which drops the
-grant) and deletes the link. Withdrawing the access on the read node deletes
+Unpairing one link on the reader (`DELETE /api/peer/links/{nodeId}`) stops its
+stream, tells its node best effort (`DELETE /api/peer/pairings/{nodeId}` with
+the credential, which drops the grant) and deletes that link alone; the address
+and certificate operations name the link by its node id the same way. Withdrawing the access on the read node deletes
 the grant and cancels the reader's requests in flight; the reader learns it
 from its next request's `401`.
 
 ## Remote ids
 
-An entity of the peer is addressed by its id plus `2^40`
+An entity of a link is addressed by its id plus the link's slot times `2^40`
 ([`internal/domain/remote_id.go`](../../internal/domain/remote_id.go)), and a
-request whose path id carries the offset is forwarded to the peer with the
-ids of the answer rewritten.
+request whose path id carries an offset is forwarded to the link of that slot
+with the ids of the answer rewritten into the same slot.
 
 ```mermaid
 flowchart LR
-  req[Request with id] --> off{At or above 2^40?}
-  off -->|no| local[Local handler]
-  off -->|yes| kept{Kept on each node?}
+  req[Request with id] --> off{id div 2^40}
+  off -->|0| local[Local handler]
+  off -->|slot| kept{Kept on each node?}
   kept -->|answered here| here[Local handler, both nodes' data]
   kept -->|not offered| notfound[404 not_found]
-  kept -->|no| fwd[Forward with id minus offset]
-  fwd --> rewrite[Rewrite ids and URLs by response type]
+  kept -->|no| link{Link in the slot?}
+  link -->|none| notfound
+  link -->|yes| fwd[Forward id mod 2^40 to that link]
+  fwd --> rewrite[Rewrite ids and URLs into the slot]
 ```
+
+| Decision | Why |
+| --- | --- |
+| `PeerStore.AddLink` takes the slot from the `peer.next_slot` counter in the same transaction and never gives a slot twice; the link upgraded from one link keeps slot 1 | A bookmarked remote id cannot open another node's entity after an unpairing and a new pairing; `2^53` admits slots up to 8191 |
+| The Forwarder and every call to a link take that link's slot; the slot of a request's path id goes with the request to the translators and the kept handlers | Every call reaches the one link the ids name |
+| A body or query naming ids of two links, or of this node and a link, answers `400 mixed_nodes`; ids of another link in a forwarded query are dropped | A write must never send one link's ids to another, where they name other entities |
+| The undo token of a link's organize carries its slot (`peer.{slot}.{token}`) | The undo is forwarded to the link that issued it |
 
 Every operation whose path starts with an entity collection
 (`/api/videos/{id}`, `/api/groups/{id}`, `/api/tags/{id}`,
@@ -170,8 +186,8 @@ answers them itself. A new operation under a collection is therefore forwarded
 with no change, and a peer on an older release answers one it does not know
 with its own `404`, which passes through ([Mixed versions](#mixed-versions)).
 
-Every path parameter and generated type is `int64`, and `2^40` stays below
-JavaScript's safe integer, so the screens change no route or type. Answers are
+Every path parameter and generated type is `int64`, and every slot's ids stay
+below JavaScript's safe integer, so the screens change no route or type. Answers are
 decoded into the generated type their response schema names and rewritten by
 the rewriter registered under that name, because only the type says whether an
 `id` names a video or a tag; a schema without ids is registered as kept as it
@@ -187,7 +203,7 @@ headers passed through, since the browser has no session on the peer.
 | --- | --- |
 | Videos, groups, smart folders, group items, media-folder roots | Always the offset form, both ways |
 | Tags, tag kinds, people, organizations | The same-named local entity's id, else the offset form; a local id in a request goes to the peer's same-named entity, else `404` |
-| A body naming this node's video or item with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
+| A body naming this node's video or item, or another link's, with a remote path id | `400 invalid_request` with reason `mixed_nodes` |
 | `open`, `auto-tag`, `probe` | Kept: `404 not_found` |
 | Related videos, work-info and person plugin fetches, thumbnail edits, vocabulary deletes and merges | Kept: answered here from both nodes, as the sections below describe |
 | A remote video's `progress` and `favorite`, a remote group's or smart folder's watch values and `favorite`, a remote person's `favorite` | The peer's, kept by the rewrite ([Progress, history and favorites](#progress-history-and-favorites)) |
@@ -200,8 +216,13 @@ headers passed through, since the browser has no session on the peer.
 
 ## Merged lists
 
-The video, library and folder lists merge the local page and the peer's page
-in the request's order, and one composite cursor holds a cursor for each side.
+The video, library and folder lists merge the local page and the page of the
+first link in slot order in the request's order, and one composite cursor holds
+a cursor for each side. The other links' entities open by their remote ids; a
+list filter by another link's entity matches nothing. The vocabulary lists and
+writes, rule counts, the watch history and the group picker reach the first
+link too, and an operation over a selection reaches the one link its remote ids
+name, or the first link when they name none.
 
 A list answered to a peer carries `peerItems`, the cursor after each item and
 its sort value, so the merge never decodes the peer's opaque cursor and a
@@ -412,14 +433,16 @@ apply.
 
 ## The screens
 
-`web/src/lib/remoteId.ts` decides from the id whether an item is remote, and
-cards, rows, collection pages and the video page show the peer's name as the
-mark, so no schema gains a `remote` field. The shell shows a notice from
-`GET /api/peer` and the `peer` event while a link exists but is not
-connected; guests see the state without the name. The Pairing page has two
-sections that follow the same state: "Read another VVMDM" holds the pairing
-form until a link exists, then the link's state, address, certificate and
-removal; "VVMDMs that read this one" shows the pairing code until a grant
+`web/src/lib/remoteId.ts` decides from the id whether an item is remote and,
+with `remoteSlot(id)`, which link holds it; `PeerProvider` keeps each link's
+name by slot (`usePeerName(slot)`), so cards, rows, collection pages, the
+video page and the selection bar show the name of the item's own link, and no
+schema gains a `remote` field. The shell shows a notice from `GET /api/peer`
+and the `peer` event while a link is not connected: it names that link, or
+counts the links when several are down; guests see the state without the
+names. The Pairing page has two sections that follow the same state: "Read
+another VVMDM" holds the pairing form until a link exists, then each link's
+state, address, certificate and removal; "VVMDMs that read this one" shows the pairing code until a grant
 exists, then the reader's name, pairing time and "Remove access". The video
 page and a list row offer a remote video's favorite, and the video page saves
 its progress, with the same controls and failure line as a local video's,

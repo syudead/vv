@@ -32,6 +32,10 @@ func (s *server) readsBothNodes(w http.ResponseWriter, r *http.Request, id int64
 		return false
 	}
 	read, ok := s.parseSmartFolderRead(w, id, cursor, limit, query)
+	read.slot = s.listSlot(ctx)
+	if remote {
+		read.slot = domain.RemoteSlot(id)
+	}
 	switch {
 	case !ok:
 	case remote:
@@ -179,13 +183,15 @@ func (s *server) CountPeerRuleMatches(w http.ResponseWriter, r *http.Request) {
 // that does not answer leaves the local list.
 func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSummary) []gen.SmartFolderSummary {
 	var answer gen.SmartFolderList
-	if err := s.peerGet(r, "/api/smart-folders", nil, &answer); err != nil {
+	slot := s.listSlot(r.Context())
+	if err := s.peerGet(r, slot, "/api/smart-folders", nil, &answer); err != nil {
 		s.logger.Info("the smart folder list leaves out the other VVMDM", slog.Any("error", err))
 		return local
 	}
+	join := domain.VocabularyJoin{Slot: slot}
 	merged := slices.Clone(local)
 	for _, folder := range answer.SmartFolders {
-		rewriteRemoteSmartFolderSummary(&folder)
+		rewriteRemoteSmartFolderSummary(&folder, join)
 		merged = append(merged, folder)
 	}
 	slices.SortStableFunc(merged, func(a, b gen.SmartFolderSummary) int {
@@ -198,24 +204,24 @@ func (s *server) withPeerSmartFolders(r *http.Request, local []gen.SmartFolderSu
 }
 
 // rewriteRemoteSmartFolderSummary keeps the peer's favorite, which lives on the node holding the folder.
-func rewriteRemoteSmartFolderSummary(folder *gen.SmartFolderSummary) {
-	folder.Id = domain.RemoteID(domain.LinkSlot, folder.Id)
+func rewriteRemoteSmartFolderSummary(folder *gen.SmartFolderSummary, join domain.VocabularyJoin) {
+	folder.Id = join.Remote(folder.Id)
 	if folder.ParentId != nil {
-		*folder.ParentId = domain.RemoteID(domain.LinkSlot, *folder.ParentId)
+		*folder.ParentId = join.Remote(*folder.ParentId)
 	}
 }
 
 // rewriteRemoteSmartFolderCard keeps the peer's watch values and favorite, as a remote group does, and leaves out
 // the rule only this node reads.
 func rewriteRemoteSmartFolderCard(card *gen.LibrarySmartFolder, join domain.VocabularyJoin) {
-	card.Id, card.PeerRule = domain.RemoteID(domain.LinkSlot, card.Id), nil
+	card.Id, card.PeerRule = join.Remote(card.Id), nil
 	if card.ParentId != nil {
-		*card.ParentId = domain.RemoteID(domain.LinkSlot, *card.ParentId)
+		*card.ParentId = join.Remote(*card.ParentId)
 	}
 	if card.OpenVideoId != nil {
-		*card.OpenVideoId = domain.RemoteID(domain.LinkSlot, *card.OpenVideoId)
+		*card.OpenVideoId = join.Remote(*card.OpenVideoId)
 	}
-	rewriteRemotePreviews(card.Previews)
+	rewriteRemotePreviews(card.Previews, join)
 	rewriteRemoteTags(card.Tags, join)
 }
 
@@ -243,13 +249,19 @@ type mergedCards struct {
 func (s *server) listMergedSmartFolderCards(w http.ResponseWriter, r *http.Request, ids []int64) {
 	ctx := r.Context()
 	audience := audienceFrom(ctx)
-	var local, remote []int64
+	var local []int64
+	remote := map[int64][]int64{}
+	var slots []int64
 	for _, id := range ids {
-		if domain.IsRemoteID(id) {
-			remote = append(remote, domain.FromRemoteID(id))
-		} else {
+		if !domain.IsRemoteID(id) {
 			local = append(local, id)
+			continue
 		}
+		slot := domain.RemoteSlot(id)
+		if _, ok := remote[slot]; !ok {
+			slots = append(slots, slot)
+		}
+		remote[slot] = append(remote[slot], domain.FromRemoteID(id))
 	}
 	merged := mergedCards{cards: map[int64]*gen.LibrarySmartFolder{}}
 	if len(local) > 0 {
@@ -263,8 +275,8 @@ func (s *server) listMergedSmartFolderCards(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
-	if len(remote) > 0 {
-		if err := s.addRemoteCards(r, &merged, remote); err != nil {
+	for _, slot := range slots {
+		if err := s.addRemoteCards(r, slot, &merged, remote[slot]); err != nil {
 			s.internalError(w, "Could not load the smart folder cards.", err)
 			return
 		}
@@ -305,18 +317,19 @@ func (s *server) addLocalCards(ctx context.Context, merged *mergedCards, cards [
 	return nil
 }
 
-// addRemoteCards reads the peer's cards; a peer that does not answer leaves them out, as a merged list does.
-func (s *server) addRemoteCards(r *http.Request, merged *mergedCards, ids []int64) error {
+// addRemoteCards reads the cards of the link in slot; a link that does not answer leaves them out, as a merged
+// list does.
+func (s *server) addRemoteCards(r *http.Request, slot int64, merged *mergedCards, ids []int64) error {
 	values := make([]string, len(ids))
 	for i, id := range ids {
 		values[i] = strconv.FormatInt(id, 10)
 	}
 	var answer gen.SmartFolderCards
-	if err := s.peerGet(r, "/api/smart-folders/cards", url.Values{"ids": {strings.Join(values, ",")}}, &answer); err != nil {
+	if err := s.peerGet(r, slot, "/api/smart-folders/cards", url.Values{"ids": {strings.Join(values, ",")}}, &answer); err != nil {
 		s.logger.Info("the smart folder cards leave out the other VVMDM", slog.Any("error", err))
 		return nil
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		return err
 	}
@@ -350,7 +363,8 @@ func (s *server) addCardCounts(r *http.Request, merged mergedCards) error {
 		return nil
 	}
 	var answer gen.PeerRuleCounts
-	err := s.peerCall(r, http.MethodPost, "/api/peer/rule-counts", nil, gen.PeerRuleCountsRequest{Rules: merged.peerRules}, &answer)
+	err := s.peerCall(r, s.listSlot(r.Context()), http.MethodPost, "/api/peer/rule-counts", nil,
+		gen.PeerRuleCountsRequest{Rules: merged.peerRules}, &answer)
 	if err != nil || len(answer.Items) != len(merged.peerCards) {
 		s.logger.Info("the smart folder cards leave out the other VVMDM's videos", slog.Any("error", err))
 		return nil
@@ -364,7 +378,9 @@ func (s *server) addCardCounts(r *http.Request, merged mergedCards) error {
 
 // smartFolderRead is one page request of a smart folder; first is the detail, which adds the child folders.
 type smartFolderRead struct {
-	id     int64
+	id int64
+	// slot is the link the read merges: the folder's link for a remote folder.
+	slot   int64
 	cursor domain.MergedCursor
 	limit  int
 	query  domain.VideoQuery
@@ -491,10 +507,10 @@ func (s *server) readPeerVideos(r *http.Request, rule gen.SmartRuleByName, read 
 	q.Query, q.FavoriteOnly = search, q.FavoriteOnly || read.query.FavoriteOnly
 	setNameFilters(values, q)
 	var answer gen.VideoPage
-	if err := s.peerGet(r, "/api/videos", values, &answer); err != nil {
+	if err := s.peerGet(r, read.slot, "/api/videos", values, &answer); err != nil {
 		return domain.MergeSide[gen.SmartFolderItem]{}, err
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), read.slot)
 	if err != nil {
 		return domain.MergeSide[gen.SmartFolderItem]{}, err
 	}
@@ -537,7 +553,7 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 		detailValues.Set("limit", "1")
 	}
 	var detail gen.SmartFolderDetail
-	if !s.remoteSmartFolderAnswer(w, s.peerGet(r, path, detailValues, &detail)) {
+	if !s.remoteSmartFolderAnswer(w, s.peerGet(r, read.slot, path, detailValues, &detail)) {
 		return
 	}
 	rule := detail.SmartFolder.PeerRule
@@ -561,7 +577,7 @@ func (s *server) readRemoteSmartFolder(w http.ResponseWriter, r *http.Request, r
 		page.next = next.Encode()
 	}
 	if read.first {
-		join, err := s.vocabularyJoin(r.Context())
+		join, err := s.vocabularyJoin(r.Context(), read.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the smart folder.", err)
 			return
@@ -601,12 +617,12 @@ func (s *server) remoteFolderSide(w http.ResponseWriter, r *http.Request, read s
 	if read.cursor.Peer != "" {
 		values.Set("cursor", read.cursor.Peer)
 		var page gen.SmartFolderItemPage
-		if !s.remoteSmartFolderAnswer(w, s.peerGet(r, path+"/items", values, &page)) {
+		if !s.remoteSmartFolderAnswer(w, s.peerGet(r, read.slot, path+"/items", values, &page)) {
 			return domain.MergeSide[gen.SmartFolderItem]{}, false
 		}
 		items, peerItems, next = page.Items, page.PeerItems, page.NextCursor
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), read.slot)
 	if err != nil {
 		s.internalError(w, "Could not load the smart folder.", err)
 		return domain.MergeSide[gen.SmartFolderItem]{}, false
@@ -655,18 +671,18 @@ func (s *server) remoteFolderDetail(page *smartFolderPage, detail gen.SmartFolde
 	page.folder = detail.SmartFolder
 	page.trail = detail.Trail
 	for i := range page.trail {
-		page.trail[i].Id = domain.RemoteID(domain.LinkSlot, page.trail[i].Id)
+		page.trail[i].Id = join.Remote(page.trail[i].Id)
 	}
 	if settings := detail.Settings; settings != nil {
 		rewriteRemoteSmartRule(&settings.Rule, names, join)
 		for i := range settings.Missing {
-			settings.Missing[i].Id = domain.RemoteID(domain.LinkSlot, settings.Missing[i].Id)
+			settings.Missing[i].Id = join.Remote(settings.Missing[i].Id)
 		}
 		page.settings = settings
 	}
 	for _, item := range detail.Items {
 		if item.Kind == gen.SmartFolderItemKindSmartFolder && item.SmartFolder != nil {
-			rewriteRemoteSmartFolderSummary(item.SmartFolder)
+			rewriteRemoteSmartFolderSummary(item.SmartFolder, join)
 			page.children = append(page.children, item)
 		}
 	}
@@ -725,18 +741,18 @@ func (e *noPeerEntityError) Error() string {
 	return fmt.Sprintf("the other VVMDM has no %s named %q", e.kind, e.name)
 }
 
-var remoteSmartFolderAnswer = remoteOperation{rewrite: rewriteAs(func(folder *gen.SmartFolderSummary, _ domain.VocabularyJoin) {
-	rewriteRemoteSmartFolderSummary(folder)
+var remoteSmartFolderAnswer = remoteOperation{rewrite: rewriteAs(func(folder *gen.SmartFolderSummary, join domain.VocabularyJoin) {
+	rewriteRemoteSmartFolderSummary(folder, join)
 })}
 
-// peerSmartRuleIDs is rule in the peer's ids: a remote id loses the offset, and this node's entity takes the
-// peer's entity of the same name.
-func (s *server) peerSmartRuleIDs(r *http.Request, rule domain.SmartRule) (domain.SmartRule, error) {
+// peerSmartRuleIDs is rule in the ids of the link in slot: that link's id loses the offset, and this node's entity
+// takes that link's entity of the same name.
+func (s *server) peerSmartRuleIDs(r *http.Request, slot int64, rule domain.SmartRule) (domain.SmartRule, error) {
 	out := rule
 	out.Tags = slices.Clone(rule.Tags)
 	var err error
 	for i, id := range out.Tags {
-		if out.Tags[i], err = s.peerEntityID(r, domain.SmartRefTag, id); err != nil {
+		if out.Tags[i], err = s.peerEntityID(r, slot, domain.SmartRefTag, id); err != nil {
 			return domain.SmartRule{}, err
 		}
 	}
@@ -747,16 +763,19 @@ func (s *server) peerSmartRuleIDs(r *http.Request, rule domain.SmartRule) (domai
 		{domain.SmartRefTagKind, &out.TagKind}, {domain.SmartRefPerson, &out.Person},
 		{domain.SmartRefOrganization, &out.Organization},
 	} {
-		if *ref.id, err = s.peerEntityID(r, ref.kind, *ref.id); err != nil {
+		if *ref.id, err = s.peerEntityID(r, slot, ref.kind, *ref.id); err != nil {
 			return domain.SmartRule{}, err
 		}
 	}
 	return out, nil
 }
 
-func (s *server) peerEntityID(r *http.Request, kind domain.SmartRuleRefKind, id int64) (int64, error) {
-	if id == 0 || domain.IsRemoteID(id) {
+func (s *server) peerEntityID(r *http.Request, slot int64, kind domain.SmartRuleRefKind, id int64) (int64, error) {
+	switch {
+	case id == 0 || (domain.IsRemoteID(id) && domain.RemoteSlot(id) == slot):
 		return peerID(id), nil
+	case domain.IsRemoteID(id):
+		return 0, &noPeerEntityError{kind: kind, name: "#" + strconv.FormatInt(id, 10)}
 	}
 	names, err := s.smartRuleNames(r.Context(), smartRuleOf(kind, id))
 	if err != nil {
@@ -769,13 +788,13 @@ func (s *server) peerEntityID(r *http.Request, kind domain.SmartRuleRefKind, id 
 	var found int64
 	switch kind {
 	case domain.SmartRefTag:
-		found, err = peerIDByName(s, r, "/api/tags", name, func(tag gen.Tag) (int64, string) { return tag.Id, tag.Name })
+		found, err = peerIDByName(s, r, slot, "/api/tags", name, func(tag gen.Tag) (int64, string) { return tag.Id, tag.Name })
 	case domain.SmartRefTagKind:
-		found, err = peerIDByName(s, r, "/api/tag-kinds", name, func(kind gen.TagKind) (int64, string) { return kind.Id, kind.Name })
+		found, err = peerIDByName(s, r, slot, "/api/tag-kinds", name, func(kind gen.TagKind) (int64, string) { return kind.Id, kind.Name })
 	case domain.SmartRefPerson:
-		found, err = peerIDByName(s, r, "/api/people", name, func(person gen.Person) (int64, string) { return person.Id, person.Name })
+		found, err = peerIDByName(s, r, slot, "/api/people", name, func(person gen.Person) (int64, string) { return person.Id, person.Name })
 	case domain.SmartRefOrganization:
-		found, err = peerIDByName(s, r, "/api/organizations", name, func(organization gen.Organization) (int64, string) {
+		found, err = peerIDByName(s, r, slot, "/api/organizations", name, func(organization gen.Organization) (int64, string) {
 			return organization.Id, organization.Name
 		})
 	}
@@ -800,7 +819,7 @@ func smartRuleOf(kind domain.SmartRuleRefKind, id int64) domain.SmartRule {
 
 // peerIDByName is the lowest id of the peer's entity at path named name, or zero; the kind list takes no
 // search and is read whole.
-func peerIDByName[T any](s *server, r *http.Request, path, name string, entry func(T) (int64, string)) (int64, error) {
+func peerIDByName[T any](s *server, r *http.Request, slot int64, path, name string, entry func(T) (int64, string)) (int64, error) {
 	var answer struct {
 		Items []T `json:"items"`
 	}
@@ -808,7 +827,7 @@ func peerIDByName[T any](s *server, r *http.Request, path, name string, entry fu
 	if path != "/api/tag-kinds" {
 		query.Set("q", name)
 	}
-	if err := s.peerGet(r, path, query, &answer); err != nil {
+	if err := s.peerGet(r, slot, path, query, &answer); err != nil {
 		return 0, err
 	}
 	var found int64
@@ -857,7 +876,8 @@ func (s *server) createsSmartFolderLocally(w http.ResponseWriter, r *http.Reques
 	if isPeerRequest(r.Context()) || !domain.IsRemoteID(create.ParentID) {
 		return true
 	}
-	rule, err := s.peerSmartRuleIDs(r, create.Rule)
+	slot := domain.RemoteSlot(create.ParentID)
+	rule, err := s.peerSmartRuleIDs(r, slot, create.Rule)
 	if err != nil {
 		s.writePeerSmartRuleError(w, err)
 		return false
@@ -868,7 +888,7 @@ func (s *server) createsSmartFolderLocally(w http.ResponseWriter, r *http.Reques
 	if create.Sort != "" {
 		body.Sort = &create.Sort
 	}
-	s.forwardJSON(w, r, "/api/smart-folders", body, remoteSmartFolderAnswer)
+	s.forwardJSON(w, r, slot, "/api/smart-folders", body, remoteSmartFolderAnswer)
 	return false
 }
 
@@ -878,7 +898,7 @@ func (s *server) changesSmartFolderLocally(w http.ResponseWriter, r *http.Reques
 		return true
 	}
 	remote := domain.IsRemoteID(id)
-	if change.ParentSet && change.ParentID != 0 && domain.IsRemoteID(change.ParentID) != remote {
+	if change.ParentSet && change.ParentID != 0 && domain.RemoteSlot(change.ParentID) != domain.RemoteSlot(id) {
 		s.mixedNodes(w)
 		return false
 	}
@@ -890,14 +910,15 @@ func (s *server) changesSmartFolderLocally(w http.ResponseWriter, r *http.Reques
 		body.ParentID = &remoteParentValue{id: peerID(change.ParentID)}
 	}
 	if change.Rule != nil {
-		rule, err := s.peerSmartRuleIDs(r, *change.Rule)
+		rule, err := s.peerSmartRuleIDs(r, domain.RemoteSlot(id), *change.Rule)
 		if err != nil {
 			s.writePeerSmartRuleError(w, err)
 			return false
 		}
 		body.Rule = &rule
 	}
-	s.forwardJSON(w, r, remoteSmartFolderPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10), body, remoteSmartFolderAnswer)
+	s.forwardJSON(w, r, domain.RemoteSlot(id), remoteSmartFolderPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10), body,
+		remoteSmartFolderAnswer)
 	return false
 }
 
@@ -906,11 +927,12 @@ func (s *server) deletesSmartFolderLocally(w http.ResponseWriter, r *http.Reques
 	if isPeerRequest(r.Context()) || !domain.IsRemoteID(id) {
 		return true
 	}
-	out, err := remoteRequest(r, remoteSmartFolderPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10), url.Values{})
+	slot := domain.RemoteSlot(id)
+	out, err := remoteRequest(r, slot, remoteSmartFolderPrefix+strconv.FormatInt(domain.FromRemoteID(id), 10), url.Values{})
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return false
 	}
-	s.forward(w, r, out, remoteOperation{})
+	s.forward(w, r, slot, out, remoteOperation{})
 	return false
 }

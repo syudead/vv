@@ -43,53 +43,70 @@ func scanLink(row interface{ Scan(...any) error }) (domain.PeerLink, error) {
 	return link, err
 }
 
-// Link returns the VVMDM this node reads, or false when there is none.
-func (s *PeerStore) Link(ctx context.Context) (domain.PeerLink, bool, error) {
-	link, err := scanLink(s.db.sql.QueryRowContext(ctx, `select `+linkColumns+` from peer_link`))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.PeerLink{}, false, nil
-	}
-	if err != nil {
-		return domain.PeerLink{}, false, fmt.Errorf("cannot read the peer link: %w", err)
-	}
-	return link, true, nil
+// Links returns the VVMDMs this node reads, in slot order.
+func (s *PeerStore) Links(ctx context.Context) ([]domain.PeerLink, error) {
+	return readLinks(ctx, s.db.sql)
 }
 
-// AddLink stores the only link in the next slot, ignoring link.Slot; an existing one answers
-// domain.ErrAlreadyPaired. One transaction checks, inserts and advances the slot counter, so two pairings cannot
-// both succeed and no slot is given twice.
-func (s *PeerStore) AddLink(ctx context.Context, link domain.PeerLink) error {
+func readLinks(ctx context.Context, q rowsQueryer) ([]domain.PeerLink, error) {
+	rows, err := q.QueryContext(ctx, `select `+linkColumns+` from peer_link order by slot`)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the peer links: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var links []domain.PeerLink
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the peer links: %w", err)
+		}
+		links = append(links, link)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the peer links: %w", err)
+	}
+	return links, nil
+}
+
+// AddLink stores link in the next slot, ignoring link.Slot, and returns it with its slot. The rules of
+// domain.CheckNewLink are checked again over the links the transaction reads, so two pairings cannot pass the
+// limit or read one node twice, and the slot counter advances in the same transaction, so no slot is given twice.
+func (s *PeerStore) AddLink(ctx context.Context, link domain.PeerLink) (domain.PeerLink, error) {
 	var pinned any
 	if link.PinnedSPKI != "" {
 		pinned = link.PinnedSPKI
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("cannot save the peer link: %w", err)
+		return domain.PeerLink{}, fmt.Errorf("cannot save the peer link: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Writing the counter first takes the write lock before the links are read.
 	slot, err := nextLinkSlot(ctx, tx)
 	if err != nil {
-		return err
-	}
-	res, err := tx.ExecContext(ctx, `
-		insert into peer_link (node_id, name, address, secret, pinned_spki, paired_at, slot)
-		select ?, ?, ?, ?, ?, ?, ?
-		 where not exists (select 1 from peer_link)`,
-		link.NodeID, link.Name, link.Address, link.Secret, pinned, link.PairedAt.Unix(), slot)
-	if err != nil {
-		return fmt.Errorf("cannot save the peer link: %w", err)
-	}
-	if err := insertedOne(res, "cannot save the peer link"); err != nil {
-		return err
+		return domain.PeerLink{}, err
 	}
 	if err := writeSetting(ctx, tx, nextSlotKey, strconv.FormatInt(slot+1, 10)); err != nil {
-		return err
+		return domain.PeerLink{}, err
+	}
+	existing, err := readLinks(ctx, tx)
+	if err != nil {
+		return domain.PeerLink{}, err
+	}
+	if err := domain.CheckNewLink(existing, link.NodeID); err != nil {
+		return domain.PeerLink{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		insert into peer_link (node_id, name, address, secret, pinned_spki, paired_at, slot)
+		values (?, ?, ?, ?, ?, ?, ?)`,
+		link.NodeID, link.Name, link.Address, link.Secret, pinned, link.PairedAt.Unix(), slot); err != nil {
+		return domain.PeerLink{}, fmt.Errorf("cannot save the peer link: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("cannot commit the peer link: %w", err)
+		return domain.PeerLink{}, fmt.Errorf("cannot commit the peer link: %w", err)
 	}
-	return nil
+	link.Slot = slot
+	return link, nil
 }
 
 const nextSlotKey = "peer.next_slot"
@@ -151,10 +168,10 @@ func (s *PeerStore) PinLinkCertificate(ctx context.Context, nodeID, spki string)
 	return nil
 }
 
-// UpdateLinkAddress answers domain.ErrNotFound without a link.
-func (s *PeerStore) UpdateLinkAddress(ctx context.Context, address string) (domain.PeerLink, error) {
+// UpdateLinkAddress answers domain.ErrNotFound without the link of nodeID.
+func (s *PeerStore) UpdateLinkAddress(ctx context.Context, nodeID, address string) (domain.PeerLink, error) {
 	link, err := scanLink(s.db.sql.QueryRowContext(ctx,
-		`update peer_link set address = ? returning `+linkColumns, address))
+		`update peer_link set address = ? where node_id = ? returning `+linkColumns, address, nodeID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.PeerLink{}, domain.ErrNotFound
 	}

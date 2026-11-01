@@ -270,13 +270,30 @@ async function play(page: Page, video: Video) {
   });
 }
 
+interface PeerLinkBody {
+  nodeId: string;
+  name: string;
+  state: string;
+}
+
+/** Removes every link the node of request reads. */
+async function unpairAll(request: APIRequestContext): Promise<void> {
+  const { links } = (await (await request.get("/api/peer")).json()) as {
+    links: PeerLinkBody[];
+  };
+  for (const link of links) {
+    const removed = await request.delete(`/api/peer/links/${link.nodeId}`, {
+      headers: mutationHeaders,
+    });
+    expect(removed.status()).toBe(204);
+  }
+}
+
 test.describe.serial("paired library", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     // A retry finds the main node still paired with the previous run's second node.
-    expect(
-      (await request.delete("/api/peer/link", { headers: mutationHeaders })).status(),
-    ).toBe(204);
+    await unpairAll(request);
     secondRequest = await startSecondNode();
     remoteVideo = { ...(await setUpSecondNode(secondRequest)) };
     remoteVideo.id += remoteOffset;
@@ -290,8 +307,7 @@ test.describe.serial("paired library", () => {
   test.afterAll(async ({ request }) => {
     await stopSecondNode();
     await secondRequest?.dispose();
-    const unpaired = await request.delete("/api/peer/link", { headers: mutationHeaders });
-    expect(unpaired.status()).toBe(204);
+    await unpairAll(request);
     if (localFolder !== undefined) {
       const removed = await request.delete(
         `/api/media-folders/${String(localFolder.id)}?version=${String(localFolder.version)}`,
@@ -320,21 +336,18 @@ test.describe.serial("paired library", () => {
     });
 
     const own = (await (await request.get("/api/peer")).json()) as {
-      state: string;
-      link: { name: string };
+      links: PeerLinkBody[];
       grant?: unknown;
     };
-    expect(own.state).toBe("connected");
+    expect(own.links.map((link) => link.state)).toEqual(["connected"]);
     expect(own.grant).toBeUndefined();
-    peerName = own.link.name;
+    peerName = own.links[0]?.name ?? "";
     // The node that showed the code reads nothing: it holds the grant and no link, and never connects here.
     const other = (await (await peer.get("/api/peer")).json()) as {
-      state: string;
-      link?: unknown;
+      links: unknown[];
       grant: { name: string };
     };
-    expect(other.state).toBe("unpaired");
-    expect(other.link).toBeUndefined();
+    expect(other.links).toEqual([]);
     expect(other.grant.name).toBe(
       ((await (await request.get("/api/peer")).json()) as { node: { name: string } }).node
         .name,

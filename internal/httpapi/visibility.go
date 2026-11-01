@@ -58,9 +58,9 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	if sel.hasPeer() {
 		ids, folders := sel.peerTargets()
 		var answer gen.VideoVisibilityResponse
-		err := s.peerCall(r, http.MethodPut, "/api/video-visibility", nil,
+		err := s.peerCall(r, sel.slot, http.MethodPut, "/api/video-visibility", nil,
 			gen.VideoVisibilityRequest{VideoIds: ids, SmartFolderIds: folders, Public: public}, &answer)
-		out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
+		out.Remote = s.remoteSelectionResult(sel.slot, answer.Applied, sel.peer, err)
 		out.Applied += out.Remote.Applied
 	}
 

@@ -45,7 +45,11 @@ export default function FolderHeader({
         titleHidden
         titleRef={heading}
         title={name ?? t.folders.title}
-        count={isRemoteId(folder.rootId) ? <RemoteCountLine remote /> : undefined}
+        count={
+          isRemoteId(folder.rootId) ? (
+            <RemoteCountLine itemId={folder.rootId} />
+          ) : undefined
+        }
       />
     </>
   );

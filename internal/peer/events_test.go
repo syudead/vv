@@ -51,7 +51,7 @@ func watchUntil(t *testing.T, client *Client, target domain.PeerTarget, secret s
 	return got, opened, err
 }
 
-func TestWatchForwardsEventsWithRemoteIDs(t *testing.T) {
+func TestWatchForwardsEventsWithThePeersIDs(t *testing.T) {
 	server := httptest.NewServer(eventPeer("retry: 3000\n\n" +
 		"event: scan\ndata: {\"status\":\"idle\"}\n\n" +
 		": keep-alive\n\n" +
@@ -66,9 +66,9 @@ func TestWatchForwardsEventsWithRemoteIDs(t *testing.T) {
 		t.Fatalf("opened = %v, err = %v", opened, err)
 	}
 	want := []domain.PeerChanged{
-		{VideoIDs: []int64{domain.RemoteID(1, 7)}},
-		{GroupIDs: []int64{domain.RemoteID(1, 3)}},
-		{SmartFolderIDs: []int64{domain.RemoteID(1, 4)}},
+		{VideoIDs: []int64{7}},
+		{GroupIDs: []int64{3}},
+		{SmartFolderIDs: []int64{4}},
 	}
 	if !slices.EqualFunc(got, want, func(a, b domain.PeerChanged) bool {
 		return slices.Equal(a.VideoIDs, b.VideoIDs) && slices.Equal(a.GroupIDs, b.GroupIDs) &&

@@ -403,7 +403,7 @@ export default function VideoPage() {
           <VideoHeader
             folder={video?.folder}
             virtual={thumbnail.video !== undefined}
-            remote={remote}
+            videoId={id}
             onClose={close}
           />
         }

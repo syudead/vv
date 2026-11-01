@@ -212,8 +212,8 @@ func TestMergedListContinuesWithTheLocalPartWhenThePeerStops(t *testing.T) {
 	if !slices.Equal(totals, []int{5, 5}) {
 		t.Errorf("totals = %v, want the local total on each page", totals)
 	}
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("state = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("state = %s, want unreachable", link.State)
 	}
 }
 

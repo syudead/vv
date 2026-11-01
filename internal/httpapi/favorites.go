@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -61,11 +62,15 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	}
 	// The peer's own request names this node's entities only; a remote id there is missing and ignored.
 	local, peer := change, domain.FavoriteChange{}
+	slot, ok := s.oneLinkSlot(w, slices.Concat(videoIDs, groupIDs, smartFolderIDs, personIDs)...)
+	if !ok {
+		return
+	}
 	if !isPeerRequest(r.Context()) {
 		local, peer = splitFavoriteChange(change)
 	}
 	// The peer is written first, so the common failure, an unreachable peer, changes nothing here.
-	peerApplied, ok := s.setPeerFavorites(w, r, peer)
+	peerApplied, ok := s.setPeerFavorites(w, r, slot, peer)
 	if !ok {
 		return
 	}

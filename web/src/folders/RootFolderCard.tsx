@@ -45,7 +45,7 @@ function RootFolderCard({
           >
             {remote && (
               <span className="mt-1 flex text-muted-foreground">
-                <ItemRemoteMark id={remoteId} />
+                <ItemRemoteMark itemId={folder.rootId} id={remoteId} />
               </span>
             )}
             <Folder

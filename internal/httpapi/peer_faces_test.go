@@ -179,10 +179,12 @@ func TestPeerPersonQueryKeepsThePeersAppearances(t *testing.T) {
 	}{
 		{in: []string{r, "3"}, want: []string{"7"}},
 		{in: []string{"3"}, want: nil, empty: true},
+		// Another link's appearance is not the person's on this link either.
+		{in: []string{strconv.FormatInt(domain.RemoteID(2, 7), 10)}, want: nil, empty: true},
 	} {
 		query := url.Values{"appearanceId": tc.in}
 		var op remoteOperation
-		peerPersonQuery(similarPeoplePattern, query, &op)
+		peerPersonQuery(1, similarPeoplePattern, query, &op)
 		if !slices.Equal(query["appearanceId"], tc.want) || (op.rewrite != nil) != tc.empty {
 			t.Errorf("%v: appearanceId = %v, rewrite set %t; want %v and %t", tc.in, query["appearanceId"], op.rewrite != nil, tc.want, tc.empty)
 		}

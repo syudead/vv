@@ -2550,7 +2550,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Return the pairing state"
-      description: "Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked."
+      description: "Pairing is one-directional: links are the VVMDMs this node reads, at most 8, and grant the VVMDM that reads this one, at most one; each direction is absent until paired, and they are independent, so a mutual pairing is two pairings. links are in slot order; a link's ids in the screen API are its own ids plus slot times 2^40. Owners receive each link's node id, name, address, version and waiting fingerprint, the grant's name and pairing time, and this node's identity; guests receive each link's slot, state and reason only. A link's state is its connection, held in memory: after a start it is revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. Each link keeps its own open event stream to its node as the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s, independently of the other links. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked."
       responses:
         "200":
           description: "Pairing state"
@@ -2559,11 +2559,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PeerState"
 
-  /api/peer/link:
+  /api/peer/links/{nodeId}:
     delete:
       operationId: unpairPeer
-      summary: "Stop reading the other VVMDM"
-      description: "Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204."
+      summary: "Stop reading one VVMDM"
+      description: "Tells the read node through its forgetPeer, best effort, then deletes that link and nothing else, which also clears a revoked state; the other links and the grant, if any, stay. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. A node id this node does not read also returns 204."
+      parameters:
+        - $ref: "#/components/parameters/PeerLinkNodeId"
       responses:
         "204":
           description: "Unpaired"
@@ -2602,7 +2604,7 @@ paths:
     post:
       operationId: pairPeer
       summary: "Read the node whose code the owner typed"
-      description: "Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
+      description: "Sends the code and this node's identity to the other node's acceptPairing and stores the link in the next slot with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node this node already reads, or whose target another node already reads, 409 already_paired; a ninth link 409 peer_limit, before the other node is called; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it."
       requestBody:
         required: true
         content:
@@ -2623,11 +2625,13 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
-  /api/peer/address:
+  /api/peer/links/{nodeId}/address:
     put:
       operationId: updatePeerAddress
-      summary: "Change the read node's address"
-      description: "Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found."
+      summary: "Change a read node's address"
+      description: "Keeps the link. An invalid address returns 400 invalid_request with invalid_address; a node id this node does not read, 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/PeerLinkNodeId"
       requestBody:
         required: true
         content:
@@ -2648,11 +2652,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/peer/certificate:
+  /api/peer/links/{nodeId}/certificate:
     post:
       operationId: confirmPeerCertificate
-      summary: "Trust the read node's changed certificate"
-      description: "Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found."
+      summary: "Trust a read node's changed certificate"
+      description: "Pins the SPKI fingerprint that getPeer shows for that link with state unreachable and reason certificate, and reconnects it at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. A node id this node does not read, 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/PeerLinkNodeId"
       requestBody:
         required: true
         content:
@@ -6170,7 +6176,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates, activity and assistant are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates, activity and assistant are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -6193,6 +6199,13 @@ components:
         type: string
 
   parameters:
+    PeerLinkNodeId:
+      name: nodeId
+      in: path
+      required: true
+      description: "The node id of a link, as getPeer answers it"
+      schema:
+        type: string
     AssistantReviewRunId:
       name: id
       in: path
@@ -13862,24 +13875,42 @@ components:
         version:
           type: string
           description: "Release version, as getHealth reports it; shown for reference, never compared"
-    PeerLink:
+    PeerLinkState:
       type: object
-      required: [name, address, pinned]
+      required: [slot, state]
       additionalProperties: false
-      description: "The VVMDM this node reads"
+      description: "One VVMDM this node reads, with its connection. Guests receive slot, state and reason only."
       properties:
+        slot:
+          type: integer
+          format: int64
+          description: "The link's slot, 1 or more and never reused; its entities' ids in the screen API are their own ids plus slot times 2^40"
+        nodeId:
+          type: string
+          description: "Its node id, the path parameter of the link's operations. Owner only."
+        state:
+          type: string
+          enum: [connected, unreachable, revoked]
+          description: "The connection to that VVMDM"
+        reason:
+          type: string
+          enum: [network, certificate]
+          description: "Present with unreachable"
         name:
           type: string
-          description: "Its host name at pairing"
+          description: "Its host name at pairing. Owner only."
         address:
           type: string
-          description: "Its base URL"
+          description: "Its base URL. Owner only."
         pinned:
           type: boolean
-          description: "Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted"
+          description: "Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted. Owner only."
         version:
           type: string
-          description: "Its version last seen, shown for reference"
+          description: "Its version last seen, shown for reference. Owner only."
+        fingerprint:
+          type: string
+          description: "With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only."
     PeerGrant:
       type: object
       required: [name, pairedAt]
@@ -13894,27 +13925,19 @@ components:
           format: date-time
     PeerState:
       type: object
-      required: [state]
+      required: [links]
       additionalProperties: false
       properties:
-        state:
-          type: string
-          enum: [unpaired, connected, unreachable, revoked]
-          description: "The connection to the VVMDM this node reads; unpaired without link"
-        reason:
-          type: string
-          enum: [network, certificate]
-          description: "Present with unreachable"
-        link:
-          $ref: "#/components/schemas/PeerLink"
-        fingerprint:
-          type: string
-          description: "With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only."
+        links:
+          type: array
+          description: "The VVMDMs this node reads, in slot order; empty while it reads none"
+          items:
+            $ref: "#/components/schemas/PeerLinkState"
         grant:
           $ref: "#/components/schemas/PeerGrant"
         node:
           $ref: "#/components/schemas/PeerNode"
-      description: "Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity."
+      description: "Guests receive links in their guest shape only; owners also receive grant (while one reads this node) and node, this node's identity."
     PairingCode:
       type: object
       required: [code, expiresAt]
@@ -14578,6 +14601,7 @@ components:
         - invalid_address
         - invalid_code
         - already_paired
+        - peer_limit
         - peer_unreachable
         - mixed_nodes
         - provisional_person_remote

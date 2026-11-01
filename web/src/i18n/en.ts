@@ -452,12 +452,13 @@ const errorReasons = {
   invalid_code:
     "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
   already_paired:
-    "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing first.",
+    "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+  peer_limit: "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
   mixed_nodes:
-    "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
+    "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
     tagName === undefined
       ? "A tag on the other VVMDM already has that name."
@@ -1031,8 +1032,8 @@ export const en = {
       // `name` is the peer's host name, which guests do not receive.
       remote: {
         on: (name: string | undefined) =>
-          name === undefined ? "On the other VVMDM" : `On ${name}`,
-        name: (name: string | undefined) => name ?? "Other VVMDM",
+          name === undefined ? "On another VVMDM" : `On ${name}`,
+        name: (name: string | undefined) => name ?? "Another VVMDM",
       },
     },
   },
@@ -3919,6 +3920,8 @@ export const en = {
       certificateBody: "Confirm it in Pairing to reconnect.",
       revokedTitle: (name: string) => `Access removed by ${name}`,
       revokedBody: "It no longer shares its library with this VVMDM.",
+      severalTitle: (count: number) => `${String(count)} VVMDMs aren't connected`,
+      severalBody: "Their videos, groups and smart folders are hidden until they answer.",
       guestTitle: "The other library isn't available right now",
       guestBody: "Some videos aren't shown until it is.",
       openPairing: "Open Pairing",
@@ -5296,7 +5299,9 @@ export const en = {
         invalidCode:
           "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
         alreadyPaired:
-          "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing on its Pairing page first.",
+          "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+        peerLimit:
+          "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",

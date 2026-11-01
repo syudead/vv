@@ -29,8 +29,9 @@ type remoteParam struct {
 
 type remoteRewrite func(body []byte, join domain.VocabularyJoin) (any, error)
 
-// remoteBody returns the body with the peer's own ids, or errMixedNodes when it names one of this node's.
-type remoteBody func(body []byte) ([]byte, error)
+// remoteBody returns the body with the own ids of the link in slot, or errMixedNodes when it names an entity of
+// this node or of another link.
+type remoteBody func(slot int64, body []byte) ([]byte, error)
 
 // rewriteAs decodes the answer into the operation's generated type, so the type says which ids are videos and
 // which are tags.
@@ -48,20 +49,20 @@ func rewriteAs[T any](rewrite func(*T, domain.VocabularyJoin)) remoteRewrite {
 // rewriteRemoteVideo keeps the peer's playback position and favorite, which live on the node holding the video,
 // and marks the file not openable, since only the node holding it opens it.
 func rewriteRemoteVideo(v *gen.Video, join domain.VocabularyJoin) {
-	v.Id = domain.RemoteID(domain.LinkSlot, v.Id)
+	v.Id = join.Remote(v.Id)
 	for _, url := range []*string{v.ThumbnailUrl, v.PreviewUrl, v.SeekThumbnailUrl} {
-		rewriteRemoteURL(url)
+		rewriteRemoteURL(url, join)
 	}
-	rewriteRemoteFolder(v.Folder)
+	rewriteRemoteFolder(v.Folder, join)
 	if v.Group != nil {
-		v.Group.Id = domain.RemoteID(domain.LinkSlot, v.Group.Id)
-		rewriteRemoteFolder(v.Group.Folder)
+		v.Group.Id = join.Remote(v.Group.Id)
+		rewriteRemoteFolder(v.Group.Folder, join)
 	}
 	if v.SmartFolder != nil {
-		v.SmartFolder.Id = domain.RemoteID(domain.LinkSlot, v.SmartFolder.Id)
+		v.SmartFolder.Id = join.Remote(v.SmartFolder.Id)
 	}
 	if v.Versions != nil {
-		v.Versions.RepresentativeId = domain.RemoteID(domain.LinkSlot, v.Versions.RepresentativeId)
+		v.Versions.RepresentativeId = join.Remote(v.Versions.RepresentativeId)
 	}
 	if v.Location != nil {
 		v.Location.Openable = false
@@ -84,15 +85,15 @@ func rewriteRemoteTags(tags []gen.VideoTag, join domain.VocabularyJoin) {
 	}
 }
 
-func rewriteRemoteURL(url *string) {
+func rewriteRemoteURL(url *string, join domain.VocabularyJoin) {
 	if url != nil {
-		*url = domain.RemoteVideoURL(domain.LinkSlot, *url)
+		*url = domain.RemoteVideoURL(join.Slot, *url)
 	}
 }
 
-func rewriteRemoteFolder(folder *gen.VideoFolder) {
+func rewriteRemoteFolder(folder *gen.VideoFolder, join domain.VocabularyJoin) {
 	if folder != nil {
-		folder.RootId = domain.RemoteID(domain.LinkSlot, folder.RootId)
+		folder.RootId = join.Remote(folder.RootId)
 	}
 }
 
@@ -121,12 +122,12 @@ func rewriteRemoteVideos(videos []gen.Video, join domain.VocabularyJoin) {
 func rewriteRemoteRelated(related *gen.RelatedVideos, join domain.VocabularyJoin) {
 	rewriteRemoteVideos(related.Items, join)
 	if related.Group != nil {
-		related.Group.Id = domain.RemoteID(domain.LinkSlot, related.Group.Id)
+		related.Group.Id = join.Remote(related.Group.Id)
 		rewriteRemoteVideos(related.Group.Items, join)
 	}
 	for _, id := range []*int64{related.NextId, related.PrevId} {
 		if id != nil {
-			*id = domain.RemoteID(domain.LinkSlot, *id)
+			*id = join.Remote(*id)
 		}
 	}
 }
@@ -137,12 +138,12 @@ func rewriteRemoteGroupMembers(page *gen.GroupMemberPage, join domain.Vocabulary
 
 func rewriteRemoteVersions(versions *gen.VideoVersions, join domain.VocabularyJoin) {
 	rewriteRemoteVideos(versions.Items, join)
-	versions.RepresentativeId = domain.RemoteID(domain.LinkSlot, versions.RepresentativeId)
+	versions.RepresentativeId = join.Remote(versions.RepresentativeId)
 }
 
-func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, _ domain.VocabularyJoin) {
+func rewriteRemoteSprite(sprite *gen.SeekThumbnailSprite, join domain.VocabularyJoin) {
 	for i := range sprite.Sheets {
-		rewriteRemoteURL(&sprite.Sheets[i])
+		rewriteRemoteURL(&sprite.Sheets[i], join)
 	}
 }
 
@@ -153,7 +154,7 @@ func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin)
 		rewriteRemoteVideo(item.Video, join)
 	}
 	if item.SmartFolder != nil {
-		rewriteRemoteSmartFolderSummary(item.SmartFolder)
+		rewriteRemoteSmartFolderSummary(item.SmartFolder, join)
 	}
 	if item.Group != nil {
 		rewriteRemoteGroup(item.Group, join)
@@ -161,35 +162,35 @@ func rewriteRemoteLibraryItem(item *gen.LibraryItem, join domain.VocabularyJoin)
 }
 
 func rewriteRemoteGroup(group *gen.LibraryGroup, join domain.VocabularyJoin) {
-	group.Id, group.OpenVideoId = domain.RemoteID(domain.LinkSlot, group.Id), domain.RemoteID(domain.LinkSlot, group.OpenVideoId)
+	group.Id, group.OpenVideoId = join.Remote(group.Id), join.Remote(group.OpenVideoId)
 	for i := range group.VideoIds {
-		group.VideoIds[i] = domain.RemoteID(domain.LinkSlot, group.VideoIds[i])
+		group.VideoIds[i] = join.Remote(group.VideoIds[i])
 	}
-	rewriteRemotePreviews(group.Previews)
-	rewriteRemoteFolder(group.Folder)
+	rewriteRemotePreviews(group.Previews, join)
+	rewriteRemoteFolder(group.Folder, join)
 	rewriteRemoteTags(group.Tags, join)
 }
 
-func rewriteRemotePreviews(previews []gen.FolderPreview) {
+func rewriteRemotePreviews(previews []gen.FolderPreview, join domain.VocabularyJoin) {
 	for i := range previews {
 		preview := &previews[i]
-		preview.VideoId = domain.RemoteID(domain.LinkSlot, preview.VideoId)
-		preview.ThumbnailUrl = domain.RemoteVideoURL(domain.LinkSlot, preview.ThumbnailUrl)
-		rewriteRemoteURL(preview.PreviewUrl)
+		preview.VideoId = join.Remote(preview.VideoId)
+		preview.ThumbnailUrl = domain.RemoteVideoURL(join.Slot, preview.ThumbnailUrl)
+		rewriteRemoteURL(preview.PreviewUrl, join)
 	}
 }
 
 // rewriteRemoteFolderSummary leaves out the grouping, which is edited on the node that holds the folder.
-func rewriteRemoteFolderSummary(folder *gen.FolderSummary) {
-	folder.RootId = domain.RemoteID(domain.LinkSlot, folder.RootId)
+func rewriteRemoteFolderSummary(folder *gen.FolderSummary, join domain.VocabularyJoin) {
+	folder.RootId = join.Remote(folder.RootId)
 	folder.Grouping = nil
-	rewriteRemotePreviews(folder.Previews)
+	rewriteRemotePreviews(folder.Previews, join)
 }
 
-func rewriteRemoteFolderListing(listing *gen.FolderListing, _ domain.VocabularyJoin) {
-	rewriteRemoteFolderSummary(&listing.Folder)
+func rewriteRemoteFolderListing(listing *gen.FolderListing, join domain.VocabularyJoin) {
+	rewriteRemoteFolderSummary(&listing.Folder, join)
 	for i := range listing.Folders {
-		rewriteRemoteFolderSummary(&listing.Folders[i])
+		rewriteRemoteFolderSummary(&listing.Folders[i], join)
 	}
 }
 
@@ -199,7 +200,7 @@ func rewriteRemoteVideoPage(page *gen.VideoPage, join domain.VocabularyJoin) {
 	page.PeerItems = nil
 	if page.MissingTagIds != nil {
 		for i, id := range *page.MissingTagIds {
-			(*page.MissingTagIds)[i] = domain.RemoteID(domain.LinkSlot, id)
+			(*page.MissingTagIds)[i] = join.Remote(id)
 		}
 	}
 }
@@ -224,7 +225,7 @@ func rewriteRemoteGroupList(page *gen.GroupListPage, join domain.VocabularyJoin)
 func rewriteRemoteGroupDetail(detail *gen.GroupDetail, join domain.VocabularyJoin) {
 	rewriteRemoteGroup(&detail.Group, join)
 	for i := range detail.Trail {
-		detail.Trail[i].Id = domain.RemoteID(domain.LinkSlot, detail.Trail[i].Id)
+		detail.Trail[i].Id = join.Remote(detail.Trail[i].Id)
 	}
 	rewriteRemoteGroupItems(detail.Items, join)
 }
@@ -237,7 +238,7 @@ func rewriteRemoteGroupItemPage(page *gen.GroupItemPage, join domain.VocabularyJ
 func rewriteRemoteGroupItems(items []gen.GroupItem, join domain.VocabularyJoin) {
 	for i := range items {
 		item := &items[i]
-		item.Id = domain.RemoteID(domain.LinkSlot, item.Id)
+		item.Id = join.Remote(item.Id)
 		if item.Video != nil {
 			rewriteRemoteVideo(item.Video, join)
 		}
@@ -267,9 +268,9 @@ func rewriteRemoteOrganizationEntity(organization *gen.Organization, join domain
 }
 
 // rewriteRemoteOrganizeResult marks the peer's undo token so that its undo is forwarded too.
-func rewriteRemoteOrganizeResult(result *gen.OrganizeResult, _ domain.VocabularyJoin) {
-	result.UndoToken = remoteUndoPrefix + result.UndoToken
+func rewriteRemoteOrganizeResult(result *gen.OrganizeResult, join domain.VocabularyJoin) {
+	result.UndoToken = remoteUndoToken(join.Slot, result.UndoToken)
 	if result.GroupId != nil {
-		*result.GroupId = domain.RemoteID(domain.LinkSlot, *result.GroupId)
+		*result.GroupId = join.Remote(*result.GroupId)
 	}
 }

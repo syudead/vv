@@ -174,10 +174,11 @@ credential and the viewer's audience, so the paired node filters before paging
 too ([authentication.md](docs/design-docs/authentication.md#paired-vvmdm)).
 
 **Remote ids carry an offset.** An id at or above `2^40` in the screen API
-names an entity of the paired VVMDM, whose own id is the value minus the
-offset; local ids stay below it, and the HTTP layer forwards such a request
-to the paired node instead of reading the store
-([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
+names an entity of a VVMDM this node reads: `id div 2^40` is the slot of that
+link, and the link's own id is the value minus `slot × 2^40`. Local ids stay
+below `2^40`, and the HTTP layer forwards such a request to the link of that
+slot instead of reading the store, or answers `404` when no link holds the
+slot ([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
 table stores a remote entity, so pairing and unpairing change no user data.
 
 **Only a scan walks the media folders.** Only a scan reads the media folders'

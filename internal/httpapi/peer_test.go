@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,7 +19,13 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-const testPeerVersion = "1.2.0"
+const (
+	testPeerVersion = "1.2.0"
+	otherPeerNodeID = "7c2f4c3a-1d2e-4f50-8a6b-0c1d2e3f4a5b"
+	// The peer event a guest receives while the one link is connected, and once no link is left.
+	guestConnected = `{"links":[{"slot":1,"state":"connected"}]}`
+	guestNoLinks   = `{"links":[]}`
+)
 
 // audienceLibrary records the audience the boundary handed to the store.
 type audienceLibrary struct {
@@ -134,14 +142,38 @@ func (n *peerNode) owner(method, target, body string) *httptest.ResponseRecorder
 	return n.env.serve(authRequest{method: method, target: target, body: body, cookies: []*http.Cookie{n.cookie}})
 }
 
-// linkSecret is the credential this node presents to the node it reads.
+// onlyLink is the one link this node reads.
+func (n *peerNode) onlyLink(t *testing.T) domain.PeerLink {
+	t.Helper()
+	links, err := n.env.db.Peers().Links(context.Background())
+	if err != nil || len(links) != 1 {
+		t.Fatalf("リンク = %+v, %v, want 1 本", links, err)
+	}
+	return links[0]
+}
+
+// linkSecret is the credential this node presents to the one node it reads.
 func (n *peerNode) linkSecret(t *testing.T) string {
 	t.Helper()
-	link, found, err := n.env.db.Peers().Link(context.Background())
-	if err != nil || !found {
-		t.Fatalf("link が無い: %v, %v", found, err)
+	return n.onlyLink(t).Secret
+}
+
+// onlyLinkState is the state of the one link GET /api/peer answers to the owner of n.
+func onlyLinkState(t *testing.T, n *peerNode) gen.PeerLinkState {
+	t.Helper()
+	state, _ := decodePeerState(t, n.owner(http.MethodGet, "/api/peer", ""))
+	if len(state.Links) != 1 {
+		t.Fatalf("リンク = %+v, want 1 本", state.Links)
 	}
-	return link.Secret
+	return state.Links[0]
+}
+
+func linkNames(links []gen.PeerLinkState) []string {
+	names := make([]string, len(links))
+	for i, link := range links {
+		names[i] = fmt.Sprintf("%d:%s:%s", link.Slot, valueOrEmpty(link.Name), link.State)
+	}
+	return names
 }
 
 func (n *peerNode) grant(t *testing.T) (domain.PeerGrant, bool) {
@@ -204,30 +236,76 @@ func TestPairingGrantsTheReaderOnly(t *testing.T) {
 	a, b := pairTestNodes(t)
 
 	onB, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
-	if onB.State != gen.PeerStateStateConnected || onB.Link == nil || onB.Link.Name != "node-a" ||
-		onB.Link.Address != a.url || onB.Grant != nil {
-		t.Errorf("B の状態 = %+v, want node-a への connected な link だけ", onB)
+	nodeA, _ := a.pairing.Node(context.Background())
+	if len(onB.Links) != 1 || onB.Grant != nil {
+		t.Fatalf("B の状態 = %+v, want node-a へのリンクだけ", onB)
+	}
+	if link := onB.Links[0]; link.Slot != 1 || link.State != gen.PeerLinkStateStateConnected ||
+		valueOrEmpty(link.NodeId) != nodeA.ID || valueOrEmpty(link.Name) != "node-a" || valueOrEmpty(link.Address) != a.url {
+		t.Errorf("B のリンク = %+v, want スロット 1 で node-a に connected", link)
 	}
 	onA, _ := decodePeerState(t, a.owner(http.MethodGet, "/api/peer", ""))
-	if onA.State != gen.PeerStateStateUnpaired || onA.Link != nil || onA.Grant == nil || onA.Grant.Name != "node-b" {
-		t.Errorf("A の状態 = %+v, want unpaired と node-b の grant", onA)
+	if len(onA.Links) != 0 || onA.Grant == nil || onA.Grant.Name != "node-b" {
+		t.Errorf("A の状態 = %+v, want リンク無しと node-b の grant", onA)
 	}
 
 	guest := b.env.get("/api/peer")
 	assertAudience(t, "ゲストの GET /api/peer", guest, "guest")
-	state, fields := decodePeerState(t, guest)
-	if state.State != gen.PeerStateStateConnected || len(fields) != 1 {
-		t.Errorf("ゲストの状態 = %s, want state だけ", guest.Body)
+	if got := guest.Body.String(); got != `{"links":[{"slot":1,"state":"connected"}]}`+"\n" {
+		t.Errorf("ゲストの状態 = %s, want スロットと state だけ", got)
 	}
 
-	// A is read by B, so its code is refused; B reads A, so it refuses a second link.
+	// A is read by B, so its code is refused.
 	if rec := a.owner(http.MethodPost, "/api/peer/code", ""); rec.Code != http.StatusConflict {
 		t.Errorf("読まれている A のコード発行: status = %d: %s", rec.Code, rec.Body)
 	}
-	body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: "ABCDEFGH"})
+}
+
+// A ninth link is refused with peer_limit before the other node is asked.
+func TestPairingRefusesTheNinthLink(t *testing.T) {
+	a, b := newPeerNode(t, "node-a"), newPeerNode(t, "node-b")
+	for i := range domain.MaxPeerLinks {
+		link := domain.PeerLink{
+			NodeID: fmt.Sprintf("00000000-0000-4000-8000-%012d", i), Name: "n", Address: "http://n.local", Secret: "vvp_s",
+		}
+		if _, err := b.env.db.Peers().AddLink(context.Background(), link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body, _ := json.Marshal(gen.PairPeerRequest{Address: a.url, Code: issueCode(t, a)})
 	rec := b.owner(http.MethodPost, "/api/peer/pair", string(body))
-	assertErrorBody(t, "読む相手がある B のペアリング", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonAlreadyPaired})
+	assertErrorBody(t, "9 本目のペアリング", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonPeerLimit})
+	if _, found := a.grant(t); found {
+		t.Error("断ったペアリングで A に grant ができた")
+	}
+}
+
+// One node reads two: GET /api/peer lists both in slot order, and unpairing one by its node id leaves the other.
+func TestTwoLinksAreListedInSlotOrderAndUnpairedApart(t *testing.T) {
+	a, b, c := newPeerNode(t, "node-a"), newPeerNode(t, "node-b"), newPeerNode(t, "node-c")
+	pairNodes(t, a, b)
+	pairNodes(t, c, b)
+
+	state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
+	if got, want := linkNames(state.Links), []string{"1:node-a:connected", "2:node-c:connected"}; !slices.Equal(got, want) {
+		t.Fatalf("B のリンク = %v, want %v", got, want)
+	}
+
+	nodeA, _ := a.pairing.Node(context.Background())
+	if rec := b.owner(http.MethodDelete, "/api/peer/links/"+nodeA.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("node-a の解除: status = %d: %s", rec.Code, rec.Body)
+	}
+	state, _ = decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
+	if got, want := linkNames(state.Links), []string{"2:node-c:connected"}; !slices.Equal(got, want) {
+		t.Errorf("解除後の B のリンク = %v, want %v", got, want)
+	}
+	if _, found := a.grant(t); found {
+		t.Error("解除で A の grant が消えない")
+	}
+	if _, found := c.grant(t); !found {
+		t.Error("node-a の解除で C の grant が消えた")
+	}
 }
 
 // A behind self-signed HTTPS pairs after B's owner confirms A's certificate; B serves plain http and
@@ -249,9 +327,8 @@ func TestPairingOverSelfSignedHTTPSPinsTheReadNode(t *testing.T) {
 	if rec := pair(refusal.Fingerprint); rec.Code != http.StatusCreated {
 		t.Fatalf("確認後のペアリング: status = %d: %s", rec.Code, rec.Body)
 	}
-	state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", ""))
-	if state.State != gen.PeerStateStateConnected || state.Link == nil || !state.Link.Pinned {
-		t.Errorf("B の状態 = %+v, want connected で証明書を固定", state)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateConnected || link.Pinned == nil || !*link.Pinned {
+		t.Errorf("B のリンク = %+v, want connected で証明書を固定", link)
 	}
 }
 
@@ -298,7 +375,7 @@ func TestPeerCredentialClassification(t *testing.T) {
 	for _, op := range []operation{
 		{http.MethodGet, "/api/media-folders"}, {http.MethodPut, "/api/settings/transcoding"},
 		{http.MethodGet, "/api/api-tokens"}, {http.MethodGet, "/api/peer"}, {http.MethodPost, "/api/peer/code"},
-		{http.MethodDelete, "/api/peer/grant"}, {http.MethodDelete, "/api/peer/link"},
+		{http.MethodDelete, "/api/peer/grant"}, {http.MethodDelete, "/api/peer/links/" + otherPeerNodeID},
 	} {
 		rec := peerRequest(op.method, op.path, nil)
 		assertErrorBody(t, op.method+" "+op.path, rec.Code, rec.Body.Bytes(), wantError{
@@ -402,15 +479,15 @@ func TestPairRejectsInvalidAddress(t *testing.T) {
 func TestUnpairTellsTheReadNodeAndReachesGuests(t *testing.T) {
 	a, b := pairTestNodes(t)
 	guest, _ := openEvents(t, b.env.handler)
-	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
-		t.Fatalf("接続時のゲストへの peer = %s, want connected だけ", got)
+	if got := nextPeerEvent(t, guest); got != guestConnected {
+		t.Fatalf("接続時のゲストへの peer = %s, want スロットと connected だけ", got)
 	}
 
-	if rec := b.owner(http.MethodDelete, "/api/peer/link", ""); rec.Code != http.StatusNoContent {
+	if rec := b.owner(http.MethodDelete, "/api/peer/links/"+b.onlyLink(t).NodeID, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("B の解除: status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := nextPeerEvent(t, guest); got != `{"state":"unpaired"}` {
-		t.Errorf("B の解除の後のゲストへの peer = %s, want unpaired", got)
+	if got := nextPeerEvent(t, guest); got != guestNoLinks {
+		t.Errorf("B の解除の後のゲストへの peer = %s, want リンク無し", got)
 	}
 	if _, found := a.grant(t); found {
 		t.Error("B の解除で A の grant が消えない")
@@ -425,22 +502,22 @@ func TestRevokedReaderLearnsItOnItsNextRequest(t *testing.T) {
 		t.Fatalf("A の取り消し: status = %d: %s", rec.Code, rec.Body)
 	}
 	guest, _ := openEvents(t, b.env.handler)
-	if got := nextPeerEvent(t, guest); got != `{"state":"connected"}` {
+	if got := nextPeerEvent(t, guest); got != guestConnected {
 		t.Fatalf("B の状態 = %s, want connected のまま", got)
 	}
 
 	b.runConnection(t)
-	if got := nextPeerEvent(t, guest); got != `{"state":"revoked"}` {
+	if got := nextPeerEvent(t, guest); got != `{"links":[{"slot":1,"state":"revoked"}]}` {
 		t.Fatalf("B の次の要求の後の peer = %s, want revoked", got)
 	}
-	link, _, _ := b.env.db.Peers().Link(context.Background())
+	link := b.onlyLink(t)
 	if !link.Revoked {
 		t.Error("revoked が link に記録されていない")
 	}
-	if rec := b.owner(http.MethodDelete, "/api/peer/link", ""); rec.Code != http.StatusNoContent {
+	if rec := b.owner(http.MethodDelete, "/api/peer/links/"+link.NodeID, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoked の link の削除: status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := nextPeerEvent(t, guest); got != `{"state":"unpaired"}` {
-		t.Errorf("削除後の peer = %s, want unpaired", got)
+	if got := nextPeerEvent(t, guest); got != guestNoLinks {
+		t.Errorf("削除後の peer = %s, want リンク無し", got)
 	}
 }

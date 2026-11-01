@@ -115,7 +115,8 @@ func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditK
 		Person       *gen.Person       `json:"person,omitempty"`
 		Organization *gen.Organization `json:"organization,omitempty"`
 	}
-	err := s.peerCall(r, http.MethodPost, collection+"/"+strconv.FormatInt(domain.FromRemoteID(target), 10)+"/merge",
+	slot := domain.RemoteSlot(target)
+	err := s.peerCall(r, slot, http.MethodPost, collection+"/"+strconv.FormatInt(domain.FromRemoteID(target), 10)+"/merge",
 		url.Values{}, gen.CreditMergeRequest{SourceIds: peerSources}, &answer)
 	var refusal *peerRefusal
 	switch {
@@ -126,13 +127,13 @@ func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditK
 		s.vocabularyFailure(w, err)
 		return
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		s.vocabularyFailure(w, err)
 		return
 	}
 	for i, id := range answer.NotFoundIds {
-		answer.NotFoundIds[i] = domain.RemoteID(domain.LinkSlot, id)
+		answer.NotFoundIds[i] = join.Remote(id)
 	}
 	if answer.Person != nil {
 		rewriteRemotePerson(answer.Person, join)
@@ -148,7 +149,7 @@ func (s *server) mergeOnPeer(w http.ResponseWriter, r *http.Request, api creditK
 	s.internalError(w, "The other VVMDM answered the merge without the "+string(api.kind)+".", nil)
 }
 
-// peerEntryNamed is the peer's entry named name from its whole list at path, in this node's id space.
+// peerEntryNamed is the first link's entry named name from its whole list at path, in this node's id space.
 func peerEntryNamed[T any](s *server, r *http.Request, path string, rewrite func(*T, domain.VocabularyJoin),
 	nameOf func(T) string, name string,
 ) (T, bool, error) {
@@ -156,10 +157,11 @@ func peerEntryNamed[T any](s *server, r *http.Request, path string, rewrite func
 		Items []T `json:"items"`
 	}
 	var zero T
-	if err := s.peerGet(r, path, url.Values{}, &answer); err != nil {
+	slot := s.listSlot(r.Context())
+	if err := s.peerGet(r, slot, path, url.Values{}, &answer); err != nil {
 		return zero, false, err
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		return zero, false, err
 	}
@@ -214,7 +216,7 @@ func (s *server) creditMergeSide(api creditKindAPI) mergeSide {
 		notFound: notFound,
 		fail:     func(w http.ResponseWriter, err error) { s.writeCreditError(w, api, err) },
 		entry: func(ctx context.Context, name string) (int64, error) {
-			join, err := s.vocabularyJoin(ctx)
+			join, err := s.vocabularyJoin(ctx, 0)
 			if err != nil {
 				return 0, err
 			}

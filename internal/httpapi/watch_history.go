@@ -245,8 +245,8 @@ func (s *server) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The screens show one history, so both nodes' entries go, the peer's first.
-	if s.readsPeer(r.Context()) {
-		if err := s.peerCall(r, http.MethodDelete, watchHistoryPath, nil, nil, nil); err != nil {
+	if slot := s.listSlot(r.Context()); slot != 0 {
+		if err := s.peerCall(r, slot, http.MethodDelete, watchHistoryPath, nil, nil, nil); err != nil {
 			s.writePeerWriteFailure(w, err)
 			return
 		}

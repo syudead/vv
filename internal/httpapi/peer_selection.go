@@ -23,7 +23,10 @@ const selectionPageLimit = 200
 // selection is the targets of an operation over a selection split by node.
 type selection struct {
 	local []int64
-	// peer holds the peer's own video ids.
+	// slot is the link the peer part belongs to: the one link the selection's remote ids name, or the first link
+	// when they name none.
+	slot int64
+	// peer holds the link's own video ids.
 	peer []int64
 	// peerFolders are the peer's own smart folders whose rule has no form by name; the peer resolves them.
 	peerFolders []int64
@@ -60,7 +63,14 @@ func (s *server) resolveSelection(
 		s.tooManyVideos(w, limit)
 		return selection{}, false
 	}
-	var sel selection
+	slot, ok := s.oneLinkSlot(w, slices.Concat(videoIDs, folders)...)
+	if !ok {
+		return selection{}, false
+	}
+	if slot == 0 {
+		slot = s.listSlot(ctx)
+	}
+	sel := selection{slot: slot}
 	sel.local, sel.peer = domain.SplitRemoteIDs(videoIDs)
 	localFolders, peerFolders := domain.SplitRemoteIDs(folders)
 	if !s.expandLocalFolders(w, r, &sel, localFolders, limit) || !s.expandPeerFolders(w, r, &sel, peerFolders, limit) {
@@ -103,7 +113,7 @@ func (s *server) expandLocalFolders(w http.ResponseWriter, r *http.Request, sel 
 		if rule == nil {
 			continue
 		}
-		ids, err := s.peerMatchIDs(r, *rule, sel.peer, limit)
+		ids, err := s.peerMatchIDs(r, sel.slot, *rule, sel.peer, limit)
 		if err != nil {
 			s.logger.Info("the selection leaves out the other VVMDM's matches", slog.Int64("smartFolder", id), slog.Any("error", err))
 			return true
@@ -135,7 +145,7 @@ func (s *server) localFolderRuleByName(ctx context.Context, id int64) (*gen.Smar
 func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *selection, folders []int64, limit int) bool {
 	for _, id := range folders {
 		var detail gen.SmartFolderDetail
-		err := s.peerGet(r, remoteSmartFolderPrefix+strconv.FormatInt(id, 10), url.Values{"limit": {"1"}}, &detail)
+		err := s.peerGet(r, sel.slot, remoteSmartFolderPrefix+strconv.FormatInt(id, 10), url.Values{"limit": {"1"}}, &detail)
 		var refusal *peerRefusal
 		if errors.As(err, &refusal) && refusal.status == http.StatusNotFound {
 			continue
@@ -150,7 +160,7 @@ func (s *server) expandPeerFolders(w http.ResponseWriter, r *http.Request, sel *
 			sel.peerFolders = append(sel.peerFolders, id)
 			continue
 		}
-		ids, err := s.peerMatchIDs(r, *rule.Match, sel.peer, limit)
+		ids, err := s.peerMatchIDs(r, sel.slot, *rule.Match, sel.peer, limit)
 		if err != nil {
 			s.peerUnreachable(w)
 			return false
@@ -187,15 +197,16 @@ func (d distinctOver) add(id int64) { d.seen[id] = struct{}{} }
 
 func (d distinctOver) over() bool { return len(d.seen) > d.limit }
 
-// peerMatchIDs lists the peer's videos matching rule, stopping once they and held name more than limit videos.
-func (s *server) peerMatchIDs(r *http.Request, rule gen.SmartRuleByName, held []int64, limit int) ([]int64, error) {
+// peerMatchIDs lists the videos of the link in slot matching rule, stopping once they and held name more than
+// limit videos.
+func (s *server) peerMatchIDs(r *http.Request, slot int64, rule gen.SmartRuleByName, held []int64, limit int) ([]int64, error) {
 	values := url.Values{"limit": {strconv.Itoa(selectionPageLimit)}}
 	setNameFilters(values, queryByName(rule))
 	ids := []int64{}
 	count := newDistinctOver(held, limit)
 	for {
 		var page gen.VideoPage
-		if err := s.peerGet(r, "/api/videos", values, &page); err != nil {
+		if err := s.peerGet(r, slot, "/api/videos", values, &page); err != nil {
 			return nil, err
 		}
 		for _, video := range page.Items {
@@ -253,16 +264,16 @@ func setNameFilters(values url.Values, q domain.VideoQuery) {
 	}
 }
 
-// remoteSelectionResult reports the peer's part: what it applied, or, when it failed, every requested peer id
-// with the peer's reason.
-func (s *server) remoteSelectionResult(applied int, peerIDs []int64, err error) *gen.RemoteSelectionResult {
+// remoteSelectionResult reports the part of the link in slot: what it applied, or, when it failed, every
+// requested id of that link with its reason.
+func (s *server) remoteSelectionResult(slot int64, applied int, peerIDs []int64, err error) *gen.RemoteSelectionResult {
 	if err == nil {
 		return &gen.RemoteSelectionResult{Applied: applied, FailedVideoIds: []int64{}}
 	}
 	s.logger.Info("the other VVMDM did not apply its part of the selection", slog.Any("error", err))
 	failed := make([]int64, len(peerIDs))
 	for i, id := range peerIDs {
-		failed[i] = domain.RemoteID(domain.LinkSlot, id)
+		failed[i] = domain.RemoteID(slot, id)
 	}
 	reason := remoteFailureReason(err)
 	return &gen.RemoteSelectionResult{FailedVideoIds: failed, Reason: &reason}
@@ -272,7 +283,7 @@ func (s *server) remoteSelectionResult(applied int, peerIDs []int64, err error) 
 // as from a merged list.
 func (s *server) peerSelectionRead(r *http.Request, path string, sel selection, out any) bool {
 	ids, folders := sel.peerTargets()
-	err := s.peerCall(r, http.MethodPost, path, nil, gen.VideoTagsSummaryRequest{VideoIds: ids, SmartFolderIds: folders}, out)
+	err := s.peerCall(r, sel.slot, http.MethodPost, path, nil, gen.VideoTagsSummaryRequest{VideoIds: ids, SmartFolderIds: folders}, out)
 	if err != nil {
 		s.logger.Info("the summary leaves out the other VVMDM", slog.String("path", path), slog.Any("error", err))
 		return false

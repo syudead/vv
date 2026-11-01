@@ -22,7 +22,7 @@ type videoEditParts struct {
 func (s *server) splitVideoEdit(w http.ResponseWriter, r *http.Request, edit domain.VideoEdit, sel selection) (videoEditParts, bool) {
 	var parts videoEditParts
 	if len(sel.local) > 0 {
-		local, err := translateEdit(edit, s.localEditVocabulary(r))
+		local, err := translateEdit(edit, s.localEditVocabulary(r, sel.slot))
 		if err != nil {
 			s.writeSplitEditError(w, err)
 			return parts, false
@@ -32,7 +32,7 @@ func (s *server) splitVideoEdit(w http.ResponseWriter, r *http.Request, edit dom
 		}
 	}
 	if sel.hasPeer() {
-		peer, err := translateEdit(edit, s.peerEditVocabulary(r))
+		peer, err := translateEdit(edit, s.peerEditVocabulary(r, sel.slot))
 		switch {
 		case errors.Is(err, errPeerPart):
 			parts.peerErr = err
@@ -72,12 +72,12 @@ func editChanges(edit domain.VideoEdit) bool {
 // stand in for the local ones when there was no local part.
 func (s *server) editOnPeer(r *http.Request, sel selection, parts videoEditParts, out *gen.VideoEditResponse) {
 	if parts.peerErr != nil || parts.peer == nil {
-		out.Remote = s.remoteSelectionResult(0, sel.peer, parts.peerErr)
+		out.Remote = s.remoteSelectionResult(sel.slot, 0, sel.peer, parts.peerErr)
 		return
 	}
 	var answer gen.VideoEditResponse
-	err := s.peerCall(r, http.MethodPost, "/api/video-edits", nil, videoEditRequestOf(*parts.peer, sel), &answer)
-	out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
+	err := s.peerCall(r, sel.slot, http.MethodPost, "/api/video-edits", nil, videoEditRequestOf(*parts.peer, sel), &answer)
+	out.Remote = s.remoteSelectionResult(sel.slot, answer.Applied, sel.peer, err)
 	if err != nil {
 		return
 	}
@@ -85,7 +85,7 @@ func (s *server) editOnPeer(r *http.Request, sel selection, parts videoEditParts
 	if parts.local != nil {
 		return
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), sel.slot)
 	if err != nil {
 		s.logger.Warn("could not join the other VVMDM's tags", slog.Any("error", err))
 		return

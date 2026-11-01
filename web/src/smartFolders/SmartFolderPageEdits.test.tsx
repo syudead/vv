@@ -449,7 +449,7 @@ describe("動画とグループの選択", () => {
     await user.click(within(confirm).getByRole("button", { name: "Delete" }));
 
     const dialog = await screen.findByRole("dialog", {
-      name: "Not deleted on Other VVMDM",
+      name: "Not deleted on Another VVMDM",
     });
     expect(within(dialog).getByRole("list").textContent).toBe("Season");
     await waitFor(() => expect(server.heldDetail).toHaveLength(1));

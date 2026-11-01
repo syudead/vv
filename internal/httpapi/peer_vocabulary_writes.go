@@ -112,8 +112,9 @@ func (s *server) creditNameTaken(w http.ResponseWriter, kind domain.CreditKind) 
 	s.conflictReason(w, reason, "Another "+string(kind)+" on this or the other VVMDM already has the name.")
 }
 
-// vocabularyPeer reports whether a rename, merge or deletion also goes to the peer: the node is paired and the
-// request is not the peer's own. While the peer is not connected it answers 409 peer_unreachable and ok is false.
+// vocabularyPeer reports whether a rename, merge or deletion also goes to the first link: this node reads one and
+// the request is not the peer's own. While that link is not connected it answers 409 peer_unreachable and ok is
+// false.
 func (s *server) vocabularyPeer(w http.ResponseWriter, r *http.Request) (propagate, ok bool) {
 	if s.pairing == nil || isPeerRequest(r.Context()) {
 		return false, true
@@ -123,9 +124,9 @@ func (s *server) vocabularyPeer(w http.ResponseWriter, r *http.Request) (propaga
 	case err != nil:
 		s.internalError(w, "Could not read the pairing.", err)
 		return false, false
-	case state.State == domain.PeerUnpaired:
+	case len(state.Links) == 0:
 		return false, true
-	case state.State == domain.PeerConnected:
+	case state.Links[0].State == domain.PeerConnected:
 		return true, true
 	}
 	s.peerNotConnected(w)
@@ -156,7 +157,7 @@ func (s *server) sendVocabulary(w http.ResponseWriter, r *http.Request, change d
 		body.Sources = &change.Sources
 	}
 	var result gen.PeerVocabularyResult
-	err := s.peerCall(r, http.MethodPost, "/api/peer/vocabulary", url.Values{}, body, &result)
+	err := s.peerCall(r, s.listSlot(r.Context()), http.MethodPost, "/api/peer/vocabulary", url.Values{}, body, &result)
 	var refusal *peerRefusal
 	switch {
 	case err == nil:
@@ -181,9 +182,13 @@ func valueOrDefault(value *string, fallback string) string {
 	return *value
 }
 
-// vocabularyNames are the canonical names of ids: this node's from its store and the peer's from its whole list.
+// vocabularyNames are the canonical names of ids: this node's from its store and the first link's from its whole
+// list; an id of another link has no name here.
 func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, ids []int64) (map[int64]string, error) {
-	local, remote := domain.SplitRemoteIDs(ids)
+	slot := s.listSlot(r.Context())
+	local, remote := domain.SplitRemoteIDs(slices.DeleteFunc(slices.Clone(ids), func(id int64) bool {
+		return domain.IsRemoteID(id) && domain.RemoteSlot(id) != slot
+	}))
 	names := map[int64]string{}
 	if len(local) > 0 {
 		var err error
@@ -199,13 +204,13 @@ func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, id
 	if len(remote) == 0 {
 		return names, nil
 	}
-	items, err := s.peerEntries(r, kind)
+	items, err := s.peerEntries(r, slot, kind)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range items {
 		if item.Name != "" && slices.Contains(remote, item.ID) {
-			names[domain.RemoteID(domain.LinkSlot, item.ID)] = item.Name
+			names[domain.RemoteID(slot, item.ID)] = item.Name
 		}
 	}
 	return names, nil
@@ -217,11 +222,11 @@ type peerVocabularyItem struct {
 	Name string `json:"name"`
 }
 
-func (s *server) peerEntries(r *http.Request, kind domain.VocabularyKind) ([]peerVocabularyItem, error) {
+func (s *server) peerEntries(r *http.Request, slot int64, kind domain.VocabularyKind) ([]peerVocabularyItem, error) {
 	var answer struct {
 		Items []peerVocabularyItem `json:"items"`
 	}
-	err := s.peerGet(r, vocabularyListPaths[kind], url.Values{}, &answer)
+	err := s.peerGet(r, slot, vocabularyListPaths[kind], url.Values{}, &answer)
 	return answer.Items, err
 }
 
@@ -306,7 +311,7 @@ func checkRemoteCreditRename(kind domain.CreditKind) func(*server, http.Response
 // creditNameFree answers 409 with the kind's name_taken reason and reports false when an entry here other than id
 // holds the name.
 func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind domain.CreditKind, id int64, name string) bool {
-	join, err := s.vocabularyJoin(ctx)
+	join, err := s.vocabularyJoin(ctx, 0)
 	if err != nil {
 		s.internalError(w, "Could not read the names of people and organizations.", err)
 		return false
@@ -325,7 +330,7 @@ func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind
 // peerCreditNameFree answers 409 with the kind's name_taken reason and reports false when the peer holds name; a
 // provisional person has no name to rename on the peer, so the peer's list is read instead.
 func (s *server) peerCreditNameFree(w http.ResponseWriter, r *http.Request, kind domain.CreditKind, name string) bool {
-	items, err := s.peerEntries(r, vocabularyKindOf(kind))
+	items, err := s.peerEntries(r, s.requestSlot(r), vocabularyKindOf(kind))
 	if err != nil {
 		s.vocabularyFailure(w, err)
 		return false

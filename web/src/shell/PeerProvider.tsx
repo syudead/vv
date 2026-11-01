@@ -5,14 +5,28 @@ import { getPeer, type PeerState } from "../api/peer";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
 
+/** Each link's host name by slot, as last seen; a slot keeps its name after its link goes. */
+type LinkNames = ReadonlyMap<number, string>;
+
 interface PeerView {
   /** Null until the first read or event answers. */
   state: PeerState | null;
-  /** The peer's host name as last seen; guests never see it. */
-  name: string | undefined;
+  /** Guests never see a name, so their map stays empty. */
+  names: LinkNames;
 }
 
-const PeerContext = createContext<PeerView>({ state: null, name: undefined });
+const noNames: LinkNames = new Map();
+
+const PeerContext = createContext<PeerView>({ state: null, names: noNames });
+
+function withNames(names: LinkNames, state: PeerState): LinkNames {
+  if (!state.links.some((link) => link.name !== undefined)) return names;
+  const next = new Map(names);
+  for (const link of state.links) {
+    if (link.name !== undefined) next.set(link.slot, link.name);
+  }
+  return next;
+}
 
 /**
  * Reads GET /api/peer and, for owners, follows the peer event. Subscribe before reading so no
@@ -23,11 +37,11 @@ export function PeerProvider({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";
   const { pathname } = useLocation();
   const readKey = owner ? "" : pathname;
-  const [view, setView] = useState<PeerView>({ state: null, name: undefined });
+  const [view, setView] = useState<PeerView>({ state: null, names: noNames });
   useEffect(() => {
     let changed = false;
     const apply = (state: PeerState) =>
-      setView((current) => ({ state, name: state.link?.name ?? current.name }));
+      setView((current) => ({ state, names: withNames(current.names, state) }));
     const unsubscribe = owner
       ? subscribeServerEvents({
           peer: (state) => {
@@ -55,9 +69,12 @@ export function usePeerState(): PeerState | null {
   return useContext(PeerContext).state;
 }
 
-/** The peer's host name as last seen; undefined for guests and before the first answer. */
-export function usePeerName(): string | undefined {
-  return useContext(PeerContext).name;
+/**
+ * The host name of the link in slot, as `remoteSlot(id)` gives it for an item's id, as last seen; undefined for
+ * guests, before the first answer and for slot 0, this node's own items.
+ */
+export function usePeerName(slot: number): string | undefined {
+  return useContext(PeerContext).names.get(slot);
 }
 
 /** Test and showcase wrapper with a fixed state. */
@@ -69,7 +86,7 @@ export function StaticPeer({
   children: ReactNode;
 }) {
   return (
-    <PeerContext.Provider value={{ state, name: state.link?.name }}>
+    <PeerContext.Provider value={{ state, names: withNames(noNames, state) }}>
       {children}
     </PeerContext.Provider>
   );

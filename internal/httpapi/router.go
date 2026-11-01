@@ -681,6 +681,7 @@ var idActionBodyPaths = []struct{ prefix, action string }{
 	{"/api/videos/", "thumbnail-edits"},
 	{"/api/peer/videos/", "fetched-work-info"},
 	{"/api/peer/people/", "fetched-person"},
+	{"/api/peer/links/", "certificate"},
 	{"/api/virtual-videos/", "merge"},
 	{"/api/assistant/proposals/", "execute"},
 }
@@ -699,7 +700,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete",
 		"/api/v1/tag-kinds", "/api/v1/tag-kinds/update", "/api/v1/tag-kinds/delete",
-		"/api/peer/pair", "/api/peer/pairings", "/api/peer/certificate", "/api/peer/related", "/api/peer/vocabulary",
+		"/api/peer/pair", "/api/peer/pairings", "/api/peer/related", "/api/peer/vocabulary",
 		"/api/peer/rule-counts", "/api/peer/credit-matches":
 		return true
 	}
@@ -749,7 +750,6 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":          true,
 	"/api/settings/version-judging":  true,
 	"/api/onboarding":                true,
-	"/api/peer/address":              true,
 }
 
 func requiresPutJSONBody(path string) bool {
@@ -763,6 +763,10 @@ func requiresPutJSONBody(path string) bool {
 	if suffix, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "card-first"
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/peer/links/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "address"
 	}
 	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
 		return id != "" && !strings.Contains(id, "/")

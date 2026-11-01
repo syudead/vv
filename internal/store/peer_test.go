@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -26,9 +27,30 @@ func testGrant(nodeID string) domain.PeerGrant {
 
 func addTestLink(t *testing.T, db *DB) {
 	t.Helper()
-	if err := db.Peers().AddLink(context.Background(), testLink(testNodeID)); err != nil {
+	if _, err := db.Peers().AddLink(context.Background(), testLink(testNodeID)); err != nil {
 		t.Fatalf("AddLink: %v", err)
 	}
+}
+
+// onlyLink is the one link db holds, or false without one.
+func onlyLink(t *testing.T, db *DB) (domain.PeerLink, bool) {
+	t.Helper()
+	links, err := db.Peers().Links(context.Background())
+	if err != nil {
+		t.Fatalf("Links: %v", err)
+	}
+	if len(links) > 1 {
+		t.Fatalf("Links = %+v, want 1 本以下", links)
+	}
+	if len(links) == 0 {
+		return domain.PeerLink{}, false
+	}
+	return links[0], true
+}
+
+// linkNodeID is the node id of the n-th test link, a valid UUID.
+func linkNodeID(n int) string {
+	return fmt.Sprintf("00000000-0000-4000-8000-%012d", n)
 }
 
 func addTestGrant(t *testing.T, db *DB) {
@@ -38,23 +60,30 @@ func addTestGrant(t *testing.T, db *DB) {
 	}
 }
 
-// Each direction holds one row, and the two directions are independent: the same node can be both.
-func TestPeerStoreKeepsOneLinkAndOneGrant(t *testing.T) {
+// Links are many and the grant is one, and the two directions are independent: the same node can be both.
+func TestPeerStoreKeepsLinksAndOneGrant(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	addTestLink(t, db)
 	addTestGrant(t, db)
 
-	if err := db.Peers().AddLink(ctx, testLink(otherNodeID)); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Errorf("2 つ目の AddLink err = %v, want ErrAlreadyPaired", err)
+	second, err := db.Peers().AddLink(ctx, testLink(otherNodeID))
+	if err != nil || second.Slot != 2 {
+		t.Fatalf("2 本目の AddLink = スロット %d, %v, want スロット 2", second.Slot, err)
+	}
+	if _, err := db.Peers().AddLink(ctx, testLink(otherNodeID)); !errors.Is(err, domain.ErrAlreadyPaired) {
+		t.Errorf("同じノードの AddLink err = %v, want ErrAlreadyPaired", err)
 	}
 	if err := db.Peers().AddGrant(ctx, testGrant(otherNodeID), "vvp_other"); !errors.Is(err, domain.ErrAlreadyPaired) {
 		t.Errorf("2 つ目の AddGrant err = %v, want ErrAlreadyPaired", err)
 	}
-	wantLink := testLink(testNodeID)
-	wantLink.Slot = 1
-	if link, found, err := db.Peers().Link(ctx); err != nil || !found || link != wantLink {
-		t.Errorf("Link = %+v, %v, %v, want %+v", link, found, err, wantLink)
+	first := testLink(testNodeID)
+	first.Slot = 1
+	wantSecond := testLink(otherNodeID)
+	wantSecond.Slot = 2
+	links, err := db.Peers().Links(ctx)
+	if err != nil || len(links) != 2 || links[0] != first || links[1] != wantSecond {
+		t.Errorf("Links = %+v, %v, want スロット順に %+v と %+v", links, err, first, wantSecond)
 	}
 	if grant, found, err := db.Peers().Grant(ctx); err != nil || !found || grant != testGrant(testNodeID) {
 		t.Errorf("Grant = %+v, %v, %v, want %+v", grant, found, err, testGrant(testNodeID))
@@ -70,8 +99,25 @@ func TestPeerStoreKeepsOneLinkAndOneGrant(t *testing.T) {
 	if _, found, _ := db.Peers().Grant(ctx); found {
 		t.Error("消した grant が残っている")
 	}
-	if _, found, _ := db.Peers().Link(ctx); !found {
-		t.Error("grant を消すと link も消えた")
+	if links, _ := db.Peers().Links(ctx); len(links) != 2 {
+		t.Errorf("grant を消すとリンクが %d 本になった, want 2", len(links))
+	}
+}
+
+// The ninth link is refused and takes no slot.
+func TestAddLinkRefusesANinthLink(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for n := range domain.MaxPeerLinks {
+		if _, err := db.Peers().AddLink(ctx, testLink(linkNodeID(n))); err != nil {
+			t.Fatalf("%d 本目の AddLink: %v", n+1, err)
+		}
+	}
+	if _, err := db.Peers().AddLink(ctx, testLink(linkNodeID(domain.MaxPeerLinks))); !errors.Is(err, domain.ErrPeerLimit) {
+		t.Fatalf("9 本目の AddLink err = %v, want ErrPeerLimit", err)
+	}
+	if next, _, err := readSetting(ctx, db.sql, nextSlotKey); err != nil || next != "9" {
+		t.Errorf("peer.next_slot = %q, %v, want 9", next, err)
 	}
 }
 
@@ -81,23 +127,20 @@ func TestAddLinkNeverGivesASlotTwice(t *testing.T) {
 	ctx := context.Background()
 	link := testLink(testNodeID)
 	link.Slot = 7 // The store gives the slot; the caller's value is ignored.
-	if err := db.Peers().AddLink(ctx, link); err != nil {
-		t.Fatal(err)
+	if added, err := db.Peers().AddLink(ctx, link); err != nil || added.Slot != 1 {
+		t.Fatalf("最初の AddLink = スロット %d, %v, want 1", added.Slot, err)
 	}
-	if err := db.Peers().AddLink(ctx, testLink(otherNodeID)); !errors.Is(err, domain.ErrAlreadyPaired) {
-		t.Fatalf("2 つ目の AddLink err = %v, want ErrAlreadyPaired", err)
-	}
-	if got, _, err := db.Peers().Link(ctx); err != nil || got.Slot != 1 {
-		t.Fatalf("最初のリンクのスロット = %d, %v, want 1", got.Slot, err)
+	if _, err := db.Peers().AddLink(ctx, testLink(testNodeID)); !errors.Is(err, domain.ErrAlreadyPaired) {
+		t.Fatalf("同じノードの AddLink err = %v, want ErrAlreadyPaired", err)
 	}
 	if _, err := db.Peers().DeleteLink(ctx, testNodeID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Peers().AddLink(ctx, testLink(otherNodeID)); err != nil {
+	if _, err := db.Peers().AddLink(ctx, testLink(otherNodeID)); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, err := db.Peers().Link(ctx); err != nil || got.NodeID != otherNodeID || got.Slot != 2 {
-		t.Errorf("解除後のリンク = %s スロット %d, %v, want %s スロット 2", got.NodeID, got.Slot, err, otherNodeID)
+	if got, _ := onlyLink(t, db); got.NodeID != otherNodeID || got.Slot != 2 {
+		t.Errorf("解除後のリンク = %s スロット %d, want %s スロット 2", got.NodeID, got.Slot, otherNodeID)
 	}
 }
 
@@ -123,9 +166,8 @@ func TestPeerLinkSlotsMigrationGivesTheExistingLinkSlotOne(t *testing.T) {
 			if _, err := provider.UpTo(ctx, peerLinkSlotsVersion); err != nil {
 				t.Fatal(err)
 			}
-			link, found, err := db.Peers().Link(ctx)
-			if err != nil || found != tc.withLink || (found && link.Slot != 1) {
-				t.Errorf("Link = %+v, %v, %v, want found %v スロット 1", link, found, err, tc.withLink)
+			if link, found := onlyLink(t, db); found != tc.withLink || (found && link.Slot != 1) {
+				t.Errorf("Link = %+v, %v, want found %v スロット 1", link, found, tc.withLink)
 			}
 			if next, found, err := readSetting(ctx, db.sql, nextSlotKey); err != nil || !found || next != tc.wantNext {
 				t.Errorf("peer.next_slot = %q, %v, %v, want %q", next, found, err, tc.wantNext)
@@ -221,7 +263,7 @@ func TestDeleteLinkLeavesOtherDataAlone(t *testing.T) {
 func TestLinkUpdatesNeedALink(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.Peers().UpdateLinkAddress(ctx, "http://nas.local"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Peers().UpdateLinkAddress(ctx, testNodeID, "http://nas.local"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("UpdateLinkAddress err = %v, want ErrNotFound", err)
 	}
 	addTestLink(t, db)
@@ -232,7 +274,10 @@ func TestLinkUpdatesNeedALink(t *testing.T) {
 	if err := db.Peers().MarkLinkRevoked(ctx, testNodeID); err != nil {
 		t.Fatal(err)
 	}
-	link, err := db.Peers().UpdateLinkAddress(ctx, "http://nas.local")
+	if _, err := db.Peers().UpdateLinkAddress(ctx, otherNodeID, "http://other.local"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("別の node id の UpdateLinkAddress err = %v, want ErrNotFound", err)
+	}
+	link, err := db.Peers().UpdateLinkAddress(ctx, testNodeID, "http://nas.local")
 	if err != nil || link.PinnedSPKI != "spki-confirmed" || !link.Revoked || link.Address != "http://nas.local" {
 		t.Errorf("Link = %+v, %v, want 固定した指紋、revoked、新しいアドレス", link, err)
 	}
@@ -267,13 +312,13 @@ func TestPeerMigrationSplitsTheMutualRecord(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			link, found, err := db.Peers().Link(ctx)
+			link, found := onlyLink(t, db)
 			want := domain.PeerLink{
 				NodeID: testNodeID, Name: "nas", Address: "https://nas.local", Secret: "vvp_outgoing",
 				Revoked: tc.wantRevoked, PinnedSPKI: "spki", PairedAt: authNow, Slot: 1,
 			}
-			if err != nil || !found || link != want {
-				t.Errorf("Link = %+v, %v, %v, want %+v", link, found, err, want)
+			if !found || link != want {
+				t.Errorf("Link = %+v, %v, want %+v", link, found, want)
 			}
 			grant, found, err := db.Peers().GrantBySecret(ctx, testGrantSecret)
 			if err != nil || found != tc.wantGrant || (found && grant != domain.PeerGrant{NodeID: testNodeID, Name: "nas", PairedAt: authNow}) {

@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-// PeerLink is the one VVMDM this node reads: the outgoing direction of a pairing.
+// PeerLink is one VVMDM this node reads: the outgoing direction of a pairing.
 type PeerLink struct {
 	NodeID  string
 	Name    string
@@ -47,6 +47,7 @@ type PeerNode struct {
 
 var (
 	ErrAlreadyPaired       = errors.New("this node is already paired")
+	ErrPeerLimit           = errors.New("this node already reads the most VVMDMs it can")
 	ErrInvalidPairingCode  = errors.New("the pairing code is unknown, used or expired")
 	ErrPeerUnreachable     = errors.New("the peer could not be reached")
 	ErrInvalidPeerAddress  = errors.New("invalid peer address")
@@ -222,11 +223,10 @@ func newPairingCode(random io.Reader) (string, error) {
 	return string(code), nil
 }
 
-// PeerConnection is the state the Settings page shows.
+// PeerConnection is the state of one link that the Settings page shows.
 type PeerConnection string
 
 const (
-	PeerUnpaired    PeerConnection = "unpaired"
 	PeerConnected   PeerConnection = "connected"
 	PeerUnreachable PeerConnection = "unreachable"
 	PeerRevoked     PeerConnection = "revoked"
@@ -240,16 +240,49 @@ const (
 	PeerReasonCertificate PeerUnreachableReason = "certificate"
 )
 
-// PeerState is what GET /api/peer answers: the outgoing link with its connection state, and the incoming
-// grant. Link is nil while State is PeerUnpaired; Grant is nil while no VVMDM reads this one.
-type PeerState struct {
+// MaxPeerLinks bounds the links a node holds: each merged page asks every link once within one response timeout.
+const MaxPeerLinks = 8
+
+// CheckNewLink answers ErrAlreadyPaired when links already reads nodeID and ErrPeerLimit when it holds
+// MaxPeerLinks links.
+func CheckNewLink(links []PeerLink, nodeID string) error {
+	for _, link := range links {
+		if link.NodeID == nodeID {
+			return ErrAlreadyPaired
+		}
+	}
+	if len(links) >= MaxPeerLinks {
+		return ErrPeerLimit
+	}
+	return nil
+}
+
+// PeerLinkState is one link with its connection state and what the Settings page shows beside it.
+type PeerLinkState struct {
+	Link        PeerLink
 	State       PeerConnection
 	Reason      PeerUnreachableReason
-	Link        *PeerLink
 	PeerVersion string
+	// Fingerprint is the certificate waiting for the owner's confirmation, with PeerReasonCertificate.
 	Fingerprint string
-	Grant       *PeerGrant
-	Node        PeerNode
+}
+
+// PeerState is what GET /api/peer answers: every outgoing link in slot order with its state, and the incoming
+// grant, nil while no VVMDM reads this one.
+type PeerState struct {
+	Links []PeerLinkState
+	Grant *PeerGrant
+	Node  PeerNode
+}
+
+// LinkBySlot is the state of the link in slot, or false when this node has none there.
+func (s PeerState) LinkBySlot(slot int64) (PeerLinkState, bool) {
+	for _, link := range s.Links {
+		if link.Link.Slot == slot {
+			return link, true
+		}
+	}
+	return PeerLinkState{}, false
 }
 
 // ErrPeerUnknown answers a peer credential or handshake secret this node does not hold.
@@ -291,17 +324,13 @@ func (e *InvalidPeerAddressError) Error() string { return "invalid peer address 
 
 func (e *InvalidPeerAddressError) Unwrap() error { return ErrInvalidPeerAddress }
 
-// InitialPeerState is the state after a start, before any connection: unpaired without a link, revoked when
-// the peer refused the link's secret, and unreachable otherwise.
-func InitialPeerState(link *PeerLink) (PeerConnection, PeerUnreachableReason) {
-	switch {
-	case link == nil:
-		return PeerUnpaired, ""
-	case link.Revoked:
+// InitialPeerState is a link's state after a start, before any connection: revoked when the peer refused the
+// link's secret, and unreachable otherwise.
+func InitialPeerState(link PeerLink) (PeerConnection, PeerUnreachableReason) {
+	if link.Revoked {
 		return PeerRevoked, ""
-	default:
-		return PeerUnreachable, PeerReasonNetwork
 	}
+	return PeerUnreachable, PeerReasonNetwork
 }
 
 // ErrFingerprintChanged answers a certificate confirmation whose fingerprint is not the one waiting.
@@ -327,7 +356,7 @@ type PeerStateChanged struct{}
 
 func (PeerStateChanged) event() {}
 
-// PeerChanged forwards the peer's change notifications to the screens, with remote ids.
+// PeerChanged forwards a link's change notifications to the screens, with remote ids.
 type PeerChanged struct {
 	VideoIDs       []int64
 	GroupIDs       []int64
@@ -335,3 +364,22 @@ type PeerChanged struct {
 }
 
 func (PeerChanged) event() {}
+
+// InSlot turns the link's own ids of c into the remote ids of the link in slot.
+func (c PeerChanged) InSlot(slot int64) PeerChanged {
+	return PeerChanged{
+		VideoIDs: remoteIDsIn(slot, c.VideoIDs), GroupIDs: remoteIDsIn(slot, c.GroupIDs),
+		SmartFolderIDs: remoteIDsIn(slot, c.SmartFolderIDs),
+	}
+}
+
+func remoteIDsIn(slot int64, ids []int64) []int64 {
+	if ids == nil {
+		return nil
+	}
+	out := make([]int64, len(ids))
+	for i, id := range ids {
+		out[i] = RemoteID(slot, id)
+	}
+	return out
+}

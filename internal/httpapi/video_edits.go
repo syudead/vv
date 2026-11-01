@@ -37,7 +37,7 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	var peer gen.VideoEditSummary
 	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-edits/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context())
+		join, err := s.vocabularyJoin(r.Context(), sel.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the edit summary.", err)
 			return

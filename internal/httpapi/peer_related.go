@@ -33,7 +33,7 @@ func (s *server) mergedRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	audience := audienceFrom(r.Context())
-	peer, ok := s.relatedPeer(w, r)
+	peer, ok := s.relatedPeer(w, r, s.listSlot(r.Context()))
 	if !ok {
 		return
 	}
@@ -61,7 +61,7 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	ctx := r.Context()
-	peer, ok := s.relatedPeer(w, r)
+	peer, ok := s.relatedPeer(w, r, domain.RemoteSlot(id))
 	if !ok {
 		return
 	}
@@ -78,7 +78,7 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	opened := url.Values{}
-	keepRemoteContext(r.URL.Query(), opened)
+	keepRemoteContext(peer.slot, r.URL.Query(), opened)
 	head, exclude, err := peer.group(ctx, peerID, opened, page.Cursor.Start())
 	if err != nil {
 		s.writePeerCallError(w, err)
@@ -277,10 +277,11 @@ func cluesFrom(body gen.RelatedClues) (domain.RelatedClues, error) {
 	return clues, nil
 }
 
-// relatedPeer is domain.RelatedPeer over the peer link for one screen request, in its audience. It keeps the
-// peer's videos it read, rewritten and by remote id, for the answer.
+// relatedPeer is domain.RelatedPeer over the link in slot for one screen request, in its audience. It keeps the
+// link's videos it read, rewritten and by remote id, for the answer.
 type relatedPeer struct {
 	link  PeerLink
+	slot  int64
 	guest bool
 	join  domain.VocabularyJoin
 	// open is the open video in the peer's ids when the peer holds it, so the peer adds the folder points.
@@ -288,17 +289,19 @@ type relatedPeer struct {
 	videos map[int64]gen.Video
 }
 
-func (s *server) relatedPeer(w http.ResponseWriter, r *http.Request) (*relatedPeer, bool) {
-	join, err := s.vocabularyJoin(r.Context())
+func (s *server) relatedPeer(w http.ResponseWriter, r *http.Request, slot int64) (*relatedPeer, bool) {
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return nil, false
 	}
 	return &relatedPeer{
-		link: s.peerLink, guest: audienceFrom(r.Context()) != domain.AudienceOwner, join: join,
+		link: s.peerLink, slot: slot, guest: audienceFrom(r.Context()) != domain.AudienceOwner, join: join,
 		videos: map[int64]gen.Video{},
 	}, true
 }
+
+func (p *relatedPeer) Slot() int64 { return p.slot }
 
 func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
 	body := gen.PeerRelatedRequest{Clues: cluesBody(clues), Limit: &limit}
@@ -434,7 +437,7 @@ func (p *relatedPeer) call(ctx context.Context, method, target string, in, out a
 	if in != nil {
 		req.Header.Set("Content-Type", contentTypeJSON)
 	}
-	resp, err := p.link.Forward(req, p.guest, false)
+	resp, err := p.link.Forward(req, p.slot, p.guest, false)
 	if err != nil {
 		return err
 	}

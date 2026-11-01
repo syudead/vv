@@ -7,7 +7,7 @@ import AssistantTrigger from "../assistant/AssistantTrigger";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import { usePeerName } from "../shell/PeerProvider";
+import { isRemoteId } from "../lib/remoteId";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import {
   Breadcrumb,
@@ -19,7 +19,7 @@ import {
 } from "../ui/shadcn/breadcrumb";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import { ItemRemoteMark } from "../videoList/RemoteItemMark";
+import { ItemRemoteMark, useItemPeerName } from "../videoList/RemoteItemMark";
 
 interface FolderCrumb {
   label: string;
@@ -46,14 +46,14 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
 export default function VideoHeader({
   folder,
   virtual = false,
-  remote = false,
+  videoId,
   onClose,
 }: {
   folder: VideoFolder | undefined;
   /** A virtual video has no folder; the band names what it is instead, not as a link. */
   virtual?: boolean;
-  /** The paired VVMDM holds the video; the band names it before the breadcrumb. */
-  remote?: boolean;
+  /** The video's id; a link's video gets a band naming the link before the breadcrumb. */
+  videoId?: number;
   onClose: () => void;
 }) {
   const crumbs = folderCrumbs(folder);
@@ -70,7 +70,7 @@ export default function VideoHeader({
         </p>
       )}
 
-      {remote && <RemoteBand />}
+      {videoId !== undefined && isRemoteId(videoId) && <RemoteBand videoId={videoId} />}
 
       {crumbs.length > 0 && (
         <Breadcrumb
@@ -130,11 +130,11 @@ export default function VideoHeader({
   );
 }
 
-function RemoteBand() {
-  const name = t.list.card.remote.name(usePeerName());
+function RemoteBand({ videoId }: { videoId: number }) {
+  const name = t.list.card.remote.name(useItemPeerName(videoId));
   return (
     <p className="flex min-w-0 items-center gap-1.5 px-1 text-sm text-muted-foreground">
-      <ItemRemoteMark size="md" />
+      <ItemRemoteMark itemId={videoId} size="md" />
       <span
         aria-hidden="true"
         title={name}
