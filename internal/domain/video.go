@@ -176,6 +176,8 @@ type Video struct {
 	ThumbnailImageOrigin   ThumbnailImageOrigin
 	// Builds count forced rebuilds of each artifact and version its URLs only; zero means never rebuilt.
 	Builds ArtifactBuilds
+	// FolderOff is set on a read by id when the video has no location under the audience's folder scope.
+	FolderOff bool
 }
 
 // ArtifactBuilds counts the forced rebuilds of a video's thumbnail, seek sprite and hover preview.
@@ -229,9 +231,11 @@ type IndexedVideo struct {
 
 // MediaFolder is one independently managed scan root.
 type MediaFolder struct {
-	ID        int64
-	Path      string
-	Version   int64
+	ID      int64
+	Path    string
+	Version int64
+	// Enabled is the folder's switch; off leaves its videos out of this node's reads, not out of scans.
+	Enabled   bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

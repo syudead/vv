@@ -28,9 +28,16 @@ type ContentUnreferenced struct {
 	ContentKeys []string
 }
 
+// MediaFoldersChanged tells the screens to read the media folders and reload open lists.
+type MediaFoldersChanged struct {
+	// Switch is true when only a folder's switch changed, which never changes what this node answers a peer.
+	Switch bool
+}
+
 func (VideoIngestChanged) event()  {}
 func (JobsQueued) event()          {}
 func (ProcessingChanged) event()   {}
 func (ScanChanged) event()         {}
 func (ScanActivityChanged) event() {}
 func (ContentUnreferenced) event() {}
+func (MediaFoldersChanged) event() {}

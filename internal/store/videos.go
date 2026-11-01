@@ -133,7 +133,71 @@ func getVideo(ctx context.Context, q videoQueryer, audience domain.Audience, id 
 		return domain.Video{}, err
 	}
 	video = videos[0]
+	if err := q.QueryRowContext(ctx, `select `+folderOffExpr("videos", audience)+` from videos where videos.id = ?`, id).
+		Scan(&video.FolderOff); err != nil {
+		return domain.Video{}, fmt.Errorf("cannot read the video's folder scope (id=%d): %w", id, err)
+	}
 	return video, nil
+}
+
+// markFolderOff sets FolderOff on the videos with no location under the audience's folder scope.
+func markFolderOff(ctx context.Context, q rowsQueryer, audience domain.Audience, videos map[int64]domain.Video) error {
+	ids := make([]int64, 0, len(videos))
+	for id := range videos {
+		ids = append(ids, id)
+	}
+	off, err := folderOffIDs(ctx, q, audience, ids)
+	if err != nil {
+		return err
+	}
+	for id := range off {
+		video := videos[id]
+		video.FolderOff = true
+		videos[id] = video
+	}
+	return nil
+}
+
+// markMembersFolderOff sets FolderOff on the group members with no location under the audience's folder scope.
+func markMembersFolderOff(ctx context.Context, q rowsQueryer, audience domain.Audience, groups map[int64]domain.LibraryGroup) error {
+	var ids []int64
+	for _, group := range groups {
+		for _, member := range group.Members {
+			ids = append(ids, member.ID)
+		}
+	}
+	off, err := folderOffIDs(ctx, q, audience, ids)
+	if err != nil {
+		return err
+	}
+	for _, group := range groups {
+		for i := range group.Members {
+			group.Members[i].FolderOff = off[group.Members[i].ID]
+		}
+	}
+	return nil
+}
+
+func folderOffIDs(ctx context.Context, q rowsQueryer, audience domain.Audience, ids []int64) (map[int64]bool, error) {
+	off := map[int64]bool{}
+	if len(ids) == 0 {
+		return off, nil
+	}
+	encoded, _ := json.Marshal(ids) // A slice of integers always encodes.
+	rows, err := q.QueryContext(ctx, `select videos.id from videos where videos.id in (select value from json_each(?)) and `+
+		folderOffExpr("videos", audience), string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the videos' folder scope: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("cannot read the videos' folder scope: %w", err)
+		}
+		off[id] = true
+	}
+	return off, rows.Err()
 }
 
 func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64) error {
