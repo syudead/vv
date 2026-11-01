@@ -171,6 +171,15 @@ func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.
 	}
 }
 
+func TestParsePersonResponseMakesControlCharactersSavable(t *testing.T) {
+	got, err := personFetch(t, `{"name":"N\tM","aliases":[{"name":"A\r\nB","language":"ja"}],`+
+		`"profile":{"birthplace":"Tokyo\u0000","bio":"line 1\r\nline 2\tend"}}`)
+	if err != nil || got.Name != "N M" || got.Aliases[0].Name != "A  B" || got.Profile.Birthplace != "Tokyo" ||
+		got.Profile.Bio != "line 1\nline 2 end" {
+		t.Fatalf("person = %+v, %v; want control characters turned into spaces or line feeds", got, err)
+	}
+}
+
 func TestParsePersonSearchCandidates(t *testing.T) {
 	req := WorkInfoRunRequest{Operation: WorkInfoSearch, Kind: WorkInfoPluginKindPerson, Sources: []string{"s", "t"}}
 	candidates := make([]string, 51)

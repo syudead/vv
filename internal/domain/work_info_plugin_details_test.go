@@ -59,14 +59,33 @@ func TestParseWorkInfoResponseTurnsHTMLLineBreaksIntoLineFeeds(t *testing.T) {
 	}
 }
 
-func TestParseWorkInfoResponseMakesDescriptionControlCharactersSavable(t *testing.T) {
-	got := parseFetched(t, `{"description": "line 1\r\nline 2\rline 3\tcol\u0000\u0007end\r\n"}`)
-	want := "line 1\nline 2\nline 3 colend"
-	if got.Description != want {
-		t.Fatalf("description = %q, want %q", got.Description, want)
+func TestParseWorkInfoResponseMakesControlCharactersSavable(t *testing.T) {
+	got := parseFetched(t, `{
+		"title": "T\tU", "tags": ["a\r\nb"],
+		"code": "ABC\t123\u0000",
+		"description": "line 1\r\nline 2\rline 3\tcol\u0000\u0007end\r\n",
+		"people": [{"role": "performer", "name": "Name\nX", "externalIds": [{"source": "s\t", "value": "1\u0007"}]}]
+	}`)
+	if want := "line 1\nline 2\nline 3 colend"; got.Description != want {
+		t.Errorf("description = %q, want %q", got.Description, want)
 	}
-	if _, _, err := NormalizeWorkInfo(WorkInfo{Description: got.Description}); err != nil {
-		t.Errorf("NormalizeWorkInfo(%q) = %v, want saved", got.Description, err)
+	if got.Title != "T U" || !reflect.DeepEqual(got.Tags, []string{"a  b"}) || got.Code != "ABC 123" {
+		t.Errorf("title, tags, code = %q, %q, %q", got.Title, got.Tags, got.Code)
+	}
+	if len(got.People) != 1 || got.People[0].Name != "Name X" || got.People[0].ExternalIDs[0] != (ExternalID{"s", "1"}) {
+		t.Errorf("people = %+v", got.People)
+	}
+	info := WorkInfo{Code: got.Code, Description: got.Description, ExternalIDs: got.People[0].ExternalIDs}
+	if _, _, err := NormalizeWorkInfo(info); err != nil {
+		t.Errorf("NormalizeWorkInfo(%+v) = %v, want saved", info, err)
+	}
+}
+
+func TestParseWorkInfoResponseCutsOverlongDescription(t *testing.T) {
+	long := strings.Repeat("あ", WorkInfoLimits.DescriptionMaxLength) + "い"
+	got := parseFetched(t, `{"description": "`+long+`"}`)
+	if want := strings.Repeat("あ", WorkInfoLimits.DescriptionMaxLength); got.Description != want {
+		t.Errorf("description has %d runes, want %d", len([]rune(got.Description)), len([]rune(want)))
 	}
 }
 

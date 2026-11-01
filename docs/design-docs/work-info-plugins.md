@@ -270,10 +270,18 @@ result without people or organizations does not read the store.
 
 Sites hand descriptions over as HTML fragments, so the parse turns `<br>`,
 `<br/>` and `<br />` (any case) into line feeds and keeps any other markup as
-literal text; it also turns CR line ends into line feeds and tabs into spaces
-and drops any other control character, which a saved description cannot hold.
-The page shows a description's line feeds as line breaks and never renders
-HTML. Every work-info save applies the same conversion, and the
+literal text. The page shows a description's line feeds as line breaks and
+never renders HTML.
+
+A fetched value is made savable rather than rejected, because site text often
+carries CR line ends, tabs or stray control characters that no saved value may
+hold. The parse turns CR line ends into line feeds in a description or a
+person's bio, turns any other whitespace control character into a space and
+drops the remaining control characters; this covers the title, tags, code,
+names, aliases, external IDs, links and profile texts of work and person
+plugins. A description or bio over its length limit is cut to the limit. A
+value that is still invalid, such as an overlong name or code, is skipped,
+since cutting it would change what it identifies. Every work-info save applies the same conversion, and the
 page converts once more on display for descriptions saved before it.
 
 The matches are only shown: the screen marks each entry as linked, `New` or

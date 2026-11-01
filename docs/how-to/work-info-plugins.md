@@ -337,7 +337,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `title` | string | As written |
 | `tags` | `["..."]` | The first 100, without duplicates |
 | `code` | string, such as the product code | Trimmed |
-| `description` | string; line feeds allowed | Trimmed |
+| `description` | string; line feeds allowed | Trimmed, cut to 10,000 characters |
 | `dates` | `[{"kind": "release", "date": "2024-03-01"}]`; `kind` is `release`, `recorded` or `published`; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | The first date of each kind |
 | `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds`, `image` and `profile` optional | The first 100 of each role, and the first 20 distinct external IDs of each person; `image` and `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
 | `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
@@ -345,8 +345,11 @@ A non-zero exit, or output that is none of these, fails the run with
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
 | `covers` | `["https://..."]`, `http` or `https` URLs of the work's cover images, each at most 2048 characters | The first 5 distinct valid URLs, whose images VVMDM fetches itself after the run; see [Cover images](#cover-images) |
 
-For every field except `title` and `tags`, VVMDM trims surrounding
-whitespace from each string, then drops an entry that is empty, an entry
+In every string, VVMDM turns CR line ends into line feeds in `description`
+and into spaces elsewhere, turns tabs and other whitespace control characters
+into spaces and drops any other control character. For every field except
+`title` and `tags`, it then trims surrounding whitespace from each string and
+drops an entry that is empty, an entry
 whose `kind`, `role`, `source` or `value` is missing or not in the table, and
 a field or entry of another JSON type. The limits count what remains. The
 same person or organization twice in one role, with the same name and
@@ -397,7 +400,9 @@ strings, under the rules in
 Organizations take neither field.
 
 VVMDM drops an `image` that is not such a URL and a `profile` property of
-another JSON type, and keeps the rest of the person. After the run it fetches
+another JSON type, and keeps the rest of the person. It treats control
+characters in profile strings as in the work fields, keeping `bio`'s line
+feeds like `description`'s and cutting `bio` to its length limit. After the run it fetches
 the images of the first 7 people that have one, in the order the plugin
 returned them, the way it fetches the [covers](#cover-images): the same client,
 limits, formats and 30 seconds, and a refused address fails the run with
