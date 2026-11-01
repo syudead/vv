@@ -51,7 +51,7 @@ for registered locations and the folder index;
 | --- | --- |
 | Link count | At most 8 links per node; the grant stays at most one, as the Issue's `対象外` keeps ([Links and remote ids](#links-and-remote-ids)) |
 | Id space | A remote id is the link's own id plus `slot × 2^40`; `2^53` admits slots up to 8191, far above the link limit ([Links and remote ids](#links-and-remote-ids)) |
-| Reads | `domain.Audience` gains a folder scope; `visibleLocationCondition` applies it and `registeredLocationCondition` does not, so scans, watching, ingest and jobs ignore the switches ([Folder switches on reads](#folder-switches-on-reads)) |
+| Reads | `domain.Audience` gains a folder scope; a new `listedLocationCondition` applies it on top of `visibleLocationCondition` for lists, searches and counts, while reads by id keep `visibleLocationCondition` and `registeredLocationCondition` stays unscoped, so scans, watching, ingest and jobs ignore the switches ([Folder switches on reads](#folder-switches-on-reads)) |
 | Local tables naming remote entities | One: the snapshot of each link's media folders with their switches, which the Issue's edge cases need while a link is unreachable ([Remote folders on the reading node](#remote-folders-on-the-reading-node)) |
 | Fan-out budget | A merged page sends one request per connected link, concurrently, under the existing 10 s response timeout; 8 links keep one page within that budget |
 | External API and MCP | Their reads take the same scope as the screens, so a switched-off folder's videos leave `/api/v1` and `/mcp` too; no contract change |
@@ -97,7 +97,7 @@ flowchart LR
 | A remote id is `own id + slot × 2^40`; `slot = id div 2^40` names the link, 0 the local node | An offset from a hash of the node id | Two links could collide, and the screens could not find the link from the id without a table |
 | Same | A per-session map from ids to links | Ids live in URLs and bookmarks across restarts; `2^40 ≤ id < 2^53` keeps every id a safe integer, as today |
 | Slots come from a counter in `settings` (`peer.next_slot`) and are never reused; the limit is on links, not slots | Reusing the lowest free slot | A bookmarked remote id would open another node's video of the same number after an unpair and a new pairing; 8191 slots outlast any node |
-| Migration `00088` gives the existing link slot 1 | Renumbering | Its ids keep today's `2^40` offset, so open screens and bookmarks stay valid |
+| Migration `00093` gives the existing link slot 1 | Renumbering | Its ids keep today's `2^40` offset, so open screens and bookmarks stay valid |
 | At most 8 links; the ninth pairing answers `409` with reason `peer_limit`; a node already read answers `409 already_paired` | No limit | Each merged page fans out one request per link; 8 keeps a page inside one response timeout and both Settings sections readable |
 | `GET /api/peer` answers `links[]`, each with its slot, node id, state, reason, version and fingerprint; unpair, address and certificate take the link's node id in the path | Keeping the single `link` and `state` with an index | The screens address a link by what identifies it, not by position |
 | `app.Pairing` runs one connection loop per link, with the state, generation and stop function per link | One loop over every link | A failing link's retry delay would delay the others; requirement 11 |
@@ -119,6 +119,7 @@ local part and one part per connected link, in the request's order
 | The link parts of one page are requested concurrently; a link that is not `connected` is skipped without a request and stays skipped for that listing (one skipped flag per slot) | Sequential requests | A page would wait up to 10 s per link; requirement 11 |
 | Vocabulary lists merge every node's entries by name with summed counts; a remote-only entry takes the offset of the first link that holds it, in slot order | An entry per link | Requirement 4: one name is one entity |
 | Watch history, favorites, related videos, smart-folder items and cards, folder roots and `POST /api/work-info-fill-targets` follow the same rule: one request per connected link, merged by the existing sort | Leaving some lists single-link | Requirement 2 names every merged screen |
+| `MergedRelatedCursor` holds the local side and one side per slot, written `local~slot:side~…`, and `MergeRelated` takes a slice of sides; the single-node form stays for a node without links, and the two-side `local~peer` form is refused as `ErrInvalidRelatedCursor` | Moving related videos onto `m2.` | The related order ranks by score, not by a list sort, so `MergePages` does not apply; a two-side cursor cannot say which link its peer side was |
 | A selection operation splits its targets by slot, applies the local part, then one request per link, and sums `applied` with the ids no link changed in `unchanged` | A per-link result | The screens show one count and one list of leftovers today |
 
 ## Vocabulary writes across links
@@ -157,21 +158,26 @@ The diagram shows which condition a read takes.
 ```mermaid
 flowchart LR
   read[Store read] --> kind{Who reads}
-  kind -->|screen, token, MCP| own[Audience with own switches]
-  kind -->|peer credential| excl[Audience with the request's excluded ids]
+  kind -->|list, search, count: screen, token, MCP| own[Audience with own switches]
+  kind -->|list, search, count: peer credential| excl[Audience with the request's excluded ids]
+  kind -->|read by id, write re-read| vis[visibleLocationCondition]
   kind -->|scan, watcher, ingest, jobs| reg[registeredLocationCondition]
-  own --> vis[visibleLocationCondition]
-  excl --> vis
+  own --> listed[listedLocationCondition]
+  excl --> listed
+  listed --> vis
 ```
 
 | Decision | Rejected | Why |
 | --- | --- | --- |
 | `domain.Audience` becomes a value of a role (owner or guest) and a folder scope: this node's switches (the default, and the zero value with the guest role) or an explicit list of this node's folder ids to leave out | A new parameter on every store read | `Audience` already reaches every viewer-facing read (about 130 store sites); widening it changes signatures nowhere and keeps "the zero value is the guest" |
 | Same | A context value read by the store | A read's inputs stay explicit, as `Audience` is today |
-| `visibleLocationCondition` and every count the screens show (tags, kinds, people, organizations, folder index, group members, smart-folder cards, totals) take the scope; `registeredLocationCondition` and `libraryVideoCondition` do not | One condition for both | Requirement 9: scanning, watching, ingest and analysis continue, and user data stays attached |
-| A read by id (`GET /api/videos/{id}`, its media and subtitles, a playlist's items) keeps answering, with `Video.folderOff: true` | `404` as for a hidden video | The Issue's edge case: an open video or a playlist entry is not an error, it says the video is left out now |
+| A new `listedLocationCondition(alias, audience)` adds the scope to `visibleLocationCondition`; every list, search and folder read moves to it, and `visibleLocationCondition`, `registeredLocationCondition` and `libraryVideoCondition` stay unscoped | Adding the scope to `visibleLocationCondition` | `getVideo` and the store sites that re-read a video by id after a write go through `visibleVideoCondition`, so a scoped `visibleLocationCondition` would answer `404` for an open video and fail writes on a switched-off folder's videos; requirement 9 keeps scans, watching, ingest and analysis going |
+| Every count the screens show (tags, kinds, people, organizations, folder index, group members, smart-folder cards, totals) takes the request's audience and the listed condition; the builders that take no audience and fix `domain.AudienceOwner` today (`taggedVideosSQL`, `listedCreditsCTE` and any other screen count found so) gain an audience parameter, while internal syncs such as `folderIndexLocations`, which builds the folder index, keep the unscoped owner and the index's reads apply the scope | Scoping only `visibleLocationCondition` | Those builders read `registeredVideoCondition` with a fixed owner audience, so they would keep counting a switched-off folder's videos |
+| The watch history leaves out an entry whose content key has a video with a registered location and none under the listed condition; the unfiltered list joins `videos` for this, which `watchHistoryFilter` skips today | Leaving history unscoped | The history is a list the screens show; an entry of a removed video, with no registered location, stays as today |
+| A read by id (`GET /api/videos/{id}`, its media and subtitles, a playlist's items) keeps `visibleLocationCondition` and answers `Video.folderOff: true` when no location of the video is under the listed condition | `404` as for a hidden video | The Issue's edge case: an open video or a playlist entry is not an error, it says the video is left out now |
 | A switch may change during a scan | Refusing during a scan, as add, replace and delete do | A scan reads the registered folders, which a switch does not change |
-| The `mediaFolders` event (an empty object, to every viewer) is sent after a switch commits, and after a folder is added, replaced or deleted; open lists reload and Settings rereads | A `video` event per video | A folder holds thousands of videos; the screens reload lists on an all-folders notice already (`smartFolder`) |
+| The `mediaFolders` event (an empty object) is sent to this node's session and token viewers after a switch commits, after a folder is added, replaced or deleted, and on a link's forwarded `mediaFolders`; open lists reload and Settings rereads | A `video` event per video | A folder holds thousands of videos; the screens reload lists on an all-folders notice already (`smartFolder`) |
+| A peer-credential stream receives `mediaFolders` only when one of this node's own folders is added, replaced or deleted, never on a switch or a forwarded event | Sending it to every viewer | Two nodes that read each other would bounce a forwarded event without end, since an empty event has no ids for the `remoteIDs` check; a switch never changes what the read node answers a peer (requirement 10) |
 | `VideoPage.emptyReason: all_folders_off` when the library is empty because every folder this node shows, local and of every link, is off; the library page says so and links owners to Settings | Reading `GET /api/media-folders` from the library page | That read is owner-only, and guests get the same empty library |
 | The external API and MCP take the owner audience with own switches | Exempting them | Requirement 8 says every screen and search; a tool reading `/api/v1` sees what the owner sees |
 
@@ -229,14 +235,16 @@ plan's tables. `ui-design.md` is written by the `design` stage.
 **Affected boundaries**: `internal/domain` (remote ids by slot, link rules,
 folder scope, snapshot reconciliation, merge over sides), `internal/store`
 (`PeerStore` links and snapshot, `SettingsStore` switch, visibility and
-counts, migration `00088`), `internal/app` (`Pairing` per link,
+counts, migrations `00093` to `00095`), `internal/app` (`Pairing` per link,
 `MediaFolders`), `internal/peer` (forwarder per link, excluded header),
 `internal/httpapi` (boundary, merges, vocabulary, folders, handlers,
 events), `cmd/mdm` (wiring), `api/openapi.yaml`, `web/src/api/`,
 `web/src/lib/remoteId.ts`, `web/src/shell/`, `web/src/settings/`,
 `web/src/library/`, `web/src/player/`, `web/src/videoList/`, `web/e2e/`.
 
-**New paths**: `internal/store/migrations/00088_peer_slots_and_folder_switches.sql`,
+**New paths**: `internal/store/migrations/00093_peer_link_slots.sql`,
+`internal/store/migrations/00094_media_folder_switches.sql`,
+`internal/store/migrations/00095_peer_media_folders.sql`,
 `docs/design-docs/media-folder-switches.md`, `web/e2e/peer-folders.e2e.ts`.
 
 **Structure decision**: Follows the existing layout
@@ -272,7 +280,7 @@ flowchart LR
 
 **Scope**: `internal/domain/remote_id.go` turns `PeerIDOffset` into
 `RemoteID(slot, id)`, `RemoteSlot(id)` and `FromRemoteID`; `peer_link.slot`
-and the `peer.next_slot` counter in migration `00088`
+and the `peer.next_slot` counter in migration `00093`
 ([data-model.md, `peer_link`](data-model.md#peer_link)); `PeerStore` allocates
 the slot; every caller of the old functions passes the one link's slot;
 `web/src/lib/remoteId.ts` gains `remoteSlot`. Behaviour with one link is
@@ -312,7 +320,8 @@ the second fake peer with the id minus `2 × 2^40`. `PeerProvider` and
 
 ### Merge lists, history, related videos and smart folders across every link
 
-**Scope**: `MergedCursor` `m2.` and `MergePages` over sides
+**Scope**: `MergedCursor` `m2.`, `MergePages` over sides and
+`MergedRelatedCursor` per slot
 ([Merged reads across links](#merged-reads-across-links)); the video,
 library, folder, folder-root, group, smart-folder, watch-history and related
 reads request every connected link concurrently and merge; smart-folder
@@ -322,8 +331,10 @@ cards sum each link's rule counts. Amends the merged-list section of
 **Dependencies**: Read up to eight VVMDMs through independent links
 
 **Acceptance**: Domain tests show a three-side merge in each sort with the
-local item first on ties, a cursor continuing all three sides, and an `m1.`
-cursor refused. Handler tests with two fake peers show a video page in merged
+local item first on ties, a cursor continuing all three sides, an `m1.`
+cursor refused, and a related list over three sides continuing by its
+per-slot cursor with the two-side form refused. Handler tests with two fake
+peers show a video page in merged
 order with `total` summed, a page where one peer is not connected listing the
 other without waiting, and the history list merged by `playedAt`. A
 smart-folder card test shows counts summed over both peers.
@@ -350,8 +361,8 @@ answering `mixed_nodes`.
 ### Give every read a folder scope and each media folder a switch
 
 **Scope**: `domain.Audience` with role and folder scope,
-`media_folders.enabled` in migration `00088`, `visibleLocationCondition` and
-the counts taking the scope, `Video.folderOff` on reads by id, and
+`media_folders.enabled` in migration `00094`, `listedLocationCondition`, the
+lists, history and counts taking the scope, `Video.folderOff` on reads by id, and
 `VideoPage.emptyReason` ([Folder switches on reads](#folder-switches-on-reads),
 [data-model.md, `media_folders`](data-model.md#media_folders)). The switch is
 written by `SettingsStore` and published as `MediaFoldersChanged`; no handler
@@ -361,9 +372,10 @@ the viewer invariant in `ARCHITECTURE.md`.
 **Dependencies**: None
 
 **Acceptance**: Store tests show that, with one folder off, the video list,
-search, folder index, tag counts and smart-folder matches leave its videos out
-and count the rest, the video by id answers with `folderOff`, and an ingest
-claim and a scan still see its locations; with an explicit excluded list and
+search, watch history, folder index, tag, person and organization counts and
+smart-folder matches leave its videos out and count the rest, the video by id
+answers with `folderOff`, an override edit of one of its videos succeeds, and
+an ingest claim and a scan still see its locations; with an explicit excluded list and
 the owner role, the switch is ignored and the listed ids are left out. A
 migration test shows existing folders on. The openapi routing test passes
 unchanged.
@@ -389,7 +401,7 @@ recorded in the PR.
 ### Keep a snapshot of each link's media folders and send the switched-off ones
 
 **Scope**: `GET /api/peer/media-folders` on the read node,
-`peer_media_folders` with its reconciliation on stream open and on the link's
+`peer_media_folders` in migration `00095` with its reconciliation on stream open and on the link's
 `mediaFolders` event, `X-VV-Peer-Excluded-Folders` set by the Forwarder and
 read by the boundary into the folder scope, and
 `GET /api/peer/links/{nodeId}/media-folders` and
@@ -405,7 +417,9 @@ replacing a folder whose path changed with its switch on, and keeping an
 unchanged off row. `app` tests show the snapshot refreshed when the stream
 opens and on the event. Handler tests show a forwarded list carrying the
 header with the off ids, the read node's boundary leaving those folders out
-of its answer while its own switches stay unapplied, `GET /api/peer/media-folders`
+of its answer while its own switches stay unapplied, a peer-credential stream
+receiving `mediaFolders` on an added folder but not on a switch or a forwarded
+event, `GET /api/peer/media-folders`
 refused to a session cookie, and the link folder list answering the snapshot
 with the link's state while it is unreachable.
 

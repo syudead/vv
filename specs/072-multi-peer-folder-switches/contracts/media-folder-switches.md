@@ -70,9 +70,14 @@ and the same reads of `/api/v1` and `/mcp`.
 
 ## `GET /api/events`
 
-`mediaFolders` is a new event (an empty object) sent to every viewer after a
-switch, an added, replaced or deleted folder commits; a link's `mediaFolders`
-event is forwarded too and refreshes the snapshot.
+`mediaFolders` is a new event (an empty object). Who receives it depends on
+its cause:
+
+| Cause | Session and token viewers | Peer-credential stream |
+| --- | --- | --- |
+| A local folder added, replaced or deleted | Yes | Yes |
+| A switch of a local or a link's folder | Yes | No: a switch never changes what this node answers a peer |
+| A link's `mediaFolders`, which also refreshes that link's snapshot | Yes | No: two nodes that read each other would bounce it without end |
 
 ## Client use
 
