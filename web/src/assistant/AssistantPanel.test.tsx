@@ -503,8 +503,10 @@ describe("AssistantPanel", () => {
   });
 
   it("文脈が足りずに止まった turn は context_too_small の理由と必要な文脈長を出す", async () => {
-    const detail = "the model runs with a context of 4096 tokens; it needs a context of at least 8200 tokens";
-    server.turn = () => finished({ status: "stopped", stop: { reason: "context_too_small", detail } });
+    const detail =
+      "the model runs with a context of 4096 tokens; it needs a context of at least 8200 tokens";
+    server.turn = () =>
+      finished({ status: "stopped", stop: { reason: "context_too_small", detail } });
     const user = userEvent.setup();
     renderApp();
 
@@ -523,7 +525,14 @@ describe("AssistantPanel", () => {
       finished({
         status: "stopped",
         stop: { reason: "cancelled" },
-        progress: [{ tool: "video_stats", kind: "builtin", labels: [], at: "2026-10-30T00:00:01Z" }],
+        progress: [
+          {
+            tool: "video_stats",
+            kind: "builtin",
+            labels: [],
+            at: "2026-10-30T00:00:01Z",
+          },
+        ],
         usage: { modelCalls: 12, promptTokens: 5100, contextTokens: 8192, cpu: true },
       });
     const user = userEvent.setup();
