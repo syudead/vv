@@ -69,6 +69,8 @@ func (s *fakeTurnStore) FinishTurn(_ context.Context, turn domain.AssistantTurn,
 type fakeToolRunner struct {
 	ActionRunner
 	bodies map[string]string
+	// pages answers listVideos by the cursor of its arguments when set.
+	pages  map[string]string
 	reads  []domain.AssistantRead
 	during func()
 }
@@ -96,6 +98,13 @@ func (r *fakeToolRunner) Read(_ context.Context, read domain.AssistantRead) (dom
 	}
 	if strings.Contains(string(read.Arguments), "bad") {
 		return domain.AssistantReadResult{}, fmt.Errorf("%w: q must be a string", domain.ErrAssistantInvalidArguments)
+	}
+	if r.pages != nil && read.Operation == "listVideos" {
+		var args struct {
+			Cursor string `json:"cursor"`
+		}
+		_ = json.Unmarshal(read.Arguments, &args)
+		return domain.AssistantReadResult{Body: json.RawMessage(r.pages[args.Cursor])}, nil
 	}
 	return domain.AssistantReadResult{Body: json.RawMessage(r.bodies[read.Operation])}, nil
 }

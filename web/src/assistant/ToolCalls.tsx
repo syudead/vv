@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Scale,
   ScanEye,
+  Sigma,
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -58,6 +59,7 @@ const builtinLines: Record<string, LineText> = {
     text: t.assistant.tools.show_in_library,
     names: true,
   },
+  video_stats: { icon: Sigma, text: t.assistant.tools.video_stats, names: true },
 };
 
 /** The line's icon and words, chosen by the item's tool and kind. */

@@ -4069,6 +4069,7 @@ export const en = {
         }),
       write: (sentence: string) => `Proposing: ${sentence}`,
       show_in_library: "Filtering the library",
+      video_stats: "Counting videos",
       open_page: (page: string) => (page === "" ? "Opening a page" : `Opening ${page}`),
       start_review: (kind: string) =>
         kind === "" ? "Starting a review" : `Starting a review of ${kind}`,
