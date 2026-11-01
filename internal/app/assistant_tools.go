@@ -69,6 +69,10 @@ func (t *turnTools) definitions() []domain.ToolDefinition {
 	for _, name := range t.offered {
 		tool := t.byName[name]
 		description := strings.TrimSpace(tool.Summary + "\n" + tool.Description)
+		core := slices.Contains(assistantCoreTools, name)
+		if core {
+			description = strings.TrimSpace(tool.Summary + "\n" + firstSentence(tool.Description))
+		}
 		if tool.Kind == domain.AssistantToolWrite {
 			description += "\n" + assistantWriteNote
 		}
@@ -83,8 +87,41 @@ func (t *turnTools) definitions() []domain.ToolDefinition {
 		if len(parameters) == 0 {
 			parameters = emptyParameters
 		}
+		if core {
+			parameters = shortDescriptions(parameters)
+		}
 		out = append(out, domain.ToolDefinition{Name: domain.AssistantModelToolName(tool.Name), Description: description, Parameters: parameters})
 	}
+	return out
+}
+
+// firstSentence ends text at its first sentence. The core tools go with every model call, and their full API
+// descriptions took a small model's context; the rules they leave out are the server's to enforce.
+func firstSentence(text string) string {
+	text = strings.TrimSpace(text)
+	for i := 0; i < len(text); i++ {
+		if (text[i] == '.' || text[i] == ';') && (i+1 == len(text) || text[i+1] == ' ' || text[i+1] == '\n') {
+			return text[:i+1]
+		}
+	}
+	return text
+}
+
+// shortDescriptions ends each parameter's description at its first sentence.
+func shortDescriptions(parameters json.RawMessage) json.RawMessage {
+	var schema map[string]json.RawMessage
+	var properties map[string]map[string]json.RawMessage
+	if json.Unmarshal(parameters, &schema) != nil || json.Unmarshal(schema["properties"], &properties) != nil {
+		return parameters
+	}
+	for _, property := range properties {
+		var description string
+		if json.Unmarshal(property["description"], &description) == nil && description != "" {
+			property["description"], _ = json.Marshal(firstSentence(description)) // A string always encodes.
+		}
+	}
+	schema["properties"], _ = json.Marshal(properties) // Decoded JSON values always encode.
+	out, _ := json.Marshal(schema)
 	return out
 }
 

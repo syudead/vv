@@ -386,6 +386,31 @@ func TestTurnLoopRecordsTheModelUsage(t *testing.T) {
 	}
 }
 
+// The core tools, sent with every call, keep the first sentence of each description; a loaded tool keeps all of it.
+func TestCoreToolDefinitionsKeepFirstSentences(t *testing.T) {
+	long := "Lists videos. Rules the server enforces."
+	params := json.RawMessage(`{"type":"object","properties":{"q":{"type":"string","description":"Search terms. Quotes form phrases."}}}`)
+	tools := newTurnTools([]domain.AssistantTool{
+		{Name: "listVideos", Kind: domain.AssistantToolRead, Summary: "List", Description: long, Parameters: params},
+		{Name: "listPlaylists", Kind: domain.AssistantToolRead, Summary: "List", Description: long, Parameters: params},
+	})
+	tools.load("listPlaylists")
+
+	got := map[string]domain.ToolDefinition{}
+	for _, d := range tools.definitions() {
+		got[d.Name] = d
+	}
+
+	core, loaded := got["listVideos"], got["listPlaylists"]
+	if core.Description != "List\nLists videos." ||
+		string(core.Parameters) != `{"properties":{"q":{"description":"Search terms.","type":"string"}},"type":"object"}` {
+		t.Errorf("core = %s %s, want first sentences", core.Description, core.Parameters)
+	}
+	if loaded.Description != "List\n"+long || string(loaded.Parameters) != string(params) {
+		t.Errorf("loaded = %s %s, want it whole", loaded.Description, loaded.Parameters)
+	}
+}
+
 func TestStopTurnCancelsTheRunningTurn(t *testing.T) {
 	f := newLoopFixture(t, calls(toolCall("listTags", `{}`), toolCall("listPeople", `{}`)))
 	f.runner.during = func() {
