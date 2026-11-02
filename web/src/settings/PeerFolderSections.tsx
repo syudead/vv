@@ -1,5 +1,5 @@
 import { Folder } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   getPeer,
@@ -9,7 +9,7 @@ import {
   setPeerLinkMediaFolderEnabled,
 } from "../api/peer";
 import { subscribeServerEvents } from "../api/serverEvents";
-import { errorText, t, type UiText } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -17,6 +17,7 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { FolderSwitch } from "./FolderSwitch";
 import { PeerLinkBadge } from "./PeerLinkBadge";
+import { useSettingsSource } from "./useSettingsSource";
 import { useSwitchSave } from "./useSwitchSave";
 
 type FoldersView =
@@ -62,11 +63,15 @@ function PeerFolderRow({
   name,
   folder,
   onSwitched,
+  onStart,
+  onSettled,
 }: {
   nodeId: string;
   name: string;
   folder: PeerMediaFolder;
   onSwitched: (folder: PeerMediaFolder) => void;
+  onStart: () => void;
+  onSettled: () => void;
 }) {
   const { saving, saveError, toggle } = useSwitchSave({
     settings: folder,
@@ -74,6 +79,8 @@ function PeerFolderRow({
     save: (next) => setPeerLinkMediaFolderEnabled(nodeId, folder.id, next),
     saved: onSwitched,
     saveFailed: t.settings.mediaFolders.switchFailed,
+    onStart,
+    onSettled,
   });
   const enabled = saving ?? folder.enabled;
   return (
@@ -110,50 +117,40 @@ function PeerFolderRow({
   );
 }
 
-/** Rereads in place on mediaFolders and peer, keeping the rows shown when a reread fails. */
+/**
+ * Rereads in place on mediaFolders and peer, keeping the rows shown when a reread fails. Only the
+ * latest read applies, and reads pause while a switch saves so an older answer cannot undo it.
+ */
 function usePeerLinkFolders(nodeId: string) {
-  const [view, setView] = useState<FoldersView>({ kind: "loading" });
-  const loaded = useRef(false);
-
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!loaded.current) setView({ kind: "loading" });
-      try {
-        const answer = await listPeerLinkMediaFolders(nodeId, signal);
-        loaded.current = true;
-        setView({ kind: "loaded", folders: answer.folders });
-      } catch (failure) {
-        if (signal?.aborted || loaded.current) return;
-        setView({ kind: "failed", reason: errorText(failure) });
-      }
-    },
+  const read = useCallback(
+    async (signal: AbortSignal) =>
+      (await listPeerLinkMediaFolders(nodeId, signal)).folders,
     [nodeId],
   );
+  const source = useSettingsSource(read);
+  const { load } = source;
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const reread = () => void load(controller.signal);
-    const unsubscribe = subscribeServerEvents({ mediaFolders: reread, peer: reread });
-    reread();
-    return () => {
-      unsubscribe();
-      controller.abort();
-    };
-  }, [load]);
+  useEffect(
+    () =>
+      subscribeServerEvents({
+        mediaFolders: () => void load(),
+        peer: () => void load(),
+      }),
+    [load],
+  );
 
+  const view: FoldersView =
+    source.settings !== null
+      ? { kind: "loaded", folders: source.settings }
+      : source.loadError !== null
+        ? { kind: "failed", reason: source.loadError }
+        : { kind: "loading" };
   const replace = (switched: PeerMediaFolder) =>
-    setView((current) =>
-      current.kind === "loaded"
-        ? {
-            kind: "loaded",
-            folders: current.folders.map((item) =>
-              item.id === switched.id ? switched : item,
-            ),
-          }
-        : current,
+    source.update((folders) =>
+      folders.map((item) => (item.id === switched.id ? switched : item)),
     );
 
-  return { view, retry: () => void load(), replace };
+  return { view, source, replace };
 }
 
 /** Drawn from this node's snapshot, so a link that is not connected keeps its rows; only the badge follows the link. */
@@ -161,7 +158,7 @@ function PeerFolderSection({ link }: { link: PeerLinkState }) {
   const text = t.settings.mediaFolders.link;
   const name = link.name ?? "";
   const nodeId = link.nodeId ?? "";
-  const { view, retry, replace } = usePeerLinkFolders(nodeId);
+  const { view, source, replace } = usePeerLinkFolders(nodeId);
   return (
     <PageSection
       title={<span className="block truncate">{name}</span>}
@@ -183,7 +180,7 @@ function PeerFolderSection({ link }: { link: PeerLinkState }) {
           <ErrorState
             title={text.loadFailed(name, view.reason)}
             retryLabel={t.common.retry}
-            onRetry={retry}
+            onRetry={() => void source.load()}
           />
         )}
         {view.kind === "loaded" && view.folders.length === 0 && (
@@ -201,6 +198,8 @@ function PeerFolderSection({ link }: { link: PeerLinkState }) {
               name={name}
               folder={folder}
               onSwitched={replace}
+              onStart={source.beginSave}
+              onSettled={source.endSave}
             />
           ))}
       </div>
