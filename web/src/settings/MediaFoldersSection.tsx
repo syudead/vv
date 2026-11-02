@@ -37,12 +37,12 @@ import {
   AlertDialogTitle,
 } from "../ui/shadcn/alert-dialog";
 import { Button } from "../ui/shadcn/button";
-import { Label } from "../ui/shadcn/label";
 import { Skeleton } from "../ui/shadcn/skeleton";
-import { Switch } from "../ui/shadcn/switch";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
+import { FolderSwitch } from "./FolderSwitch";
 import MediaFolderUsage from "./MediaFolderUsage";
+import { PeerFolderSections } from "./PeerFolderSections";
 import RescanDialog from "./RescanDialog";
 import { useSwitchSave } from "./useSwitchSave";
 
@@ -206,16 +206,12 @@ function LocalFolderRow({
           <Trash2 />
           {text.removeShort}
         </Button>
-        {/* The word and the track are one control in a fixed column, so every switch of the page lines up. */}
-        <Label className="h-8 w-16 shrink-0 cursor-pointer justify-end text-xs font-normal text-muted-foreground">
-          {enabled ? text.on : text.off}
-          <Switch
-            checked={enabled}
-            aria-label={text.switchLabel(folder.path)}
-            aria-disabled={saving !== null || undefined}
-            onCheckedChange={() => void toggle()}
-          />
-        </Label>
+        <FolderSwitch
+          enabled={enabled}
+          saving={saving !== null}
+          label={text.switchLabel(folder.path)}
+          onToggle={() => void toggle()}
+        />
       </div>
       {failure !== null && (
         <p role="alert" className="text-destructive sm:basis-full">
@@ -469,6 +465,7 @@ export default function MediaFoldersSection() {
             ))}
         </div>
       </PageSection>
+      <PeerFolderSections />
       {picker !== null && (
         <FolderPicker
           folders={folders}

@@ -1,5 +1,6 @@
 import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
 
 // The only caller of the screen's /api/peer operations; the Pairing page never calls fetch.
 
@@ -8,6 +9,8 @@ export type PeerLinkState = components["schemas"]["PeerLinkState"];
 export type PeerGrant = components["schemas"]["PeerGrant"];
 export type PairingCode = components["schemas"]["PairingCode"];
 export type PairPeerRequest = components["schemas"]["PairPeerRequest"];
+export type PeerMediaFolder = components["schemas"]["PeerMediaFolder"];
+export type PeerLinkMediaFolders = components["schemas"]["PeerLinkMediaFolders"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -65,6 +68,29 @@ export function confirmPeerCertificate(
     body: JSON.stringify({ fingerprint }),
     signal,
   });
+}
+
+/** This node's snapshot of the link's folders with their switches, answered while the link is unreachable too. */
+export function listPeerLinkMediaFolders(
+  nodeId: string,
+  signal?: AbortSignal,
+): Promise<PeerLinkMediaFolders> {
+  return request<PeerLinkMediaFolders>(linkPath(nodeId, "/media-folders"), { signal });
+}
+
+/** Changes this node's switch only; the link itself is never written. */
+export async function setPeerLinkMediaFolderEnabled(
+  nodeId: string,
+  folderId: number,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<PeerMediaFolder> {
+  const updated = await request<PeerMediaFolder>(
+    linkPath(nodeId, `/media-folders/${String(folderId)}/enabled`),
+    { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ enabled }), signal },
+  );
+  clearListSnapshot();
+  return updated;
 }
 
 async function deletePeerPart(path: string, signal?: AbortSignal): Promise<void> {
