@@ -1,7 +1,7 @@
 import path from "node:path";
 
-// The Go servers the suite runs: the main node every spec uses, and a second node with its own data
-// directory and port that the pairing spec starts and stops itself.
+// The Go servers the suite runs: the main node every spec uses, and the second and third nodes, each with
+// its own data directory and port, that the pairing specs start and stop themselves.
 const runRoot = process.env.MDM_E2E_RUN_ROOT;
 if (runRoot === undefined) throw new Error("MDM_E2E_RUN_ROOT is not configured");
 
@@ -25,6 +25,11 @@ export const mainNode: Node = {
 export const secondNode: Node = {
   addr: "127.0.0.1:18081",
   dataDir: path.join(runRoot, "second-node-data"),
+};
+
+export const thirdNode: Node = {
+  addr: "127.0.0.1:18082",
+  dataDir: path.join(runRoot, "third-node-data"),
 };
 
 export function nodeURL(node: Node): string {
