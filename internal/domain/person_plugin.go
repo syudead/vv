@@ -116,7 +116,9 @@ type FetchedPluginPerson struct {
 	ExternalIDs []ExternalID
 	// ImageURLs are the first PersonPluginImagesMaxCount distinct valid image URLs in result order.
 	ImageURLs []string
-	Profile   PersonProfile
+	// ImageReferer is the Referer VVMDM sends with each image request, empty for none.
+	ImageReferer string
+	Profile      PersonProfile
 }
 
 type personResponseJSON struct {
@@ -133,6 +135,8 @@ type personResponseJSON struct {
 		ExternalIDs json.RawMessage `json:"externalIds"`
 		Images      json.RawMessage `json:"images"`
 		Profile     json.RawMessage `json:"profile"`
+		// ImageReferer follows the image URL rules.
+		ImageReferer json.RawMessage `json:"imageReferer"`
 	} `json:"person"`
 	Error *runErrorJSON `json:"error"`
 }
@@ -161,11 +165,12 @@ func parsePersonPluginResponse(req WorkInfoRunRequest, output []byte) (WorkInfoR
 		}
 		ids = appendFetchedExternalIDs(ids, raw.Person.ExternalIDs)
 		return WorkInfoRunResult{Person: FetchedPluginPerson{
-			Name:        name,
-			Aliases:     parseFetchedAliases(raw.Person.Aliases),
-			ExternalIDs: ids,
-			ImageURLs:   parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
-			Profile:     parseFetchedProfile(raw.Person.Profile),
+			Name:         name,
+			Aliases:      parseFetchedAliases(raw.Person.Aliases),
+			ExternalIDs:  ids,
+			ImageURLs:    parseFetchedImageURLs(raw.Person.Images, PersonPluginImagesMaxCount),
+			ImageReferer: fetchedImageURL(lenientString(raw.Person.ImageReferer)),
+			Profile:      parseFetchedProfile(raw.Person.Profile),
 		}}, nil
 	}
 	return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}

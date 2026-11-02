@@ -403,6 +403,12 @@ image's header only. The full decode is the apply's: the cover goes through
 the upload gate, the 120-megapixel cap and the generation lock, and is stored
 with origin `uploaded`.
 
+A site may refuse an image request without one of its own pages as the
+`Referer`, so the result's `imageReferer`, an `http` or `https` URL under the
+image URL rules, goes out as the `Referer` of each cover and person image
+request of that result, person plugins' `images` included. An invalid value
+sends none and keeps the rest of the result, as an invalid cover URL does.
+
 The browser shows each cover from
 `GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}`, so it never
 contacts the plugin's site. The result lists the kept covers as `covers`, each
@@ -459,12 +465,14 @@ so the server fits it as above.
 | Send the fit with the apply and let the server compose | The preview and the result would come from two drawings, the reason uploads compose in the page |
 | Apply the cover the server fitted                      | A centre crop drops the part of a cover the owner wants, such as the front of a jacket scan     |
 
-| Rejected                                                      | Why                                                                                                           |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third                                       |
-| The browser loads the cover from the site                     | The site would see the viewer's address                                                                       |
-| Fetching the cover again for each view or at the apply        | The site could answer another image than the one the owner compared                                           |
-| Keeping `cover` beside `covers`                               | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
+| Rejected                                                      | Why                                                                                                             |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third                                         |
+| The browser loads the cover from the site                     | The site would see the viewer's address                                                                         |
+| Fetching the cover again for each view or at the apply        | The site could answer another image than the one the owner compared                                             |
+| Keeping `cover` beside `covers`                               | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins   |
+| A Referer per image URL                                       | `covers` and `images` would change from strings to objects, and one site's images share the page they appear on |
+| Sending the image's own origin as the Referer by default      | Some sites check a page path, and a header the plugin did not ask for changes what every existing plugin gets   |
 
 ## People's images are fetched like the cover and become faces after the commit
 

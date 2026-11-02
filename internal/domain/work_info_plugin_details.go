@@ -36,6 +36,7 @@ type workDetailsJSON struct {
 	URLs          json.RawMessage `json:"urls"`
 	ExternalIDs   json.RawMessage `json:"externalIds"`
 	Covers        json.RawMessage `json:"covers"`
+	ImageReferer  json.RawMessage `json:"imageReferer"`
 }
 
 type fetchedDateJSON struct {
@@ -76,6 +77,7 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
 	out.CoverURLs = parseFetchedImageURLs(raw.Covers, WorkInfoCoversMaxCount)
+	out.ImageReferer = fetchedImageURL(lenientString(raw.ImageReferer))
 }
 
 var crLineEnd = strings.NewReplacer("\r\n", "\n", "\r", "\n")

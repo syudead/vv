@@ -231,6 +231,17 @@ func TestParseWorkInfoResponseKeepsTheFirstDistinctWebCoverURLs(t *testing.T) {
 	}
 }
 
+func TestParseWorkInfoResponseKeepsOnlyAWebImageReferer(t *testing.T) {
+	for raw, want := range map[string]string{
+		`"https://e.test/work/1"`: "https://e.test/work/1", `"/work/1"`: "", `"ftp://e.test/"`: "", `7`: "",
+	} {
+		got, err := ParseWorkInfoResponse(WorkInfoFetch, []byte(`{"workInfo":{"title":"T","imageReferer":`+raw+`}}`))
+		if err != nil || got.WorkInfo.ImageReferer != want || got.WorkInfo.Title != "T" {
+			t.Errorf("imageReferer %s = %q, %v; want %q", raw, got.WorkInfo.ImageReferer, err, want)
+		}
+	}
+}
+
 func TestParseWorkInfoResponseDropsAMalformedProfilePropertyAlone(t *testing.T) {
 	got := parseFetched(t, `{"people": [
 		{"role": "performer", "name": "A", "image": " https://e.test/a.jpg ", "profile": {
