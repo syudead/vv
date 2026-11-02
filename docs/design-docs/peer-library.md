@@ -225,6 +225,9 @@ slowest link within the 10 s response timeout instead of the sum of the links.
 One composite cursor (prefix `m2.`) holds a cursor, a done flag and a skipped
 flag for each side by slot; a cursor of the one-peer form (`m1.`) is refused as
 `invalid_cursor` like any cursor of another list, which restarts the list. A
+cursor with more sides than this node and the link limit is refused the same
+way, and a side whose slot no link holds now is dropped before any link is
+asked, so a forged cursor cannot fan a page out past the links. A
 list filter by a link's entity matches no local video and nothing on the other
 links. The vocabulary lists and writes, the group picker and the history clear
 reach the first link, and an operation over a selection reaches the one link

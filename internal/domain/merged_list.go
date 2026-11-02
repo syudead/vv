@@ -44,10 +44,17 @@ type LinkReach struct {
 }
 
 // Begin starts a listing over links, reading the connected ones and leaving out the others for the whole
-// listing; a cursor that already continues a listing is returned unchanged.
+// listing. A cursor that already continues a listing keeps only the sides of this node and of links, so a side of
+// a link removed since, or of a slot no link holds, is never asked.
 func (c MergedCursor) Begin(links []LinkReach) MergedCursor {
 	if c.Started() {
-		return c
+		sides := map[int64]SideCursor{0: c.Sides[0]}
+		for _, link := range links {
+			if side, ok := c.Sides[link.Slot]; ok {
+				sides[link.Slot] = side
+			}
+		}
+		return MergedCursor{Sides: sides}
 	}
 	sides := map[int64]SideCursor{0: {}}
 	for _, link := range links {
@@ -116,6 +123,9 @@ func ParseMergedCursor(text string) (MergedCursor, error) {
 	}
 	if _, ok := cursor.Sides[0]; !ok {
 		return MergedCursor{}, fmt.Errorf("%w: the cursor holds no local side", ErrInvalidCursor)
+	}
+	if len(cursor.Sides) > MaxPeerLinks+1 {
+		return MergedCursor{}, fmt.Errorf("%w: %d sides", ErrInvalidCursor, len(cursor.Sides))
 	}
 	for slot := range cursor.Sides {
 		if slot < 0 {

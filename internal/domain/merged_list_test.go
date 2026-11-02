@@ -182,8 +182,15 @@ func TestMergedCursorRoundTripsAndRefusesOtherCursors(t *testing.T) {
 	if got, err := ParseMergedCursor(""); err != nil || got.Started() {
 		t.Errorf("empty cursor = %+v, %v, want the start", got, err)
 	}
-	// m1. continued a list merged with one peer before links had slots; the last one holds no local side.
-	for _, text := range []string{"YWRkZWREZXNj", "m2.!", "m2.bnVsbA", "m1.eyJsIjoiYyIsInAiOiJkIn0", "m2.eyJzIjp7IjEiOnt9fX0"} {
+	// m1. continued a list merged with one peer before links had slots; "m2.eyJzIjp7IjEiOnt9fX0" holds no local
+	// side, and the last one more sides than this node and MaxPeerLinks links.
+	tooMany := MergedCursor{Sides: map[int64]SideCursor{}}
+	for slot := range int64(MaxPeerLinks + 2) {
+		tooMany.Sides[slot] = SideCursor{}
+	}
+	for _, text := range []string{
+		"YWRkZWREZXNj", "m2.!", "m2.bnVsbA", "m1.eyJsIjoiYyIsInAiOiJkIn0", "m2.eyJzIjp7IjEiOnt9fX0", tooMany.Encode(),
+	} {
 		if _, err := ParseMergedCursor(text); !errors.Is(err, ErrInvalidCursor) {
 			t.Errorf("ParseMergedCursor(%q) = %v, want ErrInvalidCursor", text, err)
 		}
@@ -205,8 +212,13 @@ func TestMergedCursorKeepsALinkOutsideTheListingSkipped(t *testing.T) {
 	if got := start.Skip(1).Side(1); !got.Skipped || !got.Done {
 		t.Errorf("a skipped link = %+v, want skipped", got)
 	}
-	if again := start.Begin([]LinkReach{{Slot: 2, Connected: true}}); !reflect.DeepEqual(again, start) {
+	if again := start.Begin([]LinkReach{{Slot: 1}, {Slot: 2, Connected: true}}); !reflect.DeepEqual(again, start) {
 		t.Errorf("Begin on a started listing = %+v, want it unchanged", again)
+	}
+	// A side whose slot no link holds now, removed or forged, is dropped so the listing never asks it.
+	forged := start.Skip(99)
+	if got := forged.Begin([]LinkReach{{Slot: 2}}).Links(); !slices.Equal(got, []int64{2}) {
+		t.Errorf("links after Begin over link 2 = %v, want [2]", got)
 	}
 
 	local := MergeSide[string]{Items: []string{"L1"}, Cursors: []ItemCursor{{Cursor: "c1", SortValue: value("1")}}, Next: "c1"}
