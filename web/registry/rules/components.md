@@ -286,8 +286,9 @@ a notice with its `useToast`, which calls `toast()`. It shows at most three
 notices at once on list screens and one at a time on the video page, so a
 notice raised in the shell waits its turn after the viewer opens a video. On
 list screens it sits under the top bar at the right below `lg`, and at the
-bottom centre, above the selection bar, from `lg`; on the video page it sits at
-the top centre.
+bottom centre, above the selection bar, from `lg`; the bar publishes its height
+as `--selection-bar-height`, so the notice clears it when its actions wrap onto
+more rows. On the video page it sits at the top centre.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.
@@ -570,11 +571,11 @@ it is typed; while it is invalid or a request is in flight, neither Enter nor a
 click acts. A paste or drop with a line break is refused with its reason, and
 keys pressed during IME composition are ignored. `layout` places the list:
 
-| `layout`   | Use it for                                                                            | List                                                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `popover`  | Inside a `Popover` that is the picker: the selection bar's "Add tag" and "Remove tag" | Always shown; the create row first and the first row selected                                                                                            |
-| `dropdown` | A small add field in a row of chips: the video page's "Add tag"                       | Opens below the input on focus or typing; Esc, Tab and leaving close it; Esc when closed calls `onEscape`; the create row last                           |
-| `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last |
+| `layout`   | Use it for                                                                            | List                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `popover`  | Inside a `Popover` that is the picker: the selection bar's "Add tag" and "Remove tag" | Always shown; the create row first and the first row selected                                                                                                                                              |
+| `dropdown` | A small add field in a row of chips: the video page's "Add tag"                       | Opens below the input on focus or typing, aligned to its right edge when the left would run past the scrolling panel; Esc, Tab and leaving close it; Esc when closed calls `onEscape`; the create row last |
+| `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last                                                   |
 
 In `dropdown` and `inline`, no row is selected until the arrow keys or the
 pointer select one.
