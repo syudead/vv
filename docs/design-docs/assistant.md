@@ -328,7 +328,7 @@ pending proposal of the turn it follows.
 
 ### The peer's videos
 
-A paired node's video carries its remote id (`domain.PeerIDOffset` and up), and
+A paired node's video carries its remote id (`domain.RemoteID`, `2^40` and up), and
 this node's library holds no user key for it
 ([peer-library.md](peer-library.md)). A write row whose catalog entry has
 `RemoteVideos` also targets such a video; any other video row refuses it

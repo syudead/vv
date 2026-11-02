@@ -246,6 +246,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 		payload.MissingTagIds = &missing
 	}
 	payload.PeerItems = peerItemsFor(r.Context(), page.ItemCursors)
+	payload.EmptyReason = apiEmptyReason(page.EmptyReason)
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
@@ -601,6 +602,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 		Public:         video.Public,
+		FolderOff:      optionalTrue(video.FolderOff),
 		// Include bundle summaries for all members, counting only public versions for guests.
 		Versions: apiVersionsRef(video.Versions),
 	}

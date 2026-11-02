@@ -24,6 +24,7 @@ import {
   VideoThumbnailImage,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { FolderOffMark } from "../videoList/FolderOffMark";
 import { CollectionCountIcon, orderedItemCollection } from "../videoList/ItemRowCells";
 import { itemTitle, playlistPath } from "./playlistItems";
 import { itemStepPath, panelScrollTop } from "./playlistPlayback";
@@ -404,6 +405,7 @@ function ItemText({ item, current = false }: { item: PlaylistItem; current?: boo
           {t.library.group.count(group.videoCount)}
         </span>
       )}
+      <FolderOffMark video={item.video} />
       {unplayable !== null && (
         <span className="flex items-center gap-1 text-xs text-warning">
           <AlertTriangle aria-hidden="true" className="size-3 shrink-0" />

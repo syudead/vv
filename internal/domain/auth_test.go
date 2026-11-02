@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -134,8 +135,35 @@ func TestAudienceZeroValueIsGuest(t *testing.T) {
 	if !AudienceOwner.IsOwner() || AudienceOwner.String() != "owner" {
 		t.Fatalf("AudienceOwner が所有者として扱われない")
 	}
-	if Audience(99).IsOwner() {
-		t.Fatalf("未知の Audience が所有者として扱われた")
+	if _, explicit := a.ExcludedFolders(); explicit {
+		t.Fatalf("Audience のゼロ値が明示の除外リストを持つ")
+	}
+}
+
+func TestAudienceExcludedFoldersReplaceTheSwitches(t *testing.T) {
+	scoped := AudienceOwner.WithExcludedFolders([]int64{5, 3, 5, 0})
+	ids, explicit := scoped.ExcludedFolders()
+	if !explicit || !reflect.DeepEqual(ids, []int64{3, 5}) || !scoped.IsOwner() {
+		t.Fatalf("WithExcludedFolders = %v (explicit %v, owner %v)、[3 5] で所有者のまま", ids, explicit, scoped.IsOwner())
+	}
+	if scoped != AudienceOwner.WithExcludedFolders([]int64{3, 5}) || scoped == AudienceOwner {
+		t.Fatalf("同じ除外リストの Audience が等しくない、またはスイッチの Audience と等しい")
+	}
+	if ids, explicit := AudienceGuest.WithExcludedFolders(nil).ExcludedFolders(); !explicit || len(ids) != 0 {
+		t.Fatalf("空の除外リスト = %v (explicit %v)、スイッチを使わない空のリストであるべき", ids, explicit)
+	}
+}
+
+func TestAudienceListsFolderFollowsItsScope(t *testing.T) {
+	on, off := MediaFolder{ID: 3, Enabled: true}, MediaFolder{ID: 5, Enabled: false}
+	if !AudienceOwner.ListsFolder(on) || AudienceGuest.ListsFolder(off) {
+		t.Errorf("スイッチの Audience: オン %v, オフ %v, want オンだけを並べる",
+			AudienceOwner.ListsFolder(on), AudienceGuest.ListsFolder(off))
+	}
+	scoped := AudienceOwner.WithExcludedFolders([]int64{3})
+	if scoped.ListsFolder(on) || !scoped.ListsFolder(off) {
+		t.Errorf("除外リスト [3] の Audience: 3 %v, 5 %v, want スイッチではなくリストで 3 だけを外す",
+			scoped.ListsFolder(on), scoped.ListsFolder(off))
 	}
 }
 

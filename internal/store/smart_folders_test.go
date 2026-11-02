@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/pressly/goose/v3"
 	"github.com/syudead/vv/internal/domain"
 )
 
@@ -273,22 +271,7 @@ func TestRuleNamingADeletedTagIsStoredAndReportedMissing(t *testing.T) {
 // Stored rules lose the removed filter keys, which ParseSmartRule would otherwise reject, and keep the rest.
 func TestRemovedListFiltersMigrationStripsStoredRules(t *testing.T) {
 	ctx := context.Background()
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	files, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(ctx, 76); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 76)
 	execSQL(t, db, `insert into smart_folders (id, name, title_key, rule, sort, created_at, updated_at) values
 		(1, 'kept', 'kept', '{"q":"cat","watch":"unwatched","playable":true,"addedWithin":7,"minDuration":60,"maxDuration":600}', 'titleAsc', 1, 1),
 		(2, 'emptied', 'emptied', '{"watch":"watched"}', 'titleAsc', 1, 1)`)

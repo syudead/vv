@@ -46,7 +46,6 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import { isRemoteId } from "../lib/remoteId";
 import { RemoteCountLine } from "../videoList/RemoteItemMark";
 import { Button } from "../ui/shadcn/button";
 import { TableBody } from "../ui/shadcn/table";
@@ -435,7 +434,7 @@ function SmartFolderHeader({
           </span>
         }
         count={
-          <RemoteCountLine remote={isRemoteId(folder.id)}>
+          <RemoteCountLine itemId={folder.id}>
             {t.groups.detail.count(folder.videoCount, formatDuration(folder.durationMs))}
           </RemoteCountLine>
         }

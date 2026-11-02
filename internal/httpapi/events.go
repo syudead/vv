@@ -43,7 +43,23 @@ type eventSubscriber struct {
 	onboarding   bool
 	assistant    bool
 	peer         bool
+	mediaFolders mediaFoldersPending
 	ready        chan struct{}
+}
+
+// mediaFoldersPending records which media-folder change waits: a peer-credential stream receives only this node's
+// own folder changes, since neither a switch nor a link's folder change alters what this node answers a peer.
+type mediaFoldersPending struct {
+	any     bool
+	folders bool
+}
+
+// forViewer reports whether the stream receives mediaFolders.
+func (p mediaFoldersPending) forViewer(peer bool) bool {
+	if peer {
+		return p.folders
+	}
+	return p.any
 }
 
 func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
@@ -66,6 +82,7 @@ type pendingEvents struct {
 	onboarding   bool
 	assistant    bool
 	peer         bool
+	mediaFolders mediaFoldersPending
 }
 
 func (s *eventSubscriber) take() pendingEvents {
@@ -74,9 +91,10 @@ func (s *eventSubscriber) take() pendingEvents {
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
 		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
-		assistant: s.assistant, peer: s.peer,
+		assistant: s.assistant, peer: s.peer, mediaFolders: s.mediaFolders,
 	}
 	s.peer = false
+	s.mediaFolders = mediaFoldersPending{}
 	s.scan = false
 	s.candidates = false
 	s.activity = false
@@ -193,6 +211,14 @@ func (e *Events) PeerStateChanged() {
 	e.publish(func(s *eventSubscriber) { s.peer = true })
 }
 
+// MediaFoldersChanged has no payload; screens reread the media folders and reload open lists.
+func (e *Events) MediaFoldersChanged(event domain.MediaFoldersChanged) {
+	e.publish(func(s *eventSubscriber) {
+		s.mediaFolders.any = true
+		s.mediaFolders.folders = s.mediaFolders.folders || !event.ViewOnly
+	})
+}
+
 // peerChanged forwards the peer's notifications, whose ids already carry the remote offset.
 func (e *Events) peerChanged(event domain.PeerChanged) {
 	for _, id := range event.VideoIDs {
@@ -243,6 +269,8 @@ func (e *Events) Handle(event domain.Event) {
 		e.PeerStateChanged()
 	case domain.PeerChanged:
 		e.peerChanged(event)
+	case domain.MediaFoldersChanged:
+		e.MediaFoldersChanged(event)
 	}
 }
 
@@ -261,6 +289,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	defer unsubscribe()
 	// Guests receive group and smartFolder events; other events expose owner activity or private videos.
 	guest := !audienceFrom(r.Context()).IsOwner()
+	peer := isPeerRequest(r.Context())
 
 	controller := http.NewResponseController(w)
 
@@ -293,7 +322,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-sub.ready:
-			if err := s.writePendingEvents(ctx, w, sub, guest); err != nil {
+			if err := s.writePendingEvents(ctx, w, sub, guest, peer); err != nil {
 				if ctx.Err() == nil {
 					s.logger.Warn("cannot send a change notification", slog.Any("error", err))
 				}
@@ -306,7 +335,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
+func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest, peer bool) error {
 	pending := sub.take()
 	if guest {
 		pending.scan = false
@@ -327,16 +356,8 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			}
 		}
 	}
-	if pending.candidates {
-		// EventSource ignores events without data, so payload-free notifications send an empty object.
-		if err := writeEvent(w, "candidates", struct{}{}); err != nil {
-			return err
-		}
-	}
-	if pending.activity {
-		if err := writeEvent(w, "activity", struct{}{}); err != nil {
-			return err
-		}
+	if err := writeSignals(w, signal{pending.candidates, "candidates"}, signal{pending.activity, "activity"}); err != nil {
+		return err
 	}
 	for _, id := range pending.videos {
 		if err := writeEvent(w, "video", gen.VideoChanged{Id: id}); err != nil {
@@ -355,10 +376,9 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			return err
 		}
 	}
-	if pending.assistant {
-		if err := writeEvent(w, "assistant", struct{}{}); err != nil {
-			return err
-		}
+	if err := writeSignals(w, signal{pending.assistant, "assistant"},
+		signal{pending.mediaFolders.forViewer(peer), "mediaFolders"}); err != nil {
+		return err
 	}
 	if pending.peer && s.pairing != nil {
 		if err := s.writePeerEvent(ctx, w, guest); err != nil {
@@ -368,6 +388,26 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 	if pending.onboarding && !guest {
 		// candidates と同じく中身の無い知らせで、data は空のオブジェクトにする。
 		if err := writeEvent(w, "onboarding", struct{}{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// signal is a payload-free notification and whether it waits.
+type signal struct {
+	pending bool
+	name    string
+}
+
+// writeSignals sends the waiting signals in order; EventSource ignores events without data, so each sends an empty
+// object.
+func writeSignals(w http.ResponseWriter, signals ...signal) error {
+	for _, sig := range signals {
+		if !sig.pending {
+			continue
+		}
+		if err := writeEvent(w, sig.name, struct{}{}); err != nil {
 			return err
 		}
 	}

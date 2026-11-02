@@ -241,7 +241,7 @@ export interface paths {
         };
         /**
          * Return related videos
-         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a paired node the list holds the visible videos of both nodes, a remote id also opens one, and the directory clue is 0 between nodes; while the peer cannot be reached its videos are left out.
+         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`. On a node that reads other VVMDMs the list holds the visible videos of this node and every connected link, a remote id also opens one, and the directory clue is 0 between nodes; a link that cannot be reached is left out for the rest of the list.
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -887,6 +887,26 @@ export interface paths {
         post?: never;
         /** Delete a media folder */
         delete: operations["deleteMediaFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/media-folders/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a media folder on or off
+         * @description Owner-only. A switched-off folder's videos leave this node's lists, searches, counts and folder reads; scans, watching, ingest and jobs go on, and a read by id answers them with folderOff. Writes only the switch, so path and version stay and it is allowed during a scan. Sends mediaFolders on /api/events after commit when the value changes.
+         */
+        put: operations["setMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1719,7 +1739,7 @@ export interface paths {
         };
         /**
          * Return the pairing state
-         * @description Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
+         * @description Pairing is one-directional: links are the VVMDMs this node reads, at most 8, and grant the VVMDM that reads this one, at most one; each direction is absent until paired, and they are independent, so a mutual pairing is two pairings. links are in slot order; a link's ids in the screen API are its own ids plus slot times 2^40. Owners receive each link's node id, name, address, version and waiting fingerprint, the grant's name and pairing time, and this node's identity; guests receive each link's slot, state and reason only. A link's state is its connection, held in memory: after a start it is revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. Each link keeps its own open event stream to its node as the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s, independently of the other links. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
          */
         get: operations["getPeer"];
         put?: never;
@@ -1730,7 +1750,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/link": {
+    "/api/peer/links/{nodeId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1741,8 +1761,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Stop reading the other VVMDM
-         * @description Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204.
+         * Stop reading one VVMDM
+         * @description Tells the read node through its forgetPeer, best effort, then deletes that link and nothing else, which also clears a revoked state; the other links and the grant, if any, stay. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. A node id this node does not read also returns 204.
          */
         delete: operations["unpairPeer"];
         options?: never;
@@ -1801,7 +1821,7 @@ export interface paths {
         put?: never;
         /**
          * Read the node whose code the owner typed
-         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link in the next slot with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node this node already reads, or whose target another node already reads, 409 already_paired; a ninth link 409 peer_limit, before the other node is called; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1810,7 +1830,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/address": {
+    "/api/peer/links/{nodeId}/address": {
         parameters: {
             query?: never;
             header?: never;
@@ -1819,8 +1839,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the read node's address
-         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found.
+         * Change a read node's address
+         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; a node id this node does not read, 404 not_found.
          */
         put: operations["updatePeerAddress"];
         post?: never;
@@ -1830,7 +1850,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/certificate": {
+    "/api/peer/links/{nodeId}/certificate": {
         parameters: {
             query?: never;
             header?: never;
@@ -1840,10 +1860,70 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Trust the read node's changed certificate
-         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found.
+         * Trust a read node's changed certificate
+         * @description Pins the SPKI fingerprint that getPeer shows for that link with state unreachable and reason certificate, and reconnects it at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. A node id this node does not read, 404 not_found.
          */
         post: operations["confirmPeerCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/links/{nodeId}/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a read node's media folders with this node's switches
+         * @description Answers this node's snapshot of the link's media folders, in the link's id order and in the link's own ids, with the owner's switch of each and the link's state as getPeer gives it, whether or not the link is connected. The snapshot is refreshed when the link's event stream opens and on each mediaFolders the link sends: a folder the link no longer lists leaves it, and a folder whose path or version changed is replaced with its switch on. Every request this node sends to the link carries the switched-off ids in X-VV-Peer-Excluded-Folders. A node id this node does not read, 404 not_found.
+         */
+        get: operations["listPeerLinkMediaFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/links/{nodeId}/media-folders/{folderId}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a read node's media folder on or off on this node
+         * @description Changes the owner's switch in this node's snapshot only; the link is never written and its own switches and other readers are not affected. Sends mediaFolders on /api/events to this node's viewers when the value changes, never to a peer-credential stream. A folder the snapshot of that link lacks, or a node id this node does not read, 404 not_found.
+         */
+        put: operations["setPeerLinkMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List this node's media folders to the reading node
+         * @description Called by the reading node with its credential, never by the screens; any other caller gets 404. Answers each media folder's id, path and version in id order, so the reader keeps its snapshot and switches; listMediaFolders stays refused to the credential.
+         */
+        get: operations["listPeerMediaFolders"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2209,7 +2289,7 @@ export interface paths {
         put?: never;
         /**
          * List the videos a selection fill searches for
-         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With the peer's videos or smart folders in the selection, this node's targets come first, then the peer's in their remote ids; a peer that does not answer returns 503 with peer_unreachable.
+         * @description Owner-only. Resolves videoIds plus the current member videos of smartFolderIds under the same 1–20,000 distinct-video limit as updateVideoTags and returns, in request order, the first video of each user-data key with its title and the words a fill searches with: the key's work code, or the title without one. With read VVMDMs' videos or smart folders in the selection, this node's targets come first, then each link's in slot order in their remote ids; a link that does not answer returns 503 with peer_unreachable.
          */
         post: operations["listWorkInfoFillTargets"];
         delete?: never;
@@ -3023,7 +3103,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name the paired VVMDM's videos and smart folders: the request splits by node, applies the local part first in one transaction and then the peer's part in one forwarded request, and a smart folder of either node adds the other node's videos matching its rule. The limit counts both nodes' resolved videos together. Tags go to the peer by name, created there when missing; applied counts both nodes and remote reports the peer's part, with the peer's video ids that were not changed when it failed.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic. Ids at or above 2^40 name read VVMDMs' videos and smart folders by their slot: the request splits by node, applies the local part first in one transaction and then each link's part in one forwarded request in slot order; a local smart folder adds every connected link's videos matching its rule, and a link's smart folder adds this node's. The limit counts every node's resolved videos together. Tags go to each link by name, created there when missing; applied counts every node and remote sums the links' parts, with the video ids of the links that failed.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -3202,7 +3282,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name the peer's entities: the peer's part is sent first as one request in the peer's ids, then this node's part is applied, and the applied counts are the sums. While the peer is not connected, or when it refuses, nothing changes on either node and 503 service_unavailable with peer_unreachable, or the peer's error, is returned; when the peer gives no answer, this node is unchanged, 503 peer_unreachable is returned, and the peer's write committed or did not.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events. Ids at or above 2^40 name read VVMDMs' entities by their slot: each link's part is sent first as one request in its own ids, in slot order, then this node's part is applied, and the applied counts are the sums. While a link the ids name is not connected nothing changes on any node and 503 service_unavailable with peer_unreachable is returned; when a link refuses, its error is returned and this node is unchanged, while the links before it stay changed; when a link gives no answer, this node is unchanged, 503 peer_unreachable is returned, and that link's write committed or did not.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3333,7 +3413,7 @@ export interface paths {
         };
         /**
          * List watch history, newest first
-         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While paired, both nodes' entries are merged newest first by playedAt, this node's first on equal times, and nextCursor holds each node's cursor; the peer's entry ids and video ids carry 2^40, and its videos keep the peer's progress and favorite. A peer that does not answer is left out for the rest of the listing.
+         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request. While this node reads other VVMDMs, the entries of this node and every link are merged newest first by playedAt, this node's first on equal times and then the links in slot order, and nextCursor holds each node's cursor; a link's entry ids and video ids carry its offset, and its videos keep that link's progress and favorite. A link that is not connected when the list starts, or fails, is left out for the rest of the list. A peer that does not answer is left out for the rest of the listing.
          */
         get: operations["listWatchHistory"];
         put?: never;
@@ -3357,7 +3437,7 @@ export interface paths {
         };
         /**
          * List days with watch history, newest first
-         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While paired, returns the union of both nodes' dates, leaving out a peer that does not answer.
+         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request. While this node reads other VVMDMs, returns the union of the dates of this node and every connected link, leaving out a link that does not answer.
          */
         get: operations["listWatchHistoryDates"];
         put?: never;
@@ -4082,7 +4162,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. Guests receive only group, smartFolder and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4158,10 +4238,15 @@ export interface components {
             path: string;
             /** Format: int64 */
             version: number;
+            /** @description False while the folder is switched off: its videos are left out of this node's lists, searches and counts. */
+            enabled: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        SetMediaFolderEnabledRequest: {
+            enabled: boolean;
         };
         MediaFolderUsage: {
             /** Format: int64 */
@@ -5995,11 +6080,11 @@ export interface components {
             deletedSmartFolders: number;
             remote?: components["schemas"]["RemoteSelectionResult"];
         };
-        /** @description The paired VVMDM's part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of the paired VVMDM matching a smart folder. The local part is applied first and stays applied when the peer's part fails. */
+        /** @description The read VVMDMs' part of an operation over a selection, present when the operation had a part there: ids at or above 2^40, or videos of a read VVMDM matching a smart folder. The local part is applied first, then each link's part in slot order; a part that is applied stays applied when a later one fails. */
         RemoteSelectionResult: {
-            /** @description Videos or collections changed on the peer. */
+            /** @description Videos or collections changed on the read VVMDMs, summed. */
             applied: number;
-            /** @description Requested ids of the peer that were not changed, with 2^40 added; for collections, the group and smart-folder ids. Empty on success. */
+            /** @description Requested ids of the read VVMDMs that were not changed, in their remote ids; for collections, the group and smart-folder ids. Empty on success. */
             failedVideoIds: number[];
             reason?: components["schemas"]["ErrorReason"];
         };
@@ -6322,6 +6407,7 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
@@ -6333,7 +6419,13 @@ export interface components {
             missingTagIds?: number[];
             /** @description Per-item cursors, one per item in order; only in answers to the paired VVMDM's peer credential. */
             peerItems?: components["schemas"]["PeerListItem"][];
+            emptyReason?: components["schemas"]["EmptyReason"];
         };
+        /**
+         * @description Why a page has no item, set only on an empty page whose cause the screens name: all_folders_off when media folders exist and every one is switched off. Omitted otherwise, and in answers to a request whose folder scope is explicit.
+         * @enum {string}
+         */
+        EmptyReason: "all_folders_off";
         /** @description One listed item's place for merging lists of two paired VVMDMs. */
         PeerListItem: {
             /** @description Cursor that continues the list after this item. */
@@ -6851,6 +6943,8 @@ export interface components {
             id: number;
             /** @description True for a virtual video, which has no file and is never playable. */
             virtual: boolean;
+            /** @description True on a read by id (the video, a playlist's items) while every media folder holding the video is switched off; omitted otherwise. Lists leave such a video out. */
+            folderOff?: boolean;
             linkFetch?: components["schemas"]["VirtualLinkFetch"];
             /** @description Effective title: display name when set, otherwise filename without extension; a virtual video's own title. */
             title: string;
@@ -8137,16 +8231,35 @@ export interface components {
             /** @description Release version, as getHealth reports it; shown for reference, never compared */
             version: string;
         };
-        /** @description The VVMDM this node reads */
-        PeerLink: {
-            /** @description Its host name at pairing */
-            name: string;
-            /** @description Its base URL */
-            address: string;
-            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted */
-            pinned: boolean;
-            /** @description Its version last seen, shown for reference */
+        /** @description One VVMDM this node reads, with its connection. Guests receive slot, state and reason only. */
+        PeerLinkState: {
+            /**
+             * Format: int64
+             * @description The link's slot, 1 or more and never reused; its entities' ids in the screen API are their own ids plus slot times 2^40
+             */
+            slot: number;
+            /** @description Its node id, the path parameter of the link's operations. Owner only. */
+            nodeId?: string;
+            /**
+             * @description The connection to that VVMDM
+             * @enum {string}
+             */
+            state: "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "certificate";
+            /** @description Its host name at pairing. Owner only. */
+            name?: string;
+            /** @description Its base URL. Owner only. */
+            address?: string;
+            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted. Owner only. */
+            pinned?: boolean;
+            /** @description Its version last seen, shown for reference. Owner only. */
             version?: string;
+            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
+            fingerprint?: string;
         };
         /** @description The VVMDM that reads this one */
         PeerGrant: {
@@ -8155,23 +8268,51 @@ export interface components {
             /** Format: date-time */
             pairedAt: string;
         };
-        /** @description Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity. */
+        /** @description Guests receive links in their guest shape only; owners also receive grant (while one reads this node) and node, this node's identity. */
         PeerState: {
+            /** @description The VVMDMs this node reads, in slot order; empty while it reads none */
+            links: components["schemas"]["PeerLinkState"][];
+            grant?: components["schemas"]["PeerGrant"];
+            node?: components["schemas"]["PeerNode"];
+        };
+        /** @description One media folder of the read node as it answers its reader */
+        PeerFolder: {
+            /** Format: int64 */
+            id: number;
+            path: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description One media folder of a link in this node's snapshot, with the owner's switch on this node */
+        PeerMediaFolder: {
             /**
-             * @description The connection to the VVMDM this node reads; unpaired without link
+             * Format: int64
+             * @description The folder's id on the link
+             */
+            id: number;
+            /** @description Its path on the link, as last listed */
+            path: string;
+            /** @description False while switched off on this node: the link leaves its videos out of this node's reads */
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description When the snapshot was last reconciled with the link's listing
+             */
+            refreshedAt: string;
+        };
+        PeerLinkMediaFolders: {
+            /**
+             * @description The link's connection, as getPeer answers it
              * @enum {string}
              */
-            state: "unpaired" | "connected" | "unreachable" | "revoked";
+            state: "connected" | "unreachable" | "revoked";
             /**
              * @description Present with unreachable
              * @enum {string}
              */
             reason?: "network" | "certificate";
-            link?: components["schemas"]["PeerLink"];
-            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
-            fingerprint?: string;
-            grant?: components["schemas"]["PeerGrant"];
-            node?: components["schemas"]["PeerNode"];
+            /** @description In the link's id order */
+            folders: components["schemas"]["PeerMediaFolder"][];
         };
         PairingCode: {
             code: string;
@@ -8400,6 +8541,8 @@ export interface components {
             settingKeys?: string[];
             /** @description Base64 SHA-256 of the certificate's SPKI; for certificate_untrusted and fingerprint_changed. */
             fingerprint?: string;
+            /** @description The name of the read VVMDM that caused the error; for peer_unreachable and a read VVMDM's refusal of a rename, merge or deletion of a tag, person or organization. */
+            peer?: string;
             /** @description The person's links the plugin handles, with links that differ only in scheme, host case or a trailing slash kept once, in stored order; only for person_link_ambiguous. */
             links?: string[];
             proposal?: components["schemas"]["AssistantProposal"];
@@ -8415,7 +8558,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -8519,6 +8662,10 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The node id of a link, as getPeer answers it */
+        PeerLinkNodeId: string;
+        /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+        PeerLinkFolderId: number;
         /** @description Assistant review run ID */
         AssistantReviewRunId: number;
         /** @description Assistant turn ID */
@@ -10245,6 +10392,36 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    setMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media folder ID */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The media folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMediaFolderUsage: {
         parameters: {
             query?: never;
@@ -11589,7 +11766,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -11676,7 +11856,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11703,7 +11886,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11725,6 +11911,84 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listPeerLinkMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link's folders and state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerLinkMediaFolders"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setPeerLinkMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+                /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+                folderId: components["parameters"]["PeerLinkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerMediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPeerMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node's media folders */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerFolder"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     acceptPairing: {

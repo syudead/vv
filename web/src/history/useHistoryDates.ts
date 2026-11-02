@@ -9,6 +9,8 @@ export type HistoryDatesState =
 export interface HistoryDates {
   state: HistoryDatesState;
   retry: () => void;
+  /** Reread while keeping the shown days, as when a media folder is switched. */
+  refresh: () => void;
   /** Clear after deleting all history and discard in-flight responses. */
   clear: () => void;
 }
@@ -23,38 +25,43 @@ export function useHistoryDates(watch: WatchHistoryFilter, query: string): Histo
     controller.current = null;
   }, []);
 
-  const read = useCallback(() => {
-    stop();
-    const current = new AbortController();
-    controller.current = current;
-    setState({ kind: "loading" });
-    listWatchHistoryDates({
-      ...(watch === "all" ? {} : { watch }),
-      ...(query === "" ? {} : { query }),
-      signal: current.signal,
-    }).then(
-      (dates) => {
-        if (controller.current !== current) return;
-        controller.current = null;
-        setState({ kind: "ready", days: dates.days });
-      },
-      (error: unknown) => {
-        if (isAborted(error) || controller.current !== current) return;
-        controller.current = null;
-        setState({ kind: "failed" });
-      },
-    );
-  }, [query, stop, watch]);
+  const read = useCallback(
+    (keep: boolean) => {
+      stop();
+      const current = new AbortController();
+      controller.current = current;
+      if (!keep) setState({ kind: "loading" });
+      listWatchHistoryDates({
+        ...(watch === "all" ? {} : { watch }),
+        ...(query === "" ? {} : { query }),
+        signal: current.signal,
+      }).then(
+        (dates) => {
+          if (controller.current !== current) return;
+          controller.current = null;
+          setState({ kind: "ready", days: dates.days });
+        },
+        (error: unknown) => {
+          if (isAborted(error) || controller.current !== current) return;
+          controller.current = null;
+          if (!keep) setState({ kind: "failed" });
+        },
+      );
+    },
+    [query, stop, watch],
+  );
+  const retry = useCallback(() => read(false), [read]);
+  const refresh = useCallback(() => read(true), [read]);
 
   useEffect(() => {
-    read();
+    retry();
     return stop;
-  }, [read, stop]);
+  }, [retry, stop]);
 
   const clear = useCallback(() => {
     stop();
     setState({ kind: "ready", days: [] });
   }, [stop]);
 
-  return { state, retry: read, clear };
+  return { state, retry, refresh, clear };
 }

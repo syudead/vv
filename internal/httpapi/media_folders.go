@@ -15,13 +15,8 @@ import (
 )
 
 func (s *server) ListMediaFolders(w http.ResponseWriter, r *http.Request) {
-	if s.mediaFolders == nil {
-		s.internalError(w, "Media folder storage is not configured.", nil)
-		return
-	}
-	folders, err := s.mediaFolders.ListMediaFolders(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not load media folders.", err)
+	folders, ok := s.loadMediaFolders(w, r)
+	if !ok {
 		return
 	}
 	out := make([]gen.MediaFolder, 0, len(folders))
@@ -93,6 +88,62 @@ func (s *server) DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *server) loadMediaFolders(w http.ResponseWriter, r *http.Request) ([]domain.MediaFolder, bool) {
+	if s.mediaFolders == nil {
+		s.internalError(w, "Media folder storage is not configured.", nil)
+		return nil, false
+	}
+	folders, err := s.mediaFolders.ListMediaFolders(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not load media folders.", err)
+		return nil, false
+	}
+	return folders, true
+}
+
+// readSwitchBody reads a folder switch's {"enabled": bool}; a missing enabled is refused rather than read as false,
+// which would switch the folder off.
+func (s *server) readSwitchBody(w http.ResponseWriter, r *http.Request) (enabled, ok bool) {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return false, false
+	}
+	if body.Enabled == nil {
+		s.invalidRequest(w, "enabled must be true or false.")
+		return false, false
+	}
+	return *body.Enabled, true
+}
+
+// SetMediaFolderEnabled answers not_found for a missing folder, as the contract of the switch names it.
+func (s *server) SetMediaFolderEnabled(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
+	enabled, ok := s.readSwitchBody(w, r)
+	if !ok {
+		return
+	}
+	if id < 1 {
+		s.invalidRequest(w, "Specify a valid id.")
+		return
+	}
+	if s.mediaFolders == nil {
+		s.internalError(w, "Media folder storage is not configured.", nil)
+		return
+	}
+	folder, err := s.mediaFolders.SetMediaFolderEnabled(r.Context(), id, enabled)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFound(w, "Media folder not found.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not switch the media folder.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, toAPIMediaFolder(folder), s.logger)
+}
+
 func (s *server) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId) {
 	if id < 1 {
 		s.invalidRequest(w, "Specify a valid id.")
@@ -121,7 +172,7 @@ func (s *server) GetMediaFolderUsage(w http.ResponseWriter, r *http.Request, id 
 
 func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 	return gen.MediaFolder{
-		Id: folder.ID, Path: folder.Path, Version: folder.Version,
+		Id: folder.ID, Path: folder.Path, Version: folder.Version, Enabled: folder.Enabled,
 		CreatedAt: folder.CreatedAt, UpdatedAt: folder.UpdatedAt,
 	}
 }

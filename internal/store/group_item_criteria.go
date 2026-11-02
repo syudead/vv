@@ -18,21 +18,50 @@ type groupItemEntry struct {
 	videoID, childID sql.NullInt64
 }
 
+// groupCollections names the member and value rows of a group and its child groups. The stored rows follow this
+// node's switches, so an explicit folder scope computes them under that scope in leading CTEs.
+type groupCollections struct{ ctes, members, values string }
+
+func groupItemCollections(audience domain.Audience, id int64) groupCollections {
+	a := strconv.Itoa(audienceValue(audience))
+	if _, explicit := audience.ExcludedFolders(); !explicit {
+		return groupCollections{
+			members: storedGroupMembers(audience),
+			values:  `(select * from group_values where audience = ` + a + `)`,
+		}
+	}
+	group := strconv.FormatInt(id, 10)
+	roots := `select ` + group + ` as id union select child_id from group_items where group_id = ` + group +
+		` and child_id is not null`
+	return groupCollections{
+		ctes: groupDescendantsCTE(roots, audience) + `,
+ xgm(group_id, video_id, position) as materialized (select root_id, video_id, sort_key from gdesc),
+ xgv(group_id, audience, video_count, added_at, mtime, created_at, played_at, duration_ms, size_bytes, watched, started,
+  open_video_id) as materialized (` + groupValuesSelect(`xgm`, roots, audience) + `), `,
+		members: `xgm`,
+		values:  `xgv`,
+	}
+}
+
 // Match descendant titles before paging; the favorite filter applies to each displayed item's own value.
 func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.VideoQuery) (string, []any) {
+	collections := groupItemCollections(audience, id)
 	spec := libraryListSpec(audience, query, nil)
 	spec.scope.withinGroup = id
-	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
+	if collections.ctes != "" {
+		spec.scope.groupMembers = collections.members
+	}
+	chosen, args := chosenLocationsSelect(spec.scope, spec.scope.audience, []domain.SearchExpr{spec.expr})
+	cte := `with ` + collections.ctes + `chosen as (` + chosen + `)`
 	conditions, matchArgs := matchConditions(spec)
 	where := ""
 	for _, condition := range conditions {
 		where += " and " + condition
 	}
 	args = append(args, matchArgs...)
-	a := strconv.Itoa(audienceValue(audience))
 	cte += `, matched as (select videos.id from chosen join videos on videos.id = chosen.video_id where 1=1` + where + `),
  entries as (select gi.id, gi.position, gi.child_id,
-  case when gi.content_key is not null then ` + shownVideoForKeyExpr("gi.content_key", audience) + ` end as video_id
+  case when gi.content_key is not null then ` + listedVideoForKeyExpr("gi.content_key", audience) + ` end as video_id
   from group_items gi where gi.group_id = ?),
  items as (
   select e.*, v.added_at, ` + locationMTimeExpr("loc") + ` as mtime, ` + locationCreatedAtExpr("loc") + ` as created_at, ` +
@@ -47,8 +76,8 @@ func groupItemCriteriaSQL(audience domain.Audience, id int64, query domain.Video
   select e.*, gv.added_at, gv.mtime, gv.created_at, g.title_key, gv.duration_ms, gv.size_bytes, gv.played_at,
    ` + groupFavoritedAtExpr("g") + `
   from entries e join groups g on g.id = e.child_id
-  join group_values gv on gv.group_id = g.id and gv.audience = ` + a + `
-  where exists (select 1 from group_members gm where gm.group_id = e.child_id and gm.audience = ` + a + ` and gm.video_id in (select id from matched)))`
+  join ` + collections.values + ` gv on gv.group_id = g.id
+  where exists (select 1 from ` + collections.members + ` gm where gm.group_id = e.child_id and gm.video_id in (select id from matched)))`
 	return cte, append(args, id)
 }
 

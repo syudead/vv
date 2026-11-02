@@ -7,7 +7,14 @@ import MediaFolderUsage from "./MediaFolderUsage";
 const GB = 1024 ** 3;
 
 function folder(version: number): MediaFolder {
-  return { id: 3, path: "/media/a", version, createdAt: "", updatedAt: "" };
+  return {
+    id: 3,
+    path: "/media/a",
+    version,
+    enabled: true,
+    createdAt: "",
+    updatedAt: "",
+  };
 }
 
 /** Answers each usage request with the next response and records the requested URLs. */

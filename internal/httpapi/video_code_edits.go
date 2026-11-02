@@ -43,9 +43,12 @@ func (s *server) SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request)
 			out.Rows = append(out.Rows, gen.VideoCodeEditRow{Video: items[i], Code: optionalString(row.Code)})
 		}
 	}
-	var peer gen.VideoCodeEditSummary
-	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-code-edits/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context())
+	for _, link := range sel.links {
+		var peer gen.VideoCodeEditSummary
+		if !s.peerSelectionRead(r, "/api/video-code-edits/summary", link, &peer) {
+			continue
+		}
+		join, err := s.vocabularyJoin(r.Context(), link.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the codes.", err)
 			return
@@ -59,8 +62,8 @@ func (s *server) SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// ApplyVideoCodeEdits validates every item before the store resolves the videos. Items of the peer's videos are
-// applied there after the local items, which stay when the peer's fail.
+// ApplyVideoCodeEdits validates every item before the store resolves the videos. Items of the links' videos are
+// applied on their links after the local items, which stay when a link's fail.
 func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoCodeEditRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -78,7 +81,7 @@ func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	if !s.videoCodeEditsConfigured(w) {
 		return
 	}
-	local, positions, peer := splitCodeEdits(r.Context(), items)
+	local, positions, links := splitCodeEdits(r.Context(), items)
 	var out gen.VideoCodeEditResponse
 	if len(local) > 0 {
 		if out.Applied, err = s.codeEdits.ApplyCodes(r.Context(), local); err != nil {
@@ -90,36 +93,43 @@ func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if len(peer.Items) > 0 {
+	for _, slot := range sortedSlots(links) {
+		peer := links[slot]
 		var answer gen.VideoCodeEditResponse
-		err := s.peerCall(r, http.MethodPost, "/api/video-code-edits", nil, peer, &answer)
+		err := s.peerCall(r, slot, http.MethodPost, "/api/video-code-edits", nil, peer, &answer)
 		ids := make([]int64, len(peer.Items))
 		for i, item := range peer.Items {
 			ids[i] = item.VideoId
 		}
-		out.Remote = s.remoteSelectionResult(answer.Applied, ids, err)
-		out.Applied += out.Remote.Applied
+		part := s.remoteSelectionResult(slot, answer.Applied, ids, err)
+		out.Applied += part.Applied
+		addRemoteResult(&out.Remote, part)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// splitCodeEdits separates this node's items, with each one's index in items, from the peer's request; a request of
-// the peer keeps every item here.
-func splitCodeEdits(ctx context.Context, items []domain.VideoCodeEdit) ([]domain.VideoCodeEdit, []int, gen.VideoCodeEditRequest) {
+// splitCodeEdits separates this node's items, with each one's index in items, from each link's request by slot; a
+// request of the peer keeps every item here.
+func splitCodeEdits(
+	ctx context.Context, items []domain.VideoCodeEdit,
+) ([]domain.VideoCodeEdit, []int, map[int64]gen.VideoCodeEditRequest) {
 	var local []domain.VideoCodeEdit
 	var positions []int
-	peer := gen.VideoCodeEditRequest{}
+	links := map[int64]gen.VideoCodeEditRequest{}
 	for i, item := range items {
 		if !domain.IsRemoteID(item.VideoID) || isPeerRequest(ctx) {
 			local, positions = append(local, item), append(positions, i)
 			continue
 		}
+		slot := domain.RemoteSlot(item.VideoID)
+		peer := links[slot]
 		peer.Items = append(peer.Items, gen.VideoCodeEditItem{
 			VideoId: domain.FromRemoteID(item.VideoID), ContentVersion: item.ContentVersion, Code: item.Code,
 		})
+		links[slot] = peer
 	}
-	return local, positions, peer
+	return local, positions, links
 }
 
 // writeVideoCodeEditError names the failing item in field; every error leaves the codes unchanged.

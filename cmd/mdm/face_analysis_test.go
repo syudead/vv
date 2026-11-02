@@ -221,7 +221,7 @@ func performersOf(t *testing.T, db *store.DB, keys ...string) map[string][]int64
 func provisionalPeople(t *testing.T, db *store.DB) []int64 {
 	t.Helper()
 	provisional := true
-	page, err := db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+	page, err := db.Credits().List(context.Background(), domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
 	if err != nil {
 		t.Fatal(err)
 	}

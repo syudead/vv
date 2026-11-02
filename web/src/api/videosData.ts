@@ -1,5 +1,5 @@
 import type { UiText } from "../i18n";
-import type { LibraryGroup, LibraryItem, TagRef, Video } from "./client";
+import type { EmptyReason, LibraryGroup, LibraryItem, TagRef, Video } from "./client";
 import { itemKey, itemVideos, videoItem } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
@@ -55,6 +55,8 @@ export interface VideosData {
   inconsistent: boolean;
   /** Missing requested tag IDs; folder listings never send tags and return none. */
   missingTagIds: number[];
+  /** Why the last first page was empty, when the server names a cause. */
+  emptyReason?: EmptyReason;
 }
 
 export type VideosDataAction =
@@ -80,6 +82,7 @@ export type VideosDataAction =
         total: number;
         nextCursor?: string;
         missingTagIds?: number[];
+        emptyReason?: EmptyReason;
       };
       replace: boolean;
     };
@@ -97,6 +100,7 @@ export function videosDataReducer(
         hasMore: true,
         inconsistent: false,
         missingTagIds: [],
+        emptyReason: undefined,
       };
     case "stop":
       return state.hasMore ? { ...state, hasMore: false } : state;
@@ -186,6 +190,7 @@ export function videosDataReducer(
           hasMore: action.page.nextCursor !== undefined,
           inconsistent: false,
           missingTagIds,
+          emptyReason: action.page.emptyReason,
         };
       }
       const items = appendUnique(state.items, action.page.items);
@@ -200,6 +205,7 @@ export function videosDataReducer(
         hasMore: action.page.nextCursor !== undefined,
         inconsistent: false,
         missingTagIds,
+        emptyReason: undefined,
       };
     }
   }
@@ -216,6 +222,7 @@ export interface VideosState {
   notFound: boolean;
   /** Callers report missing tags, refresh their list, and remove these IDs from the URL. */
   missingTagIds: number[];
+  emptyReason?: EmptyReason;
   loadMore: () => void;
   retryLoadMore: () => void;
   reload: () => void;

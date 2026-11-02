@@ -1,41 +1,32 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { once } from "node:events";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  type APIRequestContext,
-  expect,
-  type Page,
-  request as playwrightRequest,
-  test,
-} from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
-import { nodeEnv, nodeURL, secondNode, serverBinary } from "./nodes";
-import { ownerAccount } from "./owner-account";
+import { nodeURL, secondNode } from "./nodes";
+import {
+  indexFolder,
+  type MediaFolder,
+  mutationHeaders,
+  type PeerLinkBody,
+  remoteOffset,
+  removeFolders,
+  required,
+  type RunningNode,
+  setUpOwner,
+  startNode,
+  unpairAll,
+  type Video,
+} from "./peer-nodes";
 
 // Pairs the main node with a second real server from the Settings page, then reads, plays and loses the
 // second node's videos through the main node, as the owner sees them in the browser.
 
-interface Video {
-  id: number;
-  title: string;
-  probeState: string;
-}
-
-interface MediaFolder {
-  id: number;
-  version: number;
-}
-
-const origin = "http://127.0.0.1:15173";
-const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 // media-fixtures.mjs の generatePeerFixtures と同じ題名。
 const query = "pairing";
 const localTitle = "pairing-local";
 const remoteTitle = "pairing-remote";
-const remoteOffset = 2 ** 40;
 // The person face recognition found in the second node's video, and the main node's person its face moves to.
 const faceName = "pairing-face";
 const targetName = "pairing-target";
@@ -45,11 +36,15 @@ const faceCrop = Buffer.from(
   "base64",
 );
 
-let second: ChildProcess | undefined;
+let second: RunningNode | undefined;
 let secondRequest: APIRequestContext | undefined;
 let localFolder: MediaFolder | undefined;
 let peerName = "";
 let localVideo: Video | undefined;
+// The second node's video and person with its own ids, and as this node reads them once the link has a slot.
+let remoteOwnVideo: Video | undefined;
+let remoteOwnPerson: number | undefined;
+let linkOffset = 0;
 let remoteVideo: Video | undefined;
 let remoteFacePerson: number | undefined;
 
@@ -59,90 +54,8 @@ function mediaRoot(): string {
   return root;
 }
 
-function required<T>(value: T | undefined, name: string): T {
-  if (value === undefined) throw new Error(`${name} is not ready`);
-  return value;
-}
-
-async function startSecondNode(): Promise<APIRequestContext> {
-  await rm(secondNode.dataDir, { recursive: true, force: true });
-  const child = spawn(serverBinary, [], {
-    env: { ...process.env, ...nodeEnv(secondNode) },
-    stdio: ["ignore", "ignore", "inherit"],
-  });
-  second = child;
-  const request = await playwrightRequest.newContext({ baseURL: nodeURL(secondNode) });
-  await expect
-    .poll(
-      async () => {
-        try {
-          return (await request.get("/api/health")).status();
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 60_000 },
-    )
-    .toBe(200);
-  return request;
-}
-
-async function stopSecondNode() {
-  const child = second;
-  second = undefined;
-  if (child === undefined || child.exitCode !== null) return;
-  const exited = once(child, "exit");
-  child.kill("SIGTERM");
-  await exited;
-}
-
-/** Adds the folder on the node behind request, scans it and returns its videos once probed. */
-async function indexFolder(
-  request: APIRequestContext,
-  folderPath: string,
-  title: string,
-): Promise<{ folder: MediaFolder; video: Video }> {
-  const created = await request.post("/api/media-folders", {
-    headers: { "Content-Type": "application/json" },
-    data: { path: folderPath },
-  });
-  expect(created.status()).toBe(201);
-  const folder = (await created.json()) as MediaFolder;
-  const scan = await request.post("/api/scans", { data: {} });
-  expect(scan.status()).toBe(202);
-  const scanId = ((await scan.json()) as { id: number }).id;
-  await expect
-    .poll(
-      async () => {
-        const response = await request.get("/api/scans/current");
-        const current = (await response.json()) as { id: number; state: string };
-        return current.id === scanId ? current.state : "running";
-      },
-      { timeout: 60_000 },
-    )
-    .toBe("done");
-  let found: Video | undefined;
-  await expect
-    .poll(
-      async () => {
-        const response = await request.get(
-          `/api/videos?limit=50&query=${encodeURIComponent(title)}`,
-        );
-        const { items } = (await response.json()) as { items: Video[] };
-        found = items.find((item) => item.title === title);
-        return found?.probeState;
-      },
-      { timeout: 60_000 },
-    )
-    .toBe("done");
-  return { folder, video: required(found, title) };
-}
-
 async function setUpSecondNode(request: APIRequestContext): Promise<Video> {
-  const setup = await request.post("/api/auth/setup", { data: ownerAccount });
-  expect(setup.status()).toBe(200);
-  const onboarding = await request.put("/api/onboarding", { data: { step: "done" } });
-  expect(onboarding.status()).toBe(200);
+  await setUpOwner(request);
   const { video } = await indexFolder(
     request,
     path.join(mediaRoot(), "remote"),
@@ -173,22 +86,22 @@ async function findPerson(
 
 /**
  * Stores on the second node one appearance of a new performer faceName in its video, seen from 0:10 to 0:14, as a
- * finished face analysis would; the e2e servers have no face runtime to find it. Returns the person's id there.
+ * finished face analysis would; the e2e servers have no face runtime to find it. video has the second node's own id;
+ * returns the person's id there.
  */
 async function seedRemoteFace(request: APIRequestContext, video: Video): Promise<number> {
   const personId = await createPerson(request, faceName);
   // The People tab lists credited people, as face analysis credits the person it links.
-  const credited = await request.put(
-    `/api/videos/${String(video.id - remoteOffset)}/work-info`,
-    { data: { people: [{ role: "performer", person: { id: personId } }] } },
-  );
+  const credited = await request.put(`/api/videos/${String(video.id)}/work-info`, {
+    data: { people: [{ role: "performer", person: { id: personId } }] },
+  });
   expect(credited.ok()).toBe(true);
   const db = new DatabaseSync(path.join(secondNode.dataDir, "mdm.db"));
   try {
     db.exec("pragma busy_timeout = 5000");
     const row = db
       .prepare("select content_key from videos where id = ?")
-      .get(video.id - remoteOffset) as { content_key: string } | undefined;
+      .get(video.id) as { content_key: string } | undefined;
     const contentKey = required(row, "content key").content_key;
     db.prepare(
       `insert into face_results (content_key, state, recognizer, updated_at)
@@ -210,7 +123,7 @@ function card(page: Page, video: Video) {
 
 /** The second node's own id of a video this node reads in the offset form. */
 function peerId(video: Video): string {
-  return String(video.id - remoteOffset);
+  return String(video.id - linkOffset);
 }
 
 async function peerHistoryCount(request: APIRequestContext): Promise<number> {
@@ -274,13 +187,11 @@ test.describe.serial("paired library", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     // A retry finds the main node still paired with the previous run's second node.
-    expect(
-      (await request.delete("/api/peer/link", { headers: mutationHeaders })).status(),
-    ).toBe(204);
-    secondRequest = await startSecondNode();
-    remoteVideo = { ...(await setUpSecondNode(secondRequest)) };
-    remoteVideo.id += remoteOffset;
-    remoteFacePerson = remoteOffset + (await seedRemoteFace(secondRequest, remoteVideo));
+    await unpairAll(request);
+    second = await startNode(secondNode);
+    secondRequest = second.request;
+    remoteOwnVideo = await setUpSecondNode(secondRequest);
+    remoteOwnPerson = await seedRemoteFace(secondRequest, remoteOwnVideo);
 
     const local = await indexFolder(request, path.join(mediaRoot(), "local"), localTitle);
     localFolder = local.folder;
@@ -288,17 +199,10 @@ test.describe.serial("paired library", () => {
   });
 
   test.afterAll(async ({ request }) => {
-    await stopSecondNode();
+    await second?.stop();
     await secondRequest?.dispose();
-    const unpaired = await request.delete("/api/peer/link", { headers: mutationHeaders });
-    expect(unpaired.status()).toBe(204);
-    if (localFolder !== undefined) {
-      const removed = await request.delete(
-        `/api/media-folders/${String(localFolder.id)}?version=${String(localFolder.version)}`,
-        { headers: mutationHeaders },
-      );
-      expect(removed.status()).toBe(204);
-    }
+    await unpairAll(request);
+    if (localFolder !== undefined) await removeFolders(request, [localFolder]);
     await rm(secondNode.dataDir, { recursive: true, force: true });
   });
 
@@ -320,21 +224,24 @@ test.describe.serial("paired library", () => {
     });
 
     const own = (await (await request.get("/api/peer")).json()) as {
-      state: string;
-      link: { name: string };
+      links: PeerLinkBody[];
       grant?: unknown;
     };
-    expect(own.state).toBe("connected");
+    expect(own.links.map((link) => link.state)).toEqual(["connected"]);
     expect(own.grant).toBeUndefined();
-    peerName = own.link.name;
+    const link = required(own.links[0], "link");
+    peerName = link.name;
+    // Slots are never reused, so a retry or an earlier pairing spec moves this link past slot 1.
+    linkOffset = link.slot * remoteOffset;
+    const ownVideo = required(remoteOwnVideo, "remote video");
+    remoteVideo = { ...ownVideo, id: ownVideo.id + linkOffset };
+    remoteFacePerson = linkOffset + required(remoteOwnPerson, "remote face person");
     // The node that showed the code reads nothing: it holds the grant and no link, and never connects here.
     const other = (await (await peer.get("/api/peer")).json()) as {
-      state: string;
-      link?: unknown;
+      links: unknown[];
       grant: { name: string };
     };
-    expect(other.state).toBe("unpaired");
-    expect(other.link).toBeUndefined();
+    expect(other.links).toEqual([]);
     expect(other.grant.name).toBe(
       ((await (await request.get("/api/peer")).json()) as { node: { name: string } }).node
         .name,
@@ -574,7 +481,7 @@ test.describe.serial("paired library", () => {
     await page.goto(`/?q=${encodeURIComponent(query)}`);
     await expect(card(page, remote)).toBeVisible();
 
-    await stopSecondNode();
+    await required(second, "second node").stop();
     const notice = page.getByRole("alert").filter({ hasText: `Can't reach ${peerName}` });
     await expect(notice).toBeVisible({ timeout: 15_000 });
     await expect(notice.getByRole("link", { name: "Open Pairing" })).toBeVisible();

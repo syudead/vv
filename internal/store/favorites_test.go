@@ -4,11 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io/fs"
 	"testing"
 	"time"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -360,23 +357,8 @@ func TestFavoritesSurviveIndexChanges(t *testing.T) {
 }
 
 func TestFavoritesMigration(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 28)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 28); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.sql.Exec(`insert into videos(content_key, probe_state, thumbnail_state, preview_state,
 		seek_thumbnail_state) values ('key-a', 'done', 'done', 'done', 'done')`); err != nil {
 		t.Fatal(err)

@@ -10,7 +10,7 @@ import (
 )
 
 // peerClip is the peer's video the screen shows; the runner forwards its read as the screens do.
-var peerClip = domain.ToRemoteID(42)
+var peerClip = domain.RemoteID(1, 42)
 
 // newPeerVideoFixture answers getVideo for the peer's video and offers reprobeVideo, which the screens do not offer
 // for it.
@@ -123,7 +123,7 @@ func TestWriteCallOnAPeerVideoTitleTwoSelectedVideosShareAsksWhichOne(t *testing
 	f := newPeerVideoFixture(t,
 		calls(toolCall("updateVideoTags__add", `{"target":{"kind":"named","names":["Peer clip"]},"tagNames":["ライブ"]}`)),
 		text("どちらですか。"))
-	other := domain.ToRemoteID(43)
+	other := domain.RemoteID(1, 43)
 
 	turn := f.runIn(t, 0, "Peer clip にライブタグを付けて",
 		domain.AssistantTurnContext{Route: domain.AssistantRouteLibrary, SelectedVideoIDs: []int64{peerClip, other}})

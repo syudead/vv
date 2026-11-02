@@ -257,15 +257,20 @@ export function RowIconButton({
   );
 }
 
+/** describedBy names why the trigger is disabled; className places it in the row's layout. */
 export function RowMoreMenu({
   buttonRef,
   label,
   disabled,
+  describedBy,
+  className,
   children,
 }: {
   buttonRef: Ref<HTMLButtonElement>;
   label: string;
   disabled: boolean;
+  describedBy?: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
@@ -278,7 +283,9 @@ export function RowMoreMenu({
               variant="ghost"
               size="icon-sm"
               aria-label={label}
+              aria-describedby={describedBy}
               disabled={disabled}
+              className={className}
             >
               <Ellipsis aria-hidden="true" />
             </Button>

@@ -183,7 +183,7 @@ func TestTagKindLifecycleKeepsTags(t *testing.T) {
 	if err := tags.DeleteTagKind(ctx, kind.ID); !errors.Is(err, domain.ErrTagKindNotFound) {
 		t.Fatalf("消した種類をもう一度消す error = %v", err)
 	}
-	page, err := tags.ListTags(ctx, domain.TagListQuery{})
+	page, err := tags.ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestTagReadsCarryKind(t *testing.T) {
 	videoIDs := []int64{ids[fixturePath("/media/a.mp4")]}
 	genre := domain.TagKindRef{ID: 1, Name: "Genre", CardFirst: true}
 
-	page, err := tags.ListTags(ctx, domain.TagListQuery{Search: "犬", Limit: 10})
+	page, err := tags.ListTags(ctx, owner, domain.TagListQuery{Search: "犬", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

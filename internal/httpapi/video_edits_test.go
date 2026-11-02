@@ -193,7 +193,7 @@ func TestApplyVideoEditsRefusesAMergeOfThePeersPerson(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/video-edits", strings.NewReader(jsonBody(map[string]any{
-		"videoIds": []int64{7}, "merges": []map[string]any{{"into": 9, "sourceIds": []int64{3, domain.PeerIDOffset + 3}}},
+		"videoIds": []int64{7}, "merges": []map[string]any{{"into": 9, "sourceIds": []int64{3, domain.RemoteID(1, 3)}}},
 	})))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

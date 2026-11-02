@@ -4,14 +4,15 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// MergedRelatedVideos is RelatedVideos over both nodes for a video of this node: the peer scores its own
-// videos against this video's clues, and the two lists merge in the related order. A peer that fails is
-// skipped for the rest of the list; a nil peer is skipped from the start.
-func (c *Catalog) MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error) {
+// MergedRelatedVideos is RelatedVideos over this node and peers, in slot order, for a video of this node: each
+// link scores its own videos against this video's clues, and the lists merge in the related order. A link that
+// fails is skipped for the rest of the list, and one missing from peers on the first page never joins it.
+func (c *Catalog) MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error) {
 	first := page.Cursor.Start()
 	ranking, err := c.rankRelated(ctx, audience, video, page.Context(), first)
 	if err != nil {
@@ -26,7 +27,7 @@ func (c *Catalog) MergedRelatedVideos(ctx context.Context, audience domain.Audie
 		own := domain.CluesOf(*ranking.self, names)
 		clues = &own
 	}
-	related, err := c.mergeRelated(ctx, audience, ranking.ranked, clues, nil, page, peer)
+	related, err := c.mergeRelated(ctx, audience, ranking.ranked, clues, page, peers)
 	if err != nil || !first {
 		return related, err
 	}
@@ -39,15 +40,15 @@ func (c *Catalog) MergedRelatedVideos(ctx context.Context, audience domain.Audie
 	return related, nil
 }
 
-// RemoteRelatedVideos is the related list of a peer video over both nodes: this node scores its videos
-// against the video's clues and the peer its own, except the peer ids in exclude. The caller reads the
-// video's group from the peer.
-func (c *Catalog) RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error) {
+// RemoteRelatedVideos is the related list of a link's video over this node and peers: this node scores its
+// videos against the video's clues and each link its own; the video's link leaves out the video and its group.
+// The caller reads the video's group from that link.
+func (c *Catalog) RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error) {
 	ranked, err := c.rankByClues(ctx, audience, clues, 0, nil)
 	if err != nil {
 		return domain.MergedRelated{}, err
 	}
-	return c.mergeRelated(ctx, audience, ranked, &clues, exclude, page, peer)
+	return c.mergeRelated(ctx, audience, ranked, &clues, page, peers)
 }
 
 // PeerRelated is one page of this node's videos, except exclude, scored against the clues the peer sent.
@@ -138,35 +139,49 @@ func (c *Catalog) clueCandidates(ctx context.Context, audience domain.Audience, 
 	return candidates, nil, err
 }
 
-// mergeRelated pages this node's ranked list and the peer's after the cursor and merges them.
-func (c *Catalog) mergeRelated(ctx context.Context, audience domain.Audience, ranked []domain.RankedRelated, clues *domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error) {
+// mergeRelated pages this node's ranked list and each link's after the cursor and merges them.
+func (c *Catalog) mergeRelated(ctx context.Context, audience domain.Audience, ranked []domain.RankedRelated, clues *domain.RelatedClues, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error) {
 	at := page.Cursor
-	var local domain.RelatedSidePage
+	local := domain.RelatedSidePage{}
 	if !at.Local.Done {
 		shown, next := domain.PageRelated(ranked, at.Local.After, page.Limit)
 		local = domain.RelatedSidePage{Items: shown, More: next != nil}
 	}
-	var remote domain.RelatedSidePage
-	if !at.Peer.Done && (peer == nil || clues == nil) {
-		at.Peer.Done = true
+	sides := c.linkRelated(ctx, clues, at, peers, page.Limit)
+	if err := ctx.Err(); err != nil {
+		return domain.MergedRelated{}, err
 	}
-	if !at.Peer.Done {
-		var err error
-		remote, err = peer.Related(ctx, *clues, exclude, at.Peer.After, page.Limit)
-		if err != nil {
-			if ctx.Err() != nil {
-				return domain.MergedRelated{}, ctx.Err()
-			}
-			// An unpaired node lands here on every request, so this stays out of the default log.
-			c.logger.Debug("the related videos of the other VVMDM are skipped", slog.Any("error", err))
-			at.Peer.Done, remote = true, domain.RelatedSidePage{}
-		}
-	}
-	ids, next := domain.MergeRelated(local, remote, at, page.Limit)
+	ids, next := domain.MergeRelated(append(sides, local), at, page.Limit)
 	localIDs := slices.DeleteFunc(slices.Clone(ids), domain.IsRemoteID)
 	videos, err := c.index.VideosByIDs(ctx, audience, localIDs)
 	if err != nil {
 		return domain.MergedRelated{}, err
 	}
 	return domain.MergedRelated{IDs: ids, Local: videos, NextCursor: next}, nil
+}
+
+// linkRelated reads each link's next page concurrently, so one slow link does not delay the others. A link that
+// is done, or fails, gives an empty page, which ends its part of the list; without clues no link is asked.
+func (c *Catalog) linkRelated(ctx context.Context, clues *domain.RelatedClues, at domain.MergedRelatedCursor, peers []domain.RelatedPeer, limit int) []domain.RelatedSidePage {
+	sides := make([]domain.RelatedSidePage, len(peers))
+	var wg sync.WaitGroup
+	for i, peer := range peers {
+		slot := peer.Slot()
+		sides[i] = domain.RelatedSidePage{Slot: slot}
+		side := at.Link(slot)
+		if side.Done || clues == nil {
+			continue
+		}
+		wg.Go(func() {
+			page, err := peer.Related(ctx, *clues, side.After, limit)
+			if err != nil {
+				c.logger.Info("the related videos leave out a linked VVMDM", slog.Int64("slot", slot), slog.Any("error", err))
+				return
+			}
+			page.Slot = slot
+			sides[i] = page
+		})
+	}
+	wg.Wait()
+	return sides
 }

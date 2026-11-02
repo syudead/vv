@@ -75,8 +75,8 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 				where ti.content_key = videos.content_key and videos.content_key <> ''),
 			`+buildColumns+`
 		from video_locations l join videos on videos.id = l.video_id
-		where `+inFolder+` and `+visibleLocationCondition("l", audience)+
-		` and `+shownVideoCondition("videos", audience),
+		where `+inFolder+` and `+listedLocationCondition("l", audience)+
+		` and `+listedShownVideoCondition("videos", audience),
 		args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the folder contents: %w", err)
@@ -114,8 +114,8 @@ func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.A
 	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
 	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
 		join videos on videos.id = l.video_id
-		where `+inFolder+` and `+visibleLocationCondition("l", audience)+
-		` and `+shownVideoCondition("videos", audience)+`)`,
+		where `+inFolder+` and `+listedLocationCondition("l", audience)+
+		` and `+listedShownVideoCondition("videos", audience)+`)`,
 		args...).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("cannot check whether the folder exists: %w", err)

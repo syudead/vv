@@ -452,12 +452,13 @@ const errorReasons = {
   invalid_code:
     "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
   already_paired:
-    "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing first.",
+    "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+  peer_limit: "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
   peer_unreachable: "Couldn't reach the other VVMDM",
   certificate_untrusted: "The other VVMDM uses a certificate this one can't verify.",
   fingerprint_changed: "The certificate changed again. Compare the new fingerprint.",
   mixed_nodes:
-    "Videos and groups of both VVMDMs can't be organized together. Select those of one VVMDM.",
+    "Videos and groups of different VVMDMs can't be organized together. Select those of one VVMDM.",
   tag_name_taken: ({ tagName }) =>
     tagName === undefined
       ? "A tag on the other VVMDM already has that name."
@@ -1031,9 +1032,11 @@ export const en = {
       // `name` is the peer's host name, which guests do not receive.
       remote: {
         on: (name: string | undefined) =>
-          name === undefined ? "On the other VVMDM" : `On ${name}`,
-        name: (name: string | undefined) => name ?? "Other VVMDM",
+          name === undefined ? "On another VVMDM" : `On ${name}`,
+        name: (name: string | undefined) => name ?? "Another VVMDM",
       },
+      folderOff: (name: string | undefined) =>
+        name === undefined ? "Folder off" : `Folder off on ${name}`,
     },
   },
   library: {
@@ -1045,6 +1048,11 @@ export const en = {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
       setUp: "Set up library",
+    },
+    allFoldersOff: {
+      title: "Every media folder is off",
+      description: "Switch a folder on in Settings to see its videos.",
+      open: "Open Media folders",
     },
     newVirtualVideo: {
       action: "New virtual video",
@@ -1456,8 +1464,9 @@ export const en = {
       description: "No videos or subfolders were found. Put files there, then scan.",
     },
     noMediaFolders: {
-      title: "No media folders yet",
-      description: "Add a media folder in Settings and scan to see it here.",
+      title: "No folders to show",
+      description:
+        "Add a media folder in Settings, or switch one on, and scan to see it here.",
       openSettings: "Open Settings",
     },
     notFound: {
@@ -2354,6 +2363,10 @@ export const en = {
     missing: {
       title: "This video can't be opened",
       description: "It was removed from the library, or its file is gone.",
+    },
+    folderOff: {
+      band: "Not shown in the library",
+      detail: "Its media folder is switched off, so it isn't listed. Playing it is fine.",
     },
     virtual: {
       band: "Virtual video",
@@ -3958,6 +3971,8 @@ export const en = {
       certificateBody: "Confirm it in Pairing to reconnect.",
       revokedTitle: (name: string) => `Access removed by ${name}`,
       revokedBody: "It no longer shares its library with this VVMDM.",
+      severalTitle: (count: number) => `${String(count)} VVMDMs aren't connected`,
+      severalBody: "Their videos, groups and smart folders are hidden until they answer.",
       guestTitle: "The other library isn't available right now",
       guestBody: "Some videos aren't shown until it is.",
       openPairing: "Open Pairing",
@@ -5174,7 +5189,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” on the Scan page. Auto-import doesn't start one.",
+        "Folders on the server where VVMDM looks for videos. Switch a folder off to leave its videos out of this library; scanning and auto-import go on. After adding or changing a folder, start a scan with “Scan library” on the Scan page.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       rowsLockedWhileScanning:
         "You can't change or force rescan media folders while a scan is running",
@@ -5186,10 +5201,9 @@ export const en = {
       removing: "Removing…",
       changing: "Changing…",
       current: "Current location",
+      actions: (path: string) => `Actions for ${path}`,
       change: "Change folder",
-      changeShort: "Change",
       remove: "Remove folder",
-      removeShort: "Remove",
       add: "Add folder",
       addBlocked: "You can add a folder once the current folders have loaded",
       changedElsewhere:
@@ -5197,6 +5211,22 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+      switchLabel: (path: string) => `Show videos from ${path}`,
+      on: "On",
+      off: "Off",
+      switchFailed: (reason: string) => `Couldn't switch the folder: ${reason}`,
+      link: {
+        description: (name: string) =>
+          `Its media folders, as it lists them. A switch here changes only what this VVMDM shows; ${name} is unchanged.`,
+        list: (name: string) => `Media folders on ${name}`,
+        loading: (name: string) => `Loading the folders on ${name}`,
+        loadFailed: (name: string, reason: string) =>
+          `Couldn't load the folders on ${name}: ${reason}`,
+        empty: (name: string) => `No media folders on ${name}`,
+        emptyHint: "Folders it adds show here while it is connected.",
+        switchLabel: (path: string, name: string) =>
+          `Show videos from ${path} on ${name}`,
+      },
       usage: {
         loading: "Checking disk space",
         free: (size: string) => `${size} free`,
@@ -5205,7 +5235,6 @@ export const en = {
         unavailable: "Disk space unavailable",
       },
       forceRescan: "Force rescan folder",
-      forceRescanShort: "Force rescan",
       rescanDialog: {
         title: "Force rescan this folder?",
         description:
@@ -5293,6 +5322,7 @@ export const en = {
         heading: "Read another VVMDM",
         description:
           "Enter the pairing code another VVMDM on your local network shows to browse, play and organize its library from this one. Only this VVMDM connects to it, so it needs no address of this one.",
+        limit: "This VVMDM reads 8 VVMDMs, the most it can. Unpair one to read another.",
       },
       readers: {
         heading: "VVMDMs that read this one",
@@ -5335,16 +5365,16 @@ export const en = {
         invalidCode:
           "The other VVMDM didn't accept this code. Codes last 10 minutes; show a new one there and try again.",
         alreadyPaired:
-          "This VVMDM already reads one, or the other VVMDM is already read by one. Remove that pairing on its Pairing page first.",
+          "This VVMDM already reads the VVMDM at this address, or another VVMDM already reads it. Remove that pairing on its Pairing page first.",
+        peerLimit:
+          "This VVMDM already reads 8 VVMDMs, the most it can. Unpair one first.",
         unreachable: (message: string) => `Couldn't complete the pairing: ${message}`,
         failed: (reason: string) => `Couldn't complete the pairing: ${reason}`,
         untrustedTitle: "Certificate not trusted",
         trust: "Trust and pair",
       },
       link: {
-        description:
-          "Its videos, groups and smart folders show in this library while it is connected.",
-        name: "Name",
+        description: "Its videos, groups and smart folders show in this library.",
         version: "Version",
         address: "Address",
         addressDescription:
@@ -5361,17 +5391,17 @@ export const en = {
         remove: "Remove pairing",
         removeFailed: (reason: string) => `Couldn't remove the pairing: ${reason}`,
       },
-      state: {
+      badge: {
         connected: "Connected",
-        network: "Can't reach it",
+        unreachable: "Not connected",
+        revoked: "Access removed",
+      },
+      state: {
         networkDetail:
           "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.",
-        certificate: "Certificate changed",
         certificateDetail:
           "Its certificate is not the one you trusted. Confirm the new one below to reconnect.",
-        untrusted: "Can't verify its certificate",
         untrustedDetail: "Confirm its certificate below to connect.",
-        revoked: "Access removed by the other side",
         revokedDetail:
           "It no longer shares its library with this VVMDM. Remove the pairing, then enter a new code from it to read it again.",
       },
@@ -5456,6 +5486,8 @@ export const en = {
     code: errorCodes,
     reason: errorReasons,
     requestFailed: (status: number) => `Request failed (HTTP ${String(status)})`,
+    peerUnreachable: (name: string) => `Couldn't reach ${name}`,
+    onPeer: (name: string, message: string) => `On ${name}: ${message}`,
     unreachable: "Couldn't reach the server. Check that VVMDM is running and try again.",
     unexpected: "Something went wrong.",
     probe: probeErrors,

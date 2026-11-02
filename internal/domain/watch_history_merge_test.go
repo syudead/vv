@@ -29,7 +29,7 @@ func TestMergeWatchHistoryPagesListsBothNodesNewestFirst(t *testing.T) {
 		{label: "peer has none", local: []testRow{{"L1", value("1")}}, want: []string{"L1"}},
 	} {
 		for _, limit := range []int{1, 2, 20} {
-			got := readAllWith(t, tc.label, MergeWatchHistoryPages[string], tc.local, tc.peer, limit)
+			got := readAllWith(t, tc.label, MergeWatchHistoryPages[string], [][]testRow{tc.local, tc.peer}, limit)
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("%s, limit %d: %v, want %v", tc.label, limit, got, tc.want)
 			}

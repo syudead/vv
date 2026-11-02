@@ -209,7 +209,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale, videoCount int, 
 		}
 	}
 
-	listedPage, err := tags.ListTags(ctx, domain.TagListQuery{})
+	listedPage, err := tags.ListTags(ctx, domain.AudienceOwner, domain.TagListQuery{})
 	if err != nil {
 		return seedSummary{}, err
 	}

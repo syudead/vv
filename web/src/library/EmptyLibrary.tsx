@@ -1,4 +1,5 @@
-import { FolderOpen } from "lucide-react";
+import { FolderMinus, FolderOpen } from "lucide-react";
+import { Link } from "react-router";
 
 import { t } from "../i18n";
 import { useStartSetup } from "../onboarding/useStartSetup";
@@ -16,6 +17,23 @@ export default function EmptyLibrary() {
       action={
         <Button size="sm" disabled={setup.pending} onClick={() => void setup.start()}>
           {t.library.empty.setUp}
+        </Button>
+      }
+    />
+  );
+}
+
+/** Every media folder is switched off; the switches are on the Library settings page. */
+export function AllFoldersOff() {
+  const text = t.library.allFoldersOff;
+  return (
+    <EmptyState
+      icon={FolderMinus}
+      title={text.title}
+      description={text.description}
+      action={
+        <Button asChild size="sm">
+          <Link to="/settings/library">{text.open}</Link>
         </Button>
       }
     />

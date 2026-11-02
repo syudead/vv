@@ -33,6 +33,10 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	audience := audienceFrom(r.Context())
 	summaries := make([]domain.FolderSummary, 0, len(roots))
 	for _, root := range roots {
+		// A switched-off root leaves the page instead of staying as an empty card.
+		if !audience.ListsFolder(root) {
+			continue
+		}
 		locations, err := s.folders.FolderLocations(r.Context(), audience, root.Path)
 		if err != nil {
 			s.folderError(w, r, "Could not load folders.", err)

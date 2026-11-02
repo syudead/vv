@@ -72,6 +72,7 @@ describe("App", () => {
       const url = String(input);
       if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/peer") return Promise.resolve(json({ links: [] }));
       if (url.startsWith("/api/activity?")) {
         return Promise.resolve(
           json({
@@ -216,7 +217,9 @@ describe("App", () => {
     installFakeEventSource();
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
-        String(input) === "/api/auth/session" ? json({ state: "guest" }) : json({}),
+        String(input) === "/api/auth/session"
+          ? json({ state: "guest" })
+          : json(String(input) === "/api/peer" ? { links: [] } : {}),
       ),
     );
     render(<App />);

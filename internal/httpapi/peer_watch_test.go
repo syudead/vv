@@ -114,7 +114,7 @@ func TestFavoritesOfBothNodesAreAppliedOnEach(t *testing.T) {
 		return video.Favorite != nil && *video.Favorite
 	}
 
-	rec := b.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fb.ids["a"], domain.ToRemoteID(fa.ids["a"])}))
+	rec := b.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fb.ids["a"], domain.RemoteID(1, fa.ids["a"])}))
 	if rec.Code != http.StatusOK || decode[gen.FavoritesResponse](t, rec).AppliedVideos != 2 {
 		t.Fatalf("favorites: status = %d: %s, want 2 applied", rec.Code, rec.Body)
 	}
@@ -123,7 +123,7 @@ func TestFavoritesOfBothNodesAreAppliedOnEach(t *testing.T) {
 	}
 
 	stopA()
-	down := b.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fb.ids["b"], domain.ToRemoteID(fa.ids["b"])}))
+	down := b.owner(http.MethodPut, "/api/favorites", favoritesBody(true, []int64{fb.ids["b"], domain.RemoteID(1, fa.ids["b"])}))
 	assertErrorBody(t, "favorites with the peer down", down.Code, down.Body.Bytes(), wantError{
 		status: http.StatusServiceUnavailable, code: gen.ErrorCodeServiceUnavailable, reason: gen.ErrorReasonPeerUnreachable,
 	})
@@ -139,7 +139,7 @@ func TestWatchHistoryListsBothNodesNewestFirst(t *testing.T) {
 	ha.entries = []domain.WatchHistoryEntry{historyEntry(t, fa, 1, 300, "a"), historyEntry(t, fa, 2, 100, "")}
 	hb.entries = []domain.WatchHistoryEntry{historyEntry(t, fb, 1, 400, ""), historyEntry(t, fb, 2, 200, "b")}
 	ha.days, hb.days = []string{"2026-10-30"}, []string{"2026-10-31", "2026-10-30"}
-	want := []int64{1, domain.ToRemoteID(1), 2, domain.ToRemoteID(2)}
+	want := []int64{1, domain.RemoteID(1, 1), 2, domain.RemoteID(1, 2)}
 
 	for _, limit := range []int{1, 3} {
 		var got []int64
@@ -148,7 +148,7 @@ func TestWatchHistoryListsBothNodesNewestFirst(t *testing.T) {
 			page := decode[gen.WatchHistoryPage](t, b.owner(http.MethodGet, target, ""))
 			for _, item := range page.Items {
 				got = append(got, item.Id)
-				if item.Id == domain.ToRemoteID(1) && (item.Video == nil || item.Video.Id != domain.ToRemoteID(fa.ids["a"]) ||
+				if item.Id == domain.RemoteID(1, 1) && (item.Video == nil || item.Video.Id != domain.RemoteID(1, fa.ids["a"]) ||
 					item.Video.Progress == nil) {
 					t.Errorf("the peer's entry video = %+v, want remote a with its progress", item.Video)
 				}
@@ -174,7 +174,7 @@ func TestWatchHistoryClearAndDeleteReachThePeer(t *testing.T) {
 	_, _, ha, hb, b, stopA := historyNodes(t)
 
 	assertStatus(t, "clear", b.owner(http.MethodDelete, "/api/watch-history", ""), http.StatusNoContent)
-	assertStatus(t, "delete the peer's entry", b.owner(http.MethodDelete, historyEntryPath(domain.ToRemoteID(2)), ""), http.StatusNoContent)
+	assertStatus(t, "delete the peer's entry", b.owner(http.MethodDelete, historyEntryPath(domain.RemoteID(1, 2)), ""), http.StatusNoContent)
 	if ha.clears != 1 || hb.clears != 1 || !slices.Equal(ha.deleted, []int64{2}) || len(hb.deleted) != 0 {
 		t.Errorf("clears = %d on the peer, %d here; deleted = %v on the peer, %v here, want 1, 1, [2], []",
 			ha.clears, hb.clears, ha.deleted, hb.deleted)

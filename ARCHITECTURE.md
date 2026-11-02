@@ -165,7 +165,11 @@ work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations
-or folders takes a `domain.Audience`, whose zero value is the guest. The HTTP
+or folders takes a `domain.Audience`: a role and a folder scope, whose zero
+value is the guest with this node's media-folder switches. Lists, searches,
+counts and folder reads leave a switched-off folder's videos out; reads by id,
+scans and jobs do not
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md)). The HTTP
 layer classifies every request at its outermost layer, before routing, by path
 into bearer, anyone, guests too or owner only, matching each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Hidden videos answer
@@ -174,11 +178,15 @@ credential and the viewer's audience, so the paired node filters before paging
 too ([authentication.md](docs/design-docs/authentication.md#paired-vvmdm)).
 
 **Remote ids carry an offset.** An id at or above `2^40` in the screen API
-names an entity of the paired VVMDM, whose own id is the value minus the
-offset; local ids stay below it, and the HTTP layer forwards such a request
-to the paired node instead of reading the store
-([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
-table stores a remote entity, so pairing and unpairing change no user data.
+names an entity of a VVMDM this node reads: `id div 2^40` is the slot of that
+link, and the link's own id is the value minus `slot × 2^40`. Local ids stay
+below `2^40`, and the HTTP layer forwards such a request to the link of that
+slot instead of reading the store, or answers `404` when no link holds the
+slot ([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). The one
+local table naming a link's entities is `peer_media_folders`, the snapshot of
+its media folders with this node's switches, deleted with the link
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md#a-links-folders-keep-their-switches-on-the-reading-node));
+pairing and unpairing change no other user data.
 
 **Only a scan walks the media folders.** Only a scan reads the media folders'
 trees and identifies their files, and only a user-started scan walks them

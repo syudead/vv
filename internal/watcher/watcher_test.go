@@ -386,21 +386,34 @@ func TestWatchLimitIsReportedOnceAndStopsArming(t *testing.T) {
 }
 
 func TestNoCallbackAfterDisarm(t *testing.T) {
-	root := t.TempDir()
-	r := newRecorder()
-	w := New(r.handler())
-	if err := w.Arm([]string{root}); err != nil {
+	fb := newFakeBackend()
+	w := New(newRecorder().handler())
+	w.newBackend = func() (backend, error) { return fb, nil }
+	if err := w.Arm([]string{t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
+	s := w.current
 	w.Disarm()
 
-	write(t, filepath.Join(root, "a.mp4"))
-	time.Sleep(100 * time.Millisecond)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.changes) != 0 {
-		t.Fatalf("change reported after Disarm: %+v", r.changes)
+	// Only the event loop calls the handler, so a finished loop over a closed backend cannot report anything later.
+	assertSessionEnded(t, s, fb)
+}
+
+func assertSessionEnded(t *testing.T, s *session, fb *fakeBackend) {
+	t.Helper()
+	select {
+	case <-s.done:
+	default:
+		t.Fatal("the event loop is still running after Disarm")
 	}
+	select {
+	case _, open := <-fb.events:
+		if !open {
+			return
+		}
+	default:
+	}
+	t.Fatal("the backend is still open after Disarm")
 }
 
 func TestArmReplacesEarlierWatches(t *testing.T) {
@@ -468,8 +481,9 @@ func TestRenamedDirectoryIsRemovedFromTheBackend(t *testing.T) {
 
 func TestDisarmDuringArmLeavesNothingWatching(t *testing.T) {
 	root := t.TempDir()
-	r := newRecorder()
-	w := New(r.handler())
+	fb := newFakeBackend()
+	w := New(newRecorder().handler())
+	w.newBackend = func() (backend, error) { return fb, nil }
 	release := make(chan struct{})
 	entered := make(chan struct{})
 	real := w.readDir
@@ -481,15 +495,15 @@ func TestDisarmDuringArmLeavesNothingWatching(t *testing.T) {
 	done := make(chan struct{})
 	go func() { _ = w.Arm([]string{root}); close(done) }()
 	<-entered
+	w.mu.Lock()
+	s := w.current
+	w.mu.Unlock()
 	w.Disarm()
 	close(release)
 	<-done
 
-	write(t, filepath.Join(root, "a.mp4"))
-	time.Sleep(100 * time.Millisecond)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.changes) != 0 {
-		t.Fatalf("a change was reported after Disarm: %+v", r.changes)
+	if w.current != nil {
+		t.Fatal("the interrupted Arm installed a session after Disarm")
 	}
+	assertSessionEnded(t, s, fb)
 }

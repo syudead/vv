@@ -236,6 +236,27 @@ describe("LibraryPage", () => {
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
+  it("every folder off: the owner gets a link to the media folders instead of setup", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input).startsWith("/api/scans/current")
+          ? json({}, 404)
+          : json({
+              items: [],
+              total: 0,
+              emptyReason: "all_folders_off",
+            } satisfies VideoPage),
+      ),
+    );
+    renderLibrary();
+    expect(
+      await screen.findByRole("heading", { name: "Every media folder is off" }),
+    ).toBeDefined();
+    const open = screen.getByRole("link", { name: "Open Media folders" });
+    expect(open.getAttribute("href")).toBe("/settings/library");
+    expect(screen.queryByRole("button", { name: "Set up library" })).toBeNull();
+  });
+
   it("空なら所有者をオンボードへ案内する", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -1851,6 +1872,22 @@ describe("LibraryPage", () => {
       await screen.findByRole("link", { name: "動画 1" });
       expect(screen.queryByRole("checkbox")).toBeNull();
       expect(document.querySelectorAll("thead th")).toHaveLength(7);
+    });
+
+    it("every folder off: a guest keeps the sign-in state with no settings link", async () => {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(
+          json({
+            items: [],
+            total: 0,
+            emptyReason: "all_folders_off",
+          } satisfies VideoPage),
+        ),
+      );
+      renderLibrary("/", "guest");
+      expect(await screen.findByText("No videos are public")).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Open Media folders" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Sign in" })).toBeDefined();
     });
 
     it("公開の動画が無ければ、取り込みでなくログインへの入口を出す", async () => {

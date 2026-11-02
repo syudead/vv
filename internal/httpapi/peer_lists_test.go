@@ -28,32 +28,42 @@ func mergedNodes(t *testing.T) (fa, fb *guestFixture, b *peerNode, stopA func())
 // mergedNodesWith is mergedNodes with extend applied to both nodes' options.
 func mergedNodesWith(t *testing.T, extend func(db *store.DB, opts *Options)) (fa, fb *guestFixture, a, b *peerNode, stopA func()) {
 	t.Helper()
-	node := func(name string) (*guestFixture, *peerNode, func()) {
-		var pairing *app.Pairing
-		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
-			pairing = withTestPairing(db, name, nil, opts)
-			opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
-			if extend != nil {
-				extend(db, opts)
-			}
-		})
-		server := httptest.NewServer(f.env.handler)
-		t.Cleanup(server.Close)
-		return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
-	}
-	fa, a, stopA = node("node-a")
-	fb, b, _ = node("node-b")
+	fa, a, stopA = mergedNode(t, "node-a", extend)
+	fb, b, _ = mergedNode(t, "node-b", extend)
 	pairNodes(t, a, b)
 	return fa, fb, a, b, stopA
+}
+
+// mergedNode is one served node of mergedNodesWith, unpaired, with the function that stops serving it.
+func mergedNode(t *testing.T, name string, extend func(db *store.DB, opts *Options)) (*guestFixture, *peerNode, func()) {
+	t.Helper()
+	var pairing *app.Pairing
+	f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
+		pairing = withTestPairing(db, name, nil, opts)
+		opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
+		if extend != nil {
+			extend(db, opts)
+		}
+	})
+	server := httptest.NewServer(f.env.handler)
+	t.Cleanup(server.Close)
+	return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
 }
 
 // listLabel names a listed video by node and title, such as "a:e" for a's video e seen from b.
 func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 	t.Helper()
-	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
-		for name, own := range f.ids {
-			if (node == "b" && id == own) || (node == "a" && id == domain.ToRemoteID(own)) {
-				return node + ":" + name
+	return nodeLabel(t, []string{"b", "a"}, []*guestFixture{fb, fa}, id)
+}
+
+// nodeLabel names a listed video by node and title; nodes[0], named names[0], is the reading node and nodes[k] the
+// link in slot k.
+func nodeLabel(t *testing.T, names []string, nodes []*guestFixture, id int64) string {
+	t.Helper()
+	if slot := domain.RemoteSlot(id); slot < int64(len(nodes)) {
+		for name, own := range nodes[slot].ids {
+			if own == domain.FromRemoteID(id) {
+				return names[slot] + ":" + name
 			}
 		}
 	}
@@ -63,6 +73,12 @@ func listLabel(t *testing.T, fa, fb *guestFixture, id int64) string {
 
 // pageVideos follows nextCursor from path with limit 2 and returns every listed video's label with the totals.
 func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
+	t.Helper()
+	return pageVideosBy(t, func(id int64) string { return listLabel(t, fa, fb, id) }, get, path, query)
+}
+
+// pageVideosBy is pageVideos naming each video by label.
+func pageVideosBy(t *testing.T, label func(int64) string, get func(string) *httptest.ResponseRecorder, path string, query url.Values) ([]string, []int) {
 	t.Helper()
 	query.Set("limit", "2")
 	var labels []string
@@ -77,7 +93,7 @@ func pageVideos(t *testing.T, fa, fb *guestFixture, get func(string) *httptest.R
 			t.Fatalf("%s: %d items, peerItems %v", path, len(page.Items), page.PeerItems)
 		}
 		for _, video := range page.Items {
-			labels = append(labels, listLabel(t, fa, fb, video.Id))
+			labels = append(labels, label(video.Id))
 		}
 		totals = append(totals, page.Total)
 		if page.NextCursor == nil {
@@ -188,7 +204,7 @@ func TestMergedListSendsALocalTagToThePeerByName(t *testing.T) {
 		t.Errorf("tag filter = %v, totals %v, want %v and 2", got, totals, want)
 	}
 	// A filter by an entity only the peer has lists the peer's matches alone.
-	remoteTag := strconv.FormatInt(domain.ToRemoteID(fa.tagID), 10)
+	remoteTag := strconv.FormatInt(domain.RemoteID(1, fa.tagID), 10)
 	got, _ = pageVideos(t, fa, fb, owner, "/api/videos", url.Values{"tag": {remoteTag}})
 	if want := []string{"a:b", "a:a"}; !slices.Equal(got, want) {
 		t.Errorf("remote tag filter = %v, want %v", got, want)
@@ -212,8 +228,8 @@ func TestMergedListContinuesWithTheLocalPartWhenThePeerStops(t *testing.T) {
 	if !slices.Equal(totals, []int{5, 5}) {
 		t.Errorf("totals = %v, want the local total on each page", totals)
 	}
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("state = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("state = %s, want unreachable", link.State)
 	}
 }
 
@@ -228,8 +244,8 @@ func TestMergedFoldersListBothNodesRootsAndForwardARemoteRoot(t *testing.T) {
 			t.Errorf("remote root %d carries its grouping", root.RootId)
 		}
 	}
-	remoteRoot := domain.ToRemoteID(fa.rootID)
-	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.ToRemoteID(fa.otherID)} {
+	remoteRoot := domain.RemoteID(1, fa.rootID)
+	for _, want := range []int64{fb.rootID, fb.otherID, remoteRoot, domain.RemoteID(1, fa.otherID)} {
 		if !slices.Contains(ids, want) {
 			t.Errorf("roots = %v, want %d among them", ids, want)
 		}
@@ -255,7 +271,7 @@ func TestRemoteFolderFavoritesListThePeersFavorites(t *testing.T) {
 
 	got, totals := pageVideos(t, fa, fb, func(target string) *httptest.ResponseRecorder {
 		return b.owner(http.MethodGet, target, "")
-	}, fb.folderPath(domain.ToRemoteID(fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
+	}, fb.folderPath(domain.RemoteID(1, fa.rootID), "/videos"), url.Values{"scope": {"subtree"}, "favorite": {"true"}})
 	if !slices.Equal(got, []string{"a:a"}) || !slices.Equal(totals, []int{1}) {
 		t.Errorf("favorites of the remote root = %v, totals %v, want a:a", got, totals)
 	}

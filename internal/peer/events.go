@@ -24,7 +24,7 @@ const maxEvent = 1 << 20
 var errEventTooLarge = errors.New("an event of the stream is too large")
 
 // Watch holds the peer's /api/events open with secret. It calls opened once the peer answered 200 and
-// changed for each video, group and smartFolder event, with the ids in remote form. It returns when the
+// changed for each video, group, smartFolder and mediaFolders event, with the peer's own ids. It returns when the
 // stream ends: ctx's error after cancellation, else the domain's pairing error.
 func (c *Client) Watch(
 	ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged),
@@ -102,7 +102,7 @@ func readEvents(body io.Reader, line func(), dispatch func(name string, data []b
 	return scanner.Err()
 }
 
-// forwardedEvent turns the peer's change notification into this node's, with remote ids; other events
+// forwardedEvent turns the peer's change notification into this node's, in the peer's own ids; other events
 // and malformed data are dropped.
 func forwardedEvent(name string, data []byte) (domain.PeerChanged, bool) {
 	switch name {
@@ -111,34 +111,37 @@ func forwardedEvent(name string, data []byte) (domain.PeerChanged, bool) {
 		if json.Unmarshal(data, &event) != nil {
 			return domain.PeerChanged{}, false
 		}
-		ids := remoteIDs([]int64{event.Id})
+		ids := ownIDs([]int64{event.Id})
 		return domain.PeerChanged{VideoIDs: ids}, len(ids) > 0
 	case "group":
 		var event gen.GroupChanged
 		if json.Unmarshal(data, &event) != nil {
 			return domain.PeerChanged{}, false
 		}
-		ids := remoteIDs(event.Ids)
+		ids := ownIDs(event.Ids)
 		return domain.PeerChanged{GroupIDs: ids}, len(ids) > 0
 	case "smartFolder":
 		var event gen.SmartFolderChanged
 		if json.Unmarshal(data, &event) != nil {
 			return domain.PeerChanged{}, false
 		}
-		ids := remoteIDs(event.Ids)
+		ids := ownIDs(event.Ids)
 		return domain.PeerChanged{SmartFolderIDs: ids}, len(ids) > 0
+	case "mediaFolders":
+		// The peer never sends a link's or a switch's mediaFolders to this stream, so it cannot bounce back.
+		return domain.PeerChanged{MediaFolders: true}, true
 	}
 	return domain.PeerChanged{}, false
 }
 
-// remoteIDs drops ids that are already remote on the peer: they name this node's own entities, and
-// forwarding them back would bounce between the two nodes.
-func remoteIDs(ids []int64) []int64 {
-	var remote []int64
+// ownIDs drops ids that are already remote on the peer: they name another node's entities, such as this one's,
+// and forwarding them back would bounce between the two nodes.
+func ownIDs(ids []int64) []int64 {
+	var own []int64
 	for _, id := range ids {
-		if id < domain.PeerIDOffset {
-			remote = append(remote, domain.ToRemoteID(id))
+		if !domain.IsRemoteID(id) {
+			own = append(own, id)
 		}
 	}
-	return remote
+	return own
 }

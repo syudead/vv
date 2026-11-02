@@ -2,11 +2,8 @@ package store
 
 import (
 	"context"
-	"io/fs"
 	"reflect"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 )
 
 const autoTagJobsVersion = 85
@@ -14,23 +11,8 @@ const autoTagJobsVersion = 85
 // Unfinished auto-tagging work becomes auto_tag jobs and outcomes become results; going back restores the queue,
 // with an interrupted row queued again as startup recovery would do.
 func TestAutoTagJobsMigrationRoundTripsTheQueue(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, autoTagJobsVersion-1)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, autoTagJobsVersion-1); err != nil {
-		t.Fatal(err)
-	}
 	execAll(t, db, `insert into auto_tag_queue (content_key, state, error, queued_at, updated_at, activity_id)
 		values ('key-queued', 'queued', '', 100000, 100000, 5),
 		       ('key-running', 'running', '', 200000, 250000, 6),

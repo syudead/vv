@@ -35,12 +35,11 @@ func (s *server) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	local := domain.CollectionDelete{GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs}
-	var remote domain.CollectionDelete
+	remote := map[int64]domain.CollectionDelete{}
 	if !isPeerRequest(r.Context()) {
-		local.GroupIDs, remote.GroupIDs = domain.SplitRemoteIDs(groupIDs)
-		local.SmartFolderIDs, remote.SmartFolderIDs = domain.SplitRemoteIDs(smartFolderIDs)
+		local, remote = splitCollectionDelete(groupIDs, smartFolderIDs)
 	}
-	// Two databases share no transaction, so the local part commits first and stays when the peer fails.
+	// Databases share no transaction, so the local part commits first and stays when a link fails.
 	var deleted domain.CollectionsDeleted
 	if len(local.GroupIDs)+len(local.SmartFolderIDs) > 0 {
 		var err error
@@ -50,13 +49,31 @@ func (s *server) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var out gen.CollectionsDeleteResponse
-	if len(remote.GroupIDs)+len(remote.SmartFolderIDs) > 0 {
-		var peer domain.CollectionsDeleted
-		peer, out.Remote = s.deletePeerCollections(r, remote)
+	for _, slot := range sortedSlots(remote) {
+		peer, part := s.deletePeerCollections(r, slot, remote[slot])
+		addRemoteResult(&out.Remote, part)
 		deleted.DissolvedGroups += peer.DissolvedGroups
 		deleted.DeletedSmartFolders += peer.DeletedSmartFolders
 	}
 	out.DissolvedGroups, out.DeletedSmartFolders = deleted.DissolvedGroups, deleted.DeletedSmartFolders
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
+// splitCollectionDelete separates the ids into this node's part and each link's part in that link's own ids.
+func splitCollectionDelete(groupIDs, smartFolderIDs []int64) (domain.CollectionDelete, map[int64]domain.CollectionDelete) {
+	var local domain.CollectionDelete
+	localGroups, groupLinks := domain.SlotIDs(groupIDs)
+	localFolders, folderLinks := domain.SlotIDs(smartFolderIDs)
+	local.GroupIDs, local.SmartFolderIDs = localGroups, localFolders
+	remote := map[int64]domain.CollectionDelete{}
+	for slot, ids := range groupLinks {
+		remote[slot] = domain.CollectionDelete{GroupIDs: ids}
+	}
+	for slot, ids := range folderLinks {
+		part := remote[slot]
+		part.SmartFolderIDs = ids
+		remote[slot] = part
+	}
+	return local, remote
 }

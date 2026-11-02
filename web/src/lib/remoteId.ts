@@ -1,8 +1,16 @@
-/** Ids at or above 2^40 name the paired VVMDM's entities; the server adds this offset to the peer's ids. */
+/**
+ * Ids at or above 2^40 name a read VVMDM's entities: the server adds the link's slot times this offset to the
+ * link's own ids.
+ */
 export const remoteIdOffset = 2 ** 40;
 
 export function isRemoteId(id: number): boolean {
   return id >= remoteIdOffset;
+}
+
+/** The slot of the link whose entity `id` names, or 0 for this node's own entity. */
+export function remoteSlot(id: number): number {
+  return Math.floor(id / remoteIdOffset);
 }
 
 export type IdNodes = "none" | "local" | "remote" | "mixed";

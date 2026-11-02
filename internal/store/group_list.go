@@ -138,5 +138,5 @@ func groupHasVisibleVideosCondition(alias string, audience domain.Audience) stri
 		select gi.child_id from visible_groups vg join group_items gi on gi.group_id = vg.id
 		where gi.child_id is not null)
 		select 1 from visible_groups vg join group_items gi on gi.group_id = vg.id
-		where gi.content_key is not null and ` + shownVideoForKeyExpr("gi.content_key", audience) + ` is not null)`
+		where gi.content_key is not null and ` + listedVideoForKeyExpr("gi.content_key", audience) + ` is not null)`
 }

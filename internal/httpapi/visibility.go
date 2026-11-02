@@ -55,13 +55,14 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Applied = len(keys)
 	}
-	if sel.hasPeer() {
-		ids, folders := sel.peerTargets()
+	for _, link := range sel.links {
+		ids, folders := link.peerTargets()
 		var answer gen.VideoVisibilityResponse
-		err := s.peerCall(r, http.MethodPut, "/api/video-visibility", nil,
+		err := s.peerCall(r, link.slot, http.MethodPut, "/api/video-visibility", nil,
 			gen.VideoVisibilityRequest{VideoIds: ids, SmartFolderIds: folders, Public: public}, &answer)
-		out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
-		out.Applied += out.Remote.Applied
+		part := s.remoteSelectionResult(link.slot, answer.Applied, link.peer, err)
+		out.Applied += part.Applied
+		addRemoteResult(&out.Remote, part)
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)

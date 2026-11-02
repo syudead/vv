@@ -125,7 +125,8 @@ func (s *server) fetchWorkInfo(
 }
 
 // ListWorkInfoFillTargets lists the videos the fill dialog searches for, one per user-data key: this node's first,
-// then the peer's in their remote ids, which the dialog fetches for and applies to like any remote video.
+// then each link's in slot order in their remote ids, which the dialog fetches for and applies to like any remote
+// video.
 func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request) {
 	var body gen.WorkInfoFillTargetsRequest
 	if !s.readJSONBody(w, r, &body) || !s.workInfoPluginsConfigured(w) {
@@ -146,10 +147,10 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			targets = append(targets, gen.WorkInfoFillTarget{VideoId: q.VideoID, Title: q.Title, Query: q.Query})
 		}
 	}
-	if sel.hasPeer() {
-		ids, folders := sel.peerTargets()
+	for _, link := range sel.links {
+		ids, folders := link.peerTargets()
 		var answer gen.WorkInfoFillTargetList
-		err := s.peerCall(r, http.MethodPost, "/api/work-info-fill-targets", nil,
+		err := s.peerCall(r, link.slot, http.MethodPost, "/api/work-info-fill-targets", nil,
 			gen.WorkInfoFillTargetsRequest{VideoIds: ids, SmartFolderIds: folders}, &answer)
 		if err != nil {
 			s.logger.Info("could not list the other VVMDM's videos to fill", slog.Any("error", err))
@@ -157,7 +158,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		for _, target := range answer.Targets {
-			target.VideoId = domain.ToRemoteID(target.VideoId)
+			target.VideoId = domain.RemoteID(link.slot, target.VideoId)
 			targets = append(targets, target)
 		}
 	}

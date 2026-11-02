@@ -49,7 +49,7 @@ type fakeTags struct {
 	kinds []domain.TagKind
 }
 
-func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domain.TagPage, error) {
+func (f *fakeTags) ListTags(_ context.Context, _ domain.Audience, query domain.TagListQuery) (domain.TagPage, error) {
 	f.lastListQuery = query
 	if f.err != nil {
 		return domain.TagPage{}, f.err

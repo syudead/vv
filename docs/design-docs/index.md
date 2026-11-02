@@ -59,3 +59,4 @@ reference documents; retain lasting decisions here before deleting them.
 - [Import progress and recovery](import-pipeline.md)
 - [Force rescan](force-rescan.md)
 - [Media folder usage](media-folder-usage.md)
+- [Media-folder switches](media-folder-switches.md)

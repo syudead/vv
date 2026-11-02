@@ -139,7 +139,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.web || matrix.tools
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -279,7 +279,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.web || matrix.tools
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: ${{ matrix.web && 'web/package-lock.json' || 'tools/package-lock.json' }}
 
@@ -387,6 +387,8 @@ jobs:
             files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
           - group: peer
             files: e2e/peer-library.e2e.ts
+          - group: peer-folders
+            files: e2e/peer-folders.e2e.ts
           - group: pages
             files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/scan-progress.e2e.ts e2e/video-tabs.e2e.ts e2e/work-info.e2e.ts
     steps:
@@ -414,7 +416,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           cache-dependency-path: web/package-lock.json
 

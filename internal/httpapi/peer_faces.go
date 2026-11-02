@@ -20,17 +20,17 @@ const (
 func rewriteRemoteFaceAppearances(list *gen.VideoFaceAppearanceList, join domain.VocabularyJoin) {
 	for i := range list.Items {
 		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
+		item.AppearanceId = join.Remote(item.AppearanceId)
 		item.Person.Id = join.Person(item.Person.Id, item.Person.Name)
 	}
 }
 
-func rewriteRemotePersonAppearances(list *gen.FaceAppearanceList, _ domain.VocabularyJoin) {
+func rewriteRemotePersonAppearances(list *gen.FaceAppearanceList, join domain.VocabularyJoin) {
 	for i := range list.Items {
 		item := &list.Items[i]
-		item.AppearanceId = domain.ToRemoteID(item.AppearanceId)
+		item.AppearanceId = join.Remote(item.AppearanceId)
 		if item.VideoId != nil {
-			*item.VideoId = domain.ToRemoteID(*item.VideoId)
+			*item.VideoId = join.Remote(*item.VideoId)
 		}
 	}
 }
@@ -57,14 +57,14 @@ func rewriteRemoteSimilarPeople(list *gen.SimilarPersonList, join domain.Vocabul
 		item := &list.Items[i]
 		rewriteRemotePerson(&item.Person, join)
 		for j := range item.SampleAppearanceIds {
-			item.SampleAppearanceIds[j] = domain.ToRemoteID(item.SampleAppearanceIds[j])
+			item.SampleAppearanceIds[j] = join.Remote(item.SampleAppearanceIds[j])
 		}
 	}
 }
 
 // peerPersonQuery turns the appearances a similar-people read compares into the peer's. This node's appearances
 // are not the peer's person's, so they are ignored as the peer ignores appearances the person lacks.
-func peerPersonQuery(pattern string, query url.Values, op *remoteOperation) {
+func peerPersonQuery(slot int64, pattern string, query url.Values, op *remoteOperation) {
 	if pattern != similarPeoplePattern || !query.Has("appearanceId") {
 		return
 	}
@@ -74,7 +74,7 @@ func peerPersonQuery(pattern string, query url.Values, op *remoteOperation) {
 		switch {
 		case err != nil:
 			peer = append(peer, value)
-		case domain.IsRemoteID(id):
+		case domain.IsRemoteID(id) && domain.RemoteSlot(id) == slot:
 			peer = append(peer, strconv.FormatInt(domain.FromRemoteID(id), 10))
 		}
 	}
@@ -88,8 +88,8 @@ func peerPersonQuery(pattern string, query url.Values, op *remoteOperation) {
 }
 
 // peerFaceSplit splits only the peer's appearances of the peer's person.
-func peerFaceSplit(body *gen.FaceAppearanceSplitRequest) bool {
-	return onlyRemote(body.AppearanceIds) && toPeer(&body.AppearanceIds)
+func peerFaceSplit(slot int64, body *gen.FaceAppearanceSplitRequest) bool {
+	return onlyLink(slot, body.AppearanceIds) && toPeer(&body.AppearanceIds)
 }
 
 // peerFaceMoveBody turns a move of the peer's appearances into the peer's ids; the target goes to the peer's person
@@ -99,12 +99,12 @@ func (s *server) peerFaceMoveBody(w http.ResponseWriter, r *http.Request) bool {
 	if _, ok := s.readJSONBodyRaw(w, r, &body); !ok {
 		return false
 	}
-	if !onlyRemote(body.AppearanceIds) {
+	if !onlyLink(s.requestSlot(r), body.AppearanceIds) {
 		s.mixedFaces(w)
 		return false
 	}
 	toPeer(&body.AppearanceIds)
-	target, err := translateID(s.peerEditVocabulary(r), domain.VocabularyPerson, body.TargetId, "targetId", true)
+	target, err := translateID(s.peerEditVocabulary(r, s.requestSlot(r)), domain.VocabularyPerson, body.TargetId, "targetId", true)
 	if err != nil {
 		s.writeSplitEditError(w, err)
 		return false
@@ -127,7 +127,7 @@ func (s *server) peerFaceCandidateSegment(w http.ResponseWriter, r *http.Request
 		s.invalidRequest(w, "The person id is not a number.")
 		return "", false
 	}
-	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyPerson, id, "otherId", false)
+	peerID, err := translateID(s.peerEditVocabulary(r, s.requestSlot(r)), domain.VocabularyPerson, id, "otherId", false)
 	var missing *domain.CreditNotFoundError
 	switch {
 	case errors.As(err, &missing) || (err == nil && peerID == 0):
@@ -140,10 +140,18 @@ func (s *server) peerFaceCandidateSegment(w http.ResponseWriter, r *http.Request
 	return strconv.FormatInt(peerID, 10), true
 }
 
-// moveFacesOnPeer moves the peer's appearances away from the peer's person of local person id's name, as the undo
-// of a move to a local person sends them; a name the peer lacks holds none of them.
-func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int64) {
-	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyPerson, id, "id", false)
+// moveFacesOnPeer moves the appearances away from the person of local person id's name on the one link they
+// belong to, as the undo of a move to a local person sends them; a name the link lacks holds none of them.
+func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int64, appearanceIDs []int64) {
+	slot, ok := domain.IDSlot(appearanceIDs...)
+	if !ok {
+		s.mixedFaces(w)
+		return
+	}
+	// The local person's path names no link, so the appearances' slot is the one the body check and the
+	// forwarding read.
+	r = r.WithContext(withLinkSlot(r.Context(), slot))
+	peerID, err := translateID(s.peerEditVocabulary(r, slot), domain.VocabularyPerson, id, "id", false)
 	var missing *domain.CreditNotFoundError
 	switch {
 	case errors.As(err, &missing) || (err == nil && peerID == 0):
@@ -153,7 +161,7 @@ func (s *server) moveFacesOnPeer(w http.ResponseWriter, r *http.Request, id int6
 		s.writeSplitEditError(w, err)
 		return
 	}
-	remote := domain.ToRemoteID(peerID)
+	remote := domain.RemoteID(slot, peerID)
 	s.forwardRemoteEntity(w, r, peopleCollection, faceMovePattern, *remoteRoutes.routes[faceMovePattern].op, remote,
 		"/api/people/"+strconv.FormatInt(remote, 10)+"/appearances/move")
 }
