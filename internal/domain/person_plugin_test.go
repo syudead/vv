@@ -156,8 +156,9 @@ func TestParsePersonResponsePutsTheRequestedIDFirst(t *testing.T) {
 
 func TestParsePersonResponseKeepsImagesAndProfileUnderTheCreditRules(t *testing.T) {
 	got, err := personFetch(t, `{"name":"N","images":["https://e.test/1.jpg","ftp://e.test/x",7,"https://e.test/1.jpg",`+
-		`"https://e.test/2.jpg"],"profile":{"heightCm":160,"cup":7}}`)
+		`"https://e.test/2.jpg"],"imageReferer":"https://e.test/p/1","profile":{"heightCm":160,"cup":7}}`)
 	if err != nil || !slices.Equal(got.ImageURLs, []string{"https://e.test/1.jpg", "https://e.test/2.jpg"}) ||
+		got.ImageReferer != "https://e.test/p/1" ||
 		got.Profile.HeightCm == nil || *got.Profile.HeightCm != 160 || got.Profile.Cup != "" {
 		t.Fatalf("person = %+v, %v; want the valid distinct images and the height, without the mistyped cup", got, err)
 	}

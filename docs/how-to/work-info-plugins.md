@@ -344,6 +344,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
 | `covers` | `["https://..."]`, `http` or `https` URLs of the work's cover images, each at most 2048 characters | The first 5 distinct valid URLs, whose images VVMDM fetches itself after the run; see [Cover images](#cover-images) |
+| `imageReferer` | string, an `http` or `https` URL of at most 2048 characters, usually the work's page | Sent as `Referer` with each cover and person image request; see [Image referer](#image-referer) |
 
 In every string, VVMDM turns CR line ends into line feeds in `description`
 and into spaces elsewhere, turns tabs and other whitespace control characters
@@ -385,6 +386,20 @@ A module that returns `cover` instead gets no cover.
 | A PNG, JPEG or still WebP of at most 4 MiB and 120 megapixels | Shown; the first one kept is selected for the apply |
 | Any other answer: not `2xx`, larger, another format, unreachable | Dropped; the rest of the result is kept |
 | On a refused address | The run fails with `blocked_address`, as for the plugin's own requests |
+
+### Image referer
+
+Some sites refuse an image request that does not come from their own pages.
+Return `imageReferer` with the page the images appear on, and VVMDM sends it
+as the `Referer` header of every image request of that result: the covers and
+the people's images of a work-info plugin, and the `images` of a person
+plugin. Without it, or with a value that is not such a URL, VVMDM sends no
+`Referer`, and the rest of the result is kept. A redirect keeps the value,
+except from `https` to `http`, where it is dropped.
+
+```json
+{"workInfo": {"title": "...", "covers": ["https://img.example.com/1.jpg"], "imageReferer": "https://www.example.com/works/1"}}
+```
 
 ### People's images and profiles
 
@@ -439,7 +454,7 @@ work-info plugin.
 | Response | Body |
 | --- | --- |
 | `search` result | `{"candidates": [{"source": "...", "id": "...", "name": "...", "url": "...", "detail": "..."}]}`: `source` (one of `sources`), `id`, `name` and `url` required, `detail` optional; VVMDM keeps the first 50, and a kept candidate with another `source` fails the run with `plugin_failed` |
-| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "profile": {...}}}`: `name` required, the rest optional |
+| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "images": ["https://...", "https://..."], "imageReferer": "https://...", "profile": {...}}}`: `name` required, the rest optional; `imageReferer` as in [Image referer](#image-referer) |
 | Failure | As for a work-info plugin |
 
 A link matches a domain when its host, lowercased, is the domain or ends with

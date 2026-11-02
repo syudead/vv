@@ -26,8 +26,8 @@ type WorkInfoCover struct {
 	Height      int
 }
 
-// fetchedImageURL accepts bounded absolute HTTP(S) URLs with hosts; invalid values mean no image. The cover and people's
-// images are the only work-info URLs VVMDM fetches.
+// fetchedImageURL accepts bounded absolute HTTP(S) URLs with hosts; invalid values mean no image, or no Referer for
+// imageReferer. The cover and people's images are the only work-info URLs VVMDM fetches.
 func fetchedImageURL(raw string) string {
 	if !runeCountBetween(raw, 1, WorkInfoCoverURLMaxRunes) || !isWorkURL(raw) {
 		return ""
