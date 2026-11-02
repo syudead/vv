@@ -2,7 +2,7 @@
 
 # Build SPA and Go stages on the builder architecture to cross-compile without emulation; the final stage runs the published image.
 
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS web
 WORKDIR /src/web
 # Cache dependency downloads independently of source changes and retain npm downloads across lockfile updates.
 COPY web/package.json web/package-lock.json ./
