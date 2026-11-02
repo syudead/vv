@@ -14,9 +14,9 @@ import (
 )
 
 // While this node reads others, a rename, merge or deletion of a tag, person or organization is applied by name on
-// every link in slot order and then here, once every link is connected, so the common failure, a link that is
-// down, leaves every node unchanged; a failure after some links applied it is answered as is and the owner repeats
-// the request.
+// every link in slot order and then here, once every link is connected and, for a rename, no link holds the new
+// name, so the common failures, a link that is down or a name taken, leave every node unchanged; a failure after
+// some links applied it is answered as is.
 
 // maxPeerVocabularyBody fits a merge of the most sources a merge takes.
 const maxPeerVocabularyBody = 8 << 20
@@ -261,10 +261,12 @@ func (s *server) vocabularyNames(r *http.Request, kind domain.VocabularyKind, id
 	return names, nil
 }
 
-// peerVocabularyItem is an entry of the peer's whole list of a kind, in the peer's id space, as peerEntries reads it.
+// peerVocabularyItem is an entry of the peer's whole list of a kind, in the peer's id space, as peerEntries reads it;
+// only a tag has synonyms.
 type peerVocabularyItem struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID       int64    `json:"id"`
+	Name     string   `json:"name"`
+	Synonyms []string `json:"synonyms"`
 }
 
 func (s *server) peerEntries(r *http.Request, slot int64, kind domain.VocabularyKind) ([]peerVocabularyItem, error) {
@@ -300,7 +302,7 @@ func (s *server) renameTagOnPeer(w http.ResponseWriter, r *http.Request, id int6
 	if !found || current == normalized {
 		return true
 	}
-	if !s.tagNameFree(w, r.Context(), normalized) {
+	if !s.tagNameFree(w, r.Context(), normalized) || !s.renameFreeOnLinks(w, r, domain.VocabularyTag, current, normalized, 0) {
 		return false
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
@@ -356,12 +358,14 @@ func (s *server) renameOnOtherLinks(w http.ResponseWriter, r *http.Request, kind
 		return false
 	}
 	current, named := names[id]
-	creditKind, credit := kind.CreditKind()
+	_, credit := kind.CreditKind()
 	switch {
 	case !named && credit:
-		return s.peerCreditNameFree(w, r, creditKind, newName, domain.RemoteSlot(id))
+		return s.renameFreeOnLinks(w, r, kind, "", newName, domain.RemoteSlot(id))
 	case !named || current == newName:
 		return true
+	case !s.renameFreeOnLinks(w, r, kind, current, newName, 0):
+		return false
 	}
 	_, ok := s.sendVocabularyExcept(w, r, domain.VocabularyChange{
 		Kind: kind, Action: domain.VocabularyRename, Name: current, NewName: newName,
@@ -413,9 +417,13 @@ func (s *server) creditNameFree(w http.ResponseWriter, ctx context.Context, kind
 	return true
 }
 
-// peerCreditNameFree answers 409 with the kind's name_taken reason and reports false when a link other than the one
-// in skip holds name; a provisional person has no name to rename on a link, so each link's list is read instead.
-func (s *server) peerCreditNameFree(w http.ResponseWriter, r *http.Request, kind domain.CreditKind, name string, skip int64) bool {
+// renameFreeOnLinks answers 409, naming the link, and reports false when a link other than the one in skip would
+// refuse renaming its entry of name to newName, because another of its entries holds newName, as its own rule
+// does. It runs before any link is written, so a taken name leaves every node unchanged and the owner can repeat
+// the rename once the name is free. An empty name, a provisional person's, names no entry, so any holder refuses.
+func (s *server) renameFreeOnLinks(
+	w http.ResponseWriter, r *http.Request, kind domain.VocabularyKind, name, newName string, skip int64,
+) bool {
 	links, err := s.readLinks(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the pairing.", err)
@@ -425,19 +433,44 @@ func (s *server) peerCreditNameFree(w http.ResponseWriter, r *http.Request, kind
 		if link.Link.Slot == skip {
 			continue
 		}
-		items, err := s.peerEntries(r, link.Link.Slot, vocabularyKindOf(kind))
+		items, err := s.peerEntries(r, link.Link.Slot, kind)
 		if err != nil {
 			s.vocabularyFailure(w, &linkError{name: link.Link.Name, err: err})
 			return false
 		}
-		if slices.ContainsFunc(items, func(item peerVocabularyItem) bool { return item.Name == name }) {
-			body := creditNameTakenBody(kind)
-			body.Peer = &link.Link.Name
-			s.writeErrorBody(w, http.StatusConflict, body)
-			return false
+		holder, taken := renameHolder(items, kind, name, newName)
+		if !taken {
+			continue
 		}
+		body := tagNameTakenBody(newName, domain.TagRef{Name: holder})
+		if creditKind, ok := kind.CreditKind(); ok {
+			body = creditNameTakenBody(creditKind)
+		}
+		body.Peer = &link.Link.Name
+		s.writeErrorBody(w, http.StatusConflict, body)
+		return false
 	}
 	return true
+}
+
+// renameHolder is the canonical name of the entry among items, other than name's, that holds newName as its
+// canonical name or a tag's synonym; a name several entries hold names the lowest id, as the store's rule does.
+func renameHolder(items []peerVocabularyItem, kind domain.VocabularyKind, name, newName string) (string, bool) {
+	var renamed, holder *peerVocabularyItem
+	for i := range items {
+		item := &items[i]
+		if name != "" && item.Name == name && (renamed == nil || item.ID < renamed.ID) {
+			renamed = item
+		}
+		holds := item.Name == newName || (kind == domain.VocabularyTag && slices.Contains(item.Synonyms, newName))
+		if holds && (holder == nil || item.ID < holder.ID) {
+			holder = item
+		}
+	}
+	if holder == nil || (renamed != nil && renamed.ID == holder.ID) {
+		return "", false
+	}
+	return holder.Name, true
 }
 
 // renameCreditOnPeer renames every link's entry of id's name before the local update; a provisional person has no
@@ -458,11 +491,12 @@ func (s *server) renameCreditOnPeer(w http.ResponseWriter, r *http.Request, kind
 	if err != nil || current.Name == normalized.Name {
 		return true
 	}
-	if !s.creditNameFree(w, r.Context(), kind, id, normalized.Name) {
+	if !s.creditNameFree(w, r.Context(), kind, id, normalized.Name) ||
+		!s.renameFreeOnLinks(w, r, vocabularyKindOf(kind), current.Name, normalized.Name, 0) {
 		return false
 	}
 	if current.Name == "" {
-		return s.peerCreditNameFree(w, r, kind, normalized.Name, 0)
+		return true
 	}
 	_, ok = s.sendVocabulary(w, r, domain.VocabularyChange{
 		Kind: vocabularyKindOf(kind), Action: domain.VocabularyRename, Name: current.Name, NewName: normalized.Name,

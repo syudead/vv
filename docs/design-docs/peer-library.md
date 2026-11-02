@@ -283,11 +283,13 @@ remote-only entry carries the offset of the first link that holds it.
 A rename, merge or deletion of a tag, person or organization on the reader
 first checks that every link is `connected`, and otherwise answers `409` with
 reason `peer_unreachable` and the first such link's name in `Error.peer`. It
-then checks the conflict here, writes every link by name
-(`POST /api/peer/vocabulary`) in slot order, and writes the local node last.
-A link that refuses stops the write with that link's status and its name in
-`Error.peer`; the links before it stay written, since a deletion or merge has
-no inverse, and the owner repeats the request. A rename addressed by a remote
+then checks the conflict here and, for a rename, in every link's list, so a
+new name a link holds is refused with that link's name before any node
+changes and the same rename succeeds once the name is free. It then writes
+every link by name (`POST /api/peer/vocabulary`) in slot order, and writes the
+local node last. A link that still refuses stops the write with that link's
+status and its name in `Error.peer`; the links before it stay written, since a
+deletion or merge has no inverse. A rename addressed by a remote
 id renames the same name on the other links first and is then forwarded to the
 id's own link. A merge whose destination and sources are all in one link's
 offset form names no entry of the reader, so it goes to that link's merge by
@@ -331,7 +333,9 @@ that video's directory the folder points, as its own related list does.
 An operation over a selection splits its targets by slot, applies the local
 part in one transaction, then each link's part in one request in slot order,
 and answers one `remote` with the applied counts summed and the ids no link
-changed, with the reason of the first link that failed. A local smart folder
+changed, with the reason of the first link that failed. Its summaries join
+the links' tags, people and organizations by name in slot order, as the
+vocabulary lists do, so one name is one row. A local smart folder
 also reaches every connected link with its rule by name. Tags, people and
 organizations go to each link by name, another link's included, and are
 created there when missing; a provisional person with a remote target answers

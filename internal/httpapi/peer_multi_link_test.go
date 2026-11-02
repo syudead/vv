@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -84,14 +85,14 @@ func TestRenameWithALinkDownChangesNoNodeAndNamesIt(t *testing.T) {
 	}
 }
 
-// A rename reaches every link in slot order before this node; a link that refuses stops it there, naming that link,
-// and leaves the links before it renamed.
+// A rename reaches every link in slot order before this node. A new name a later link holds is refused, naming that
+// link, before any node changes, so the same rename succeeds once the name is free there.
 func TestRenameReachesEveryLinkBeforeThisNode(t *testing.T) {
 	fa, fb, fc, b, _ := threeNodes(t)
 	cat := tagOn(t, fb, "猫")
 	tagOn(t, fa, "猫")
 	tagOn(t, fc, "猫")
-	tagOn(t, fc, "にゃん")
+	taken := tagOn(t, fc, "にゃん")
 
 	if rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"ねこ"}`); rec.Code != http.StatusOK {
 		t.Fatalf("rename: status = %d: %s", rec.Code, rec.Body)
@@ -107,11 +108,22 @@ func TestRenameReachesEveryLinkBeforeThisNode(t *testing.T) {
 		status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: gen.ErrorReasonNameIsTag, tagName: "にゃん",
 		peer: "node-c",
 	})
-	if _, found := tagNamed(t, fa, "にゃん"); !found {
-		t.Error("a, the link before node-c, was not renamed")
+	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
+		if _, found := tagNamed(t, f, "ねこ"); !found {
+			t.Errorf("%s renamed ねこ although node-c refused", node)
+		}
 	}
-	if _, found := tagNamed(t, fb, "ねこ"); !found {
-		t.Error("b renamed ねこ although node-c refused")
+
+	if err := fc.env.db.Tags().DeleteTag(context.Background(), taken.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := b.owner(http.MethodPatch, tagPath(cat.ID, ""), `{"name":"にゃん"}`); rec.Code != http.StatusOK {
+		t.Fatalf("repeated rename: status = %d: %s", rec.Code, rec.Body)
+	}
+	for node, f := range map[string]*guestFixture{"a": fa, "b": fb, "c": fc} {
+		if _, found := tagNamed(t, f, "にゃん"); !found {
+			t.Errorf("%s has no tag にゃん after the repeated rename", node)
+		}
 	}
 }
 
@@ -147,6 +159,37 @@ func TestSelectionTagEditAppliesOnEveryLink(t *testing.T) {
 			t.Errorf("%s's 星 = %+v (found %v), want it on video a", node, tag, found)
 		}
 	}
+}
+
+// A selection's summaries give a name only links hold one entry with the count of every link's videos, as the tag
+// list does.
+func TestSelectionSummariesJoinLinksByName(t *testing.T) {
+	fa, _, fc, b, _ := threeNodes(t)
+	dog := tagOn(t, fa, "犬", "a")
+	tagOn(t, fc, "犬", "a")
+	body := fmt.Sprintf(`{"videoIds":[%d,%d]}`, domain.RemoteID(1, fa.ids["a"]), domain.RemoteID(2, fc.ids["a"]))
+	want := domain.RemoteID(1, dog.ID)
+
+	rec := b.owner(http.MethodPost, "/api/video-tags/summary", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tag summary: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := summaryItemsNamed(decode[gen.VideoTagsSummary](t, rec).Items, "犬"); len(got) != 1 || got[0].Tag.Id != want ||
+		got[0].Count != 2 {
+		t.Errorf("tag summary's 犬 = %+v, want one entry with a's id in slot 1 and 2 videos", got)
+	}
+	rec = b.owner(http.MethodPost, "/api/video-edits/summary", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit summary: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := summaryItemsNamed(decode[gen.VideoEditSummary](t, rec).Tags, "犬"); len(got) != 1 || got[0].Tag.Id != want ||
+		got[0].Count != 2 {
+		t.Errorf("edit summary's 犬 = %+v, want one entry with a's id in slot 1 and 2 videos", got)
+	}
+}
+
+func summaryItemsNamed(items []gen.VideoTagsSummaryItem, name string) []gen.VideoTagsSummaryItem {
+	return slices.DeleteFunc(slices.Clone(items), func(item gen.VideoTagsSummaryItem) bool { return item.Tag.Name != name })
 }
 
 // A group belongs to one node, so a group of two links' videos is refused.

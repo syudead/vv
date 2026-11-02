@@ -137,17 +137,19 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	join, err := s.selectionJoin(r.Context(), sel)
+	if err != nil {
+		s.internalError(w, "Could not load the tag summary.", err)
+		return
+	}
 	for _, link := range sel.links {
 		var peer gen.VideoTagsSummary
 		if !s.peerSelectionRead(r, "/api/video-tags/summary", link, &peer) {
 			continue
 		}
-		join, err := s.vocabularyJoin(r.Context(), link.slot)
-		if err != nil {
-			s.internalError(w, "Could not load the tag summary.", err)
-			return
-		}
-		summary = domain.MergeTagSummaries(summary, domain.TagSummary{Total: peer.Total, Items: peerTagSummaryItems(peer.Items, join)})
+		items := peerTagSummaryItems(peer.Items, join.InSlot(link.slot))
+		join.HoldTags(items)
+		summary = domain.MergeTagSummaries(summary, domain.TagSummary{Total: peer.Total, Items: items})
 	}
 
 	items := make([]gen.VideoTagsSummaryItem, 0, len(summary.Items))

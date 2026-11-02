@@ -49,6 +49,16 @@ func (link selectionLink) peerTargets() ([]int64, *[]int64) {
 	return ids, &link.peerFolders
 }
 
+// selectionJoin joins the summaries of sel's links in slot order: an entry no node before a link holds keeps that
+// link's remote id, and a later link's entry of the same name takes it, as the vocabulary lists join.
+func (s *server) selectionJoin(ctx context.Context, sel selection) (domain.VocabularyJoin, error) {
+	if len(sel.links) == 0 {
+		return domain.VocabularyJoin{}, nil
+	}
+	join, err := s.vocabularyJoin(ctx, 0)
+	return join.Detached(), err
+}
+
 // selectionParts collects the links' parts of a selection while it resolves, by slot.
 type selectionParts map[int64]*selectionLink
 

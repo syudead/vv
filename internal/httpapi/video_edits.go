@@ -35,17 +35,19 @@ func (s *server) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	join, err := s.selectionJoin(r.Context(), sel)
+	if err != nil {
+		s.internalError(w, "Could not load the edit summary.", err)
+		return
+	}
 	for _, link := range sel.links {
 		var peer gen.VideoEditSummary
 		if !s.peerSelectionRead(r, "/api/video-edits/summary", link, &peer) {
 			continue
 		}
-		join, err := s.vocabularyJoin(r.Context(), link.slot)
-		if err != nil {
-			s.internalError(w, "Could not load the edit summary.", err)
-			return
-		}
-		summary = domain.MergeVideoEditSummaries(summary, peerEditSummary(peer, join))
+		part := peerEditSummary(peer, join.InSlot(link.slot))
+		join.Hold(part)
+		summary = domain.MergeVideoEditSummaries(summary, part)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toAPIVideoEditSummary(summary), s.logger)
