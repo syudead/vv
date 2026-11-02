@@ -200,10 +200,10 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// MergedRelatedVideos is RelatedVideos over both nodes; a nil or failing peer is skipped.
-	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
-	// RemoteRelatedVideos is the related list over both nodes of a peer video with clues; exclude holds peer ids.
-	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, exclude []int64, page domain.MergedRelatedPage, peer domain.RelatedPeer) (domain.MergedRelated, error)
+	// MergedRelatedVideos is RelatedVideos over this node and peers; a failing peer is skipped.
+	MergedRelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error)
+	// RemoteRelatedVideos is the related list over this node and peers of a link's video with clues.
+	RemoteRelatedVideos(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, page domain.MergedRelatedPage, peers []domain.RelatedPeer) (domain.MergedRelated, error)
 	// PeerRelated scores this node's videos, except exclude, against the clues the peer sent; openID, when not
 	// 0, is the open video in this node's ids, whose directory adds the folder points.
 	PeerRelated(ctx context.Context, audience domain.Audience, clues domain.RelatedClues, openID int64, exclude []int64, after *domain.RelatedCursor, limit int) (domain.ScoredRelated, error)

@@ -59,8 +59,9 @@ func optionalIDList(ids []int64) *[]int64 {
 	return &ids
 }
 
-// listMergedWatchHistory answers both nodes' history newest first with one composite cursor. A peer that fails is
-// left out for the rest of the listing, as a merged video list leaves it out.
+// listMergedWatchHistory answers the history of this node and every link newest first with one composite cursor.
+// A link that is not connected on the first page, or fails, is left out for the rest of the listing, as a merged
+// video list leaves it out.
 func (s *server) listMergedWatchHistory(
 	w http.ResponseWriter, r *http.Request, query domain.WatchHistoryQuery, cursorText string, limit int,
 ) {
@@ -69,15 +70,15 @@ func (s *server) listMergedWatchHistory(
 	if !s.checkWatchHistoryRead(w, err) {
 		return
 	}
-	slot := s.listSlot(ctx)
-	join, err := s.vocabularyJoin(ctx, slot)
+	cursor = cursor.Begin(s.linkReaches(ctx))
+	join, err := s.vocabularyJoin(ctx, 0)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return
 	}
 	var local domain.MergeSide[gen.WatchHistoryEntry]
-	if !cursor.LocalDone {
-		page, err := s.watchHistory.ListWatchHistory(ctx, audienceFrom(ctx), query, cursor.Local, limit)
+	if side := cursor.Side(0); !side.Done {
+		page, err := s.watchHistory.ListWatchHistory(ctx, audienceFrom(ctx), query, side.Cursor, limit)
 		if !s.checkWatchHistoryRead(w, err) {
 			return
 		}
@@ -85,14 +86,19 @@ func (s *server) listMergedWatchHistory(
 			Items: s.watchHistoryEntries(ctx, page.Items), Cursors: watchHistoryCursors(page.Items), Next: page.NextCursor,
 		}
 	}
-	var peer domain.MergeSide[gen.WatchHistoryEntry]
-	if !cursor.PeerDone {
-		if peer, err = s.peerWatchHistory(r, join, cursor.Peer, limit); err != nil {
-			s.logger.Info("the watch history leaves out the other VVMDM", slog.Any("error", err))
-			peer, cursor.PeerSkipped, cursor.PeerDone = domain.MergeSide[gen.WatchHistoryEntry]{}, true, true
-		}
+	parts, cursor := readLinkParts(s, watchHistoryPath, cursor,
+		func(slot int64, side domain.SideCursor) (listPart[gen.WatchHistoryEntry], error) {
+			if side.Done {
+				return listPart[gen.WatchHistoryEntry]{}, nil
+			}
+			page, err := s.peerWatchHistory(r, join.InSlot(slot), side.Cursor, limit)
+			return listPart[gen.WatchHistoryEntry]{side: page}, err
+		})
+	sides := []domain.MergeSide[gen.WatchHistoryEntry]{local}
+	for _, part := range parts {
+		sides = append(sides, part.side)
 	}
-	items, next, more := domain.MergeWatchHistoryPages(cursor, local, peer, limit)
+	items, next, more := domain.MergeWatchHistoryPages(cursor, sides, limit)
 	out := gen.WatchHistoryPage{Items: items}
 	if more {
 		nextCursor := next.Encode()
@@ -102,7 +108,7 @@ func (s *server) listMergedWatchHistory(
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// peerWatchHistory reads the peer's page after cursor with the request's filters, in this node's ids.
+// peerWatchHistory reads the page of join's link after cursor with the request's filters, in this node's ids.
 func (s *server) peerWatchHistory(
 	r *http.Request, join domain.VocabularyJoin, cursor string, limit int,
 ) (domain.MergeSide[gen.WatchHistoryEntry], error) {
@@ -126,14 +132,13 @@ func (s *server) peerWatchHistory(
 	return peerSide(answer.Items, answer.PeerItems, answer.NextCursor)
 }
 
-// withPeerWatchHistoryDays adds the peer's days to days; a peer that fails is left out.
+// withPeerWatchHistoryDays adds every connected link's days to days; a link that fails is left out.
 func (s *server) withPeerWatchHistoryDays(r *http.Request, days []string) []string {
-	var answer gen.WatchHistoryDates
-	if err := s.peerGet(r, s.listSlot(r.Context()), watchHistoryPath+"/dates", r.URL.Query(), &answer); err != nil {
-		s.logger.Info("the watch history dates leave out the other VVMDM", slog.Any("error", err))
-		return days
+	nodes := [][]string{days}
+	for _, answer := range linkAnswers[gen.WatchHistoryDates](s, r, watchHistoryPath+"/dates", r.URL.Query()) {
+		nodes = append(nodes, answer.value.Days)
 	}
-	return domain.MergeWatchHistoryDays(days, answer.Days)
+	return domain.MergeWatchHistoryDays(nodes...)
 }
 
 // deletePeerWatchHistoryEntry deletes the peer's entry named by the remote id; the peer's own request with a remote

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -21,8 +23,8 @@ const (
 	maxPeerRelatedBody = 4 << 20
 )
 
-// mergedRelatedVideos answers the related list of this node's video with the videos of both nodes
-// (docs/design-docs/related-videos.md).
+// mergedRelatedVideos answers the related list of this node's video with the videos of this node and every
+// connected link (docs/design-docs/related-videos.md).
 func (s *server) mergedRelatedVideos(w http.ResponseWriter, r *http.Request, id int64, params gen.GetRelatedVideosParams, limit int) {
 	page, ok := s.mergedRelatedPage(w, params, limit)
 	if !ok {
@@ -33,24 +35,24 @@ func (s *server) mergedRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	audience := audienceFrom(r.Context())
-	peer, ok := s.relatedPeer(w, r, s.listSlot(r.Context()))
+	peers, ok := s.relatedPeers(w, r, 0)
 	if !ok {
 		return
 	}
-	related, err := s.catalog.MergedRelatedVideos(r.Context(), audience, video, page, peer)
+	related, err := s.catalog.MergedRelatedVideos(r.Context(), audience, video, page, relatedPeerList(peers))
 	if err != nil {
 		s.internalError(w, "Could not load related videos.", err)
 		return
 	}
 	present := s.presenter(r.Context(), audience, withGroupMembers(related.Local, related.Group))
-	items := mergedRelatedItems(related, present(r.Context(), related.Local), peer.videos)
+	items := mergedRelatedItems(related, present(r.Context(), related.Local), peers)
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, relatedBody(items, presentGroup(r.Context(), present, related.Group),
 		mergedCursorText(related.NextCursor), related.NextID, related.PrevID), s.logger)
 }
 
-// remoteRelatedVideos answers the related list of the peer's video: its clues and group come from the peer,
-// this node scores its own videos and the peer its own.
+// remoteRelatedVideos answers the related list of a link's video: its clues and group come from that link, this
+// node scores its own videos and every connected link its own.
 func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id int64, params gen.GetRelatedVideosParams, limit int) {
 	page, ok := s.mergedRelatedPage(w, params, limit)
 	if !ok || !s.requireCatalog(w) {
@@ -61,10 +63,11 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	ctx := r.Context()
-	peer, ok := s.relatedPeer(w, r, domain.RemoteSlot(id))
+	peers, ok := s.relatedPeers(w, r, domain.RemoteSlot(id))
 	if !ok {
 		return
 	}
+	peer := peers[slices.IndexFunc(peers, func(p *relatedPeer) bool { return p.slot == domain.RemoteSlot(id) })]
 	peerID := domain.FromRemoteID(id)
 	peer.open = peerID
 	var body gen.RelatedClues
@@ -84,13 +87,14 @@ func (s *server) remoteRelatedVideos(w http.ResponseWriter, r *http.Request, id 
 		s.writePeerCallError(w, err)
 		return
 	}
-	related, err := s.catalog.RemoteRelatedVideos(ctx, audienceFrom(ctx), clues, exclude, page, peer)
+	peer.exclude = exclude
+	related, err := s.catalog.RemoteRelatedVideos(ctx, audienceFrom(ctx), clues, page, relatedPeerList(peers))
 	if err != nil {
 		s.internalError(w, "Could not load related videos.", err)
 		return
 	}
 	present := s.presenter(ctx, audienceFrom(ctx), related.Local)
-	items := mergedRelatedItems(related, present(ctx, related.Local), peer.videos)
+	items := mergedRelatedItems(related, present(ctx, related.Local), peers)
 	payload := relatedBody(items, nil, mergedCursorText(related.NextCursor), 0, 0)
 	switch {
 	case head.Group != nil:
@@ -123,20 +127,19 @@ func mergedCursorText(cursor *domain.MergedRelatedCursor) string {
 	return cursor.String()
 }
 
-// mergedRelatedItems puts the presented videos of this node and the rewritten ones of the peer in the
-// merged order, leaving out a video that went away between ranking and reading.
-func mergedRelatedItems(related domain.MergedRelated, local []gen.Video, remote map[int64]gen.Video) []gen.Video {
+// mergedRelatedItems puts the presented videos of this node and the rewritten ones of the links in the merged
+// order, leaving out a video that went away between ranking and reading.
+func mergedRelatedItems(related domain.MergedRelated, local []gen.Video, peers []*relatedPeer) []gen.Video {
 	byID := make(map[int64]gen.Video, len(local))
 	for _, video := range local {
 		byID[video.Id] = video
 	}
+	for _, peer := range peers {
+		maps.Copy(byID, peer.videos)
+	}
 	items := make([]gen.Video, 0, len(related.IDs))
 	for _, id := range related.IDs {
-		video, ok := byID[id]
-		if !ok {
-			video, ok = remote[id]
-		}
-		if ok {
+		if video, ok := byID[id]; ok {
 			items = append(items, video)
 		}
 	}
@@ -284,29 +287,50 @@ type relatedPeer struct {
 	slot  int64
 	guest bool
 	join  domain.VocabularyJoin
-	// open is the open video in the peer's ids when the peer holds it, so the peer adds the folder points.
-	open   int64
-	videos map[int64]gen.Video
+	// open is the open video in the link's ids when the link holds it, so the link adds the folder points, and
+	// exclude are that video, its bundle and its group in the link's ids.
+	open    int64
+	exclude []int64
+	videos  map[int64]gen.Video
 }
 
-func (s *server) relatedPeer(w http.ResponseWriter, r *http.Request, slot int64) (*relatedPeer, bool) {
-	join, err := s.vocabularyJoin(r.Context(), slot)
+// relatedPeers are the related peers of the connected links in slot order, with the link in open, whose video is
+// open, among them even when it is not connected, so its own calls answer as unreachable.
+func (s *server) relatedPeers(w http.ResponseWriter, r *http.Request, open int64) ([]*relatedPeer, bool) {
+	join, err := s.vocabularyJoin(r.Context(), 0)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return nil, false
 	}
-	return &relatedPeer{
-		link: s.peerLink, slot: slot, guest: !audienceFrom(r.Context()).IsOwner(), join: join,
-		videos: map[int64]gen.Video{},
-	}, true
+	slots := s.connectedSlots(r.Context())
+	if open != 0 && !slices.Contains(slots, open) {
+		slots = append(slots, open)
+		slices.Sort(slots)
+	}
+	peers := make([]*relatedPeer, len(slots))
+	for i, slot := range slots {
+		peers[i] = &relatedPeer{
+			link: s.peerLink, slot: slot, guest: !audienceFrom(r.Context()).IsOwner(), join: join.InSlot(slot),
+			videos: map[int64]gen.Video{},
+		}
+	}
+	return peers, true
+}
+
+func relatedPeerList(peers []*relatedPeer) []domain.RelatedPeer {
+	out := make([]domain.RelatedPeer, len(peers))
+	for i, peer := range peers {
+		out[i] = peer
+	}
+	return out
 }
 
 func (p *relatedPeer) Slot() int64 { return p.slot }
 
-func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, exclude []int64, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
+func (p *relatedPeer) Related(ctx context.Context, clues domain.RelatedClues, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
 	body := gen.PeerRelatedRequest{Clues: cluesBody(clues), Limit: &limit}
-	if len(exclude) > 0 {
-		body.Exclude = &exclude
+	if len(p.exclude) > 0 {
+		body.Exclude = &p.exclude
 	}
 	if p.open != 0 {
 		body.OpenVideoId = &p.open
