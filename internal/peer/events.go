@@ -24,7 +24,7 @@ const maxEvent = 1 << 20
 var errEventTooLarge = errors.New("an event of the stream is too large")
 
 // Watch holds the peer's /api/events open with secret. It calls opened once the peer answered 200 and
-// changed for each video, group and smartFolder event, with the peer's own ids. It returns when the
+// changed for each video, group, smartFolder and mediaFolders event, with the peer's own ids. It returns when the
 // stream ends: ctx's error after cancellation, else the domain's pairing error.
 func (c *Client) Watch(
 	ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged),
@@ -127,6 +127,9 @@ func forwardedEvent(name string, data []byte) (domain.PeerChanged, bool) {
 		}
 		ids := ownIDs(event.Ids)
 		return domain.PeerChanged{SmartFolderIDs: ids}, len(ids) > 0
+	case "mediaFolders":
+		// The peer never sends a link's or a switch's mediaFolders to this stream, so it cannot bounce back.
+		return domain.PeerChanged{MediaFolders: true}, true
 	}
 	return domain.PeerChanged{}, false
 }

@@ -198,7 +198,7 @@ func (s *SettingsStore) SetMediaFolderEnabled(ctx context.Context, id int64, ena
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, fmt.Errorf("cannot switch the media folder: %w", err)
 	}
-	s.db.publishEvents(domain.MediaFoldersChanged{Switch: true})
+	s.db.publishEvents(domain.MediaFoldersChanged{ViewOnly: true})
 	folder.Enabled = enabled
 	return folder, nil
 }

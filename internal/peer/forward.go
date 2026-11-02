@@ -14,15 +14,17 @@ import (
 )
 
 const (
-	peerScheme         = "VV-Peer"
-	peerAudienceHeader = "X-VV-Peer-Audience"
+	peerScheme             = "VV-Peer"
+	peerAudienceHeader     = "X-VV-Peer-Audience"
+	peerExcludedFoldersKey = "X-VV-Peer-Excluded-Folders"
 )
 
-// Connection is app.Pairing: how to reach the node of the link in a slot while that link is connected, and
-// where a failed request goes so that link becomes unreachable at once. A slot without a link answers
-// domain.ErrNotFound.
+// Connection is app.Pairing: how to reach the node of the link in a slot while that link is connected, the
+// link's folders switched off on this node, and where a failed request goes so that link becomes unreachable at
+// once. A slot without a link answers domain.ErrNotFound.
 type Connection interface {
 	Connection(ctx context.Context, slot int64) (target domain.PeerTarget, secret string, ok bool, err error)
+	ExcludedFolders(ctx context.Context, slot int64) ([]int64, error)
 	ReportFailure(ctx context.Context, slot int64, err error)
 }
 
@@ -37,7 +39,8 @@ func NewForwarder(client *Client, conn Connection) *Forwarder {
 }
 
 // Forward sends req, whose URL holds the peer's path and query only, to the node of the link in slot with that
-// link's credential, lowered to the guest audience when guest is set; media has no response timeout. A slot
+// link's credential, lowered to the guest audience when guest is set, and with the link's folders switched off
+// on this node; media has no response timeout. A slot
 // without a link answers domain.ErrNotFound; a node that is not connected, gives no response or no longer knows
 // this one answers *domain.PeerUnreachableError. Any other response is the caller's to close, and a failed read
 // of its body is reported like a failed request.
@@ -49,6 +52,10 @@ func (f *Forwarder) Forward(req *http.Request, slot int64, guest, media bool) (*
 	}
 	if !ok {
 		return nil, &domain.PeerUnreachableError{Message: "The other VVMDM is not connected."}
+	}
+	excluded, err := f.conn.ExcludedFolders(ctx, slot)
+	if err != nil {
+		return nil, err
 	}
 	base, err := url.Parse(target.Address)
 	if err != nil || base.Host == "" {
@@ -67,6 +74,10 @@ func (f *Forwarder) Forward(req *http.Request, slot int64, guest, media bool) (*
 	out.Header.Del(peerAudienceHeader)
 	if guest {
 		out.Header.Set(peerAudienceHeader, domain.AudienceGuest.String())
+	}
+	out.Header.Del(peerExcludedFoldersKey)
+	if len(excluded) > 0 {
+		out.Header.Set(peerExcludedFoldersKey, domain.JoinIDs(excluded))
 	}
 	bounds := callLimits
 	if media {

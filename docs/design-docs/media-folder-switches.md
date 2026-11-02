@@ -86,23 +86,72 @@ to it.
 
 `SettingsStore.SetMediaFolderEnabled` changes `enabled` and leaves `path`,
 `version` and `updated_at`, so no rescan, ingest or sweep follows and a switch
-is allowed during a scan. `domain.MediaFoldersChanged{Switch: true}` is
+is allowed during a scan. `domain.MediaFoldersChanged{ViewOnly: true}` is
 published after the commit. The owner reaches it through
 `PUT /api/media-folders/{id}/enabled`, which answers `404 not_found` for a
 missing folder.
 
 ## The `mediaFolders` event follows its cause
 
-Every switch and every added, replaced or deleted folder sends `mediaFolders`,
-an empty object, to this node's session and token viewers, guests included,
+Every switch, local or of a link's folder, every added, replaced or deleted
+folder and every `mediaFolders` a link sends this node send `mediaFolders`, an
+empty object, to this node's session and token viewers, guests included,
 because their lists change too. A peer-credential stream receives it only for
-an added, replaced or deleted folder
+an added, replaced or deleted folder of this node; the other causes publish
+`MediaFoldersChanged{ViewOnly: true}`
 ([`internal/httpapi/events.go`](../../internal/httpapi/events.go)).
 
 | Rejected | Why |
 | --- | --- |
 | Sending a switch to the peer credential | A switch never changes what this node answers a peer, so the event would only make the reading node reread |
+| Sending a link's `mediaFolders` to the peer credential | Two nodes that read each other would bounce it without end, since an empty event has no ids to tell whose it was |
 | A `video` event per video in the folder | A folder holds thousands of videos; lists already reload on one all-folders notice |
+
+## A link's folders keep their switches on the reading node
+
+The reading node keeps a snapshot of each link's media folders with the
+owner's switches in `peer_media_folders`, and every request to the link
+carries the switched-off ids in `X-VV-Peer-Excluded-Folders`
+([`internal/app/pairing_folders.go`](../../internal/app/pairing_folders.go),
+[`internal/peer/forward.go`](../../internal/peer/forward.go)).
+
+The diagram shows the snapshot's life.
+
+```mermaid
+sequenceDiagram
+  participant R as Reading node
+  participant L as Link
+  L-->>R: stream opens, or mediaFolders event
+  R->>L: GET /api/peer/media-folders
+  L-->>R: id, path, version per folder
+  Note over R: reconcile the snapshot
+  R->>L: any request, X-VV-Peer-Excluded-Folders: 3,5
+  Note over L: reads leave folders 3 and 5 out
+```
+
+`domain.ReconcilePeerFolders` drops a row whose id the link no longer lists,
+replaces a row whose `path` or `version` differs with its switch on, and adds
+new rows on; `PeerStore.ReplacePeerFolders` applies it in one transaction and
+stores nothing for a link that was removed meanwhile. The rows are deleted with
+their link. Settings reads the snapshot with the link's state through
+`GET /api/peer/links/{nodeId}/media-folders`, so an unreachable link's folders
+and switches stay visible; a switch writes the snapshot only and never the
+link.
+
+The read node's peer boundary turns the header into the request's explicit
+folder scope, which leaves its own switches unapplied, and answers
+`400 invalid_request` to a malformed value. `GET /api/peer/media-folders`
+answers the credential the ids, paths and versions only, and
+`GET /api/media-folders`, which carries usage and edits, stays off the peer
+allow-list.
+
+| Rejected | Why |
+| --- | --- |
+| Reading the link's folders when Settings opens | An unreachable link's folders and switches would disappear |
+| Keying a switch by the folder id alone | A switch for a deleted or replaced folder would apply to the folder that takes its id |
+| A query parameter on every merged and forwarded operation | One header reaches lists, counts and forwarded reads alike, as `X-VV-Peer-Audience` does |
+| Storing the reader's switches on the read node | A second copy of the state would need resynchronizing on reconnect |
+| Applying the read node's switches as well | A switch is one node's view only |
 
 ## The screens name a switched-off folder
 

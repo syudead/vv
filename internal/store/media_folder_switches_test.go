@@ -57,7 +57,7 @@ func switchedOffFolderFixture(t *testing.T) switchFixture {
 	if folder.Enabled || folder.Path != f.offDir || folder.Version != 1 {
 		t.Fatalf("SetMediaFolderEnabled = %+v、パスと版を変えずにオフであるべき", folder)
 	}
-	if want := []domain.Event{domain.MediaFoldersChanged{Switch: true}}; !reflect.DeepEqual(recorder.events, want) {
+	if want := []domain.Event{domain.MediaFoldersChanged{ViewOnly: true}}; !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("スイッチのイベント = %#v, want %#v", recorder.events, want)
 	}
 	db.PublishTo(nil)

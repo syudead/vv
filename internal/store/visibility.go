@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -44,17 +42,9 @@ func listedLocationCondition(alias string, audience domain.Audience) string {
 func scopedLocationCondition(alias string, audience domain.Audience) string {
 	scope := `mf.enabled = 1`
 	if ids, explicit := audience.ExcludedFolders(); explicit {
-		scope = `mf.id not in (` + joinInt64s(ids) + `)`
+		scope = `mf.id not in (` + domain.JoinIDs(ids) + `)`
 	}
 	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + ` and ` + scope + `)`
-}
-
-func joinInt64s(ids []int64) string {
-	parts := make([]string, len(ids))
-	for i, id := range ids {
-		parts[i] = strconv.FormatInt(id, 10)
-	}
-	return strings.Join(parts, ", ")
 }
 
 // A file video needs a visible location; a projected virtual video has none and follows visibleVirtualCondition.

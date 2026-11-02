@@ -47,8 +47,8 @@ type eventSubscriber struct {
 	ready        chan struct{}
 }
 
-// mediaFoldersPending records which media-folder change waits: a peer-credential stream receives only folder
-// changes, since a switch never changes what this node answers a peer.
+// mediaFoldersPending records which media-folder change waits: a peer-credential stream receives only this node's
+// own folder changes, since neither a switch nor a link's folder change alters what this node answers a peer.
 type mediaFoldersPending struct {
 	any     bool
 	folders bool
@@ -215,7 +215,7 @@ func (e *Events) PeerStateChanged() {
 func (e *Events) MediaFoldersChanged(event domain.MediaFoldersChanged) {
 	e.publish(func(s *eventSubscriber) {
 		s.mediaFolders.any = true
-		s.mediaFolders.folders = s.mediaFolders.folders || !event.Switch
+		s.mediaFolders.folders = s.mediaFolders.folders || !event.ViewOnly
 	})
 }
 

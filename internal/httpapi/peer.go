@@ -40,6 +40,11 @@ type Pairing interface {
 	Forget(ctx context.Context, nodeID string) error
 	// Authenticate reports whether secret is the grant's credential.
 	Authenticate(ctx context.Context, secret string) (bool, error)
+	// LinkFolders answers the snapshot of the link's media folders with its state, or domain.ErrNotFound
+	// without the link of nodeID.
+	LinkFolders(ctx context.Context, nodeID string) (domain.PeerLinkFolders, error)
+	// SetLinkFolderEnabled switches a snapshot row on this node only; domain.ErrNotFound without it.
+	SetLinkFolderEnabled(ctx context.Context, nodeID string, folderID int64, enabled bool) (domain.PeerMediaFolder, error)
 }
 
 type peerRequestKey struct{}
@@ -119,6 +124,13 @@ func (s *server) peerBoundary(
 		s.invalidRequest(w, "X-VV-Peer-Audience must be guest when present.")
 		return
 	}
+	// The reader's switches replace this node's own, which never apply to a peer request.
+	excluded, ok := peerExcludedFolders(r)
+	if !ok {
+		s.invalidRequest(w, "X-VV-Peer-Excluded-Folders must be comma-separated positive ids when present.")
+		return
+	}
+	audience = audience.WithExcludedFolders(excluded)
 	if !peerAllowed(r) {
 		s.writeReasonError(w, http.StatusForbidden, codeForbidden, gen.ErrorReasonPeerNotAllowed,
 			"The paired VVMDM cannot use this operation.")

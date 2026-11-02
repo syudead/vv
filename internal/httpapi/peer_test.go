@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +78,7 @@ type peerNode struct {
 	cookie  *http.Cookie
 	library *audienceLibrary
 	pairing *app.Pairing
+	events  *Events
 }
 
 func newPeerNode(t *testing.T, name string) *peerNode {
@@ -88,16 +90,18 @@ func newPeerNode(t *testing.T, name string) *peerNode {
 func newPeerNodeServed(t *testing.T, name string, serve func(http.Handler) *httptest.Server) *peerNode {
 	t.Helper()
 	library := &audienceLibrary{fakeLibrary: sampleLibrary()}
-	var pairing *app.Pairing
+	var (
+		pairing *app.Pairing
+		events  = NewEvents()
+	)
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
-		events := NewEvents()
-		opts := Options{Videos: library, Events: events}
+		opts := Options{Videos: library, Events: events, MediaFolders: db.Settings()}
 		pairing = withTestPairing(db, name, storePublisher{events: events}, &opts)
 		return opts
 	})
 	server := serve(env.handler)
 	t.Cleanup(server.Close)
-	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library, pairing: pairing}
+	return &peerNode{env: env, url: server.URL, cookie: env.setup(), library: library, pairing: pairing, events: events}
 }
 
 // withTestPairing gives opts the pairing, its forwarder and the version both test nodes share.
@@ -130,9 +134,15 @@ func (n *peerNode) runConnection(t *testing.T) {
 // nextPeerEvent skips other events and returns the next peer event's state as JSON.
 func nextPeerEvent(t *testing.T, stream <-chan sseEvent) string {
 	t.Helper()
+	return nextEventNamed(t, stream, "peer").data
+}
+
+// nextEventNamed skips other events and returns the next one called name.
+func nextEventNamed(t *testing.T, stream <-chan sseEvent, name string) sseEvent {
+	t.Helper()
 	for {
-		if event := nextEvent(t, stream); event.name == "peer" {
-			return event.data
+		if event := nextEvent(t, stream); event.name == name {
+			return event
 		}
 	}
 }
@@ -351,12 +361,26 @@ func TestPeerCredentialClassification(t *testing.T) {
 	assertAudience(t, "資格情報", owner, "owner")
 	guest := peerRequest(http.MethodGet, "/api/videos", map[string]string{peerAudienceHeader: "guest"})
 	assertAudience(t, "guest の見出し", guest, "guest")
-	if got := a.library.audiences(); len(got) != 2 || got[0] != domain.AudienceOwner || got[1] != domain.AudienceGuest {
-		t.Errorf("ストアに渡った視聴者 = %v, want [owner guest]", got)
+	// The reader's switches replace A's own: none without the header, the listed ids with it.
+	scoped := peerRequest(http.MethodGet, "/api/videos", map[string]string{peerExcludedFoldersHeader: "5,3"})
+	if scoped.Code != http.StatusOK {
+		t.Fatalf("オフのフォルダ付きの一覧: status = %d: %s", scoped.Code, scoped.Body)
+	}
+	want := []domain.Audience{
+		domain.AudienceOwner.WithExcludedFolders(nil), domain.AudienceGuest.WithExcludedFolders(nil),
+		domain.AudienceOwner.WithExcludedFolders([]int64{3, 5}),
+	}
+	if got := a.library.audiences(); !slices.Equal(got, want) {
+		t.Errorf("ストアに渡った視聴者 = %+v, want %+v", got, want)
 	}
 	rec := peerRequest(http.MethodGet, "/api/videos", map[string]string{peerAudienceHeader: "owner"})
 	assertErrorBody(t, "見出しの別の値", rec.Code, rec.Body.Bytes(),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	for _, value := range []string{"", "3,", "0", "x"} {
+		rec := peerRequest(http.MethodGet, "/api/videos", map[string]string{peerExcludedFoldersHeader: value})
+		assertErrorBody(t, "オフのフォルダ "+strconv.Quote(value), rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
 
 	// The credential is valid on A alone: B, which holds no grant, refuses it like any unknown secret.
 	unknown := b.env.serve(authRequest{method: http.MethodGet, target: "/api/videos",

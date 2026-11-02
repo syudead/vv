@@ -361,6 +361,9 @@ type PeerChanged struct {
 	VideoIDs       []int64
 	GroupIDs       []int64
 	SmartFolderIDs []int64
+	// MediaFolders reports the link's mediaFolders event: Pairing refreshes the link's snapshot and publishes
+	// MediaFoldersChanged instead of forwarding it.
+	MediaFolders bool
 }
 
 func (PeerChanged) event() {}
@@ -369,7 +372,7 @@ func (PeerChanged) event() {}
 func (c PeerChanged) InSlot(slot int64) PeerChanged {
 	return PeerChanged{
 		VideoIDs: remoteIDsIn(slot, c.VideoIDs), GroupIDs: remoteIDsIn(slot, c.GroupIDs),
-		SmartFolderIDs: remoteIDsIn(slot, c.SmartFolderIDs),
+		SmartFolderIDs: remoteIDsIn(slot, c.SmartFolderIDs), MediaFolders: c.MediaFolders,
 	}
 }
 

@@ -22,6 +22,50 @@ type fakePeerStore struct {
 	nextSlot  int64
 	grant     *domain.PeerGrant
 	grantHash [32]byte
+	// folders is each link's snapshot by node id; listings records every listing ReplacePeerFolders received.
+	folders  map[string][]domain.PeerMediaFolder
+	listings [][]domain.PeerFolder
+}
+
+func (f *fakePeerStore) PeerFolders(_ context.Context, nodeID string) ([]domain.PeerMediaFolder, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.folders[nodeID]), nil
+}
+
+func (f *fakePeerStore) ReplacePeerFolders(
+	_ context.Context, nodeID string, listed []domain.PeerFolder, now time.Time,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listings = append(f.listings, listed)
+	next, changed := domain.ReconcilePeerFolders(f.folders[nodeID], listed, now)
+	if f.folders == nil {
+		f.folders = map[string][]domain.PeerMediaFolder{}
+	}
+	f.folders[nodeID] = next
+	return changed, nil
+}
+
+func (f *fakePeerStore) SetPeerFolderEnabled(
+	_ context.Context, nodeID string, folderID int64, enabled bool,
+) (domain.PeerMediaFolder, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rows := f.folders[nodeID]
+	i := slices.IndexFunc(rows, func(row domain.PeerMediaFolder) bool { return row.FolderID == folderID })
+	if i < 0 {
+		return domain.PeerMediaFolder{}, false, domain.ErrNotFound
+	}
+	changed := rows[i].Enabled != enabled
+	rows[i].Enabled = enabled
+	return rows[i], changed, nil
+}
+
+func (f *fakePeerStore) storedListings() [][]domain.PeerFolder {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.listings)
 }
 
 func (f *fakePeerStore) EnsureNodeID(_ context.Context, candidate string) (string, error) {
@@ -185,6 +229,10 @@ func (l *directLink) Handshake(ctx context.Context, target domain.PeerTarget, se
 func (l *directLink) Watch(ctx context.Context, _ domain.PeerTarget, _ string, _ func(), _ func(domain.PeerChanged)) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (l *directLink) MediaFolders(context.Context, domain.PeerTarget, string) ([]domain.PeerFolder, error) {
+	return nil, nil
 }
 
 func (l *directLink) Forget(ctx context.Context, target domain.PeerTarget, _, nodeID string) error {
