@@ -3,12 +3,9 @@ package store
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"reflect"
 	"strconv"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -18,23 +15,8 @@ const faceJobsVersion = 87
 // Unfinished face analysis becomes face jobs and outcomes become results, and a library with faces gets one
 // queue_face_images job, which queues the face that was stale at the upgrade; going back restores the queue.
 func TestFaceJobsMigrationRoundTripsTheQueueAndQueuesStaleFaces(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, faceJobsVersion-1)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, faceJobsVersion-1); err != nil {
-		t.Fatal(err)
-	}
 	execAll(t, db, `insert into face_queue (content_key, state, recognizer, reason, activity_id, updated_at)
 		values ('key-queued', 'queued', null, null, 5, 100000),
 		       ('key-running', 'running', null, null, 6, 200000),

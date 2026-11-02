@@ -3,12 +3,9 @@ package store
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"slices"
 	"testing"
 	"time"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -281,22 +278,7 @@ func TestImportStagesStayReadableAfterTheVideoIsDeleted(t *testing.T) {
 
 func TestImportRunningBeforeTheMigrationStaysWithoutAPipeline(t *testing.T) {
 	ctx := context.Background()
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	files, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(ctx, 63); err != nil {
-		t.Fatal(err)
-	}
+	db, _ := migrateTo(t, 63)
 	execSQL(t, db, `insert into videos(id, content_key) values (1, 'key-old')`)
 	execSQL(t, db, `insert into activity_entries (id, kind, feature, subject_kind, subject_key, subject_label, status,
 		reason, decider, created_at, updated_at)

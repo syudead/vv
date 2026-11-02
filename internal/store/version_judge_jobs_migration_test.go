@@ -2,11 +2,8 @@ package store
 
 import (
 	"context"
-	"io/fs"
 	"reflect"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 )
 
 const versionJudgeJobsVersion = 86
@@ -14,23 +11,8 @@ const versionJudgeJobsVersion = 86
 // Waiting, interrupted and failed pairs become version_judge jobs, a failed pair keeping its attempts and retry time;
 // going back restores the candidates' retry columns, with an interrupted pair waiting again.
 func TestVersionJudgeJobsMigrationRoundTripsTheCandidates(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsys, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, versionJudgeJobsVersion-1)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, versionJudgeJobsVersion-1); err != nil {
-		t.Fatal(err)
-	}
 	execAll(t, db, `insert into video_version_candidates
 		(key_a, key_b, distance, created_at, judgement, attempts, retry_at, judgement_error, activity_id) values
 		('a', 'b', 1, 100, null, 0, null, null, 5),

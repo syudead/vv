@@ -66,16 +66,27 @@ func OpenMigratedForTest(dataDir string) (*DB, error) {
 	return Open(dataDir)
 }
 
-// Checkpoint WAL before reading the migrated database image.
 func buildMigratedImage() ([]byte, error) {
+	return snapshotImage(func(db *DB) error {
+		_, err := Migrate(context.Background(), db)
+		return err
+	})
+}
+
+// snapshotImage returns the bytes of a fresh database after prepare, checkpointing WAL so the file alone holds the schema.
+func snapshotImage(prepare func(*DB) error) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "mdm-migrated-")
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	db, err := openAndMigrate(dir)
+	db, err := Open(dir)
 	if err != nil {
+		return nil, err
+	}
+	if err := prepare(db); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	if _, err := db.sql.Exec(`pragma wal_checkpoint(truncate)`); err != nil {

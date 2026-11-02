@@ -4,12 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io/fs"
 	"reflect"
 	"slices"
 	"testing"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -544,23 +541,8 @@ func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
 
 // Upgrade databases without the tentative column as well as databases from the release that already included it.
 func TestAutoTagSuggestionsMigrationKeepsTags(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 36)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 36); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.sql.Exec(`insert into tags (id, created_at) values (1, 1)`); err != nil {
 		t.Fatal(err)
 	}

@@ -3,15 +3,12 @@ package store
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -742,23 +739,8 @@ func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
 }
 
 func TestPlaylistsMigration(t *testing.T) {
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, provider := migrateTo(t, 38)
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 38); err != nil {
-		t.Fatal(err)
-	}
 	countTables := func() int {
 		t.Helper()
 		var tables int
