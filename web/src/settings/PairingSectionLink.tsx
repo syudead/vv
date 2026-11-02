@@ -191,7 +191,8 @@ function RemoveAction({ nodeId, onRemoved }: { nodeId: string; onRemoved: () => 
 
 /**
  * The section of one VVMDM this one reads, titled with its name: the state's detail while it is not
- * connected, its version, address, certificate and removal.
+ * connected, its version, address, certificate and removal. The description says what a connected
+ * link shows; the detail takes its place otherwise, so the header never contradicts the state.
  */
 export function LinkSection({
   link,
@@ -214,7 +215,7 @@ export function LinkSection({
   return (
     <PageSection
       title={name}
-      description={text.description}
+      description={detail === undefined ? text.description : undefined}
       actions={<PeerLinkBadge state={link.state} />}
     >
       {detail !== undefined && <p className="text-muted-foreground">{detail}</p>}

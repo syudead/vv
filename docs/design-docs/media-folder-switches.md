@@ -162,7 +162,10 @@ allow-list.
 ## The screens name a switched-off folder
 
 The switch is the last control of each row in Settings, `Media folders`, and
-stays usable during a scan. Open lists, the watch history and its dates
+stays usable during a scan. A local row keeps `Change`, `Force rescan` and
+`Remove` in one actions menu before the switch, so the path keeps the row's
+width. Below `sm` the switch takes its own line under the path at the left,
+where the page's other settings stack their controls. Open lists, the watch history and its dates
 included, reload on `mediaFolders`, and the event discards the saved list a
 return to the library or a folder would restore
 ([`web/src/api/serverEvents.ts`](../../web/src/api/serverEvents.ts)). A guest's

@@ -28,6 +28,8 @@ const OTHER: PeerLinkState = {
   address: "http://192.168.1.21:8080",
 };
 const GRANT = { name: "laptop", pairedAt: "2026-10-20T09:30:00Z" };
+const CONNECTED_DESCRIPTION =
+  "Its videos, groups and smart folders show in this library.";
 const NETWORK_DETAIL =
   "Its videos, groups and smart folders are hidden until it answers. Check that it is running and that the address below is right.";
 
@@ -234,7 +236,7 @@ describe("PairingSection, reading another VVMDM", () => {
     });
   });
 
-  it("shows each link in its own section with its own state", async () => {
+  it("shows each link in its own section with its own state, described only while connected", async () => {
     serve({
       links: [LINK, { ...OTHER, state: "unreachable", reason: "network" }],
       node: NODE,
@@ -243,10 +245,12 @@ describe("PairingSection, reading another VVMDM", () => {
 
     const first = within(await screen.findByRole("region", { name: LINK.name }));
     expect(first.getByText("Connected")).toBeDefined();
+    expect(first.getByText(CONNECTED_DESCRIPTION)).toBeDefined();
     expect(first.queryByText(NETWORK_DETAIL)).toBeNull();
     const second = within(linkSection(OTHER.name ?? ""));
     expect(second.getByText("Not connected")).toBeDefined();
     expect(second.getByText(NETWORK_DETAIL)).toBeDefined();
+    expect(second.queryByText(CONNECTED_DESCRIPTION)).toBeNull();
     expect(second.getByRole("textbox", { name: "Address" })).toHaveProperty(
       "value",
       OTHER.address,

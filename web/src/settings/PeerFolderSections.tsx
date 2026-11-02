@@ -85,7 +85,7 @@ function PeerFolderRow({
   const enabled = saving ?? folder.enabled;
   return (
     <div className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <Folder
           className={cn(
             "size-4 shrink-0 text-muted-foreground",
@@ -153,7 +153,10 @@ function usePeerLinkFolders(nodeId: string) {
   return { view, source, replace };
 }
 
-/** Drawn from this node's snapshot, so a link that is not connected keeps its rows; only the badge follows the link. */
+/**
+ * Drawn from this node's snapshot, so a link that is not connected keeps its rows; only the badge follows the link.
+ * The name wraps as on the Pairing page, so a long name reads the same on both.
+ */
 function PeerFolderSection({ link }: { link: PeerLinkState }) {
   const text = t.settings.mediaFolders.link;
   const name = link.name ?? "";
@@ -161,7 +164,7 @@ function PeerFolderSection({ link }: { link: PeerLinkState }) {
   const { view, source, replace } = usePeerLinkFolders(nodeId);
   return (
     <PageSection
-      title={<span className="block truncate">{name}</span>}
+      title={name}
       description={text.description(name)}
       actions={<PeerLinkBadge state={link.state} />}
     >
