@@ -44,11 +44,16 @@ func (a Audience) WithExcludedFolders(ids []int64) Audience {
 	}
 	slices.Sort(kept)
 	kept = slices.Compact(kept)
-	parts := make([]string, len(kept))
-	for i, id := range kept {
+	return Audience{owner: a.owner, explicit: true, excluded: JoinIDs(kept)}
+}
+
+// JoinIDs writes ids comma-separated in their order, the form of an explicit scope and its peer header.
+func JoinIDs(ids []int64) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
 		parts[i] = strconv.FormatInt(id, 10)
 	}
-	return Audience{owner: a.owner, explicit: true, excluded: strings.Join(parts, ",")}
+	return strings.Join(parts, ",")
 }
 
 // ExcludedFolders returns the explicit folder ids to leave out, or false when the scope is this node's switches.

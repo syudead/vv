@@ -1953,6 +1953,45 @@ func (e PeerCreditMatchRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for PeerLinkMediaFoldersReason.
+const (
+	PeerLinkMediaFoldersReasonCertificate PeerLinkMediaFoldersReason = "certificate"
+	PeerLinkMediaFoldersReasonNetwork     PeerLinkMediaFoldersReason = "network"
+)
+
+// Valid indicates whether the value is a known member of the PeerLinkMediaFoldersReason enum.
+func (e PeerLinkMediaFoldersReason) Valid() bool {
+	switch e {
+	case PeerLinkMediaFoldersReasonCertificate:
+		return true
+	case PeerLinkMediaFoldersReasonNetwork:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerLinkMediaFoldersState.
+const (
+	PeerLinkMediaFoldersStateConnected   PeerLinkMediaFoldersState = "connected"
+	PeerLinkMediaFoldersStateRevoked     PeerLinkMediaFoldersState = "revoked"
+	PeerLinkMediaFoldersStateUnreachable PeerLinkMediaFoldersState = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the PeerLinkMediaFoldersState enum.
+func (e PeerLinkMediaFoldersState) Valid() bool {
+	switch e {
+	case PeerLinkMediaFoldersStateConnected:
+		return true
+	case PeerLinkMediaFoldersStateRevoked:
+		return true
+	case PeerLinkMediaFoldersStateUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PeerLinkStateReason.
 const (
 	PeerLinkStateReasonCertificate PeerLinkStateReason = "certificate"
@@ -6220,6 +6259,13 @@ type PeerFetchedWorkInfoApplied struct {
 	Skipped      []SkippedWorkInfoValue `json:"skipped"`
 }
 
+// PeerFolder One media folder of the read node as it answers its reader
+type PeerFolder struct {
+	Id      int64  `json:"id"`
+	Path    string `json:"path"`
+	Version int64  `json:"version"`
+}
+
 // PeerGrant The VVMDM that reads this one
 type PeerGrant struct {
 	// Name Its host name at pairing
@@ -6231,6 +6277,24 @@ type PeerGrant struct {
 type PeerHandshake struct {
 	Node PeerNode `json:"node"`
 }
+
+// PeerLinkMediaFolders defines model for PeerLinkMediaFolders.
+type PeerLinkMediaFolders struct {
+	// Folders In the link's id order
+	Folders []PeerMediaFolder `json:"folders"`
+
+	// Reason Present with unreachable
+	Reason *PeerLinkMediaFoldersReason `json:"reason,omitempty"`
+
+	// State The link's connection, as getPeer answers it
+	State PeerLinkMediaFoldersState `json:"state"`
+}
+
+// PeerLinkMediaFoldersReason Present with unreachable
+type PeerLinkMediaFoldersReason string
+
+// PeerLinkMediaFoldersState The link's connection, as getPeer answers it
+type PeerLinkMediaFoldersState string
 
 // PeerLinkState One VVMDM this node reads, with its connection. Guests receive slot, state and reason only.
 type PeerLinkState struct {
@@ -6275,6 +6339,21 @@ type PeerListItem struct {
 
 	// SortValue The item's value under the request's sort as the cursor encodes it; null sorts last.
 	SortValue *string `json:"sortValue"`
+}
+
+// PeerMediaFolder One media folder of a link in this node's snapshot, with the owner's switch on this node
+type PeerMediaFolder struct {
+	// Enabled False while switched off on this node: the link leaves its videos out of this node's reads
+	Enabled bool `json:"enabled"`
+
+	// Id The folder's id on the link
+	Id int64 `json:"id"`
+
+	// Path Its path on the link, as last listed
+	Path string `json:"path"`
+
+	// RefreshedAt When the snapshot was last reconciled with the link's listing
+	RefreshedAt time.Time `json:"refreshedAt"`
 }
 
 // PeerNode defines model for PeerNode.
@@ -9047,6 +9126,9 @@ type OrganizationId = int64
 // OrganizationNameFilter defines model for OrganizationNameFilter.
 type OrganizationNameFilter = string
 
+// PeerLinkFolderId defines model for PeerLinkFolderId.
+type PeerLinkFolderId = int64
+
 // PeerLinkNodeId defines model for PeerLinkNodeId.
 type PeerLinkNodeId = string
 
@@ -9898,6 +9980,9 @@ type UpdatePeerAddressJSONRequestBody = UpdatePeerAddressRequest
 // ConfirmPeerCertificateJSONRequestBody defines body for ConfirmPeerCertificate for application/json ContentType.
 type ConfirmPeerCertificateJSONRequestBody = PeerCertificateRequest
 
+// SetPeerLinkMediaFolderEnabledJSONRequestBody defines body for SetPeerLinkMediaFolderEnabled for application/json ContentType.
+type SetPeerLinkMediaFolderEnabledJSONRequestBody = SetMediaFolderEnabledRequest
+
 // PairPeerJSONRequestBody defines body for PairPeer for application/json ContentType.
 type PairPeerJSONRequestBody = PairPeerRequest
 
@@ -10353,6 +10438,15 @@ type ServerInterface interface {
 	// ConfirmPeerCertificate Trust a read node's changed certificate
 	// (POST /api/peer/links/{nodeId}/certificate)
 	ConfirmPeerCertificate(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// ListPeerLinkMediaFolders List a read node's media folders with this node's switches
+	// (GET /api/peer/links/{nodeId}/media-folders)
+	ListPeerLinkMediaFolders(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId)
+	// SetPeerLinkMediaFolderEnabled Switch a read node's media folder on or off on this node
+	// (PUT /api/peer/links/{nodeId}/media-folders/{folderId}/enabled)
+	SetPeerLinkMediaFolderEnabled(w http.ResponseWriter, r *http.Request, nodeId PeerLinkNodeId, folderId PeerLinkFolderId)
+	// ListPeerMediaFolders List this node's media folders to the reading node
+	// (GET /api/peer/media-folders)
+	ListPeerMediaFolders(w http.ResponseWriter, r *http.Request)
 	// PairPeer Read the node whose code the owner typed
 	// (POST /api/peer/pair)
 	PairPeer(w http.ResponseWriter, r *http.Request)
@@ -13420,6 +13514,81 @@ func (siw *ServerInterfaceWrapper) ConfirmPeerCertificate(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConfirmPeerCertificate(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeerLinkMediaFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListPeerLinkMediaFolders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeerLinkMediaFolders(w, r, nodeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPeerLinkMediaFolderEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetPeerLinkMediaFolderEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "nodeId" -------------
+	var nodeId PeerLinkNodeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "nodeId", r.PathValue("nodeId"), &nodeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "nodeId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "folderId" -------------
+	var folderId PeerLinkFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "folderId", r.PathValue("folderId"), &folderId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "folderId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPeerLinkMediaFolderEnabled(w, r, nodeId, folderId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeerMediaFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListPeerMediaFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeerMediaFolders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18580,6 +18749,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pair", wrapper.PairPeer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/links/{nodeId}/address", wrapper.UpdatePeerAddress)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/links/{nodeId}/certificate", wrapper.ConfirmPeerCertificate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/links/{nodeId}/media-folders", wrapper.ListPeerLinkMediaFolders)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/peer/links/{nodeId}/media-folders/{folderId}/enabled", wrapper.SetPeerLinkMediaFolderEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/media-folders", wrapper.ListPeerMediaFolders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/peer/pairings", wrapper.AcceptPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/peer/handshake", wrapper.PeerHandshake)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/peer/pairings/{nodeId}", wrapper.ForgetPeer)

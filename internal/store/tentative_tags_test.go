@@ -204,7 +204,7 @@ func TestRejectConfirmedTagChangesNothing(t *testing.T) {
 	if _, err := db.Tags().RejectTag(ctx, tag.ID); !errors.Is(err, domain.ErrTagNotTentative) {
 		t.Fatalf("err = %v, want ErrTagNotTentative", err)
 	}
-	gotPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	gotPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestManualEditsConfirmTentativeTag(t *testing.T) {
 		t.Fatalf("統合 = %+v, %v", merged, err)
 	}
 
-	listPage, err := tags.ListTags(ctx, domain.TagListQuery{})
+	listPage, err := tags.ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestTagReadsCarryTentative(t *testing.T) {
 	dog := tagIDByName(t, db, "犬")
 	videoIDs := []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]}
 
-	listPage, err := tags.ListTags(ctx, domain.TagListQuery{})
+	listPage, err := tags.ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +459,7 @@ func TestTentativeTagsMigration(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	listPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	listPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

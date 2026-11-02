@@ -182,8 +182,11 @@ names an entity of a VVMDM this node reads: `id div 2^40` is the slot of that
 link, and the link's own id is the value minus `slot × 2^40`. Local ids stay
 below `2^40`, and the HTTP layer forwards such a request to the link of that
 slot instead of reading the store, or answers `404` when no link holds the
-slot ([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). No local
-table stores a remote entity, so pairing and unpairing change no user data.
+slot ([peer-library.md](docs/design-docs/peer-library.md#remote-ids)). The one
+local table naming a link's entities is `peer_media_folders`, the snapshot of
+its media folders with this node's switches, deleted with the link
+([media-folder-switches.md](docs/design-docs/media-folder-switches.md#a-links-folders-keep-their-switches-on-the-reading-node));
+pairing and unpairing change no other user data.
 
 **Only a scan walks the media folders.** Only a scan reads the media folders'
 trees and identifies their files, and only a user-started scan walks them

@@ -139,6 +139,20 @@ func (c *Client) Forget(ctx context.Context, target domain.PeerTarget, secret, n
 		http.StatusNoContent)
 }
 
+// MediaFolders lists the read node's media folders in its own ids.
+func (c *Client) MediaFolders(ctx context.Context, target domain.PeerTarget, secret string) ([]domain.PeerFolder, error) {
+	var answer []gen.PeerFolder
+	if err := c.call(ctx, target, http.MethodGet, "/api/peer/media-folders", secret, nil, &answer,
+		http.StatusOK); err != nil {
+		return nil, err
+	}
+	folders := make([]domain.PeerFolder, len(answer))
+	for i, folder := range answer {
+		folders[i] = domain.PeerFolder{ID: folder.Id, Path: folder.Path, Version: folder.Version}
+	}
+	return folders, nil
+}
+
 // call sends one request and decodes a response whose status is in accepted into out, unless out is nil.
 func (c *Client) call(
 	ctx context.Context, target domain.PeerTarget, method, path, secret string, in, out any, accepted ...int,

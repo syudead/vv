@@ -24,6 +24,12 @@ type sseEvent struct {
 
 func openEvents(t *testing.T, handler http.Handler) (<-chan sseEvent, *http.Response) {
 	t.Helper()
+	return openEventsWith(t, handler, nil)
+}
+
+// openEventsWith opens the stream with header, such as a peer credential.
+func openEventsWith(t *testing.T, handler http.Handler, header http.Header) (<-chan sseEvent, *http.Response) {
+	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
@@ -32,6 +38,9 @@ func openEvents(t *testing.T, handler http.Handler) (<-chan sseEvent, *http.Resp
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/events", nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for name, values := range header {
+		req.Header[name] = values
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -358,12 +367,12 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if pending := sub.take(); !pending.peer || pending.scan || len(pending.videos) != 0 {
 		t.Fatalf("PeerStateChanged: %+v, want peer only", pending)
 	}
-	events.Handle(domain.MediaFoldersChanged{Switch: true})
+	events.Handle(domain.MediaFoldersChanged{ViewOnly: true})
 	if pending := sub.take().mediaFolders; !pending.forViewer(false) || pending.forViewer(true) {
 		t.Fatalf("switch: %+v, want viewers only, not the peer credential", pending)
 	}
 	events.Handle(domain.MediaFoldersChanged{})
-	events.Handle(domain.MediaFoldersChanged{Switch: true})
+	events.Handle(domain.MediaFoldersChanged{ViewOnly: true})
 	if pending := sub.take().mediaFolders; !pending.forViewer(false) || !pending.forViewer(true) {
 		t.Fatalf("folder change: %+v, want viewers and the peer credential", pending)
 	}

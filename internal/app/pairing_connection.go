@@ -250,8 +250,9 @@ func (p *Pairing) waitWake(ctx context.Context, c *linkConn, delay time.Duration
 	}
 }
 
-// connect runs one attempt: the handshake checks the peer's node id, then the event stream
-// is held open until it ends. It reports whether the stream opened.
+// connect runs one attempt: the handshake checks the peer's node id, then the event stream is held open until it
+// ends. The link's folder snapshot is refreshed when the stream opens and on each mediaFolders event, before the
+// stream is read further. It reports whether the stream opened.
 func (p *Pairing) connect(ctx context.Context, c *linkConn, link domain.PeerLink) bool {
 	attempt, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -275,7 +276,14 @@ func (p *Pairing) connect(ctx context.Context, c *linkConn, link domain.PeerLink
 		err = p.client.Watch(attempt, target, link.Secret, func() {
 			opened = true
 			p.setStatus(c, generation, peerStatus{state: domain.PeerConnected, peerVersion: node.Version})
-		}, func(changed domain.PeerChanged) { p.publish(changed.InSlot(link.Slot)) })
+			p.refreshFolders(attempt, link, false)
+		}, func(changed domain.PeerChanged) {
+			if changed.MediaFolders {
+				p.refreshFolders(attempt, link, true)
+				return
+			}
+			p.publish(changed.InSlot(link.Slot))
+		})
 	}
 	if ctx.Err() == nil {
 		p.fail(ctx, c, generation, link, err)

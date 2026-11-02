@@ -80,7 +80,7 @@ type MediaFolderUsage interface {
 
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
-	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
+	ListTags(ctx context.Context, audience domain.Audience, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error
@@ -768,7 +768,7 @@ func requiresPutJSONBody(path string) bool {
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/peer/links/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
-		return found && id != "" && rest == "address"
+		return found && id != "" && (rest == "address" || isLinkFolderSwitch(rest))
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
 		id, rest, found := strings.Cut(suffix, "/")
@@ -779,6 +779,12 @@ func requiresPutJSONBody(path string) bool {
 		return found && id != "" && isVideoJSONPut(rest)
 	}
 	return false
+}
+
+// isLinkFolderSwitch matches media-folders/{folderId}/enabled under a link's path.
+func isLinkFolderSwitch(rest string) bool {
+	folder, action, found := strings.Cut(strings.TrimPrefix(rest, "media-folders/"), "/")
+	return strings.HasPrefix(rest, "media-folders/") && found && folder != "" && action == "enabled"
 }
 
 func requiresPatchJSONBody(path string) bool {

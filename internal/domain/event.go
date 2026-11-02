@@ -30,8 +30,9 @@ type ContentUnreferenced struct {
 
 // MediaFoldersChanged tells the screens to read the media folders and reload open lists.
 type MediaFoldersChanged struct {
-	// Switch is true when only a folder's switch changed, which never changes what this node answers a peer.
-	Switch bool
+	// ViewOnly is true for a switch of a local or a link's folder and for a link's own folder change: neither
+	// changes what this node answers a peer, so the peer-credential stream does not receive it.
+	ViewOnly bool
 }
 
 func (VideoIngestChanged) event()  {}

@@ -12,7 +12,8 @@ import (
 )
 
 // ListTags reads counts, rows and batched synonyms in one deferred snapshot; zero limit returns all matches and ignores the cursor.
-func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error) {
+// Video counts follow the audience's folder scope, as the video list does.
+func (s *TagStore) ListTags(ctx context.Context, audience domain.Audience, query domain.TagListQuery) (domain.TagPage, error) {
 	sort := query.Sort
 	if sort == "" {
 		sort = domain.TagSortName
@@ -39,7 +40,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	listed, listedArgs := listedTagsCTE(query)
+	listed, listedArgs := listedTagsCTE(audience, query)
 	page := domain.TagPage{Items: []domain.Tag{}}
 	if err := tx.QueryRowContext(ctx, `select count(*) from tags`).Scan(&page.TotalAll); err != nil {
 		return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
@@ -69,7 +70,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 		return domain.TagPage{}, err
 	}
 	if limit > 0 && query.Cursor == "" {
-		if page.Exact, err = exactListedTag(ctx, tx, query); err != nil {
+		if page.Exact, err = exactListedTag(ctx, tx, audience, query); err != nil {
 			return domain.TagPage{}, err
 		}
 	}
@@ -81,7 +82,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 }
 
 // An exact raw name/synonym match can fall outside the naturally sorted first page; retrieve it separately.
-func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) (*domain.Tag, error) {
+func exactListedTag(ctx context.Context, tx *sql.Tx, audience domain.Audience, query domain.TagListQuery) (*domain.Tag, error) {
 	name := strings.TrimSpace(query.Search)
 	if name == "" {
 		return nil, nil
@@ -93,7 +94,7 @@ func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) 
 	if query.TentativeOnly && !lookup.tentative {
 		return nil, nil
 	}
-	tag, err := tagByID(ctx, tx, lookup.tagID)
+	tag, err := listedTagByID(ctx, tx, audience, lookup.tagID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,7 @@ func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) 
 	return &tag, nil
 }
 
-func listedTagsCTE(query domain.TagListQuery) (string, []any) {
+func listedTagsCTE(audience domain.Audience, query domain.TagListQuery) (string, []any) {
 	var conditions []string
 	var args []any
 	if search := strings.TrimSpace(domain.FoldForMatch(query.Search)); search != "" {
@@ -129,7 +130,7 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 		where = ` where ` + strings.Join(conditions, ` and `)
 	}
 	return `with tag_counts as (
-			select tag_id, count(*) as video_count from (` + taggedVideosSQL(domain.AudienceOwner, "") + `) group by tag_id
+			select tag_id, count(*) as video_count from (` + taggedVideosSQL(audience, "") + `) group by tag_id
 		), listed as (
 			select t.id as id, tn.name as name, t.tentative as tentative, t.created_at as created_at,
 			       tn.sort_key as sort_key, coalesce(c.video_count, 0) as video_count,

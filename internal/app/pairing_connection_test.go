@@ -41,6 +41,8 @@ type streamLink struct {
 	attempts  []watchAttempt
 	end       chan error
 	forgotten []string
+	// folders answers each MediaFolders call in turn; the last one repeats.
+	folders [][]domain.PeerFolder
 }
 
 func newStreamLink(steps ...watchStep) *streamLink {
@@ -106,6 +108,19 @@ func (l *streamLink) Watch(
 	}
 }
 
+func (l *streamLink) MediaFolders(context.Context, domain.PeerTarget, string) ([]domain.PeerFolder, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.folders) == 0 {
+		return nil, nil
+	}
+	listed := l.folders[0]
+	if len(l.folders) > 1 {
+		l.folders = l.folders[1:]
+	}
+	return listed, nil
+}
+
 func (l *streamLink) Forget(_ context.Context, _ domain.PeerTarget, secret, nodeID string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -131,6 +146,7 @@ type peerEventLog struct {
 	states  []domain.PeerState
 	revoked []bool
 	changed []domain.PeerChanged
+	folders []domain.MediaFoldersChanged
 }
 
 func (l *peerEventLog) Publish(events ...domain.Event) {
@@ -146,6 +162,10 @@ func (l *peerEventLog) Publish(events ...domain.Event) {
 		case domain.PeerChanged:
 			l.mu.Lock()
 			l.changed = append(l.changed, event)
+			l.mu.Unlock()
+		case domain.MediaFoldersChanged:
+			l.mu.Lock()
+			l.folders = append(l.folders, event)
 			l.mu.Unlock()
 		}
 	}
@@ -542,6 +562,10 @@ func (r routedLinks) Watch(
 
 func (r routedLinks) Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error {
 	return r[target.Address].Forget(ctx, target, secret, nodeID)
+}
+
+func (r routedLinks) MediaFolders(ctx context.Context, target domain.PeerTarget, secret string) ([]domain.PeerFolder, error) {
+	return r[target.Address].MediaFolders(ctx, target, secret)
 }
 
 // Each link has its own loop: two links connect on their own, a lost link leaves the other connected, and only

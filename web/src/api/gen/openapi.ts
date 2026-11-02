@@ -1870,6 +1870,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/peer/links/{nodeId}/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a read node's media folders with this node's switches
+         * @description Answers this node's snapshot of the link's media folders, in the link's id order and in the link's own ids, with the owner's switch of each and the link's state as getPeer gives it, whether or not the link is connected. The snapshot is refreshed when the link's event stream opens and on each mediaFolders the link sends: a folder the link no longer lists leaves it, and a folder whose path or version changed is replaced with its switch on. Every request this node sends to the link carries the switched-off ids in X-VV-Peer-Excluded-Folders. A node id this node does not read, 404 not_found.
+         */
+        get: operations["listPeerLinkMediaFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/links/{nodeId}/media-folders/{folderId}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a read node's media folder on or off on this node
+         * @description Changes the owner's switch in this node's snapshot only; the link is never written and its own switches and other readers are not affected. Sends mediaFolders on /api/events to this node's viewers when the value changes, never to a peer-credential stream. A folder the snapshot of that link lacks, or a node id this node does not read, 404 not_found.
+         */
+        put: operations["setPeerLinkMediaFolderEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/peer/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List this node's media folders to the reading node
+         * @description Called by the reading node with its credential, never by the screens; any other caller gets 404. Answers each media folder's id, path and version in id order, so the reader keeps its snapshot and switches; listMediaFolders stays refused to the credential.
+         */
+        get: operations["listPeerMediaFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/peer/pairings": {
         parameters: {
             query?: never;
@@ -4082,7 +4142,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. A peer-credential stream receives it only for an added, replaced or deleted folder, never for a switch. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. It is also sent when one of a link's folders is switched, and when a link sends mediaFolders, which first refreshes this node's snapshot of that link's folders. A peer-credential stream receives it only for an added, replaced or deleted folder of this node, never for a switch or a link's mediaFolders. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -8145,6 +8205,45 @@ export interface components {
             grant?: components["schemas"]["PeerGrant"];
             node?: components["schemas"]["PeerNode"];
         };
+        /** @description One media folder of the read node as it answers its reader */
+        PeerFolder: {
+            /** Format: int64 */
+            id: number;
+            path: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description One media folder of a link in this node's snapshot, with the owner's switch on this node */
+        PeerMediaFolder: {
+            /**
+             * Format: int64
+             * @description The folder's id on the link
+             */
+            id: number;
+            /** @description Its path on the link, as last listed */
+            path: string;
+            /** @description False while switched off on this node: the link leaves its videos out of this node's reads */
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description When the snapshot was last reconciled with the link's listing
+             */
+            refreshedAt: string;
+        };
+        PeerLinkMediaFolders: {
+            /**
+             * @description The link's connection, as getPeer answers it
+             * @enum {string}
+             */
+            state: "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "certificate";
+            /** @description In the link's id order */
+            folders: components["schemas"]["PeerMediaFolder"][];
+        };
         PairingCode: {
             code: string;
             /** Format: date-time */
@@ -8495,6 +8594,8 @@ export interface components {
     parameters: {
         /** @description The node id of a link, as getPeer answers it */
         PeerLinkNodeId: string;
+        /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+        PeerLinkFolderId: number;
         /** @description Assistant review run ID */
         AssistantReviewRunId: number;
         /** @description Assistant turn ID */
@@ -11740,6 +11841,84 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listPeerLinkMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link's folders and state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerLinkMediaFolders"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setPeerLinkMediaFolderEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+                /** @description The folder's id on the link, as listPeerLinkMediaFolders answers it */
+                folderId: components["parameters"]["PeerLinkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMediaFolderEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The folder with its switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerMediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPeerMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This node's media folders */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerFolder"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     acceptPairing: {

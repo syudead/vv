@@ -133,7 +133,7 @@ func tagKindFilterMatches(filter domain.TagKindFilter, kind *gen.TagKindRef) boo
 // listMergedTags lists every node's tags joined by name; the filters apply to the joined entries, so a tag
 // unused here but used on a link is not unused.
 func (s *server) listMergedTags(w http.ResponseWriter, r *http.Request, query domain.TagListQuery) {
-	all, err := s.tags.ListTags(r.Context(), domain.TagListQuery{Sort: domain.TagSortName})
+	all, err := s.tags.ListTags(r.Context(), audienceFrom(r.Context()), domain.TagListQuery{Sort: domain.TagSortName})
 	if err != nil {
 		s.internalError(w, "Could not load tags.", err)
 		return
@@ -261,7 +261,7 @@ func creditNames(name string, aliases []gen.Alias) []string {
 func listMergedCredits[T any](s *server, w http.ResponseWriter, r *http.Request, kind domain.CreditKind, query domain.CreditQuery,
 	merge creditMerge[T],
 ) {
-	all, err := s.credits.List(r.Context(), kind, domain.CreditQuery{Sort: domain.TagSortName})
+	all, err := s.credits.List(r.Context(), audienceFrom(r.Context()), kind, domain.CreditQuery{Sort: domain.TagSortName})
 	if err != nil {
 		s.internalError(w, "Could not load the "+string(kind)+" list.", err)
 		return

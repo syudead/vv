@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"strconv"
 	"strings"
 	"time"
 
@@ -350,7 +349,7 @@ func locateClaimedJob(ctx context.Context, conn *sql.Conn, job *domain.Job, row 
 func availableLocationCondition(alias string, unavailable []int64) string {
 	var excluded string
 	if len(unavailable) > 0 {
-		excluded = ` and mf.id not in (` + idList(unavailable) + `)`
+		excluded = ` and mf.id not in (` + domain.JoinIDs(unavailable) + `)`
 	}
 	return `exists (select 1 from media_folders mf where ` + inMediaFolderCondition(alias+`.path`) + excluded + `)`
 }
@@ -367,17 +366,8 @@ func onRootsCondition(pathExpr string, roots []int64) string {
 	if roots == nil {
 		return ""
 	}
-	return ` and exists (select 1 from media_folders mf where mf.id in (` + idList(roots) + `) and ` +
+	return ` and exists (select 1 from media_folders mf where mf.id in (` + domain.JoinIDs(roots) + `) and ` +
 		inMediaFolderCondition(pathExpr) + `)`
-}
-
-// idList writes ids for an SQL in list; they are integers, so no quoting is needed.
-func idList(ids []int64) string {
-	parts := make([]string, len(ids))
-	for i, id := range ids {
-		parts[i] = strconv.FormatInt(id, 10)
-	}
-	return strings.Join(parts, ", ")
 }
 
 // Drop an unplaced job and settle its activity inside the claim's BEGIN IMMEDIATE transaction; the caller publishes the

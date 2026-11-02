@@ -70,6 +70,9 @@ scans, settings, the account, API tokens, playlists or activity; a test fails
 when the list reaches one of them. The request's audience is the owner unless
 `X-VV-Peer-Audience: guest` lowers it, so the read node filters with the
 viewer's audience before paging ([authentication.md](authentication.md)).
+Its folder scope is the reader's switches for that link, sent in
+`X-VV-Peer-Excluded-Folders` with every request, never the read node's own
+([media-folder-switches.md](media-folder-switches.md#a-links-folders-keep-their-switches-on-the-reading-node)).
 
 | Rule | Reason |
 | --- | --- |
@@ -98,7 +101,10 @@ example, peer request bodies reject unknown fields, so a peer older than
 the related list leaves out that peer's videos
 ([related-videos.md](related-videos.md)). A read node that still pairs
 mutually answers the one-way pairing request with `400 invalid_request`, which
-the reader reports as an older build to update. Owners keep both nodes on the
+the reader reports as an older build to update. A read node older than the
+folder switches refuses `GET /api/peer/media-folders`, so the reader logs it
+and keeps an empty snapshot, and it ignores
+`X-VV-Peer-Excluded-Folders`. Owners keep both nodes on the
 same release; the Pairing page shows the peer's version next to its name.
 
 ## Connection state

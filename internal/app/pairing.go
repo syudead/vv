@@ -32,6 +32,13 @@ type PeerStore interface {
 	AddGrant(ctx context.Context, grant domain.PeerGrant, secret string) error
 	GrantBySecret(ctx context.Context, secret string) (domain.PeerGrant, bool, error)
 	DeleteGrant(ctx context.Context, nodeID string) (bool, error)
+	// PeerFolders answers the snapshot of the link's media folders in the link's id order.
+	PeerFolders(ctx context.Context, nodeID string) ([]domain.PeerMediaFolder, error)
+	// ReplacePeerFolders applies domain.ReconcilePeerFolders and reports a change; without the link it answers
+	// domain.ErrNotFound.
+	ReplacePeerFolders(ctx context.Context, nodeID string, listed []domain.PeerFolder, now time.Time) (bool, error)
+	// SetPeerFolderEnabled answers the row and whether it changed, or domain.ErrNotFound without it.
+	SetPeerFolderEnabled(ctx context.Context, nodeID string, folderID int64, enabled bool) (domain.PeerMediaFolder, bool, error)
 }
 
 // PeerClient calls a node this one reads. A failed call answers *domain.PeerUnreachableError or
@@ -46,6 +53,8 @@ type PeerClient interface {
 	Watch(ctx context.Context, target domain.PeerTarget, secret string, opened func(), changed func(domain.PeerChanged)) error
 	// Forget tells the peer that the node nodeID stopped reading it.
 	Forget(ctx context.Context, target domain.PeerTarget, secret, nodeID string) error
+	// MediaFolders lists the peer's media folders in its own ids.
+	MediaFolders(ctx context.Context, target domain.PeerTarget, secret string) ([]domain.PeerFolder, error)
 }
 
 type PairingOptions struct {
@@ -59,7 +68,8 @@ type PairingOptions struct {
 	Now func() time.Time
 	// Nil uses crypto/rand.Reader for node ids, codes and secrets.
 	Random io.Reader
-	// Publisher receives domain.PeerStateChanged and the links' forwarded domain.PeerChanged; nil drops them.
+	// Publisher receives domain.PeerStateChanged, the links' forwarded domain.PeerChanged and the
+	// domain.MediaFoldersChanged of the links' snapshots; nil drops them.
 	Publisher Publisher
 	// Nil uses slog.Default.
 	Logger *slog.Logger
