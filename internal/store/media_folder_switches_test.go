@@ -104,7 +104,7 @@ func TestSwitchedOffFolderLeavesListsAndCounts(t *testing.T) {
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{f.shown, f.outID}, tag.ID); err != nil {
 		t.Fatal(err)
 	}
-	tags, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tags, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil || len(tags.Items) != 1 || tags.Items[0].VideoCount != 1 {
 		t.Errorf("タグの件数 = %+v, %v, want 1", tags.Items, err)
 	}
@@ -117,7 +117,7 @@ func TestSwitchedOffFolderLeavesListsAndCounts(t *testing.T) {
 			key, position, organization.ID)
 	}
 	for _, kind := range []domain.CreditKind{domain.CreditPerson, domain.CreditOrganization} {
-		page, err := db.Credits().List(ctx, kind, domain.CreditQuery{Limit: 10})
+		page, err := db.Credits().List(ctx, owner, kind, domain.CreditQuery{Limit: 10})
 		if err != nil || len(page.Items) != 1 || page.Items[0].VideoCount != 1 {
 			t.Errorf("%s の件数 = %+v, %v, want 1", kind, page.Items, err)
 		}
@@ -213,6 +213,39 @@ func TestExplicitExcludedFoldersReplaceTheSwitches(t *testing.T) {
 	page, err := f.db.Library().ListLibrary(context.Background(), scoped, domain.VideoQuery{Limit: 10})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Video == nil || page.Items[0].Video.ID != f.outID {
 		t.Errorf("除外リストのライブラリ = %+v, %v, want cat off だけ", page.Items, err)
+	}
+}
+
+// A peer's explicit scope also sets the vocabulary counts: this node's switched-off folder still counts for it.
+func TestExplicitExcludedFoldersCountTheVocabulary(t *testing.T) {
+	f := switchedOffFolderFixture(t)
+	ctx := context.Background()
+	scoped := owner.WithExcludedFolders(nil)
+	tag, err := f.db.Tags().CreateTag(ctx, "tag")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.db.Tags().AttachTagByID(ctx, []int64{f.shown, f.outID}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+	// A limited search also reads the exact match apart from the page.
+	tags, err := f.db.Tags().ListTags(ctx, scoped, domain.TagListQuery{Search: "tag", Limit: 10})
+	if err != nil || len(tags.Items) != 1 || tags.Items[0].VideoCount != 2 || tags.Exact == nil || tags.Exact.VideoCount != 2 {
+		t.Errorf("除外リストのタグの件数 = %+v (exact %+v), %v, want 2", tags.Items, tags.Exact, err)
+	}
+
+	person := createPerson(t, f.db, "P")
+	organization := createOrganization(t, f.db, "O", nil)
+	for position, key := range []string{"key-on", "key-off"} {
+		linkPeople(t, f.db, key, "performer", person.ID)
+		execSQL(t, f.db, `insert into video_work_organizations (content_key, role, position, organization_id) values (?, 'maker', ?, ?)`,
+			key, position, organization.ID)
+	}
+	for _, kind := range []domain.CreditKind{domain.CreditPerson, domain.CreditOrganization} {
+		page, err := f.db.Credits().List(ctx, scoped, kind, domain.CreditQuery{Limit: 10})
+		if err != nil || len(page.Items) != 1 || page.Items[0].VideoCount != 2 {
+			t.Errorf("除外リストの %s の件数 = %+v, %v, want 2", kind, page.Items, err)
+		}
 	}
 }
 

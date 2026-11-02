@@ -112,7 +112,7 @@ func TestSeedWritesTheTagsThroughTheStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, domain.AudienceOwner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

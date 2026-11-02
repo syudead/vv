@@ -348,7 +348,7 @@ type blockingTags struct {
 	ended   chan error
 }
 
-func (b blockingTags) ListTags(ctx context.Context, _ domain.TagListQuery) (domain.TagPage, error) {
+func (b blockingTags) ListTags(ctx context.Context, _ domain.Audience, _ domain.TagListQuery) (domain.TagPage, error) {
 	close(b.entered)
 	select {
 	case <-ctx.Done():

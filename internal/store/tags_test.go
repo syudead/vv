@@ -209,7 +209,7 @@ func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 		}
 	}
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		t.Fatalf("AddSynonym(違う承諾) error = %v, want *domain.TagMergeRequired", err)
 	}
 
-	tagsBeforePage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsBeforePage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		t.Errorf("Synonyms = %v, want [anime]", tag.Synonyms)
 	}
 
-	tagsAfterPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsAfterPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestVideoCountExcludesUnregisteredVideosAndMergeReachesThem(t *testing.T) {
 	attachTag(t, db, "key-registered", x.ID)
 	attachTag(t, db, "key-gone", x.ID)
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestListTagsIncludesZeroCountTagsInNaturalOrder(t *testing.T) {
 		}
 	}
 
-	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tagsPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func TestRemoveSynonymIsNoopWhenNotASynonym(t *testing.T) {
 	if removed.ID != tag.ID || len(removed.Synonyms) != 0 {
 		t.Errorf("RemoveSynonym() = %+v, want シノニムを外したタグ", removed)
 	}
-	gotPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
+	gotPage, err := db.Tags().ListTags(ctx, owner, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

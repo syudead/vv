@@ -76,7 +76,7 @@ func TestRemoteVideoCreditByNameIsCreatedOnlyOnThePeer(t *testing.T) {
 		t.Fatalf("details: status = %d: %s", rec.Code, rec.Body)
 	}
 	names := func(f *guestFixture, kind domain.CreditKind) map[int64]string {
-		page, err := f.env.db.Credits().List(ctx, kind, domain.CreditQuery{})
+		page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, kind, domain.CreditQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}

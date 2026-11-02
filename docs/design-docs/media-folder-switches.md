@@ -55,8 +55,10 @@ off, and the store sites that re-read a video after a write go through
 ## Counts the screens show take the scope
 
 Tag, person and organization counts, the folder index reads, smart-folder
-matches and the library totals read the listed condition with the owner
-audience and its switches. The folder index itself is built from every
+matches and the library totals read the listed condition with the request's
+audience: this node's switches for its own screens, or a peer's explicit list.
+Writes that answer an entity with its count, such as a rename, count with the
+owner audience and its switches. The folder index itself is built from every
 registered location; only its reads apply the scope.
 
 ## Stored group values follow the switches

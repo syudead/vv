@@ -27,7 +27,7 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 		s.listMergedTags(w, r, query)
 		return
 	}
-	page, err := s.tags.ListTags(r.Context(), query)
+	page, err := s.tags.ListTags(r.Context(), audienceFrom(r.Context()), query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")

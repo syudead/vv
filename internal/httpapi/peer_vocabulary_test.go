@@ -106,7 +106,7 @@ func TestMergedTagListJoinsByNameAndForwardsARemoteOnlyTag(t *testing.T) {
 	if renamed := decode[gen.Tag](t, rec); renamed.Id != remoteDog || renamed.Name != "子犬" {
 		t.Errorf("forwarded edit = %+v, want id %d named 子犬", renamed, remoteDog)
 	}
-	if tag, err := fa.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{Search: "子犬"}); err != nil ||
+	if tag, err := fa.env.db.Tags().ListTags(context.Background(), domain.AudienceOwner, domain.TagListQuery{Search: "子犬"}); err != nil ||
 		len(tag.Items) != 1 || tag.Items[0].ID != dog.ID {
 		t.Errorf("a's tags after the edit = %+v, %v", tag.Items, err)
 	}

@@ -14,7 +14,8 @@ import (
 // Credit lists share tag ordering and cursors; detail reads use the same listed relation.
 
 // List includes zero-video entities and reads counts with rows in one snapshot; limit zero ignores cursors and returns all rows.
-func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error) {
+// Video counts follow the audience's folder scope, as the video list does.
+func (s *CreditStore) List(ctx context.Context, audience domain.Audience, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
 		return domain.CreditPage{}, err
@@ -50,7 +51,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	if (query.FavoriteOnly || query.Provisional != nil) && t.kind != domain.CreditPerson {
 		return domain.CreditPage{}, fmt.Errorf("the favorite and provisional filters apply to people only, not %s", kind)
 	}
-	listed, listedArgs := listedCreditsCTE(t, domain.AudienceOwner, creditFilter{
+	listed, listedArgs := listedCreditsCTE(t, audience, creditFilter{
 		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
 		provisional: query.Provisional,
 	})

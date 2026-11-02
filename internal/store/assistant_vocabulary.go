@@ -185,7 +185,7 @@ func assistantFoldedIDs(ctx context.Context, tx *sql.Tx, statement, key string, 
 func assistantVideoCount(ctx context.Context, tx *sql.Tx, kind domain.AssistantLabelKind, id int64) (int, error) {
 	switch kind {
 	case domain.AssistantLabelTag:
-		return videoCountByTagID(ctx, tx, id)
+		return videoCountByTagID(ctx, tx, domain.AudienceOwner, id)
 	case domain.AssistantLabelPerson:
 		return creditImpact(ctx, tx, domain.CreditPerson, []int64{id})
 	case domain.AssistantLabelOrganization:

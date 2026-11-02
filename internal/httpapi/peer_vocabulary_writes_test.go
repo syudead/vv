@@ -16,7 +16,7 @@ import (
 // tagNamed reports f's tag holding name as its canonical name or a synonym, with its video count.
 func tagNamed(t *testing.T, f *guestFixture, name string) (domain.Tag, bool) {
 	t.Helper()
-	page, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{Sort: domain.TagSortName})
+	page, err := f.env.db.Tags().ListTags(context.Background(), domain.AudienceOwner, domain.TagListQuery{Sort: domain.TagSortName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestDeleteAPersonAndARemoteOnlyTagOnBothNodes(t *testing.T) {
 		t.Fatalf("delete: status = %d: %s", rec.Code, rec.Body)
 	}
 	for node, f := range map[string]*guestFixture{"a": fa, "b": fb} {
-		page, err := f.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{})
+		page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +182,7 @@ func TestMergeARemoteOnlyPersonCreatesTheDestinationOnThePeer(t *testing.T) {
 	if merged := decode[gen.PersonMergeResponse](t, rec); merged.Person.Id != sato.ID || len(merged.NotFoundIds) != 0 {
 		t.Errorf("merge = %+v, want b's 佐藤 and no missing sources", merged)
 	}
-	page, err := fa.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{})
+	page, err := fa.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
 		t.Fatal(err)
 	}
 	provisional := true
-	page, err := f.env.db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+	page, err := f.env.db.Credits().List(ctx, domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
 	if err != nil || len(page.Items) != 1 {
 		t.Fatalf("provisional people = %+v, %v; want one", page.Items, err)
 	}
@@ -248,7 +248,7 @@ func provisionalPersonOn(t *testing.T, f *guestFixture) int64 {
 
 func personNamesOn(t *testing.T, f *guestFixture) []string {
 	t.Helper()
-	page, err := f.env.db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{})
+	page, err := f.env.db.Credits().List(context.Background(), domain.AudienceOwner, domain.CreditPerson, domain.CreditQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

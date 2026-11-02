@@ -80,6 +80,40 @@ func TestALinksSwitchedOffFolderReachesTheReadNodeAsItsScope(t *testing.T) {
 	}
 }
 
+// A's own switch never shapes what B reads: B, with no folder of A's off, counts A's switched-off folder in the
+// merged tag and people counts.
+func TestTheReadNodeCountsTheVocabularyUnderTheReadersScope(t *testing.T) {
+	fa, _, b, _ := mergedNodes(t)
+	ctx := context.Background()
+	tag := tagOn(t, fa, "犬", "c", "e")
+	person, err := fa.env.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "山田"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	performer := domain.WorkInfo{People: []domain.WorkPerson{{Role: domain.PersonPerformer, Person: domain.CreditRef{ID: person.ID}}}}
+	for _, name := range []string{"c", "e"} {
+		if _, err := fa.env.db.WorkInfo().Set(ctx, fa.ids[name], performer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fa.env.db.Settings().SetMediaFolderEnabled(ctx, fa.otherID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[int64]int{}
+	for _, item := range decode[gen.TagList](t, b.owner(http.MethodGet, "/api/tags", "")).Items {
+		counts[item.Id] = item.VideoCount
+	}
+	for _, item := range decode[gen.PersonList](t, b.owner(http.MethodGet, "/api/people", "")).Items {
+		counts[item.Id] = item.VideoCount
+	}
+	for name, id := range map[string]int64{"タグ": domain.RemoteID(1, tag.ID), "人物": domain.RemoteID(1, person.ID)} {
+		if counts[id] != 2 {
+			t.Errorf("B が読む A の%sの件数 = %d, want 2 (A のスイッチは使わない)", name, counts[id])
+		}
+	}
+}
+
 // The section renders while the link is down: the snapshot answers with the link's state and its switch works.
 func TestLinkFoldersAnswerTheSnapshotWhileTheLinkIsUnreachable(t *testing.T) {
 	ctx := context.Background()

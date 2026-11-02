@@ -80,7 +80,7 @@ type MediaFolderUsage interface {
 
 // Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
-	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
+	ListTags(ctx context.Context, audience domain.Audience, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error

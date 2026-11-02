@@ -107,7 +107,7 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 	if !e.acceptListQuery(w, problem) || !e.creditsConfigured(w) {
 		return
 	}
-	page, err := e.s.credits.List(r.Context(), api.kind, query)
+	page, err := e.s.credits.List(r.Context(), audienceFrom(r.Context()), api.kind, query)
 	if errors.Is(err, domain.ErrInvalidCursor) {
 		reason := extgen.InvalidCursor
 		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q and sort.")
@@ -142,7 +142,7 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 		return
 	}
 	// totalAll counts all credits independently of lookup.
-	all, err := e.s.credits.List(r.Context(), api.kind, domain.CreditQuery{Limit: 1})
+	all, err := e.s.credits.List(r.Context(), audienceFrom(r.Context()), api.kind, domain.CreditQuery{Limit: 1})
 	if err != nil {
 		e.internalError(w, fmt.Sprintf("Could not look up the %s.", api.kind), err)
 		return
