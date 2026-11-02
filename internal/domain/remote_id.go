@@ -137,6 +137,20 @@ func SplitRemoteIDs(ids []int64) (local, peer []int64) {
 	return local, peer
 }
 
+// SlotIDs separates ids into this node's and each link's own ids by slot, each part keeping the ids' order.
+func SlotIDs(ids []int64) (local []int64, links map[int64][]int64) {
+	links = map[int64][]int64{}
+	for _, id := range ids {
+		if IsRemoteID(id) {
+			slot := RemoteSlot(id)
+			links[slot] = append(links[slot], FromRemoteID(id))
+		} else {
+			local = append(local, id)
+		}
+	}
+	return local, links
+}
+
 // ToPeerIDs turns the remote ids among ids into the peer's own ids in place; other ids stay for the peer to refuse.
 func ToPeerIDs(ids []int64) {
 	for i, id := range ids {

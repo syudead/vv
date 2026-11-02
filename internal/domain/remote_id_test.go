@@ -116,6 +116,11 @@ func TestIDNodesAndSplitByNode(t *testing.T) {
 	if !slices.Equal(local, []int64{5, 6}) || !slices.Equal(peer, []int64{3, 1}) {
 		t.Errorf("SplitRemoteIDs = %v, %v, want [5 6] and [3 1]", local, peer)
 	}
+	local, links := SlotIDs([]int64{RemoteID(2, 7), 5, RemoteID(1, 3), RemoteID(2, 4)})
+	if !slices.Equal(local, []int64{5}) || len(links) != 2 || !slices.Equal(links[1], []int64{3}) ||
+		!slices.Equal(links[2], []int64{7, 4}) {
+		t.Errorf("SlotIDs = %v, %v, want [5] and slot 1 [3], slot 2 [7 4]", local, links)
+	}
 	ids := []int64{remote, 0}
 	ToPeerIDs(ids)
 	if !slices.Equal(ids, []int64{3, 0}) {

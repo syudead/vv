@@ -64,10 +64,11 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Tag, out.Applied = toAPITagRef(ref), applied
 	}
-	if sel.hasPeer() {
-		ref, applied := s.tagOnPeer(r, body.Action, sel, &parts, &out)
-		if ref != nil && parts.local == nil {
-			out.Tag = *ref
+	tagSet := parts.local != nil
+	for _, link := range parts.links {
+		ref, applied := s.tagOnPeer(r, body.Action, link, &out)
+		if ref != nil && !tagSet {
+			out.Tag, tagSet = *ref, true
 		}
 		out.Applied += applied
 	}
@@ -86,27 +87,27 @@ func (s *server) applyTag(ctx context.Context, videoIDs []int64, edit domain.Vid
 	return s.tags.AttachTagByName(ctx, videoIDs, *edit.TagsAdd[0].Name)
 }
 
-// tagOnPeer applies the peer's part of a tag change and sets its result in out; it returns the peer's tag in this
-// node's ids, when the peer answered one, and the videos it changed.
-func (s *server) tagOnPeer(r *http.Request, action gen.VideoTagsAction, sel selection, parts *videoEditParts, out *gen.VideoTagsResponse) (*gen.TagRef, int) {
-	if parts.peerErr != nil || parts.peer == nil {
-		out.Remote = s.remoteSelectionResult(sel.slot, 0, sel.peer, parts.peerErr)
+// tagOnPeer applies one link's part of a tag change and adds its result to out; it returns the link's tag in this
+// node's ids, when the link answered one, and the videos it changed.
+func (s *server) tagOnPeer(r *http.Request, action gen.VideoTagsAction, link linkEdit, out *gen.VideoTagsResponse) (*gen.TagRef, int) {
+	if link.err != nil || link.edit == nil {
+		addRemoteResult(&out.Remote, s.remoteSelectionResult(link.slot, 0, link.peer, link.err))
 		return nil, 0
 	}
-	ids, folders := sel.peerTargets()
+	ids, folders := link.peerTargets()
 	request := gen.VideoTagsRequest{Action: action, VideoIds: ids, SmartFolderIds: folders}
-	if len(parts.peer.TagsRemove) > 0 {
-		request.Tag.Id = &parts.peer.TagsRemove[0]
+	if len(link.edit.TagsRemove) > 0 {
+		request.Tag.Id = &link.edit.TagsRemove[0]
 	} else {
-		request.Tag = gen.TagInput{Id: parts.peer.TagsAdd[0].ID, Name: parts.peer.TagsAdd[0].Name}
+		request.Tag = gen.TagInput{Id: link.edit.TagsAdd[0].ID, Name: link.edit.TagsAdd[0].Name}
 	}
 	var answer gen.VideoTagsResponse
-	err := s.peerCall(r, sel.slot, http.MethodPost, "/api/video-tags", nil, request, &answer)
-	out.Remote = s.remoteSelectionResult(sel.slot, answer.Applied, sel.peer, err)
+	err := s.peerCall(r, link.slot, http.MethodPost, "/api/video-tags", nil, request, &answer)
+	addRemoteResult(&out.Remote, s.remoteSelectionResult(link.slot, answer.Applied, link.peer, err))
 	if err != nil {
 		return nil, 0
 	}
-	join, err := s.vocabularyJoin(r.Context(), sel.slot)
+	join, err := s.vocabularyJoin(r.Context(), link.slot)
 	if err != nil {
 		s.logger.Warn("could not join the other VVMDM's tag", slog.Any("error", err))
 		return nil, answer.Applied
@@ -136,9 +137,12 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var peer gen.VideoTagsSummary
-	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-tags/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context(), sel.slot)
+	for _, link := range sel.links {
+		var peer gen.VideoTagsSummary
+		if !s.peerSelectionRead(r, "/api/video-tags/summary", link, &peer) {
+			continue
+		}
+		join, err := s.vocabularyJoin(r.Context(), link.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the tag summary.", err)
 			return
