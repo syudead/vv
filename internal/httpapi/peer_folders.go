@@ -16,12 +16,14 @@ import (
 // that does not answer leaves the local roots alone.
 func (s *server) withPeerRoots(r *http.Request, local []gen.FolderSummary) []gen.FolderSummary {
 	var answer gen.RootFolderListing
-	if err := s.peerGet(r, "/api/folders", url.Values{}, &answer); err != nil {
+	slot := s.listSlot(r.Context())
+	if err := s.peerGet(r, slot, "/api/folders", url.Values{}, &answer); err != nil {
 		s.logger.Info("the folder list leaves out the other VVMDM", slog.Any("error", err))
 		return local
 	}
+	join := domain.VocabularyJoin{Slot: slot}
 	for i := range answer.Folders {
-		rewriteRemoteFolderSummary(&answer.Folders[i])
+		rewriteRemoteFolderSummary(&answer.Folders[i], join)
 	}
 	folders := append(local, answer.Folders...)
 	slices.SortStableFunc(folders, func(a, b gen.FolderSummary) int {
@@ -43,12 +45,13 @@ func (s *server) forwardRemoteFolder(
 		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return
 	}
-	out, err := remoteRequest(r, "/api/folders/"+strconv.FormatInt(domain.FromRemoteID(rootID), 10)+suffix, query)
+	slot := domain.RemoteSlot(rootID)
+	out, err := remoteRequest(r, slot, "/api/folders/"+strconv.FormatInt(domain.FromRemoteID(rootID), 10)+suffix, query)
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return
 	}
-	s.forward(w, r, out, remoteOperation{rewrite: rewrite})
+	s.forward(w, r, slot, out, remoteOperation{rewrite: rewrite})
 }
 
 // listRemoteFolderVideos forwards the videos of the peer's folder with the filters in the peer's terms and the
@@ -58,7 +61,7 @@ func (s *server) listRemoteFolderVideos(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	filters, err := s.splitPeerFilters(r.Context(), query)
+	filters, err := s.splitPeerFilters(r.Context(), domain.RemoteSlot(rootID), query)
 	if err != nil {
 		s.internalError(w, "Could not load the folder's videos.", err)
 		return

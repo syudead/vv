@@ -4,9 +4,9 @@ import type { Video } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isRemoteId } from "../lib/remoteId";
-import { usePeerName } from "../shell/PeerProvider";
+import { useItemPeerName } from "./RemoteItemMark";
 
-/** Line under a playlist row's title for a video whose media folder is switched off; a remote video names its VVMDM. */
+/** Line under a playlist row's title for a video whose media folder is switched off; a remote video names its link. */
 export function FolderOffMark({
   video,
   className,
@@ -14,7 +14,7 @@ export function FolderOffMark({
   video: Video | undefined;
   className?: string;
 }) {
-  const peerName = usePeerName();
+  const peerName = useItemPeerName(video?.id ?? 0);
   if (video?.folderOff !== true) return null;
   const name = isRemoteId(video.id) ? t.list.card.remote.name(peerName) : undefined;
   return (

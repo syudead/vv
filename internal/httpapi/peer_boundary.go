@@ -18,8 +18,8 @@ import (
 type remoteCollection struct {
 	prefix string
 	noun   string
-	// query, when set, turns the query of a forwarded request into the peer's and may replace op's rewrite.
-	query func(pattern string, query url.Values, op *remoteOperation)
+	// query, when set, turns the query of a forwarded request into the link's in slot and may replace op's rewrite.
+	query func(slot int64, pattern string, query url.Values, op *remoteOperation)
 }
 
 var peopleCollection = remoteCollection{prefix: "/api/people/", noun: "person", query: peerPersonQuery}
@@ -253,7 +253,9 @@ func (s *server) remoteBoundary(next http.Handler) http.Handler {
 		if path.Clean(escaped) == escaped {
 			for _, collection := range remoteCollections {
 				if id, _, ok := remotePath(escaped, collection.prefix); ok {
-					s.serveRemote(w, r, next, collection, id, escaped)
+					// The kept handlers and the translators reach the link the path id names.
+					ctx := withLinkSlot(r.Context(), domain.RemoteSlot(id))
+					s.serveRemote(w, r.WithContext(ctx), next, collection, id, escaped)
 					return
 				}
 			}
@@ -301,19 +303,20 @@ func (s *server) forwardRemoteEntity(
 	if !ok {
 		return
 	}
+	slot := domain.RemoteSlot(id)
 	query := r.URL.Query()
 	if collection.query != nil {
-		collection.query(pattern, query, &op)
+		collection.query(slot, pattern, query, &op)
 	}
-	out, err := remoteRequest(r, peerPath, query)
+	out, err := remoteRequest(r, slot, peerPath, query)
 	if err != nil {
 		s.invalidRequest(w, "The request cannot be forwarded to the other VVMDM.")
 		return
 	}
-	if op.body != nil && !s.forwardedBody(w, r, out, op.body) {
+	if op.body != nil && !s.forwardedBody(w, r, slot, out, op.body) {
 		return
 	}
-	s.forward(w, r, out, op)
+	s.forward(w, r, slot, out, op)
 }
 
 // peerEntityPath is escaped with the peer's entity id and op's path parameters in the peer's ids.
@@ -333,7 +336,7 @@ func (s *server) peerEntityPath(w http.ResponseWriter, r *http.Request, op remot
 // peerTagID is the peer's id of a tag: a remote tag drops the offset, and a local tag goes by name, since the
 // screens show a same-named tag of the peer under the local id. It answers missing with 404 when the peer lacks it.
 func (s *server) peerTagID(w http.ResponseWriter, r *http.Request, id int64, missing string) (int64, bool) {
-	peerID, err := translateID(s.peerEditVocabulary(r), domain.VocabularyTag, id, "", false)
+	peerID, err := translateID(s.peerEditVocabulary(r, s.requestSlot(r)), domain.VocabularyTag, id, "", false)
 	switch {
 	case errors.Is(err, domain.ErrTagNotFound) || (err == nil && peerID == 0):
 		s.notFound(w, missing)
@@ -356,13 +359,14 @@ func (s *server) peerVideoTagSegment(w http.ResponseWriter, r *http.Request, seg
 	return strconv.FormatInt(peerID, 10), ok
 }
 
-// peerOffsetSegment turns a group item or face appearance id into the peer's; one of this node's is mixed_nodes.
-func (s *server) peerOffsetSegment(w http.ResponseWriter, _ *http.Request, segment string) (string, bool) {
+// peerOffsetSegment turns a group item or face appearance id into the link's; one of this node's or of another
+// link is mixed_nodes.
+func (s *server) peerOffsetSegment(w http.ResponseWriter, r *http.Request, segment string) (string, bool) {
 	id, err := strconv.ParseInt(segment, 10, 64)
 	if err != nil {
 		return segment, true
 	}
-	if local, _ := domain.IDNodes(id); local {
+	if !onlyLink(s.requestSlot(r), []int64{id}) {
 		s.mixedNodes(w)
 		return "", false
 	}
@@ -401,7 +405,7 @@ func (s *server) checkRemoteCreditPatch(w http.ResponseWriter, r *http.Request) 
 	return checkRemoteCreditRename(domain.CreditPerson)(s, w, r)
 }
 
-// peerVirtualVideoMerge merges the peer's virtual video into one of the peer's file videos only.
-func peerVirtualVideoMerge(body *gen.VirtualVideoMerge) bool {
-	return onlyRemote([]int64{body.VideoId}) && toPeerID(&body.VideoId)
+// peerVirtualVideoMerge merges the link's virtual video into one of the same link's file videos only.
+func peerVirtualVideoMerge(slot int64, body *gen.VirtualVideoMerge) bool {
+	return onlyLink(slot, []int64{body.VideoId}) && toPeerID(&body.VideoId)
 }

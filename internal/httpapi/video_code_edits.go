@@ -45,7 +45,7 @@ func (s *server) SummarizeVideoCodeEdits(w http.ResponseWriter, r *http.Request)
 	}
 	var peer gen.VideoCodeEditSummary
 	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-code-edits/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context())
+		join, err := s.vocabularyJoin(r.Context(), sel.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the codes.", err)
 			return
@@ -78,6 +78,14 @@ func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	if !s.videoCodeEditsConfigured(w) {
 		return
 	}
+	ids := make([]int64, len(items))
+	for i, item := range items {
+		ids[i] = item.VideoID
+	}
+	slot, ok := s.oneLinkSlot(w, ids...)
+	if !ok {
+		return
+	}
 	local, positions, peer := splitCodeEdits(r.Context(), items)
 	var out gen.VideoCodeEditResponse
 	if len(local) > 0 {
@@ -92,12 +100,12 @@ func (s *server) ApplyVideoCodeEdits(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(peer.Items) > 0 {
 		var answer gen.VideoCodeEditResponse
-		err := s.peerCall(r, http.MethodPost, "/api/video-code-edits", nil, peer, &answer)
+		err := s.peerCall(r, slot, http.MethodPost, "/api/video-code-edits", nil, peer, &answer)
 		ids := make([]int64, len(peer.Items))
 		for i, item := range peer.Items {
 			ids[i] = item.VideoId
 		}
-		out.Remote = s.remoteSelectionResult(answer.Applied, ids, err)
+		out.Remote = s.remoteSelectionResult(slot, answer.Applied, ids, err)
 		out.Applied += out.Remote.Applied
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

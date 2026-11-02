@@ -7,7 +7,7 @@ import { maxCodeEditVideos } from "../api/videoCodeEdits";
 import GroupPicker from "../groups/GroupPicker";
 import NewGroupDialog from "../groups/NewGroupDialog";
 import { t, type UiText } from "../i18n";
-import { idNodes, type IdNodes } from "../lib/remoteId";
+import { idNodes, type IdNodes, isRemoteId, remoteSlot } from "../lib/remoteId";
 import PlaylistPicker from "../playlists/PlaylistPicker";
 import { usePeerName } from "../shell/PeerProvider";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
@@ -184,19 +184,23 @@ export default function SelectionBar({
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [codesBusy, setCodesBusy] = useState(false);
   const [partial, setPartial] = useState<RemotePartial | null>(null);
-  const peerName = usePeerName();
   // Edits keep only the peer's failed videos selected, so the owner can retry them.
   const showPartial = (next: RemotePartial) => {
     setPartial(next);
     if (next.kind === "changed") onRetain?.(new Set(next.failedIds));
   };
   const total = count + smartFolderIds.length;
-  const nodes = idNodes([
+  const targetIds = [
     ...selectedIds,
     ...favoriteVideoIds,
     ...favoriteGroupIds,
     ...smartFolderIds,
-  ]);
+  ];
+  const nodes = idNodes(targetIds);
+  // The partial result names the link of the ids it failed, which outlive the selection.
+  const peerName = usePeerName(
+    remoteSlot(partial?.failedIds.find(isRemoteId) ?? targetIds.find(isRemoteId) ?? 0),
+  );
   // Playlists stay on each node, so a selection with remote items offers none; favorites reach both.
   const perNode = nodes === "remote" || nodes === "mixed";
   const reasons = selectionReasons({

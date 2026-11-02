@@ -273,8 +273,8 @@ func TestRemoteVideoWithAStoppedPeerIsUnavailable(t *testing.T) {
 	}
 	rec := b.owner(http.MethodGet, f.remotePath("a", ""), "")
 	assertErrorBody(t, "止まった相手", rec.Code, rec.Body.Bytes(), unavailable)
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("失敗の後の状態 = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("失敗の後の状態 = %s, want unreachable", link.State)
 	}
 	// While unreachable, the request is refused without trying the peer.
 	again := b.owner(http.MethodGet, f.remotePath("a", "/thumbnail"), "")
@@ -298,7 +298,7 @@ type recordingPeerLink struct {
 	media []bool
 }
 
-func (l *recordingPeerLink) Forward(req *http.Request, _, media bool) (*http.Response, error) {
+func (l *recordingPeerLink) Forward(req *http.Request, _ int64, _, media bool) (*http.Response, error) {
 	l.media = append(l.media, media)
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -416,4 +416,53 @@ func TestRemoteVideoIsDeletedOnThePeer(t *testing.T) {
 	if !reflect.DeepEqual(virtual.calls, want) {
 		t.Errorf("the peer's deletes = %+v, want %+v", virtual.calls, want)
 	}
+}
+
+// slottedPeerLink holds links in slots 1 and 2 and answers each forwarded request with a video of the path's id,
+// recording which link received which path.
+type slottedPeerLink struct {
+	mu       sync.Mutex
+	received []string
+}
+
+func (l *slottedPeerLink) Forward(req *http.Request, slot int64, _, _ bool) (*http.Response, error) {
+	if slot != 1 && slot != 2 {
+		return nil, domain.ErrNotFound
+	}
+	l.mu.Lock()
+	l.received = append(l.received, fmt.Sprintf("%d %s", slot, req.URL.Path))
+	l.mu.Unlock()
+	id := strings.TrimPrefix(req.URL.Path, "/api/videos/")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {contentTypeJSON}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":` + id + `,"title":"x"}`)),
+		Request:    req,
+	}, nil
+}
+
+// A remote id names its link by its slot: a slot-2 id reaches the second link with that link's own id and comes
+// back in slot 2, and a slot without a link is not found.
+func TestForwardedReadReachesTheLinkOfTheIDsSlot(t *testing.T) {
+	link := &slottedPeerLink{}
+	env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
+		return Options{Videos: &audienceLibrary{fakeLibrary: sampleLibrary()}, PeerLink: link}
+	})
+	cookie := env.setup()
+	get := func(id int64) *httptest.ResponseRecorder {
+		return env.serve(authRequest{
+			method: http.MethodGet, target: "/api/videos/" + strconv.FormatInt(id, 10), cookies: []*http.Cookie{cookie},
+		})
+	}
+
+	rec := get(domain.RemoteID(2, 5))
+	if video := decode[gen.Video](t, rec); rec.Code != http.StatusOK || video.Id != domain.RemoteID(2, 5) {
+		t.Errorf("スロット 2 の動画: status = %d, id = %d, want 200 と %d", rec.Code, video.Id, domain.RemoteID(2, 5))
+	}
+	if want := []string{"2 /api/videos/5"}; !slices.Equal(link.received, want) {
+		t.Errorf("届いた要求 = %v, want %v", link.received, want)
+	}
+	rec = get(domain.RemoteID(3, 5))
+	assertErrorBody(t, "リンクの無いスロット", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 }

@@ -92,7 +92,7 @@ func (s *server) MoveFaceAppearances(w http.ResponseWriter, r *http.Request, id 
 	}
 	if _, remote := domain.IDNodes(body.AppearanceIds...); remote && !isPeerRequest(r.Context()) {
 		restoreBody(r, raw)
-		s.moveFacesOnPeer(w, r, id)
+		s.moveFacesOnPeer(w, r, id, body.AppearanceIds)
 		return
 	}
 	// The store reads a zero target as a new person, which only a split may ask for.

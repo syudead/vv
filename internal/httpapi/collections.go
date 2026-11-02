@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -36,6 +37,10 @@ func (s *server) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 	}
 	local := domain.CollectionDelete{GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs}
 	var remote domain.CollectionDelete
+	slot, ok := s.oneLinkSlot(w, append(slices.Clone(groupIDs), smartFolderIDs...)...)
+	if !ok {
+		return
+	}
 	if !isPeerRequest(r.Context()) {
 		local.GroupIDs, remote.GroupIDs = domain.SplitRemoteIDs(groupIDs)
 		local.SmartFolderIDs, remote.SmartFolderIDs = domain.SplitRemoteIDs(smartFolderIDs)
@@ -52,7 +57,7 @@ func (s *server) DeleteCollections(w http.ResponseWriter, r *http.Request) {
 	var out gen.CollectionsDeleteResponse
 	if len(remote.GroupIDs)+len(remote.SmartFolderIDs) > 0 {
 		var peer domain.CollectionsDeleted
-		peer, out.Remote = s.deletePeerCollections(r, remote)
+		peer, out.Remote = s.deletePeerCollections(r, slot, remote)
 		deleted.DissolvedGroups += peer.DissolvedGroups
 		deleted.DeletedSmartFolders += peer.DeletedSmartFolders
 	}

@@ -28,23 +28,26 @@ func mergedNodes(t *testing.T) (fa, fb *guestFixture, b *peerNode, stopA func())
 // mergedNodesWith is mergedNodes with extend applied to both nodes' options.
 func mergedNodesWith(t *testing.T, extend func(db *store.DB, opts *Options)) (fa, fb *guestFixture, a, b *peerNode, stopA func()) {
 	t.Helper()
-	node := func(name string) (*guestFixture, *peerNode, func()) {
-		var pairing *app.Pairing
-		f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
-			pairing = withTestPairing(db, name, nil, opts)
-			opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
-			if extend != nil {
-				extend(db, opts)
-			}
-		})
-		server := httptest.NewServer(f.env.handler)
-		t.Cleanup(server.Close)
-		return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
-	}
-	fa, a, stopA = node("node-a")
-	fb, b, _ = node("node-b")
+	fa, a, stopA = mergedNode(t, "node-a", extend)
+	fb, b, _ = mergedNode(t, "node-b", extend)
 	pairNodes(t, a, b)
 	return fa, fb, a, b, stopA
+}
+
+// mergedNode is one served node of mergedNodesWith, unpaired, with the function that stops serving it.
+func mergedNode(t *testing.T, name string, extend func(db *store.DB, opts *Options)) (*guestFixture, *peerNode, func()) {
+	t.Helper()
+	var pairing *app.Pairing
+	f := newGuestFixtureWith(t, true, func(db *store.DB, opts *Options) {
+		pairing = withTestPairing(db, name, nil, opts)
+		opts.PersonImages = app.NewPersonImages(db.Credits(), app.NewIngest(app.IngestOptions{}))
+		if extend != nil {
+			extend(db, opts)
+		}
+	})
+	server := httptest.NewServer(f.env.handler)
+	t.Cleanup(server.Close)
+	return f, &peerNode{env: f.env, url: server.URL, cookie: f.owner, pairing: pairing}, server.Close
 }
 
 // listLabel names a listed video by node and title, such as "a:e" for a's video e seen from b.
@@ -212,8 +215,8 @@ func TestMergedListContinuesWithTheLocalPartWhenThePeerStops(t *testing.T) {
 	if !slices.Equal(totals, []int{5, 5}) {
 		t.Errorf("totals = %v, want the local total on each page", totals)
 	}
-	if state, _ := decodePeerState(t, b.owner(http.MethodGet, "/api/peer", "")); state.State != gen.PeerStateStateUnreachable {
-		t.Errorf("state = %s, want unreachable", state.State)
+	if link := onlyLinkState(t, b); link.State != gen.PeerLinkStateStateUnreachable {
+		t.Errorf("state = %s, want unreachable", link.State)
 	}
 }
 

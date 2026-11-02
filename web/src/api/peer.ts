@@ -4,7 +4,7 @@ import type { components } from "./gen/openapi";
 // The only caller of the screen's /api/peer operations; the Pairing page never calls fetch.
 
 export type PeerState = components["schemas"]["PeerState"];
-export type PeerLink = components["schemas"]["PeerLink"];
+export type PeerLinkState = components["schemas"]["PeerLinkState"];
 export type PeerGrant = components["schemas"]["PeerGrant"];
 export type PairingCode = components["schemas"]["PairingCode"];
 export type PairPeerRequest = components["schemas"]["PairPeerRequest"];
@@ -20,7 +20,10 @@ export function issuePairingCode(signal?: AbortSignal): Promise<PairingCode> {
   return request<PairingCode>("/api/peer/code", { method: "POST", signal });
 }
 
-/** Answers the connected state; certificate_untrusted carries the fingerprint to send back. */
+/**
+ * Answers the whole state with the new link connected; certificate_untrusted carries the fingerprint to send back,
+ * and peer_limit refuses a ninth link.
+ */
 export function pairPeer(
   body: PairPeerRequest,
   signal?: AbortSignal,
@@ -33,11 +36,16 @@ export function pairPeer(
   });
 }
 
+function linkPath(nodeId: string, suffix = ""): string {
+  return `/api/peer/links/${encodeURIComponent(nodeId)}${suffix}`;
+}
+
 export function updatePeerAddress(
+  nodeId: string,
   address: string,
   signal?: AbortSignal,
 ): Promise<PeerState> {
-  return request<PeerState>("/api/peer/address", {
+  return request<PeerState>(linkPath(nodeId, "/address"), {
     method: "PUT",
     headers: jsonHeaders,
     body: JSON.stringify({ address }),
@@ -45,12 +53,13 @@ export function updatePeerAddress(
   });
 }
 
-/** Sends the fingerprint the screen showed; another one waiting answers 409 fingerprint_changed. */
+/** Sends the fingerprint the screen showed for the link; another one waiting answers 409 fingerprint_changed. */
 export function confirmPeerCertificate(
+  nodeId: string,
   fingerprint: string,
   signal?: AbortSignal,
 ): Promise<PeerState> {
-  return request<PeerState>("/api/peer/certificate", {
+  return request<PeerState>(linkPath(nodeId, "/certificate"), {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ fingerprint }),
@@ -63,9 +72,9 @@ async function deletePeerPart(path: string, signal?: AbortSignal): Promise<void>
   if (!response.ok) throw await toRequestFailed(response);
 }
 
-/** Stops reading the other VVMDM, and also clears a revoked state; a missing link answers 204 too. */
-export function unpairPeer(signal?: AbortSignal): Promise<void> {
-  return deletePeerPart("/api/peer/link", signal);
+/** Stops reading one VVMDM, and also clears its revoked state; a missing link answers 204 too. */
+export function unpairPeer(nodeId: string, signal?: AbortSignal): Promise<void> {
+  return deletePeerPart(linkPath(nodeId), signal);
 }
 
 /** Withdraws the reading VVMDM's access; a missing grant answers 204 too. */

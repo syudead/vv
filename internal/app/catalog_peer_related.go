@@ -162,7 +162,11 @@ func (c *Catalog) mergeRelated(ctx context.Context, audience domain.Audience, ra
 			at.Peer.Done, remote = true, domain.RelatedSidePage{}
 		}
 	}
-	ids, next := domain.MergeRelated(local, remote, at, page.Limit)
+	var slot int64
+	if peer != nil {
+		slot = peer.Slot()
+	}
+	ids, next := domain.MergeRelated(local, remote, slot, at, page.Limit)
 	localIDs := slices.DeleteFunc(slices.Clone(ids), domain.IsRemoteID)
 	videos, err := c.index.VideosByIDs(ctx, audience, localIDs)
 	if err != nil {

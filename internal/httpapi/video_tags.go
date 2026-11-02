@@ -90,7 +90,7 @@ func (s *server) applyTag(ctx context.Context, videoIDs []int64, edit domain.Vid
 // node's ids, when the peer answered one, and the videos it changed.
 func (s *server) tagOnPeer(r *http.Request, action gen.VideoTagsAction, sel selection, parts *videoEditParts, out *gen.VideoTagsResponse) (*gen.TagRef, int) {
 	if parts.peerErr != nil || parts.peer == nil {
-		out.Remote = s.remoteSelectionResult(0, sel.peer, parts.peerErr)
+		out.Remote = s.remoteSelectionResult(sel.slot, 0, sel.peer, parts.peerErr)
 		return nil, 0
 	}
 	ids, folders := sel.peerTargets()
@@ -101,12 +101,12 @@ func (s *server) tagOnPeer(r *http.Request, action gen.VideoTagsAction, sel sele
 		request.Tag = gen.TagInput{Id: parts.peer.TagsAdd[0].ID, Name: parts.peer.TagsAdd[0].Name}
 	}
 	var answer gen.VideoTagsResponse
-	err := s.peerCall(r, http.MethodPost, "/api/video-tags", nil, request, &answer)
-	out.Remote = s.remoteSelectionResult(answer.Applied, sel.peer, err)
+	err := s.peerCall(r, sel.slot, http.MethodPost, "/api/video-tags", nil, request, &answer)
+	out.Remote = s.remoteSelectionResult(sel.slot, answer.Applied, sel.peer, err)
 	if err != nil {
 		return nil, 0
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), sel.slot)
 	if err != nil {
 		s.logger.Warn("could not join the other VVMDM's tag", slog.Any("error", err))
 		return nil, answer.Applied
@@ -138,7 +138,7 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	}
 	var peer gen.VideoTagsSummary
 	if sel.hasPeer() && s.peerSelectionRead(r, "/api/video-tags/summary", sel, &peer) {
-		join, err := s.vocabularyJoin(r.Context())
+		join, err := s.vocabularyJoin(r.Context(), sel.slot)
 		if err != nil {
 			s.internalError(w, "Could not load the tag summary.", err)
 			return

@@ -41,8 +41,8 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-/** Whether the last peer event said connected; undefined until the first one. */
-let peerListed: boolean | undefined;
+/** The connected slots the last peer event named; undefined until the first one. */
+let peerListed: string | undefined;
 
 function dispatch<K extends keyof ServerEventHandlers>(
   kind: K,
@@ -95,7 +95,11 @@ function connect(): void {
     const state = parse<PeerState>(event);
     if (state === undefined) return;
     dispatch("peer", state);
-    const listed = state.state === "connected";
+    // The connected slots, so a change of which links are listed reloads the lists.
+    const listed = state.links
+      .filter((link) => link.state === "connected")
+      .map((link) => link.slot)
+      .join(",");
     const changed = peerListed !== undefined && peerListed !== listed;
     peerListed = listed;
     if (changed) dispatch("peerItems");

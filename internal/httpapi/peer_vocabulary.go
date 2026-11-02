@@ -18,11 +18,12 @@ import (
 )
 
 // vocabularyJoin holds this node's names for rewriting the peer's answers; without a library nothing joins.
-func (s *server) vocabularyJoin(ctx context.Context) (domain.VocabularyJoin, error) {
+func (s *server) vocabularyJoin(ctx context.Context, slot int64) (domain.VocabularyJoin, error) {
 	if s.videos == nil {
-		return domain.VocabularyJoin{}, nil
+		return domain.VocabularyJoin{Slot: slot}, nil
 	}
-	return s.videos.VocabularyJoin(ctx)
+	join, err := s.videos.VocabularyJoin(ctx)
+	return join.InSlot(slot), err
 }
 
 // mergesVocabulary reports whether the tag, kind, person and organization lists answer with both nodes' entries.
@@ -30,17 +31,18 @@ func (s *server) mergesVocabulary(ctx context.Context) bool {
 	return s.readsPeer(ctx)
 }
 
-// peerVocabulary reads the peer's whole list at path into out and rewrites it into this node's id space; a peer
-// that does not answer leaves the list with the local entries.
+// peerVocabulary reads the first link's whole list at path into out and rewrites it into this node's id space; a
+// link that does not answer leaves the list with the local entries.
 func peerVocabulary[T any](s *server, r *http.Request, path string, out *[]T, rewrite func(*T, domain.VocabularyJoin)) error {
 	var answer struct {
 		Items []T `json:"items"`
 	}
-	if err := s.peerGet(r, path, url.Values{}, &answer); err != nil {
+	slot := s.listSlot(r.Context())
+	if err := s.peerGet(r, slot, path, url.Values{}, &answer); err != nil {
 		s.logger.Info("the list leaves out the other VVMDM", slog.String("path", path), slog.Any("error", err))
 		return nil
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), slot)
 	if err != nil {
 		return err
 	}
@@ -295,10 +297,16 @@ func (s *server) remoteOrganizationPatch(w http.ResponseWriter, r *http.Request)
 	return true
 }
 
-// peerOrganizationID is the peer's id of the organization id names on the screens; among the peer's
-// organizations of a local organization's name it takes the lowest id, as the join does.
+// peerOrganizationID is the id on the link r reaches of the organization id names on the screens; among that
+// link's organizations of a local organization's name it takes the lowest id, as the join does. Another link's
+// organization is mixed_nodes.
 func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id int64) (int64, bool) {
+	slot := s.requestSlot(r)
 	if domain.IsRemoteID(id) {
+		if domain.RemoteSlot(id) != slot {
+			s.mixedNodes(w)
+			return 0, false
+		}
 		return domain.FromRemoteID(id), true
 	}
 	local, err := s.credits.Get(r.Context(), domain.CreditOrganization, id)
@@ -311,7 +319,7 @@ func (s *server) peerOrganizationID(w http.ResponseWriter, r *http.Request, id i
 		return 0, false
 	}
 	var answer gen.OrganizationList
-	if err := s.peerGet(r, "/api/organizations", url.Values{"q": {local.Name}}, &answer); err != nil {
+	if err := s.peerGet(r, slot, "/api/organizations", url.Values{"q": {local.Name}}, &answer); err != nil {
 		if errors.Is(err, domain.ErrPeerUnreachable) {
 			s.peerUnreachable(w)
 		} else {

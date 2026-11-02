@@ -1980,7 +1980,7 @@ describe("VideoPage", () => {
       server.videos.set(remoteId, [{ ...video, id: remoteId }]);
       renderPage(String(remoteId));
       await ready();
-      expect(screen.getByRole("banner").textContent).toContain("Other VVMDM");
+      expect(screen.getByRole("banner").textContent).toContain("Another VVMDM");
       expect(screen.getByRole("button", { name: "Favorite" })).toBeDefined();
       expect(screen.queryByRole("button", { name: "Playlist" })).toBeNull();
       expect(screen.getByRole("button", { name: "Group" })).toBeDefined();

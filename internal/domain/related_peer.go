@@ -157,18 +157,18 @@ type RelatedSidePage struct {
 	More  bool
 }
 
-// MergeRelated takes up to limit videos of both pages in the related order, a peer video by its remote id on a
-// tie, and returns their ids as the screens address them with the cursor after them, nil at the end.
-func MergeRelated(local, peer RelatedSidePage, at MergedRelatedCursor, limit int) ([]int64, *MergedRelatedCursor) {
+// MergeRelated takes up to limit videos of both pages in the related order, a video of the link in slot by its
+// remote id on a tie, and returns their ids as the screens address them with the cursor after them, nil at the end.
+func MergeRelated(local, peer RelatedSidePage, slot int64, at MergedRelatedCursor, limit int) ([]int64, *MergedRelatedCursor) {
 	ids := make([]int64, 0, min(limit, len(local.Items)+len(peer.Items)))
 	i, j := 0, 0
 	for len(ids) < limit && (i < len(local.Items) || j < len(peer.Items)) {
-		if j == len(peer.Items) || i < len(local.Items) && compareRanked(local.Items[i], asRemote(peer.Items[j])) <= 0 {
+		if j == len(peer.Items) || i < len(local.Items) && compareRanked(local.Items[i], asRemote(slot, peer.Items[j])) <= 0 {
 			ids = append(ids, local.Items[i].VideoID)
 			i++
 			continue
 		}
-		ids = append(ids, RemoteID(LinkSlot, peer.Items[j].VideoID))
+		ids = append(ids, RemoteID(slot, peer.Items[j].VideoID))
 		j++
 	}
 	next := MergedRelatedCursor{Local: at.Local.advance(local, i), Peer: at.Peer.advance(peer, j)}
@@ -178,8 +178,8 @@ func MergeRelated(local, peer RelatedSidePage, at MergedRelatedCursor, limit int
 	return ids, &next
 }
 
-func asRemote(item RankedRelated) RankedRelated {
-	item.VideoID = RemoteID(LinkSlot, item.VideoID)
+func asRemote(slot int64, item RankedRelated) RankedRelated {
+	item.VideoID = RemoteID(slot, item.VideoID)
 	return item
 }
 
@@ -232,5 +232,7 @@ type ScoredRelated struct {
 
 // RelatedPeer scores the peer's videos against the clues of the open video, in the peer's own ids.
 type RelatedPeer interface {
+	// Slot is the slot of the link whose videos Related answers.
+	Slot() int64
 	Related(ctx context.Context, clues RelatedClues, exclude []int64, after *RelatedCursor, limit int) (RelatedSidePage, error)
 }

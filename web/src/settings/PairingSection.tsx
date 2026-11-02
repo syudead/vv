@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getPeer, type PeerState } from "../api/peer";
+import { getPeer, type PeerLinkState, type PeerState } from "../api/peer";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { ErrorState } from "../ui/patterns/error-state";
@@ -29,11 +29,17 @@ function usePeerState() {
     setView({ kind: "loaded", state });
   }, []);
 
-  // The state line moves only on a peer event, so an answer updates the link's details alone.
+  // The state lines move only on a peer event, so an answer updates the links' details alone.
   const updateLink = useCallback((answer: PeerState) => {
     setView((current) =>
-      current.kind === "loaded" && answer.link !== undefined
-        ? { kind: "loaded", state: { ...current.state, link: answer.link } }
+      current.kind === "loaded"
+        ? {
+            kind: "loaded",
+            state: {
+              ...current.state,
+              links: withDetails(current.state.links, answer.links),
+            },
+          }
         : current,
     );
   }, []);
@@ -63,7 +69,17 @@ function usePeerState() {
   return { view, apply, updateLink, retry: () => void load() };
 }
 
-/** The VVMDM this one reads: the pairing form until a link exists, then the link's face. */
+/** links with the details of each one answer holds, keeping the state each link last had. */
+function withDetails(links: PeerLinkState[], answer: PeerLinkState[]): PeerLinkState[] {
+  return links.map((link) => {
+    const answered = answer.find((other) => other.nodeId === link.nodeId);
+    if (answered === undefined) return link;
+    const { state, reason, fingerprint } = link;
+    return { ...answered, state, reason, fingerprint };
+  });
+}
+
+/** The VVMDMs this one reads: the pairing form until a link exists, then each link's face. */
 function ReadSection({
   state,
   onPaired,
@@ -73,15 +89,22 @@ function ReadSection({
   state: PeerState;
   onPaired: (state: PeerState) => void;
   onLinkAnswer: (state: PeerState) => void;
-  onUnpaired: () => void;
+  onUnpaired: (nodeId: string | undefined) => void;
 }) {
   const text = t.settings.pairing.read;
   return (
     <PageSection title={text.heading} description={text.description}>
-      {state.state === "unpaired" ? (
+      {state.links.length === 0 ? (
         <PairForm onPaired={onPaired} />
       ) : (
-        <LinkDetails state={state} onLinkAnswer={onLinkAnswer} onUnpaired={onUnpaired} />
+        state.links.map((link) => (
+          <LinkDetails
+            key={link.slot}
+            link={link}
+            onLinkAnswer={onLinkAnswer}
+            onUnpaired={() => onUnpaired(link.nodeId)}
+          />
+        ))
       )}
     </PageSection>
   );
@@ -103,8 +126,11 @@ export default function PairingSection() {
           state={state}
           onPaired={apply}
           onLinkAnswer={updateLink}
-          onUnpaired={() =>
-            apply({ state: "unpaired", grant: state.grant, node: state.node })
+          onUnpaired={(nodeId) =>
+            apply({
+              ...state,
+              links: state.links.filter((link) => link.nodeId !== nodeId),
+            })
           }
         />
         <ReadersSection

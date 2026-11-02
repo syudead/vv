@@ -158,7 +158,7 @@ function CardDuration({
     return null;
   return (
     <VideoThumbnailDuration>
-      {remote && <ItemRemoteMark id={remoteId} />}
+      {remote && <ItemRemoteMark itemId={video.id} id={remoteId} />}
       {versions !== null && <VersionsMark count={versions} id={versionsId} />}
       {publicMark && <PublicMark />}
       {video.virtual && <VirtualMark id={virtualId} />}
@@ -552,7 +552,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
         <span className="inline-flex items-center justify-end gap-1.5">
-          {remote && <ItemRemoteMark />}
+          {remote && <ItemRemoteMark itemId={video.id} />}
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}
           {video.virtual && <VirtualMark />}

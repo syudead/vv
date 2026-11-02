@@ -42,9 +42,11 @@ func favoriteChangeNames(change domain.FavoriteChange) bool {
 	return len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs)+len(change.PersonIDs) > 0
 }
 
-// setPeerFavorites applies change, in the peer's ids, on the peer in one request; when it fails, it answers w
-// and reports false.
-func (s *server) setPeerFavorites(w http.ResponseWriter, r *http.Request, change domain.FavoriteChange) (gen.FavoritesResponse, bool) {
+// setPeerFavorites applies change, in the ids of the link in slot, on that link in one request; when it fails, it
+// answers w and reports false.
+func (s *server) setPeerFavorites(
+	w http.ResponseWriter, r *http.Request, slot int64, change domain.FavoriteChange,
+) (gen.FavoritesResponse, bool) {
 	var applied gen.FavoritesResponse
 	if !favoriteChangeNames(change) {
 		return applied, true
@@ -53,7 +55,7 @@ func (s *server) setPeerFavorites(w http.ResponseWriter, r *http.Request, change
 		Favorite: change.Favorite, VideoIds: optionalIDList(change.VideoIDs), GroupIds: optionalIDList(change.GroupIDs),
 		SmartFolderIds: optionalIDList(change.SmartFolderIDs), PersonIds: optionalIDList(change.PersonIDs),
 	}
-	if err := s.peerCall(r, http.MethodPut, "/api/favorites", nil, body, &applied); err != nil {
+	if err := s.peerCall(r, slot, http.MethodPut, "/api/favorites", nil, body, &applied); err != nil {
 		s.writePeerWriteFailure(w, err)
 		return gen.FavoritesResponse{}, false
 	}
@@ -77,7 +79,8 @@ func (s *server) listMergedWatchHistory(
 	if !s.checkWatchHistoryRead(w, err) {
 		return
 	}
-	join, err := s.vocabularyJoin(ctx)
+	slot := s.listSlot(ctx)
+	join, err := s.vocabularyJoin(ctx, slot)
 	if err != nil {
 		s.internalError(w, "Could not read the names of tags, people and organizations.", err)
 		return
@@ -120,12 +123,12 @@ func (s *server) peerWatchHistory(
 		query.Set("cursor", cursor)
 	}
 	var answer gen.WatchHistoryPage
-	if err := s.peerGet(r, watchHistoryPath, query, &answer); err != nil {
+	if err := s.peerGet(r, join.Slot, watchHistoryPath, query, &answer); err != nil {
 		return domain.MergeSide[gen.WatchHistoryEntry]{}, err
 	}
 	for i := range answer.Items {
 		entry := &answer.Items[i]
-		entry.Id = domain.RemoteID(domain.LinkSlot, entry.Id)
+		entry.Id = join.Remote(entry.Id)
 		if entry.Video != nil {
 			rewriteRemoteVideo(entry.Video, join)
 		}
@@ -136,7 +139,7 @@ func (s *server) peerWatchHistory(
 // withPeerWatchHistoryDays adds the peer's days to days; a peer that fails is left out.
 func (s *server) withPeerWatchHistoryDays(r *http.Request, days []string) []string {
 	var answer gen.WatchHistoryDates
-	if err := s.peerGet(r, watchHistoryPath+"/dates", r.URL.Query(), &answer); err != nil {
+	if err := s.peerGet(r, s.listSlot(r.Context()), watchHistoryPath+"/dates", r.URL.Query(), &answer); err != nil {
 		s.logger.Info("the watch history dates leave out the other VVMDM", slog.Any("error", err))
 		return days
 	}
@@ -151,7 +154,7 @@ func (s *server) deletePeerWatchHistoryEntry(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	path := watchHistoryPath + "/" + strconv.FormatInt(domain.FromRemoteID(id), 10)
-	if err := s.peerCall(r, http.MethodDelete, path, nil, nil, nil); err != nil {
+	if err := s.peerCall(r, domain.RemoteSlot(id), http.MethodDelete, path, nil, nil, nil); err != nil {
 		s.writePeerWriteFailure(w, err)
 		return
 	}

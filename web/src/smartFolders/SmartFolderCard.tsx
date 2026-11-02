@@ -208,7 +208,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
           ratio={facts.ratio}
           face={
             <>
-              {remote && <ItemRemoteMark id={remoteId} />}
+              {remote && <ItemRemoteMark itemId={folder.id} id={remoteId} />}
               <SmartFolderMark />
               {values === undefined ? (
                 <Skeleton aria-hidden="true" className="h-3 w-16" />
@@ -312,7 +312,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       )}
       {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
-        remote={remote}
+        itemId={folder.id}
         state={facts.state}
         watchedCount={facts.watchedCount}
         videoCount={values?.videoCount ?? 0}

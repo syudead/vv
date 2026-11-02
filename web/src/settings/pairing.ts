@@ -38,6 +38,8 @@ export function pairFailure(failure: unknown): PairFailure {
       return { kind: "field", field: "code", text: text.form.invalidCode };
     case "already_paired":
       return { kind: "alert", text: text.form.alreadyPaired };
+    case "peer_limit":
+      return { kind: "alert", text: text.form.peerLimit };
     case "peer_unreachable":
       // The server's message says what failed; the Words table shows it as given.
       if (failure.message !== "")

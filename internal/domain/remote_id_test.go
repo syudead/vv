@@ -42,6 +42,15 @@ func TestRemoteIDRoundTripsThroughTheSlot(t *testing.T) {
 	}
 }
 
+// An id a link answers outside its own range stays in that link's slot instead of naming another link's entity.
+func TestRemoteIDKeepsAnOutOfRangeIDInItsSlot(t *testing.T) {
+	for _, id := range []int64{1<<40 + 42, -1} {
+		if got, want := RemoteID(1, id), RemoteID(1, 0); got != want {
+			t.Errorf("RemoteID(1, %d) = %d (slot %d), want %d in slot 1", id, got, RemoteSlot(got), want)
+		}
+	}
+}
+
 func TestRemoteVideoURLRewritesThePeersVideoID(t *testing.T) {
 	remote7 := "/api/videos/1099511627783"
 	for _, tc := range []struct{ in, want string }{
@@ -66,18 +75,18 @@ func TestVocabularyJoinTakesTheLocalIDByNameElseTheOffset(t *testing.T) {
 	join := VocabularyJoin{
 		Tags:   map[string]int64{"海": 3},
 		People: map[string]int64{"": 9, "山田": 4},
-	}
+	}.InSlot(2)
 	for _, tc := range []struct {
 		label string
 		got   int64
 		want  int64
 	}{
 		{"同じ名前のタグ", join.Tag(50, "海"), 3},
-		{"手元に無いタグ", join.Tag(51, "山"), RemoteID(1, 51)},
+		{"手元に無いタグ", join.Tag(51, "山"), RemoteID(2, 51)},
 		{"同じ名前の人物", join.Person(60, "山田"), 4},
-		{"名前の無い仮の人物", join.Person(61, ""), RemoteID(1, 61)},
-		{"表の無い種別", join.TagKind(70, "ジャンル"), RemoteID(1, 70)},
-		{"ゼロ値の結合", VocabularyJoin{}.Organization(80, "スタジオ"), RemoteID(1, 80)},
+		{"名前の無い仮の人物", join.Person(61, ""), RemoteID(2, 61)},
+		{"表の無い種別", join.TagKind(70, "ジャンル"), RemoteID(2, 70)},
+		{"名前で結ばない実体", join.Remote(80), RemoteID(2, 80)},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s: id = %d, want %d", tc.label, tc.got, tc.want)
@@ -111,5 +120,22 @@ func TestIDNodesAndSplitByNode(t *testing.T) {
 	ToPeerIDs(ids)
 	if !slices.Equal(ids, []int64{3, 0}) {
 		t.Errorf("ToPeerIDs = %v, want [3 0]", ids)
+	}
+}
+
+// IDSlot names the one link of the remote ids, so an operation never sends one link's ids to another.
+func TestIDSlotNamesOneLink(t *testing.T) {
+	for _, tc := range []struct {
+		ids  []int64
+		slot int64
+		ok   bool
+	}{
+		{[]int64{4, 5}, 0, true},
+		{[]int64{4, RemoteID(2, 1), RemoteID(2, 9)}, 2, true},
+		{[]int64{RemoteID(1, 1), RemoteID(2, 1)}, 0, false},
+	} {
+		if slot, ok := IDSlot(tc.ids...); slot != tc.slot || ok != tc.ok {
+			t.Errorf("IDSlot(%v) = %d, %v, want %d, %v", tc.ids, slot, ok, tc.slot, tc.ok)
+		}
 	}
 }

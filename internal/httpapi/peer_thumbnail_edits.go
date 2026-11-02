@@ -36,7 +36,7 @@ func (s *server) startRemoteThumbnailEdit(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// The peer may extract the frame from the file, as a forwarded frame read does.
-	image, err := s.peerSend(req, false, true)
+	image, err := s.peerSend(req, domain.RemoteSlot(id), false, true)
 	if err != nil {
 		s.peerFailure(w, err, "Could not read the image of the other VVMDM's video.")
 		return
@@ -64,7 +64,7 @@ func (s *server) startFromPeerImage(w http.ResponseWriter, r *http.Request, vide
 // compares, and its duration. A virtual video has no frames and answers 409 virtual_video, as a local one does.
 func (s *server) remoteFrameVideo(w http.ResponseWriter, r *http.Request, id int64) (domain.Video, bool) {
 	var peer gen.Video
-	if err := s.peerGet(r, peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &peer); err != nil {
+	if err := s.peerGet(r, domain.RemoteSlot(id), peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &peer); err != nil {
 		s.peerFailure(w, err, "Could not read the other VVMDM's video.")
 		return domain.Video{}, false
 	}

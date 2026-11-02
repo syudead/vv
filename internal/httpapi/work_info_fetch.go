@@ -149,7 +149,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 	if sel.hasPeer() {
 		ids, folders := sel.peerTargets()
 		var answer gen.WorkInfoFillTargetList
-		err := s.peerCall(r, http.MethodPost, "/api/work-info-fill-targets", nil,
+		err := s.peerCall(r, sel.slot, http.MethodPost, "/api/work-info-fill-targets", nil,
 			gen.WorkInfoFillTargetsRequest{VideoIds: ids, SmartFolderIds: folders}, &answer)
 		if err != nil {
 			s.logger.Info("could not list the other VVMDM's videos to fill", slog.Any("error", err))
@@ -157,7 +157,7 @@ func (s *server) ListWorkInfoFillTargets(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		for _, target := range answer.Targets {
-			target.VideoId = domain.RemoteID(domain.LinkSlot, target.VideoId)
+			target.VideoId = domain.RemoteID(sel.slot, target.VideoId)
 			targets = append(targets, target)
 		}
 	}

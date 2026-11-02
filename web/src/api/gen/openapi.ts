@@ -1739,7 +1739,7 @@ export interface paths {
         };
         /**
          * Return the pairing state
-         * @description Pairing is one-directional: link is the VVMDM this node reads, and grant the VVMDM that reads this one; each is absent until paired in that direction, and they are independent, so a mutual pairing is two pairings. Owners receive the link's name, address and version, the grant's name and pairing time, and this node's identity; guests receive state and reason only. state is the link's connection, held in memory: after a start it is unpaired without a link, revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. One open event stream to the read node is the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
+         * @description Pairing is one-directional: links are the VVMDMs this node reads, at most 8, and grant the VVMDM that reads this one, at most one; each direction is absent until paired, and they are independent, so a mutual pairing is two pairings. links are in slot order; a link's ids in the screen API are its own ids plus slot times 2^40. Owners receive each link's node id, name, address, version and waiting fingerprint, the grant's name and pairing time, and this node's identity; guests receive each link's slot, state and reason only. A link's state is its connection, held in memory: after a start it is revoked when the read node refused the link's secret, and unreachable with reason network otherwise, until a connection succeeds. Each link keeps its own open event stream to its node as the liveness signal: connected while it is open, unreachable when it fails, retried after 5 s doubling to 60 s, independently of the other links. Each reconnection compares the read node's node id (reason network when it differs); versions are never compared, and the read node's version is shown for reference only; a pinned certificate that changed stops it with reason certificate and the new fingerprint; 401 peer_unknown from the read node marks the link revoked and gives revoked.
          */
         get: operations["getPeer"];
         put?: never;
@@ -1750,7 +1750,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/link": {
+    "/api/peer/links/{nodeId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1761,8 +1761,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Stop reading the other VVMDM
-         * @description Tells the read node through its forgetPeer, best effort, then deletes the link and nothing else, which also clears a revoked state; the grant, if any, stays. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. Without a link it also returns 204.
+         * Stop reading one VVMDM
+         * @description Tells the read node through its forgetPeer, best effort, then deletes that link and nothing else, which also clears a revoked state; the other links and the grant, if any, stay. A node that could not be told learns it from the 401 peer_unknown its reader's next request receives. A node id this node does not read also returns 204.
          */
         delete: operations["unpairPeer"];
         options?: never;
@@ -1821,7 +1821,7 @@ export interface paths {
         put?: never;
         /**
          * Read the node whose code the owner typed
-         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node that already reads one, or whose target another node already reads, 409 already_paired; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
+         * @description Sends the code and this node's identity to the other node's acceptPairing and stores the link in the next slot with the secret it answers; the other node stores a grant and never connects to this one, so this node needs no address of its own and no inbound reachability. An address without http or https scheme or host, or with a path, query or user, returns 400 invalid_request with invalid_address and field. A refused code returns 400 invalid_code; a node this node already reads, or whose target another node already reads, 409 already_paired; a ninth link 409 peer_limit, before the other node is called; a failed call 409 peer_unreachable; an HTTPS certificate the system roots do not verify 409 certificate_untrusted with fingerprint. Sending fingerprint again accepts a certificate with that SPKI and pins it.
          */
         post: operations["pairPeer"];
         delete?: never;
@@ -1830,7 +1830,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/address": {
+    "/api/peer/links/{nodeId}/address": {
         parameters: {
             query?: never;
             header?: never;
@@ -1839,8 +1839,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the read node's address
-         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; without a link, 404 not_found.
+         * Change a read node's address
+         * @description Keeps the link. An invalid address returns 400 invalid_request with invalid_address; a node id this node does not read, 404 not_found.
          */
         put: operations["updatePeerAddress"];
         post?: never;
@@ -1850,7 +1850,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/peer/certificate": {
+    "/api/peer/links/{nodeId}/certificate": {
         parameters: {
             query?: never;
             header?: never;
@@ -1860,8 +1860,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Trust the read node's changed certificate
-         * @description Pins the SPKI fingerprint that getPeer shows with state unreachable and reason certificate, and reconnects at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. Without a link, 404 not_found.
+         * Trust a read node's changed certificate
+         * @description Pins the SPKI fingerprint that getPeer shows for that link with state unreachable and reason certificate, and reconnects it at once; the next peer event reports the result. Another fingerprint, or none waiting, returns 409 conflict with fingerprint_changed and the fingerprint waiting, if any. A certificate the system roots verify is never pinned, so it needs no confirmation. A node id this node does not read, 404 not_found.
          */
         post: operations["confirmPeerCertificate"];
         delete?: never;
@@ -4082,7 +4082,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every pairing state change and once on connection. While paired, the peer's video, group and smartFolder events are forwarded with its ids plus 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. A peer-credential stream receives it only for an added, replaced or deleted folder, never for a switch. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. peer carries PeerState in the audience's shape (as getPeer returns it) on every change of any link's state or of the grant, and once on connection. Each link's video, group and smartFolder events are forwarded with that link's ids plus its slot times 2^40. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding/assistant events. assistant carries an empty object to owners after every committed change of an assistant proposal; refetch the proposals the panel shows. mediaFolders carries an empty object after a media folder is added, replaced, deleted or switched on or off; refetch the media folders and reload open lists. A peer-credential stream receives it only for an added, replaced or deleted folder, never for a switch. Guests receive only group, smartFolder, mediaFolders and peer; scan, video, onboarding, candidates, activity and assistant are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -8101,16 +8101,35 @@ export interface components {
             /** @description Release version, as getHealth reports it; shown for reference, never compared */
             version: string;
         };
-        /** @description The VVMDM this node reads */
-        PeerLink: {
-            /** @description Its host name at pairing */
-            name: string;
-            /** @description Its base URL */
-            address: string;
-            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted */
-            pinned: boolean;
-            /** @description Its version last seen, shown for reference */
+        /** @description One VVMDM this node reads, with its connection. Guests receive slot, state and reason only. */
+        PeerLinkState: {
+            /**
+             * Format: int64
+             * @description The link's slot, 1 or more and never reused; its entities' ids in the screen API are their own ids plus slot times 2^40
+             */
+            slot: number;
+            /** @description Its node id, the path parameter of the link's operations. Owner only. */
+            nodeId?: string;
+            /**
+             * @description The connection to that VVMDM
+             * @enum {string}
+             */
+            state: "connected" | "unreachable" | "revoked";
+            /**
+             * @description Present with unreachable
+             * @enum {string}
+             */
+            reason?: "network" | "certificate";
+            /** @description Its host name at pairing. Owner only. */
+            name?: string;
+            /** @description Its base URL. Owner only. */
+            address?: string;
+            /** @description Whether a certificate fingerprint is pinned for it, so reason certificate means the certificate changed rather than one never trusted. Owner only. */
+            pinned?: boolean;
+            /** @description Its version last seen, shown for reference. Owner only. */
             version?: string;
+            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
+            fingerprint?: string;
         };
         /** @description The VVMDM that reads this one */
         PeerGrant: {
@@ -8119,21 +8138,10 @@ export interface components {
             /** Format: date-time */
             pairedAt: string;
         };
-        /** @description Guests receive state and reason only; owners also receive link (while this node reads one), grant (while one reads this node) and node, this node's identity. */
+        /** @description Guests receive links in their guest shape only; owners also receive grant (while one reads this node) and node, this node's identity. */
         PeerState: {
-            /**
-             * @description The connection to the VVMDM this node reads; unpaired without link
-             * @enum {string}
-             */
-            state: "unpaired" | "connected" | "unreachable" | "revoked";
-            /**
-             * @description Present with unreachable
-             * @enum {string}
-             */
-            reason?: "network" | "certificate";
-            link?: components["schemas"]["PeerLink"];
-            /** @description With reason certificate: the SPKI fingerprint waiting for confirmation. Owner only. */
-            fingerprint?: string;
+            /** @description The VVMDMs this node reads, in slot order; empty while it reads none */
+            links: components["schemas"]["PeerLinkState"][];
             grant?: components["schemas"]["PeerGrant"];
             node?: components["schemas"]["PeerNode"];
         };
@@ -8379,7 +8387,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "version_judging_off" | "version_not_rejudgeable" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported" | "invalid_title" | "not_virtual" | "virtual_video" | "description_too_long" | "too_many_urls" | "connection" | "not_ollama" | "model" | "timeout" | "ollama_not_saved" | "generation_model_unset" | "generation_model_without_tools" | "peer_unknown" | "peer_not_allowed" | "invalid_address" | "invalid_code" | "already_paired" | "peer_limit" | "peer_unreachable" | "mixed_nodes" | "provisional_person_remote" | "tag_name_taken" | "person_name_taken" | "organization_name_taken" | "certificate_untrusted" | "fingerprint_changed";
     };
     responses: {
         /** @description Resource not found */
@@ -8483,6 +8491,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The node id of a link, as getPeer answers it */
+        PeerLinkNodeId: string;
         /** @description Assistant review run ID */
         AssistantReviewRunId: number;
         /** @description Assistant turn ID */
@@ -11583,7 +11593,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -11670,7 +11683,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -11697,7 +11713,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The node id of a link, as getPeer answers it */
+                nodeId: components["parameters"]["PeerLinkNodeId"];
+            };
             cookie?: never;
         };
         requestBody: {

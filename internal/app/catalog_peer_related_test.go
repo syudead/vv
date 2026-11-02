@@ -18,6 +18,9 @@ type fakeRelatedPeer struct {
 	clues  []domain.RelatedClues
 }
 
+// Slot is the slot the tests address the peer with.
+func (p *fakeRelatedPeer) Slot() int64 { return 1 }
+
 func (p *fakeRelatedPeer) Related(_ context.Context, clues domain.RelatedClues, _ []int64, after *domain.RelatedCursor, limit int) (domain.RelatedSidePage, error) {
 	p.clues = append(p.clues, clues)
 	if p.err != nil {

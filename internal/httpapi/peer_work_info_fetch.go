@@ -39,7 +39,7 @@ func peerWorkInfoError(err error) error {
 
 func (p peerWorkInfo) GetVideo(_ context.Context, _ domain.Audience, id int64) (domain.Video, error) {
 	var video gen.Video
-	if err := p.s.peerGet(p.r, peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &video); err != nil {
+	if err := p.s.peerGet(p.r, domain.RemoteSlot(id), peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &video); err != nil {
 		return domain.Video{}, peerWorkInfoError(err)
 	}
 	if video.ContentVersion == nil {
@@ -60,13 +60,14 @@ func (p peerWorkInfo) Match(
 		body.Entries = append(body.Entries, gen.PeerCreditMatchEntry{Name: entry.Name, ExternalIds: toAPIExternalIDs(entry.ExternalIDs)})
 	}
 	var answer gen.PeerCreditMatches
-	if err := p.s.peerCall(p.r, http.MethodPost, "/api/peer/credit-matches", url.Values{}, body, &answer); err != nil {
+	slot := p.s.requestSlot(p.r)
+	if err := p.s.peerCall(p.r, slot, http.MethodPost, "/api/peer/credit-matches", url.Values{}, body, &answer); err != nil {
 		return nil, peerWorkInfoError(err)
 	}
 	if len(answer.Matches) != len(entries) {
 		return nil, fmt.Errorf("%w: %d matches for %d entries", errPeerAnswer, len(answer.Matches), len(entries))
 	}
-	join, err := p.s.vocabularyJoin(ctx)
+	join, err := p.s.vocabularyJoin(ctx, slot)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +91,7 @@ func (p peerWorkInfo) ApplyFetchedWorkInfo(
 	body := toPeerFetchedWorkInfo(apply)
 	var answer gen.PeerFetchedWorkInfoApplied
 	path := "/api/peer/videos/" + strconv.FormatInt(domain.FromRemoteID(apply.VideoID), 10) + "/fetched-work-info"
-	if err := p.s.peerCall(p.r, http.MethodPost, path, url.Values{}, body, &answer); err != nil {
+	if err := p.s.peerCall(p.r, domain.RemoteSlot(apply.VideoID), http.MethodPost, path, url.Values{}, body, &answer); err != nil {
 		return domain.FetchedWorkInfoApplied{}, peerWorkInfoError(err)
 	}
 	applied := domain.FetchedWorkInfoApplied{
@@ -115,7 +116,7 @@ func (p peerWorkInfo) UploadThumbnailImage(
 // uploadPeerThumbnail sends image as the thumbnail of the peer's video id, as the screens upload one.
 func (s *server) uploadPeerThumbnail(ctx context.Context, id int64, contentVersion string, image []byte) (domain.Video, error) {
 	path := peerVideoPath(domain.FromRemoteID(id), "/thumbnail-image", nil)
-	err := s.peerUpload(ctx, http.MethodPost, path, func(form *multipart.Writer) error {
+	err := s.peerUpload(ctx, domain.RemoteSlot(id), http.MethodPost, path, func(form *multipart.Writer) error {
 		return writeThumbnailForm(form, contentVersion, image)
 	}, nil)
 	if err != nil {
@@ -124,10 +125,10 @@ func (s *server) uploadPeerThumbnail(ctx context.Context, id int64, contentVersi
 	return domain.Video{ID: id}, nil
 }
 
-// peerUpload sends the multipart form write fills to path on the peer as the owner and decodes the answer into
-// out, when set; an answer other than 200 or 201 is a *peerRefusal.
+// peerUpload sends the multipart form write fills to path on the node of the link in slot as the owner and decodes
+// the answer into out, when set; an answer other than 200 or 201 is a *peerRefusal.
 func (s *server) peerUpload(
-	ctx context.Context, method, path string, write func(*multipart.Writer) error, out any,
+	ctx context.Context, slot int64, method, path string, write func(*multipart.Writer) error, out any,
 ) error {
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
@@ -140,7 +141,7 @@ func (s *server) peerUpload(
 	}
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	// The peer may wait to decode and fit the image, as a forwarded thumbnail upload does.
-	answer, err := s.peerSend(req, false, true)
+	answer, err := s.peerSend(req, slot, false, true)
 	if err != nil || out == nil {
 		return err
 	}
@@ -309,10 +310,10 @@ func (s *server) ApplyPeerFetchedWorkInfo(w http.ResponseWriter, r *http.Request
 // not answer, as a local apply answers when it cannot read part of the video.
 func (s *server) peerVideoDetail(r *http.Request, id int64) (gen.Video, error) {
 	var video gen.Video
-	if err := s.peerGet(r, peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &video); err != nil {
+	if err := s.peerGet(r, domain.RemoteSlot(id), peerVideoPath(domain.FromRemoteID(id), "", nil), url.Values{}, &video); err != nil {
 		return gen.Video{Id: id}, err
 	}
-	join, err := s.vocabularyJoin(r.Context())
+	join, err := s.vocabularyJoin(r.Context(), domain.RemoteSlot(id))
 	if err != nil {
 		return gen.Video{Id: id}, err
 	}
